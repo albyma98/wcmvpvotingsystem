@@ -132,6 +132,7 @@ async function generateHmac(message, secret) {
 
 .custom-modal {
   background: white;
+  color: #000;
   padding: 1rem;
   border-radius: 8px;
   max-width: 400px;
