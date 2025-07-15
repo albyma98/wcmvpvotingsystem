@@ -1,9 +1,13 @@
 <template>
-  <div>
-    <h1>Scansione QR Code</h1>
-    <video ref="video" autoplay playsinline></video>
-    <p v-if="scannedCode">Codice rilevato: {{ scannedCode }}</p>
-    <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+  <div class="container center-align">
+    <h4>Scansione QR Code</h4>
+    <video ref="video" autoplay playsinline class="responsive-video"></video>
+    <p v-if="scannedCode" class="green-text text-darken-2">
+      Codice rilevato: {{ scannedCode }}
+    </p>
+    <p v-if="errorMessage" class="error red-text text-darken-2">
+      {{ errorMessage }}
+    </p>
   </div>
 </template>
 
@@ -61,7 +65,6 @@ video {
   border-radius: 8px;
 }
 .error {
-  color: red;
   margin-top: 0.5rem;
 }
 </style>
