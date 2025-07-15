@@ -82,9 +82,15 @@ function cancelVote() {
 }
 
 async function confirmVote() {
-  voteCode.value = Math.random().toString(36).slice(-8)
-  signature.value = await generateHmac(voteCode.value, 'secret-key')
-  qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(voteCode.value)}`
+  const res = await fetch('http://localhost:3000/vote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ player_id: selectedPlayer.value.id }),
+  })
+  const data = await res.json()
+  voteCode.value = data.code
+  signature.value = data.signature
+  qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(data.qr_data)}`
   showConfirm.value = false
   showCode.value = true
 }
@@ -93,20 +99,6 @@ function closeCode() {
   showCode.value = false
 }
 
-async function generateHmac(message, secret) {
-  const enc = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  )
-  const buf = await crypto.subtle.sign('HMAC', key, enc.encode(message))
-  return Array.from(new Uint8Array(buf))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
-}
 </script>
 
 <style scoped>
