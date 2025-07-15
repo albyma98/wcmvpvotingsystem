@@ -4,12 +4,12 @@
     <div class="row">
       <div class="col s12 m6 l4" v-for="player in players" :key="player.id">
         <div class="card hoverable">
-          <div class="card-image">
+          <div class="card-image center-align">
             <img :src="player.image" :alt="player.name" class="player-image" />
-            <span class="card-title">{{ player.name }}</span>
           </div>
-          <div class="card-content">
-            <p>{{ player.role }} - #{{ player.number }}</p>
+          <div class="card-content center-align">
+            <span class="player-name">{{ player.name }}</span>
+            <p class="player-info">{{ player.role }} - #{{ player.number }}</p>
           </div>
           <div class="card-action center-align">
             <button class="btn waves-effect" @click="vote(player)">Vota</button>
@@ -18,8 +18,8 @@
       </div>
     </div>
     <!-- Conferma voto -->
-    <div class="modal-overlay" v-if="showConfirm">
-      <div class="modal">
+    <div class="custom-modal-overlay" v-if="showConfirm">
+      <div class="custom-modal">
         <div class="modal-content">
           <p>Confermi il voto per {{ selectedPlayer?.name }}?</p>
         </div>
@@ -30,8 +30,8 @@
       </div>
     </div>
     <!-- Codice e QR -->
-    <div class="modal-overlay" v-if="showCode">
-      <div class="modal">
+    <div class="custom-modal-overlay" v-if="showCode">
+      <div class="custom-modal">
         <div class="modal-content center-align">
           <h5>Voto registrato</h5>
           <p>Codice: {{ voteCode }}</p>
@@ -117,7 +117,7 @@ async function generateHmac(message, secret) {
   border-radius: 50%;
 }
 
-.modal-overlay {
+.custom-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -130,11 +130,23 @@ async function generateHmac(message, secret) {
   z-index: 1000;
 }
 
-.modal {
+.custom-modal {
   background: white;
   padding: 1rem;
   border-radius: 8px;
   max-width: 400px;
   width: 90%;
+}
+
+.player-name {
+  color: #000;
+  font-weight: bold;
+  display: block;
+  margin-top: 0.5rem;
+}
+
+.player-info {
+  color: #666;
+  margin-top: 0.25rem;
 }
 </style>
