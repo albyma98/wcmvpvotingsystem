@@ -7,9 +7,21 @@ const view = ref('vote')
 </script>
 
 <template>
-  <div class="nav">
-    <button @click="view = 'vote'" :class="{ active: view === 'vote' }">Vota</button>
-    <button @click="view = 'scan'" :class="{ active: view === 'scan' }">Scannerizza</button>
+  <div class="nav center-align">
+    <button
+      class="btn waves-effect"
+      :class="{ 'blue lighten-1': view === 'vote' }"
+      @click="view = 'vote'"
+    >
+      Vota
+    </button>
+    <button
+      class="btn waves-effect"
+      :class="{ 'blue lighten-1': view === 'scan' }"
+      @click="view = 'scan'"
+    >
+      Scannerizza
+    </button>
   </div>
   <VoteMVP v-if="view === 'vote'" />
   <QRScanner v-else />
@@ -17,14 +29,8 @@ const view = ref('vote')
 
 <style scoped>
 .nav {
+  margin-bottom: 1rem;
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-.nav button {
-  padding: 0.5rem 1rem;
-}
-.nav button.active {
-  font-weight: bold;
 }
 </style>

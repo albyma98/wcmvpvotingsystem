@@ -1,30 +1,46 @@
 <template>
-  <div>
-    <h1>Vota il tuo MVP</h1>
-    <div class="grid">
-      <div class="player-card" v-for="player in players" :key="player.id">
-        <img :src="player.image" :alt="player.name" class="player-image" />
-        <h3>{{ player.name }}</h3>
-        <p>{{ player.role }} - #{{ player.number }}</p>
-        <button @click="vote(player)">Vota</button>
+  <div class="container">
+    <h4 class="center-align">Vota il tuo MVP</h4>
+    <div class="row">
+      <div class="col s12 m6 l4" v-for="player in players" :key="player.id">
+        <div class="card hoverable">
+          <div class="card-image">
+            <img :src="player.image" :alt="player.name" class="player-image" />
+            <span class="card-title">{{ player.name }}</span>
+          </div>
+          <div class="card-content">
+            <p>{{ player.role }} - #{{ player.number }}</p>
+          </div>
+          <div class="card-action center-align">
+            <button class="btn waves-effect" @click="vote(player)">Vota</button>
+          </div>
+        </div>
       </div>
     </div>
     <!-- Conferma voto -->
-    <div class="modal" v-if="showConfirm">
-      <div class="modal-content">
-        <p>Confermi il voto per {{ selectedPlayer?.name }}?</p>
-        <button @click="confirmVote">Conferma</button>
-        <button @click="cancelVote">Annulla</button>
+    <div class="modal-overlay" v-if="showConfirm">
+      <div class="modal">
+        <div class="modal-content">
+          <p>Confermi il voto per {{ selectedPlayer?.name }}?</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn waves-effect" @click="confirmVote">Conferma</button>
+          <button class="btn-flat" @click="cancelVote">Annulla</button>
+        </div>
       </div>
     </div>
     <!-- Codice e QR -->
-    <div class="modal" v-if="showCode">
-      <div class="modal-content">
-        <h2>Voto registrato</h2>
-        <p>Codice: {{ voteCode }}</p>
-        <p>Firma HMAC: {{ signature }}</p>
-        <img :src="qrUrl" alt="QR code" />
-        <button @click="closeCode">Chiudi</button>
+    <div class="modal-overlay" v-if="showCode">
+      <div class="modal">
+        <div class="modal-content center-align">
+          <h5>Voto registrato</h5>
+          <p>Codice: {{ voteCode }}</p>
+          <p>Firma HMAC: {{ signature }}</p>
+          <img :src="qrUrl" alt="QR code" />
+        </div>
+        <div class="modal-footer center-align">
+          <button class="btn waves-effect" @click="closeCode">Chiudi</button>
+        </div>
       </div>
     </div>
   </div>
@@ -94,28 +110,14 @@ async function generateHmac(message, secret) {
 </script>
 
 <style scoped>
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-}
-.player-card {
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
 .player-image {
-  width: 100px;
-  height: 100px;
+  width: 150px;
+  height: 150px;
   object-fit: cover;
   border-radius: 50%;
-  margin-bottom: 0.5rem;
 }
 
-.modal {
+.modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -125,12 +127,14 @@ async function generateHmac(message, secret) {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1000;
 }
 
-.modal-content {
-  background: #fff;
+.modal {
+  background: white;
   padding: 1rem;
   border-radius: 8px;
-  text-align: center;
+  max-width: 400px;
+  width: 90%;
 }
 </style>
