@@ -9,11 +9,29 @@
         <button @click="vote(player)">Vota</button>
       </div>
     </div>
+    <!-- Conferma voto -->
+    <div class="modal" v-if="showConfirm">
+      <div class="modal-content">
+        <p>Confermi il voto per {{ selectedPlayer?.name }}?</p>
+        <button @click="confirmVote">Conferma</button>
+        <button @click="cancelVote">Annulla</button>
+      </div>
+    </div>
+    <!-- Codice e QR -->
+    <div class="modal" v-if="showCode">
+      <div class="modal-content">
+        <h2>Voto registrato</h2>
+        <p>Codice: {{ voteCode }}</p>
+        <p>Firma HMAC: {{ signature }}</p>
+        <img :src="qrUrl" alt="QR code" />
+        <button @click="closeCode">Chiudi</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 
 const players = reactive([
   { id: 1, name: 'Giocatore 1', role: 'Schiacciatore', number: 1, image: 'https://via.placeholder.com/100?text=1' },
@@ -30,8 +48,48 @@ const players = reactive([
   { id: 12, name: 'Giocatore 12', role: 'Opposto', number: 12, image: 'https://via.placeholder.com/100?text=12' },
 ])
 
+const selectedPlayer = ref(null)
+const showConfirm = ref(false)
+const showCode = ref(false)
+const voteCode = ref('')
+const signature = ref('')
+const qrUrl = ref('')
+
 function vote(player) {
-  alert(`Hai votato ${player.name}`)
+  selectedPlayer.value = player
+  showConfirm.value = true
+}
+
+function cancelVote() {
+  selectedPlayer.value = null
+  showConfirm.value = false
+}
+
+async function confirmVote() {
+  voteCode.value = Math.random().toString(36).slice(-8)
+  signature.value = await generateHmac(voteCode.value, 'secret-key')
+  qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(voteCode.value)}`
+  showConfirm.value = false
+  showCode.value = true
+}
+
+function closeCode() {
+  showCode.value = false
+}
+
+async function generateHmac(message, secret) {
+  const enc = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const buf = await crypto.subtle.sign('HMAC', key, enc.encode(message))
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
 }
 </script>
 
@@ -55,5 +113,24 @@ function vote(player) {
   object-fit: cover;
   border-radius: 50%;
   margin-bottom: 0.5rem;
+}
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: #fff;
+  padding: 1rem;
+  border-radius: 8px;
+  text-align: center;
 }
 </style>
