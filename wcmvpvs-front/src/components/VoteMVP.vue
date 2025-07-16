@@ -82,15 +82,21 @@ function cancelVote() {
 }
 
 async function confirmVote() {
-  const res = await fetch('http://localhost:3000/vote', {
+  await fetch('http://localhost:3000/vote', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ player_id: selectedPlayer.value.id }),
   })
-  const data = await res.json()
-  voteCode.value = data.code
-  signature.value = data.signature
-  qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(data.qr_data)}`
+
+  const ticketRes = await fetch('http://localhost:3000/ticket', {
+    method: 'POST',
+  })
+  const ticket = await ticketRes.json()
+
+  voteCode.value = ticket.code
+  signature.value = ticket.signature
+  qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(ticket.qr_data)}`
+
   showConfirm.value = false
   showCode.value = true
 }
