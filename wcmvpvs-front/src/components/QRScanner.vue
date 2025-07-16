@@ -11,49 +11,55 @@
   </div>
 </template>
 
-<script setup>
+<script>
 import { ref, onMounted, onUnmounted } from 'vue'
 
-const video = ref(null)
-const scannedCode = ref('')
-const errorMessage = ref('')
+export default {
+  setup() {
+    const video = ref(null)
+    const scannedCode = ref('')
+    const errorMessage = ref('')
 
-let stream
-let detector
+    let stream
+    let detector
 
-onMounted(async () => {
-  if ('BarcodeDetector' in window) {
-    detector = new BarcodeDetector({ formats: ['qr_code'] })
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      video.value.srcObject = stream
-      requestAnimationFrame(scan)
-    } catch (e) {
-      errorMessage.value = 'Impossibile accedere alla fotocamera'
-    }
-  } else {
-    errorMessage.value = 'BarcodeDetector API non supportata'
-  }
-})
-
-onUnmounted(() => {
-  if (stream) {
-    stream.getTracks().forEach(t => t.stop())
-  }
-})
-
-async function scan() {
-  if (video.value && video.value.readyState === video.value.HAVE_ENOUGH_DATA) {
-    try {
-      const barcodes = await detector.detect(video.value)
-      if (barcodes.length > 0) {
-        scannedCode.value = barcodes[0].rawValue
+    onMounted(async () => {
+      if ('BarcodeDetector' in window) {
+        detector = new BarcodeDetector({ formats: ['qr_code'] })
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+          video.value.srcObject = stream
+          requestAnimationFrame(scan)
+        } catch (e) {
+          errorMessage.value = 'Impossibile accedere alla fotocamera'
+        }
+      } else {
+        errorMessage.value = 'BarcodeDetector API non supportata'
       }
-    } catch (e) {
-      console.error(e)
+    })
+
+    onUnmounted(() => {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop())
+      }
+    })
+
+    async function scan() {
+      if (video.value && video.value.readyState === video.value.HAVE_ENOUGH_DATA) {
+        try {
+          const barcodes = await detector.detect(video.value)
+          if (barcodes.length > 0) {
+            scannedCode.value = barcodes[0].rawValue
+          }
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      requestAnimationFrame(scan)
     }
+
+    return { video, scannedCode, errorMessage }
   }
-  requestAnimationFrame(scan)
 }
 </script>
 
