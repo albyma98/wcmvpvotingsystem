@@ -46,9 +46,12 @@
   </div>
 </template>
 
-<script setup>
+<script>
 import { reactive, ref } from 'vue'
 import axios from 'axios'
+
+export default {
+  setup() {
 
 const players = reactive([
   { id: 1, name: 'Giocatore 1', role: 'Schiacciatore', number: 1, image: 'https://via.placeholder.com/100?text=1' },
@@ -125,6 +128,21 @@ function closeCode() {
   showCode.value = false
 }
 
+    return {
+      players,
+      selectedPlayer,
+      showConfirm,
+      showCode,
+      voteCode,
+      signature,
+      qrUrl,
+      vote,
+      cancelVote,
+      confirmVote,
+      closeCode,
+    }
+  },
+}
 </script>
 
 <style scoped>
