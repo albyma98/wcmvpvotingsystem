@@ -21,7 +21,7 @@ func (rt *_router) postTicket(w http.ResponseWriter, r *http.Request, ps httprou
 		return
 	}
 	code := id.String()
-
+	ctx.Logger.Infof("generated ticket %s", code)
 	h := hmac.New(sha256.New, []byte(rt.VoteSecret))
 	_, _ = h.Write([]byte(code))
 	signature := hex.EncodeToString(h.Sum(nil))
@@ -31,7 +31,7 @@ func (rt *_router) postTicket(w http.ResponseWriter, r *http.Request, ps httprou
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
+	ctx.Logger.Info("ticket stored in database")
 	qrDataBytes, _ := json.Marshal(struct {
 		Code      string `json:"code"`
 		Signature string `json:"signature"`

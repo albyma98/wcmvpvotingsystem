@@ -23,6 +23,8 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httproute
 		return
 	}
 
+	ctx.Logger.Infof("vote received for player %d", req.PlayerID)
+
 	id, err := uuid.NewV4()
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot generate code")
@@ -30,7 +32,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httproute
 		return
 	}
 	code := id.String()
-
+	ctx.Logger.Infof("generated vote code %s", code)
 	h := hmac.New(sha256.New, []byte(rt.VoteSecret))
 	h.Write([]byte(code))
 	signature := hex.EncodeToString(h.Sum(nil))
@@ -40,7 +42,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httproute
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
+	ctx.Logger.Info("vote stored in database")
 	qrDataBytes, _ := json.Marshal(struct {
 		Code      string `json:"code"`
 		Signature string `json:"signature"`

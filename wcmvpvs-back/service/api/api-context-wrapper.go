@@ -30,7 +30,7 @@ func (rt *_router) wrap(fn httpRouterHandler) func(http.ResponseWriter, *http.Re
 			"reqid":     ctx.ReqUUID.String(),
 			"remote-ip": r.RemoteAddr,
 		})
-
+		ctx.Logger.Infof("handling %s %s", r.Method, r.URL.Path)
 		// Call the next handler in chain (usually, the handler function for the path)
 		fn(w, r, ps, ctx)
 	}

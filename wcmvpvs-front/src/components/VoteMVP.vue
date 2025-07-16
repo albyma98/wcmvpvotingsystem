@@ -49,6 +49,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import axios from 'axios'
+
 const players = reactive([
   { id: 1, name: 'Giocatore 1', role: 'Schiacciatore', number: 1, image: 'https://via.placeholder.com/100?text=1' },
   { id: 2, name: 'Giocatore 2', role: 'Opposto', number: 2, image: 'https://via.placeholder.com/100?text=2' },
@@ -74,8 +75,24 @@ const qrUrl = ref('')
 const api = axios.create({
   baseURL: 'http://0.0.0.0:3000',
 })
+api.interceptors.request.use((config) => {
+  console.log('API Request', config.method, config.url, config.data)
+  return config
+})
+
+api.interceptors.response.use(
+  (response) => {
+    console.log('API Response', response.status, response.config.url)
+    return response
+  },
+  (error) => {
+    console.error('API Error', error)
+    return Promise.reject(error)
+  }
+)
 
 function vote(player) {
+  console.log('vote() selected', player)
   selectedPlayer.value = player
   showConfirm.value = true
 }
@@ -86,17 +103,22 @@ function cancelVote() {
 }
 
 async function confirmVote() {
-  await api.post('/vote', { player_id: selectedPlayer.value.id })
+  try {
+    console.log('confirmVote() sending vote for', selectedPlayer.value.id)
+    await api.post('/vote', { player_id: selectedPlayer.value.id })
+    console.log('confirmVote() requesting ticket')
+    const ticketRes = await api.post('/ticket')
+    const ticket = ticketRes.data
+    console.log('confirmVote() ticket received', ticket)
+    voteCode.value = ticket.code
+    signature.value = ticket.signature
+    qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(ticket.qr_data)}`
 
-  const ticketRes = await api.post('/ticket')
-  const ticket = ticketRes.data
-
-  voteCode.value = ticket.code
-  signature.value = ticket.signature
-  qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(ticket.qr_data)}`
-
-  showConfirm.value = false
-  showCode.value = true
+    showConfirm.value = false
+    showCode.value = true
+  } catch (err) {
+    console.error('confirmVote() error', err)
+  }
 }
 
 function closeCode() {
