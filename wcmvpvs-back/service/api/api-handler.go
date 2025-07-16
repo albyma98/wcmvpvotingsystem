@@ -15,7 +15,7 @@ func (rt *_router) Handler() http.Handler {
 
 
 	rt.router.POST("/vote", rt.wrap(rt.postVote))
+	rt.router.POST("/ticket", rt.wrap(rt.postTicket))
 
-	
 	return rt.router
 }

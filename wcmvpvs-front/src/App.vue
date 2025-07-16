@@ -1,9 +1,10 @@
 <script setup>
-import { ref } from 'vue'
-import VoteMVP from './components/VoteMVP.vue'
-import QRScanner from './components/QRScanner.vue'
+import { ref } from "vue";
+import VoteMVP from "./components/VoteMVP.vue";
+import QRScanner from "./components/QRScanner.vue";
+import TicketGenerator from "./components/TicketGenerator.vue";
 
-const view = ref('vote')
+const view = ref("vote");
 </script>
 
 <template>
@@ -22,9 +23,17 @@ const view = ref('vote')
     >
       Scannerizza
     </button>
+    <button
+      class="btn waves-effect"
+      :class="{ 'blue lighten-1': view === 'ticket' }"
+      @click="view = 'ticket'"
+    >
+      Biglietto
+    </button>
   </div>
   <VoteMVP v-if="view === 'vote'" />
-  <QRScanner v-else />
+  <QRScanner v-else-if="view === 'scan'" />
+  <TicketGenerator v-else />
 </template>
 
 <style scoped>

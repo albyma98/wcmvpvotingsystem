@@ -41,7 +41,7 @@ type AppDatabase interface {
 	GetName() (string, error)
 	SetName(name string) error
 	AddVote(playerID int, code, signature string) error
-
+	AddTicket(code, signature string) error
 	Ping() error
 }
 
@@ -77,6 +77,16 @@ func New(db *sql.DB) (AppDatabase, error) {
 		}
 	}
 
+	// Create tickets table if not exists
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tickets';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE, signature TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating tickets table: %w", err)
+		}
+	}
+
 	return &appdbimpl{
 		c: db,
 	}, nil
@@ -89,5 +99,11 @@ func (db *appdbimpl) Ping() error {
 // AddVote stores a vote in the database
 func (db *appdbimpl) AddVote(playerID int, code, signature string) error {
 	_, err := db.c.Exec(`INSERT INTO votes (player_id, code, signature) VALUES (?, ?, ?)`, playerID, code, signature)
+	return err
+}
+
+// AddTicket stores a generated ticket in the database
+func (db *appdbimpl) AddTicket(code, signature string) error {
+	_, err := db.c.Exec(`INSERT INTO tickets (code, signature) VALUES (?, ?)`, code, signature)
 	return err
 }
