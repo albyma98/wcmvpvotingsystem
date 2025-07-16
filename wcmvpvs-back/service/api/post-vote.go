@@ -31,7 +31,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httproute
 	}
 	code := id.String()
 
-	h := hmac.New(sha256.New, rt.secret)
+	h := hmac.New(sha256.New, []byte(rt.VoteSecret))
 	h.Write([]byte(code))
 	signature := hex.EncodeToString(h.Sum(nil))
 

@@ -112,9 +112,9 @@ func run() error {
 
 	// Create the API router
 	apirouter, err := api.New(api.Config{
-		Logger:   logger,
-		Database: db,
-		Secret:   cfg.Vote.Secret,
+		Logger:     logger,
+		Database:   db,
+		VoteSecret: cfg.Vote.Secret,
 	})
 	if err != nil {
 		logger.WithError(err).Error("error creating the API server instance")

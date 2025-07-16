@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-front"
 	"io/fs"
 	"net/http"
 	"strings"

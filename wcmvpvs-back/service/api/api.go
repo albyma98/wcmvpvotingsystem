@@ -38,10 +38,11 @@ package api
 
 import (
 	"errors"
+	"net/http"
+
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
-	"net/http"
 )
 
 // Config is used to provide dependencies and configuration to the New function.
@@ -51,9 +52,9 @@ type Config struct {
 
 	// Database is the instance of database.AppDatabase where data are saved
 	Database database.AppDatabase
-	
+
 	// Secret is used to sign vote codes
-	Secret string
+	VoteSecret string
 }
 
 // Router is the package API interface representing an API handler builder
@@ -85,6 +86,7 @@ func New(cfg Config) (Router, error) {
 		router:     router,
 		baseLogger: cfg.Logger,
 		db:         cfg.Database,
+		VoteSecret: cfg.VoteSecret,
 	}, nil
 }
 
@@ -96,4 +98,7 @@ type _router struct {
 	baseLogger logrus.FieldLogger
 
 	db database.AppDatabase
+
+	VoteSecret string
+
 }
