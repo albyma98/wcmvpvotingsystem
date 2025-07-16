@@ -72,7 +72,7 @@ const signature = ref('')
 const qrUrl = ref('')
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000',
+  baseURL: 'http://0.0.0.0:3000',
 })
 
 function vote(player) {
