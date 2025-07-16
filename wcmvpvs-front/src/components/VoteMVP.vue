@@ -48,7 +48,7 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-
+import axios from 'axios'
 const players = reactive([
   { id: 1, name: 'Giocatore 1', role: 'Schiacciatore', number: 1, image: 'https://via.placeholder.com/100?text=1' },
   { id: 2, name: 'Giocatore 2', role: 'Opposto', number: 2, image: 'https://via.placeholder.com/100?text=2' },
@@ -71,6 +71,10 @@ const voteCode = ref('')
 const signature = ref('')
 const qrUrl = ref('')
 
+const api = axios.create({
+  baseURL: 'http://localhost:3000',
+})
+
 function vote(player) {
   selectedPlayer.value = player
   showConfirm.value = true
@@ -82,16 +86,10 @@ function cancelVote() {
 }
 
 async function confirmVote() {
-  await fetch('http://localhost:3000/vote', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ player_id: selectedPlayer.value.id }),
-  })
+  await api.post('/vote', { player_id: selectedPlayer.value.id })
 
-  const ticketRes = await fetch('http://localhost:3000/ticket', {
-    method: 'POST',
-  })
-  const ticket = await ticketRes.json()
+  const ticketRes = await api.post('/ticket')
+  const ticket = ticketRes.data
 
   voteCode.value = ticket.code
   signature.value = ticket.signature
