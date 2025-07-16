@@ -51,6 +51,9 @@ type Config struct {
 
 	// Database is the instance of database.AppDatabase where data are saved
 	Database database.AppDatabase
+	
+	// Secret is used to sign vote codes
+	Secret string
 }
 
 // Router is the package API interface representing an API handler builder

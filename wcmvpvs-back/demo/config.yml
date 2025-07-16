@@ -8,6 +8,8 @@ log:
 #  destination: stderr
 #  file: /tmp/debug.log
 #  combinedtostdout: true
+#vote:
+# secret: mysecret
 #web:
 #  apihost: 0.0.0.0:3000
 #  debughost: 0.0.0.0:4000

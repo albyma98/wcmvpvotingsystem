@@ -40,6 +40,7 @@ import (
 type AppDatabase interface {
 	GetName() (string, error)
 	SetName(name string) error
+	AddVote(playerID int, code, signature string) error
 
 	Ping() error
 }
@@ -66,6 +67,16 @@ func New(db *sql.DB) (AppDatabase, error) {
 		}
 	}
 
+	// Create votes table if not exists
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='votes';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE votes (id INTEGER PRIMARY KEY AUTOINCREMENT, player_id INTEGER NOT NULL, code TEXT NOT NULL UNIQUE, signature TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating votes table: %w", err)
+		}
+	}
+
 	return &appdbimpl{
 		c: db,
 	}, nil
@@ -73,4 +84,10 @@ func New(db *sql.DB) (AppDatabase, error) {
 
 func (db *appdbimpl) Ping() error {
 	return db.c.Ping()
+}
+
+// AddVote stores a vote in the database
+func (db *appdbimpl) AddVote(playerID int, code, signature string) error {
+	_, err := db.c.Exec(`INSERT INTO votes (player_id, code, signature) VALUES (?, ?, ?)`, playerID, code, signature)
+	return err
 }
