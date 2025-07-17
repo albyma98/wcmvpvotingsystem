@@ -1,9 +1,18 @@
-<script setup>
+<script>
 import { ref } from "vue";
 import VoteMVP from "./components/VoteMVP.vue";
 import QRScanner from "./components/QRScanner.vue";
 
-const view = ref("vote");
+export default {
+  components: {
+    VoteMVP,
+    QRScanner,
+  },
+  setup() {
+    const view = ref("vote");
+    return { view };
+  },
+};
 </script>
 
 <template>

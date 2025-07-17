@@ -46,9 +46,12 @@
   </div>
 </template>
 
-<script setup>
+<script>
 import { reactive, ref } from 'vue'
 import axios from 'axios'
+
+export default {
+  setup() {
 
 const players = reactive([
   { id: 1, name: 'Giocatore 1', role: 'Schiacciatore', number: 1, image: 'https://via.placeholder.com/100?text=1' },
@@ -73,7 +76,7 @@ const signature = ref('')
 const qrUrl = ref('')
 
 const api = axios.create({
-  baseURL: 'http://0.0.0.0:3000',
+  baseURL: 'http://localhost:3000',
 })
 api.interceptors.request.use((config) => {
   console.log('API Request', config.method, config.url, config.data)
@@ -124,7 +127,21 @@ async function confirmVote() {
 function closeCode() {
   showCode.value = false
 }
-
+    return {
+      players,
+      selectedPlayer,
+      showConfirm,
+      showCode,
+      voteCode,
+      signature,
+      qrUrl,
+      vote,
+      cancelVote,
+      confirmVote,
+      closeCode,
+    }
+  },
+}
 </script>
 
 <style scoped>
