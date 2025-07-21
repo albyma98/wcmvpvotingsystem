@@ -12,7 +12,14 @@ export default {
   },
   setup() {
     const view = ref("vote");
-    return { view };
+    const selectedEventId = ref(null);
+
+    function handleVoteEvent(id) {
+      selectedEventId.value = id;
+      view.value = "vote";
+    }
+
+    return { view, selectedEventId, handleVoteEvent };
   },
 };
 </script>
@@ -41,9 +48,9 @@ export default {
       Admin
     </button>
   </div>
-  <VoteMVP v-if="view === 'vote'" />
+  <VoteMVP v-if="view === 'vote'" :event-id="selectedEventId" />
   <QRScanner v-else-if="view === 'scan'" />
-  <AdminPortal v-else />
+  <AdminPortal v-else @vote-event="handleVoteEvent" />
 
 </template>
 

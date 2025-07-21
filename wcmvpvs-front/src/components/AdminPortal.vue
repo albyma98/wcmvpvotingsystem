@@ -22,12 +22,15 @@
     </div>
     <div v-if="section === 'players'">
       <h4>Players</h4>
-      <form @submit.prevent="createPlayer">
+       <form @submit.prevent="createPlayer">
         <input v-model="player.first_name" placeholder="First name" />
         <input v-model="player.last_name" placeholder="Last name" />
         <input v-model="player.role" placeholder="Role" />
         <input v-model.number="player.jersey_number" placeholder="Number" />
-        <input v-model.number="player.team_id" placeholder="Team ID" />
+        <select v-model.number="player.team_id">
+          <option disabled value="0">Select Team</option>
+          <option v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</option>
+        </select>
         <button type="submit" class="btn">Add</button>
       </form>
       <ul>
@@ -39,16 +42,23 @@
     </div>
     <div v-if="section === 'events'">
       <h4>Events</h4>
-      <form @submit.prevent="createEvent">
-        <input v-model.number="event.team1_id" placeholder="Team1 ID" />
-        <input v-model.number="event.team2_id" placeholder="Team2 ID" />
-        <input v-model="event.start_datetime" placeholder="Start datetime" />
+        <form @submit.prevent="createEvent">
+        <select v-model.number="event.team1_id">
+          <option disabled value="0">Select Home Team</option>
+          <option v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</option>
+        </select>
+        <select v-model.number="event.team2_id">
+          <option disabled value="0">Select Away Team</option>
+          <option v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</option>
+        </select>
+        <input type="date" v-model="event.start_datetime" />
         <input v-model="event.location" placeholder="Location" />
         <button type="submit" class="btn">Add</button>
       </form>
       <ul>
         <li v-for="e in events" :key="e.id">
-          {{ e.start_datetime }}
+          {{ teamName(e.team1_id) }} vs {{ teamName(e.team2_id) }} - {{ e.start_datetime }}
+                    <a href="#" @click.prevent="openVote(e.id)">Vote link</a>
           <button class="btn" @click="deleteEvent(e.id)">Del</button>
         </li>
       </ul>
@@ -76,6 +86,7 @@ import { ref, reactive, onMounted } from "vue";
 import axios from "axios";
 
 const api = axios.create({ baseURL: "http://localhost:3000" });
+const emit = defineEmits(["vote-event"]);
 
 const section = ref("teams");
 const teams = ref([]);
@@ -143,7 +154,14 @@ async function deleteEvent(id) {
   await api.delete(`/events/${id}`);
   loadAll();
 }
+function teamName(id) {
+  const t = teams.value.find((tm) => tm.id === id);
+  return t ? t.name : "";
+}
 
+function openVote(id) {
+  emit("vote-event", id);
+}
 async function createAdmin() {
   await api.post("/admins", admin);
   admin.username = "";

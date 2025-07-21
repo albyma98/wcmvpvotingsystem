@@ -46,28 +46,15 @@
   </div>
 </template>
 
-<script>
-import { reactive, ref } from 'vue'
+<script setup>
+import { ref, watchEffect } from 'vue'
 import axios from 'axios'
 
-export default {
-  setup() {
+const props = defineProps({
+  eventId: Number,
+})
 
-const players = reactive([
-  { id: 1, name: 'Giocatore 1', role: 'Schiacciatore', number: 1, image: 'https://via.placeholder.com/100?text=1' },
-  { id: 2, name: 'Giocatore 2', role: 'Opposto', number: 2, image: 'https://via.placeholder.com/100?text=2' },
-  { id: 3, name: 'Giocatore 3', role: 'Centrale', number: 3, image: 'https://via.placeholder.com/100?text=3' },
-  { id: 4, name: 'Giocatore 4', role: 'Palleggiatore', number: 4, image: 'https://via.placeholder.com/100?text=4' },
-  { id: 5, name: 'Giocatore 5', role: 'Libero', number: 5, image: 'https://via.placeholder.com/100?text=5' },
-  { id: 6, name: 'Giocatore 6', role: 'Schiacciatore', number: 6, image: 'https://via.placeholder.com/100?text=6' },
-  { id: 7, name: 'Giocatore 7', role: 'Opposto', number: 7, image: 'https://via.placeholder.com/100?text=7' },
-  { id: 8, name: 'Giocatore 8', role: 'Centrale', number: 8, image: 'https://via.placeholder.com/100?text=8' },
-  { id: 9, name: 'Giocatore 9', role: 'Palleggiatore', number: 9, image: 'https://via.placeholder.com/100?text=9' },
-  { id: 10, name: 'Giocatore 10', role: 'Libero', number: 10, image: 'https://via.placeholder.com/100?text=10' },
-  { id: 11, name: 'Giocatore 11', role: 'Schiacciatore', number: 11, image: 'https://via.placeholder.com/100?text=11' },
-  { id: 12, name: 'Giocatore 12', role: 'Opposto', number: 12, image: 'https://via.placeholder.com/100?text=12' },
-])
-
+const players = ref([])
 const selectedPlayer = ref(null)
 const showConfirm = ref(false)
 const showCode = ref(false)
@@ -78,21 +65,30 @@ const qrUrl = ref('')
 const api = axios.create({
   baseURL: 'http://localhost:3000',
 })
-api.interceptors.request.use((config) => {
-  console.log('API Request', config.method, config.url, config.data)
-  return config
-})
-
-api.interceptors.response.use(
-  (response) => {
-    console.log('API Response', response.status, response.config.url)
-    return response
-  },
-  (error) => {
-    console.error('API Error', error)
-    return Promise.reject(error)
+async function loadPlayers() {
+  if (!props.eventId) {
+    players.value = []
+    return
   }
-)
+  const events = (await api.get('/events')).data
+  const ev = events.find((e) => e.id === props.eventId)
+  if (!ev) {
+    players.value = []
+    return
+  }
+  const allPlayers = (await api.get('/players')).data
+  players.value = allPlayers
+    .filter((p) => p.team_id === ev.team1_id)
+    .map((p) => ({
+      id: p.id,
+      name: p.first_name + ' ' + p.last_name,
+      role: p.role,
+      number: p.jersey_number,
+      image: `https://via.placeholder.com/100?text=${p.jersey_number}`,
+    }))
+}
+
+watchEffect(loadPlayers)
 
 function vote(player) {
   console.log('vote() selected', player)
@@ -108,7 +104,7 @@ function cancelVote() {
 async function confirmVote() {
   try {
     console.log('confirmVote() sending vote for', selectedPlayer.value.id)
-    await api.post('/vote', { player_id: selectedPlayer.value.id })
+    await api.post('/vote', { player_id: selectedPlayer.value.id, event_id: props.eventId, device_id: 'web' })
     console.log('confirmVote() requesting ticket')
     const ticketRes = await api.post('/ticket')
     const ticket = ticketRes.data
@@ -127,20 +123,19 @@ async function confirmVote() {
 function closeCode() {
   showCode.value = false
 }
-    return {
-      players,
-      selectedPlayer,
-      showConfirm,
-      showCode,
-      voteCode,
-      signature,
-      qrUrl,
-      vote,
-      cancelVote,
-      confirmVote,
-      closeCode,
-    }
-  },
+// expose to template
+export {
+  players,
+  selectedPlayer,
+  showConfirm,
+  showCode,
+  voteCode,
+  signature,
+  qrUrl,
+  vote,
+  cancelVote,
+  confirmVote,
+  closeCode,
 }
 </script>
 
