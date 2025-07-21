@@ -123,20 +123,7 @@ async function confirmVote() {
 function closeCode() {
   showCode.value = false
 }
-// expose to template
-export {
-  players,
-  selectedPlayer,
-  showConfirm,
-  showCode,
-  voteCode,
-  signature,
-  qrUrl,
-  vote,
-  cancelVote,
-  confirmVote,
-  closeCode,
-}
+
 </script>
 
 <style scoped>
