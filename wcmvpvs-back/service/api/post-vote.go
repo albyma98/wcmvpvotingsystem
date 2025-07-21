@@ -15,7 +15,9 @@ import (
 // postVote handles a vote submission
 func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	var req struct {
-		PlayerID int `json:"player_id"`
+		PlayerID int    `json:"player_id"`
+		EventID  int    `json:"event_id"`
+		DeviceID string `json:"device_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ctx.Logger.WithError(err).Error("cannot decode vote request")
@@ -23,8 +25,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httproute
 		return
 	}
 
-	ctx.Logger.Infof("vote received for player %d", req.PlayerID)
-
+	ctx.Logger.Infof("vote received for player %d event %d", req.PlayerID, req.EventID)
 	id, err := uuid.NewV4()
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot generate code")
@@ -37,7 +38,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httproute
 	h.Write([]byte(code))
 	signature := hex.EncodeToString(h.Sum(nil))
 
-	if err := rt.db.AddVote(req.PlayerID, code, signature); err != nil {
+	if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID); err != nil {
 		ctx.Logger.WithError(err).Error("cannot store vote")
 		w.WriteHeader(http.StatusInternalServerError)
 		return

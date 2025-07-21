@@ -2,11 +2,13 @@
 import { ref } from "vue";
 import VoteMVP from "./components/VoteMVP.vue";
 import QRScanner from "./components/QRScanner.vue";
+import AdminPortal from "./components/AdminPortal.vue";
 
 export default {
   components: {
     VoteMVP,
     QRScanner,
+    AdminPortal,
   },
   setup() {
     const view = ref("vote");
@@ -31,10 +33,17 @@ export default {
     >
       Scannerizza
     </button>
-
+    <button
+      class="btn waves-effect"
+      :class="{ 'blue lighten-1': view === 'admin' }"
+      @click="view = 'admin'"
+    >
+      Admin
+    </button>
   </div>
   <VoteMVP v-if="view === 'vote'" />
-  <QRScanner v-else />
+  <QRScanner v-else-if="view === 'scan'" />
+  <AdminPortal v-else />
 
 </template>
 

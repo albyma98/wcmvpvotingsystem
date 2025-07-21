@@ -37,11 +37,70 @@ import (
 )
 
 // AppDatabase is the high level interface for the DB
+type Team struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+type Player struct {
+	ID           int    `json:"id"`
+	FirstName    string `json:"first_name"`
+	LastName     string `json:"last_name"`
+	Role         string `json:"role"`
+	JerseyNumber int    `json:"jersey_number"`
+	TeamID       int    `json:"team_id"`
+}
+
+type Event struct {
+	ID            int    `json:"id"`
+	Team1ID       int    `json:"team1_id"`
+	Team2ID       int    `json:"team2_id"`
+	StartDateTime string `json:"start_datetime"`
+	Location      string `json:"location"`
+}
+
+type Vote struct {
+	ID              int    `json:"id"`
+	EventID         int    `json:"event_id"`
+	PlayerID        int    `json:"player_id"`
+	TicketCode      string `json:"ticket_code"`
+	TicketSignature string `json:"ticket_signature"`
+	DeviceID        string `json:"device_id"`
+	CreatedAt       string `json:"created_at"`
+}
+
+type Admin struct {
+	ID           int    `json:"id"`
+	Username     string `json:"username"`
+	PasswordHash string `json:"password_hash"`
+	Role         string `json:"role"`
+	CreatedAt    string `json:"created_at"`
+}
+
+// AppDatabase is the high level interface for the DB
 type AppDatabase interface {
 	GetName() (string, error)
 	SetName(name string) error
-	AddVote(playerID int, code, signature string) error
+	AddVote(eventID, playerID int, code, signature, deviceID string) error
 	AddTicket(code, signature string) error
+	CreateTeam(name string) (int, error)
+	ListTeams() ([]Team, error)
+	UpdateTeam(id int, name string) error
+	DeleteTeam(id int) error
+	CreatePlayer(p Player) (int, error)
+	ListPlayers() ([]Player, error)
+	UpdatePlayer(p Player) error
+	DeletePlayer(id int) error
+	CreateEvent(e Event) (int, error)
+	ListEvents() ([]Event, error)
+	UpdateEvent(e Event) error
+	DeleteEvent(id int) error
+	ListVotes() ([]Vote, error)
+	DeleteVote(id int) error
+	CreateAdmin(a Admin) (int, error)
+	ListAdmins() ([]Admin, error)
+	UpdateAdmin(a Admin) error
+	DeleteAdmin(id int) error
 	Ping() error
 }
 
@@ -66,14 +125,58 @@ func New(db *sql.DB) (AppDatabase, error) {
 			return nil, fmt.Errorf("error creating database structure: %w", err)
 		}
 	}
+	// Create teams table if not exists
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='teams';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE teams (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating teams table: %w", err)
+		}
+	}
+
+	// Create players table if not exists
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='players';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE players (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL, last_name TEXT NOT NULL, role TEXT NOT NULL, jersey_number INTEGER, team_id INTEGER NOT NULL, FOREIGN KEY (team_id) REFERENCES teams(id));`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating players table: %w", err)
+		}
+	}
+
+	// Create events table if not exists
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='events';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, team1_id INTEGER NOT NULL, team2_id INTEGER NOT NULL, start_datetime TEXT NOT NULL, location TEXT, FOREIGN KEY (team1_id) REFERENCES teams(id), FOREIGN KEY (team2_id) REFERENCES teams(id));`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating events table: %w", err)
+		}
+
+	}
+
+	// Create admins table if not exists
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='admins';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT DEFAULT 'staff', created_at TEXT DEFAULT CURRENT_TIMESTAMP);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating admins table: %w", err)
+		}
+	}
 
 	// Create votes table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='votes';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE votes (id INTEGER PRIMARY KEY AUTOINCREMENT, player_id INTEGER NOT NULL, code TEXT NOT NULL UNIQUE, signature TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`
+		sqlStmt := `CREATE TABLE votes (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, player_id INTEGER NOT NULL, ticket_code TEXT NOT NULL, ticket_signature TEXT NOT NULL, device_id TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (event_id) REFERENCES events(id), FOREIGN KEY (player_id) REFERENCES players(id));`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating votes table: %w", err)
+		}
+		_, err = db.Exec(`CREATE UNIQUE INDEX unique_vote_per_event_device ON votes (event_id, device_id);`)
+		if err != nil {
+			return nil, fmt.Errorf("error creating votes index: %w", err)
 		}
 	}
 
@@ -97,13 +200,184 @@ func (db *appdbimpl) Ping() error {
 }
 
 // AddVote stores a vote in the database
-func (db *appdbimpl) AddVote(playerID int, code, signature string) error {
-	_, err := db.c.Exec(`INSERT INTO votes (player_id, code, signature) VALUES (?, ?, ?)`, playerID, code, signature)
+func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string) error {
+	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id) VALUES (?, ?, ?, ?, ?)`, eventID, playerID, code, signature, deviceID)
 	return err
 }
 
 // AddTicket stores a generated ticket in the database
 func (db *appdbimpl) AddTicket(code, signature string) error {
 	_, err := db.c.Exec(`INSERT INTO tickets (code, signature) VALUES (?, ?)`, code, signature)
+	return err
+}
+
+// Team operations
+func (db *appdbimpl) CreateTeam(name string) (int, error) {
+	res, err := db.c.Exec(`INSERT INTO teams (name) VALUES (?)`, name)
+	if err != nil {
+		return 0, err
+	}
+	id, _ := res.LastInsertId()
+	return int(id), nil
+}
+
+func (db *appdbimpl) ListTeams() ([]Team, error) {
+	rows, err := db.c.Query(`SELECT id, name FROM teams`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ts []Team
+	for rows.Next() {
+		var t Team
+		if err := rows.Scan(&t.ID, &t.Name); err != nil {
+			return nil, err
+		}
+		ts = append(ts, t)
+	}
+	return ts, nil
+}
+
+func (db *appdbimpl) UpdateTeam(id int, name string) error {
+	_, err := db.c.Exec(`UPDATE teams SET name=? WHERE id=?`, name, id)
+	return err
+}
+
+func (db *appdbimpl) DeleteTeam(id int) error {
+	_, err := db.c.Exec(`DELETE FROM teams WHERE id=?`, id)
+	return err
+}
+
+// Player operations
+func (db *appdbimpl) CreatePlayer(p Player) (int, error) {
+	res, err := db.c.Exec(`INSERT INTO players (first_name, last_name, role, jersey_number, team_id) VALUES (?, ?, ?, ?, ?)`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.TeamID)
+	if err != nil {
+		return 0, err
+	}
+	id, _ := res.LastInsertId()
+	return int(id), nil
+}
+
+func (db *appdbimpl) ListPlayers() ([]Player, error) {
+	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, team_id FROM players`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ps []Player
+	for rows.Next() {
+		var p Player
+		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.TeamID); err != nil {
+			return nil, err
+		}
+		ps = append(ps, p)
+	}
+	return ps, nil
+}
+
+func (db *appdbimpl) UpdatePlayer(p Player) error {
+	_, err := db.c.Exec(`UPDATE players SET first_name=?, last_name=?, role=?, jersey_number=?, team_id=? WHERE id=?`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.TeamID, p.ID)
+	return err
+}
+
+func (db *appdbimpl) DeletePlayer(id int) error {
+	_, err := db.c.Exec(`DELETE FROM players WHERE id=?`, id)
+	return err
+}
+
+// Event operations
+func (db *appdbimpl) CreateEvent(e Event) (int, error) {
+	res, err := db.c.Exec(`INSERT INTO events (team1_id, team2_id, start_datetime, location) VALUES (?, ?, ?, ?)`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location)
+	if err != nil {
+		return 0, err
+	}
+	id, _ := res.LastInsertId()
+	return int(id), nil
+}
+
+func (db *appdbimpl) ListEvents() ([]Event, error) {
+	rows, err := db.c.Query(`SELECT id, team1_id, team2_id, start_datetime, location FROM events`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var es []Event
+	for rows.Next() {
+		var e Event
+		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location); err != nil {
+			return nil, err
+		}
+		es = append(es, e)
+	}
+	return es, nil
+}
+
+func (db *appdbimpl) UpdateEvent(e Event) error {
+	_, err := db.c.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, e.ID)
+	return err
+}
+
+func (db *appdbimpl) DeleteEvent(id int) error {
+	_, err := db.c.Exec(`DELETE FROM events WHERE id=?`, id)
+	return err
+}
+
+// Votes listing and deletion
+func (db *appdbimpl) ListVotes() ([]Vote, error) {
+	rows, err := db.c.Query(`SELECT id, event_id, player_id, ticket_code, ticket_signature, device_id, created_at FROM votes`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var vs []Vote
+	for rows.Next() {
+		var v Vote
+		if err := rows.Scan(&v.ID, &v.EventID, &v.PlayerID, &v.TicketCode, &v.TicketSignature, &v.DeviceID, &v.CreatedAt); err != nil {
+			return nil, err
+		}
+		vs = append(vs, v)
+	}
+	return vs, nil
+}
+
+func (db *appdbimpl) DeleteVote(id int) error {
+	_, err := db.c.Exec(`DELETE FROM votes WHERE id=?`, id)
+	return err
+}
+
+// Admin operations
+func (db *appdbimpl) CreateAdmin(a Admin) (int, error) {
+	res, err := db.c.Exec(`INSERT INTO admins (username, password_hash, role) VALUES (?, ?, ?)`, a.Username, a.PasswordHash, a.Role)
+	if err != nil {
+		return 0, err
+	}
+	id, _ := res.LastInsertId()
+	return int(id), nil
+}
+
+func (db *appdbimpl) ListAdmins() ([]Admin, error) {
+	rows, err := db.c.Query(`SELECT id, username, password_hash, role, created_at FROM admins`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var as []Admin
+	for rows.Next() {
+		var a Admin
+		if err := rows.Scan(&a.ID, &a.Username, &a.PasswordHash, &a.Role, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		as = append(as, a)
+	}
+	return as, nil
+}
+
+func (db *appdbimpl) UpdateAdmin(a Admin) error {
+	_, err := db.c.Exec(`UPDATE admins SET username=?, password_hash=?, role=? WHERE id=?`, a.Username, a.PasswordHash, a.Role, a.ID)
+	return err
+}
+
+func (db *appdbimpl) DeleteAdmin(id int) error {
+	_, err := db.c.Exec(`DELETE FROM admins WHERE id=?`, id)
 	return err
 }
