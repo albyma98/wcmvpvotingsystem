@@ -82,7 +82,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from "vue";
+import { ref, reactive, onMounted, nextTick } from "vue";
 import axios from "axios";
 
 const api = axios.create({ baseURL: "http://localhost:3000" });
@@ -114,6 +114,11 @@ async function loadAll() {
   players.value = (await api.get("/players")).data;
   events.value = (await api.get("/events")).data;
   admins.value = (await api.get("/admins")).data;
+  await nextTick();
+  if (window.M && window.M.FormSelect) {
+    const elems = document.querySelectorAll("select");
+    window.M.FormSelect.init(elems);
+  }
 }
 
 onMounted(loadAll);
