@@ -1,6 +1,10 @@
 <template>
   <div class="container">
-    <h4 class="center-align">Vota il tuo MVP</h4>
+    <h4 class="center-align" v-if="eventInfo">
+      {{ eventInfo.team1 }} vs {{ eventInfo.team2 }}
+    </h4>
+    <p class="center-align" v-if="eventInfo">{{ eventInfo.location }}</p>
+    <h5 class="center-align">Vota il tuo MVP</h5>
     <div class="row">
       <div class="col s12 m6 l4" v-for="player in players" :key="player.id">
         <div class="card hoverable">
@@ -55,6 +59,7 @@ const props = defineProps({
 })
 
 const players = ref([])
+const eventInfo = ref(null)
 const selectedPlayer = ref(null)
 const showConfirm = ref(false)
 const showCode = ref(false)
@@ -68,13 +73,23 @@ const api = axios.create({
 async function loadPlayers() {
   if (!props.eventId) {
     players.value = []
+    eventInfo.value = null
     return
   }
   const events = (await api.get('/events')).data
   const ev = events.find((e) => e.id === props.eventId)
   if (!ev) {
     players.value = []
+    eventInfo.value = null
     return
+  }
+  const teams = (await api.get('/teams')).data
+  const t1 = teams.find((t) => t.id === ev.team1_id)
+  const t2 = teams.find((t) => t.id === ev.team2_id)
+  eventInfo.value = {
+    team1: t1 ? t1.name : '',
+    team2: t2 ? t2.name : '',
+    location: ev.location,
   }
   const allPlayers = (await api.get('/players')).data
   players.value = allPlayers
@@ -84,7 +99,7 @@ async function loadPlayers() {
       name: p.first_name + ' ' + p.last_name,
       role: p.role,
       number: p.jersey_number,
-      image: `https://via.placeholder.com/100?text=${p.jersey_number}`,
+      image: p.image_url || `https://via.placeholder.com/100?text=${p.jersey_number}`,
     }))
 }
 
@@ -134,6 +149,10 @@ function closeCode() {
   border-radius: 50%;
 }
 
+.card {
+  margin: 1rem 0;
+}
+
 .custom-modal-overlay {
   position: fixed;
   top: 0;
@@ -154,6 +173,10 @@ function closeCode() {
   border-radius: 8px;
   max-width: 400px;
   width: 90%;
+}
+
+.container {
+  margin-top: 2rem;
 }
 
 .player-name {
