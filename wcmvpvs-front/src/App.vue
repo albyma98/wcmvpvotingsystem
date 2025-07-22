@@ -1,5 +1,5 @@
 <script>
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import VoteMVP from "./components/VoteMVP.vue";
 import QRScanner from "./components/QRScanner.vue";
 import AdminPortal from "./components/AdminPortal.vue";
@@ -13,6 +13,15 @@ export default {
   setup() {
     const view = ref("vote");
     const selectedEventId = ref(null);
+
+    onMounted(() => {
+      const params = new URLSearchParams(window.location.search);
+      const ev = parseInt(params.get("event"));
+      if (ev) {
+        selectedEventId.value = ev;
+        view.value = "vote";
+      }
+    });
 
     function handleVoteEvent(id) {
       selectedEventId.value = id;
