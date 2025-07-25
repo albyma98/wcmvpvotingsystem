@@ -27,6 +27,7 @@
         <input v-model="player.last_name" placeholder="Last name" />
         <input v-model="player.role" placeholder="Role" />
         <input v-model.number="player.jersey_number" placeholder="Number" />
+        <input v-model="player.image_url" placeholder="Image URL" />
         <select v-model.number="player.team_id">
           <option disabled value="0">Select Team</option>
           <option v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</option>
@@ -58,7 +59,8 @@
       <ul>
         <li v-for="e in events" :key="e.id">
           {{ teamName(e.team1_id) }} vs {{ teamName(e.team2_id) }} - {{ e.start_datetime }}
-                    <a href="#" @click.prevent="openVote(e.id)">Vote link</a>
+          <span class="vote-link">{{ baseLink }}?event={{ e.id }}</span>
+          <a href="#" @click.prevent="openVote(e.id)">Vote</a>
           <button class="btn" @click="deleteEvent(e.id)">Del</button>
         </li>
       </ul>
@@ -97,6 +99,7 @@ const player = reactive({
   last_name: "",
   role: "",
   jersey_number: 0,
+  image_url: "",
   team_id: 0,
 });
 const events = ref([]);
@@ -108,7 +111,7 @@ const event = reactive({
 });
 const admins = ref([]);
 const admin = reactive({ username: "", password_hash: "", role: "" });
-
+const baseLink = window.location.origin + window.location.pathname;
 async function loadAll() {
   teams.value = (await api.get("/teams")).data;
   players.value = (await api.get("/players")).data;
@@ -139,6 +142,7 @@ async function createPlayer() {
   player.last_name = "";
   player.role = "";
   player.jersey_number = 0;
+  player.image_url = "";
   player.team_id = 0;
   loadAll();
 }
@@ -165,6 +169,8 @@ function teamName(id) {
 }
 
 function openVote(id) {
+  const url = `${baseLink}?event=${id}`;
+  window.history.replaceState({}, "", url);
   emit("vote-event", id);
 }
 async function createAdmin() {
@@ -186,5 +192,11 @@ async function deleteAdmin(id) {
 }
 input {
   margin: 0.2rem;
+}
+.vote-link {
+  display: block;
+  font-size: 0.8rem;
+  color: #555;
+  margin: 0.2rem 0;
 }
 </style>

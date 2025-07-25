@@ -48,6 +48,7 @@ type Player struct {
 	LastName     string `json:"last_name"`
 	Role         string `json:"role"`
 	JerseyNumber int    `json:"jersey_number"`
+	ImageURL     string `json:"image_url"`
 	TeamID       int    `json:"team_id"`
 }
 
@@ -138,11 +139,14 @@ func New(db *sql.DB) (AppDatabase, error) {
 	// Create players table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='players';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE players (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL, last_name TEXT NOT NULL, role TEXT NOT NULL, jersey_number INTEGER, team_id INTEGER NOT NULL, FOREIGN KEY (team_id) REFERENCES teams(id));`
+		sqlStmt := `CREATE TABLE players (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL, last_name TEXT NOT NULL, role TEXT NOT NULL, jersey_number INTEGER, image_url TEXT, team_id INTEGER NOT NULL, FOREIGN KEY (team_id) REFERENCES teams(id));`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating players table: %w", err)
 		}
+	} else {
+		// attempt schema update if column missing
+		_, _ = db.Exec(`ALTER TABLE players ADD COLUMN image_url TEXT`)
 	}
 
 	// Create events table if not exists
@@ -250,7 +254,7 @@ func (db *appdbimpl) DeleteTeam(id int) error {
 
 // Player operations
 func (db *appdbimpl) CreatePlayer(p Player) (int, error) {
-	res, err := db.c.Exec(`INSERT INTO players (first_name, last_name, role, jersey_number, team_id) VALUES (?, ?, ?, ?, ?)`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.TeamID)
+	res, err := db.c.Exec(`INSERT INTO players (first_name, last_name, role, jersey_number, image_url, team_id) VALUES (?, ?, ?, ?, ?, ?)`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.ImageURL, p.TeamID)
 	if err != nil {
 		return 0, err
 	}
@@ -259,7 +263,7 @@ func (db *appdbimpl) CreatePlayer(p Player) (int, error) {
 }
 
 func (db *appdbimpl) ListPlayers() ([]Player, error) {
-	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, team_id FROM players`)
+	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id FROM players`)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +271,7 @@ func (db *appdbimpl) ListPlayers() ([]Player, error) {
 	var ps []Player
 	for rows.Next() {
 		var p Player
-		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.TeamID); err != nil {
+		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID); err != nil {
 			return nil, err
 		}
 		ps = append(ps, p)
@@ -276,7 +280,7 @@ func (db *appdbimpl) ListPlayers() ([]Player, error) {
 }
 
 func (db *appdbimpl) UpdatePlayer(p Player) error {
-	_, err := db.c.Exec(`UPDATE players SET first_name=?, last_name=?, role=?, jersey_number=?, team_id=? WHERE id=?`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.TeamID, p.ID)
+	_, err := db.c.Exec(`UPDATE players SET first_name=?, last_name=?, role=?, jersey_number=?, image_url=?, team_id=? WHERE id=?`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.ImageURL, p.TeamID, p.ID)
 	return err
 }
 
