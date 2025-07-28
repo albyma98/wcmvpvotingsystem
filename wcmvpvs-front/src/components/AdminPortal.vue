@@ -59,7 +59,7 @@
       <ul>
         <li v-for="e in events" :key="e.id">
           {{ teamName(e.team1_id) }} vs {{ teamName(e.team2_id) }} - {{ e.start_datetime }}
-          <span class="vote-link">{{ baseLink }}?event={{ e.id }}</span>
+          <span class="vote-link">{{ baseLink }}?eventID={{ e.id }}</span>
           <a href="#" @click.prevent="openVote(e.id)">Vote</a>
           <button class="btn" @click="deleteEvent(e.id)">Del</button>
         </li>
@@ -169,7 +169,7 @@ function teamName(id) {
 }
 
 function openVote(id) {
-  const url = `${baseLink}?event=${id}`;
+  const url = `${baseLink}?eventID=${id}`;
   window.history.replaceState({}, "", url);
   emit("vote-event", id);
 }

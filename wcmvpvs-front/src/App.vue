@@ -4,29 +4,33 @@ import VoteMVP from "./components/VoteMVP.vue";
 import QRScanner from "./components/QRScanner.vue";
 import AdminPortal from "./components/AdminPortal.vue";
 import MvpSlider from "./components/MvpSlider.vue";
+import EventList from "./components/EventList.vue";
 
 export default {
   components: {
     VoteMVP,
     QRScanner,
     AdminPortal,
-    MvpSlider
+    MvpSlider,
+    EventList,
   },
   setup() {
-    const view = ref("slider");
+    const view = ref("events");
     const selectedEventId = ref(null);
 
     onMounted(() => {
       const params = new URLSearchParams(window.location.search);
-      const ev = parseInt(params.get("event"));
+      const ev = parseInt(params.get("eventID") || params.get("event"));
       if (ev) {
         selectedEventId.value = ev;
         view.value = "slider";
+      } else {
+        view.value = "events";
       }
     });
 
     function handleVoteEvent(id) {
-      selectedEventId.value = id;
+      selectedEventId.value = 5;
       view.value = "vote";
     }
 
@@ -37,6 +41,13 @@ export default {
 
 <template>
   <div class="nav center-align">
+        <button
+      class="btn waves-effect"
+      :class="{ 'blue lighten-1': view === 'events' }"
+      @click="view = 'events'"
+    >
+      Eventi
+    </button>
     <button
       class="btn waves-effect"
       :class="{ 'blue lighten-1': view === 'vote' }"
@@ -63,6 +74,7 @@ export default {
   <QRScanner v-else-if="view === 'scan'" />
   <AdminPortal v-else-if="view === 'admin'" @vote-event="handleVoteEvent" />
   <MvpSlider v-else-if="view === 'slider'" :event-id="selectedEventId" />
+  <EventList v-else-if="view === 'events'" />
 
 </template>
 
