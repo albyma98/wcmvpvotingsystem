@@ -3,15 +3,17 @@ import { ref, onMounted } from "vue";
 import VoteMVP from "./components/VoteMVP.vue";
 import QRScanner from "./components/QRScanner.vue";
 import AdminPortal from "./components/AdminPortal.vue";
+import MvpSlider from "./components/MvpSlider.vue";
 
 export default {
   components: {
     VoteMVP,
     QRScanner,
     AdminPortal,
+    MvpSlider
   },
   setup() {
-    const view = ref("vote");
+    const view = ref("slider");
     const selectedEventId = ref(null);
 
     onMounted(() => {
@@ -19,7 +21,7 @@ export default {
       const ev = parseInt(params.get("event"));
       if (ev) {
         selectedEventId.value = ev;
-        view.value = "vote";
+        view.value = "slider";
       }
     });
 
@@ -59,7 +61,8 @@ export default {
   </div>
   <VoteMVP v-if="view === 'vote'" :event-id="selectedEventId" />
   <QRScanner v-else-if="view === 'scan'" />
-  <AdminPortal v-else @vote-event="handleVoteEvent" />
+  <AdminPortal v-else-if="view === 'admin'" @vote-event="handleVoteEvent" />
+  <MvpSlider v-else-if="view === 'slider'" />
 
 </template>
 
