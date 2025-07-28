@@ -2,7 +2,7 @@
   <div class="mvp-slider">
     <div class="header">
       <div class="title">VOTE YOUR <strong>MVP</strong></div>
-      <div class="teams">{{ team1 }} - {{ team2 }}</div>
+      <div class="teams">{{ team1Name }} - {{ team2Name }}</div>
     </div>
 
     <div class="slider">
@@ -28,9 +28,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watchEffect } from 'vue'
+import axios from 'axios'
 
 const props = defineProps({
+  eventId: { type: Number, default: null },
   players: { type: Array, default: () => [] },
   team1: { type: String, default: '' },
   team2: { type: String, default: '' },
@@ -40,19 +42,55 @@ const props = defineProps({
 const emit = defineEmits(['vote'])
 const index = ref(0)
 const placeholder = 'https://via.placeholder.com/150?text=Player'
+const loadedPlayers = ref([])
+const team1Name = ref('')
+const team2Name = ref('')
+
+const api = axios.create({ baseURL: 'http://localhost:3000' })
+
+watchEffect(async () => {
+  if (props.eventId) {
+    const events = (await api.get('/events')).data
+    const ev = events.find(e => e.id === props.eventId)
+    if (!ev) {
+      loadedPlayers.value = []
+      team1Name.value = ''
+      team2Name.value = ''
+      return
+    }
+    const teams = (await api.get('/teams')).data
+    const t1 = teams.find(t => t.id === ev.team1_id)
+    const t2 = teams.find(t => t.id === ev.team2_id)
+    team1Name.value = t1 ? t1.name : ''
+    team2Name.value = t2 ? t2.name : ''
+    const allPlayers = (await api.get('/players')).data
+    loadedPlayers.value = allPlayers
+      .filter(p => p.team_id === ev.team1_id)
+      .map(p => ({
+        id: p.id,
+        name: p.first_name + ' ' + p.last_name,
+        number: p.jersey_number,
+        image: p.image_url || `https://via.placeholder.com/150?text=${p.jersey_number}`,
+      }))
+  } else {
+    loadedPlayers.value = props.players
+    team1Name.value = props.team1
+    team2Name.value = props.team2
+  }
+})
 
 const current = computed(() => {
-  return props.players.length ? props.players[index.value] : { name: '', number: '', image: placeholder, id: null }
+  return loadedPlayers.value.length ? loadedPlayers.value[index.value] : { name: '', number: '', image: placeholder, id: null }
 })
 
 function next() {
-  if (!props.players.length) return
-  index.value = (index.value + 1) % props.players.length
+  if (!loadedPlayers.value.length) return
+  index.value = (index.value + 1) % loadedPlayers.value.length
 }
 
 function prev() {
-  if (!props.players.length) return
-  index.value = (index.value + props.players.length - 1) % props.players.length
+  if (!loadedPlayers.value.length) return
+  index.value = (index.value + loadedPlayers.value.length - 1) % loadedPlayers.value.length
 }
 
 function emitVote() {

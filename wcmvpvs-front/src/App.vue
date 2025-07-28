@@ -62,7 +62,7 @@ export default {
   <VoteMVP v-if="view === 'vote'" :event-id="selectedEventId" />
   <QRScanner v-else-if="view === 'scan'" />
   <AdminPortal v-else-if="view === 'admin'" @vote-event="handleVoteEvent" />
-  <MvpSlider v-else-if="view === 'slider'" />
+  <MvpSlider v-else-if="view === 'slider'" :event-id="selectedEventId" />
 
 </template>
 
