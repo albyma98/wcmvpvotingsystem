@@ -28,7 +28,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watchEffect } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
@@ -48,10 +48,10 @@ const team2Name = ref('')
 
 const api = axios.create({ baseURL: 'http://localhost:3000' })
 
-watchEffect(async () => {
-  if (props.eventId) {
+async function loadPlayers(id) {
+  if (id) {
     const events = (await api.get('/events')).data
-    const ev = events.find(e => e.id === props.eventId)
+    const ev = events.find(e => e.id === id)
     if (!ev) {
       loadedPlayers.value = []
       team1Name.value = ''
@@ -77,7 +77,10 @@ watchEffect(async () => {
     team1Name.value = props.team1
     team2Name.value = props.team2
   }
-})
+}
+
+watch(() => props.eventId, loadPlayers, { immediate: true })
+onMounted(() => loadPlayers(props.eventId))
 
 const current = computed(() => {
   return loadedPlayers.value.length ? loadedPlayers.value[index.value] : { name: '', number: '', image: placeholder, id: null }

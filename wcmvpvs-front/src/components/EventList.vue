@@ -3,7 +3,7 @@
     <h4>Seleziona evento</h4>
     <ul>
       <li v-for="e in events" :key="e.id">
-        <a :href="`?eventID=${e.id}`">
+        <a href="#" @click.prevent="select(e.id)">
           {{ teamName(e.team1_id) }} vs {{ teamName(e.team2_id) }} - {{ formatDate(e.start_datetime) }}
         </a>
       </li>
@@ -13,6 +13,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+
+const emit = defineEmits(['select'])
 import axios from 'axios'
 
 const api = axios.create({ baseURL: 'http://localhost:3000' })
@@ -33,6 +35,11 @@ function teamName(id) {
 function formatDate(dt) {
   return dt ? dt.slice(0, 10) : ''
 }
+
+function select(id) {
+  emit('select', id)
+}
+
 
 onMounted(load)
 </script>

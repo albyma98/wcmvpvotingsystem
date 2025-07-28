@@ -30,11 +30,18 @@ export default {
     });
 
     function handleVoteEvent(id) {
-      selectedEventId.value = 5;
+      selectedEventId.value = id;
       view.value = "vote";
     }
 
-    return { view, selectedEventId, handleVoteEvent };
+    function handleEventSelect(id) {
+      selectedEventId.value = id;
+      view.value = "slider";
+      const url = `?eventID=${id}`;
+      window.history.replaceState({}, "", url);
+    }
+
+    return { view, selectedEventId, handleVoteEvent, handleEventSelect };
   },
 };
 </script>
@@ -74,7 +81,7 @@ export default {
   <QRScanner v-else-if="view === 'scan'" />
   <AdminPortal v-else-if="view === 'admin'" @vote-event="handleVoteEvent" />
   <MvpSlider v-else-if="view === 'slider'" :event-id="selectedEventId" />
-  <EventList v-else-if="view === 'events'" />
+  <EventList v-else-if="view === 'events'" @select="handleEventSelect" />
 
 </template>
 
