@@ -14,16 +14,6 @@
       </div>
       <button class="nav next" @click="next">&gt;</button>
     </div>
-
-    <div class="browser-bar">
-      <div class="url">{{ url }}</div>
-      <div class="icons">
-        <span class="material-icons">home</span>
-        <span class="material-icons">thumb_up</span>
-        <span class="material-icons">menu_book</span>
-        <span class="material-icons">devices</span>
-      </div>
-    </div>
   </div>
 </template>
 
