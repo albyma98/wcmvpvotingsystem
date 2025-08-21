@@ -9,8 +9,10 @@
       <button class="nav prev" @click="prev">&lt;</button>
       <div class="card" @click="vote">
         <img class="player-img" :src="current.image || placeholder" alt="player" />
-        <div class="player-name">{{ current.name }}</div>
-        <div class="player-number">#{{ current.number }}</div>
+        <div class="player-overlay">
+          <div class="player-name">{{ current.name }}</div>
+          <div class="player-number">#{{ current.number }}</div>
+        </div>
       </div>
       <button class="nav next" @click="next">&gt;</button>
     </div>
@@ -197,30 +199,36 @@ function closeCode() {
   background: #fff;
   color: #000;
   border-radius: 10px;
-  padding: 1rem;
-  text-align: center;
   width: 80%;
   max-width: 360px;
   height: 420px;
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  overflow: hidden;
 }
 .player-img {
   width: 100%;
-  max-width: 250px;
-  height: 250px;
-  border-radius: 50%;
+  height: 100%;
   object-fit: cover;
 }
+.player-overlay {
+  position: absolute;
+  top: 70%;
+  left: 0;
+  width: 100%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  text-align: center;
+  padding: 0.5rem 0;
+}
 .player-name {
-  margin-top: 0.5rem;
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
   font-weight: bold;
 }
 .player-number {
-  color: #555;
+  font-size: 1rem;
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
 }
 .browser-bar {
   width: 100%;
