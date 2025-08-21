@@ -7,12 +7,40 @@
 
     <div class="slider">
       <button class="nav prev" @click="prev">&lt;</button>
-      <div class="card" @click="emitVote">
+      <div class="card" @click="vote">
         <img class="player-img" :src="current.image || placeholder" alt="player" />
         <div class="player-name">{{ current.name }}</div>
         <div class="player-number">#{{ current.number }}</div>
       </div>
       <button class="nav next" @click="next">&gt;</button>
+    </div>
+    
+    <!-- Conferma voto -->
+    <div class="custom-modal-overlay" v-if="showConfirm">
+      <div class="custom-modal">
+        <div class="modal-content">
+          <p>Confermi il voto per {{ selectedPlayer?.name }}?</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn waves-effect" @click="confirmVote">Conferma</button>
+          <button class="btn-flat" @click="cancelVote">Annulla</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Codice e QR -->
+    <div class="custom-modal-overlay" v-if="showCode">
+      <div class="custom-modal">
+        <div class="modal-content center-align">
+          <h5>Voto registrato</h5>
+          <p>Codice: {{ voteCode }}</p>
+          <p>Firma HMAC: {{ signature }}</p>
+          <img :src="qrUrl" alt="QR code" />
+        </div>
+        <div class="modal-footer center-align">
+          <button class="btn waves-effect" @click="closeCode">Chiudi</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -29,12 +57,18 @@ const props = defineProps({
   url: { type: String, default: 'example.com' },
 })
 
-const emit = defineEmits(['vote'])
+
 const index = ref(0)
 const placeholder = 'https://via.placeholder.com/150?text=Player'
 const loadedPlayers = ref([])
 const team1Name = ref('')
 const team2Name = ref('')
+const selectedPlayer = ref(null)
+const showConfirm = ref(false)
+const showCode = ref(false)
+const voteCode = ref('')
+const signature = ref('')
+const qrUrl = ref('')
 
 const api = axios.create({ baseURL: 'http://localhost:3000' })
 
@@ -86,10 +120,40 @@ function prev() {
   index.value = (index.value + loadedPlayers.value.length - 1) % loadedPlayers.value.length
 }
 
-function emitVote() {
+function vote() {
   if (current.value && current.value.id != null) {
-    emit('vote', current.value.id)
+    selectedPlayer.value = current.value
+    showConfirm.value = true
   }
+}
+
+function cancelVote() {
+  selectedPlayer.value = null
+  showConfirm.value = false
+}
+
+async function confirmVote() {
+  try {
+    await api.post('/vote', {
+      player_id: selectedPlayer.value.id,
+      event_id: props.eventId,
+      device_id: 'web',
+    })
+    const ticketRes = await api.post('/ticket')
+    const ticket = ticketRes.data
+    voteCode.value = ticket.code
+    signature.value = ticket.signature
+    qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(ticket.qr_data)}`
+
+    showConfirm.value = false
+    showCode.value = true
+  } catch (err) {
+    console.error('confirmVote() error', err)
+  }
+}
+
+function closeCode() {
+  showCode.value = false
 }
 </script>
 
@@ -98,10 +162,11 @@ function emitVote() {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   padding: 1rem;
   box-sizing: border-box;
+  gap: 2rem;
 }
 .header {
   text-align: center;
@@ -134,16 +199,19 @@ function emitVote() {
   border-radius: 10px;
   padding: 1rem;
   text-align: center;
-  width: 70%;
-  max-width: 320px;
+  width: 80%;
+  max-width: 360px;
+  height: 420px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
 }
 .player-img {
   width: 100%;
-  max-width: 200px;
+  max-width: 250px;
+  height: 250px;
   border-radius: 50%;
   object-fit: cover;
 }
@@ -177,7 +245,29 @@ function emitVote() {
     font-size: 2rem;
   }
   .card {
-    width: 300px;
+    width: 320px;
   }
+}
+
+.custom-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.custom-modal {
+  background: white;
+  color: #000;
+  padding: 1rem;
+  border-radius: 8px;
+  max-width: 400px;
+  width: 90%;
 }
 </style>
