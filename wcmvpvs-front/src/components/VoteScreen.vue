@@ -234,8 +234,9 @@ const confirmVote = () => {
       <p class="mt-1 text-sm text-slate-300">Tocca la card del tuo giocatore preferito per assegnargli il voto.</p>
     </header>
 
-    <main class="flex-1 flex flex-col gap-5 px-4 pb-6">
+    <main class="flex-1 flex flex-col gap-5 px-4 pb-6 overflow-hidden">
       <VolleyCourt
+        class="flex-1"
         :players="fieldPlayers"
         :card-size="cardSize"
         :selected-player-id="votedPlayerId"
