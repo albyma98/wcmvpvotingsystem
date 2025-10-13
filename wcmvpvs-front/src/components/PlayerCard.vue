@@ -45,7 +45,7 @@ const avatarUrl = computed(() => props.player.avatar || fallbackAvatar.value);
 
 const cardStyle = computed(() => ({
   width: `${props.cardSize}px`,
-  height: `${props.cardSize * 1.4}px`,
+  height: `${props.cardSize * 1.5}px`,
 }));
 
 const numberLabel = computed(() => `#${String(props.player.number).padStart(2, '0')}`);
@@ -82,24 +82,28 @@ const handleSelect = () => {
     ]"
     @click="handleSelect"
   >
-    <div class="flex h-full w-full flex-col items-center gap-3 px-4 py-5">
-      <span
-        class="rounded-full bg-black/70 px-4 py-1 text-lg font-semibold tracking-[0.3em] text-white backdrop-blur-sm"
-        :class="isSelected ? 'shadow-[0_0_20px_rgba(250,204,21,0.45)]' : ''"
-      >
-        {{ numberLabel }}
-      </span>
-
-      <div class="relative w-full overflow-hidden rounded-[1.5rem]" style="aspect-ratio: 1 / 1">
-        <img :src="avatarUrl" :alt="player.name" class="h-full w-full object-cover" />
-        <div class="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/50"></div>
+    <div class="flex h-full w-full flex-col items-center px-4 py-5">
+      <div class="w-full text-center">
+        <span
+          class="inline-flex min-w-[72px] items-center justify-center rounded-full bg-black/70 px-5 py-1 text-base font-semibold tracking-[0.35em] text-white backdrop-blur-sm"
+          :class="isSelected ? 'shadow-[0_0_20px_rgba(250,204,21,0.45)]' : ''"
+        >
+          {{ numberLabel }}
+        </span>
       </div>
 
-      <div class="mt-auto w-full text-center leading-tight">
-        <p class="text-base font-semibold uppercase tracking-[0.2em] text-white">{{ playerNameParts.firstName }}</p>
+      <div class="mt-4 flex w-full flex-1 items-center justify-center">
+        <div class="relative w-full max-w-[88%] overflow-hidden rounded-[1.55rem]" style="aspect-ratio: 1 / 1">
+          <img :src="avatarUrl" :alt="player.name" class="h-full w-full object-cover" />
+          <div class="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/45"></div>
+        </div>
+      </div>
+
+      <div class="mt-4 w-full text-center leading-tight">
+        <p class="text-base font-semibold uppercase tracking-[0.28em] text-white">{{ playerNameParts.firstName }}</p>
         <p
           v-if="playerNameParts.lastName"
-          class="mt-1 text-sm font-semibold uppercase tracking-[0.25em] text-white/80"
+          class="mt-1 text-sm font-semibold uppercase tracking-[0.3em] text-white/75"
         >
           {{ playerNameParts.lastName }}
         </p>

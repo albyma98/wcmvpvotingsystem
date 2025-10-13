@@ -18,7 +18,7 @@ const roster = [
     role: 'Opposto',
     number: 10,
     tier: 'gold',
-    position: { x: 20, y: 18 },
+    position: { x: 20, y: 14 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Luca%20Bianchi',
   },
   {
@@ -27,7 +27,7 @@ const roster = [
     role: 'Palleggiatore',
     number: 5,
     tier: 'gold',
-    position: { x: 50, y: 18 },
+    position: { x: 50, y: 14 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Marco%20Rossi',
   },
   {
@@ -36,7 +36,7 @@ const roster = [
     role: 'Centrale',
     number: 8,
     tier: 'silver',
-    position: { x: 80, y: 18 },
+    position: { x: 80, y: 14 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Giovanni%20Esposito',
   },
   {
@@ -81,7 +81,7 @@ const roster = [
     role: 'Opposto',
     number: 18,
     tier: 'silver',
-    position: { x: 20, y: 62 },
+    position: { x: 20, y: 68 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Riccardo%20Leone',
   },
   {
@@ -90,7 +90,7 @@ const roster = [
     role: 'Centrale',
     number: 6,
     tier: 'bronze',
-    position: { x: 50, y: 62 },
+    position: { x: 50, y: 68 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Paolo%20Greco',
   },
   {
@@ -99,7 +99,7 @@ const roster = [
     role: 'Palleggiatore',
     number: 3,
     tier: 'silver',
-    position: { x: 80, y: 62 },
+    position: { x: 80, y: 68 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Andrea%20Vitale',
   },
   {
@@ -108,7 +108,7 @@ const roster = [
     role: 'Schiacciatore',
     number: 19,
     tier: 'bronze',
-    position: { x: 20, y: 82 },
+    position: { x: 20, y: 86 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Fabio%20Conti',
   },
   {
@@ -117,7 +117,7 @@ const roster = [
     role: 'Libero',
     number: 2,
     tier: 'silver',
-    position: { x: 50, y: 82 },
+    position: { x: 50, y: 86 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Nicola%20Ferretti',
   },
   {
@@ -126,7 +126,7 @@ const roster = [
     role: 'Opposto',
     number: 21,
     tier: 'bronze',
-    position: { x: 80, y: 82 },
+    position: { x: 80, y: 86 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Gabriele%20Costa',
   },
 ];
