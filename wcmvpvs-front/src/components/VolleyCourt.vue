@@ -25,7 +25,7 @@ const props = defineProps({
   },
 });
 
-const emits = defineEmits(['vote']);
+const emits = defineEmits(['select']);
 
 const positionStyle = computed(() => (player) => ({
   left: `${player.position.x}%`,
@@ -35,9 +35,9 @@ const positionStyle = computed(() => (player) => ({
 </script>
 
 <template>
-  <section class="relative mx-auto w-full max-w-lg" :style="{ maxHeight: '62vh', aspectRatio: '9 / 18' }">
+  <section class="relative mx-auto w-full max-w-[min(100vw,480px)]" :style="{ aspectRatio: '3 / 4.2' }">
     <div
-      class="absolute inset-0 rounded-[2.75rem] border-4 border-white/10 bg-gradient-to-b from-pitch-light via-pitch-base to-pitch-dark shadow-pitch overflow-hidden"
+      class="absolute inset-0 overflow-hidden rounded-[2.75rem] border-4 border-white/10 bg-gradient-to-b from-pitch-light via-pitch-base to-pitch-dark shadow-pitch"
     >
       <div class="absolute inset-0 opacity-35 bg-court-grid"></div>
       <div class="absolute inset-x-[12%] top-1/2 border-t border-b border-white/25"></div>
@@ -63,7 +63,7 @@ const positionStyle = computed(() => (player) => ({
           :is-selected="selectedPlayerId === player.id"
           :disabled="disableVotes && selectedPlayerId !== player.id"
           :is-voting="isVoting"
-          @vote="() => emits('vote', player)"
+          @select="() => emits('select', player)"
         />
       </div>
     </div>
