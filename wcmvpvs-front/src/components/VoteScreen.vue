@@ -18,8 +18,7 @@ const roster = [
     role: 'Opposto',
     number: 10,
     tier: 'gold',
-    zone: 'court',
-    position: { x: 18, y: 24 },
+    position: { x: 20, y: 18 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Luca%20Bianchi',
   },
   {
@@ -28,8 +27,7 @@ const roster = [
     role: 'Palleggiatore',
     number: 5,
     tier: 'gold',
-    zone: 'court',
-    position: { x: 50, y: 20 },
+    position: { x: 50, y: 18 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Marco%20Rossi',
   },
   {
@@ -38,8 +36,7 @@ const roster = [
     role: 'Centrale',
     number: 8,
     tier: 'silver',
-    zone: 'court',
-    position: { x: 82, y: 24 },
+    position: { x: 80, y: 18 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Giovanni%20Esposito',
   },
   {
@@ -48,8 +45,7 @@ const roster = [
     role: 'Schiacciatore',
     number: 17,
     tier: 'gold',
-    zone: 'court',
-    position: { x: 26, y: 74 },
+    position: { x: 20, y: 32 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Davide%20Ricci',
   },
   {
@@ -58,8 +54,7 @@ const roster = [
     role: 'Centrale',
     number: 12,
     tier: 'silver',
-    zone: 'court',
-    position: { x: 50, y: 80 },
+    position: { x: 50, y: 32 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Matteo%20Sala',
   },
   {
@@ -68,8 +63,7 @@ const roster = [
     role: 'Schiacciatore',
     number: 14,
     tier: 'gold',
-    zone: 'court',
-    position: { x: 74, y: 74 },
+    position: { x: 80, y: 32 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Stefano%20Neri',
   },
   {
@@ -78,9 +72,7 @@ const roster = [
     role: 'Libero',
     number: 1,
     tier: 'bronze',
-    zone: 'libero',
     position: { x: 50, y: 50 },
-    libero: true,
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Alessio%20Galli',
   },
   {
@@ -89,8 +81,7 @@ const roster = [
     role: 'Opposto',
     number: 18,
     tier: 'silver',
-    zone: 'bench',
-    position: { x: 16, y: 30 },
+    position: { x: 20, y: 62 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Riccardo%20Leone',
   },
   {
@@ -99,8 +90,7 @@ const roster = [
     role: 'Centrale',
     number: 6,
     tier: 'bronze',
-    zone: 'bench',
-    position: { x: 50, y: 30 },
+    position: { x: 50, y: 62 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Paolo%20Greco',
   },
   {
@@ -109,8 +99,7 @@ const roster = [
     role: 'Palleggiatore',
     number: 3,
     tier: 'silver',
-    zone: 'bench',
-    position: { x: 84, y: 30 },
+    position: { x: 80, y: 62 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Andrea%20Vitale',
   },
   {
@@ -119,8 +108,7 @@ const roster = [
     role: 'Schiacciatore',
     number: 19,
     tier: 'bronze',
-    zone: 'bench',
-    position: { x: 16, y: 70 },
+    position: { x: 20, y: 82 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Fabio%20Conti',
   },
   {
@@ -129,8 +117,7 @@ const roster = [
     role: 'Libero',
     number: 2,
     tier: 'silver',
-    zone: 'bench',
-    position: { x: 50, y: 70 },
+    position: { x: 50, y: 82 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Nicola%20Ferretti',
   },
   {
@@ -139,15 +126,12 @@ const roster = [
     role: 'Opposto',
     number: 21,
     tier: 'bronze',
-    zone: 'bench',
-    position: { x: 84, y: 70 },
+    position: { x: 80, y: 82 },
     avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Gabriele%20Costa',
   },
 ];
 
-const fieldPlayers = computed(() => roster.filter((player) => player.zone === 'court'));
-const liberoPlayer = computed(() => roster.find((player) => player.zone === 'libero'));
-const benchPlayers = computed(() => roster.filter((player) => player.zone === 'bench'));
+const fieldPlayers = computed(() => roster);
 
 const votedPlayerId = ref(null);
 const isVoting = ref(false);
@@ -175,12 +159,6 @@ onBeforeUnmount(() => {
 });
 
 const disableVotes = computed(() => Boolean(votedPlayerId.value));
-
-const playerPositionStyle = (player) => ({
-  left: `${player.position.x}%`,
-  top: `${player.position.y}%`,
-  transform: 'translate(-50%, -50%)',
-});
 
 const openPlayerModal = (player) => {
   if ((disableVotes.value && votedPlayerId.value !== player.id) || isVoting.value) {
@@ -265,54 +243,6 @@ const confirmVote = () => {
         :is-voting="isVoting"
         @select="openPlayerModal"
       />
-
-      <section
-        v-if="liberoPlayer"
-        class="relative mx-auto w-full max-w-lg rounded-3xl border border-white/10 bg-slate-900/80 px-4 pt-5 pb-6 shadow-xl shadow-slate-900/60"
-      >
-        <h2 class="text-center text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">Libero</h2>
-        <div class="relative mt-4 w-full" :style="{ aspectRatio: '6 / 2' }">
-          <div class="absolute inset-0">
-            <div class="absolute" :style="playerPositionStyle(liberoPlayer)">
-              <PlayerCard
-                :player="liberoPlayer"
-                :card-size="cardSize"
-                :is-selected="votedPlayerId === liberoPlayer.id"
-                :disabled="disableVotes && votedPlayerId !== liberoPlayer.id"
-                :is-voting="isVoting"
-                @select="openPlayerModal(liberoPlayer)"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section
-        class="relative mx-auto w-full max-w-lg rounded-3xl border border-white/10 bg-slate-900/80 px-4 pt-5 pb-6 shadow-xl shadow-slate-900/60"
-      >
-        <h2 class="text-center text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-          Riserve
-        </h2>
-        <div class="relative mt-4 w-full" :style="{ aspectRatio: '6 / 3' }">
-          <div class="absolute inset-0">
-            <div
-              v-for="player in benchPlayers"
-              :key="player.id"
-              class="absolute"
-              :style="playerPositionStyle(player)"
-            >
-              <PlayerCard
-                :player="player"
-                :card-size="cardSize"
-                :is-selected="votedPlayerId === player.id"
-                :disabled="disableVotes && votedPlayerId !== player.id"
-                :is-voting="isVoting"
-                @select="openPlayerModal(player)"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
 
       <p v-if="errorMessage" class="text-center text-sm text-rose-400">
         {{ errorMessage }}
