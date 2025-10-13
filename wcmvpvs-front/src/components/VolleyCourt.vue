@@ -35,7 +35,7 @@ const positionStyle = computed(() => (player) => ({
 </script>
 
 <template>
-  <section class="relative mx-auto w-full max-w-[min(100vw,480px)]" :style="{ aspectRatio: '3 / 4.2' }">
+  <section class="relative mx-auto h-full w-full overflow-hidden">
     <div
       class="absolute inset-0 overflow-hidden rounded-[2.75rem] border-4 border-white/10 bg-gradient-to-b from-pitch-light via-pitch-base to-pitch-dark shadow-pitch"
     >
