@@ -251,41 +251,30 @@ const confirmVote = () => {
 
 <template>
   <div class="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col">
-    <main class="flex-1 overflow-y-auto">
-      <div class="flex flex-col gap-10">
-        <section class="px-4">
-          <div class="relative h-[100svh]">
-            <VolleyCourt
-              class="block h-full w-full"
-              :players="fieldPlayers"
-              :card-size="cardSize"
-              :selected-player-id="votedPlayerId"
-              :disable-votes="disableVotes"
-              :is-voting="isVoting"
-              @select="openPlayerModal"
-            />
+    <header class="px-6 pt-6 pb-3 text-center">
+      <p class="uppercase tracking-[0.35em] text-xs text-slate-400">MVP Voting System</p>
+      <h1 class="mt-2 text-2xl font-semibold tracking-wide">Volley MVP - Match Day</h1>
+      <p class="mt-1 text-sm text-slate-300">Tocca la card del tuo giocatore preferito per assegnargli il voto.</p>
+    </header>
 
-            <header
-              class="pointer-events-none absolute inset-x-0 top-0 z-10 px-6 pt-6 pb-3 text-center"
-            >
-              <p class="uppercase tracking-[0.35em] text-xs text-slate-300/90">MVP Voting System</p>
-              <h1 class="mt-2 text-2xl font-semibold tracking-wide drop-shadow-[0_6px_18px_rgba(15,23,42,0.55)]">
-                Volley MVP - Match Day
-              </h1>
-              <p class="mt-1 text-sm text-slate-200/90">
-                Tocca la card del tuo giocatore preferito per assegnargli il voto.
-              </p>
-            </header>
-          </div>
-        </section>
+    <main class="flex-1 flex flex-col gap-5 px-4 pb-6 overflow-hidden">
+      <div class="flex flex-1 flex-col gap-5 overflow-hidden">
+        <VolleyCourt
+          class="flex-1"
+          :players="fieldPlayers"
+          :card-size="cardSize"
+          :selected-player-id="votedPlayerId"
+          :disable-votes="disableVotes"
+          :is-voting="isVoting"
+          @select="openPlayerModal"
+        />
 
-        <section class="px-4">
-          <div
-            class="relative overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
-            aria-labelledby="sponsor-title"
-          >
-            <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.18),_transparent_55%)]"></div>
-            <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,_rgba(30,41,59,0.45),_transparent_60%)] mix-blend-screen"></div>
+        <section
+          class="relative flex-[0.5] min-h-[220px] overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
+          aria-labelledby="sponsor-title"
+        >
+          <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.18),_transparent_55%)]"></div>
+          <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,_rgba(30,41,59,0.45),_transparent_60%)] mix-blend-screen"></div>
 
             <div class="relative flex h-full flex-col">
               <header class="px-6 pt-6 pb-4">
