@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
 import { vote } from '../api';
@@ -164,6 +164,18 @@ const pendingPlayer = ref(null);
 const showTicketModal = ref(false);
 const ticketCode = ref('');
 const ticketQrUrl = ref('');
+
+watch(
+  () => props.eventId,
+  () => {
+    votedPlayerId.value = null;
+    pendingPlayer.value = null;
+    errorMessage.value = '';
+    showTicketModal.value = false;
+    ticketCode.value = '';
+    ticketQrUrl.value = '';
+  }
+);
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 

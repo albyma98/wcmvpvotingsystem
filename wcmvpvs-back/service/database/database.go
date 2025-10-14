@@ -102,6 +102,7 @@ type AppDatabase interface {
 	ListAdmins() ([]Admin, error)
 	UpdateAdmin(a Admin) error
 	DeleteAdmin(id int) error
+	GetAdminByUsername(username string) (Admin, error)
 	Ping() error
 }
 
@@ -392,4 +393,13 @@ func (db *appdbimpl) UpdateAdmin(a Admin) error {
 func (db *appdbimpl) DeleteAdmin(id int) error {
 	_, err := db.c.Exec(`DELETE FROM admins WHERE id=?`, id)
 	return err
+}
+
+func (db *appdbimpl) GetAdminByUsername(username string) (Admin, error) {
+	var admin Admin
+	err := db.c.QueryRow(`SELECT id, username, password_hash, role, created_at FROM admins WHERE username = ?`, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.Role, &admin.CreatedAt)
+	if err != nil {
+		return Admin{}, err
+	}
+	return admin, nil
 }
