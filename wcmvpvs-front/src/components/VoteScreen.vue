@@ -267,12 +267,14 @@ const confirmVote = () => {
           <header
             class="pointer-events-none absolute inset-x-0 top-0 z-10 px-6 pt-6 pb-3 text-center"
           >
-            <p class="uppercase tracking-[0.35em] text-xs text-slate-300/90">MVP Voting System</p>
-            <h1 class="mt-2 text-2xl font-semibold tracking-wide drop-shadow-[0_6px_18px_rgba(15,23,42,0.55)]">
-              Volley MVP - Match Day
+            <h1 class="text-xs font-semibold uppercase tracking-[0.35em] text-slate-300/90">
+              MVP DEL PUBBLICO
             </h1>
+            <p class="mt-2 text-2xl font-semibold tracking-wide text-slate-100 drop-shadow-[0_6px_18px_rgba(15,23,42,0.55)]">
+              Team 1 - Team 2
+            </p>
             <p class="mt-1 text-sm text-slate-200/90">
-              Tocca la card del tuo giocatore preferito per assegnargli il voto.
+              Tocca un giocatore per votare
             </p>
           </header>
         </section>
