@@ -103,7 +103,7 @@ const handleSelect = () => {
       @click="handleSelect"
     >
       <div
-        class="pointer-events-none absolute left-1/2 top-[90%] z-20 w-full -translate-x-1/2 -translate-y-full px-6 text-center font-bold uppercase text-white"
+        class="pointer-events-none absolute left-1/2 top-[100%] z-20  -translate-x-1/2 -translate-y-full px-6 text-center font-bold uppercase text-white"
       >
         <span class="block text-[clamp(1.5rem,3.6vw,3rem)] leading-none tracking-[0.1em] drop-shadow-[0_0_12px_rgba(0,0,0,0.85)]">
           {{ overlayLastName }}

@@ -14,7 +14,7 @@ const props = defineProps({
 const roster = [
   {
     id: 1,
-    name: 'Luca Bianchi',
+    name: 'Matteo Paris',
     role: 'Opposto',
     number: 10,
     tier: 'gold',
@@ -23,7 +23,7 @@ const roster = [
   },
   {
     id: 2,
-    name: 'Marco Rossi',
+    name: 'Giuseppe Longo',
     role: 'Palleggiatore',
     number: 5,
     tier: 'gold',
@@ -32,7 +32,7 @@ const roster = [
   },
   {
     id: 3,
-    name: 'Giovanni Esposito',
+    name: 'Felice Sette',
     role: 'Centrale',
     number: 8,
     tier: 'silver',
@@ -41,7 +41,7 @@ const roster = [
   },
   {
     id: 4,
-    name: 'Davide Ricci',
+    name: 'Sebastiano Milan',
     role: 'Schiacciatore',
     number: 17,
     tier: 'gold',
@@ -50,7 +50,7 @@ const roster = [
   },
   {
     id: 5,
-    name: 'Matteo Sala',
+    name: 'Leonardo Carta',
     role: 'Centrale',
     number: 12,
     tier: 'silver',
@@ -59,7 +59,7 @@ const roster = [
   },
   {
     id: 6,
-    name: 'Stefano Neri',
+    name: 'Romolo Mariano',
     role: 'Schiacciatore',
     number: 14,
     tier: 'gold',
@@ -68,7 +68,7 @@ const roster = [
   },
   {
     id: 7,
-    name: 'Alessio Galli',
+    name: 'Alessio Santangelo',
     role: 'Libero',
     number: 1,
     tier: 'bronze',
@@ -77,7 +77,7 @@ const roster = [
   },
   {
     id: 8,
-    name: 'Riccardo Leone',
+    name: 'Alberto Marra',
     role: 'Opposto',
     number: 18,
     tier: 'silver',
@@ -86,7 +86,7 @@ const roster = [
   },
   {
     id: 9,
-    name: 'Paolo Greco',
+    name: 'Cristian Frumuselu',
     role: 'Centrale',
     number: 6,
     tier: 'bronze',
@@ -95,7 +95,7 @@ const roster = [
   },
   {
     id: 10,
-    name: 'Andrea Vitale',
+    name: 'Vincenzo Utro',
     role: 'Palleggiatore',
     number: 3,
     tier: 'silver',
@@ -104,7 +104,7 @@ const roster = [
   },
   {
     id: 11,
-    name: 'Fabio Conti',
+    name: 'Francesco Pierri',
     role: 'Schiacciatore',
     number: 19,
     tier: 'bronze',
@@ -113,7 +113,7 @@ const roster = [
   },
   {
     id: 12,
-    name: 'Nicola Ferretti',
+    name: 'Alessandro Chinello',
     role: 'Libero',
     number: 2,
     tier: 'silver',
@@ -122,7 +122,7 @@ const roster = [
   },
   {
     id: 13,
-    name: 'Gabriele Costa',
+    name: 'Sandi Persoglia',
     role: 'Opposto',
     number: 21,
     tier: 'bronze',
