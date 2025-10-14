@@ -254,6 +254,14 @@ const confirmVote = () => {
     <main class="flex-1 overflow-y-auto">
       <div class="flex flex-col gap-10">
         <section class="px-4">
+          <div class="mb-6 text-center">
+            <h2 class="text-lg font-semibold uppercase tracking-[0.3em] text-slate-200">
+              Team 1 - Team 2
+            </h2>
+            <p class="mt-2 text-sm text-slate-300">
+              Tocca la card del tuo giocatore preferito per assegnarli il voto
+            </p>
+          </div>
           <div class="relative h-[100svh]">
             <VolleyCourt
               class="block h-full w-full"
