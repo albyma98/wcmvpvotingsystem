@@ -251,23 +251,18 @@ const confirmVote = () => {
 
 <template>
   <div class="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col">
-    <header class="px-6 pt-6 pb-3 text-center">
-      <p class="uppercase tracking-[0.35em] text-xs text-slate-400">MVP Voting System</p>
-      <h1 class="mt-2 text-2xl font-semibold tracking-wide">Volley MVP - Match Day</h1>
-      <p class="mt-1 text-sm text-slate-300">Tocca la card del tuo giocatore preferito per assegnargli il voto.</p>
-    </header>
-
-    <main class="flex-1 flex flex-col gap-5 px-4 pb-6 overflow-hidden">
-      <div class="flex flex-1 flex-col gap-5 overflow-hidden">
-        <VolleyCourt
-          class="flex-1"
-          :players="fieldPlayers"
-          :card-size="cardSize"
-          :selected-player-id="votedPlayerId"
-          :disable-votes="disableVotes"
-          :is-voting="isVoting"
-          @select="openPlayerModal"
-        />
+    <main class="flex-1 overflow-y-auto">
+      <div class="flex flex-col gap-10">
+        <section class="relative min-h-screen px-4">
+          <VolleyCourt
+            class="h-full"
+            :players="fieldPlayers"
+            :card-size="cardSize"
+            :selected-player-id="votedPlayerId"
+            :disable-votes="disableVotes"
+            :is-voting="isVoting"
+            @select="openPlayerModal"
+          />
 
         <section
           class="relative flex-[0.5] min-h-[220px] overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
