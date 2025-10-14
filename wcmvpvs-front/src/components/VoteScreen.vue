@@ -133,6 +133,29 @@ const roster = [
 
 const fieldPlayers = computed(() => roster);
 
+const sponsors = [
+  {
+    id: 1,
+    name: 'Sponsor Aurora',
+    image: 'https://via.placeholder.com/320x180.png?text=Sponsor+Aurora',
+  },
+  {
+    id: 2,
+    name: 'BluWave Partner',
+    image: 'https://via.placeholder.com/320x180.png?text=BluWave+Partner',
+  },
+  {
+    id: 3,
+    name: 'Energia Italia',
+    image: 'https://via.placeholder.com/320x180.png?text=Energia+Italia',
+  },
+  {
+    id: 4,
+    name: 'Tech Volley Lab',
+    image: 'https://via.placeholder.com/320x180.png?text=Tech+Volley+Lab',
+  },
+];
+
 const votedPlayerId = ref(null);
 const isVoting = ref(false);
 const cardSize = ref(88);
@@ -235,15 +258,58 @@ const confirmVote = () => {
     </header>
 
     <main class="flex-1 flex flex-col gap-5 px-4 pb-6 overflow-hidden">
-      <VolleyCourt
-        class="flex-1"
-        :players="fieldPlayers"
-        :card-size="cardSize"
-        :selected-player-id="votedPlayerId"
-        :disable-votes="disableVotes"
-        :is-voting="isVoting"
-        @select="openPlayerModal"
-      />
+      <div class="flex flex-1 flex-col gap-5 overflow-hidden">
+        <VolleyCourt
+          class="flex-1"
+          :players="fieldPlayers"
+          :card-size="cardSize"
+          :selected-player-id="votedPlayerId"
+          :disable-votes="disableVotes"
+          :is-voting="isVoting"
+          @select="openPlayerModal"
+        />
+
+        <section
+          class="relative flex-[0.5] min-h-[220px] overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
+          aria-labelledby="sponsor-title"
+        >
+          <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.18),_transparent_55%)]"></div>
+          <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,_rgba(30,41,59,0.45),_transparent_60%)] mix-blend-screen"></div>
+
+          <div class="relative flex h-full flex-col">
+            <header class="px-6 pt-6 pb-4">
+              <p
+                id="sponsor-title"
+                class="text-xs font-semibold uppercase tracking-[0.45em] text-slate-300"
+              >
+                Sponsor
+              </p>
+            </header>
+
+            <div class="flex-1 px-6 pb-6">
+              <div class="grid h-full grid-cols-2 grid-rows-2 gap-4">
+                <article
+                  v-for="sponsor in sponsors"
+                  :key="sponsor.id"
+                  class="group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-[0_16px_32px_rgba(8,15,28,0.45)]"
+                >
+                  <div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                  <img
+                    :src="sponsor.image"
+                    :alt="sponsor.name"
+                    class="relative h-full w-full object-cover"
+                  />
+                  <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8">
+                    <p class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center">
+                      {{ sponsor.name }}
+                    </p>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <p v-if="errorMessage" class="text-center text-sm text-rose-400">
         {{ errorMessage }}
