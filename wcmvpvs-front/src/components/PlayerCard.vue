@@ -115,11 +115,11 @@ const handleSelect = () => {
           {{ overlayNumber }}
         </span>
       </div>
-      <div class="flex h-full w-full flex-col items-center px-4 py-6">
-        <div class="flex w-full flex-1 items-center justify-center">
-          <div class="relative w-full max-w-[88%]" style="aspect-ratio: 1 / 1">
-            <div class="absolute inset-0 overflow-hidden rounded-[1.55rem]">
-              <img :src="avatarUrl" :alt="player.name" class="h-full w-full object-cover" />
+      <div class="flex h-full w-full flex-col items-center">
+        <div class="flex w-full items-center justify-center">
+          <div class="relative w-full max-w-100%]" style="aspect-ratio: 1 / 1">
+            <div class="absolute overflow-hidden rounded-[1.55rem]">
+              <img :src="avatarUrl" :alt="player.name" class="h-full w-full object-fill" />
               <div class="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/65"></div>
             </div>
           </div>
