@@ -1,14 +1,10 @@
 package api
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
-	"github.com/gofrs/uuid"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -26,24 +22,52 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httproute
 	}
 
 	ctx.Logger.Infof("vote received for player %d event %d", req.PlayerID, req.EventID)
-	id, err := uuid.NewV4()
-	if err != nil {
-		ctx.Logger.WithError(err).Error("cannot generate code")
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	code := id.String()
-	ctx.Logger.Infof("generated vote code %s", code)
-	h := hmac.New(sha256.New, []byte(rt.VoteSecret))
-	h.Write([]byte(code))
-	signature := hex.EncodeToString(h.Sum(nil))
 
-	if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID); err != nil {
-		ctx.Logger.WithError(err).Error("cannot store vote")
+	var (
+		code      string
+		signature string
+	)
+
+	for attempt := 0; attempt < maxCodeGenerationAttempts; attempt++ {
+		var err error
+		code, err = generateNumericCode()
+		if err != nil {
+			ctx.Logger.WithError(err).Error("cannot generate vote code")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		signature = signCode(rt.VoteSecret, code)
+
+		if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID); err != nil {
+			switch {
+			case isVoteCodeCollision(err):
+				ctx.Logger.WithError(err).Warn("duplicate vote code detected, retrying")
+				continue
+			case isVoteDeviceCollision(err):
+				ctx.Logger.WithError(err).Warn("duplicate vote attempt for device")
+				w.WriteHeader(http.StatusConflict)
+				return
+			case isUniqueConstraintError(err):
+				ctx.Logger.WithError(err).Error("vote unique constraint violation")
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			default:
+				ctx.Logger.WithError(err).Error("cannot store vote")
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
+
+		ctx.Logger.Infof("generated vote code %s", code)
+		ctx.Logger.Info("vote stored in database")
+		break
+	}
+
+	if code == "" {
+		ctx.Logger.Error("unable to generate unique vote code after multiple attempts")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	ctx.Logger.Info("vote stored in database")
 	qrDataBytes, _ := json.Marshal(struct {
 		Code      string `json:"code"`
 		Signature string `json:"signature"`

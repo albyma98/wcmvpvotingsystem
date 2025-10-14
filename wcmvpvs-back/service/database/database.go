@@ -183,6 +183,14 @@ func New(db *sql.DB) (AppDatabase, error) {
 			return nil, fmt.Errorf("error creating votes index: %w", err)
 		}
 	}
+	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_per_event_device ON votes (event_id, device_id);`)
+	if err != nil {
+		return nil, fmt.Errorf("error ensuring votes device index: %w", err)
+	}
+	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_code_per_event ON votes (event_id, ticket_code);`)
+	if err != nil {
+		return nil, fmt.Errorf("error ensuring votes code index: %w", err)
+	}
 
 	// Create tickets table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tickets';`).Scan(&tableName)

@@ -1,37 +1,49 @@
 package api
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
-	"github.com/gofrs/uuid"
 	"github.com/julienschmidt/httprouter"
 )
 
 // postTicket generates a new voting ticket and stores it
 func (rt *_router) postTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, err := uuid.NewV4()
-	if err != nil {
-		ctx.Logger.WithError(err).Error("cannot generate code")
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	code := id.String()
-	ctx.Logger.Infof("generated ticket %s", code)
-	h := hmac.New(sha256.New, []byte(rt.VoteSecret))
-	_, _ = h.Write([]byte(code))
-	signature := hex.EncodeToString(h.Sum(nil))
+	var (
+		code      string
+		signature string
+	)
 
-	if err := rt.db.AddTicket(code, signature); err != nil {
-		ctx.Logger.WithError(err).Error("cannot store ticket")
+	for attempt := 0; attempt < maxCodeGenerationAttempts; attempt++ {
+		var err error
+		code, err = generateNumericCode()
+		if err != nil {
+			ctx.Logger.WithError(err).Error("cannot generate ticket code")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		signature = signCode(rt.VoteSecret, code)
+
+		if err := rt.db.AddTicket(code, signature); err != nil {
+			if isTicketCodeCollision(err) || isUniqueConstraintError(err) {
+				ctx.Logger.WithError(err).Warn("duplicate ticket code detected, retrying")
+				continue
+			}
+			ctx.Logger.WithError(err).Error("cannot store ticket")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		ctx.Logger.Infof("generated ticket %s", code)
+		ctx.Logger.Info("ticket stored in database")
+		break
+	}
+
+	if code == "" {
+		ctx.Logger.Error("unable to generate unique ticket code after multiple attempts")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	ctx.Logger.Info("ticket stored in database")
 	qrDataBytes, _ := json.Marshal(struct {
 		Code      string `json:"code"`
 		Signature string `json:"signature"`

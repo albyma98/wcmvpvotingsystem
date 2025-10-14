@@ -100,5 +100,4 @@ type _router struct {
 	db database.AppDatabase
 
 	VoteSecret string
-
 }

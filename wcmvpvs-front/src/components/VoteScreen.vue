@@ -161,6 +161,9 @@ const isVoting = ref(false);
 const cardSize = ref(88);
 const errorMessage = ref('');
 const pendingPlayer = ref(null);
+const showTicketModal = ref(false);
+const ticketCode = ref('');
+const ticketQrUrl = ref('');
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -198,6 +201,12 @@ const closeModal = () => {
   pendingPlayer.value = null;
 };
 
+const closeTicketModal = () => {
+  showTicketModal.value = false;
+  ticketCode.value = '';
+  ticketQrUrl.value = '';
+};
+
 const voteForPlayer = async (player) => {
   if (isVoting.value || (votedPlayerId.value && votedPlayerId.value !== player.id)) {
     return;
@@ -213,14 +222,30 @@ const voteForPlayer = async (player) => {
   try {
     const response = await vote({ eventId: props.eventId, playerId: player.id });
     if (response?.ok) {
+      const voteResult = response.vote;
+      const ticket = response.ticket;
       votedPlayerId.value = player.id;
       pendingPlayer.value = null;
+
+      const codeSource = voteResult?.code || ticket?.code || '';
+      const qrSource = voteResult?.qr_data || ticket?.qr_data || '';
+
+      if (codeSource) {
+        ticketCode.value = codeSource;
+        ticketQrUrl.value = qrSource
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrSource)}`
+          : '';
+        showTicketModal.value = true;
+      } else {
+        console.warn('voteForPlayer: missing ticket data', response);
+        errorMessage.value = 'Non siamo riusciti a generare il QR del ticket. Riprova.';
+      }
     } else {
-      errorMessage.value = 'Non è stato possibile registrare il voto. Riprova.';
+      errorMessage.value = "Non e stato possibile registrare il voto. Riprova.";
     }
   } catch (error) {
     console.error('vote error', error);
-    errorMessage.value = 'Si è verificato un errore. Riprova tra qualche istante.';
+    errorMessage.value = 'Si e verificato un errore. Riprova tra qualche istante.';
   } finally {
     isVoting.value = false;
   }
@@ -255,14 +280,14 @@ const confirmVote = () => {
       <div class="flex flex-col gap-10">
         <section class="px-4">
           <div class="mb-6 text-center">
-            <h2 class="text-lg font-semibold uppercase tracking-[0.3em] text-slate-200">
-              Team 1 - Team 2
+            <h2 class="text-lg font-semibold uppercase tracking-[0.1em] text-slate-200">
+              JOy volley - Campobasso
             </h2>
             <p class="mt-2 text-sm text-slate-300">
               Tocca la card del tuo giocatore preferito per assegnarli il voto
             </p>
           </div>
-          <div class="relative h-[100svh]">
+          <div class="relative h-[95svh]">
             <VolleyCourt
               class="block h-full w-full"
               :players="fieldPlayers"
@@ -360,6 +385,39 @@ const confirmVote = () => {
               Annulla
             </button>
           </div>
+        </div>
+      </div>
+    </transition>
+
+    <transition name="fade">
+      <div
+        v-if="showTicketModal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-6 py-10"
+      >
+        <button class="absolute inset-0" type="button" @click="closeTicketModal" aria-label="Chiudi"></button>
+        <div
+          class="relative z-10 w-full max-w-sm rounded-[2.25rem] border border-white/10 bg-slate-900/95 px-6 py-7 text-center shadow-[0_30px_60px_rgba(15,23,42,0.6)]"
+        >
+          <h3 class="text-lg font-semibold uppercase tracking-[0.35em] text-slate-100">Voto registrato</h3>
+          <p class="mt-3 text-sm text-slate-300">
+            Mostra questo codice allo staff per completare la registrazione.
+          </p>
+          <div class="mt-5 flex flex-col items-center gap-2 text-xs text-slate-200">
+            <p class="font-semibold tracking-[0.2em]">Codice: {{ ticketCode }}</p>
+          </div>
+          <img
+            v-if="ticketQrUrl"
+            :src="ticketQrUrl"
+            alt="QR code"
+            class="mx-auto mt-6 h-40 w-40 rounded-3xl border border-white/10 bg-white p-3"
+          />
+          <button
+            class="mt-7 w-full rounded-full bg-yellow-400 px-4 py-3 text-sm font-semibold uppercase tracking-[0.35em] text-slate-900 transition-colors duration-200 hover:bg-yellow-300"
+            type="button"
+            @click="closeTicketModal"
+          >
+            Chiudi
+          </button>
         </div>
       </div>
     </transition>

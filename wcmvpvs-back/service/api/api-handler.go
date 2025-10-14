@@ -13,7 +13,6 @@ func (rt *_router) Handler() http.Handler {
 	// Special routes
 	rt.router.GET("/liveness", rt.liveness)
 
-
 	rt.router.POST("/vote", rt.wrap(rt.postVote))
 	rt.router.POST("/ticket", rt.wrap(rt.postTicket))
 
@@ -40,6 +39,6 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.POST("/admins", rt.wrap(rt.createAdmin))
 	rt.router.PUT("/admins/:id", rt.wrap(rt.updateAdmin))
 	rt.router.DELETE("/admins/:id", rt.wrap(rt.deleteAdmin))
-	
+
 	return rt.router
 }

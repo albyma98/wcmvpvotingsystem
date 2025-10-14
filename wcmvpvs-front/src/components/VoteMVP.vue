@@ -39,7 +39,6 @@
         <div class="modal-content center-align">
           <h5>Voto registrato</h5>
           <p>Codice: {{ voteCode }}</p>
-          <p>Firma HMAC: {{ signature }}</p>
           <img :src="qrUrl" alt="QR code" />
         </div>
         <div class="modal-footer center-align">
@@ -52,7 +51,7 @@
 
 <script setup>
 import { ref, watchEffect } from 'vue'
-import axios from 'axios'
+import { apiClient, vote as submitVote } from '../api'
 
 const props = defineProps({
   eventId: Number,
@@ -64,26 +63,22 @@ const selectedPlayer = ref(null)
 const showConfirm = ref(false)
 const showCode = ref(false)
 const voteCode = ref('')
-const signature = ref('')
 const qrUrl = ref('')
 
-const api = axios.create({
-  baseURL: 'http://localhost:3000',
-})
 async function loadPlayers() {
   if (!props.eventId) {
     players.value = []
     eventInfo.value = null
     return
   }
-  const events = (await api.get('/events')).data
+  const events = (await apiClient.get('/events')).data
   const ev = events.find((e) => e.id === props.eventId)
   if (!ev) {
     players.value = []
     eventInfo.value = null
     return
   }
-  const teams = (await api.get('/teams')).data
+  const teams = (await apiClient.get('/teams')).data
   const t1 = teams.find((t) => t.id === ev.team1_id)
   const t2 = teams.find((t) => t.id === ev.team2_id)
   eventInfo.value = {
@@ -91,7 +86,7 @@ async function loadPlayers() {
     team2: t2 ? t2.name : '',
     location: ev.location,
   }
-  const allPlayers = (await api.get('/players')).data
+  const allPlayers = (await apiClient.get('/players')).data
   players.value = allPlayers
     .filter((p) => p.team_id === ev.team1_id)
     .map((p) => ({
@@ -118,18 +113,29 @@ function cancelVote() {
 
 async function confirmVote() {
   try {
+    if (!selectedPlayer.value) {
+      return
+    }
     console.log('confirmVote() sending vote for', selectedPlayer.value.id)
-    await api.post('/vote', { player_id: selectedPlayer.value.id, event_id: props.eventId, device_id: 'web' })
-    console.log('confirmVote() requesting ticket')
-    const ticketRes = await api.post('/ticket')
-    const ticket = ticketRes.data
-    console.log('confirmVote() ticket received', ticket)
-    voteCode.value = ticket.code
-    signature.value = ticket.signature
-    qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(ticket.qr_data)}`
+    const response = await submitVote({
+      eventId: props.eventId,
+      playerId: selectedPlayer.value.id,
+    })
+    if (response?.ok) {
+      const voteResult = response.vote
+      const ticket = response.ticket
+      const codeSource = voteResult?.code || ticket?.code || ''
+      const qrSource = voteResult?.qr_data || ticket?.qr_data || ''
 
-    showConfirm.value = false
-    showCode.value = true
+      voteCode.value = codeSource
+      qrUrl.value = qrSource
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrSource)}`
+        : ''
+      showConfirm.value = false
+      showCode.value = true
+    } else {
+      console.error('confirmVote() ticket generation failed', response)
+    }
   } catch (err) {
     console.error('confirmVote() error', err)
   }
