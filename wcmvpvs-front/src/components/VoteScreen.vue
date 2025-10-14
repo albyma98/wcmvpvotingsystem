@@ -265,17 +265,6 @@ const confirmVote = () => {
               @select="openPlayerModal"
             />
 
-            <header
-              class="pointer-events-none absolute inset-x-0 top-0 z-10 px-6 pt-6 pb-3 text-center"
-            >
-              <p class="uppercase tracking-[0.35em] text-xs text-slate-300/90">MVP Voting System</p>
-              <h1 class="mt-2 text-2xl font-semibold tracking-wide drop-shadow-[0_6px_18px_rgba(15,23,42,0.55)]">
-                Volley MVP - Match Day
-              </h1>
-              <p class="mt-1 text-sm text-slate-200/90">
-                Tocca la card del tuo giocatore preferito per assegnargli il voto.
-              </p>
-            </header>
           </div>
         </section>
 
@@ -337,6 +326,7 @@ const confirmVote = () => {
         <div
           class="relative z-10 w-full max-w-xs rounded-[2.25rem] border border-white/10 bg-slate-900/95 px-6 py-7 text-center shadow-[0_30px_60px_rgba(15,23,42,0.6)]"
         >
+        <div class="flex justify-center">
           <PlayerCard
             v-if="pendingPlayer"
             :player="pendingPlayer"
@@ -344,7 +334,7 @@ const confirmVote = () => {
             :is-selected="votedPlayerId === pendingPlayer.id"
             :disabled="true"
           />
-
+        </div>
           <div class="mt-6 flex flex-col gap-3">
             <button
               class="w-full rounded-full bg-yellow-400 px-4 py-3 text-sm font-semibold uppercase tracking-[0.35em] text-slate-900 transition-colors duration-200 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-70"
