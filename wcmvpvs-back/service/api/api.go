@@ -39,6 +39,8 @@ package api
 import (
 	"errors"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 	"github.com/julienschmidt/httprouter"
@@ -83,10 +85,12 @@ func New(cfg Config) (Router, error) {
 	router.RedirectFixedPath = false
 
 	return &_router{
-		router:     router,
-		baseLogger: cfg.Logger,
-		db:         cfg.Database,
-		VoteSecret: cfg.VoteSecret,
+		router:         router,
+		baseLogger:     cfg.Logger,
+		db:             cfg.Database,
+		VoteSecret:     cfg.VoteSecret,
+		adminSessions:  map[string]adminSession{},
+		sessionTimeout: 12 * time.Hour,
 	}, nil
 }
 
@@ -100,4 +104,13 @@ type _router struct {
 	db database.AppDatabase
 
 	VoteSecret string
+
+	adminSessionsMu sync.RWMutex
+	adminSessions   map[string]adminSession
+	sessionTimeout  time.Duration
+}
+
+type adminSession struct {
+	AdminID   int
+	ExpiresAt time.Time
 }

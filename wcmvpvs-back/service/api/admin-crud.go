@@ -1,7 +1,12 @@
 package api
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -204,16 +209,46 @@ func (rt *_router) listAdmins(w http.ResponseWriter, r *http.Request, ps httprou
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(admins)
+	type adminResponse struct {
+		ID        int    `json:"id"`
+		Username  string `json:"username"`
+		Role      string `json:"role"`
+		CreatedAt string `json:"created_at"`
+	}
+	resp := make([]adminResponse, 0, len(admins))
+	for _, admin := range admins {
+		resp = append(resp, adminResponse{
+			ID:        admin.ID,
+			Username:  admin.Username,
+			Role:      admin.Role,
+			CreatedAt: admin.CreatedAt,
+		})
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (rt *_router) createAdmin(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	var a database.Admin
-	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
+	var payload struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	id, err := rt.db.CreateAdmin(a)
+	if payload.Username == "" || payload.Password == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	admin := database.Admin{
+		Username:     payload.Username,
+		PasswordHash: hashAdminPassword(payload.Password),
+		Role:         payload.Role,
+	}
+
+	id, err := rt.db.CreateAdmin(admin)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot create admin")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -226,13 +261,22 @@ func (rt *_router) createAdmin(w http.ResponseWriter, r *http.Request, ps httpro
 
 func (rt *_router) updateAdmin(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	id, _ := strconv.Atoi(ps.ByName("id"))
-	var a database.Admin
-	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
+	var payload struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	a.ID = id
-	if err := rt.db.UpdateAdmin(a); err != nil {
+
+	admin := database.Admin{ID: id, Username: payload.Username, Role: payload.Role}
+	if payload.Password != "" {
+		admin.PasswordHash = hashAdminPassword(payload.Password)
+	}
+
+	if err := rt.db.UpdateAdmin(admin); err != nil {
 		ctx.Logger.WithError(err).Error("cannot update admin")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -248,4 +292,64 @@ func (rt *_router) deleteAdmin(w http.ResponseWriter, r *http.Request, ps httpro
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	var payload struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if payload.Username == "" || payload.Password == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	admin, err := rt.db.GetAdminByUsername(payload.Username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot retrieve admin by username")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !adminPasswordMatches(admin.PasswordHash, payload.Password) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	token, err := rt.createAdminSession(admin.ID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot create admin session")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(struct {
+		Token    string `json:"token"`
+		Username string `json:"username"`
+		Role     string `json:"role"`
+	}{Token: token, Username: admin.Username, Role: admin.Role})
+}
+
+func hashAdminPassword(password string) string {
+	sum := sha256.Sum256([]byte(password))
+	return hex.EncodeToString(sum[:])
+}
+
+func adminPasswordMatches(hash, password string) bool {
+	if hash == "" {
+		return false
+	}
+	candidate := hashAdminPassword(password)
+	if len(candidate) != len(hash) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(hash), []byte(candidate)) == 1
 }
