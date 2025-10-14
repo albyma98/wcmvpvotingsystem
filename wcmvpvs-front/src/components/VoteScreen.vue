@@ -251,69 +251,79 @@ const confirmVote = () => {
 
 <template>
   <div class="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col">
-    <header class="px-6 pt-6 pb-3 text-center">
-      <p class="uppercase tracking-[0.35em] text-xs text-slate-400">MVP Voting System</p>
-      <h1 class="mt-2 text-2xl font-semibold tracking-wide">Volley MVP - Match Day</h1>
-      <p class="mt-1 text-sm text-slate-300">Tocca la card del tuo giocatore preferito per assegnargli il voto.</p>
-    </header>
+    <main class="flex-1 overflow-y-auto">
+      <div class="flex flex-col gap-10">
+        <section class="relative min-h-screen px-4">
+          <VolleyCourt
+            class="h-full"
+            :players="fieldPlayers"
+            :card-size="cardSize"
+            :selected-player-id="votedPlayerId"
+            :disable-votes="disableVotes"
+            :is-voting="isVoting"
+            @select="openPlayerModal"
+          />
 
-    <main class="flex-1 flex flex-col gap-5 px-4 pb-6 overflow-hidden">
-      <div class="flex flex-1 flex-col gap-5 overflow-hidden">
-        <VolleyCourt
-          class="flex-1"
-          :players="fieldPlayers"
-          :card-size="cardSize"
-          :selected-player-id="votedPlayerId"
-          :disable-votes="disableVotes"
-          :is-voting="isVoting"
-          @select="openPlayerModal"
-        />
+          <header
+            class="pointer-events-none absolute inset-x-0 top-0 z-10 px-6 pt-6 pb-3 text-center"
+          >
+            <p class="uppercase tracking-[0.35em] text-xs text-slate-300/90">MVP Voting System</p>
+            <h1 class="mt-2 text-2xl font-semibold tracking-wide drop-shadow-[0_6px_18px_rgba(15,23,42,0.55)]">
+              Volley MVP - Match Day
+            </h1>
+            <p class="mt-1 text-sm text-slate-200/90">
+              Tocca la card del tuo giocatore preferito per assegnargli il voto.
+            </p>
+          </header>
+        </section>
 
-        <section
-          class="relative flex-[0.5] min-h-[220px] overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
-          aria-labelledby="sponsor-title"
-        >
-          <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.18),_transparent_55%)]"></div>
-          <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,_rgba(30,41,59,0.45),_transparent_60%)] mix-blend-screen"></div>
+        <section class="px-4">
+          <div
+            class="relative overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
+            aria-labelledby="sponsor-title"
+          >
+            <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.18),_transparent_55%)]"></div>
+            <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,_rgba(30,41,59,0.45),_transparent_60%)] mix-blend-screen"></div>
 
-          <div class="relative flex h-full flex-col">
-            <header class="px-6 pt-6 pb-4">
-              <p
-                id="sponsor-title"
-                class="text-xs font-semibold uppercase tracking-[0.45em] text-slate-300"
-              >
-                Sponsor
-              </p>
-            </header>
-
-            <div class="flex-1 px-6 pb-6">
-              <div class="grid h-full grid-cols-2 grid-rows-2 gap-4">
-                <article
-                  v-for="sponsor in sponsors"
-                  :key="sponsor.id"
-                  class="group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-[0_16px_32px_rgba(8,15,28,0.45)]"
+            <div class="relative flex h-full flex-col">
+              <header class="px-6 pt-6 pb-4">
+                <p
+                  id="sponsor-title"
+                  class="text-xs font-semibold uppercase tracking-[0.45em] text-slate-300"
                 >
-                  <div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
-                  <img
-                    :src="sponsor.image"
-                    :alt="sponsor.name"
-                    class="relative h-full w-full object-cover"
-                  />
-                  <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8">
-                    <p class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center">
-                      {{ sponsor.name }}
-                    </p>
-                  </div>
-                </article>
+                  Sponsor
+                </p>
+              </header>
+
+              <div class="flex-1 px-6 pb-6">
+                <div class="grid h-full grid-cols-2 grid-rows-2 gap-4">
+                  <article
+                    v-for="sponsor in sponsors"
+                    :key="sponsor.id"
+                    class="group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-[0_16px_32px_rgba(8,15,28,0.45)]"
+                  >
+                    <div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                    <img
+                      :src="sponsor.image"
+                      :alt="sponsor.name"
+                      class="relative h-full w-full object-cover"
+                    />
+                    <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8">
+                      <p class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center">
+                        {{ sponsor.name }}
+                      </p>
+                    </div>
+                  </article>
+                </div>
               </div>
             </div>
           </div>
         </section>
-      </div>
 
-      <p v-if="errorMessage" class="text-center text-sm text-rose-400">
-        {{ errorMessage }}
-      </p>
+        <p v-if="errorMessage" class="px-4 pb-6 text-center text-sm text-rose-400">
+          {{ errorMessage }}
+        </p>
+      </div>
     </main>
 
     <transition name="fade">
