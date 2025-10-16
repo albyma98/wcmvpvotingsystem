@@ -4,11 +4,12 @@ const resolveApiBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL?.trim();
   const resolveFromWindow = () => {
     if (typeof window === 'undefined') {
-      return { hostname: 'localhost', protocol: 'http:' };
+      return { hostname: 'localhost', protocol: 'http:', port: '' };
     }
     return {
       hostname: window.location.hostname || 'localhost',
       protocol: window.location.protocol || 'http:',
+      port: window.location.port || '',
     };
   };
 
@@ -23,9 +24,16 @@ const resolveApiBaseUrl = () => {
     }
   }
 
-  const { hostname, protocol } = resolveFromWindow();
-  const port = import.meta.env.VITE_API_PORT || '3000';
-  return `${protocol}//${hostname}:${port}`;
+  const envPort = import.meta.env.VITE_API_PORT?.toString().trim();
+  const { hostname, protocol, port: windowPort } = resolveFromWindow();
+
+  if (envPort) {
+    const sanitizedPort = envPort.replace(/^:/, '');
+    return `${protocol}//${hostname}:${sanitizedPort}`;
+  }
+
+  const originPort = windowPort ? `:${windowPort}` : '';
+  return `${protocol}//${hostname}${originPort}`;
 };
 
 export const apiClient = axios.create({
