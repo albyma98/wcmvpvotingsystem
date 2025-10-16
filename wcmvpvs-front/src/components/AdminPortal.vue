@@ -56,36 +56,39 @@
         <form @submit.prevent="createEvent" class="form-grid">
           <label>
             Squadra di casa
-            <select v-model.number="newEvent.team1_id" :disabled="!hasEnoughTeams" required>
-              <option disabled value="0">
-                {{ hasEnoughTeams ? 'Seleziona squadra' : 'Aggiungi squadre prima' }}
-              </option>
-              <option
-                v-for="team in teams"
-                :key="team.id"
-                :value="team.id"
-                :disabled="hasEnoughTeams && team.id === newEvent.team2_id"
-              >
-                {{ team.name }}
-              </option>
-            </select>
+            <input
+              v-model="teamInputs.home"
+              type="text"
+              list="admin-team-options"
+              :disabled="!hasEnoughTeams"
+              placeholder="Digita il nome della squadra"
+              required
+              @change="handleTeamInput('home')"
+              @blur="handleTeamInput('home')"
+            />
+            <small class="field-hint" v-if="hasEnoughTeams">
+              Scegli dalla lista oppure digita per filtrare le squadre disponibili.
+            </small>
           </label>
           <label>
             Squadra ospite
-            <select v-model.number="newEvent.team2_id" :disabled="!hasEnoughTeams" required>
-              <option disabled value="0">
-                {{ hasEnoughTeams ? 'Seleziona squadra' : 'Aggiungi squadre prima' }}
-              </option>
-              <option
-                v-for="team in teams"
-                :key="team.id"
-                :value="team.id"
-                :disabled="hasEnoughTeams && team.id === newEvent.team1_id"
-              >
-                {{ team.name }}
-              </option>
-            </select>
+            <input
+              v-model="teamInputs.away"
+              type="text"
+              list="admin-team-options"
+              :disabled="!hasEnoughTeams"
+              placeholder="Digita il nome della squadra"
+              required
+              @change="handleTeamInput('away')"
+              @blur="handleTeamInput('away')"
+            />
+            <small class="field-hint" v-if="hasEnoughTeams">
+              Seleziona una squadra diversa da quella di casa.
+            </small>
           </label>
+          <datalist id="admin-team-options">
+            <option v-for="team in teams" :key="team.id" :value="teamOptionValue(team)"></option>
+          </datalist>
           <label>
             Data e ora
             <input
@@ -240,6 +243,10 @@ const newEvent = reactive({
   start_datetime: '',
   location: '',
 });
+const teamInputs = reactive({
+  home: '',
+  away: '',
+});
 const newAdmin = reactive({
   username: '',
   password: '',
@@ -283,6 +290,8 @@ function resetForms() {
     start_datetime: '',
     location: '',
   });
+  teamInputs.home = '';
+  teamInputs.away = '';
   Object.assign(newAdmin, { username: '', password: '', role: '' });
 }
 
@@ -290,6 +299,8 @@ function ensureValidTeamSelection() {
   if (!hasEnoughTeams.value) {
     newEvent.team1_id = 0;
     newEvent.team2_id = 0;
+    teamInputs.home = '';
+    teamInputs.away = '';
     return;
   }
 
@@ -297,6 +308,7 @@ function ensureValidTeamSelection() {
 
   if (!availableIds.has(newEvent.team1_id)) {
     newEvent.team1_id = 0;
+    teamInputs.home = '';
   }
 
   if (
@@ -304,7 +316,10 @@ function ensureValidTeamSelection() {
     (newEvent.team1_id !== 0 && newEvent.team1_id === newEvent.team2_id)
   ) {
     newEvent.team2_id = 0;
+    teamInputs.away = '';
   }
+
+  syncTeamInputsFromIds();
 }
 
 watch(teams, ensureValidTeamSelection);
@@ -312,6 +327,8 @@ watch(hasEnoughTeams, (enough) => {
   if (!enough) {
     newEvent.team1_id = 0;
     newEvent.team2_id = 0;
+    teamInputs.home = '';
+    teamInputs.away = '';
   }
 });
 
@@ -340,6 +357,48 @@ function goToLottery() {
   }
   target.pathname = `${target.pathname.replace(/\/+$/, '')}/admin/lottery`;
   window.location.href = target.toString();
+}
+
+function teamOptionValue(team) {
+  return `${team.name} (#${team.id})`;
+}
+
+function syncTeamInputsFromIds() {
+  const homeTeam = teams.value.find((team) => team.id === newEvent.team1_id);
+  const awayTeam = teams.value.find((team) => team.id === newEvent.team2_id);
+  teamInputs.home = homeTeam ? teamOptionValue(homeTeam) : '';
+  teamInputs.away = awayTeam ? teamOptionValue(awayTeam) : '';
+}
+
+function findTeamFromInput(value) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  return (
+    teams.value.find((team) => teamOptionValue(team).toLowerCase() === normalized) ||
+    teams.value.find((team) => team.name.trim().toLowerCase() === normalized)
+  );
+}
+
+function handleTeamInput(position) {
+  const key = position === 'home' ? 'team1_id' : 'team2_id';
+  const otherKey = position === 'home' ? 'team2_id' : 'team1_id';
+  const otherInputKey = position === 'home' ? 'away' : 'home';
+  const rawValue = teamInputs[position] || '';
+  const matchedTeam = findTeamFromInput(rawValue);
+
+  if (matchedTeam) {
+    if (newEvent[otherKey] === matchedTeam.id) {
+      newEvent[otherKey] = 0;
+      teamInputs[otherInputKey] = '';
+    }
+    newEvent[key] = matchedTeam.id;
+    teamInputs[position] = teamOptionValue(matchedTeam);
+  } else {
+    newEvent[key] = 0;
+    teamInputs[position] = '';
+  }
 }
 
 function eventLabel(event) {
@@ -686,6 +745,11 @@ select {
   font-size: 0.95rem;
   background: #f8fafc;
   color: #0f172a;
+}
+
+.field-hint {
+  font-size: 0.75rem;
+  color: #64748b;
 }
 
 input:focus,
