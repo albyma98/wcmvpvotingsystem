@@ -49,34 +49,61 @@
           <h2>Eventi</h2>
           <p>Crea una nuova partita per abilitare il voto pubblico.</p>
         </header>
+        <p v-if="!hasEnoughTeams" class="info-banner">
+          Aggiungi almeno due squadre dalla sezione "Squadre" per abilitare la creazione di un evento.
+        </p>
         <form @submit.prevent="createEvent" class="form-grid">
           <label>
             Squadra di casa
-            <select v-model.number="newEvent.team1_id" required>
-              <option disabled value="0">Seleziona squadra</option>
-              <option v-for="team in teams" :key="team.id" :value="team.id">
+            <select v-model.number="newEvent.team1_id" :disabled="!hasEnoughTeams" required>
+              <option disabled value="0">
+                {{ hasEnoughTeams ? 'Seleziona squadra' : 'Aggiungi squadre prima' }}
+              </option>
+              <option
+                v-for="team in teams"
+                :key="team.id"
+                :value="team.id"
+                :disabled="hasEnoughTeams && team.id === newEvent.team2_id"
+              >
                 {{ team.name }}
               </option>
             </select>
           </label>
           <label>
             Squadra ospite
-            <select v-model.number="newEvent.team2_id" required>
-              <option disabled value="0">Seleziona squadra</option>
-              <option v-for="team in teams" :key="team.id" :value="team.id">
+            <select v-model.number="newEvent.team2_id" :disabled="!hasEnoughTeams" required>
+              <option disabled value="0">
+                {{ hasEnoughTeams ? 'Seleziona squadra' : 'Aggiungi squadre prima' }}
+              </option>
+              <option
+                v-for="team in teams"
+                :key="team.id"
+                :value="team.id"
+                :disabled="hasEnoughTeams && team.id === newEvent.team1_id"
+              >
                 {{ team.name }}
               </option>
             </select>
           </label>
           <label>
             Data e ora
-            <input v-model="newEvent.start_datetime" type="datetime-local" required />
+            <input
+              v-model="newEvent.start_datetime"
+              type="datetime-local"
+              :disabled="!hasEnoughTeams"
+              required
+            />
           </label>
           <label>
             Location
-            <input v-model.trim="newEvent.location" type="text" placeholder="Es. Palazzetto dello Sport" />
+            <input
+              v-model.trim="newEvent.location"
+              type="text"
+              placeholder="Es. Palazzetto dello Sport"
+              :disabled="!hasEnoughTeams"
+            />
           </label>
-          <button class="btn primary" type="submit">Crea evento</button>
+          <button class="btn primary" type="submit" :disabled="!hasEnoughTeams">Crea evento</button>
         </form>
 
         <div v-if="lastCreatedEventLink" class="hint">
@@ -178,7 +205,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
 
 const basePath = import.meta.env.BASE_URL ?? '/';
@@ -219,6 +246,8 @@ const newAdmin = reactive({
 });
 const lastCreatedEventLink = ref('');
 
+const hasEnoughTeams = computed(() => teams.value.length >= 2);
+
 const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
 const isAuthenticated = computed(() => Boolean(token.value));
@@ -255,6 +284,35 @@ function resetForms() {
   });
   Object.assign(newAdmin, { username: '', password: '', role: '' });
 }
+
+function ensureValidTeamSelection() {
+  if (!hasEnoughTeams.value) {
+    newEvent.team1_id = 0;
+    newEvent.team2_id = 0;
+    return;
+  }
+
+  const availableIds = new Set(teams.value.map((team) => team.id));
+
+  if (!availableIds.has(newEvent.team1_id)) {
+    newEvent.team1_id = 0;
+  }
+
+  if (
+    !availableIds.has(newEvent.team2_id) ||
+    (newEvent.team1_id !== 0 && newEvent.team1_id === newEvent.team2_id)
+  ) {
+    newEvent.team2_id = 0;
+  }
+}
+
+watch(teams, ensureValidTeamSelection);
+watch(hasEnoughTeams, (enough) => {
+  if (!enough) {
+    newEvent.team1_id = 0;
+    newEvent.team2_id = 0;
+  }
+});
 
 function clearCollections() {
   teams.value = [];
@@ -353,6 +411,7 @@ async function secureRequest(executor) {
 async function loadTeams() {
   const { data } = await secureRequest(() => apiClient.get('/teams', authHeaders.value));
   teams.value = data;
+  ensureValidTeamSelection();
 }
 
 async function loadPlayers() {
@@ -416,6 +475,10 @@ async function deletePlayer(id) {
 
 async function createEvent() {
   globalError.value = '';
+  if (!hasEnoughTeams.value) {
+    globalError.value = 'Aggiungi almeno due squadre per creare un evento.';
+    return;
+  }
   if (!newEvent.team1_id || !newEvent.team2_id) {
     globalError.value = 'Seleziona entrambe le squadre.';
     return;
@@ -572,6 +635,15 @@ if (isAuthenticated.value) {
 .section-header p {
   margin: 0;
   color: #64748b;
+}
+
+.info-banner {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  font-weight: 500;
 }
 
 .form-grid {
