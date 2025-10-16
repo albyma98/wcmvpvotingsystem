@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/julienschmidt/httprouter"
@@ -17,6 +18,12 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httproute
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ctx.Logger.WithError(err).Error("cannot decode vote request")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.DeviceID) == "" {
+		ctx.Logger.Warn("vote request missing device id")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}

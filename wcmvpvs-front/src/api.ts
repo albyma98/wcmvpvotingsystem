@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getOrCreateDeviceId } from './deviceId';
 
 const resolveApiBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -45,7 +46,7 @@ export async function vote({ eventId, playerId }) {
     const { data: voteData } = await apiClient.post('/vote', {
       player_id: playerId,
       event_id: eventId,
-      device_id: 'web',
+      device_id: getOrCreateDeviceId(),
     });
 
     let ticket = null;
