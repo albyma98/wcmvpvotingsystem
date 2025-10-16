@@ -50,6 +50,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import axios from 'axios'
+import { getOrCreateDeviceId } from '../deviceId'
 
 const props = defineProps({
   eventId: { type: Number, default: null },
@@ -139,7 +140,7 @@ async function confirmVote() {
     await api.post('/vote', {
       player_id: selectedPlayer.value.id,
       event_id: props.eventId,
-      device_id: 'web',
+      device_id: getOrCreateDeviceId(),
     })
     const ticketRes = await api.post('/ticket')
     const ticket = ticketRes.data
