@@ -27,6 +27,7 @@
       <div class="toolbar">
         <div class="user-info">
           <span>Connesso come <strong>{{ activeUsername }}</strong></span>
+          <button class="btn outline" type="button" @click="goToLottery">Lotteria</button>
           <button class="btn secondary" type="button" @click="logout">Esci</button>
         </div>
         <nav class="tab-bar" aria-label="Sezioni amministrative">
@@ -330,6 +331,15 @@ function buildEventLink(eventId) {
     url.searchParams.delete('eventId');
   }
   return url.toString();
+}
+
+function goToLottery() {
+  const target = new URL(basePath || '/', window.location.origin);
+  if (!target.pathname.endsWith('/')) {
+    target.pathname = `${target.pathname}/`;
+  }
+  target.pathname = `${target.pathname.replace(/\/+$/, '')}/admin/lottery`;
+  window.location.href = target.toString();
 }
 
 function eventLabel(event) {
@@ -707,6 +717,12 @@ select:focus {
 .btn.secondary {
   background: #e2e8f0;
   color: #0f172a;
+}
+
+.btn.outline {
+  background: transparent;
+  color: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.4);
 }
 
 .btn.danger {

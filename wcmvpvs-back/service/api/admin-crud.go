@@ -180,6 +180,23 @@ func (rt *_router) deleteEvent(w http.ResponseWriter, r *http.Request, ps httpro
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (rt *_router) listEventTickets(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	eventID, err := strconv.Atoi(ps.ByName("id"))
+	if err != nil || eventID <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	tickets, err := rt.db.ListEventTickets(eventID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot list event tickets")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(tickets)
+}
+
 // Votes
 func (rt *_router) listVotes(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	votes, err := rt.db.ListVotes()
