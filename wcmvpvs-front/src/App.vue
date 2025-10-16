@@ -1,6 +1,7 @@
 <template>
   <div class="app-shell">
-    <AdminPortal v-if="isAdminRoute" />
+    <AdminLottery v-if="adminView === 'lottery'" />
+    <AdminPortal v-else-if="adminView === 'portal'" />
     <VoteScreen v-else :event-id="currentEventId" />
   </div>
 </template>
@@ -8,6 +9,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AdminPortal from './components/AdminPortal.vue';
+import AdminLottery from './components/AdminLottery.vue';
 import VoteScreen from './components/VoteScreen.vue';
 
 function readEventId(search) {
@@ -20,7 +22,15 @@ function readEventId(search) {
 const currentPath = ref(typeof window !== 'undefined' ? window.location.pathname : '/');
 const currentEventId = ref(typeof window !== 'undefined' ? readEventId(window.location.search) : undefined);
 
-const isAdminRoute = computed(() => currentPath.value.startsWith('/admin'));
+const adminView = computed(() => {
+  if (!currentPath.value.startsWith('/admin')) {
+    return 'public';
+  }
+  if (currentPath.value.startsWith('/admin/lottery')) {
+    return 'lottery';
+  }
+  return 'portal';
+});
 
 function handlePopState() {
   currentPath.value = window.location.pathname;

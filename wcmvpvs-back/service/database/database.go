@@ -70,6 +70,15 @@ type Vote struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+type EventTicket struct {
+	VoteID          int    `json:"vote_id"`
+	TicketCode      string `json:"ticket_code"`
+	PlayerID        int    `json:"player_id"`
+	PlayerFirstName string `json:"player_first_name"`
+	PlayerLastName  string `json:"player_last_name"`
+	CreatedAt       string `json:"created_at"`
+}
+
 type Admin struct {
 	ID           int    `json:"id"`
 	Username     string `json:"username"`
@@ -97,6 +106,7 @@ type AppDatabase interface {
 	UpdateEvent(e Event) error
 	DeleteEvent(id int) error
 	ListVotes() ([]Vote, error)
+	ListEventTickets(eventID int) ([]EventTicket, error)
 	DeleteVote(id int) error
 	CreateAdmin(a Admin) (int, error)
 	ListAdmins() ([]Admin, error)
@@ -351,6 +361,29 @@ func (db *appdbimpl) ListVotes() ([]Vote, error) {
 		vs = append(vs, v)
 	}
 	return vs, nil
+}
+
+func (db *appdbimpl) ListEventTickets(eventID int) ([]EventTicket, error) {
+	rows, err := db.c.Query(`
+SELECT v.id, v.ticket_code, v.player_id, p.first_name, p.last_name, v.created_at
+FROM votes v
+LEFT JOIN players p ON p.id = v.player_id
+WHERE v.event_id = ?
+ORDER BY v.created_at ASC
+`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tickets []EventTicket
+	for rows.Next() {
+		var t EventTicket
+		if err := rows.Scan(&t.VoteID, &t.TicketCode, &t.PlayerID, &t.PlayerFirstName, &t.PlayerLastName, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		tickets = append(tickets, t)
+	}
+	return tickets, nil
 }
 
 func (db *appdbimpl) DeleteVote(id int) error {
