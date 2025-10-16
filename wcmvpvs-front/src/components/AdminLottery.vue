@@ -34,14 +34,18 @@
       <div class="filters">
         <label>
           Seleziona evento
-          <select v-model.number="selectedEventId" :disabled="isLoadingEvents">
-            <option value="0" disabled>
-              {{ isLoadingEvents ? 'Caricamento…' : 'Scegli un evento' }}
-            </option>
-            <option v-for="event in events" :key="event.id" :value="event.id">
-              {{ eventLabel(event) }}
-            </option>
-          </select>
+          <input
+            v-model="eventInput"
+            type="text"
+            list="lottery-event-options"
+            :disabled="isLoadingEvents || !events.length"
+            placeholder="Digita per filtrare gli eventi"
+            @change="handleEventInput"
+            @blur="handleEventInput"
+          />
+          <datalist id="lottery-event-options">
+            <option v-for="event in events" :key="event.id" :value="eventLabel(event)"></option>
+          </datalist>
         </label>
         <button class="btn secondary" type="button" @click="refreshTickets" :disabled="!selectedEventId || isLoadingTickets">
           Aggiorna ticket
@@ -87,6 +91,7 @@ const teams = ref([]);
 const events = ref([]);
 const tickets = ref([]);
 const selectedEventId = ref(0);
+const eventInput = ref('');
 
 const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
@@ -134,7 +139,7 @@ const currentDisplay = computed(() => {
 });
 
 function eventLabel(event) {
-  return `${teamName(event.team1_id)} vs ${teamName(event.team2_id)} – ${formatEventDate(event.start_datetime)}`;
+  return `${teamName(event.team1_id)} - ${teamName(event.team2_id)}`;
 }
 
 function formatEventDate(value) {
@@ -188,13 +193,25 @@ function normalizeTicket(ticket) {
 function ensureValidSelection() {
   if (events.value.length === 0) {
     selectedEventId.value = 0;
+    eventInput.value = '';
     tickets.value = [];
     return;
   }
-  const exists = events.value.some((event) => event.id === selectedEventId.value);
-  if (!exists) {
-    selectedEventId.value = events.value[0].id;
+  const selectedEvent = events.value.find((event) => event.id === selectedEventId.value) || events.value[0];
+  selectedEventId.value = selectedEvent.id;
+  eventInput.value = eventLabel(selectedEvent);
+}
+
+function handleEventInput() {
+  const normalized = eventInput.value.trim().toLowerCase();
+  if (!normalized) {
+    selectedEventId.value = 0;
+    return;
   }
+  const eventMatch =
+    events.value.find((event) => eventLabel(event).toLowerCase() === normalized) ||
+    events.value.find((event) => eventLabel(event).toLowerCase().includes(normalized));
+  selectedEventId.value = eventMatch ? eventMatch.id : 0;
 }
 
 function teamName(id) {
@@ -394,8 +411,15 @@ function goToPortal() {
 
 watch(selectedEventId, (id) => {
   if (id) {
+    const currentEvent = events.value.find((event) => event.id === id);
+    if (currentEvent) {
+      eventInput.value = eventLabel(currentEvent);
+    }
     loadTickets(id);
   } else {
+    if (!eventInput.value) {
+      eventInput.value = '';
+    }
     tickets.value = [];
   }
 });
