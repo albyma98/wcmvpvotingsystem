@@ -12,11 +12,11 @@ import (
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
-	"github.com/julienschmidt/httprouter"
+	"github.com/go-chi/chi/v5"
 )
 
 // Teams
-func (rt *_router) listTeams(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) listTeams(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	teams, err := rt.db.ListTeams()
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list teams")
@@ -26,7 +26,7 @@ func (rt *_router) listTeams(w http.ResponseWriter, r *http.Request, ps httprout
 	_ = json.NewEncoder(w).Encode(teams)
 }
 
-func (rt *_router) createTeam(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) createTeam(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var t struct {
 		Name string `json:"name"`
 	}
@@ -45,8 +45,8 @@ func (rt *_router) createTeam(w http.ResponseWriter, r *http.Request, ps httprou
 	}{ID: id})
 }
 
-func (rt *_router) updateTeam(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, _ := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) updateTeam(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	var t struct {
 		Name string `json:"name"`
 	}
@@ -62,8 +62,8 @@ func (rt *_router) updateTeam(w http.ResponseWriter, r *http.Request, ps httprou
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (rt *_router) deleteTeam(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, _ := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) deleteTeam(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	if err := rt.db.DeleteTeam(id); err != nil {
 		ctx.Logger.WithError(err).Error("cannot delete team")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -73,7 +73,7 @@ func (rt *_router) deleteTeam(w http.ResponseWriter, r *http.Request, ps httprou
 }
 
 // Players
-func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	players, err := rt.db.ListPlayers()
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list players")
@@ -83,7 +83,7 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ps httpro
 	_ = json.NewEncoder(w).Encode(players)
 }
 
-func (rt *_router) createPlayer(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) createPlayer(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var p database.Player
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -100,8 +100,8 @@ func (rt *_router) createPlayer(w http.ResponseWriter, r *http.Request, ps httpr
 	}{ID: id})
 }
 
-func (rt *_router) updatePlayer(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, _ := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) updatePlayer(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	var p database.Player
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -116,8 +116,8 @@ func (rt *_router) updatePlayer(w http.ResponseWriter, r *http.Request, ps httpr
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (rt *_router) deletePlayer(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, _ := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) deletePlayer(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	if err := rt.db.DeletePlayer(id); err != nil {
 		ctx.Logger.WithError(err).Error("cannot delete player")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -127,7 +127,7 @@ func (rt *_router) deletePlayer(w http.ResponseWriter, r *http.Request, ps httpr
 }
 
 // Events
-func (rt *_router) listEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) listEvents(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	events, err := rt.db.ListEvents()
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list events")
@@ -137,7 +137,7 @@ func (rt *_router) listEvents(w http.ResponseWriter, r *http.Request, ps httprou
 	_ = json.NewEncoder(w).Encode(events)
 }
 
-func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var e database.Event
 	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -154,8 +154,8 @@ func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ps httpro
 	}{ID: id})
 }
 
-func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, _ := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	var e database.Event
 	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -170,8 +170,8 @@ func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ps httpro
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (rt *_router) deleteEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, _ := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) deleteEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	if err := rt.db.DeleteEvent(id); err != nil {
 		ctx.Logger.WithError(err).Error("cannot delete event")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -180,8 +180,8 @@ func (rt *_router) deleteEvent(w http.ResponseWriter, r *http.Request, ps httpro
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, err := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil || id <= 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -200,7 +200,7 @@ func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ps http
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	if err := rt.db.ClearActiveEvent(); err != nil {
 		ctx.Logger.WithError(err).Error("cannot deactivate events")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -209,8 +209,8 @@ func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ps h
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (rt *_router) listEventTickets(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	eventID, err := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) listEventTickets(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	eventID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil || eventID <= 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -227,7 +227,7 @@ func (rt *_router) listEventTickets(w http.ResponseWriter, r *http.Request, ps h
 }
 
 // Votes
-func (rt *_router) listVotes(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) listVotes(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	votes, err := rt.db.ListVotes()
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list votes")
@@ -237,8 +237,8 @@ func (rt *_router) listVotes(w http.ResponseWriter, r *http.Request, ps httprout
 	_ = json.NewEncoder(w).Encode(votes)
 }
 
-func (rt *_router) deleteVote(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, _ := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) deleteVote(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	if err := rt.db.DeleteVote(id); err != nil {
 		ctx.Logger.WithError(err).Error("cannot delete vote")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -248,7 +248,7 @@ func (rt *_router) deleteVote(w http.ResponseWriter, r *http.Request, ps httprou
 }
 
 // Admins
-func (rt *_router) listAdmins(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) listAdmins(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	admins, err := rt.db.ListAdmins()
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list admins")
@@ -273,7 +273,7 @@ func (rt *_router) listAdmins(w http.ResponseWriter, r *http.Request, ps httprou
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func (rt *_router) createAdmin(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) createAdmin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var payload struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -305,8 +305,8 @@ func (rt *_router) createAdmin(w http.ResponseWriter, r *http.Request, ps httpro
 	}{ID: id})
 }
 
-func (rt *_router) updateAdmin(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, _ := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) updateAdmin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	var payload struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -330,8 +330,8 @@ func (rt *_router) updateAdmin(w http.ResponseWriter, r *http.Request, ps httpro
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (rt *_router) deleteAdmin(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	id, _ := strconv.Atoi(ps.ByName("id"))
+func (rt *_router) deleteAdmin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	if err := rt.db.DeleteAdmin(id); err != nil {
 		ctx.Logger.WithError(err).Error("cannot delete admin")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -340,7 +340,7 @@ func (rt *_router) deleteAdmin(w http.ResponseWriter, r *http.Request, ps httpro
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var payload struct {
 		Username string `json:"username"`
 		Password string `json:"password"`

@@ -1,20 +1,20 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/gofrs/uuid"
-	"github.com/julienschmidt/httprouter"
 	"github.com/sirupsen/logrus"
-	"net/http"
 )
 
 // httpRouterHandler is the signature for functions that accepts a reqcontext.RequestContext in addition to those
-// required by the httprouter package.
-type httpRouterHandler func(http.ResponseWriter, *http.Request, httprouter.Params, reqcontext.RequestContext)
+// required by the standard http handlers.
+type httpRouterHandler func(http.ResponseWriter, *http.Request, reqcontext.RequestContext)
 
 // wrap parses the request and adds a reqcontext.RequestContext instance related to the request.
-func (rt *_router) wrap(fn httpRouterHandler) func(http.ResponseWriter, *http.Request, httprouter.Params) {
-	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func (rt *_router) wrap(fn httpRouterHandler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		reqUUID, err := uuid.NewV4()
 		if err != nil {
 			rt.baseLogger.WithError(err).Error("can't generate a request UUID")
@@ -32,6 +32,6 @@ func (rt *_router) wrap(fn httpRouterHandler) func(http.ResponseWriter, *http.Re
 		})
 		ctx.Logger.Infof("handling %s %s", r.Method, r.URL.Path)
 		// Call the next handler in chain (usually, the handler function for the path)
-		fn(w, r, ps, ctx)
+		fn(w, r, ctx)
 	}
 }

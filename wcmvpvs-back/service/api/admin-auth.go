@@ -9,18 +9,17 @@ import (
 	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
-	"github.com/julienschmidt/httprouter"
 )
 
-func (rt *_router) wrapAdmin(fn httpRouterHandler) func(http.ResponseWriter, *http.Request, httprouter.Params) {
-	return rt.wrap(func(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) wrapAdmin(fn httpRouterHandler) http.HandlerFunc {
+	return rt.wrap(func(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 		token := parseBearerToken(r.Header.Get("Authorization"))
 		if !rt.validateAdminToken(token) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 
-		fn(w, r, ps, ctx)
+		fn(w, r, ctx)
 	})
 }
 

@@ -38,12 +38,11 @@ package api
 
 import (
 	"errors"
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
-	"github.com/julienschmidt/httprouter"
+	"github.com/go-chi/chi/v5"
 	"github.com/sirupsen/logrus"
 )
 
@@ -61,8 +60,8 @@ type Config struct {
 
 // Router is the package API interface representing an API handler builder
 type Router interface {
-	// Handler returns an HTTP handler for APIs provided in this package
-	Handler() http.Handler
+	// Handler returns a chi router for APIs provided in this package
+	Handler() chi.Router
 
 	// Close terminates any resource used in the package
 	Close() error
@@ -80,9 +79,7 @@ func New(cfg Config) (Router, error) {
 
 	// Create a new router where we will register HTTP endpoints. The server will pass requests to this router to be
 	// handled.
-	router := httprouter.New()
-	router.RedirectTrailingSlash = false
-	router.RedirectFixedPath = false
+	router := chi.NewRouter()
 
 	return &_router{
 		router:         router,
@@ -95,7 +92,7 @@ func New(cfg Config) (Router, error) {
 }
 
 type _router struct {
-	router *httprouter.Router
+	router chi.Router
 
 	// baseLogger is a logger for non-requests contexts, like goroutines or background tasks not started by a request.
 	// Use context logger if available (e.g., in requests) instead of this logger.
