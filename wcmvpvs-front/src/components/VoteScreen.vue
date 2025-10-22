@@ -7,7 +7,19 @@ import { vote } from '../api';
 const props = defineProps({
   eventId: {
     type: Number,
-    default: 1,
+    default: undefined,
+  },
+  activeEvent: {
+    type: Object,
+    default: null,
+  },
+  activeEventChecked: {
+    type: Boolean,
+    default: false,
+  },
+  loadingActiveEvent: {
+    type: Boolean,
+    default: false,
   },
 });
 
@@ -165,17 +177,18 @@ const showTicketModal = ref(false);
 const ticketCode = ref('');
 const ticketQrUrl = ref('');
 
-watch(
-  () => props.eventId,
-  () => {
-    votedPlayerId.value = null;
-    pendingPlayer.value = null;
-    errorMessage.value = '';
-    showTicketModal.value = false;
-    ticketCode.value = '';
-    ticketQrUrl.value = '';
-  }
-);
+const currentEventId = computed(() => props.eventId ?? props.activeEvent?.id);
+const showInactiveNotice = computed(() => props.activeEventChecked && !props.activeEvent);
+const isCheckingActiveEvent = computed(() => props.loadingActiveEvent && !props.activeEventChecked);
+
+watch(currentEventId, () => {
+  votedPlayerId.value = null;
+  pendingPlayer.value = null;
+  errorMessage.value = '';
+  showTicketModal.value = false;
+  ticketCode.value = '';
+  ticketQrUrl.value = '';
+});
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -196,7 +209,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateCardSize);
 });
 
-const disableVotes = computed(() => Boolean(votedPlayerId.value));
+const disableVotes = computed(
+  () => Boolean(votedPlayerId.value) || showInactiveNotice.value || isCheckingActiveEvent.value
+);
 
 const openPlayerModal = (player) => {
   if ((disableVotes.value && votedPlayerId.value !== player.id) || isVoting.value) {
@@ -231,8 +246,15 @@ const voteForPlayer = async (player) => {
   errorMessage.value = '';
   isVoting.value = true;
 
+  const eventId = currentEventId.value;
+  if (!eventId) {
+    errorMessage.value = 'Nessun evento attivo al momento.';
+    isVoting.value = false;
+    return;
+  }
+
   try {
-    const response = await vote({ eventId: props.eventId, playerId: player.id });
+    const response = await vote({ eventId, playerId: player.id });
     if (response?.ok) {
       const voteResult = response.vote || {};
       votedPlayerId.value = player.id;
@@ -287,7 +309,10 @@ const confirmVote = () => {
 
 <template>
   <div class="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col">
-    <main class="flex-1 overflow-y-auto">
+    <main
+      v-if="!isCheckingActiveEvent && !showInactiveNotice"
+      class="flex-1 overflow-y-auto"
+    >
       <div class="flex flex-col gap-10">
         <section class="px-4">
           <div class="mb-6 text-center">
@@ -361,9 +386,33 @@ const confirmVote = () => {
       </div>
     </main>
 
+    <div
+      v-else
+      class="flex flex-1 items-center justify-center px-6 py-12 text-center"
+    >
+      <div class="inactive-panel">
+        <template v-if="isCheckingActiveEvent">
+          <h2 class="text-2xl font-semibold uppercase tracking-[0.2em] text-slate-100">
+            Verifica evento in corso…
+          </h2>
+          <p class="mt-4 text-base text-slate-300">
+            Stiamo controllando se è disponibile una partita su cui votare.
+          </p>
+        </template>
+        <template v-else>
+          <h2 class="text-2xl font-semibold uppercase tracking-[0.2em] text-slate-100">
+            Nessuna partita in corso
+          </h2>
+          <p class="mt-4 text-base text-slate-300">
+            Attendi la prossima partita per votare il tuo MVP. Ti aspettiamo al palazzetto!
+          </p>
+        </template>
+      </div>
+    </div>
+
     <transition name="fade">
       <div
-        v-if="isModalOpen"
+        v-if="!showInactiveNotice && isModalOpen"
         class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-6 py-10"
       >
         <button class="absolute inset-0" type="button" @click="closeModal" aria-label="Chiudi"></button>
@@ -402,7 +451,7 @@ const confirmVote = () => {
 
     <transition name="fade">
       <div
-        v-if="showTicketModal"
+        v-if="!showInactiveNotice && showTicketModal"
         class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-6 py-10"
       >
         <button class="absolute inset-0" type="button" @click="closeTicketModal" aria-label="Chiudi"></button>
@@ -444,5 +493,24 @@ const confirmVote = () => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.inactive-panel {
+  width: 100%;
+  max-width: 480px;
+  padding: 2.5rem 2rem;
+  border-radius: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.65);
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.55);
+}
+
+.inactive-panel h2 {
+  margin: 0;
+}
+
+.inactive-panel p {
+  margin: 0;
+  line-height: 1.6;
 }
 </style>

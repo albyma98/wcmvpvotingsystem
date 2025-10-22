@@ -1,7 +1,9 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -29,6 +31,24 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httproute
 	}
 
 	ctx.Logger.Infof("vote received for player %d event %d", req.PlayerID, req.EventID)
+
+	activeEvent, err := rt.db.GetActiveEvent()
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			ctx.Logger.Warn("vote attempted with no active event")
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot retrieve active event")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if activeEvent.ID != req.EventID || !activeEvent.IsActive {
+		ctx.Logger.Warn("vote attempted for inactive event")
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
 
 	var (
 		code      string
