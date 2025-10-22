@@ -337,7 +337,7 @@ async function loadTickets(eventId) {
   globalError.value = '';
   drawError.value = '';
   try {
-    const { data } = await secureRequest(() => apiClient.get(`/events/${eventId}/tickets`, authHeaders.value));
+    const { data } = await secureRequest(() => apiClient.get(`/events/tickets/${eventId}`, authHeaders.value));
     tickets.value = Array.isArray(data) ? data.map(normalizeTicket) : [];
     if (!tickets.value.length) {
       displayCode.value = 'Nessun ticket disponibile';

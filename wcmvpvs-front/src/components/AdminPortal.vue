@@ -601,7 +601,7 @@ async function deleteEvent(id) {
 
 async function activateEvent(id) {
   globalError.value = '';
-  await secureRequest(() => apiClient.post(`/events/${id}/activate`, null, authHeaders.value));
+  await secureRequest(() => apiClient.post(`/events/activate/${id}`, null, authHeaders.value));
   await loadEvents();
 }
 
