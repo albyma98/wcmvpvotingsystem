@@ -33,7 +33,12 @@
     <section v-else class="card scanner-card">
       <div class="scanner-grid">
         <div class="video-wrapper">
-          <video ref="video" autoplay playsinline muted></video>
+          <video
+            ref="video"
+            playsinline
+            muted
+            @click="startScanner"
+          ></video>
           <p v-if="cameraError" class="error">{{ cameraError }}</p>
         </div>
         <div class="status-panel">
@@ -48,23 +53,28 @@
 </template>
 
 <script setup>
+import { BrowserMultiFormatReader, NotFoundException } from '@zxing/browser';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
 
 const basePath = import.meta.env.BASE_URL ?? '/';
 
 const video = ref(null);
-const detectorSupported = typeof window !== 'undefined' && 'BarcodeDetector' in window;
-const cameraError = ref(detectorSupported ? '' : 'BarcodeDetector API non supportata dal browser.');
+const supportsBarcodeDetector = typeof window !== 'undefined' && 'BarcodeDetector' in window;
+const cameraError = ref('');
 const statusMessage = ref('');
 const statusType = ref('info');
 const lastValidatedCode = ref('');
 const lastDetectedPayload = ref('');
 const lastDetectionAt = ref(0);
 const isValidating = ref(false);
+const isScannerActive = ref(false);
+const hasUserActivated = ref(false);
 let stream;
 let detector;
 let animationFrameId;
+let zxingReader;
+let zxingControls;
 
 const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
@@ -133,6 +143,7 @@ function logout() {
   token.value = '';
   activeUsername.value = '';
   stopScanner();
+  hasUserActivated.value = false;
 }
 
 function resetStatus() {
@@ -147,32 +158,77 @@ function clearLastPayload() {
   lastDetectionAt.value = 0;
 }
 
-async function ensureScanner() {
-  if (!detectorSupported) {
+function resumeScannerSoon(delay = 400) {
+  if (!hasUserActivated.value || !isAuthenticated.value) {
     return;
   }
+  setTimeout(() => {
+    if (hasUserActivated.value && isAuthenticated.value && !isScannerActive.value && !isValidating.value) {
+      ensureScanner();
+    }
+  }, delay);
+}
+
+async function ensureScanner() {
   if (!isAuthenticated.value) {
     stopScanner();
+    return;
+  }
+  if (!hasUserActivated.value) {
+    return;
+  }
+  if (isScannerActive.value) {
     return;
   }
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
     cameraError.value = 'Questo dispositivo non supporta la scansione.';
     return;
   }
-  if (stream) {
-    return;
-  }
+
   try {
-    detector = detector || new window.BarcodeDetector({ formats: ['qr_code'] });
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    if (video.value) {
-      video.value.srcObject = stream;
+    if (supportsBarcodeDetector) {
+      detector = detector || new window.BarcodeDetector({ formats: ['qr_code'] });
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+      });
+      if (video.value) {
+        video.value.srcObject = stream;
+        await video.value.play().catch(() => {});
+      }
+      cameraError.value = '';
+      isScannerActive.value = true;
+      scheduleScan();
+    } else {
+      if (!zxingReader) {
+        zxingReader = new BrowserMultiFormatReader();
+      }
+      zxingControls = await zxingReader.decodeFromConstraints(
+        { audio: false, video: { facingMode: { ideal: 'environment' } } },
+        video.value,
+        (result, err) => {
+          if (result) {
+            const rawValue = result.getText()?.trim();
+            if (rawValue) {
+              stopScanner();
+              handlePayload(rawValue);
+            }
+          }
+          if (err && !(err instanceof NotFoundException)) {
+            console.error('ZXing detection error', err);
+            cameraError.value = 'Errore durante la scansione.';
+          }
+        },
+      );
+      if (video.value) {
+        await video.value.play().catch(() => {});
+      }
+      cameraError.value = '';
+      isScannerActive.value = true;
     }
-    cameraError.value = '';
-    scheduleScan();
   } catch (error) {
     console.error('camera access error', error);
     cameraError.value = 'Impossibile accedere alla fotocamera.';
+    stopScanner();
   }
 }
 
@@ -181,23 +237,41 @@ function stopScanner() {
     cancelAnimationFrame(animationFrameId);
     animationFrameId = undefined;
   }
+  if (zxingControls) {
+    zxingControls.stop();
+    zxingControls = undefined;
+  }
   if (stream) {
     stream.getTracks().forEach((track) => track.stop());
     stream = undefined;
   }
+  if (video.value) {
+    const mediaStream = video.value.srcObject;
+    if (mediaStream) {
+      mediaStream.getTracks().forEach((track) => track.stop());
+    }
+    video.value.pause?.();
+    video.value.srcObject = null;
+  }
+  if (zxingReader) {
+    zxingReader.reset();
+  }
   detector = undefined;
+  isScannerActive.value = false;
 }
 
 function scheduleScan() {
-  if (!detectorSupported || !video.value) {
+  if (!isScannerActive.value || !detector || !video.value) {
     return;
   }
   animationFrameId = requestAnimationFrame(scanFrame);
 }
 
 async function scanFrame() {
-  if (!detector || !video.value || !isAuthenticated.value) {
-    animationFrameId = requestAnimationFrame(scanFrame);
+  if (!isScannerActive.value || !detector || !video.value || !isAuthenticated.value) {
+    if (isScannerActive.value) {
+      animationFrameId = requestAnimationFrame(scanFrame);
+    }
     return;
   }
   if (video.value.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
@@ -206,19 +280,24 @@ async function scanFrame() {
       if (barcodes.length > 0) {
         const rawValue = barcodes[0].rawValue?.trim();
         if (rawValue) {
+          stopScanner();
           handlePayload(rawValue);
+          return;
         }
       }
     } catch (error) {
       console.error('barcode detection error', error);
     }
   }
-  animationFrameId = requestAnimationFrame(scanFrame);
+  if (isScannerActive.value) {
+    animationFrameId = requestAnimationFrame(scanFrame);
+  }
 }
 
 function handlePayload(rawValue) {
   const now = Date.now();
   if (rawValue === lastDetectedPayload.value && now - lastDetectionAt.value < 2500) {
+    resumeScannerSoon(600);
     return;
   }
   lastDetectedPayload.value = rawValue;
@@ -231,6 +310,7 @@ function handlePayload(rawValue) {
     statusType.value = 'error';
     statusMessage.value = 'QR code non riconosciuto.';
     console.error('invalid qr payload', error, rawValue);
+    resumeScannerSoon(1200);
     return;
   }
   const code = String(parsed?.code || '').trim();
@@ -238,6 +318,7 @@ function handlePayload(rawValue) {
   if (!code || !signature) {
     statusType.value = 'error';
     statusMessage.value = 'QR code incompleto.';
+    resumeScannerSoon(1200);
     return;
   }
   validateTicket(code, signature);
@@ -283,12 +364,23 @@ async function validateTicket(code, signature) {
         resetStatus();
       }
       clearLastPayload();
+      if (hasUserActivated.value && isAuthenticated.value) {
+        ensureScanner();
+      }
     }, 2000);
   }
 }
 
+function startScanner() {
+  if (!isAuthenticated.value) {
+    return;
+  }
+  hasUserActivated.value = true;
+  ensureScanner();
+}
+
 onMounted(() => {
-  if (isAuthenticated.value) {
+  if (isAuthenticated.value && hasUserActivated.value) {
     ensureScanner();
   }
 });
@@ -299,10 +391,14 @@ onBeforeUnmount(() => {
 
 watch(isAuthenticated, (auth) => {
   if (auth) {
-    ensureScanner();
+    if (hasUserActivated.value) {
+      ensureScanner();
+    }
   } else {
     resetStatus();
     clearLastPayload();
+    hasUserActivated.value = false;
+    stopScanner();
   }
 });
 </script>
