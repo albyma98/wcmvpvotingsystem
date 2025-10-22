@@ -199,7 +199,9 @@ func run() error {
 		err = apiserver.Shutdown(ctx)
 		if err != nil {
 			logger.WithError(err).Warning("error during graceful shutdown of HTTP server")
-			err = apiserver.Close()
+			if closeErr := apiserver.Close(); closeErr != nil {
+				logger.WithError(closeErr).Warning("error closing HTTP server")
+			}
 		}
 
 	}
