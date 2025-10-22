@@ -34,6 +34,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // AppDatabase is the high level interface for the DB
@@ -58,6 +59,7 @@ type Event struct {
 	Team2ID       int    `json:"team2_id"`
 	StartDateTime string `json:"start_datetime"`
 	Location      string `json:"location"`
+	IsActive      bool   `json:"is_active"`
 }
 
 type Vote struct {
@@ -104,6 +106,9 @@ type AppDatabase interface {
 	ListEvents() ([]Event, error)
 	UpdateEvent(e Event) error
 	DeleteEvent(id int) error
+	SetActiveEvent(eventID int) error
+	ClearActiveEvent() error
+	GetActiveEvent() (Event, error)
 	ListVotes() ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
 	DeleteVote(id int) error
@@ -168,6 +173,12 @@ func New(db *sql.DB) (AppDatabase, error) {
 			return nil, fmt.Errorf("error creating events table: %w", err)
 		}
 
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events active column: %w", err)
+		}
 	}
 
 	// Create admins table if not exists
@@ -302,7 +313,7 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 }
 
 func (db *appdbimpl) ListEvents() ([]Event, error) {
-	rows, err := db.c.Query(`SELECT id, team1_id, team2_id, start_datetime, location FROM events`)
+	rows, err := db.c.Query(`SELECT id, team1_id, team2_id, start_datetime, location, is_active FROM events`)
 	if err != nil {
 		return nil, err
 	}
@@ -310,9 +321,11 @@ func (db *appdbimpl) ListEvents() ([]Event, error) {
 	var es []Event
 	for rows.Next() {
 		var e Event
-		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location); err != nil {
+		var isActive int
+		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive); err != nil {
 			return nil, err
 		}
+		e.IsActive = isActive == 1
 		es = append(es, e)
 	}
 	return es, nil
@@ -326,6 +339,48 @@ func (db *appdbimpl) UpdateEvent(e Event) error {
 func (db *appdbimpl) DeleteEvent(id int) error {
 	_, err := db.c.Exec(`DELETE FROM events WHERE id=?`, id)
 	return err
+}
+
+func (db *appdbimpl) SetActiveEvent(eventID int) error {
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`UPDATE events SET is_active = 0`); err != nil {
+		return err
+	}
+
+	res, err := tx.Exec(`UPDATE events SET is_active = 1 WHERE id = ?`, eventID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return tx.Commit()
+}
+
+func (db *appdbimpl) ClearActiveEvent() error {
+	_, err := db.c.Exec(`UPDATE events SET is_active = 0`)
+	return err
+}
+
+func (db *appdbimpl) GetActiveEvent() (Event, error) {
+	var e Event
+	var isActive int
+	err := db.c.QueryRow(`SELECT id, team1_id, team2_id, start_datetime, location, is_active FROM events WHERE is_active = 1 LIMIT 1`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive)
+	if err != nil {
+		return Event{}, err
+	}
+	e.IsActive = isActive == 1
+	return e, nil
 }
 
 // Votes listing and deletion

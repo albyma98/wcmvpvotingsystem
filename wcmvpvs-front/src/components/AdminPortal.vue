@@ -50,6 +50,16 @@
           <h2>Eventi</h2>
           <p>Crea una nuova partita per abilitare il voto pubblico.</p>
         </header>
+        <div class="actions-row">
+          <button
+            class="btn outline"
+            type="button"
+            @click="deactivateEvents"
+            :disabled="!activeEventId || isDisablingEvents"
+          >
+            {{ isDisablingEvents ? 'Disattivazione…' : 'Disattiva eventi' }}
+          </button>
+        </div>
         <p v-if="!hasEnoughTeams" class="info-banner">
           Aggiungi almeno due squadre dalla sezione "Squadre" per abilitare la creazione di un evento.
         </p>
@@ -117,9 +127,12 @@
         </div>
 
         <ul class="item-list">
-          <li v-for="event in events" :key="event.id" class="item">
+          <li v-for="event in events" :key="event.id" :class="['item', { active: event.is_active }]">
             <div class="item-body">
-              <h3>{{ eventLabel(event) }}</h3>
+              <h3>
+                {{ eventLabel(event) }}
+                <span v-if="event.is_active" class="badge">Attivo</span>
+              </h3>
               <p class="muted">{{ formatEventDate(event.start_datetime) }} • {{ event.location || 'Location da definire' }}</p>
               <p class="muted">
                 Link voto:
@@ -127,6 +140,16 @@
               </p>
             </div>
             <div class="item-actions">
+              <button
+                class="btn success"
+                type="button"
+                @click="activateEvent(event.id)"
+                :disabled="event.is_active || updatingEventId === event.id"
+              >
+                <span v-if="event.is_active">Evento attivo</span>
+                <span v-else-if="updatingEventId === event.id">Attivazione…</span>
+                <span v-else>Attiva</span>
+              </button>
               <button class="btn secondary" type="button" @click="openVote(event.id)">Apri pagina voto</button>
               <button class="btn danger" type="button" @click="deleteEvent(event.id)">Elimina</button>
             </div>
@@ -227,6 +250,8 @@ const teams = ref([]);
 const players = ref([]);
 const events = ref([]);
 const admins = ref([]);
+const updatingEventId = ref(0);
+const isDisablingEvents = ref(false);
 
 const newTeamName = ref('');
 const newPlayer = reactive({
@@ -255,6 +280,10 @@ const newAdmin = reactive({
 const lastCreatedEventLink = ref('');
 
 const hasEnoughTeams = computed(() => teams.value.length >= 2);
+const activeEventId = computed(() => {
+  const activeEvent = events.value.find((event) => event.is_active);
+  return activeEvent ? activeEvent.id : 0;
+});
 
 const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
@@ -580,6 +609,34 @@ async function deleteEvent(id) {
   await loadEvents();
 }
 
+async function activateEvent(id) {
+  if (updatingEventId.value === id) {
+    return;
+  }
+  globalError.value = '';
+  updatingEventId.value = id;
+  try {
+    await secureRequest(() => apiClient.post(`/events/${id}/activate`, {}, authHeaders.value));
+    await loadEvents();
+  } finally {
+    updatingEventId.value = 0;
+  }
+}
+
+async function deactivateEvents() {
+  if (isDisablingEvents.value) {
+    return;
+  }
+  globalError.value = '';
+  isDisablingEvents.value = true;
+  try {
+    await secureRequest(() => apiClient.post('/events/deactivate', {}, authHeaders.value));
+    await loadEvents();
+  } finally {
+    isDisablingEvents.value = false;
+  }
+}
+
 async function createAdmin() {
   globalError.value = '';
   await secureRequest(() => apiClient.post('/admins', newAdmin, authHeaders.value));
@@ -715,6 +772,18 @@ if (isAuthenticated.value) {
   font-weight: 500;
 }
 
+.actions-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.actions-row .btn {
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+
 .form-grid {
   display: grid;
   gap: 1rem;
@@ -783,6 +852,16 @@ select:focus {
   color: #0f172a;
 }
 
+.btn.success {
+  background: #22c55e;
+  color: #fff;
+}
+
+.btn.success:disabled {
+  opacity: 0.8;
+  cursor: default;
+}
+
 .btn.outline {
   background: transparent;
   color: #2563eb;
@@ -834,6 +913,11 @@ select:focus {
   background: rgba(248, 250, 252, 0.8);
 }
 
+.item.active {
+  border-color: rgba(99, 102, 241, 0.55);
+  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.2);
+}
+
 @media (min-width: 768px) {
   .item {
     flex-direction: row;
@@ -844,6 +928,20 @@ select:focus {
 
 .item-body h3 {
   margin: 0 0 0.35rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  margin-left: 0.5rem;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.18);
+  color: #4338ca;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .item-actions {

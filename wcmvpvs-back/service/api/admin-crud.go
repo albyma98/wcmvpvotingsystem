@@ -180,6 +180,35 @@ func (rt *_router) deleteEvent(w http.ResponseWriter, r *http.Request, ps httpro
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	id, err := strconv.Atoi(ps.ByName("id"))
+	if err != nil || id <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := rt.db.SetActiveEvent(id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot activate event")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	if err := rt.db.ClearActiveEvent(); err != nil {
+		ctx.Logger.WithError(err).Error("cannot deactivate events")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (rt *_router) listEventTickets(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	eventID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil || eventID <= 0 {
