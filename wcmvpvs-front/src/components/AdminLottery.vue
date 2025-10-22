@@ -7,6 +7,7 @@
       </div>
       <div class="header-actions" v-if="isAuthenticated">
         <span class="muted">Connesso come <strong>{{ activeUsername }}</strong></span>
+        <button class="btn ghost" type="button" @click="goToScanner">Scanner QR</button>
         <button class="btn ghost" type="button" @click="goToPortal">Torna al pannello</button>
         <button class="btn secondary" type="button" @click="logout">Esci</button>
       </div>
@@ -395,6 +396,18 @@ function startDraw() {
     displayCode.value = formatTicketDisplay(finalTicket);
     isDrawing.value = false;
   }, 3000);
+}
+
+function goToScanner() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const target = new URL(basePath || '/', window.location.origin);
+  if (!target.pathname.endsWith('/')) {
+    target.pathname = `${target.pathname}/`;
+  }
+  target.pathname = `${target.pathname.replace(/\/+$/, '')}/admin/lottery/scan`;
+  window.location.href = target.toString();
 }
 
 function goToPortal() {

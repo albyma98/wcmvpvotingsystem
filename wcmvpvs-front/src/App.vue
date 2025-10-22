@@ -1,6 +1,7 @@
 <template>
   <div class="app-shell">
-    <AdminLottery v-if="adminView === 'lottery'" />
+    <AdminLotteryScanner v-if="adminView === 'lottery-scan'" />
+    <AdminLottery v-else-if="adminView === 'lottery'" />
     <AdminPortal v-else-if="adminView === 'portal'" />
     <VoteScreen
       v-else
@@ -16,6 +17,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AdminPortal from './components/AdminPortal.vue';
 import AdminLottery from './components/AdminLottery.vue';
+import AdminLotteryScanner from './components/AdminLotteryScanner.vue';
 import VoteScreen from './components/VoteScreen.vue';
 import { apiClient } from './api';
 
@@ -35,6 +37,9 @@ const hasCheckedActiveEvent = ref(false);
 const adminView = computed(() => {
   if (!currentPath.value.startsWith('/admin')) {
     return 'public';
+  }
+  if (currentPath.value.startsWith('/admin/lottery/scan')) {
+    return 'lottery-scan';
   }
   if (currentPath.value.startsWith('/admin/lottery')) {
     return 'lottery';
