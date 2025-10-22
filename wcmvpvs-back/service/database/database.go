@@ -34,6 +34,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // AppDatabase is the high level interface for the DB
@@ -58,6 +59,7 @@ type Event struct {
 	Team2ID       int    `json:"team2_id"`
 	StartDateTime string `json:"start_datetime"`
 	Location      string `json:"location"`
+	IsActive      bool   `json:"is_active"`
 }
 
 type Vote struct {
@@ -105,6 +107,10 @@ type AppDatabase interface {
 	ListEvents() ([]Event, error)
 	UpdateEvent(e Event) error
 	DeleteEvent(id int) error
+	GetEvent(id int) (Event, error)
+	GetActiveEvent() (Event, error)
+	SetActiveEvent(id int) error
+	ClearActiveEvent() error
 	ListVotes() ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
 	DeleteVote(id int) error
@@ -163,12 +169,20 @@ func New(db *sql.DB) (AppDatabase, error) {
 	// Create events table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='events';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, team1_id INTEGER NOT NULL, team2_id INTEGER NOT NULL, start_datetime TEXT NOT NULL, location TEXT, FOREIGN KEY (team1_id) REFERENCES teams(id), FOREIGN KEY (team2_id) REFERENCES teams(id));`
+		sqlStmt := `CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, team1_id INTEGER NOT NULL, team2_id INTEGER NOT NULL, start_datetime TEXT NOT NULL, location TEXT, is_active INTEGER NOT NULL DEFAULT 0, FOREIGN KEY (team1_id) REFERENCES teams(id), FOREIGN KEY (team2_id) REFERENCES teams(id));`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating events table: %w", err)
 		}
 
+	} else if err != nil {
+		return nil, fmt.Errorf("error checking events table: %w", err)
+	} else {
+		if _, alterErr := db.Exec(`ALTER TABLE events ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0`); alterErr != nil {
+			if !strings.Contains(strings.ToLower(alterErr.Error()), "duplicate column name") {
+				return nil, fmt.Errorf("error ensuring events active column: %w", alterErr)
+			}
+		}
 	}
 
 	// Create admins table if not exists
@@ -319,17 +333,21 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 }
 
 func (db *appdbimpl) ListEvents() ([]Event, error) {
-	rows, err := db.c.Query(`SELECT id, team1_id, team2_id, start_datetime, location FROM events`)
+	rows, err := db.c.Query(`SELECT id, team1_id, team2_id, start_datetime, location, is_active FROM events ORDER BY is_active DESC, start_datetime DESC, id DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var es []Event
 	for rows.Next() {
-		var e Event
-		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location); err != nil {
+		var (
+			e       Event
+			activeI int
+		)
+		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &activeI); err != nil {
 			return nil, err
 		}
+		e.IsActive = activeI != 0
 		es = append(es, e)
 	}
 	return es, nil
@@ -342,6 +360,64 @@ func (db *appdbimpl) UpdateEvent(e Event) error {
 
 func (db *appdbimpl) DeleteEvent(id int) error {
 	_, err := db.c.Exec(`DELETE FROM events WHERE id=?`, id)
+	return err
+}
+
+func (db *appdbimpl) GetEvent(id int) (Event, error) {
+	var (
+		e       Event
+		activeI int
+	)
+	err := db.c.QueryRow(`SELECT id, team1_id, team2_id, start_datetime, location, is_active FROM events WHERE id=?`, id).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &activeI)
+	if err != nil {
+		return Event{}, err
+	}
+	e.IsActive = activeI != 0
+	return e, nil
+}
+
+func (db *appdbimpl) GetActiveEvent() (Event, error) {
+	var (
+		e       Event
+		activeI int
+	)
+	err := db.c.QueryRow(`SELECT id, team1_id, team2_id, start_datetime, location, is_active FROM events WHERE is_active=1 LIMIT 1`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &activeI)
+	if err != nil {
+		return Event{}, err
+	}
+	e.IsActive = activeI != 0
+	return e, nil
+}
+
+func (db *appdbimpl) SetActiveEvent(id int) (err error) {
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var existing int
+	if err = tx.QueryRow(`SELECT COUNT(1) FROM events WHERE id=?`, id).Scan(&existing); err != nil {
+		return err
+	}
+	if existing == 0 {
+		return sql.ErrNoRows
+	}
+
+	if _, err = tx.Exec(`UPDATE events SET is_active = CASE WHEN id = ? THEN 1 ELSE 0 END`, id); err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	return err
+}
+
+func (db *appdbimpl) ClearActiveEvent() error {
+	_, err := db.c.Exec(`UPDATE events SET is_active = 0 WHERE is_active = 1`)
 	return err
 }
 
