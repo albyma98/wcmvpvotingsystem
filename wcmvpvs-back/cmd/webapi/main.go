@@ -42,6 +42,30 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func ensureBootstrapAdmin(db database.AppDatabase, logger *logrus.Logger) error {
+	const username = "Albyma"
+	const passhash = "4bdbc215d8dc3c571e802a69bced0c3071cc4a1f129ad97e15b357018aac6cd4"
+	const role = "superadmin"
+
+	// Se esiste già, non fare nulla
+	if _, err := db.GetAdminByUsername(username); err == nil {
+		logger.Infof("admin %q già presente, skip bootstrap", username)
+		return nil
+	}
+
+	// Prova a crearlo
+	id, err := db.CreateAdmin(database.Admin{
+		Username:     username,
+		PasswordHash: passhash,
+		Role:         role,
+	})
+	if err != nil {
+		return fmt.Errorf("creazione admin bootstrap: %w", err)
+	}
+	logger.Infof("admin bootstrap creato: %s (id=%d, role=%s)", username, id, role)
+	return nil
+}
+
 // main is the program entry point. The only purpose of this function is to call run() and set the exit code if there is
 // any error
 func main() {
@@ -97,7 +121,10 @@ func run() error {
 		logger.WithError(err).Error("error creating AppDatabase")
 		return fmt.Errorf("creating AppDatabase: %w", err)
 	}
-
+	if err := ensureBootstrapAdmin(db, logger); err != nil {
+		logger.WithError(err).Error("bootstrap admin fallito")
+		return err
+	}
 	// Start (main) API server
 	logger.Info("initializing API server")
 
