@@ -49,15 +49,7 @@ export async function vote({ eventId, playerId }) {
       device_id: getOrCreateDeviceId(),
     });
 
-    let ticket = null;
-    try {
-      const { data } = await apiClient.post('/ticket');
-      ticket = data;
-    } catch (ticketError) {
-      console.error('ticket api error', ticketError);
-    }
-
-    return { ok: true, vote: voteData, ticket };
+    return { ok: true, vote: voteData };
   } catch (error) {
     console.error('vote api error', error);
     return { ok: false, error };

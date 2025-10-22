@@ -14,8 +14,6 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.GET("/liveness", rt.liveness)
 
 	rt.router.POST("/vote", rt.wrap(rt.postVote))
-	rt.router.POST("/ticket", rt.wrap(rt.postTicket))
-
 	// Admin CRUD routes
 	rt.router.POST("/admin/login", rt.wrap(rt.adminLogin))
 

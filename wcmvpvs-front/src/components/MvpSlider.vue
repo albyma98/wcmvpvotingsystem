@@ -137,16 +137,14 @@ function cancelVote() {
 
 async function confirmVote() {
   try {
-    await api.post('/vote', {
+    const { data: voteResult } = await api.post('/vote', {
       player_id: selectedPlayer.value.id,
       event_id: props.eventId,
       device_id: getOrCreateDeviceId(),
     })
-    const ticketRes = await api.post('/ticket')
-    const ticket = ticketRes.data
-    voteCode.value = ticket.code
-    signature.value = ticket.signature
-    qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(ticket.qr_data)}`
+    voteCode.value = voteResult.code
+    signature.value = voteResult.signature
+    qrUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(voteResult.qr_data)}`
 
     showConfirm.value = false
     showCode.value = true

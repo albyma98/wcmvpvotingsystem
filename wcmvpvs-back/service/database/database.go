@@ -92,7 +92,6 @@ type AppDatabase interface {
 	GetName() (string, error)
 	SetName(name string) error
 	AddVote(eventID, playerID int, code, signature, deviceID string) error
-	AddTicket(code, signature string) error
 	CreateTeam(name string) (int, error)
 	ListTeams() ([]Team, error)
 	UpdateTeam(id int, name string) error
@@ -203,16 +202,6 @@ func New(db *sql.DB) (AppDatabase, error) {
 		return nil, fmt.Errorf("error ensuring votes code index: %w", err)
 	}
 
-	// Create tickets table if not exists
-	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tickets';`).Scan(&tableName)
-	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE, signature TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`
-		_, err = db.Exec(sqlStmt)
-		if err != nil {
-			return nil, fmt.Errorf("error creating tickets table: %w", err)
-		}
-	}
-
 	return &appdbimpl{
 		c: db,
 	}, nil
@@ -225,12 +214,6 @@ func (db *appdbimpl) Ping() error {
 // AddVote stores a vote in the database
 func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string) error {
 	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id) VALUES (?, ?, ?, ?, ?)`, eventID, playerID, code, signature, deviceID)
-	return err
-}
-
-// AddTicket stores a generated ticket in the database
-func (db *appdbimpl) AddTicket(code, signature string) error {
-	_, err := db.c.Exec(`INSERT INTO tickets (code, signature) VALUES (?, ?)`, code, signature)
 	return err
 }
 
@@ -365,7 +348,7 @@ func (db *appdbimpl) ListVotes() ([]Vote, error) {
 
 func (db *appdbimpl) ListEventTickets(eventID int) ([]EventTicket, error) {
 	rows, err := db.c.Query(`
-SELECT v.id, v.ticket_code, v.player_id, p.first_name, p.last_name, v.created_at
+SELECT v.id, v.ticket_code, v.player_id, IFNULL(p.first_name, ''), IFNULL(p.last_name, ''), v.created_at
 FROM votes v
 LEFT JOIN players p ON p.id = v.player_id
 WHERE v.event_id = ?
