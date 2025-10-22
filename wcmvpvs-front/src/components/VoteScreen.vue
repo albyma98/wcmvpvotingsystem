@@ -2,12 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
-import { vote } from '../api';
+import { apiClient, vote } from '../api';
+import teamLogo from '../assets/team-logo.svg';
 
 const props = defineProps({
   eventId: {
     type: Number,
-    default: 1,
+    default: undefined,
   },
 });
 
@@ -156,6 +157,17 @@ const sponsors = [
   },
 ];
 
+const eventInfo = ref(null);
+const isLoadingEvent = ref(true);
+const eventError = ref('');
+
+const providedEventId = computed(() =>
+  Number.isFinite(props.eventId) && props.eventId > 0 ? props.eventId : null,
+);
+
+const effectiveEventId = computed(() => providedEventId.value ?? eventInfo.value?.id ?? null);
+const hasEventAvailable = computed(() => Boolean(effectiveEventId.value));
+
 const votedPlayerId = ref(null);
 const isVoting = ref(false);
 const cardSize = ref(88);
@@ -165,19 +177,119 @@ const showTicketModal = ref(false);
 const ticketCode = ref('');
 const ticketQrUrl = ref('');
 
+const resetVotingState = () => {
+  votedPlayerId.value = null;
+  pendingPlayer.value = null;
+  errorMessage.value = '';
+  showTicketModal.value = false;
+  ticketCode.value = '';
+  ticketQrUrl.value = '';
+};
+
 watch(
-  () => props.eventId,
+  () => effectiveEventId.value,
   () => {
-    votedPlayerId.value = null;
-    pendingPlayer.value = null;
-    errorMessage.value = '';
-    showTicketModal.value = false;
-    ticketCode.value = '';
-    ticketQrUrl.value = '';
+    resetVotingState();
+  },
+  { immediate: true },
+);
+
+const loadEvent = async () => {
+  isLoadingEvent.value = true;
+  eventError.value = '';
+  const eventId = providedEventId.value;
+  try {
+    if (eventId) {
+      const { data } = await apiClient.get(`/events/${eventId}`);
+      if (eventId !== providedEventId.value) {
+        return;
+      }
+      eventInfo.value = data;
+    } else {
+      const { data } = await apiClient.get('/events/active');
+      if (eventId !== providedEventId.value) {
+        return;
+      }
+      eventInfo.value = data;
+    }
+  } catch (error) {
+    if (eventId !== providedEventId.value) {
+      return;
+    }
+    if (error?.response?.status === 404) {
+      eventInfo.value = null;
+      if (eventId) {
+        eventError.value = 'Evento non trovato.';
+      }
+    } else {
+      console.error('event load error', error);
+      eventInfo.value = null;
+      eventError.value = 'Impossibile caricare le informazioni sull\'evento. Riprova.';
+    }
+  } finally {
+    isLoadingEvent.value = false;
   }
+};
+
+watch(
+  () => providedEventId.value,
+  () => {
+    loadEvent();
+  },
+  { immediate: true },
 );
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const formatEventDate = (value) => {
+  if (!value) {
+    return '';
+  }
+  const date = new Date(value);
+  if (!Number.isNaN(date.valueOf())) {
+    return date.toLocaleString('it-IT', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+  return value.replace('T', ' ');
+};
+
+const eventDetails = computed(() => {
+  if (!eventInfo.value || !hasEventAvailable.value) {
+    return '';
+  }
+  const formattedDate = formatEventDate(eventInfo.value.start_datetime);
+  const location = (eventInfo.value.location || '').trim();
+  return [formattedDate, location].filter(Boolean).join(' • ');
+});
+
+const headerTitle = computed(() =>
+  hasEventAvailable.value ? 'JOy volley - Campobasso' : 'Nessuna partita in corso',
+);
+
+const headerSubtitle = computed(() => {
+  if (isLoadingEvent.value) {
+    return 'Caricamento evento in corso...';
+  }
+  if (!hasEventAvailable.value) {
+    return 'Attendi la prossima partita per votare il tuo MVP.';
+  }
+  return 'Tocca la card del tuo giocatore preferito per assegnargli il voto';
+});
+
+const inactiveTitle = computed(() =>
+  eventError.value ? "Impossibile caricare l'evento" : 'Nessuna partita in corso',
+);
+
+const inactiveDescription = computed(() =>
+  eventError.value ||
+    'Attendi la prossima partita per votare il tuo MVP. Ti aspettiamo al palazzetto!',
+);
 
 const updateCardSize = () => {
   const width = window.innerWidth;
@@ -196,9 +308,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateCardSize);
 });
 
-const disableVotes = computed(() => Boolean(votedPlayerId.value));
+const disableVotes = computed(
+  () => Boolean(votedPlayerId.value) || !hasEventAvailable.value || isLoadingEvent.value,
+);
 
 const openPlayerModal = (player) => {
+  if (!hasEventAvailable.value || isLoadingEvent.value) {
+    return;
+  }
   if ((disableVotes.value && votedPlayerId.value !== player.id) || isVoting.value) {
     return;
   }
@@ -228,11 +345,17 @@ const voteForPlayer = async (player) => {
     return;
   }
 
+  const eventIdForVote = effectiveEventId.value;
+  if (!eventIdForVote) {
+    errorMessage.value = 'Nessun evento disponibile per il voto al momento.';
+    return;
+  }
+
   errorMessage.value = '';
   isVoting.value = true;
 
   try {
-    const response = await vote({ eventId: props.eventId, playerId: player.id });
+    const response = await vote({ eventId: eventIdForVote, playerId: player.id });
     if (response?.ok) {
       const voteResult = response.vote;
       const ticket = response.ticket;
@@ -293,23 +416,60 @@ const confirmVote = () => {
         <section class="px-4">
           <div class="mb-6 text-center">
             <h2 class="text-lg font-semibold uppercase tracking-[0.1em] text-slate-200">
-              JOy volley - Campobasso
+              {{ headerTitle }}
             </h2>
             <p class="mt-2 text-sm text-slate-300">
-              Tocca la card del tuo giocatore preferito per assegnarli il voto
+              {{ headerSubtitle }}
+            </p>
+            <p v-if="eventDetails" class="mt-2 text-xs uppercase tracking-[0.3em] text-slate-400">
+              {{ eventDetails }}
             </p>
           </div>
           <div class="relative h-[95svh]">
-            <VolleyCourt
-              class="block h-full w-full"
-              :players="fieldPlayers"
-              :card-size="cardSize"
-              :selected-player-id="votedPlayerId"
-              :disable-votes="disableVotes"
-              :is-voting="isVoting"
-              @select="openPlayerModal"
-            />
-
+            <div
+              v-if="isLoadingEvent"
+              class="flex h-full items-center justify-center rounded-[2.75rem] border border-slate-800/60 bg-slate-900/70 text-xs font-semibold uppercase tracking-[0.4em] text-slate-300"
+            >
+              Caricamento evento...
+            </div>
+            <template v-else-if="hasEventAvailable">
+              <VolleyCourt
+                class="block h-full w-full"
+                :players="fieldPlayers"
+                :card-size="cardSize"
+                :selected-player-id="votedPlayerId"
+                :disable-votes="disableVotes"
+                :is-voting="isVoting"
+                @select="openPlayerModal"
+              />
+            </template>
+            <div v-else class="relative h-full">
+              <VolleyCourt
+                class="block h-full w-full"
+                :players="[]"
+                :card-size="cardSize"
+                :selected-player-id="null"
+                :disable-votes="true"
+                :is-voting="false"
+              />
+              <div
+                class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-6 px-6 text-center"
+              >
+                <div
+                  class="flex h-28 w-28 items-center justify-center rounded-full bg-white/10 shadow-lg shadow-slate-900/40"
+                >
+                  <img :src="teamLogo" alt="Team crest" class="h-16 w-16 opacity-90" />
+                </div>
+                <div class="max-w-md space-y-3 text-slate-100">
+                  <h3 class="text-xl font-semibold uppercase tracking-[0.4em] text-slate-200">
+                    {{ inactiveTitle }}
+                  </h3>
+                  <p class="text-sm text-slate-300">
+                    {{ inactiveDescription }}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 

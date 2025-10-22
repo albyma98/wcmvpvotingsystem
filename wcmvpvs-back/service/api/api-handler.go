@@ -33,7 +33,11 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.POST("/events", rt.wrapAdmin(rt.createEvent))
 	rt.router.PUT("/events/:id", rt.wrapAdmin(rt.updateEvent))
 	rt.router.DELETE("/events/:id", rt.wrapAdmin(rt.deleteEvent))
+	rt.router.POST("/events/:id/activate", rt.wrapAdmin(rt.activateEvent))
+	rt.router.POST("/events/deactivate", rt.wrapAdmin(rt.deactivateEvents))
 	rt.router.GET("/events/:id/tickets", rt.wrapAdmin(rt.listEventTickets))
+	rt.router.GET("/events/active", rt.wrap(rt.getActiveEvent))
+	rt.router.GET("/events/:id", rt.wrap(rt.getEvent))
 
 	rt.router.GET("/votes", rt.wrapAdmin(rt.listVotes))
 	rt.router.DELETE("/votes/:id", rt.wrapAdmin(rt.deleteVote))

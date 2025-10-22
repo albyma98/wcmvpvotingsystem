@@ -1,7 +1,9 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -25,6 +27,29 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httproute
 	if strings.TrimSpace(req.DeviceID) == "" {
 		ctx.Logger.Warn("vote request missing device id")
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if req.EventID <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	event, err := rt.db.GetEvent(req.EventID)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		ctx.Logger.WithField("event_id", req.EventID).Warn("vote request for missing event")
+		w.WriteHeader(http.StatusNotFound)
+		return
+	case err != nil:
+		ctx.Logger.WithError(err).Error("cannot verify event for vote")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !event.IsActive {
+		ctx.Logger.WithField("event_id", req.EventID).Warn("vote request for inactive event")
+		w.WriteHeader(http.StatusConflict)
 		return
 	}
 

@@ -137,6 +137,42 @@ func (rt *_router) listEvents(w http.ResponseWriter, r *http.Request, ps httprou
 	_ = json.NewEncoder(w).Encode(events)
 }
 
+func (rt *_router) getEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	eventID, err := strconv.Atoi(ps.ByName("id"))
+	if err != nil || eventID <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	event, err := rt.db.GetEvent(eventID)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		w.WriteHeader(http.StatusNotFound)
+		return
+	case err != nil:
+		ctx.Logger.WithError(err).Error("cannot load event")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(event)
+}
+
+func (rt *_router) getActiveEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	event, err := rt.db.GetActiveEvent()
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		w.WriteHeader(http.StatusNotFound)
+		return
+	case err != nil:
+		ctx.Logger.WithError(err).Error("cannot load active event")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(event)
+}
+
 func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	var e database.Event
 	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
@@ -174,6 +210,34 @@ func (rt *_router) deleteEvent(w http.ResponseWriter, r *http.Request, ps httpro
 	id, _ := strconv.Atoi(ps.ByName("id"))
 	if err := rt.db.DeleteEvent(id); err != nil {
 		ctx.Logger.WithError(err).Error("cannot delete event")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	id, err := strconv.Atoi(ps.ByName("id"))
+	if err != nil || id <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err := rt.db.SetActiveEvent(id); err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			ctx.Logger.WithError(err).Error("cannot activate event")
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	if err := rt.db.ClearActiveEvent(); err != nil {
+		ctx.Logger.WithError(err).Error("cannot deactivate events")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
