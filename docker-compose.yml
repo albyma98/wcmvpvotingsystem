@@ -1,29 +1,40 @@
 version: "3.9"
+
 services:
   backend:
-    build: ./backend
-    ports:
-      - "3000:3000"
-    depends_on:
-      - db
+    build:
+      context: ./wcmvpvs-back
+    image: wcmvpvs-back:latest
+    environment:
+      - CFG_CONFIG_PATH=/conf/config.yml
+      - CFG_DB_FILENAME=service/database/mvpvs.db
+      - CFG_WEB_APIHOST=0.0.0.0:3000
+    volumes:
+      - backend-data:/app/service/database
+    expose:
+      - "3000"
 
   frontend:
-    build: ./frontend
-    ports:
-      - "5173:5173"
-    depends_on:
-      - backend
+    build:
+      context: ./wcmvpvs-front
+    image: wcmvpvs-front:latest
+    expose:
+      - "80"
 
-  db:
-    image: postgres:13
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: mvp
+  caddy:
+    image: caddy:2.8-alpine
+    depends_on:
+      - frontend
+      - backend
     ports:
-      - "5432:5432"
+      - "80:80"
+      - "443:443"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
 
 volumes:
-  pgdata:
+  backend-data:
+  caddy_data:
+  caddy_config:
