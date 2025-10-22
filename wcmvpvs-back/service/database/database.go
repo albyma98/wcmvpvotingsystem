@@ -72,6 +72,16 @@ type Vote struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+type TicketScan struct {
+	ID              int    `json:"id"`
+	VoteID          int    `json:"vote_id"`
+	TicketCode      string `json:"ticket_code"`
+	TicketSignature string `json:"ticket_signature"`
+	ScanCount       int    `json:"scan_count"`
+	FirstScannedAt  string `json:"first_scanned_at"`
+	LastScannedAt   string `json:"last_scanned_at"`
+}
+
 type EventTicket struct {
 	VoteID          int    `json:"vote_id"`
 	TicketCode      string `json:"ticket_code"`
@@ -94,6 +104,8 @@ type AppDatabase interface {
 	GetName() (string, error)
 	SetName(name string) error
 	AddVote(eventID, playerID int, code, signature, deviceID string) error
+	GetVoteByCodeAndSignature(code, signature string) (Vote, error)
+	RecordTicketScan(voteID int, code, signature string) (bool, error)
 	CreateTeam(name string) (int, error)
 	ListTeams() ([]Team, error)
 	UpdateTeam(id int, name string) error
@@ -213,6 +225,24 @@ func New(db *sql.DB) (AppDatabase, error) {
 		return nil, fmt.Errorf("error ensuring votes code index: %w", err)
 	}
 
+	// Create ticket_scans table if not exists
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='ticket_scans';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE ticket_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, vote_id INTEGER NOT NULL UNIQUE, ticket_code TEXT NOT NULL, ticket_signature TEXT NOT NULL, scan_count INTEGER NOT NULL DEFAULT 0, first_scanned_at TEXT DEFAULT CURRENT_TIMESTAMP, last_scanned_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (vote_id) REFERENCES votes(id) ON DELETE CASCADE);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating ticket_scans table: %w", err)
+		}
+		_, err = db.Exec(`CREATE UNIQUE INDEX idx_ticket_scans_code ON ticket_scans(ticket_code);`)
+		if err != nil {
+			return nil, fmt.Errorf("error creating ticket_scans code index: %w", err)
+		}
+	}
+	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_scans_code ON ticket_scans(ticket_code);`)
+	if err != nil {
+		return nil, fmt.Errorf("error ensuring ticket_scans code index: %w", err)
+	}
+
 	return &appdbimpl{
 		c: db,
 	}, nil
@@ -226,6 +256,51 @@ func (db *appdbimpl) Ping() error {
 func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string) error {
 	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id) VALUES (?, ?, ?, ?, ?)`, eventID, playerID, code, signature, deviceID)
 	return err
+}
+
+// GetVoteByCodeAndSignature returns the vote matching the provided code and signature
+func (db *appdbimpl) GetVoteByCodeAndSignature(code, signature string) (Vote, error) {
+	var v Vote
+	err := db.c.QueryRow(`SELECT id, event_id, player_id, ticket_code, ticket_signature, device_id, created_at FROM votes WHERE ticket_code = ? AND ticket_signature = ?`, code, signature).
+		Scan(&v.ID, &v.EventID, &v.PlayerID, &v.TicketCode, &v.TicketSignature, &v.DeviceID, &v.CreatedAt)
+	if err != nil {
+		return Vote{}, err
+	}
+	return v, nil
+}
+
+// RecordTicketScan increments scan count for a vote and reports whether it was previously scanned
+func (db *appdbimpl) RecordTicketScan(voteID int, code, signature string) (bool, error) {
+	tx, err := db.c.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	var scanCount int
+	err = tx.QueryRow(`SELECT scan_count FROM ticket_scans WHERE vote_id = ?`, voteID).Scan(&scanCount)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		_, err = tx.Exec(`INSERT INTO ticket_scans (vote_id, ticket_code, ticket_signature, scan_count) VALUES (?, ?, ?, 1)`, voteID, code, signature)
+		if err != nil {
+			return false, err
+		}
+		if err := tx.Commit(); err != nil {
+			return false, err
+		}
+		return false, nil
+	case err != nil:
+		return false, err
+	default:
+		_, err = tx.Exec(`UPDATE ticket_scans SET scan_count = scan_count + 1, last_scanned_at = CURRENT_TIMESTAMP WHERE vote_id = ?`, voteID)
+		if err != nil {
+			return false, err
+		}
+		if err := tx.Commit(); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
 }
 
 // Team operations
