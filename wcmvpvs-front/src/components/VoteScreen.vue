@@ -181,6 +181,19 @@ const currentEventId = computed(() => props.eventId ?? props.activeEvent?.id);
 const showInactiveNotice = computed(() => props.activeEventChecked && !props.activeEvent);
 const isCheckingActiveEvent = computed(() => props.loadingActiveEvent && !props.activeEventChecked);
 
+const eventTitle = computed(() => {
+  const event = props.activeEvent;
+  if (!event) {
+    return '';
+  }
+  const homeName = event.team1_name || event.team1Name || '';
+  const awayName = event.team2_name || event.team2Name || '';
+  if (homeName && awayName) {
+    return `${homeName} - ${awayName}`;
+  }
+  return homeName || awayName || '';
+});
+
 watch(currentEventId, () => {
   votedPlayerId.value = null;
   pendingPlayer.value = null;
@@ -317,7 +330,7 @@ const confirmVote = () => {
         <section class="px-4">
           <div class="mb-6 text-center">
             <h2 class="text-lg font-semibold uppercase tracking-[0.1em] text-slate-200">
-              JOy volley - Campobasso
+              {{ eventTitle || 'Evento in corso' }}
             </h2>
             <p class="mt-2 text-sm text-slate-300">
               Tocca la card del tuo giocatore preferito per assegnarli il voto

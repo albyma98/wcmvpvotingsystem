@@ -56,7 +56,9 @@ type Player struct {
 type Event struct {
 	ID            int    `json:"id"`
 	Team1ID       int    `json:"team1_id"`
+	Team1Name     string `json:"team1_name,omitempty"`
 	Team2ID       int    `json:"team2_id"`
+	Team2Name     string `json:"team2_name,omitempty"`
 	StartDateTime string `json:"start_datetime"`
 	Location      string `json:"location"`
 	IsActive      bool   `json:"is_active"`
@@ -450,7 +452,14 @@ func (db *appdbimpl) ClearActiveEvent() error {
 func (db *appdbimpl) GetActiveEvent() (Event, error) {
 	var e Event
 	var isActive int
-	err := db.c.QueryRow(`SELECT id, team1_id, team2_id, start_datetime, location, is_active FROM events WHERE is_active = 1 LIMIT 1`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive)
+	err := db.c.QueryRow(`
+SELECT e.id, e.team1_id, IFNULL(t1.name, ''), e.team2_id, IFNULL(t2.name, ''), e.start_datetime, e.location, e.is_active
+FROM events e
+LEFT JOIN teams t1 ON t1.id = e.team1_id
+LEFT JOIN teams t2 ON t2.id = e.team2_id
+WHERE e.is_active = 1
+LIMIT 1
+`).Scan(&e.ID, &e.Team1ID, &e.Team1Name, &e.Team2ID, &e.Team2Name, &e.StartDateTime, &e.Location, &isActive)
 	if err != nil {
 		return Event{}, err
 	}
