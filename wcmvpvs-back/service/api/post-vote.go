@@ -8,11 +8,10 @@ import (
 	"strings"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
-	"github.com/julienschmidt/httprouter"
 )
 
 // postVote handles a vote submission
-func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var req struct {
 		PlayerID int    `json:"player_id"`
 		EventID  int    `json:"event_id"`
