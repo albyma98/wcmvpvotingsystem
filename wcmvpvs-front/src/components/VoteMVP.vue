@@ -122,10 +122,9 @@ async function confirmVote() {
       playerId: selectedPlayer.value.id,
     })
     if (response?.ok) {
-      const voteResult = response.vote
-      const ticket = response.ticket
-      const codeSource = voteResult?.code || ticket?.code || ''
-      const qrSource = voteResult?.qr_data || ticket?.qr_data || ''
+      const voteResult = response.vote || {}
+      const codeSource = voteResult.code || ''
+      const qrSource = voteResult.qr_data || ''
 
       voteCode.value = codeSource
       qrUrl.value = qrSource

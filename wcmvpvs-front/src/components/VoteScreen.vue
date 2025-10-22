@@ -234,13 +234,12 @@ const voteForPlayer = async (player) => {
   try {
     const response = await vote({ eventId: props.eventId, playerId: player.id });
     if (response?.ok) {
-      const voteResult = response.vote;
-      const ticket = response.ticket;
+      const voteResult = response.vote || {};
       votedPlayerId.value = player.id;
       pendingPlayer.value = null;
 
-      const codeSource = voteResult?.code || ticket?.code || '';
-      const qrSource = voteResult?.qr_data || ticket?.qr_data || '';
+      const codeSource = voteResult.code || '';
+      const qrSource = voteResult.qr_data || '';
 
       if (codeSource) {
         ticketCode.value = codeSource;

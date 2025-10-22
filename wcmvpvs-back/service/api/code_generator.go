@@ -58,7 +58,3 @@ func isVoteCodeCollision(err error) bool {
 func isVoteDeviceCollision(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "votes.event_id, votes.device_id")
 }
-
-func isTicketCodeCollision(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "tickets.code")
-}
