@@ -49,6 +49,12 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		return
 	}
 
+	if activeEvent.VotesClosed {
+		ctx.Logger.Warn("vote attempted but voting is closed")
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+
 	var (
 		code      string
 		signature string

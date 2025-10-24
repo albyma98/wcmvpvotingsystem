@@ -60,6 +60,7 @@ type Event struct {
 	StartDateTime string `json:"start_datetime"`
 	Location      string `json:"location"`
 	IsActive      bool   `json:"is_active"`
+	VotesClosed   bool   `json:"votes_closed"`
 	Team1Name     string `json:"team1_name,omitempty"`
 	Team2Name     string `json:"team2_name,omitempty"`
 }
@@ -125,6 +126,7 @@ type AppDatabase interface {
 	DeleteEvent(id int) error
 	SetActiveEvent(eventID int) error
 	ClearActiveEvent() error
+	CloseEventVoting(eventID int) error
 	GetActiveEvent() (Event, error)
 	ListVotes() ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
@@ -209,6 +211,12 @@ func New(db *sql.DB) (AppDatabase, error) {
 	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0`); err != nil {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring events active column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN votes_closed INTEGER NOT NULL DEFAULT 0`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events votes closed column: %w", err)
 		}
 	}
 
@@ -353,7 +361,7 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 }
 
 func (db *appdbimpl) ListEvents() ([]Event, error) {
-	rows, err := db.c.Query(`SELECT id, team1_id, team2_id, start_datetime, location, is_active FROM events`)
+	rows, err := db.c.Query(`SELECT id, team1_id, team2_id, start_datetime, location, is_active, votes_closed FROM events`)
 	if err != nil {
 		return nil, err
 	}
@@ -362,10 +370,12 @@ func (db *appdbimpl) ListEvents() ([]Event, error) {
 	for rows.Next() {
 		var e Event
 		var isActive int
-		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive); err != nil {
+		var votesClosed int
+		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed); err != nil {
 			return nil, err
 		}
 		e.IsActive = isActive == 1
+		e.VotesClosed = votesClosed == 1
 		es = append(es, e)
 	}
 	return es, nil
@@ -392,7 +402,7 @@ func (db *appdbimpl) SetActiveEvent(eventID int) error {
 		return err
 	}
 
-	res, err := tx.Exec(`UPDATE events SET is_active = 1 WHERE id = ?`, eventID)
+	res, err := tx.Exec(`UPDATE events SET is_active = 1, votes_closed = 0 WHERE id = ?`, eventID)
 	if err != nil {
 		return err
 	}
@@ -412,9 +422,25 @@ func (db *appdbimpl) ClearActiveEvent() error {
 	return err
 }
 
+func (db *appdbimpl) CloseEventVoting(eventID int) error {
+	res, err := db.c.Exec(`UPDATE events SET votes_closed = 1 WHERE id = ? AND is_active = 1`, eventID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (db *appdbimpl) GetActiveEvent() (Event, error) {
 	var e Event
 	var isActive int
+	var votesClosed int
 	err := db.c.QueryRow(`
 SELECT e.id,
        e.team1_id,
@@ -422,6 +448,7 @@ SELECT e.id,
        e.start_datetime,
        e.location,
        e.is_active,
+       e.votes_closed,
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -429,11 +456,12 @@ LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
 WHERE e.is_active = 1
 LIMIT 1
-`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &e.Team1Name, &e.Team2Name)
+`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &e.Team1Name, &e.Team2Name)
 	if err != nil {
 		return Event{}, err
 	}
 	e.IsActive = isActive == 1
+	e.VotesClosed = votesClosed == 1
 	return e, nil
 }
 

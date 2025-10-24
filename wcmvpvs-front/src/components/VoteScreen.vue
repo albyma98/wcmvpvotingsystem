@@ -118,6 +118,14 @@ const eventTitle = computed(() => {
 const currentEventId = computed(() => props.eventId ?? props.activeEvent?.id);
 const showInactiveNotice = computed(() => props.activeEventChecked && !props.activeEvent);
 const isCheckingActiveEvent = computed(() => props.loadingActiveEvent && !props.activeEventChecked);
+const isVotingClosed = computed(() => {
+  if (!props.activeEvent) {
+    return false;
+  }
+  const raw =
+    props.activeEvent.votes_closed ?? props.activeEvent.votesClosed ?? props.activeEvent.is_voting_closed;
+  return Boolean(raw);
+});
 
 watch(currentEventId, () => {
   votedPlayerId.value = null;
@@ -126,6 +134,13 @@ watch(currentEventId, () => {
   showTicketModal.value = false;
   ticketCode.value = '';
   ticketQrUrl.value = '';
+});
+
+watch(isVotingClosed, (closed) => {
+  if (closed) {
+    pendingPlayer.value = null;
+    showTicketModal.value = false;
+  }
 });
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
@@ -149,10 +164,15 @@ onBeforeUnmount(() => {
 });
 
 const disableVotes = computed(
-  () => Boolean(votedPlayerId.value) || showInactiveNotice.value || isCheckingActiveEvent.value
+  () =>
+    Boolean(votedPlayerId.value) || showInactiveNotice.value || isCheckingActiveEvent.value || isVotingClosed.value,
 );
 
 const openPlayerModal = (player) => {
+  if (isVotingClosed.value) {
+    return;
+  }
+
   if ((disableVotes.value && votedPlayerId.value !== player.id) || isVoting.value) {
     return;
   }
@@ -174,6 +194,10 @@ const closeTicketModal = () => {
 };
 
 const voteForPlayer = async (player) => {
+  if (isVotingClosed.value) {
+    return;
+  }
+
   if (isVoting.value || (votedPlayerId.value && votedPlayerId.value !== player.id)) {
     return;
   }
@@ -253,6 +277,12 @@ const confirmVote = () => {
       class="flex-1 overflow-y-auto"
     >
       <div class="flex flex-col gap-10">
+        <section v-if="isVotingClosed" class="px-4">
+          <div class="closed-banner" role="status" aria-live="polite">
+            <h3>Votazioni chiuse</h3>
+            <p>Grazie per aver partecipato! Ti aspettiamo alla prossima partita al palazzetto.</p>
+          </div>
+        </section>
         <section class="px-4">
           <div class="mb-6 text-center">
             <h2 class="text-lg font-semibold uppercase tracking-[0.1em] text-slate-200">
@@ -454,6 +484,29 @@ const confirmVote = () => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.closed-banner {
+  border-radius: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.75);
+  padding: 1.75rem 1.5rem;
+  text-align: center;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.45);
+}
+
+.closed-banner h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #fbbf24;
+}
+
+.closed-banner p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #e2e8f0;
 }
 
 .inactive-panel {

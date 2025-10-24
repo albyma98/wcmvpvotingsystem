@@ -221,6 +221,28 @@ func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ctx req
 	ctx.Logger.WithField("event_id", id).Info("event activated")
 }
 
+func (rt *_router) closeEventVoting(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil || id <= 0 {
+		ctx.Logger.Warn("invalid event id while closing votes")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := rt.db.CloseEventVoting(id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot close voting for event")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("event_id", id).Info("event voting closed")
+}
+
 func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	if err := rt.db.ClearActiveEvent(); err != nil {
 		ctx.Logger.WithError(err).Error("cannot deactivate events")
