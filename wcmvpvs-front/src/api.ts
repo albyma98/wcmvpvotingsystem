@@ -1,6 +1,19 @@
 import axios from 'axios';
 import { getOrCreateDeviceId } from './deviceId';
 
+const ensureApiPath = (baseUrl: string) => {
+  const sanitized = baseUrl.replace(/\/+$/, '');
+  if (sanitized === '' || sanitized === '.') {
+    return '/api';
+  }
+
+  if (/\/api$/i.test(sanitized)) {
+    return sanitized;
+  }
+
+  return `${sanitized}/api`;
+};
+
 const resolveApiBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL?.trim();
   const resolveFromWindow = () => {
@@ -30,11 +43,11 @@ const resolveApiBaseUrl = () => {
 
   if (envPort) {
     const sanitizedPort = envPort.replace(/^:/, '');
-    return `${protocol}//${hostname}:${sanitizedPort}`;
+    return `${protocol}//${hostname}:${sanitizedPort}`.replace(/\/+$/, '');
   }
 
   const originPort = windowPort ? `:${windowPort}` : '';
-  return `${protocol}//${hostname}${originPort}`;
+  return ensureApiPath(`${protocol}//${hostname}${originPort}`);
 };
 
 export const apiClient = axios.create({
