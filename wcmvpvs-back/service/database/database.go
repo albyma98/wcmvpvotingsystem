@@ -109,6 +109,24 @@ type EventTicket struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+type TicketValidationPrize struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Position int    `json:"position"`
+}
+
+type TicketValidationResult struct {
+	VoteID          int                    `json:"vote_id"`
+	EventID         int                    `json:"event_id"`
+	PlayerID        int                    `json:"player_id"`
+	TicketCode      string                 `json:"ticket_code"`
+	TicketSignature string                 `json:"ticket_signature"`
+	PlayerFirstName string                 `json:"player_first_name"`
+	PlayerLastName  string                 `json:"player_last_name"`
+	CreatedAt       string                 `json:"created_at"`
+	AssignedPrize   *TicketValidationPrize `json:"assigned_prize,omitempty"`
+}
+
 type Admin struct {
 	ID           int    `json:"id"`
 	Username     string `json:"username"`
@@ -149,6 +167,7 @@ type AppDatabase interface {
 	GetActiveEvent() (Event, error)
 	ListVotes() ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
+	ValidateTicket(eventID int, code string) (TicketValidationResult, error)
 	ListEventPrizes(eventID int) ([]EventPrize, error)
 	AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize, error)
 	ClearPrizeWinner(eventID, prizeID int) error
@@ -708,6 +727,59 @@ ORDER BY v.created_at ASC
 		tickets = append(tickets, t)
 	}
 	return tickets, nil
+}
+
+func (db *appdbimpl) ValidateTicket(eventID int, code string) (TicketValidationResult, error) {
+	var result TicketValidationResult
+
+	row := db.c.QueryRow(`
+SELECT v.id,
+       v.event_id,
+       v.player_id,
+       v.ticket_code,
+       v.ticket_signature,
+       IFNULL(p.first_name, ''),
+       IFNULL(p.last_name, ''),
+       v.created_at,
+       ep.id,
+       IFNULL(ep.name, ''),
+       IFNULL(ep.position, 0)
+FROM votes v
+LEFT JOIN players p ON p.id = v.player_id
+LEFT JOIN event_prizes ep ON ep.winner_vote_id = v.id AND ep.event_id = v.event_id
+WHERE v.event_id = ? AND v.ticket_code = ?
+LIMIT 1
+`, eventID, code)
+
+	var prizeID sql.NullInt64
+	var prizeName sql.NullString
+	var prizePosition sql.NullInt64
+
+	if err := row.Scan(
+		&result.VoteID,
+		&result.EventID,
+		&result.PlayerID,
+		&result.TicketCode,
+		&result.TicketSignature,
+		&result.PlayerFirstName,
+		&result.PlayerLastName,
+		&result.CreatedAt,
+		&prizeID,
+		&prizeName,
+		&prizePosition,
+	); err != nil {
+		return TicketValidationResult{}, err
+	}
+
+	if prizeID.Valid {
+		result.AssignedPrize = &TicketValidationPrize{
+			ID:       int(prizeID.Int64),
+			Name:     prizeName.String,
+			Position: int(prizePosition.Int64),
+		}
+	}
+
+	return result, nil
 }
 
 func (db *appdbimpl) ListEventPrizes(eventID int) ([]EventPrize, error) {
