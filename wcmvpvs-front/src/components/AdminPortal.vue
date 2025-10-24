@@ -132,6 +132,12 @@
               <h3>
                 {{ eventLabel(event) }}
                 <span v-if="event.is_active" class="badge">Attivo</span>
+                <span
+                  v-if="event.is_active && event.votes_closed"
+                  class="badge badge-closed"
+                >
+                  Votazioni chiuse
+                </span>
               </h3>
               <p class="muted">{{ formatEventDate(event.start_datetime) }} • {{ event.location || 'Location da definire' }}</p>
               <p class="muted">
@@ -155,6 +161,58 @@
             </div>
           </li>
         </ul>
+      </section>
+
+      <section v-else-if="section === 'closing'" class="card closing-card">
+        <header class="section-header">
+          <h2>Chiusura votazioni</h2>
+          <p>Gestisci lo stato delle votazioni per la partita attualmente attiva.</p>
+        </header>
+
+        <div v-if="activeEventEntry" class="active-event-summary">
+          <div class="summary-header">
+            <h3>{{ activeEventLabel }}</h3>
+            <span :class="['badge', activeEventVotesClosed ? 'badge-closed' : 'badge-open']">
+              {{ activeEventVotesClosed ? 'Votazioni chiuse' : 'Votazioni aperte' }}
+            </span>
+          </div>
+          <p class="muted">{{ activeEventDateLabel }} • {{ activeEventLocation }}</p>
+
+          <div class="actions-row">
+            <button
+              class="btn warning"
+              type="button"
+              @click="closeActiveEventVoting"
+              :disabled="isClosingVotes || activeEventVotesClosed"
+            >
+              {{ isClosingVotes ? 'Chiusura…' : 'Chiudi votazioni' }}
+            </button>
+            <button
+              class="btn success"
+              type="button"
+              @click="activateEvent(activeEventEntry.id)"
+              :disabled="
+                !activeEventEntry || updatingEventId === activeEventEntry.id || !activeEventVotesClosed
+              "
+            >
+              <span v-if="updatingEventId === activeEventEntry.id">Riattivazione…</span>
+              <span v-else>Attiva</span>
+            </button>
+            <button
+              class="btn outline"
+              type="button"
+              @click="deactivateEvents"
+              :disabled="isDisablingEvents"
+            >
+              {{ isDisablingEvents ? 'Disattivazione…' : 'Disattiva' }}
+            </button>
+          </div>
+        </div>
+        <div v-else class="info-banner">
+          Nessun evento attivo al momento. Attiva una partita dalla sezione "Eventi" per gestire le votazioni.
+        </div>
+
+        <p v-if="closeVotesMessage" class="success-message">{{ closeVotesMessage }}</p>
       </section>
 
       <section v-else-if="section === 'results'" class="card results-card">
@@ -405,6 +463,7 @@ let resultsPollHandle = 0;
 const section = ref('events');
 const tabs = [
   { id: 'events', label: 'Eventi' },
+  { id: 'closing', label: 'Chiusura votazioni' },
   { id: 'results', label: 'Risultati' },
   { id: 'teams', label: 'Squadre' },
   { id: 'players', label: 'Giocatori' },
@@ -462,6 +521,8 @@ const sponsorBeingUpdated = ref(0);
 const sponsorBeingDeleted = ref(0);
 const isApplyingSponsorCount = ref(false);
 const lastCreatedEventLink = ref('');
+const isClosingVotes = ref(false);
+const closeVotesMessage = ref('');
 
 const hasEnoughTeams = computed(() => teams.value.length >= 2);
 const activeEventId = computed(() => {
@@ -474,6 +535,19 @@ const sponsorSliderMax = computed(() =>
 );
 const selectedResultsEvent = computed(() =>
   events.value.find((event) => event.id === selectedResultsEventId.value) || null,
+);
+const activeEventEntry = computed(() =>
+  events.value.find((event) => event.id === activeEventId.value) || null,
+);
+const activeEventVotesClosed = computed(() => Boolean(activeEventEntry.value?.votes_closed));
+const activeEventLabel = computed(() =>
+  activeEventEntry.value ? eventLabel(activeEventEntry.value) : 'Nessun evento attivo',
+);
+const activeEventDateLabel = computed(() =>
+  activeEventEntry.value ? formatEventDate(activeEventEntry.value.start_datetime) : '',
+);
+const activeEventLocation = computed(() =>
+  activeEventEntry.value?.location?.trim() ? activeEventEntry.value.location.trim() : 'Location da definire',
 );
 const selectedResultsEventLabel = computed(() =>
   selectedResultsEvent.value ? eventLabel(selectedResultsEvent.value) : '',
@@ -639,6 +713,16 @@ watch(events, () => {
   ensureResultsSelection();
   if (section.value === 'results' && selectedResultsEventId.value) {
     fetchEventResults();
+  }
+});
+
+watch(activeEventId, () => {
+  closeVotesMessage.value = '';
+});
+
+watch(activeEventVotesClosed, (closed) => {
+  if (!closed) {
+    closeVotesMessage.value = '';
   }
 });
 
@@ -1075,6 +1159,7 @@ async function activateEvent(id) {
     return;
   }
   globalError.value = '';
+  closeVotesMessage.value = '';
   updatingEventId.value = id;
   try {
     await secureRequest(() => apiClient.post(`/events/${id}/activate`, {}, authHeaders.value));
@@ -1089,12 +1174,36 @@ async function deactivateEvents() {
     return;
   }
   globalError.value = '';
+  closeVotesMessage.value = '';
   isDisablingEvents.value = true;
   try {
     await secureRequest(() => apiClient.post('/events/deactivate', {}, authHeaders.value));
     await loadEvents();
   } finally {
     isDisablingEvents.value = false;
+  }
+}
+
+async function closeActiveEventVoting() {
+  if (!activeEventId.value || isClosingVotes.value || activeEventVotesClosed.value) {
+    return;
+  }
+  closeVotesMessage.value = '';
+  globalError.value = '';
+  isClosingVotes.value = true;
+  try {
+    await secureRequest(() =>
+      apiClient.post(`/events/${activeEventId.value}/close-votes`, {}, authHeaders.value),
+    );
+    await loadEvents();
+    closeVotesMessage.value = 'Le votazioni per l\'evento attivo sono state chiuse.';
+  } catch (error) {
+    closeVotesMessage.value = '';
+    if (error?.response?.status === 404) {
+      globalError.value = 'Impossibile chiudere le votazioni: nessun evento attivo trovato.';
+    }
+  } finally {
+    isClosingVotes.value = false;
   }
 }
 
@@ -1467,6 +1576,15 @@ select:focus {
   box-shadow: 0 12px 25px rgba(59, 130, 246, 0.35);
 }
 
+.btn.warning {
+  background: #f59e0b;
+  color: #0f172a;
+}
+
+.btn.warning:disabled {
+  opacity: 0.85;
+}
+
 .btn.secondary {
   background: #e2e8f0;
   color: #0f172a;
@@ -1562,6 +1680,35 @@ select:focus {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.badge-open {
+  background: rgba(34, 197, 94, 0.18);
+  color: #15803d;
+}
+
+.badge-closed {
+  background: rgba(249, 115, 22, 0.2);
+  color: #9a3412;
+}
+
+.closing-card .active-event-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.closing-card .summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.success-message {
+  margin-top: 1rem;
+  color: #15803d;
+  font-weight: 600;
 }
 
 .item-actions {
