@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
-import { vote } from '../api';
+import { apiClient, vote } from '../api';
 
 const props = defineProps({
   eventId: {
@@ -145,28 +145,95 @@ const roster = [
 
 const fieldPlayers = computed(() => roster);
 
-const sponsors = [
-  {
-    id: 1,
-    name: 'WearingCash',
-    image: 'https://wearingcash.it/cdn/shop/files/2.png?v=1741121739&width=255',
-  },
-  {
-    id: 2,
-    name: 'BluWave Partner',
-    image: 'https://via.placeholder.com/320x180.png?text=BluWave+Partner',
-  },
-  {
-    id: 3,
-    name: 'Energia Italia',
-    image: 'https://via.placeholder.com/320x180.png?text=Energia+Italia',
-  },
-  {
-    id: 4,
-    name: 'Tech Volley Lab',
-    image: 'https://via.placeholder.com/320x180.png?text=Tech+Volley+Lab',
-  },
-];
+const sponsors = ref([]);
+const hasSponsors = computed(() => sponsors.value.length > 0);
+const sponsorGridClass = computed(() => {
+  const count = sponsors.value.length;
+  if (count <= 1) {
+    return 'grid-cols-1';
+  }
+  if (count === 2) {
+    return 'grid-cols-1 sm:grid-cols-2';
+  }
+  if (count === 3) {
+    return 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3';
+  }
+  return 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4';
+});
+
+const normalizeLink = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return '';
+  }
+  return `https://${trimmed}`;
+};
+
+const guessSponsorName = (record, slot) => {
+  const directName = typeof record?.name === 'string' ? record.name.trim() : '';
+  if (directName) {
+    return directName;
+  }
+  const title = typeof record?.title === 'string' ? record.title.trim() : '';
+  if (title) {
+    return title;
+  }
+  const link = normalizeLink(record?.link_url || record?.link);
+  if (link && typeof window !== 'undefined') {
+    try {
+      const parsed = new URL(link, link.startsWith('http') ? undefined : window.location.origin);
+      const host = parsed.hostname.replace(/^www\./i, '');
+      if (host) {
+        return host;
+      }
+    } catch (error) {
+      // ignore malformed URLs
+    }
+  }
+  return `Sponsor ${slot}`;
+};
+
+const normalizeSponsorRecord = (record, index) => {
+  if (!record || typeof record !== 'object') {
+    return null;
+  }
+  const rawImage = typeof record.image_data === 'string' ? record.image_data.trim() : '';
+  if (!rawImage) {
+    return null;
+  }
+  const rawSlot = Number.parseInt(record.slot ?? '', 10);
+  const slot = Number.isFinite(rawSlot) && rawSlot > 0 ? rawSlot : index + 1;
+  const link = normalizeLink(record.link_url);
+  return {
+    id: record.id ?? slot ?? index + 1,
+    slot,
+    name: guessSponsorName(record, slot),
+    image: rawImage,
+    link,
+  };
+};
+
+const loadSponsors = async () => {
+  try {
+    const { data } = await apiClient.get('/sponsors');
+    const normalized = Array.isArray(data) ? data : [];
+    sponsors.value = normalized
+      .map((record, index) => normalizeSponsorRecord(record, index))
+      .filter(Boolean);
+  } catch (error) {
+    console.error('load sponsors error', error);
+    sponsors.value = [];
+  }
+};
 
 const votedPlayerId = ref(null);
 const isVoting = ref(false);
@@ -248,6 +315,7 @@ const updateCardSize = () => {
 onMounted(() => {
   updateCardSize();
   window.addEventListener('resize', updateCardSize, { passive: true });
+  loadSponsors();
 });
 
 onBeforeUnmount(() => {
@@ -401,13 +469,25 @@ const confirmVote = () => {
               </header>
 
               <div class="flex-1 px-6 pb-6">
-                <div class="grid h-full grid-cols-2 grid-rows-2 gap-4">
+                <div
+                  v-if="hasSponsors"
+                  class="grid h-full gap-4"
+                  :class="sponsorGridClass"
+                >
                   <article
                     v-for="sponsor in sponsors"
                     :key="sponsor.id"
                     class="group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-[0_16px_32px_rgba(8,15,28,0.45)]"
                   >
-                    <div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                    <div class="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                    <a
+                      v-if="sponsor.link"
+                      class="absolute inset-0 z-10"
+                      :href="sponsor.link"
+                      target="_blank"
+                      rel="noopener"
+                      :aria-label="`Visita ${sponsor.name}`"
+                    ></a>
                     <img
                       :src="sponsor.image"
                       :alt="sponsor.name"
@@ -420,6 +500,9 @@ const confirmVote = () => {
                     </div>
                   </article>
                 </div>
+                <p v-else class="py-12 text-center text-sm text-slate-400">
+                  Spazio sponsor disponibile.
+                </p>
               </div>
             </div>
           </div>

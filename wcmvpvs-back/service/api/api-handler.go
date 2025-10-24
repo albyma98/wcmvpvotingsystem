@@ -14,8 +14,12 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/liveness", rt.liveness)
 
 	rt.router.Post("/vote", rt.wrap(rt.postVote))
+	rt.router.Get("/sponsors", rt.wrap(rt.listSponsors))
 	// Admin CRUD routes
 	rt.router.Post("/admin/login", rt.wrap(rt.adminLogin))
+	rt.router.Get("/admin/sponsors", rt.wrapAdmin(rt.listSponsors))
+	rt.router.Put("/sponsors/{slot}", rt.wrapAdmin(rt.upsertSponsor))
+	rt.router.Delete("/sponsors/{slot}", rt.wrapAdmin(rt.deleteSponsor))
 
 	rt.router.Get("/teams", rt.wrapAdmin(rt.listTeams))
 	rt.router.Post("/teams", rt.wrapAdmin(rt.createTeam))

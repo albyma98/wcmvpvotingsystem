@@ -91,6 +91,15 @@ type Admin struct {
 	CreatedAt    string `json:"created_at"`
 }
 
+type Sponsor struct {
+	ID        int    `json:"id"`
+	Slot      int    `json:"slot"`
+	ImageData string `json:"image_data"`
+	LinkURL   string `json:"link_url"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
 	GetName() (string, error)
@@ -119,6 +128,9 @@ type AppDatabase interface {
 	UpdateAdmin(a Admin) error
 	DeleteAdmin(id int) error
 	GetAdminByUsername(username string) (Admin, error)
+	ListSponsors() ([]Sponsor, error)
+	UpsertSponsor(s Sponsor) error
+	DeleteSponsorBySlot(slot int) error
 	Ping() error
 }
 
@@ -213,6 +225,34 @@ func New(db *sql.DB) (AppDatabase, error) {
 	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_code_per_event ON votes (event_id, ticket_code);`)
 	if err != nil {
 		return nil, fmt.Errorf("error ensuring votes code index: %w", err)
+	}
+
+	// Create sponsors table if not exists
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsors';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE sponsors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slot INTEGER NOT NULL UNIQUE,
+        image_data TEXT NOT NULL,
+        link_url TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating sponsors table: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`CREATE TRIGGER IF NOT EXISTS sponsors_updated_at_trigger
+AFTER UPDATE ON sponsors
+FOR EACH ROW
+BEGIN
+        UPDATE sponsors SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;`); err != nil {
+		if !strings.Contains(err.Error(), "already exists") {
+			return nil, fmt.Errorf("error ensuring sponsors trigger: %w", err)
+		}
 	}
 
 	return &appdbimpl{
@@ -489,4 +529,34 @@ func (db *appdbimpl) GetAdminByUsername(username string) (Admin, error) {
 		return Admin{}, err
 	}
 	return admin, nil
+}
+
+// Sponsor operations
+func (db *appdbimpl) ListSponsors() ([]Sponsor, error) {
+	rows, err := db.c.Query(`SELECT id, slot, image_data, IFNULL(link_url, ''), created_at, updated_at FROM sponsors ORDER BY slot ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sponsors []Sponsor
+	for rows.Next() {
+		var s Sponsor
+		if err := rows.Scan(&s.ID, &s.Slot, &s.ImageData, &s.LinkURL, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		sponsors = append(sponsors, s)
+	}
+	return sponsors, nil
+}
+
+func (db *appdbimpl) UpsertSponsor(s Sponsor) error {
+	_, err := db.c.Exec(`INSERT INTO sponsors (slot, image_data, link_url) VALUES (?, ?, ?)
+ON CONFLICT(slot) DO UPDATE SET image_data = excluded.image_data, link_url = excluded.link_url, updated_at = CURRENT_TIMESTAMP`, s.Slot, s.ImageData, s.LinkURL)
+	return err
+}
+
+func (db *appdbimpl) DeleteSponsorBySlot(slot int) error {
+	_, err := db.c.Exec(`DELETE FROM sponsors WHERE slot = ?`, slot)
+	return err
 }
