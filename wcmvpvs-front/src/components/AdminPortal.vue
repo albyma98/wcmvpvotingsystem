@@ -1566,8 +1566,8 @@ function handleScannerPermissionDenied() {
 }
 
 function handleScannerError(error) {
-  if (error?.message === 'barcode_detector_unsupported') {
-    scanError.value = 'Il browser non supporta la scansione dei QR code.';
+  if (error?.message === 'html5_qrcode_unavailable') {
+    scanError.value = 'Impossibile inizializzare il lettore QR. Controlla la connessione e ricarica la pagina.';
     return;
   }
   if (!cameraPermissionDenied.value) {

@@ -1,7 +1,7 @@
 <template>
   <div class="qr-scanner">
     <div class="qr-scanner__preview" :class="{ 'is-active': isActive }">
-      <video ref="video" autoplay playsinline muted></video>
+      <div :id="previewId" ref="preview" class="qr-scanner__camera"></div>
       <div v-if="!isActive" class="qr-scanner__placeholder">
         <slot name="placeholder">
           <span>Premi "Avvia scansione" per utilizzare la fotocamera.</span>
@@ -14,7 +14,7 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref } from 'vue'
 
 const props = defineProps({
   facingMode: {
@@ -29,14 +29,15 @@ const props = defineProps({
 
 const emit = defineEmits(['detected', 'error', 'permission-denied', 'state-change'])
 
-const video = ref(null)
+const previewId = `qr-scanner-${Math.random().toString(36).slice(2, 10)}`
+const preview = ref(null)
 const isActive = ref(false)
 const infoMessage = ref('Premi "Avvia scansione" per utilizzare la fotocamera.')
 const errorMessage = ref('')
 
-let detector
-let stream
-let frameHandle = 0
+let html5QrCode = null
+let startPromise = null
+let stopPromise = null
 let lastValue = ''
 
 function setInfo(message) {
@@ -47,92 +48,201 @@ function resetLastValue() {
   lastValue = ''
 }
 
-function stopStream() {
-  if (stream) {
-    stream.getTracks().forEach((track) => track.stop())
-    stream = null
+function ensureScanner() {
+  if (html5QrCode) {
+    return html5QrCode
   }
-}
-
-async function ensureDetector() {
-  if (detector) {
-    return detector
-  }
-  if (!('BarcodeDetector' in window)) {
-    const err = new Error('barcode_detector_unsupported')
-    errorMessage.value = 'BarcodeDetector API non supportata dal browser.'
+  if (typeof window === 'undefined' || !window.Html5Qrcode) {
+    const err = new Error('html5_qrcode_unavailable')
+    errorMessage.value = 'Libreria di scansione QR non disponibile nel browser.'
     setInfo('')
     emit('error', err)
     throw err
   }
-  detector = new BarcodeDetector({ formats: ['qr_code'] })
-  return detector
+  if (!preview.value) {
+    const err = new Error('scanner_container_unavailable')
+    emit('error', err)
+    throw err
+  }
+  html5QrCode = new window.Html5Qrcode(previewId)
+  return html5QrCode
+}
+
+function normalizeError(error) {
+  if (!error) {
+    return ''
+  }
+  if (typeof error === 'string') {
+    return error.toLowerCase()
+  }
+  if (typeof error.message === 'string') {
+    return error.message.toLowerCase()
+  }
+  if (typeof error.name === 'string') {
+    return error.name.toLowerCase()
+  }
+  return String(error).toLowerCase()
+}
+
+function toError(error) {
+  return error instanceof Error ? error : new Error(String(error || ''))
+}
+
+function handleStartError(error) {
+  const normalized = normalizeError(error)
+  const err = toError(error)
+
+  if (normalized.includes('notallowederror') || normalized.includes('permission')) {
+    errorMessage.value = 'Accesso alla fotocamera negato.'
+    emit('permission-denied', err)
+  } else if (normalized.includes('notfounderror') || normalized.includes('device') || normalized.includes('camera')) {
+    errorMessage.value = 'Nessuna fotocamera disponibile sul dispositivo.'
+    emit('permission-denied', err)
+  } else {
+    errorMessage.value = 'Impossibile avviare la fotocamera.'
+    emit('error', err)
+  }
+
+  setInfo('')
+
+  if (html5QrCode) {
+    html5QrCode.stop?.().catch(() => {})
+    html5QrCode.clear?.().catch(() => {})
+    html5QrCode = null
+  }
+}
+
+function handleScanSuccess(decodedText) {
+  if (!decodedText || typeof decodedText !== 'string') {
+    return
+  }
+
+  const value = decodedText.trim()
+  if (!value || value === lastValue) {
+    return
+  }
+
+  lastValue = value
+  emit('detected', value)
+
+  if (props.stopOnDetection) {
+    setInfo('QR code rilevato.')
+    stop({ silent: true }).catch(() => {})
+  }
+}
+
+function handleScanFailure() {
+  // Ignoriamo gli errori di scansione intermedi per evitare spam di notifiche.
 }
 
 async function start() {
-  if (isActive.value) {
-    return
+  if (isActive.value || startPromise) {
+    return startPromise
   }
 
   resetLastValue()
   errorMessage.value = ''
   setInfo('Attivazione della fotocamera…')
 
-  try {
-    await ensureDetector()
-  } catch (err) {
-    throw err
-  }
+  startPromise = (async () => {
+    await nextTick()
+    const scanner = ensureScanner()
 
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: props.facingMode || 'environment',
+    const facingMode = props.facingMode || 'environment'
+    const cameraConfig = { facingMode }
+
+    const formats =
+      typeof window !== 'undefined' && window.Html5QrcodeSupportedFormats
+        ? window.Html5QrcodeSupportedFormats
+        : null
+
+    const configuration = {
+      fps: 10,
+      aspectRatio: 1.3333333333,
+      disableFlip: facingMode === 'environment',
+      qrbox(viewFinderWidth, viewFinderHeight) {
+        const minEdge = Math.min(viewFinderWidth, viewFinderHeight)
+        const size = Math.max(200, Math.round(minEdge * 0.65))
+        return { width: size, height: size }
       },
-    })
-  } catch (err) {
-    if (err && err.name === 'NotAllowedError') {
-      errorMessage.value = 'Accesso alla fotocamera negato.'
-      emit('permission-denied', err)
-    } else if (err && err.name === 'NotFoundError') {
-      errorMessage.value = 'Nessuna fotocamera disponibile sul dispositivo.'
-      emit('permission-denied', err)
-    } else {
-      errorMessage.value = 'Impossibile accedere alla fotocamera.'
-      emit('error', err)
     }
-    setInfo('')
-    stopStream()
-    throw err
-  }
 
-  if (!video.value) {
-    stopStream()
-    setInfo('')
-    return
-  }
+    if (formats && formats.QR_CODE) {
+      configuration.formatsToSupport = [formats.QR_CODE]
+    }
 
-  video.value.srcObject = stream
-  isActive.value = true
-  setInfo('Inquadra il QR code del ticket.')
-  emit('state-change', { active: true })
-  frameHandle = requestAnimationFrame(scan)
+    try {
+      await scanner.start(cameraConfig, configuration, handleScanSuccess, handleScanFailure)
+      isActive.value = true
+      setInfo('Inquadra il QR code del ticket.')
+      emit('state-change', { active: true })
+    } catch (error) {
+      handleStartError(error)
+      throw error
+    }
+  })()
+
+  try {
+    await startPromise
+  } finally {
+    startPromise = null
+  }
 }
 
-function stop() {
-  if (frameHandle) {
-    cancelAnimationFrame(frameHandle)
-    frameHandle = 0
+async function stop({ silent = false } = {}) {
+  if (stopPromise) {
+    return stopPromise
   }
-  if (!isActive.value && !stream) {
-    return
+
+  stopPromise = (async () => {
+    if (startPromise) {
+      try {
+        await startPromise
+      } catch {
+        // ignoriamo errori già gestiti nello start
+      }
+    }
+
+    if (!html5QrCode) {
+      if (isActive.value) {
+        isActive.value = false
+        emit('state-change', { active: false })
+      }
+      return
+    }
+
+    try {
+      await html5QrCode.stop()
+    } catch (error) {
+      emit('error', toError(error))
+    }
+
+    try {
+      await html5QrCode.clear()
+    } catch (error) {
+      emit('error', toError(error))
+    }
+
+    html5QrCode = null
+
+    if (isActive.value) {
+      isActive.value = false
+      if (!silent) {
+        setInfo('Scansione interrotta.')
+      }
+      emit('state-change', { active: false })
+    }
+  })()
+
+  try {
+    await stopPromise
+  } finally {
+    stopPromise = null
   }
-  stopStream()
-  if (isActive.value) {
-    setInfo('Scansione interrotta.')
+
+  if (!isActive.value && !silent && infoMessage.value === '') {
+    setInfo('Premi "Avvia scansione" per utilizzare la fotocamera.')
   }
-  isActive.value = false
-  emit('state-change', { active: false })
 }
 
 function reset() {
@@ -143,35 +253,8 @@ function reset() {
   }
 }
 
-async function scan() {
-  if (!isActive.value || !video.value || !detector) {
-    return
-  }
-
-  try {
-    const barcodes = await detector.detect(video.value)
-    if (Array.isArray(barcodes) && barcodes.length > 0) {
-      const rawValue = (barcodes[0].rawValue || '').trim()
-      if (rawValue && rawValue !== lastValue) {
-        lastValue = rawValue
-        emit('detected', rawValue)
-        if (props.stopOnDetection) {
-          setInfo('QR code rilevato.')
-          stop()
-          return
-        }
-      }
-    }
-  } catch (err) {
-    errorMessage.value = 'Errore durante la scansione del QR code.'
-    emit('error', err)
-  }
-
-  frameHandle = requestAnimationFrame(scan)
-}
-
 onBeforeUnmount(() => {
-  stop()
+  stop({ silent: true }).catch(() => {})
 })
 
 defineExpose({
@@ -204,10 +287,19 @@ defineExpose({
   justify-content: center;
 }
 
-.qr-scanner__preview video {
+.qr-scanner__camera {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.qr-scanner__camera :deep(video),
+.qr-scanner__camera :deep(canvas) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
 }
 
 .qr-scanner__preview.is-active {
@@ -226,6 +318,7 @@ defineExpose({
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.75), rgba(59, 130, 246, 0.45));
   color: #f8fafc;
   font-weight: 600;
+  z-index: 2;
 }
 
 .qr-scanner__info {
