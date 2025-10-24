@@ -30,44 +30,17 @@
           <button class="btn outline" type="button" @click="goToLottery">Lotteria</button>
           <button class="btn secondary" type="button" @click="logout">Esci</button>
         </div>
-        <nav
-          ref="tabBarRef"
-          class="tab-bar"
-          :class="{
-            'tab-bar--dropdown': isCompactNav,
-            'tab-bar--open': isCompactNav && showCompactMenu,
-          }"
-          aria-label="Sezioni amministrative"
-        >
+        <nav class="section-nav" aria-label="Sezioni amministrative">
           <button
-            v-if="isCompactNav"
-            class="tab-bar__toggle"
+            v-for="tab in tabs"
+            :key="tab.id"
+            :class="['section-nav__button', { active: section === tab.id }]"
             type="button"
-            :aria-expanded="(isCompactNav && showCompactMenu).toString()"
-            :aria-controls="tabMenuId"
-            @click="showCompactMenu = !showCompactMenu"
-            @keydown.escape.prevent="closeCompactMenu"
+            :aria-current="section === tab.id ? 'page' : undefined"
+            @click="section = tab.id"
           >
-            <span class="tab-bar__toggle-label">{{ activeTabLabel }}</span>
-            <span class="tab-bar__toggle-icon" aria-hidden="true">▾</span>
+            {{ tab.label }}
           </button>
-          <ul
-            class="tab-bar__list"
-            :id="tabMenuId"
-            :aria-hidden="isCompactNav && !showCompactMenu ? 'true' : 'false'"
-            @keydown.escape.stop.prevent="closeCompactMenu"
-          >
-            <li v-for="tab in tabs" :key="tab.id" class="tab-bar__item">
-              <button
-                :class="['tab', { active: section === tab.id }]"
-                type="button"
-                :aria-current="section === tab.id ? 'page' : undefined"
-                @click="section = tab.id"
-              >
-                {{ tab.label }}
-              </button>
-            </li>
-          </ul>
         </nav>
       </div>
 
@@ -665,7 +638,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import QRScanner from './QRScanner.vue';
 import { apiClient } from '../api';
 import { roster } from '../roster';
@@ -687,47 +660,6 @@ const tabs = [
   { id: 'sponsors', label: 'Sponsor' },
   { id: 'admins', label: 'Admin' },
 ];
-
-const tabBarRef = ref(null);
-const tabMenuId = 'admin-portal-tab-menu';
-const isCompactNav = ref(false);
-const showCompactMenu = ref(false);
-
-const activeTabLabel = computed(() => {
-  const activeTab = tabs.find((tab) => tab.id === section.value);
-  return activeTab ? activeTab.label : 'Sezioni';
-});
-
-const evaluateNavLayout = () => {
-  const shouldCompact = window.innerWidth < 960 || tabs.length > 6;
-  if (isCompactNav.value !== shouldCompact) {
-    isCompactNav.value = shouldCompact;
-  }
-  if (!shouldCompact) {
-    showCompactMenu.value = false;
-  }
-};
-
-const closeCompactMenu = () => {
-  showCompactMenu.value = false;
-};
-
-const handleOutsideClick = (event) => {
-  if (!showCompactMenu.value) {
-    return;
-  }
-  if (typeof Node === 'undefined') {
-    return;
-  }
-  const root = tabBarRef.value;
-  if (!root) {
-    return;
-  }
-  const target = event?.target;
-  if (target instanceof Node && !root.contains(target)) {
-    closeCompactMenu();
-  }
-};
 
 const teams = ref([]);
 const players = ref([]);
@@ -2103,7 +2035,6 @@ async function copyLink(link) {
 }
 
 watch(section, (value, oldValue) => {
-  closeCompactMenu();
   if (value === 'results') {
     ensureResultsSelection();
     fetchEventResults({ showLoader: true });
@@ -2133,17 +2064,9 @@ if (isAuthenticated.value) {
   loadAll();
 }
 
-onMounted(() => {
-  evaluateNavLayout();
-  window.addEventListener('resize', evaluateNavLayout, { passive: true });
-  document.addEventListener('click', handleOutsideClick);
-});
-
 onBeforeUnmount(() => {
   stopResultsPolling();
   stopScanner();
-  window.removeEventListener('resize', evaluateNavLayout);
-  document.removeEventListener('click', handleOutsideClick);
 });
 </script>
 
@@ -2158,16 +2081,18 @@ onBeforeUnmount(() => {
 .admin-header {
   text-align: center;
   margin-bottom: 2rem;
+  color: #f8fafc;
 }
 
 .admin-header h1 {
   font-size: 2rem;
   margin: 0;
+  color: #f8fafc;
 }
 
 .subtitle {
   margin: 0.5rem 0 0;
-  color: #475569;
+  color: #cbd5f5;
 }
 
 .portal {
@@ -2180,6 +2105,9 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  color: #f1f5f9;
+  position: relative;
+  z-index: 1;
 }
 
 @media (min-width: 768px) {
@@ -2197,84 +2125,23 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
-.tab-bar {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.9rem 1.15rem;
-  border-radius: 1.5rem;
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.9));
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.35);
-}
-
-.tab-bar__list {
+.section-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.tab-bar__item {
-  display: flex;
-}
-
-.tab-bar__toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
-  width: 100%;
-  border-radius: 999px;
-  padding: 0.75rem 1.2rem;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  background: rgba(15, 23, 42, 0.6);
-  color: #f8fafc;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  padding: 0.5rem 0;
+  position: relative;
+  z-index: 1;
 }
 
-.tab-bar__toggle:hover,
-.tab-bar__toggle:focus-visible {
-  background: rgba(148, 163, 184, 0.25);
-  border-color: rgba(226, 232, 240, 0.65);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.35);
-  color: #ffffff;
-}
-
-.tab-bar__toggle:focus-visible {
-  outline: 2px solid #fbbf24;
-  outline-offset: 3px;
-}
-
-.tab-bar__toggle-label {
-  flex: 1;
-  text-align: left;
-}
-
-.tab-bar__toggle-icon {
-  transition: transform 0.2s ease;
-}
-
-.tab-bar--open .tab-bar__toggle-icon {
-  transform: rotate(180deg);
-}
-
-.tab {
+.section-nav__button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   padding: 0.65rem 1.4rem;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(226, 232, 240, 0.45);
+  background: rgba(15, 23, 42, 0.7);
   color: #f8fafc;
   font-size: 0.78rem;
   font-weight: 700;
@@ -2284,54 +2151,25 @@ onBeforeUnmount(() => {
   transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-.tab:hover,
-.tab:focus-visible {
-  background: rgba(148, 163, 184, 0.25);
-  border-color: rgba(226, 232, 240, 0.65);
+.section-nav__button:hover,
+.section-nav__button:focus-visible {
+  background: rgba(148, 163, 184, 0.3);
+  border-color: rgba(226, 232, 240, 0.75);
   color: #ffffff;
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.35);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.35);
 }
 
-.tab:focus-visible {
+.section-nav__button:focus-visible {
   outline: 2px solid #fbbf24;
   outline-offset: 3px;
 }
 
-.tab.active {
+.section-nav__button.active {
   background: linear-gradient(135deg, #f97316, #fbbf24);
   border-color: transparent;
   color: #0f172a;
   box-shadow: 0 16px 32px rgba(249, 115, 22, 0.35);
   transform: translateY(-1px);
-}
-
-.tab.active:hover {
-  box-shadow: 0 18px 36px rgba(249, 115, 22, 0.4);
-}
-
-.tab-bar--dropdown {
-  padding-bottom: 1.1rem;
-}
-
-.tab-bar--dropdown .tab-bar__list {
-  display: none;
-  flex-direction: column;
-}
-
-.tab-bar--dropdown.tab-bar--open .tab-bar__list {
-  display: flex;
-}
-
-.tab-bar--dropdown .tab {
-  justify-content: flex-start;
-  width: 100%;
-}
-
-@media (min-width: 768px) {
-  .tab-bar {
-    flex-direction: row;
-    align-items: center;
-  }
 }
 
 .card {
