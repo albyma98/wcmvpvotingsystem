@@ -1,29 +1,38 @@
 version: "3.9"
+
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./wcmvpvs-back
+      dockerfile: Dockerfile
+    image: wcmvpvs-backend:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      CFG_DB_FILENAME: /data/mvpvs.db
+      CFG_VOTE_SECRET: ${VOTE_SECRET:-secret}
+      CFG_BOOTSTRAPADMIN_ENABLED: ${BOOTSTRAP_ADMIN_ENABLED:-true}
+      CFG_BOOTSTRAPADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-Albyma}
+      CFG_BOOTSTRAPADMIN_PASSWORDHASH: ${BOOTSTRAP_ADMIN_PASSWORD_HASH:-4bdbc215d8dc3c571e802a69bced0c3071cc4a1f129ad97e15b357018aac6cd4}
+      CFG_BOOTSTRAPADMIN_ROLE: ${BOOTSTRAP_ADMIN_ROLE:-superadmin}
     ports:
       - "3000:3000"
-    depends_on:
-      - db
+    volumes:
+      - backend-data:/data
 
   frontend:
-    build: ./frontend
-    ports:
-      - "5173:5173"
+    build:
+      context: ./wcmvpvs-front
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    image: wcmvpvs-frontend:latest
     depends_on:
       - backend
-
-  db:
-    image: postgres:13
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: mvp
+    restart: unless-stopped
     ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+      - "8080:80"
 
 volumes:
-  pgdata:
+  backend-data:

@@ -1,0 +1,10 @@
+.git
+**/.git
+**/.DS_Store
+node_modules
+.tmp
+.tmp*
+tmp
+coverage
+.idea
+.vscode

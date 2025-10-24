@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api"
@@ -42,10 +43,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func ensureBootstrapAdmin(db database.AppDatabase, logger *logrus.Logger) error {
-	const username = "Albyma"
-	const passhash = "4bdbc215d8dc3c571e802a69bced0c3071cc4a1f129ad97e15b357018aac6cd4"
-	const role = "superadmin"
+func ensureBootstrapAdmin(db database.AppDatabase, logger *logrus.Logger, cfg WebAPIConfiguration) error {
+	if !cfg.BootstrapAdmin.Enabled {
+		logger.Info("bootstrap admin disabilitato via configurazione")
+		return nil
+	}
+
+	username := strings.TrimSpace(cfg.BootstrapAdmin.Username)
+	passhash := strings.TrimSpace(cfg.BootstrapAdmin.PasswordHash)
+	role := strings.TrimSpace(cfg.BootstrapAdmin.Role)
+	if username == "" || passhash == "" {
+		logger.Warn("bootstrap admin non configurato: username o password hash mancanti")
+		return nil
+	}
+
+	if role == "" {
+		role = "staff"
+	}
 
 	// Se esiste già, non fare nulla
 	if _, err := db.GetAdminByUsername(username); err == nil {
@@ -121,7 +135,7 @@ func run() error {
 		logger.WithError(err).Error("error creating AppDatabase")
 		return fmt.Errorf("creating AppDatabase: %w", err)
 	}
-	if err := ensureBootstrapAdmin(db, logger); err != nil {
+	if err := ensureBootstrapAdmin(db, logger, cfg); err != nil {
 		logger.WithError(err).Error("bootstrap admin fallito")
 		return err
 	}
