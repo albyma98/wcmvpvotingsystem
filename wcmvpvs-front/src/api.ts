@@ -38,12 +38,19 @@ const resolveApiBaseUrl = () => {
     }
   }
 
-  const envPort = import.meta.env.VITE_API_PORT?.toString().trim();
+  const envPortRaw = import.meta.env.VITE_API_PORT;
+  const envPort = typeof envPortRaw === 'number' ? envPortRaw.toString() : envPortRaw?.toString().trim();
   const { hostname, protocol, port: windowPort } = resolveFromWindow();
 
   if (envPort) {
     const sanitizedPort = envPort.replace(/^:/, '');
-    return `${protocol}//${hostname}:${sanitizedPort}`.replace(/\/+$/, '');
+    const targetHost = hostname || 'localhost';
+    return ensureApiPath(`${protocol}//${targetHost}:${sanitizedPort}`);
+  }
+
+  if (import.meta.env.DEV) {
+    const devHost = hostname || 'localhost';
+    return ensureApiPath(`${protocol}//${devHost}:3000`);
   }
 
   const originPort = windowPort ? `:${windowPort}` : '';
