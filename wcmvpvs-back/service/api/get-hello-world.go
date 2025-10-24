@@ -8,4 +8,5 @@ import (
 func (rt *_router) getHelloWorld(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("content-type", "text/plain")
 	_, _ = w.Write([]byte("Hello World!"))
+	rt.baseLogger.Info("hello world endpoint responded")
 }

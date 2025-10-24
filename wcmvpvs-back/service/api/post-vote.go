@@ -107,4 +107,9 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 
 	w.Header().Set("content-type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+	ctx.Logger.WithFields(map[string]interface{}{
+		"event_id":  req.EventID,
+		"player_id": req.PlayerID,
+		"code":      code,
+	}).Info("vote response sent")
 }

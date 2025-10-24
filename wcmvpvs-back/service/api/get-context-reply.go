@@ -11,4 +11,5 @@ import (
 func (rt *_router) getContextReply(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	w.Header().Set("content-type", "text/plain")
 	_, _ = w.Write([]byte("Hello World!"))
+	ctx.Logger.Info("context hello world endpoint responded")
 }
