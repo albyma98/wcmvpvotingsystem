@@ -151,11 +151,25 @@ func run() error {
 	// buffered channel so the goroutine can exit if we don't collect this error.
 	serverErrors := make(chan error, 1)
 
+	ipKey := strings.TrimSpace(os.Getenv("HMAC_IP_KEY"))
+	if ipKey == "" {
+		logger.Error("HMAC_IP_KEY non configurata")
+		return fmt.Errorf("missing HMAC_IP_KEY environment variable")
+	}
+
+	codeKey := strings.TrimSpace(os.Getenv("HMAC_CODE_KEY"))
+	if codeKey == "" {
+		logger.Error("HMAC_CODE_KEY non configurata")
+		return fmt.Errorf("missing HMAC_CODE_KEY environment variable")
+	}
+
 	// Create the API router
 	apirouter, err := api.New(api.Config{
-		Logger:     logger,
-		Database:   db,
-		VoteSecret: cfg.Vote.Secret,
+		Logger:      logger,
+		Database:    db,
+		VoteSecret:  cfg.Vote.Secret,
+		HMACIPKey:   ipKey,
+		HMACCodeKey: codeKey,
 	})
 	if err != nil {
 		logger.WithError(err).Error("error creating the API server instance")

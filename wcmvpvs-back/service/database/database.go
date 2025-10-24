@@ -70,7 +70,8 @@ type Vote struct {
 	PlayerID        int    `json:"player_id"`
 	TicketCode      string `json:"ticket_code"`
 	TicketSignature string `json:"ticket_signature"`
-	DeviceID        string `json:"device_id"`
+	HashedIP        string `json:"hashed_ip"`
+	BypassCode      string `json:"bypass_code,omitempty"`
 	CreatedAt       string `json:"created_at"`
 }
 
@@ -104,7 +105,9 @@ type Sponsor struct {
 type AppDatabase interface {
 	GetName() (string, error)
 	SetName(name string) error
-	AddVote(eventID, playerID int, code, signature, deviceID string) error
+	AddVote(eventID, playerID int, code, signature, hashedIP, bypassCode string) error
+	HasVoteFromHashedIP(eventID int, hashedIP string) (bool, error)
+	IsBypassCodeUsed(code string) (bool, error)
 	CreateTeam(name string) (int, error)
 	ListTeams() ([]Team, error)
 	UpdateTeam(id int, name string) error
@@ -208,23 +211,34 @@ func New(db *sql.DB) (AppDatabase, error) {
 	// Create votes table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='votes';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE votes (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, player_id INTEGER NOT NULL, ticket_code TEXT NOT NULL, ticket_signature TEXT NOT NULL, device_id TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (event_id) REFERENCES events(id), FOREIGN KEY (player_id) REFERENCES players(id));`
+		sqlStmt := `CREATE TABLE votes (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, player_id INTEGER NOT NULL, ticket_code TEXT NOT NULL, ticket_signature TEXT NOT NULL, device_id TEXT NOT NULL, hashed_ip TEXT NOT NULL, bypass_code TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (event_id) REFERENCES events(id), FOREIGN KEY (player_id) REFERENCES players(id));`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating votes table: %w", err)
 		}
-		_, err = db.Exec(`CREATE UNIQUE INDEX unique_vote_per_event_device ON votes (event_id, device_id);`)
-		if err != nil {
-			return nil, fmt.Errorf("error creating votes index: %w", err)
-		}
 	}
-	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_per_event_device ON votes (event_id, device_id);`)
-	if err != nil {
-		return nil, fmt.Errorf("error ensuring votes device index: %w", err)
-	}
+	_, _ = db.Exec(`DROP INDEX IF EXISTS unique_vote_per_event_device;`)
 	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_code_per_event ON votes (event_id, ticket_code);`)
 	if err != nil {
 		return nil, fmt.Errorf("error ensuring votes code index: %w", err)
+	}
+	if _, err = db.Exec(`ALTER TABLE votes ADD COLUMN hashed_ip TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error adding hashed_ip column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE votes ADD COLUMN bypass_code TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error adding bypass_code column: %w", err)
+		}
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_votes_event_hashed_ip ON votes (event_id, hashed_ip);`)
+	if err != nil {
+		return nil, fmt.Errorf("error ensuring votes hashed ip index: %w", err)
+	}
+	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_bypass_code ON votes (bypass_code) WHERE bypass_code IS NOT NULL AND bypass_code != '';`)
+	if err != nil {
+		return nil, fmt.Errorf("error ensuring votes bypass code index: %w", err)
 	}
 
 	// Create sponsors table if not exists
@@ -265,9 +279,45 @@ func (db *appdbimpl) Ping() error {
 }
 
 // AddVote stores a vote in the database
-func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string) error {
-	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id) VALUES (?, ?, ?, ?, ?)`, eventID, playerID, code, signature, deviceID)
+func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, hashedIP, bypassCode string) error {
+	var bypass interface{}
+	if strings.TrimSpace(bypassCode) != "" {
+		bypass = bypassCode
+	} else {
+		bypass = nil
+	}
+	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id, hashed_ip, bypass_code) VALUES (?, ?, ?, ?, ?, ?, ?)`, eventID, playerID, code, signature, hashedIP, hashedIP, bypass)
 	return err
+}
+
+func (db *appdbimpl) HasVoteFromHashedIP(eventID int, hashedIP string) (bool, error) {
+	if strings.TrimSpace(hashedIP) == "" {
+		return false, nil
+	}
+	var exists int
+	err := db.c.QueryRow(`SELECT 1 FROM votes WHERE event_id = ? AND hashed_ip = ? LIMIT 1`, eventID, hashedIP).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (db *appdbimpl) IsBypassCodeUsed(code string) (bool, error) {
+	if strings.TrimSpace(code) == "" {
+		return false, nil
+	}
+	var exists int
+	err := db.c.QueryRow(`SELECT 1 FROM votes WHERE bypass_code = ? LIMIT 1`, code).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // Team operations
@@ -441,7 +491,7 @@ LIMIT 1
 
 // Votes listing and deletion
 func (db *appdbimpl) ListVotes() ([]Vote, error) {
-	rows, err := db.c.Query(`SELECT id, event_id, player_id, ticket_code, ticket_signature, device_id, created_at FROM votes`)
+	rows, err := db.c.Query(`SELECT id, event_id, player_id, ticket_code, ticket_signature, IFNULL(hashed_ip, ''), IFNULL(bypass_code, ''), created_at FROM votes`)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +499,7 @@ func (db *appdbimpl) ListVotes() ([]Vote, error) {
 	var vs []Vote
 	for rows.Next() {
 		var v Vote
-		if err := rows.Scan(&v.ID, &v.EventID, &v.PlayerID, &v.TicketCode, &v.TicketSignature, &v.DeviceID, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.EventID, &v.PlayerID, &v.TicketCode, &v.TicketSignature, &v.HashedIP, &v.BypassCode, &v.CreatedAt); err != nil {
 			return nil, err
 		}
 		vs = append(vs, v)

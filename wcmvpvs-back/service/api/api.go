@@ -56,6 +56,12 @@ type Config struct {
 
 	// Secret is used to sign vote codes
 	VoteSecret string
+
+	// HMACIPKey is the key used to anonymize client IPs
+	HMACIPKey string
+
+	// HMACCodeKey is the key used to validate bypass codes
+	HMACCodeKey string
 }
 
 // Router is the package API interface representing an API handler builder
@@ -76,6 +82,12 @@ func New(cfg Config) (Router, error) {
 	if cfg.Database == nil {
 		return nil, errors.New("database is required")
 	}
+	if cfg.HMACIPKey == "" {
+		return nil, errors.New("HMAC IP key is required")
+	}
+	if cfg.HMACCodeKey == "" {
+		return nil, errors.New("HMAC code key is required")
+	}
 
 	// Create a new router where we will register HTTP endpoints. The server will pass requests to this router to be
 	// handled.
@@ -86,6 +98,8 @@ func New(cfg Config) (Router, error) {
 		baseLogger:     cfg.Logger,
 		db:             cfg.Database,
 		VoteSecret:     cfg.VoteSecret,
+		hmacIPKey:      []byte(cfg.HMACIPKey),
+		hmacCodeKey:    []byte(cfg.HMACCodeKey),
 		adminSessions:  map[string]adminSession{},
 		sessionTimeout: 12 * time.Hour,
 	}, nil
@@ -101,6 +115,9 @@ type _router struct {
 	db database.AppDatabase
 
 	VoteSecret string
+
+	hmacIPKey   []byte
+	hmacCodeKey []byte
 
 	adminSessionsMu sync.RWMutex
 	adminSessions   map[string]adminSession

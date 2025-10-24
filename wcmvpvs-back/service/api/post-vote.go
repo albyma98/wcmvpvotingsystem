@@ -15,6 +15,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 	var req struct {
 		PlayerID int    `json:"player_id"`
 		EventID  int    `json:"event_id"`
+		Code     string `json:"code"`
 		DeviceID string `json:"device_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -23,9 +24,11 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		return
 	}
 
-	if strings.TrimSpace(req.DeviceID) == "" {
-		ctx.Logger.Warn("vote request missing device id")
-		w.WriteHeader(http.StatusBadRequest)
+	ctx.Logger = ctx.Logger.WithField("bypass", strings.TrimSpace(ctx.BypassCode) != "")
+
+	if ctx.HashedIP == "" {
+		ctx.Logger.Error("missing hashed ip in request context")
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -64,14 +67,14 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		}
 		signature = signCode(rt.VoteSecret, code)
 
-		if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID); err != nil {
+		if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, ctx.HashedIP, ctx.BypassCode); err != nil {
 			switch {
 			case isVoteCodeCollision(err):
 				ctx.Logger.WithError(err).Warn("duplicate vote code detected, retrying")
 				continue
-			case isVoteDeviceCollision(err):
-				ctx.Logger.WithError(err).Warn("duplicate vote attempt for device")
-				w.WriteHeader(http.StatusConflict)
+			case isVoteHashedIPCollision(err):
+				ctx.Logger.WithError(err).Warn("duplicate vote attempt for hashed ip")
+				writeJSONError(w, http.StatusConflict, "Hai già votato")
 				return
 			case isUniqueConstraintError(err):
 				ctx.Logger.WithError(err).Error("vote unique constraint violation")

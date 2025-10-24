@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 )
 
@@ -13,7 +15,10 @@ func (rt *_router) Handler() chi.Router {
 	// Special routes
 	rt.router.Get("/liveness", rt.liveness)
 
-	rt.router.Post("/vote", rt.wrap(rt.postVote))
+	voteHandler := rt.wrap(rt.postVote)
+	rt.router.Post("/vote", func(w http.ResponseWriter, r *http.Request) {
+		rt.antiDoubleVoteMiddleware(voteHandler).ServeHTTP(w, r)
+	})
 	rt.router.Get("/sponsors", rt.wrap(rt.listSponsors))
 	// Admin CRUD routes
 	rt.router.Post("/admin/login", rt.wrap(rt.adminLogin))

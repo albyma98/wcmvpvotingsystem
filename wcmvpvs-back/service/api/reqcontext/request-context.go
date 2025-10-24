@@ -18,4 +18,10 @@ type RequestContext struct {
 
 	// Logger is a custom field logger for the request
 	Logger logrus.FieldLogger
+
+	// HashedIP contains the anonymized client IP hash for the request, if available
+	HashedIP string
+
+	// BypassCode holds a validated bypass code associated with the request, if any
+	BypassCode string
 }
