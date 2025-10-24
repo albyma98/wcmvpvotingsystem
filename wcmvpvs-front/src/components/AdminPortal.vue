@@ -358,6 +358,112 @@
         </div>
       </section>
 
+      <section v-else-if="section === 'scanner'" class="card scanner-card">
+        <header class="section-header">
+          <h2>Verifica ticket lotteria</h2>
+          <p>Seleziona l'evento e scansiona il QR code per verificarne la validità.</p>
+        </header>
+
+        <div class="scanner-controls">
+          <label>
+            Evento
+            <select v-model.number="selectedScanEventId" :disabled="!events.length">
+              <option disabled value="0">Seleziona un evento</option>
+              <option v-for="event in events" :key="event.id" :value="event.id">
+                {{ eventLabel(event) }}
+              </option>
+            </select>
+          </label>
+          <button
+            class="btn outline"
+            type="button"
+            @click="resetScanState()"
+            :disabled="!lastScanRaw && !validationResult && !scanError"
+          >
+            Pulisci risultato
+          </button>
+        </div>
+
+        <div class="scanner-layout">
+          <div class="scanner-viewport">
+            <QRScanner
+              ref="scannerRef"
+              @detected="handleQrDetected"
+              @error="handleScannerError"
+              @permission-denied="handleScannerPermissionDenied"
+              @state-change="handleScannerStateChange"
+            >
+              <template #placeholder>
+                <span>Seleziona un evento e premi "Avvia scansione".</span>
+              </template>
+            </QRScanner>
+            <div class="scanner-actions">
+              <button
+                class="btn primary"
+                type="button"
+                @click="startScanner"
+                :disabled="!selectedScanEventId || isScannerActive"
+              >
+                {{ isScannerActive ? 'Scansione in corso…' : 'Avvia scansione' }}
+              </button>
+              <button class="btn outline" type="button" @click="stopScanner" :disabled="!isScannerActive">
+                Ferma
+              </button>
+            </div>
+            <p class="muted scanner-hint">{{ scannerHint }}</p>
+          </div>
+
+          <div class="scanner-status">
+            <p v-if="lastScanRaw" class="muted">
+              Ultimo QR rilevato:
+              <code>{{ lastScanRaw }}</code>
+            </p>
+            <p v-if="scanError" class="error">{{ scanError }}</p>
+            <p v-if="isValidatingTicket" class="info-banner">Verifica del ticket in corso…</p>
+
+            <div
+              v-if="validationResult"
+              class="validation-result"
+              :class="{ winner: validationResult.assigned_prize }"
+            >
+              <h3>Ticket valido</h3>
+              <dl>
+                <div>
+                  <dt>Codice</dt>
+                  <dd>{{ validationResult.ticket_code }}</dd>
+                </div>
+                <div>
+                  <dt>Giocatore</dt>
+                  <dd>
+                    {{
+                      validationResult.player_first_name || validationResult.player_last_name
+                        ? `${validationResult.player_first_name} ${validationResult.player_last_name}`.trim()
+                        : 'Non disponibile'
+                    }}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Registrato il</dt>
+                  <dd>{{ formatTicketDate(validationResult.created_at) }}</dd>
+                </div>
+                <div v-if="validationResult.assigned_prize">
+                  <dt>Premio</dt>
+                  <dd>
+                    {{
+                      validationResult.assigned_prize.name ||
+                      `Premio ${validationResult.assigned_prize.position}`
+                    }}
+                  </dd>
+                </div>
+              </dl>
+              <button class="btn secondary" type="button" @click="prepareNewScan">
+                Nuova scansione
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section v-else-if="section === 'teams'" class="card">
         <header class="section-header">
           <h2>Squadre</h2>
@@ -532,6 +638,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import QRScanner from './QRScanner.vue';
 import { apiClient } from '../api';
 import { roster } from '../roster';
 
@@ -546,6 +653,7 @@ const tabs = [
   { id: 'events', label: 'Eventi' },
   { id: 'closing', label: 'Chiusura votazioni' },
   { id: 'results', label: 'Risultati' },
+  { id: 'scanner', label: 'Verifica ticket' },
   { id: 'teams', label: 'Squadre' },
   { id: 'players', label: 'Giocatori' },
   { id: 'sponsors', label: 'Sponsor' },
@@ -564,6 +672,14 @@ const eventResults = ref([]);
 const isLoadingResults = ref(false);
 const resultsError = ref('');
 const lastResultsUpdate = ref(null);
+const scannerRef = ref(null);
+const selectedScanEventId = ref(0);
+const lastScanRaw = ref('');
+const scanError = ref('');
+const validationResult = ref(null);
+const isValidatingTicket = ref(false);
+const isScannerActive = ref(false);
+const cameraPermissionDenied = ref(false);
 
 const newTeamName = ref('');
 const newPlayer = reactive({
@@ -715,6 +831,24 @@ const hasResultsVotes = computed(() => totalVotes.value > 0);
 const lastResultsUpdateLabel = computed(() =>
   lastResultsUpdate.value ? lastResultsUpdate.value.toLocaleString('it-IT') : '',
 );
+const scannerHint = computed(() => {
+  if (!events.value.length) {
+    return 'Crea o carica un evento per abilitare la verifica dei ticket.';
+  }
+  if (!selectedScanEventId.value) {
+    return 'Seleziona un evento per iniziare la scansione.';
+  }
+  if (cameraPermissionDenied.value) {
+    return "Consenti l'uso della fotocamera dal browser e riprova.";
+  }
+  if (isScannerActive.value) {
+    return 'Inquadra il QR code del ticket per verificarlo.';
+  }
+  if (validationResult.value) {
+    return 'Ticket verificato. Avvia una nuova scansione per controllarne un altro.';
+  }
+  return 'Premi "Avvia scansione" per utilizzare la fotocamera posteriore.';
+});
 
 const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
@@ -801,6 +935,7 @@ watch(hasEnoughTeams, (enough) => {
 
 watch(events, (value) => {
   ensureResultsSelection();
+  ensureScanEventSelection();
   syncEventPrizeDrafts(Array.isArray(value) ? value : []);
   if (section.value === 'results' && selectedResultsEventId.value) {
     fetchEventResults();
@@ -814,6 +949,12 @@ watch(activeEventId, () => {
 watch(activeEventVotesClosed, (closed) => {
   if (!closed) {
     closeVotesMessage.value = '';
+  }
+});
+
+watch(selectedScanEventId, (eventId, oldEventId) => {
+  if (eventId !== oldEventId) {
+    resetScanState({ stopCamera: true });
   }
 });
 
@@ -832,6 +973,8 @@ function clearCollections() {
   lastCreatedEventLink.value = '';
   resetNewEventPrizes();
   resetResultsState();
+  selectedScanEventId.value = 0;
+  resetScanState({ stopCamera: true, clearPermission: true });
 }
 
 function stopResultsPolling() {
@@ -871,6 +1014,21 @@ function ensureResultsSelection() {
   if (!exists) {
     const active = events.value.find((event) => event.is_active);
     selectedResultsEventId.value = active ? active.id : events.value[0].id;
+  }
+}
+
+function ensureScanEventSelection() {
+  if (!events.value.length) {
+    if (selectedScanEventId.value !== 0) {
+      selectedScanEventId.value = 0;
+    }
+    resetScanState({ stopCamera: true });
+    return;
+  }
+  const exists = events.value.some((event) => event.id === selectedScanEventId.value);
+  if (!exists) {
+    const active = events.value.find((event) => event.is_active);
+    selectedScanEventId.value = active ? active.id : events.value[0].id;
   }
 }
 
@@ -1277,6 +1435,194 @@ function formatEventDate(value) {
   return value.replace('T', ' ');
 }
 
+function formatTicketDate(value) {
+  if (!value) {
+    return 'Data non disponibile';
+  }
+  const date = new Date(value);
+  if (!Number.isNaN(date.valueOf())) {
+    return date.toLocaleString('it-IT');
+  }
+  return value.replace('T', ' ');
+}
+
+function resetScanState({ stopCamera = false, clearPermission = false } = {}) {
+  scanError.value = '';
+  lastScanRaw.value = '';
+  validationResult.value = null;
+  isValidatingTicket.value = false;
+  if (clearPermission) {
+    cameraPermissionDenied.value = false;
+  }
+  if (stopCamera) {
+    stopScanner();
+  } else if (scannerRef.value) {
+    scannerRef.value.reset?.();
+  }
+}
+
+function stopScanner() {
+  if (scannerRef.value) {
+    scannerRef.value.stop?.();
+  }
+}
+
+async function startScanner() {
+  if (!scannerRef.value) {
+    return;
+  }
+  if (!selectedScanEventId.value) {
+    scanError.value = 'Seleziona un evento per avviare la scansione.';
+    return;
+  }
+  scanError.value = '';
+  lastScanRaw.value = '';
+  validationResult.value = null;
+  cameraPermissionDenied.value = false;
+  try {
+    await scannerRef.value.start?.();
+  } catch (error) {
+    // gli errori vengono gestiti dai listener del componente
+  }
+}
+
+function handleScannerStateChange(state) {
+  isScannerActive.value = Boolean(state?.active);
+}
+
+function handleScannerPermissionDenied() {
+  cameraPermissionDenied.value = true;
+  scanError.value =
+    "Accesso alla fotocamera negato. Abilita i permessi nelle impostazioni del browser e riprova.";
+}
+
+function handleScannerError(error) {
+  if (error?.message === 'barcode_detector_unsupported') {
+    scanError.value = 'Il browser non supporta la scansione dei QR code.';
+    return;
+  }
+  if (!cameraPermissionDenied.value) {
+    scanError.value = 'Si è verificato un errore durante la scansione.';
+  }
+}
+
+function parseQrPayload(rawValue) {
+  if (!rawValue) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (parsed && typeof parsed === 'object') {
+      return parsed;
+    }
+  } catch (error) {
+    // fallback parsing gestito sotto
+  }
+  const parts = rawValue.split(/\s*[|;\n]\s*/);
+  if (parts.length >= 2) {
+    return { code: parts[0], signature: parts[1] };
+  }
+  return null;
+}
+
+function normalizeValidationResult(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  const normalized = {
+    vote_id: Number(payload.vote_id) || 0,
+    event_id: Number(payload.event_id) || 0,
+    player_id: Number(payload.player_id) || 0,
+    ticket_code: payload.ticket_code || '',
+    ticket_signature: payload.ticket_signature || '',
+    player_first_name: payload.player_first_name || '',
+    player_last_name: payload.player_last_name || '',
+    created_at: payload.created_at || '',
+    assigned_prize: null,
+  };
+  if (payload.assigned_prize && typeof payload.assigned_prize === 'object') {
+    normalized.assigned_prize = {
+      id: Number(payload.assigned_prize.id) || 0,
+      name: payload.assigned_prize.name || '',
+      position: Number(payload.assigned_prize.position) || 0,
+    };
+  }
+  return normalized;
+}
+
+function translateTicketError(code, status) {
+  switch (code) {
+    case 'invalid_signature':
+      return 'La firma del ticket non è valida.';
+    case 'ticket_not_found':
+      return "Ticket non trovato per l'evento selezionato.";
+    case 'ticket_signature_mismatch':
+      return 'Il ticket non è più valido per la lotteria.';
+    case 'invalid_ticket_data':
+    case 'invalid_payload':
+      return 'Il QR scansionato non contiene un ticket valido.';
+    default:
+      if (status === 404) {
+        return "Ticket non trovato per l'evento selezionato.";
+      }
+      return 'Impossibile verificare il ticket. Riprova.';
+  }
+}
+
+async function handleQrDetected(rawValue) {
+  lastScanRaw.value = rawValue || '';
+  scanError.value = '';
+  validationResult.value = null;
+
+  if (!selectedScanEventId.value) {
+    scanError.value = 'Seleziona prima un evento per verificare il ticket.';
+    return;
+  }
+
+  const payload = parseQrPayload(rawValue);
+  const code = (payload?.code || payload?.ticket_code || '').toString().trim();
+  const signature = (payload?.signature || payload?.ticket_signature || '').toString().trim();
+
+  if (!code || !signature) {
+    scanError.value = 'Il QR scansionato non è riconosciuto come ticket della lotteria.';
+    return;
+  }
+
+  await validateTicket(code, signature);
+}
+
+async function validateTicket(code, signature) {
+  isValidatingTicket.value = true;
+  scanError.value = '';
+  try {
+    const { data } = await apiClient.post(
+      `/events/${selectedScanEventId.value}/validate-ticket`,
+      { code, signature },
+      authHeaders.value,
+    );
+    const normalized = normalizeValidationResult(data?.ticket);
+    if (normalized) {
+      validationResult.value = normalized;
+    } else {
+      scanError.value = 'Risposta inattesa dal server. Riprova.';
+    }
+  } catch (error) {
+    if (error?.response?.status === 401) {
+      handleUnauthorized();
+    } else {
+      const errorCode = error?.response?.data?.error || '';
+      scanError.value = translateTicketError(errorCode, error?.response?.status);
+    }
+  } finally {
+    isValidatingTicket.value = false;
+  }
+}
+
+async function prepareNewScan() {
+  resetScanState();
+  await startScanner();
+}
+
 async function login() {
   if (isLoggingIn.value) {
     return;
@@ -1350,6 +1696,7 @@ async function loadEvents() {
     ? data.map((event) => normalizeEventResponse(event)).filter(Boolean)
     : [];
   events.value = normalized;
+  ensureScanEventSelection();
 }
 
 async function loadAdmins() {
@@ -1694,6 +2041,13 @@ watch(section, (value, oldValue) => {
   } else if (oldValue === 'results') {
     stopResultsPolling();
   }
+  if (value === 'scanner') {
+    ensureScanEventSelection();
+    resetScanState();
+  }
+  if (oldValue === 'scanner') {
+    stopScanner();
+  }
 });
 
 watch(selectedResultsEventId, (eventId) => {
@@ -1711,6 +2065,7 @@ if (isAuthenticated.value) {
 
 onBeforeUnmount(() => {
   stopResultsPolling();
+  stopScanner();
 });
 </script>
 
@@ -2246,6 +2601,127 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.scanner-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.scanner-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.scanner-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.scanner-controls select {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: #fff;
+}
+
+.scanner-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .scanner-layout {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+}
+
+.scanner-viewport {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+}
+
+.scanner-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.scanner-hint {
+  text-align: center;
+  font-size: 0.95rem;
+  color: #475569;
+}
+
+.scanner-status {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.scanner-status code {
+  font-family: 'Fira Code', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.85rem;
+  background: rgba(30, 64, 175, 0.08);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  color: #1e3a8a;
+}
+
+.validation-result {
+  padding: 1.25rem;
+  border-radius: 1rem;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.validation-result.winner {
+  background: rgba(234, 179, 8, 0.15);
+  border-color: rgba(217, 119, 6, 0.45);
+}
+
+.validation-result h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.validation-result dl {
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.validation-result dl div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.validation-result dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #1e293b;
+}
+
+.validation-result dd {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0f172a;
 }
 
 .results-meta {
