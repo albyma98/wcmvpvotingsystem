@@ -180,6 +180,10 @@ func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 	}
 	e.ID = id
 	if err := rt.db.UpdateEvent(e); err != nil {
+		if errors.Is(err, database.ErrPrizeLockedByWinner) {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
 		ctx.Logger.WithError(err).Error("cannot update event")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -270,6 +274,82 @@ func (rt *_router) listEventTickets(w http.ResponseWriter, r *http.Request, ctx 
 
 	_ = json.NewEncoder(w).Encode(tickets)
 	ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "tickets": len(tickets)}).Info("listed event tickets")
+}
+
+func (rt *_router) assignPrizeWinner(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	eventID, err := strconv.Atoi(chi.URLParam(r, "eventId"))
+	if err != nil || eventID <= 0 {
+		ctx.Logger.Warn("invalid event id while assigning prize winner")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	prizeID, err := strconv.Atoi(chi.URLParam(r, "prizeId"))
+	if err != nil || prizeID <= 0 {
+		ctx.Logger.Warn("invalid prize id while assigning prize winner")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var payload struct {
+		VoteID int `json:"vote_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while assigning prize winner")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if payload.VoteID <= 0 {
+		ctx.Logger.Warn("invalid vote id provided while assigning prize winner")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	prize, err := rt.db.AssignPrizeWinner(eventID, prizeID, payload.VoteID)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			w.WriteHeader(http.StatusNotFound)
+		case errors.Is(err, database.ErrPrizeAlreadyAssigned), errors.Is(err, database.ErrPrizeWinnerConflict):
+			w.WriteHeader(http.StatusConflict)
+		case errors.Is(err, database.ErrPrizeVoteMismatch):
+			w.WriteHeader(http.StatusBadRequest)
+		default:
+			ctx.Logger.WithError(err).Error("cannot assign prize winner")
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(prize)
+	ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "vote_id": payload.VoteID}).Info("prize winner assigned")
+}
+
+func (rt *_router) clearPrizeWinner(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	eventID, err := strconv.Atoi(chi.URLParam(r, "eventId"))
+	if err != nil || eventID <= 0 {
+		ctx.Logger.Warn("invalid event id while clearing prize winner")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	prizeID, err := strconv.Atoi(chi.URLParam(r, "prizeId"))
+	if err != nil || prizeID <= 0 {
+		ctx.Logger.Warn("invalid prize id while clearing prize winner")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := rt.db.ClearPrizeWinner(eventID, prizeID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot clear prize winner")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID}).Info("prize winner cleared")
 }
 
 // Votes

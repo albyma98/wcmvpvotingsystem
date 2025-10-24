@@ -117,6 +117,39 @@
               :disabled="!hasEnoughTeams"
             />
           </label>
+          <div class="prize-editor new-event-prizes">
+            <div class="prize-editor__header">
+              <span>Premi in palio</span>
+              <p class="field-hint">Aggiungi i premi disponibili per la lotteria dell'evento.</p>
+            </div>
+            <div class="prize-editor__list">
+              <div
+                v-for="(prize, index) in newEventPrizes"
+                :key="`new-event-prize-${index}`"
+                class="prize-editor__row"
+              >
+                <input
+                  v-model.trim="prize.name"
+                  type="text"
+                  :placeholder="`Premio ${index + 1}`"
+                  :disabled="!hasEnoughTeams"
+                />
+                <button
+                  class="btn outline"
+                  type="button"
+                  @click="removeNewEventPrize(index)"
+                  :disabled="newEventPrizes.length <= 1"
+                >
+                  Rimuovi
+                </button>
+              </div>
+            </div>
+            <div class="prize-editor__actions">
+              <button class="btn secondary" type="button" @click="addNewEventPrize" :disabled="!hasEnoughTeams">
+                Aggiungi premio
+              </button>
+            </div>
+          </div>
           <button class="btn primary" type="submit" :disabled="!hasEnoughTeams">Crea evento</button>
         </form>
 
@@ -158,6 +191,54 @@
               </button>
               <button class="btn secondary" type="button" @click="openVote(event.id)">Apri pagina voto</button>
               <button class="btn danger" type="button" @click="deleteEvent(event.id)">Elimina</button>
+            </div>
+            <div class="prize-editor existing-prizes">
+              <div class="prize-editor__header">
+                <strong>Premi in palio</strong>
+                <p class="field-hint">Modifica l'elenco dei premi. I premi già assegnati non possono essere rimossi.</p>
+              </div>
+              <div class="prize-editor__list">
+                <div
+                  v-for="(prize, index) in prizeDraftsFor(event.id)"
+                  :key="`event-${event.id}-prize-${prize.id || index}`"
+                  class="prize-editor__row"
+                >
+                  <input
+                    v-model="prize.name"
+                    type="text"
+                    :placeholder="`Premio ${index + 1}`"
+                    :disabled="isSavingPrizesFor(event.id)"
+                  />
+                  <span v-if="prize.winner" class="prize-editor__winner">Assegnato a {{ prizeWinnerLabel(prize) }}</span>
+                  <button
+                    class="btn outline"
+                    type="button"
+                    @click="removePrizeDraft(event.id, index)"
+                    :disabled="prize.winner || prizeDraftsFor(event.id).length <= 1 || isSavingPrizesFor(event.id)"
+                  >
+                    Rimuovi
+                  </button>
+                </div>
+              </div>
+              <div class="prize-editor__actions">
+                <button
+                  class="btn secondary"
+                  type="button"
+                  @click="addPrizeDraft(event.id)"
+                  :disabled="isSavingPrizesFor(event.id)"
+                >
+                  Aggiungi premio
+                </button>
+                <button
+                  class="btn primary"
+                  type="button"
+                  @click="savePrizesForEvent(event)"
+                  :disabled="isSavingPrizesFor(event.id)"
+                >
+                  {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva premi' }}
+                </button>
+              </div>
+              <p v-if="eventPrizeErrors[event.id]" class="error">{{ eventPrizeErrors[event.id] }}</p>
             </div>
           </li>
         </ul>
@@ -499,6 +580,7 @@ const newEvent = reactive({
   start_datetime: '',
   location: '',
 });
+const newEventPrizes = ref([{ name: '' }]);
 const teamInputs = reactive({
   home: '',
   away: '',
@@ -523,6 +605,9 @@ const isApplyingSponsorCount = ref(false);
 const lastCreatedEventLink = ref('');
 const isClosingVotes = ref(false);
 const closeVotesMessage = ref('');
+const eventPrizeDrafts = reactive({});
+const eventPrizeErrors = reactive({});
+const savingEventPrizes = ref(0);
 
 const hasEnoughTeams = computed(() => teams.value.length >= 2);
 const activeEventId = computed(() => {
@@ -649,6 +734,10 @@ const authHeaders = computed(() => ({
   },
 }));
 
+function resetNewEventPrizes() {
+  newEventPrizes.value = [{ name: '' }];
+}
+
 function resetForms() {
   newTeamName.value = '';
   Object.assign(newPlayer, {
@@ -665,6 +754,7 @@ function resetForms() {
     start_datetime: '',
     location: '',
   });
+  resetNewEventPrizes();
   teamInputs.home = '';
   teamInputs.away = '';
   Object.assign(newAdmin, { username: '', password: '', role: '' });
@@ -709,8 +799,9 @@ watch(hasEnoughTeams, (enough) => {
   }
 });
 
-watch(events, () => {
+watch(events, (value) => {
   ensureResultsSelection();
+  syncEventPrizeDrafts(Array.isArray(value) ? value : []);
   if (section.value === 'results' && selectedResultsEventId.value) {
     fetchEventResults();
   }
@@ -732,7 +823,14 @@ function clearCollections() {
   events.value = [];
   admins.value = [];
   sponsors.value = [];
+  Object.keys(eventPrizeDrafts).forEach((key) => {
+    delete eventPrizeDrafts[key];
+  });
+  Object.keys(eventPrizeErrors).forEach((key) => {
+    delete eventPrizeErrors[key];
+  });
   lastCreatedEventLink.value = '';
+  resetNewEventPrizes();
   resetResultsState();
 }
 
@@ -814,6 +912,62 @@ async function fetchEventResults({ showLoader = false } = {}) {
       isLoadingResults.value = false;
     }
   }
+}
+
+function normalizePrizeResponse(prize, index = 0) {
+  if (!prize || typeof prize !== 'object') {
+    return null;
+  }
+  const winner = prize.winner && typeof prize.winner === 'object' ? prize.winner : null;
+  const normalizedWinner = winner
+    ? {
+        voteId: Number(winner.vote_id ?? winner.voteId) || 0,
+        ticketCode: typeof (winner.ticket_code ?? winner.ticketCode) === 'string'
+          ? (winner.ticket_code ?? winner.ticketCode)
+          : '',
+        playerId: Number(winner.player_id ?? winner.playerId) || 0,
+        playerFirstName:
+          typeof (winner.player_first_name ?? winner.playerFirstName) === 'string'
+            ? (winner.player_first_name ?? winner.playerFirstName)
+            : '',
+        playerLastName:
+          typeof (winner.player_last_name ?? winner.playerLastName) === 'string'
+            ? (winner.player_last_name ?? winner.playerLastName)
+            : '',
+        assignedAt:
+          typeof (winner.assigned_at ?? winner.assignedAt) === 'string'
+            ? (winner.assigned_at ?? winner.assignedAt)
+            : '',
+      }
+    : null;
+
+  const position = Number(prize.position) || index + 1;
+  return {
+    id: Number(prize.id) || 0,
+    eventId: Number(prize.event_id ?? prize.eventId) || 0,
+    name: typeof prize.name === 'string' ? prize.name : '',
+    position,
+    winner: normalizedWinner,
+  };
+}
+
+function normalizeEventResponse(event) {
+  const normalized = { ...event };
+  if (Array.isArray(event.prizes)) {
+    const mapped = event.prizes
+      .map((prize, index) => normalizePrizeResponse(prize, index))
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.position === b.position) {
+          return a.id - b.id;
+        }
+        return a.position - b.position;
+      });
+    normalized.prizes = mapped;
+  } else {
+    normalized.prizes = [];
+  }
+  return normalized;
 }
 
 function normalizeSponsorResponse(item) {
@@ -963,6 +1117,146 @@ function handleTeamInput(position) {
   }
 }
 
+function addNewEventPrize() {
+  newEventPrizes.value = [...newEventPrizes.value, { name: '' }];
+}
+
+function removeNewEventPrize(index) {
+  if (newEventPrizes.value.length <= 1) {
+    return;
+  }
+  const updated = newEventPrizes.value.filter((_, idx) => idx !== index);
+  newEventPrizes.value = updated.length ? updated : [{ name: '' }];
+}
+
+function prizeDraftsFor(eventId) {
+  const drafts = eventPrizeDrafts[eventId];
+  if (!Array.isArray(drafts) || drafts.length === 0) {
+    eventPrizeDrafts[eventId] = [{ id: 0, name: '', position: 1, winner: null }];
+  }
+  return eventPrizeDrafts[eventId];
+}
+
+function addPrizeDraft(eventId) {
+  const drafts = prizeDraftsFor(eventId);
+  const updated = drafts.slice();
+  updated.push({ id: 0, name: '', position: updated.length + 1, winner: null });
+  eventPrizeDrafts[eventId] = updated;
+  eventPrizeErrors[eventId] = '';
+}
+
+function removePrizeDraft(eventId, index) {
+  const drafts = prizeDraftsFor(eventId);
+  if (drafts.length <= 1) {
+    return;
+  }
+  const target = drafts[index];
+  if (target && target.winner) {
+    eventPrizeErrors[eventId] =
+      "Impossibile rimuovere un premio già assegnato. Annulla il vincitore dalla lotteria prima di eliminarlo.";
+    return;
+  }
+  const updated = drafts.filter((_, idx) => idx !== index);
+  eventPrizeDrafts[eventId] = updated.length
+    ? updated.map((item, positionIndex) => ({ ...item, position: positionIndex + 1 }))
+    : [{ id: 0, name: '', position: 1, winner: null }];
+}
+
+function isSavingPrizesFor(eventId) {
+  return savingEventPrizes.value === eventId;
+}
+
+function prizeWinnerLabel(prize) {
+  if (!prize || !prize.winner) {
+    return '';
+  }
+  const parts = [];
+  if (prize.winner.ticketCode) {
+    parts.push(prize.winner.ticketCode);
+  }
+  const fullName = [prize.winner.playerFirstName, prize.winner.playerLastName]
+    .filter(Boolean)
+    .join(' ');
+  if (fullName) {
+    parts.push(fullName);
+  }
+  return parts.join(' • ');
+}
+
+async function savePrizesForEvent(event) {
+  if (!event || !event.id || isSavingPrizesFor(event.id)) {
+    return;
+  }
+
+  const drafts = prizeDraftsFor(event.id);
+  const sanitized = drafts
+    .map((prize, index) => ({
+      id: Number(prize.id) || 0,
+      name: (prize.name || '').trim(),
+      position: index + 1,
+    }))
+    .filter((prize) => prize.name);
+
+  eventPrizeErrors[event.id] = '';
+
+  const payload = {
+    team1_id: event.team1_id,
+    team2_id: event.team2_id,
+    start_datetime: event.start_datetime,
+    location: event.location,
+    prizes: sanitized,
+  };
+
+  savingEventPrizes.value = event.id;
+  try {
+    await secureRequest(() => apiClient.put(`/events/${event.id}`, payload, authHeaders.value));
+    await loadEvents();
+  } catch (error) {
+    if (error?.response?.status === 409) {
+      eventPrizeErrors[event.id] =
+        "Non puoi rimuovere un premio già assegnato. Annulla l'assegnazione dalla lotteria prima di modificarlo.";
+    } else if (error?.response?.status === 400) {
+      eventPrizeErrors[event.id] = 'Controlla i nomi dei premi e riprova.';
+    } else if (error?.response?.status !== 401) {
+      eventPrizeErrors[event.id] = 'Impossibile salvare i premi. Riprova più tardi.';
+    }
+  } finally {
+    savingEventPrizes.value = 0;
+  }
+}
+
+function syncEventPrizeDrafts(eventList) {
+  const ids = new Set(eventList.map((event) => event.id));
+  Object.keys(eventPrizeDrafts).forEach((key) => {
+    if (!ids.has(Number(key))) {
+      delete eventPrizeDrafts[key];
+    }
+  });
+  Object.keys(eventPrizeErrors).forEach((key) => {
+    if (!ids.has(Number(key))) {
+      delete eventPrizeErrors[key];
+    }
+  });
+  eventList.forEach((event) => {
+    const drafts = Array.isArray(event.prizes) && event.prizes.length
+      ? event.prizes.map((prize, index) => ({
+          id: prize.id,
+          name: prize.name || '',
+          position: prize.position || index + 1,
+          winner: prize.winner
+            ? {
+                voteId: prize.winner.voteId,
+                ticketCode: prize.winner.ticketCode,
+                playerFirstName: prize.winner.playerFirstName,
+                playerLastName: prize.winner.playerLastName,
+              }
+            : null,
+        }))
+      : [{ id: 0, name: '', position: 1, winner: null }];
+    eventPrizeDrafts[event.id] = drafts;
+  });
+}
+
 function eventLabel(event) {
   return `${teamName(event.team1_id)} vs ${teamName(event.team2_id)}`;
 }
@@ -1052,7 +1346,10 @@ async function loadPlayers() {
 
 async function loadEvents() {
   const { data } = await secureRequest(() => apiClient.get('/events', authHeaders.value));
-  events.value = data;
+  const normalized = Array.isArray(data)
+    ? data.map((event) => normalizeEventResponse(event)).filter(Boolean)
+    : [];
+  events.value = normalized;
 }
 
 async function loadAdmins() {
@@ -1135,7 +1432,23 @@ async function createEvent() {
     return;
   }
 
-  const { data } = await secureRequest(() => apiClient.post('/events', newEvent, authHeaders.value));
+  const prizesPayload = newEventPrizes.value
+    .map((prize, index) => ({
+      id: Number(prize.id) || 0,
+      name: (prize.name || '').trim(),
+      position: index + 1,
+    }))
+    .filter((prize) => prize.name);
+
+  const payload = {
+    team1_id: newEvent.team1_id,
+    team2_id: newEvent.team2_id,
+    start_datetime: newEvent.start_datetime,
+    location: newEvent.location,
+    prizes: prizesPayload,
+  };
+
+  const { data } = await secureRequest(() => apiClient.post('/events', payload, authHeaders.value));
   await loadEvents();
   if (data?.id) {
     lastCreatedEventLink.value = buildEventLink(data.id);
@@ -1146,6 +1459,9 @@ async function createEvent() {
     start_datetime: '',
     location: '',
   });
+  teamInputs.home = '';
+  teamInputs.away = '';
+  resetNewEventPrizes();
 }
 
 async function deleteEvent(id) {
@@ -1533,6 +1849,58 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
   font-weight: 600;
   color: #1e293b;
+}
+
+.prize-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.prize-editor__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.prize-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.prize-editor__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.prize-editor__row input {
+  flex: 1 1 220px;
+}
+
+.prize-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.prize-editor__winner {
+  font-size: 0.85rem;
+  color: #0f766e;
+  font-weight: 600;
+}
+
+.prize-editor.existing-prizes {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.5);
+}
+
+.prize-editor__row .btn {
+  flex: 0 0 auto;
 }
 
 input,
