@@ -24,6 +24,7 @@ func (rt *_router) listTeams(w http.ResponseWriter, r *http.Request, ctx reqcont
 		return
 	}
 	_ = json.NewEncoder(w).Encode(teams)
+	ctx.Logger.WithField("teams", len(teams)).Info("listed teams")
 }
 
 func (rt *_router) createTeam(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -31,6 +32,7 @@ func (rt *_router) createTeam(w http.ResponseWriter, r *http.Request, ctx reqcon
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while creating team")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -43,6 +45,7 @@ func (rt *_router) createTeam(w http.ResponseWriter, r *http.Request, ctx reqcon
 	_ = json.NewEncoder(w).Encode(struct {
 		ID int `json:"id"`
 	}{ID: id})
+	ctx.Logger.WithFields(map[string]interface{}{"team_id": id, "name": t.Name}).Info("team created")
 }
 
 func (rt *_router) updateTeam(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -51,6 +54,7 @@ func (rt *_router) updateTeam(w http.ResponseWriter, r *http.Request, ctx reqcon
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while updating team")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -60,6 +64,7 @@ func (rt *_router) updateTeam(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithFields(map[string]interface{}{"team_id": id}).Info("team updated")
 }
 
 func (rt *_router) deleteTeam(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -70,6 +75,7 @@ func (rt *_router) deleteTeam(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("team_id", id).Info("team deleted")
 }
 
 // Players
@@ -81,11 +87,13 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 	_ = json.NewEncoder(w).Encode(players)
+	ctx.Logger.WithField("players", len(players)).Info("listed players")
 }
 
 func (rt *_router) createPlayer(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var p database.Player
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while creating player")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -98,12 +106,14 @@ func (rt *_router) createPlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 	_ = json.NewEncoder(w).Encode(struct {
 		ID int `json:"id"`
 	}{ID: id})
+	ctx.Logger.WithFields(map[string]interface{}{"player_id": id, "team_id": p.TeamID}).Info("player created")
 }
 
 func (rt *_router) updatePlayer(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	var p database.Player
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while updating player")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -114,6 +124,7 @@ func (rt *_router) updatePlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithFields(map[string]interface{}{"player_id": id}).Info("player updated")
 }
 
 func (rt *_router) deletePlayer(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -124,6 +135,7 @@ func (rt *_router) deletePlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("player_id", id).Info("player deleted")
 }
 
 // Events
@@ -135,11 +147,13 @@ func (rt *_router) listEvents(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 	_ = json.NewEncoder(w).Encode(events)
+	ctx.Logger.WithField("events", len(events)).Info("listed events")
 }
 
 func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var e database.Event
 	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while creating event")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -152,12 +166,14 @@ func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 	_ = json.NewEncoder(w).Encode(struct {
 		ID int `json:"id"`
 	}{ID: id})
+	ctx.Logger.WithFields(map[string]interface{}{"event_id": id}).Info("event created")
 }
 
 func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	var e database.Event
 	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while updating event")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -168,6 +184,7 @@ func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("event_id", id).Info("event updated")
 }
 
 func (rt *_router) deleteEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -178,11 +195,13 @@ func (rt *_router) deleteEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("event_id", id).Info("event deleted")
 }
 
 func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil || id <= 0 {
+		ctx.Logger.Warn("invalid event id while activating event")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -198,6 +217,7 @@ func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ctx req
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("event_id", id).Info("event activated")
 }
 
 func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -207,11 +227,13 @@ func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ctx 
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.Info("all events deactivated")
 }
 
 func (rt *_router) listEventTickets(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	eventID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil || eventID <= 0 {
+		ctx.Logger.Warn("invalid event id while listing tickets")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -224,6 +246,7 @@ func (rt *_router) listEventTickets(w http.ResponseWriter, r *http.Request, ctx 
 	}
 
 	_ = json.NewEncoder(w).Encode(tickets)
+	ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "tickets": len(tickets)}).Info("listed event tickets")
 }
 
 // Votes
@@ -235,6 +258,7 @@ func (rt *_router) listVotes(w http.ResponseWriter, r *http.Request, ctx reqcont
 		return
 	}
 	_ = json.NewEncoder(w).Encode(votes)
+	ctx.Logger.WithField("votes", len(votes)).Info("listed votes")
 }
 
 func (rt *_router) deleteVote(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -245,6 +269,7 @@ func (rt *_router) deleteVote(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("vote_id", id).Info("vote deleted")
 }
 
 // Admins
@@ -271,6 +296,7 @@ func (rt *_router) listAdmins(w http.ResponseWriter, r *http.Request, ctx reqcon
 		})
 	}
 	_ = json.NewEncoder(w).Encode(resp)
+	ctx.Logger.WithField("admins", len(resp)).Info("listed admins")
 }
 
 func (rt *_router) createAdmin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -280,10 +306,12 @@ func (rt *_router) createAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 		Role     string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while creating admin")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	if payload.Username == "" || payload.Password == "" {
+		ctx.Logger.Warn("missing username or password while creating admin")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -303,6 +331,7 @@ func (rt *_router) createAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 	_ = json.NewEncoder(w).Encode(struct {
 		ID int `json:"id"`
 	}{ID: id})
+	ctx.Logger.WithFields(map[string]interface{}{"admin_id": id, "username": admin.Username}).Info("admin created")
 }
 
 func (rt *_router) updateAdmin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -313,6 +342,7 @@ func (rt *_router) updateAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 		Role     string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while updating admin")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -328,6 +358,7 @@ func (rt *_router) updateAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithFields(map[string]interface{}{"admin_id": id, "username": admin.Username}).Info("admin updated")
 }
 
 func (rt *_router) deleteAdmin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -338,6 +369,7 @@ func (rt *_router) deleteAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("admin_id", id).Info("admin deleted")
 }
 
 func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -346,10 +378,12 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while logging admin in")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	if payload.Username == "" || payload.Password == "" {
+		ctx.Logger.Warn("missing credentials while logging admin in")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -357,6 +391,7 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 	admin, err := rt.db.GetAdminByUsername(payload.Username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			ctx.Logger.WithField("username", payload.Username).Warn("admin login failed: user not found")
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -366,6 +401,7 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 	}
 
 	if !adminPasswordMatches(admin.PasswordHash, payload.Password) {
+		ctx.Logger.WithField("username", payload.Username).Warn("admin login failed: wrong password")
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -382,6 +418,7 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		Username string `json:"username"`
 		Role     string `json:"role"`
 	}{Token: token, Username: admin.Username, Role: admin.Role})
+	ctx.Logger.WithField("username", admin.Username).Info("admin logged in")
 }
 
 func hashAdminPassword(password string) string {
