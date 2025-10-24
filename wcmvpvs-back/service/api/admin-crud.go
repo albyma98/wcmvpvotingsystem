@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
@@ -370,6 +371,129 @@ func (rt *_router) deleteAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 	}
 	w.WriteHeader(http.StatusNoContent)
 	ctx.Logger.WithField("admin_id", id).Info("admin deleted")
+}
+
+// Sponsors
+func (rt *_router) listAllSponsors(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	sponsors, err := rt.db.ListSponsors()
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot list sponsors")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(sponsors)
+	ctx.Logger.WithField("sponsors", len(sponsors)).Info("listed sponsors")
+}
+
+func (rt *_router) createSponsor(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	var payload struct {
+		Name     string `json:"name"`
+		LogoData string `json:"logo_data"`
+		LinkURL  string `json:"link_url"`
+		Position int    `json:"position"`
+		IsActive bool   `json:"is_active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while creating sponsor")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	sponsor := database.Sponsor{
+		Name:     strings.TrimSpace(payload.Name),
+		LogoData: payload.LogoData,
+		LinkURL:  strings.TrimSpace(payload.LinkURL),
+		Position: payload.Position,
+		IsActive: payload.IsActive,
+	}
+
+	id, err := rt.db.CreateSponsor(sponsor)
+	if err != nil {
+		switch {
+		case errors.Is(err, database.ErrInvalidSponsorData), errors.Is(err, database.ErrInvalidSponsorPos), errors.Is(err, database.ErrMaxSponsors):
+			w.WriteHeader(http.StatusBadRequest)
+		default:
+			ctx.Logger.WithError(err).Error("cannot create sponsor")
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(struct {
+		ID int `json:"id"`
+	}{ID: id})
+	ctx.Logger.WithField("sponsor_id", id).Info("sponsor created")
+}
+
+func (rt *_router) updateSponsor(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil || id <= 0 {
+		ctx.Logger.Warn("invalid sponsor id while updating")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var payload struct {
+		Name     string `json:"name"`
+		LogoData string `json:"logo_data"`
+		LinkURL  string `json:"link_url"`
+		Position int    `json:"position"`
+		IsActive bool   `json:"is_active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while updating sponsor")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	sponsor := database.Sponsor{
+		ID:       id,
+		Name:     strings.TrimSpace(payload.Name),
+		LogoData: payload.LogoData,
+		LinkURL:  strings.TrimSpace(payload.LinkURL),
+		Position: payload.Position,
+		IsActive: payload.IsActive,
+	}
+
+	if err := rt.db.UpdateSponsor(sponsor); err != nil {
+		switch {
+		case errors.Is(err, database.ErrInvalidSponsorData), errors.Is(err, database.ErrInvalidSponsorPos):
+			w.WriteHeader(http.StatusBadRequest)
+		case errors.Is(err, sql.ErrNoRows):
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			ctx.Logger.WithError(err).Error("cannot update sponsor")
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("sponsor_id", id).Info("sponsor updated")
+}
+
+func (rt *_router) deleteSponsor(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil || id <= 0 {
+		ctx.Logger.Warn("invalid sponsor id while deleting")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := rt.db.DeleteSponsor(id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot delete sponsor")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("sponsor_id", id).Info("sponsor deleted")
 }
 
 func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
