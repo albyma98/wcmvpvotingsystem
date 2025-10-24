@@ -1,8 +1,17 @@
 <template>
   <div class="qr-scanner">
     <div class="qr-scanner__preview" :class="{ 'is-active': isActive }">
-      <div :id="previewId" ref="preview" class="qr-scanner__camera"></div>
-      <div v-if="!isActive" class="qr-scanner__placeholder">
+      <component
+        :is="streamComponent"
+        v-if="isVisible && streamComponent"
+        class="qr-scanner__camera"
+        :constraints="constraints"
+        @detect="handleScanSuccess"
+        @error="handleStreamError"
+        @camera-on="handleCameraOn"
+        @camera-off="handleCameraOff"
+      />
+      <div v-else class="qr-scanner__placeholder">
         <slot name="placeholder">
           <span>Premi "Avvia scansione" per utilizzare la fotocamera.</span>
         </slot>
@@ -14,7 +23,7 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 
 const props = defineProps({
   facingMode: {
@@ -29,15 +38,16 @@ const props = defineProps({
 
 const emit = defineEmits(['detected', 'error', 'permission-denied', 'state-change'])
 
-const previewId = `qr-scanner-${Math.random().toString(36).slice(2, 10)}`
-const preview = ref(null)
+const defaultInfoMessage = 'Premi "Avvia scansione" per utilizzare la fotocamera.'
+const streamComponent = ref(null)
+const isVisible = ref(false)
 const isActive = ref(false)
-const infoMessage = ref('Premi "Avvia scansione" per utilizzare la fotocamera.')
+const infoMessage = ref(defaultInfoMessage)
 const errorMessage = ref('')
 
-let html5QrCode = null
 let startPromise = null
-let stopPromise = null
+let startResolve = null
+let startReject = null
 let lastValue = ''
 
 function setInfo(message) {
@@ -48,24 +58,35 @@ function resetLastValue() {
   lastValue = ''
 }
 
-function ensureScanner() {
-  if (html5QrCode) {
-    return html5QrCode
+const constraints = computed(() => {
+  const desiredFacingMode = props.facingMode === 'user' ? 'user' : 'environment'
+  return {
+    audio: false,
+    video: {
+      facingMode: desiredFacingMode,
+    },
   }
-  if (typeof window === 'undefined' || !window.Html5Qrcode) {
-    const err = new Error('html5_qrcode_unavailable')
+})
+
+function ensureStreamComponent() {
+  if (streamComponent.value) {
+    return streamComponent.value
+  }
+
+  if (
+    typeof window === 'undefined' ||
+    !window.VueQrcodeReader ||
+    !window.VueQrcodeReader.QrcodeStream
+  ) {
+    const err = new Error('vue_qrcode_reader_unavailable')
     errorMessage.value = 'Libreria di scansione QR non disponibile nel browser.'
     setInfo('')
     emit('error', err)
     throw err
   }
-  if (!preview.value) {
-    const err = new Error('scanner_container_unavailable')
-    emit('error', err)
-    throw err
-  }
-  html5QrCode = new window.Html5Qrcode(previewId)
-  return html5QrCode
+
+  streamComponent.value = window.VueQrcodeReader.QrcodeStream
+  return streamComponent.value
 }
 
 function normalizeError(error) {
@@ -92,32 +113,71 @@ function handleStartError(error) {
   const normalized = normalizeError(error)
   const err = toError(error)
 
-  if (normalized.includes('notallowederror') || normalized.includes('permission')) {
+  const isPermissionError =
+    normalized.includes('notallowederror') || normalized.includes('permission')
+  const isDeviceError =
+    normalized.includes('notfounderror') ||
+    normalized.includes('device') ||
+    normalized.includes('camera')
+
+  let eventEmitted = false
+
+  if (isPermissionError) {
     errorMessage.value = 'Accesso alla fotocamera negato.'
     emit('permission-denied', err)
-  } else if (normalized.includes('notfounderror') || normalized.includes('device') || normalized.includes('camera')) {
+    eventEmitted = true
+  } else if (isDeviceError) {
     errorMessage.value = 'Nessuna fotocamera disponibile sul dispositivo.'
     emit('permission-denied', err)
+    eventEmitted = true
   } else {
     errorMessage.value = 'Impossibile avviare la fotocamera.'
-    emit('error', err)
   }
 
   setInfo('')
 
-  if (html5QrCode) {
-    html5QrCode.stop?.().catch(() => {})
-    html5QrCode.clear?.().catch(() => {})
-    html5QrCode = null
+  isVisible.value = false
+  const wasActive = isActive.value
+  isActive.value = false
+  resetLastValue()
+
+  if (wasActive) {
+    emit('state-change', { active: false })
   }
+
+  if (!eventEmitted) {
+    emit('error', err)
+    eventEmitted = true
+  }
+
+  if (startReject) {
+    startReject(err)
+  }
+
+  startPromise = null
+  startResolve = null
+  startReject = null
 }
 
-function handleScanSuccess(decodedText) {
-  if (!decodedText || typeof decodedText !== 'string') {
-    return
+function extractValueFromDetectedCodes(detectedCodes) {
+  if (!Array.isArray(detectedCodes)) {
+    return ''
   }
 
-  const value = decodedText.trim()
+  for (const code of detectedCodes) {
+    if (code && typeof code.rawValue === 'string') {
+      const value = code.rawValue.trim()
+      if (value) {
+        return value
+      }
+    }
+  }
+
+  return ''
+}
+
+function handleScanSuccess(detectedCodes) {
+  const value = extractValueFromDetectedCodes(detectedCodes)
   if (!value || value === lastValue) {
     return
   }
@@ -131,117 +191,76 @@ function handleScanSuccess(decodedText) {
   }
 }
 
-function handleScanFailure() {
-  // Ignoriamo gli errori di scansione intermedi per evitare spam di notifiche.
+function handleStreamError(error) {
+  handleStartError(error)
 }
 
 async function start() {
-  if (isActive.value || startPromise) {
+  if (startPromise) {
     return startPromise
+  }
+
+  if (isActive.value) {
+    return
   }
 
   resetLastValue()
   errorMessage.value = ''
   setInfo('Attivazione della fotocamera…')
 
-  startPromise = (async () => {
-    await nextTick()
-    const scanner = ensureScanner()
+  try {
+    ensureStreamComponent()
+  } catch (error) {
+    throw error
+  }
 
-    const facingMode = props.facingMode || 'environment'
-    const cameraConfig = { facingMode }
+  startPromise = new Promise((resolve, reject) => {
+    startResolve = resolve
+    startReject = reject
+  })
 
-    const formats =
-      typeof window !== 'undefined' && window.Html5QrcodeSupportedFormats
-        ? window.Html5QrcodeSupportedFormats
-        : null
-
-    const configuration = {
-      fps: 10,
-      aspectRatio: 1.3333333333,
-      disableFlip: facingMode === 'environment',
-      qrbox(viewFinderWidth, viewFinderHeight) {
-        const minEdge = Math.min(viewFinderWidth, viewFinderHeight)
-        const size = Math.max(200, Math.round(minEdge * 0.65))
-        return { width: size, height: size }
-      },
-    }
-
-    if (formats && formats.QR_CODE) {
-      configuration.formatsToSupport = [formats.QR_CODE]
-    }
-
-    try {
-      await scanner.start(cameraConfig, configuration, handleScanSuccess, handleScanFailure)
-      isActive.value = true
-      setInfo('Inquadra il QR code del ticket.')
-      emit('state-change', { active: true })
-    } catch (error) {
-      handleStartError(error)
-      throw error
-    }
-  })()
+  isVisible.value = true
 
   try {
     await startPromise
   } finally {
     startPromise = null
+    startResolve = null
+    startReject = null
   }
 }
 
 async function stop({ silent = false } = {}) {
-  if (stopPromise) {
-    return stopPromise
+  if (startPromise && startReject) {
+    startReject(new Error('scanner_start_aborted'))
+    startPromise = null
+    startResolve = null
+    startReject = null
   }
 
-  stopPromise = (async () => {
-    if (startPromise) {
-      try {
-        await startPromise
-      } catch {
-        // ignoriamo errori già gestiti nello start
-      }
+  if (!isVisible.value && !isActive.value) {
+    if (!silent && infoMessage.value === '') {
+      setInfo(defaultInfoMessage)
     }
+    return
+  }
 
-    if (!html5QrCode) {
-      if (isActive.value) {
-        isActive.value = false
-        emit('state-change', { active: false })
-      }
-      return
-    }
+  const wasActive = isActive.value
 
-    try {
-      await html5QrCode.stop()
-    } catch (error) {
-      emit('error', toError(error))
-    }
+  isVisible.value = false
+  isActive.value = false
+  resetLastValue()
 
-    try {
-      await html5QrCode.clear()
-    } catch (error) {
-      emit('error', toError(error))
-    }
+  if (!silent) {
+    setInfo('Scansione interrotta.')
+  }
 
-    html5QrCode = null
-
-    if (isActive.value) {
-      isActive.value = false
-      if (!silent) {
-        setInfo('Scansione interrotta.')
-      }
-      emit('state-change', { active: false })
-    }
-  })()
-
-  try {
-    await stopPromise
-  } finally {
-    stopPromise = null
+  if (wasActive) {
+    emit('state-change', { active: false })
   }
 
   if (!isActive.value && !silent && infoMessage.value === '') {
-    setInfo('Premi "Avvia scansione" per utilizzare la fotocamera.')
+    setInfo(defaultInfoMessage)
   }
 }
 
@@ -249,13 +268,37 @@ function reset() {
   resetLastValue()
   errorMessage.value = ''
   if (!isActive.value) {
-    setInfo('Premi "Avvia scansione" per utilizzare la fotocamera.')
+    setInfo(defaultInfoMessage)
   }
 }
 
 onBeforeUnmount(() => {
   stop({ silent: true }).catch(() => {})
 })
+
+function handleCameraOn() {
+  isActive.value = true
+  errorMessage.value = ''
+  setInfo('Inquadra il QR code del ticket.')
+  emit('state-change', { active: true })
+
+  if (startResolve) {
+    startResolve()
+  }
+}
+
+function handleCameraOff() {
+  const wasActive = isActive.value
+  isActive.value = false
+
+  if (wasActive) {
+    emit('state-change', { active: false })
+  }
+
+  if (!isVisible.value && infoMessage.value === '') {
+    setInfo(defaultInfoMessage)
+  }
+}
 
 defineExpose({
   start,
@@ -294,8 +337,7 @@ defineExpose({
   height: 100%;
 }
 
-.qr-scanner__camera :deep(video),
-.qr-scanner__camera :deep(canvas) {
+.qr-scanner__camera :deep(video) {
   width: 100%;
   height: 100%;
   object-fit: cover;
