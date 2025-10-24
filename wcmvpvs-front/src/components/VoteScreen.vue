@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
 import { apiClient, vote } from '../api';
+import { roster } from '../roster';
 
 const props = defineProps({
   eventId: {
@@ -22,126 +23,6 @@ const props = defineProps({
     default: false,
   },
 });
-
-const roster = [
-  {
-    id: 1,
-    name: 'Matteo Paris',
-    role: 'Opposto',
-    number: 10,
-    tier: 'gold',
-    position: { x: 20, y: 14 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 2,
-    name: 'Giuseppe Longo',
-    role: 'Palleggiatore',
-    number: 8,
-    tier: 'gold',
-    position: { x: 50, y: 14 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 3,
-    name: 'Felice Sette',
-    role: 'Centrale',
-    number: 7,
-    tier: 'silver',
-    position: { x: 80, y: 14 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 4,
-    name: 'Sebastiano Milan',
-    role: 'Schiacciatore',
-    number: 9,
-    tier: 'gold',
-    position: { x: 20, y: 32 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 5,
-    name: 'Leonardo Carta',
-    role: 'Centrale',
-    number: 15,
-    tier: 'silver',
-    position: { x: 50, y: 32 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 6,
-    name: 'Romolo Mariano',
-    role: 'Schiacciatore',
-    number: 3,
-    tier: 'gold',
-    position: { x: 80, y: 32 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 7,
-    name: 'Alessio Santangelo',
-    role: 'Libero',
-    number: 1,
-    tier: 'bronze',
-    position: { x: 50, y: 50 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 8,
-    name: 'Alberto Marra',
-    role: 'Opposto',
-    number: 5,
-    tier: 'bronze',
-    position: { x: 20, y: 68 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 9,
-    name: 'Cristian Frumuselu',
-    role: 'Centrale',
-    number: 6,
-    tier: 'bronze',
-    position: { x: 50, y: 68 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 10,
-    name: 'Vincenzo Utro',
-    role: 'Palleggiatore',
-    number: 33,
-    tier: 'silver',
-    position: { x: 80, y: 68 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 11,
-    name: 'Francesco Pierri',
-    role: 'Schiacciatore',
-    number: 14,
-    tier: 'bronze',
-    position: { x: 20, y: 86 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 12,
-    name: 'Alessandro Chinello',
-    role: 'Libero',
-    number: 13,
-    tier: 'silver',
-    position: { x: 50, y: 86 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-  {
-    id: 13,
-    name: 'Sandi Persoglia',
-    role: 'Opposto',
-    number: 11,
-    tier: 'bronze',
-    position: { x: 80, y: 86 },
-    avatar: 'https://www.legavolley.it/Foto.aspx?Key=UTR-VIN-96&sqid=6733&heightImg=600',
-  },
-];
 
 const fieldPlayers = computed(() => roster);
 
