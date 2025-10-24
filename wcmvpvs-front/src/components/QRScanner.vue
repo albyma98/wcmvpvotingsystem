@@ -1,12 +1,12 @@
 <template>
   <div class="qr-scanner">
     <div class="qr-scanner__preview" :class="{ 'is-active': isActive }">
-      <component
-        :is="streamComponent"
-        v-if="isVisible && streamComponent"
+      <QrcodeStream
+        v-if="isVisible"
         class="qr-scanner__camera"
         :constraints="constraints"
-        @detect="handleScanSuccess"
+        @decode="handleDecode"
+        @init="handleInit"
         @error="handleStreamError"
         @camera-on="handleCameraOn"
         @camera-off="handleCameraOff"
@@ -24,6 +24,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { QrcodeStream } from 'vue-qrcode-reader'
 
 const props = defineProps({
   facingMode: {
@@ -39,7 +40,6 @@ const props = defineProps({
 const emit = defineEmits(['detected', 'error', 'permission-denied', 'state-change'])
 
 const defaultInfoMessage = 'Premi "Avvia scansione" per utilizzare la fotocamera.'
-const streamComponent = ref(null)
 const isVisible = ref(false)
 const isActive = ref(false)
 const infoMessage = ref(defaultInfoMessage)
@@ -68,27 +68,6 @@ const constraints = computed(() => {
   }
 })
 
-function ensureStreamComponent() {
-  if (streamComponent.value) {
-    return streamComponent.value
-  }
-
-  if (
-    typeof window === 'undefined' ||
-    !window.VueQrcodeReader ||
-    !window.VueQrcodeReader.QrcodeStream
-  ) {
-    const err = new Error('vue_qrcode_reader_unavailable')
-    errorMessage.value = 'Libreria di scansione QR non disponibile nel browser.'
-    setInfo('')
-    emit('error', err)
-    throw err
-  }
-
-  streamComponent.value = window.VueQrcodeReader.QrcodeStream
-  return streamComponent.value
-}
-
 function normalizeError(error) {
   if (!error) {
     return ''
@@ -96,10 +75,10 @@ function normalizeError(error) {
   if (typeof error === 'string') {
     return error.toLowerCase()
   }
-  if (typeof error.message === 'string') {
+  if (typeof error?.message === 'string') {
     return error.message.toLowerCase()
   }
-  if (typeof error.name === 'string') {
+  if (typeof error?.name === 'string') {
     return error.name.toLowerCase()
   }
   return String(error).toLowerCase()
@@ -136,8 +115,8 @@ function handleStartError(error) {
 
   setInfo('')
 
-  isVisible.value = false
   const wasActive = isActive.value
+  isVisible.value = false
   isActive.value = false
   resetLastValue()
 
@@ -147,7 +126,6 @@ function handleStartError(error) {
 
   if (!eventEmitted) {
     emit('error', err)
-    eventEmitted = true
   }
 
   if (startReject) {
@@ -159,35 +137,30 @@ function handleStartError(error) {
   startReject = null
 }
 
-function extractValueFromDetectedCodes(detectedCodes) {
-  if (!Array.isArray(detectedCodes)) {
-    return ''
-  }
-
-  for (const code of detectedCodes) {
-    if (code && typeof code.rawValue === 'string') {
-      const value = code.rawValue.trim()
-      if (value) {
-        return value
-      }
-    }
-  }
-
-  return ''
-}
-
-function handleScanSuccess(detectedCodes) {
-  const value = extractValueFromDetectedCodes(detectedCodes)
-  if (!value || value === lastValue) {
+function handleDecode(value) {
+  if (typeof value !== 'string') {
     return
   }
 
-  lastValue = value
-  emit('detected', value)
+  const normalizedValue = value.trim()
+  if (!normalizedValue || normalizedValue === lastValue) {
+    return
+  }
+
+  lastValue = normalizedValue
+  emit('detected', normalizedValue)
 
   if (props.stopOnDetection) {
     setInfo('QR code rilevato.')
     stop({ silent: true }).catch(() => {})
+  }
+}
+
+async function handleInit(promise) {
+  try {
+    await promise
+  } catch (error) {
+    handleStartError(error)
   }
 }
 
@@ -207,12 +180,6 @@ async function start() {
   resetLastValue()
   errorMessage.value = ''
   setInfo('Attivazione della fotocamera…')
-
-  try {
-    ensureStreamComponent()
-  } catch (error) {
-    throw error
-  }
 
   startPromise = new Promise((resolve, reject) => {
     startResolve = resolve
