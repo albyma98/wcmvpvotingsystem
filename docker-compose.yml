@@ -10,16 +10,20 @@ services:
     env_file:
       - .env
     environment:
+      CFG_WEB_APIHOST: 0.0.0.0:3000
       CFG_DB_FILENAME: /data/mvpvs.db
       CFG_VOTE_SECRET: ${VOTE_SECRET:-secret}
       CFG_BOOTSTRAPADMIN_ENABLED: ${BOOTSTRAP_ADMIN_ENABLED:-true}
       CFG_BOOTSTRAPADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-Albyma}
       CFG_BOOTSTRAPADMIN_PASSWORDHASH: ${BOOTSTRAP_ADMIN_PASSWORD_HASH:-4bdbc215d8dc3c571e802a69bced0c3071cc4a1f129ad97e15b357018aac6cd4}
       CFG_BOOTSTRAPADMIN_ROLE: ${BOOTSTRAP_ADMIN_ROLE:-superadmin}
-    ports:
-      - "3000:3000"
     volumes:
       - backend-data:/data
+    expose:
+      - "3000"
+    # Se vuoi debuggare direttamente l'API dall'host, aggiungi:
+    # ports:
+    #   - "3000:3000"
 
   frontend:
     build:
