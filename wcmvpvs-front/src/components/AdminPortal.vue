@@ -227,6 +227,85 @@
           </li>
         </ul>
       </section>
+
+      <section v-else-if="section === 'sponsors'" class="card">
+        <header class="section-header">
+          <h2>Sponsor</h2>
+          <p>Configura i loghi mostrati nella sezione sponsor del voto MVP.</p>
+        </header>
+
+        <div class="sponsor-controls">
+          <label class="sponsor-count">
+            Spazi attivi
+            <input
+              type="range"
+              min="0"
+              :max="maxSponsorSlots"
+              :value="sponsorCount"
+              @input="setSponsorCount($event.target.value)"
+            />
+          </label>
+          <div class="sponsor-count-value">
+            {{ sponsorCount }} / {{ maxSponsorSlots }}
+          </div>
+        </div>
+
+        <p class="info-banner">
+          Suggerimento: utilizza immagini quadrate o rettangolari orizzontali per ottenere il miglior risultato.
+        </p>
+
+        <p v-if="sponsorError" class="error">{{ sponsorError }}</p>
+        <p v-if="sponsorSuccess" class="success">{{ sponsorSuccess }}</p>
+
+        <div v-if="isLoadingSponsors" class="sponsor-loading">Caricamento sponsor…</div>
+
+        <div v-else>
+          <p v-if="sponsorCount === 0" class="muted">
+            Nessuno sponsor attivo. Aumenta il numero di spazi per iniziare a caricare i loghi.
+          </p>
+
+          <div v-else class="sponsor-grid">
+            <article v-for="slot in visibleSponsorSlots" :key="slot.slot" class="sponsor-card">
+              <header class="sponsor-card-header">
+                <h3>Slot sponsor {{ slot.slot }}</h3>
+              </header>
+              <div class="sponsor-preview" :class="{ empty: !slot.preview }">
+                <img v-if="slot.preview" :src="slot.preview" :alt="`Logo sponsor ${slot.slot}`" />
+                <span v-else>Logo non caricato</span>
+              </div>
+              <div class="sponsor-form">
+                <label>
+                  Logo
+                  <input type="file" accept="image/*" @change="handleSponsorFile(slot.slot, $event)" />
+                </label>
+                <label>
+                  Link (opzionale)
+                  <input
+                    type="url"
+                    v-model.trim="slot.linkUrl"
+                    placeholder="https://www.esempio.it"
+                    inputmode="url"
+                  />
+                </label>
+                <button
+                  class="btn outline"
+                  type="button"
+                  @click="clearSponsorSlot(slot.slot)"
+                  :disabled="!slot.preview && !slot.linkUrl"
+                >
+                  Svuota slot
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <footer class="sponsor-actions">
+          <button class="btn primary" type="button" @click="saveSponsors" :disabled="isSavingSponsors">
+            {{ isSavingSponsors ? 'Salvataggio…' : 'Salva sponsor' }}
+          </button>
+        </footer>
+      </section>
     </section>
   </div>
 </template>
@@ -244,12 +323,30 @@ const tabs = [
   { id: 'teams', label: 'Squadre' },
   { id: 'players', label: 'Giocatori' },
   { id: 'admins', label: 'Admin' },
+  { id: 'sponsors', label: 'Sponsor' },
 ];
 
 const teams = ref([]);
 const players = ref([]);
 const events = ref([]);
 const admins = ref([]);
+const maxSponsorSlots = 4;
+const sponsorSlots = ref(
+  Array.from({ length: maxSponsorSlots }, (_, index) => ({
+    slot: index + 1,
+    imageData: '',
+    linkUrl: '',
+    preview: '',
+    existing: false,
+  }))
+);
+const sponsorCount = ref(0);
+const isLoadingSponsors = ref(false);
+const isSavingSponsors = ref(false);
+const sponsorError = ref('');
+const sponsorSuccess = ref('');
+const maxSponsorImageSize = 1024 * 1024 * 1.5;
+const visibleSponsorSlots = computed(() => sponsorSlots.value.slice(0, sponsorCount.value));
 const updatingEventId = ref(0);
 const isDisablingEvents = ref(false);
 
@@ -324,6 +421,129 @@ function resetForms() {
   Object.assign(newAdmin, { username: '', password: '', role: '' });
 }
 
+function resetSponsorSlots() {
+  sponsorSlots.value.forEach((slot) => {
+    slot.imageData = '';
+    slot.linkUrl = '';
+    slot.preview = '';
+    slot.existing = false;
+  });
+  sponsorCount.value = 0;
+}
+
+function applySponsorRecords(records) {
+  resetSponsorSlots();
+  if (!Array.isArray(records)) {
+    return;
+  }
+
+  let highestSlot = 0;
+  records.forEach((record) => {
+    const slotIndex = (record?.slot ?? 0) - 1;
+    if (slotIndex < 0 || slotIndex >= sponsorSlots.value.length) {
+      return;
+    }
+    const entry = sponsorSlots.value[slotIndex];
+    const imageData = record?.image_data || '';
+    entry.imageData = imageData;
+    entry.preview = imageData;
+    entry.linkUrl = typeof record?.link_url === 'string' ? record.link_url.trim() : '';
+    entry.existing = Boolean(imageData);
+    highestSlot = Math.max(highestSlot, slotIndex + 1);
+  });
+
+  const activeCount = Math.max(highestSlot, records.length || 0);
+  sponsorCount.value = Math.min(maxSponsorSlots, activeCount);
+}
+
+function clampSponsorCount(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.min(maxSponsorSlots, Math.max(0, Math.trunc(value)));
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) {
+    return 0;
+  }
+  return Math.min(maxSponsorSlots, Math.max(0, parsed));
+}
+
+function setSponsorCount(value) {
+  sponsorCount.value = clampSponsorCount(value);
+  sponsorError.value = '';
+  sponsorSuccess.value = '';
+}
+
+function sponsorSlotAt(slot) {
+  const index = slot - 1;
+  if (index < 0 || index >= sponsorSlots.value.length) {
+    return null;
+  }
+  return sponsorSlots.value[index];
+}
+
+function clearSponsorSlot(slot) {
+  const entry = sponsorSlotAt(slot);
+  if (!entry) {
+    return;
+  }
+  entry.imageData = '';
+  entry.preview = '';
+  entry.linkUrl = '';
+  entry.existing = false;
+  sponsorError.value = '';
+  sponsorSuccess.value = '';
+}
+
+function handleSponsorFile(slot, event) {
+  const entry = sponsorSlotAt(slot);
+  if (!entry) {
+    return;
+  }
+
+  const input = event?.target;
+  const [file] = input?.files || [];
+  sponsorError.value = '';
+  sponsorSuccess.value = '';
+
+  if (!file) {
+    return;
+  }
+
+  if (!file.type.startsWith('image/')) {
+    sponsorError.value = 'Carica un file immagine valido.';
+    if (input) {
+      input.value = '';
+    }
+    return;
+  }
+
+  if (file.size > maxSponsorImageSize) {
+    sponsorError.value = 'Il logo supera la dimensione massima di 1.5MB.';
+    if (input) {
+      input.value = '';
+    }
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = typeof reader.result === 'string' ? reader.result : '';
+    entry.imageData = result;
+    entry.preview = result;
+    entry.existing = Boolean(result);
+    if (input) {
+      input.value = '';
+    }
+  };
+  reader.onerror = () => {
+    sponsorError.value = 'Non è stato possibile leggere il file del logo.';
+    if (input) {
+      input.value = '';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
 function ensureValidTeamSelection() {
   if (!hasEnoughTeams.value) {
     newEvent.team1_id = 0;
@@ -361,12 +581,29 @@ watch(hasEnoughTeams, (enough) => {
   }
 });
 
+watch(sponsorCount, (value, oldValue) => {
+  const clamped = clampSponsorCount(value);
+  if (clamped !== value) {
+    sponsorCount.value = clamped;
+    return;
+  }
+  if (clamped < oldValue) {
+    sponsorError.value = '';
+    sponsorSuccess.value = '';
+  }
+});
+
 function clearCollections() {
   teams.value = [];
   players.value = [];
   events.value = [];
   admins.value = [];
   lastCreatedEventLink.value = '';
+  resetSponsorSlots();
+  sponsorError.value = '';
+  sponsorSuccess.value = '';
+  isLoadingSponsors.value = false;
+  isSavingSponsors.value = false;
 }
 
 function buildEventLink(eventId) {
@@ -527,12 +764,82 @@ async function loadAdmins() {
   admins.value = data;
 }
 
+async function loadSponsors() {
+  if (!isAuthenticated.value) {
+    return;
+  }
+  isLoadingSponsors.value = true;
+  sponsorError.value = '';
+  sponsorSuccess.value = '';
+  try {
+    const { data } = await secureRequest(() => apiClient.get('/admin/sponsors', authHeaders.value));
+    applySponsorRecords(data);
+  } catch (error) {
+    if (error?.response?.status !== 401) {
+      sponsorError.value = 'Impossibile caricare i dati sponsor.';
+    }
+  } finally {
+    isLoadingSponsors.value = false;
+  }
+}
+
 async function loadAll() {
   if (!isAuthenticated.value) {
     return;
   }
-  await Promise.all([loadTeams(), loadPlayers(), loadEvents(), loadAdmins()]);
+  await Promise.all([loadTeams(), loadPlayers(), loadEvents(), loadAdmins(), loadSponsors()]);
   resetForms();
+}
+
+async function saveSponsors() {
+  if (isSavingSponsors.value) {
+    return;
+  }
+  sponsorError.value = '';
+  sponsorSuccess.value = '';
+
+  const activeSlots = visibleSponsorSlots.value;
+  const missingLogo = activeSlots.find((slot) => !slot.imageData);
+  if (missingLogo) {
+    sponsorError.value = 'Carica un logo per ogni sponsor attivo o riduci il numero di spazi.';
+    return;
+  }
+
+  isSavingSponsors.value = true;
+  try {
+    const requests = activeSlots.map((slot) => {
+      const link = typeof slot.linkUrl === 'string' ? slot.linkUrl.trim() : '';
+      return secureRequest(() =>
+        apiClient.put(
+          `/sponsors/${slot.slot}`,
+          {
+            image_data: slot.imageData,
+            link_url: link,
+          },
+          authHeaders.value
+        )
+      );
+    });
+
+    for (let index = sponsorCount.value; index < maxSponsorSlots; index += 1) {
+      const slot = sponsorSlots.value[index];
+      if (slot?.existing || slot?.imageData) {
+        requests.push(
+          secureRequest(() => apiClient.delete(`/sponsors/${slot.slot}`, authHeaders.value))
+        );
+      }
+    }
+
+    await Promise.all(requests);
+    sponsorSuccess.value = 'Sponsor aggiornati con successo.';
+    await loadSponsors();
+  } catch (error) {
+    if (error?.response?.status !== 401) {
+      sponsorError.value = 'Non è stato possibile salvare gli sponsor. Riprova.';
+    }
+  } finally {
+    isSavingSponsors.value = false;
+  }
 }
 
 async function createTeam() {
@@ -798,6 +1105,108 @@ if (isAuthenticated.value) {
   margin-bottom: 1.5rem;
 }
 
+.sponsor-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.sponsor-count {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.sponsor-count-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1e293b;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+}
+
+.sponsor-loading {
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  font-weight: 500;
+}
+
+.sponsor-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.sponsor-card {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: rgba(248, 250, 252, 0.75);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.sponsor-card-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.sponsor-preview {
+  position: relative;
+  border-radius: 0.85rem;
+  overflow: hidden;
+  border: 1px dashed rgba(148, 163, 184, 0.6);
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: #64748b;
+  text-align: center;
+  padding: 0.75rem;
+}
+
+.sponsor-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #0f172a;
+}
+
+.sponsor-preview.empty {
+  border-style: dashed;
+}
+
+.sponsor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sponsor-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.sponsor-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
 .form-grid label {
   display: flex;
   flex-direction: column;
@@ -958,6 +1367,19 @@ select:focus {
 .error {
   color: #dc2626;
   margin-top: 0.75rem;
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+}
+
+.success {
+  color: #0f766e;
+  margin-top: 0.75rem;
+  background: rgba(45, 212, 191, 0.15);
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
 }
 
 .hint {
