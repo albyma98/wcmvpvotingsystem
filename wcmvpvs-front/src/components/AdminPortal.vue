@@ -157,6 +157,68 @@
         </ul>
       </section>
 
+      <section v-else-if="section === 'results'" class="card results-card">
+        <header class="section-header">
+          <h2>Risultati votazioni</h2>
+          <p>Seleziona un evento per vedere la classifica MVP aggiornata in tempo reale.</p>
+        </header>
+
+        <div class="results-controls">
+          <label>
+            Evento
+            <select v-model.number="selectedResultsEventId" :disabled="!events.length">
+              <option disabled value="0">Seleziona un evento</option>
+              <option v-for="event in events" :key="event.id" :value="event.id">
+                {{ eventLabel(event) }}
+              </option>
+            </select>
+          </label>
+          <button
+            class="btn secondary"
+            type="button"
+            @click="fetchEventResults({ showLoader: true })"
+            :disabled="isLoadingResults || !selectedResultsEventId"
+          >
+            {{ isLoadingResults ? 'Aggiornamento…' : 'Aggiorna ora' }}
+          </button>
+        </div>
+
+        <div v-if="selectedResultsEvent" class="results-summary">
+          <h3>{{ selectedResultsEventLabel }}</h3>
+          <p class="muted">{{ selectedResultsEventDate || 'Data da definire' }}</p>
+        </div>
+
+        <p v-if="resultsError" class="error">{{ resultsError }}</p>
+        <div v-else-if="!events.length" class="info-banner">
+          Crea un evento per visualizzare i risultati delle votazioni MVP.
+        </div>
+        <div v-else class="results-leaderboard">
+          <div class="results-meta">
+            <span><strong>Voti totali:</strong> {{ totalVotes }}</span>
+            <span v-if="lastResultsUpdateLabel"><strong>Ultimo aggiornamento:</strong> {{ lastResultsUpdateLabel }}</span>
+            <span class="auto-refresh">Aggiornamento automatico ogni 5 secondi</span>
+          </div>
+          <p v-if="isLoadingResults" class="muted">Caricamento risultati…</p>
+          <p v-else-if="!hasResultsVotes" class="muted">Non ci sono ancora voti per questo evento.</p>
+          <ul class="leaderboard-list" aria-live="polite">
+            <li v-for="(entry, index) in resultsLeaderboard" :key="entry.id" class="leaderboard-item">
+              <div class="rank">#{{ index + 1 }}</div>
+              <div class="player-name">
+                <span class="lastname">{{ entry.lastNameUpper }}</span>
+                <span class="firstname">{{ entry.firstName }}</span>
+              </div>
+              <div class="votes">
+                <strong>{{ entry.votes }}</strong>
+                <span class="muted">{{ entry.votes === 1 ? 'voto' : 'voti' }}</span>
+              </div>
+              <div class="progress" role="presentation">
+                <div class="progress-bar" :style="{ width: `${entry.percentage}%` }"></div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
+
       <section v-else-if="section === 'teams'" class="card">
         <header class="section-header">
           <h2>Squadre</h2>
@@ -330,15 +392,20 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
+import { roster } from '../roster';
 
 const basePath = import.meta.env.BASE_URL ?? '/';
 const baseVoteUrl = new URL(basePath, window.location.origin);
+const RESULTS_POLL_INTERVAL = 5000;
+
+let resultsPollHandle = 0;
 
 const section = ref('events');
 const tabs = [
   { id: 'events', label: 'Eventi' },
+  { id: 'results', label: 'Risultati' },
   { id: 'teams', label: 'Squadre' },
   { id: 'players', label: 'Giocatori' },
   { id: 'sponsors', label: 'Sponsor' },
@@ -352,6 +419,11 @@ const admins = ref([]);
 const sponsors = ref([]);
 const updatingEventId = ref(0);
 const isDisablingEvents = ref(false);
+const selectedResultsEventId = ref(0);
+const eventResults = ref([]);
+const isLoadingResults = ref(false);
+const resultsError = ref('');
+const lastResultsUpdate = ref(null);
 
 const newTeamName = ref('');
 const newPlayer = reactive({
@@ -399,6 +471,90 @@ const activeEventId = computed(() => {
 const activeSponsorCount = computed(() => sponsors.value.filter((item) => item.isActive).length);
 const sponsorSliderMax = computed(() =>
   sponsors.value.length ? Math.min(maxSponsors, sponsors.value.length) : maxSponsors,
+);
+const selectedResultsEvent = computed(() =>
+  events.value.find((event) => event.id === selectedResultsEventId.value) || null,
+);
+const selectedResultsEventLabel = computed(() =>
+  selectedResultsEvent.value ? eventLabel(selectedResultsEvent.value) : '',
+);
+const selectedResultsEventDate = computed(() =>
+  selectedResultsEvent.value ? formatEventDate(selectedResultsEvent.value.start_datetime) : '',
+);
+const resultsLeaderboard = computed(() => {
+  const aggregated = new Map(
+    eventResults.value.map((item) => [
+      Number(item.player_id) || 0,
+      {
+        votes: Number(item.votes) || 0,
+        lastVoteAt: typeof item.last_vote_at === 'string' ? item.last_vote_at : '',
+      },
+    ]),
+  );
+
+  const entries = roster.map((player) => {
+    const stats = aggregated.get(player.id) || { votes: 0, lastVoteAt: '' };
+    const firstName = player.firstName || player.name.split(/\s+/)[0] || player.name || '';
+    const remainingParts = player.lastName
+      ? player.lastName
+      : player.name.split(/\s+/).slice(1).join(' ');
+    const lastName = remainingParts;
+    const baseName = `${firstName}${lastName ? ` ${lastName}` : ''}`.trim();
+    const fallback = baseName || player.name;
+    const lastNameUpper = (lastName || firstName || player.name || '').toUpperCase();
+    return {
+      id: player.id,
+      firstName: firstName || fallback,
+      lastName,
+      lastNameUpper,
+      fullName: fallback,
+      votes: stats.votes,
+      lastVoteAt: stats.lastVoteAt,
+    };
+  });
+
+  entries.sort((a, b) => {
+    if (b.votes !== a.votes) {
+      return b.votes - a.votes;
+    }
+    if (a.lastVoteAt && b.lastVoteAt && a.lastVoteAt !== b.lastVoteAt) {
+      return a.lastVoteAt.localeCompare(b.lastVoteAt);
+    }
+    if (a.lastVoteAt && !b.lastVoteAt) {
+      return -1;
+    }
+    if (!a.lastVoteAt && b.lastVoteAt) {
+      return 1;
+    }
+    const lastNameComparison = a.lastName.localeCompare(b.lastName);
+    if (lastNameComparison !== 0) {
+      return lastNameComparison;
+    }
+    const firstNameComparison = a.firstName.localeCompare(b.firstName);
+    if (firstNameComparison !== 0) {
+      return firstNameComparison;
+    }
+    return a.id - b.id;
+  });
+
+  let highestVotes = 0;
+  entries.forEach((entry) => {
+    if (entry.votes > highestVotes) {
+      highestVotes = entry.votes;
+    }
+  });
+
+  return entries.map((entry) => ({
+    ...entry,
+    percentage: highestVotes > 0 ? Math.round((entry.votes / highestVotes) * 100) : 0,
+  }));
+});
+const totalVotes = computed(() =>
+  eventResults.value.reduce((sum, item) => sum + (Number(item.votes) || 0), 0),
+);
+const hasResultsVotes = computed(() => totalVotes.value > 0);
+const lastResultsUpdateLabel = computed(() =>
+  lastResultsUpdate.value ? lastResultsUpdate.value.toLocaleString('it-IT') : '',
 );
 
 const token = ref(localStorage.getItem('adminToken') || '');
@@ -479,6 +635,13 @@ watch(hasEnoughTeams, (enough) => {
   }
 });
 
+watch(events, () => {
+  ensureResultsSelection();
+  if (section.value === 'results' && selectedResultsEventId.value) {
+    fetchEventResults();
+  }
+});
+
 function clearCollections() {
   teams.value = [];
   players.value = [];
@@ -486,6 +649,87 @@ function clearCollections() {
   admins.value = [];
   sponsors.value = [];
   lastCreatedEventLink.value = '';
+  resetResultsState();
+}
+
+function stopResultsPolling() {
+  if (resultsPollHandle) {
+    window.clearInterval(resultsPollHandle);
+    resultsPollHandle = 0;
+  }
+}
+
+function startResultsPolling() {
+  stopResultsPolling();
+  if (!selectedResultsEventId.value) {
+    return;
+  }
+  resultsPollHandle = window.setInterval(() => {
+    fetchEventResults().catch(() => {
+      /* silent */
+    });
+  }, RESULTS_POLL_INTERVAL);
+}
+
+function resetResultsState() {
+  stopResultsPolling();
+  selectedResultsEventId.value = 0;
+  eventResults.value = [];
+  resultsError.value = '';
+  lastResultsUpdate.value = null;
+  isLoadingResults.value = false;
+}
+
+function ensureResultsSelection() {
+  if (!events.value.length) {
+    selectedResultsEventId.value = 0;
+    return;
+  }
+  const exists = events.value.some((event) => event.id === selectedResultsEventId.value);
+  if (!exists) {
+    const active = events.value.find((event) => event.is_active);
+    selectedResultsEventId.value = active ? active.id : events.value[0].id;
+  }
+}
+
+async function fetchEventResults({ showLoader = false } = {}) {
+  if (!selectedResultsEventId.value) {
+    eventResults.value = [];
+    resultsError.value = '';
+    lastResultsUpdate.value = null;
+    return;
+  }
+  if (showLoader) {
+    isLoadingResults.value = true;
+  }
+  resultsError.value = '';
+  try {
+    const { data } = await secureRequest(() =>
+      apiClient.get(`/events/${selectedResultsEventId.value}/results`, authHeaders.value),
+    );
+    if (Array.isArray(data)) {
+      eventResults.value = data.map((item) => ({
+        player_id: Number(item.player_id) || 0,
+        votes: Number(item.votes) || 0,
+        last_vote_at: typeof item.last_vote_at === 'string' ? item.last_vote_at : '',
+      }));
+    } else {
+      eventResults.value = [];
+    }
+    lastResultsUpdate.value = new Date();
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      resultsError.value = 'Evento non trovato.';
+    } else if (error?.response?.status === 400) {
+      resultsError.value = 'Richiesta non valida per i risultati.';
+    } else if (error?.response?.status !== 401) {
+      resultsError.value = 'Impossibile caricare i risultati. Riprova più tardi.';
+    }
+  } finally {
+    if (showLoader) {
+      isLoadingResults.value = false;
+    }
+  }
 }
 
 function normalizeSponsorResponse(item) {
@@ -1017,9 +1261,32 @@ async function copyLink(link) {
   }
 }
 
+watch(section, (value, oldValue) => {
+  if (value === 'results') {
+    ensureResultsSelection();
+    fetchEventResults({ showLoader: true });
+    startResultsPolling();
+  } else if (oldValue === 'results') {
+    stopResultsPolling();
+  }
+});
+
+watch(selectedResultsEventId, (eventId) => {
+  if (section.value === 'results' && eventId) {
+    fetchEventResults({ showLoader: true });
+    startResultsPolling();
+  } else if (!eventId) {
+    stopResultsPolling();
+  }
+});
+
 if (isAuthenticated.value) {
   loadAll();
 }
+
+onBeforeUnmount(() => {
+  stopResultsPolling();
+});
 </script>
 
 <style scoped>
@@ -1428,5 +1695,136 @@ select:focus {
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
+}
+
+.results-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.results-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.results-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.results-summary h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.results-summary .muted {
+  margin: 0.25rem 0 0;
+}
+
+.results-leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.results-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.95rem;
+  color: #475569;
+}
+
+.results-meta .auto-refresh {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.leaderboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.leaderboard-item {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) 120px;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 64, 175, 0.9));
+  color: #f8fafc;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.3);
+}
+
+.leaderboard-item .rank {
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.leaderboard-item .player-name {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.leaderboard-item .player-name .lastname {
+  font-size: 1.2rem;
+  letter-spacing: 0.08em;
+}
+
+.leaderboard-item .player-name .firstname {
+  font-size: 0.95rem;
+  text-transform: capitalize;
+  opacity: 0.9;
+}
+
+.leaderboard-item .votes {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 1rem;
+  justify-content: flex-end;
+}
+
+.leaderboard-item .votes strong {
+  font-size: 1.4rem;
+}
+
+.leaderboard-item .progress {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.35);
+  overflow: hidden;
+}
+
+.leaderboard-item .progress-bar {
+  height: 100%;
+  background: linear-gradient(135deg, #facc15, #f97316);
+  border-radius: inherit;
+  transition: width 0.4s ease;
+}
+
+@media (max-width: 640px) {
+  .leaderboard-item {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .leaderboard-item .votes {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
 }
 </style>

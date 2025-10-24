@@ -74,6 +74,12 @@ type Vote struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+type EventVoteResult struct {
+	PlayerID   int    `json:"player_id"`
+	Votes      int    `json:"votes"`
+	LastVoteAt string `json:"last_vote_at"`
+}
+
 type EventTicket struct {
 	VoteID          int    `json:"vote_id"`
 	TicketCode      string `json:"ticket_code"`
@@ -122,6 +128,7 @@ type AppDatabase interface {
 	GetActiveEvent() (Event, error)
 	ListVotes() ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
+	GetEventResults(eventID int) ([]EventVoteResult, error)
 	DeleteVote(id int) error
 	CreateAdmin(a Admin) (int, error)
 	ListAdmins() ([]Admin, error)
@@ -469,6 +476,44 @@ ORDER BY v.created_at ASC
 		tickets = append(tickets, t)
 	}
 	return tickets, nil
+}
+
+// GetEventResults returns aggregated vote results for an event
+func (db *appdbimpl) GetEventResults(eventID int) ([]EventVoteResult, error) {
+	var exists int
+	if err := db.c.QueryRow(`SELECT COUNT(1) FROM events WHERE id = ?`, eventID).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if exists == 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	rows, err := db.c.Query(`
+SELECT player_id, COUNT(*) AS votes, IFNULL(MAX(created_at), '') AS last_vote_at
+FROM votes
+WHERE event_id = ?
+GROUP BY player_id
+ORDER BY votes DESC, last_vote_at ASC, player_id ASC
+`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []EventVoteResult
+	for rows.Next() {
+		var res EventVoteResult
+		if err := rows.Scan(&res.PlayerID, &res.Votes, &res.LastVoteAt); err != nil {
+			return nil, err
+		}
+		results = append(results, res)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 func (db *appdbimpl) DeleteVote(id int) error {
