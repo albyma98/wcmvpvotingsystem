@@ -35,8 +35,21 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    expose:
+      - "80"
+  caddy:
+    image: caddy:2.8-alpine
+    depends_on:
+      - frontend
+      - backend
     ports:
-      - "8080:80"
-
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
 volumes:
   backend-data:
+  caddy-data:
+  caddy-config:
