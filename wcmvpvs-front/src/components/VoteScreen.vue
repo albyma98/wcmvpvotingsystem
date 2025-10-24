@@ -177,6 +177,51 @@ const showTicketModal = ref(false);
 const ticketCode = ref('');
 const ticketQrUrl = ref('');
 
+const sanitizeName = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim();
+};
+
+const resolveTeamName = (event, keys) => {
+  if (!event) {
+    return '';
+  }
+
+  for (const key of keys) {
+    if (key in event) {
+      const resolved = sanitizeName(event[key]);
+      if (resolved) {
+        return resolved;
+      }
+    }
+  }
+
+  return '';
+};
+
+const homeTeamName = computed(() =>
+  resolveTeamName(props.activeEvent, ['team1_name', 'team1', 'home_team', 'homeTeam', 'team1Name'])
+);
+
+const awayTeamName = computed(() =>
+  resolveTeamName(props.activeEvent, ['team2_name', 'team2', 'away_team', 'awayTeam', 'team2Name'])
+);
+
+const eventTitle = computed(() => {
+  const home = homeTeamName.value;
+  const away = awayTeamName.value;
+
+  if (home || away) {
+    const fallbackHome = home || 'Squadra di casa';
+    const fallbackAway = away || 'Squadra ospite';
+    return `${fallbackHome} - ${fallbackAway}`;
+  }
+
+  return 'Vota il tuo MVP';
+});
+
 const currentEventId = computed(() => props.eventId ?? props.activeEvent?.id);
 const showInactiveNotice = computed(() => props.activeEventChecked && !props.activeEvent);
 const isCheckingActiveEvent = computed(() => props.loadingActiveEvent && !props.activeEventChecked);
@@ -317,7 +362,7 @@ const confirmVote = () => {
         <section class="px-4">
           <div class="mb-6 text-center">
             <h2 class="text-lg font-semibold uppercase tracking-[0.1em] text-slate-200">
-              JOy volley - Campobasso
+              {{ eventTitle }}
             </h2>
             <p class="mt-2 text-sm text-slate-300">
               Tocca la card del tuo giocatore preferito per assegnarli il voto
