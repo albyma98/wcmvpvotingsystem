@@ -377,3 +377,28 @@ defineExpose({
   text-align: center;
 }
 </style>
+
+
+<!--<template>
+  <qrcode-stream @decode="onDecode" @init="onInit" />
+</template>
+
+<script setup>
+import { ref } from 'vue';
+
+const lastResult = ref('');
+
+const onDecode = result => {
+  lastResult.value = result;
+  // gestisci il risultato del QR qui
+};
+
+const onInit = async (promise) => {
+  try {
+    await promise;
+    // fotocamera disponibile
+  } catch (error) {
+    console.error('Impossibile inizializzare il lettore QR:', error);
+  }
+};
+</script>-->
