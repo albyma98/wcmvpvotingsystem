@@ -91,6 +91,15 @@ type Admin struct {
 	CreatedAt    string `json:"created_at"`
 }
 
+type Sponsor struct {
+	ID       int    `json:"id"`
+	Position int    `json:"position"`
+	Name     string `json:"name"`
+	LogoData string `json:"logo_data"`
+	LinkURL  string `json:"link_url"`
+	IsActive bool   `json:"is_active"`
+}
+
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
 	GetName() (string, error)
@@ -119,12 +128,25 @@ type AppDatabase interface {
 	UpdateAdmin(a Admin) error
 	DeleteAdmin(id int) error
 	GetAdminByUsername(username string) (Admin, error)
+	CreateSponsor(s Sponsor) (int, error)
+	UpdateSponsor(s Sponsor) error
+	DeleteSponsor(id int) error
+	ListSponsors() ([]Sponsor, error)
+	ListActiveSponsors() ([]Sponsor, error)
 	Ping() error
 }
 
 type appdbimpl struct {
 	c *sql.DB
 }
+
+const maxSponsorSlots = 4
+
+var (
+	ErrMaxSponsors        = errors.New("maximum number of sponsors reached")
+	ErrInvalidSponsorPos  = errors.New("invalid sponsor position")
+	ErrInvalidSponsorData = errors.New("invalid sponsor data")
+)
 
 // New returns a new instance of AppDatabase based on the SQLite connection `db`.
 // `db` is required - an error will be returned if `db` is `nil`.
@@ -213,6 +235,15 @@ func New(db *sql.DB) (AppDatabase, error) {
 	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_code_per_event ON votes (event_id, ticket_code);`)
 	if err != nil {
 		return nil, fmt.Errorf("error ensuring votes code index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsors';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE sponsors (id INTEGER PRIMARY KEY AUTOINCREMENT, position INTEGER NOT NULL UNIQUE, name TEXT NOT NULL, logo_data TEXT NOT NULL, link_url TEXT, is_active INTEGER NOT NULL DEFAULT 1, CHECK(position BETWEEN 1 AND ` + fmt.Sprint(maxSponsorSlots) + `));`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating sponsors table: %w", err)
+		}
 	}
 
 	return &appdbimpl{
@@ -489,4 +520,180 @@ func (db *appdbimpl) GetAdminByUsername(username string) (Admin, error) {
 		return Admin{}, err
 	}
 	return admin, nil
+}
+
+// Sponsor operations
+func (db *appdbimpl) CreateSponsor(s Sponsor) (int, error) {
+	sanitizedName := strings.TrimSpace(s.Name)
+	if sanitizedName == "" || strings.TrimSpace(s.LogoData) == "" {
+		return 0, ErrInvalidSponsorData
+	}
+
+	var total int
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM sponsors`).Scan(&total); err != nil {
+		return 0, err
+	}
+	if total >= maxSponsorSlots {
+		return 0, ErrMaxSponsors
+	}
+
+	position := s.Position
+	if position <= 0 || position > maxSponsorSlots {
+		nextPos, err := db.nextSponsorPosition()
+		if err != nil {
+			return 0, err
+		}
+		position = nextPos
+	}
+
+	sanitizedLink := strings.TrimSpace(s.LinkURL)
+	isActive := s.IsActive
+	if position > total+1 {
+		position = total + 1
+	}
+
+	res, err := db.c.Exec(`INSERT INTO sponsors (position, name, logo_data, link_url, is_active) VALUES (?, ?, ?, ?, ?)`, position, sanitizedName, s.LogoData, sanitizedLink, boolToInt(isActive))
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: sponsors.position") {
+			return 0, ErrInvalidSponsorPos
+		}
+		return 0, err
+	}
+	id, _ := res.LastInsertId()
+	return int(id), nil
+}
+
+func (db *appdbimpl) UpdateSponsor(s Sponsor) error {
+	if s.ID <= 0 {
+		return sql.ErrNoRows
+	}
+
+	sanitizedName := strings.TrimSpace(s.Name)
+	if sanitizedName == "" || strings.TrimSpace(s.LogoData) == "" {
+		return ErrInvalidSponsorData
+	}
+
+	if s.Position <= 0 || s.Position > maxSponsorSlots {
+		return ErrInvalidSponsorPos
+	}
+
+	sanitizedLink := strings.TrimSpace(s.LinkURL)
+
+	res, err := db.c.Exec(`UPDATE sponsors SET position=?, name=?, logo_data=?, link_url=?, is_active=? WHERE id=?`, s.Position, sanitizedName, s.LogoData, sanitizedLink, boolToInt(s.IsActive), s.ID)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: sponsors.position") {
+			return ErrInvalidSponsorPos
+		}
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (db *appdbimpl) DeleteSponsor(id int) error {
+	res, err := db.c.Exec(`DELETE FROM sponsors WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return db.normalizeSponsorPositions()
+}
+
+func (db *appdbimpl) ListSponsors() ([]Sponsor, error) {
+	return db.querySponsors(false)
+}
+
+func (db *appdbimpl) ListActiveSponsors() ([]Sponsor, error) {
+	return db.querySponsors(true)
+}
+
+func (db *appdbimpl) querySponsors(activeOnly bool) ([]Sponsor, error) {
+	baseQuery := `SELECT id, position, name, logo_data, IFNULL(link_url, ''), is_active FROM sponsors`
+	if activeOnly {
+		baseQuery += ` WHERE is_active = 1`
+	}
+	baseQuery += ` ORDER BY position ASC, id ASC`
+
+	rows, err := db.c.Query(baseQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sponsors []Sponsor
+	for rows.Next() {
+		var s Sponsor
+		var isActive int
+		if err := rows.Scan(&s.ID, &s.Position, &s.Name, &s.LogoData, &s.LinkURL, &isActive); err != nil {
+			return nil, err
+		}
+		s.IsActive = isActive == 1
+		sponsors = append(sponsors, s)
+	}
+	return sponsors, nil
+}
+
+func (db *appdbimpl) nextSponsorPosition() (int, error) {
+	rows, err := db.c.Query(`SELECT position FROM sponsors ORDER BY position ASC`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	used := make(map[int]struct{})
+	for rows.Next() {
+		var pos int
+		if err := rows.Scan(&pos); err != nil {
+			return 0, err
+		}
+		used[pos] = struct{}{}
+	}
+
+	for i := 1; i <= maxSponsorSlots; i++ {
+		if _, ok := used[i]; !ok {
+			return i, nil
+		}
+	}
+
+	return 0, ErrMaxSponsors
+}
+
+func (db *appdbimpl) normalizeSponsorPositions() error {
+	rows, err := db.c.Query(`SELECT id FROM sponsors ORDER BY position ASC, id ASC`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	position := 1
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		if _, err := db.c.Exec(`UPDATE sponsors SET position=? WHERE id=?`, position, id); err != nil {
+			return err
+		}
+		position++
+	}
+	return nil
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }

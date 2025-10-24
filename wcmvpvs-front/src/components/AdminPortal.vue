@@ -207,6 +207,104 @@
         </ul>
       </section>
 
+      <section v-else-if="section === 'sponsors'" class="card">
+        <header class="section-header">
+          <h2>Sponsor</h2>
+          <p>Gestisci fino a {{ maxSponsors }} sponsor da mostrare nella schermata pubblica.</p>
+        </header>
+
+        <div class="sponsor-controls" role="group" aria-label="Visibilità sponsor">
+          <label class="sponsor-range">
+            <span>Numero di sponsor visibili: {{ desiredActiveSponsorCount }} / {{ maxSponsors }}</span>
+            <input
+              type="range"
+              min="0"
+              :max="sponsorSliderMax"
+              v-model.number="desiredActiveSponsorCount"
+              @change="applyActiveSponsorCount"
+              :disabled="!sponsors.length || isApplyingSponsorCount"
+            />
+          </label>
+          <p class="muted small">Gli sponsor attivi vengono mostrati nell'ordine indicato qui sotto.</p>
+        </div>
+
+        <form @submit.prevent="createSponsor" class="form-grid sponsor-form">
+          <label>
+            Nome sponsor
+            <input v-model.trim="newSponsor.name" type="text" placeholder="Es. Partner ufficiale" required />
+          </label>
+          <label>
+            Link (opzionale)
+            <input v-model.trim="newSponsor.linkUrl" type="url" placeholder="https://example.com" />
+          </label>
+          <label class="file-input">
+            Logo sponsor
+            <input type="file" accept="image/*" @change="handleNewSponsorLogoChange" />
+          </label>
+          <div v-if="newSponsor.logoData" class="sponsor-preview new" aria-label="Anteprima logo nuovo sponsor">
+            <img :src="newSponsor.logoData" alt="Anteprima logo sponsor" />
+          </div>
+          <button class="btn primary" type="submit" :disabled="isCreatingSponsor">
+            {{ isCreatingSponsor ? 'Salvataggio…' : 'Aggiungi sponsor' }}
+          </button>
+        </form>
+
+        <ul v-if="sponsors.length" class="item-list sponsors-list">
+          <li v-for="sponsor in sponsors" :key="sponsor.id" class="item sponsor-item">
+            <div class="item-body sponsor-body">
+              <div class="sponsor-preview" :aria-label="`Logo sponsor ${sponsor.name || sponsor.position}`">
+                <img
+                  v-if="sponsor.logoData"
+                  :src="sponsor.logoData"
+                  :alt="`Logo ${sponsor.name || 'sponsor'}`"
+                />
+                <span v-else class="empty-logo">Logo non disponibile</span>
+              </div>
+              <div class="sponsor-fields">
+                <div class="form-grid compact">
+                  <label>
+                    Nome sponsor
+                    <input v-model.trim="sponsor.name" type="text" required />
+                  </label>
+                  <label>
+                    Link (opzionale)
+                    <input v-model.trim="sponsor.linkUrl" type="url" placeholder="https://example.com" />
+                  </label>
+                  <label class="file-input">
+                    Aggiorna logo
+                    <input type="file" accept="image/*" @change="(event) => handleSponsorLogoChange(event, sponsor)" />
+                  </label>
+                </div>
+                <p class="muted sponsor-meta">
+                  Posizione {{ sponsor.position }} • {{ sponsor.isActive ? 'Visibile' : 'Nascosto' }}
+                </p>
+              </div>
+            </div>
+            <div class="item-actions vertical">
+              <button
+                class="btn secondary"
+                type="button"
+                @click="updateSponsorEntry(sponsor)"
+                :disabled="sponsorBeingUpdated === sponsor.id"
+              >
+                <span v-if="sponsorBeingUpdated === sponsor.id">Salvataggio…</span>
+                <span v-else>Salva</span>
+              </button>
+              <button
+                class="btn danger"
+                type="button"
+                @click="deleteSponsorEntry(sponsor.id)"
+                :disabled="sponsorBeingDeleted === sponsor.id"
+              >
+                <span v-if="sponsorBeingDeleted === sponsor.id">Eliminazione…</span>
+                <span v-else>Elimina</span>
+              </button>
+            </div>
+          </li>
+        </ul>
+        <p v-else class="muted text-center">Nessuno sponsor configurato al momento.</p>
+      </section>
+
       <section v-else-if="section === 'admins'" class="card">
         <header class="section-header">
           <h2>Utenti amministratori</h2>
@@ -243,6 +341,7 @@ const tabs = [
   { id: 'events', label: 'Eventi' },
   { id: 'teams', label: 'Squadre' },
   { id: 'players', label: 'Giocatori' },
+  { id: 'sponsors', label: 'Sponsor' },
   { id: 'admins', label: 'Admin' },
 ];
 
@@ -250,6 +349,7 @@ const teams = ref([]);
 const players = ref([]);
 const events = ref([]);
 const admins = ref([]);
+const sponsors = ref([]);
 const updatingEventId = ref(0);
 const isDisablingEvents = ref(false);
 
@@ -277,6 +377,18 @@ const newAdmin = reactive({
   password: '',
   role: '',
 });
+const maxSponsors = 4;
+const newSponsor = reactive({
+  name: '',
+  linkUrl: '',
+  logoData: '',
+  isActive: true,
+});
+const desiredActiveSponsorCount = ref(0);
+const isCreatingSponsor = ref(false);
+const sponsorBeingUpdated = ref(0);
+const sponsorBeingDeleted = ref(0);
+const isApplyingSponsorCount = ref(false);
 const lastCreatedEventLink = ref('');
 
 const hasEnoughTeams = computed(() => teams.value.length >= 2);
@@ -284,6 +396,10 @@ const activeEventId = computed(() => {
   const activeEvent = events.value.find((event) => event.is_active);
   return activeEvent ? activeEvent.id : 0;
 });
+const activeSponsorCount = computed(() => sponsors.value.filter((item) => item.isActive).length);
+const sponsorSliderMax = computed(() =>
+  sponsors.value.length ? Math.min(maxSponsors, sponsors.value.length) : maxSponsors,
+);
 
 const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
@@ -322,6 +438,8 @@ function resetForms() {
   teamInputs.home = '';
   teamInputs.away = '';
   Object.assign(newAdmin, { username: '', password: '', role: '' });
+  resetNewSponsorForm();
+  desiredActiveSponsorCount.value = Math.min(sponsorSliderMax.value, activeSponsorCount.value);
 }
 
 function ensureValidTeamSelection() {
@@ -366,7 +484,94 @@ function clearCollections() {
   players.value = [];
   events.value = [];
   admins.value = [];
+  sponsors.value = [];
   lastCreatedEventLink.value = '';
+}
+
+function normalizeSponsorResponse(item) {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+  const normalizedName = typeof item.name === 'string' ? item.name.trim() : '';
+  const normalizedLink = typeof item.link_url === 'string' ? item.link_url.trim() : '';
+  return {
+    id: Number(item.id) || 0,
+    name: normalizedName,
+    linkUrl: normalizedLink,
+    position: Number(item.position) || 0,
+    logoData: typeof item.logo_data === 'string' ? item.logo_data : '',
+    isActive: Boolean(item.is_active),
+  };
+}
+
+function serializeSponsorPayload(sponsor) {
+  return {
+    name: sponsor.name.trim(),
+    link_url: sponsor.linkUrl.trim(),
+    position: sponsor.position,
+    logo_data: sponsor.logoData,
+    is_active: sponsor.isActive,
+  };
+}
+
+function nextSponsorPosition() {
+  const used = new Set(sponsors.value.map((item) => item.position));
+  for (let index = 1; index <= maxSponsors; index += 1) {
+    if (!used.has(index)) {
+      return index;
+    }
+  }
+  return Math.min(maxSponsors, sponsors.value.length + 1);
+}
+
+function sortedSponsors() {
+  return [...sponsors.value].sort((a, b) => a.position - b.position);
+}
+
+function recomputeActiveSponsorSlider() {
+  desiredActiveSponsorCount.value = Math.min(sponsorSliderMax.value, activeSponsorCount.value);
+}
+
+function resetNewSponsorForm() {
+  Object.assign(newSponsor, { name: '', linkUrl: '', logoData: '', isActive: true });
+}
+
+async function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve(typeof reader.result === 'string' ? reader.result : '');
+    };
+    reader.onerror = () => {
+      reject(reader.error || new Error('Impossibile leggere il file'));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleSponsorLogoChange(event, targetSponsor) {
+  const [file] = event?.target?.files || [];
+  if (!file) {
+    return;
+  }
+  globalError.value = '';
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    if (dataUrl) {
+      targetSponsor.logoData = dataUrl;
+    }
+  } catch (error) {
+    console.error('Errore caricamento logo sponsor', error);
+    globalError.value = 'Impossibile caricare il logo selezionato.';
+  } finally {
+    if (event?.target) {
+      event.target.value = '';
+    }
+  }
+}
+
+async function handleNewSponsorLogoChange(event) {
+  await handleSponsorLogoChange(event, newSponsor);
 }
 
 function buildEventLink(eventId) {
@@ -527,11 +732,23 @@ async function loadAdmins() {
   admins.value = data;
 }
 
+async function loadSponsors() {
+  const { data } = await secureRequest(() => apiClient.get('/admin/sponsors', authHeaders.value));
+  const normalized = Array.isArray(data)
+    ? data
+        .map((item) => normalizeSponsorResponse(item))
+        .filter((item) => item && item.id)
+        .sort((a, b) => a.position - b.position)
+    : [];
+  sponsors.value = normalized;
+  recomputeActiveSponsorSlider();
+}
+
 async function loadAll() {
   if (!isAuthenticated.value) {
     return;
   }
-  await Promise.all([loadTeams(), loadPlayers(), loadEvents(), loadAdmins()]);
+  await Promise.all([loadTeams(), loadPlayers(), loadEvents(), loadAdmins(), loadSponsors()]);
   resetForms();
 }
 
@@ -648,6 +865,142 @@ async function deleteAdmin(id) {
   globalError.value = '';
   await secureRequest(() => apiClient.delete(`/admins/${id}`, authHeaders.value));
   await loadAdmins();
+}
+
+async function createSponsor() {
+  if (isCreatingSponsor.value) {
+    return;
+  }
+  globalError.value = '';
+  if (sponsors.value.length >= maxSponsors) {
+    globalError.value = `Puoi configurare al massimo ${maxSponsors} sponsor.`;
+    return;
+  }
+  const trimmedName = newSponsor.name.trim();
+  if (!trimmedName) {
+    globalError.value = 'Inserisci il nome dello sponsor.';
+    return;
+  }
+  if (!newSponsor.logoData) {
+    globalError.value = 'Carica un logo per lo sponsor.';
+    return;
+  }
+  const payload = serializeSponsorPayload({
+    name: trimmedName,
+    linkUrl: newSponsor.linkUrl,
+    logoData: newSponsor.logoData,
+    position: nextSponsorPosition(),
+    isActive: false,
+  });
+  isCreatingSponsor.value = true;
+  try {
+    await secureRequest(() => apiClient.post('/admin/sponsors', payload, authHeaders.value));
+    resetNewSponsorForm();
+    await loadSponsors();
+  } catch (error) {
+    if (error?.response?.status === 400) {
+      globalError.value = 'Controlla i dati inseriti: sono disponibili massimo 4 sponsor.';
+    }
+  } finally {
+    isCreatingSponsor.value = false;
+  }
+}
+
+async function updateSponsorEntry(sponsor) {
+  if (sponsorBeingUpdated.value === sponsor.id) {
+    return;
+  }
+  globalError.value = '';
+  const trimmedName = sponsor.name.trim();
+  if (!trimmedName) {
+    globalError.value = 'Inserisci il nome dello sponsor.';
+    return;
+  }
+  if (!sponsor.logoData) {
+    globalError.value = 'Carica un logo per lo sponsor.';
+    return;
+  }
+  sponsorBeingUpdated.value = sponsor.id;
+  try {
+    const payload = serializeSponsorPayload({
+      name: trimmedName,
+      linkUrl: sponsor.linkUrl,
+      logoData: sponsor.logoData,
+      position: sponsor.position,
+      isActive: sponsor.isActive,
+    });
+    await secureRequest(() => apiClient.put(`/admin/sponsors/${sponsor.id}`, payload, authHeaders.value));
+    await loadSponsors();
+  } catch (error) {
+    if (error?.response?.status === 400) {
+      globalError.value = 'Controlla i dati dello sponsor e riprova.';
+    } else if (error?.response?.status === 404) {
+      globalError.value = 'Sponsor non trovato. Aggiorna la pagina.';
+    }
+  } finally {
+    sponsorBeingUpdated.value = 0;
+  }
+}
+
+async function deleteSponsorEntry(id) {
+  if (sponsorBeingDeleted.value === id) {
+    return;
+  }
+  globalError.value = '';
+  sponsorBeingDeleted.value = id;
+  try {
+    await secureRequest(() => apiClient.delete(`/admin/sponsors/${id}`, authHeaders.value));
+    await loadSponsors();
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      globalError.value = 'Sponsor già rimosso.';
+    }
+  } finally {
+    sponsorBeingDeleted.value = 0;
+  }
+}
+
+async function applyActiveSponsorCount() {
+  if (isApplyingSponsorCount.value) {
+    return;
+  }
+  if (!sponsors.value.length) {
+    desiredActiveSponsorCount.value = 0;
+    return;
+  }
+  globalError.value = '';
+  const target = Math.max(0, Math.min(maxSponsors, desiredActiveSponsorCount.value));
+  isApplyingSponsorCount.value = true;
+  try {
+    const updates = [];
+    sortedSponsors().forEach((sponsor, index) => {
+      const shouldBeActive = index < target;
+      if (sponsor.isActive !== shouldBeActive) {
+        const payload = serializeSponsorPayload({
+          name: sponsor.name.trim(),
+          linkUrl: sponsor.linkUrl,
+          logoData: sponsor.logoData,
+          position: sponsor.position,
+          isActive: shouldBeActive,
+        });
+        updates.push(
+          secureRequest(() =>
+            apiClient.put(`/admin/sponsors/${sponsor.id}`, payload, authHeaders.value),
+          ),
+        );
+      }
+    });
+    if (updates.length) {
+      await Promise.all(updates);
+    }
+    await loadSponsors();
+  } catch (error) {
+    if (error?.response?.status === 400) {
+      globalError.value = 'Impossibile aggiornare il numero di sponsor visibili. Verifica i dati e riprova.';
+    }
+  } finally {
+    isApplyingSponsorCount.value = false;
+  }
 }
 
 function openVote(eventId) {
@@ -953,6 +1306,111 @@ select:focus {
 .muted {
   color: #64748b;
   margin: 0;
+}
+
+.muted.small {
+  font-size: 0.8rem;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.sponsor-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.sponsor-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.sponsor-range input[type='range'] {
+  accent-color: #2563eb;
+}
+
+.sponsor-form {
+  align-items: flex-end;
+}
+
+.sponsor-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.85rem;
+  border: 1px dashed rgba(148, 163, 184, 0.6);
+  background: rgba(241, 245, 249, 0.6);
+  overflow: hidden;
+  min-height: 120px;
+}
+
+.sponsor-preview.new {
+  min-height: 100px;
+}
+
+.sponsor-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.empty-logo {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.sponsors-list {
+  margin-top: 1.5rem;
+}
+
+.sponsor-item {
+  gap: 1.25rem;
+}
+
+.sponsor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .sponsor-body {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .sponsor-preview {
+    flex: 0 0 220px;
+    min-height: 140px;
+  }
+}
+
+.sponsor-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.form-grid.compact {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-bottom: 0.75rem;
+}
+
+.sponsor-meta {
+  font-size: 0.85rem;
+}
+
+.item-actions.vertical {
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .error {

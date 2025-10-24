@@ -28,6 +28,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Delete("/players/{id}", rt.wrapAdmin(rt.deletePlayer))
 
 	rt.router.Get("/active-event", rt.wrap(rt.getActiveEvent))
+	rt.router.Get("/sponsors", rt.wrap(rt.listPublicSponsors))
 
 	rt.router.Get("/events", rt.wrapAdmin(rt.listEvents))
 	rt.router.Post("/events", rt.wrapAdmin(rt.createEvent))
@@ -44,6 +45,11 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admins", rt.wrapAdmin(rt.createAdmin))
 	rt.router.Put("/admins/{id}", rt.wrapAdmin(rt.updateAdmin))
 	rt.router.Delete("/admins/{id}", rt.wrapAdmin(rt.deleteAdmin))
+
+	rt.router.Get("/admin/sponsors", rt.wrapAdmin(rt.listAllSponsors))
+	rt.router.Post("/admin/sponsors", rt.wrapAdmin(rt.createSponsor))
+	rt.router.Put("/admin/sponsors/{id}", rt.wrapAdmin(rt.updateSponsor))
+	rt.router.Delete("/admin/sponsors/{id}", rt.wrapAdmin(rt.deleteSponsor))
 
 	return rt.router
 }

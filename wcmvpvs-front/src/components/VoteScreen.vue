@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
-import { vote } from '../api';
+import { apiClient, vote } from '../api';
 
 const props = defineProps({
   eventId: {
@@ -145,28 +145,40 @@ const roster = [
 
 const fieldPlayers = computed(() => roster);
 
-const sponsors = [
-  {
-    id: 1,
-    name: 'WearingCash',
-    image: 'https://wearingcash.it/cdn/shop/files/2.png?v=1741121739&width=255',
-  },
-  {
-    id: 2,
-    name: 'BluWave Partner',
-    image: 'https://via.placeholder.com/320x180.png?text=BluWave+Partner',
-  },
-  {
-    id: 3,
-    name: 'Energia Italia',
-    image: 'https://via.placeholder.com/320x180.png?text=Energia+Italia',
-  },
-  {
-    id: 4,
-    name: 'Tech Volley Lab',
-    image: 'https://via.placeholder.com/320x180.png?text=Tech+Volley+Lab',
-  },
-];
+const sponsors = ref([]);
+
+async function loadSponsors() {
+  try {
+    const { data } = await apiClient.get('/sponsors');
+    if (Array.isArray(data)) {
+      sponsors.value = data
+        .map((item, index) => {
+          const image = typeof item?.logo_data === 'string' ? item.logo_data : '';
+          if (!image) {
+            return null;
+          }
+          const resolvedName =
+            typeof item?.name === 'string' && item.name.trim() ? item.name.trim() : 'Sponsor';
+          const resolvedLink =
+            typeof item?.link_url === 'string' && item.link_url.trim()
+              ? item.link_url.trim()
+              : '';
+          return {
+            id: Number(item?.id) || index + 1,
+            name: resolvedName,
+            image,
+            link: resolvedLink,
+          };
+        })
+        .filter(Boolean);
+    } else {
+      sponsors.value = [];
+    }
+  } catch (error) {
+    console.error('Impossibile caricare gli sponsor', error);
+    sponsors.value = [];
+  }
+}
 
 const votedPlayerId = ref(null);
 const isVoting = ref(false);
@@ -248,6 +260,7 @@ const updateCardSize = () => {
 onMounted(() => {
   updateCardSize();
   window.addEventListener('resize', updateCardSize, { passive: true });
+  loadSponsors();
 });
 
 onBeforeUnmount(() => {
@@ -382,7 +395,7 @@ const confirmVote = () => {
           </div>
         </section>
 
-        <section class="px-4">
+        <section v-if="sponsors.length" class="px-4">
           <div
             class="relative overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
             aria-labelledby="sponsor-title"
@@ -402,23 +415,45 @@ const confirmVote = () => {
 
               <div class="flex-1 px-6 pb-6">
                 <div class="grid h-full grid-cols-2 grid-rows-2 gap-4">
-                  <article
-                    v-for="sponsor in sponsors"
-                    :key="sponsor.id"
-                    class="group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-[0_16px_32px_rgba(8,15,28,0.45)]"
-                  >
-                    <div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
-                    <img
-                      :src="sponsor.image"
-                      :alt="sponsor.name"
-                      class="relative h-full w-full object-cover"
-                    />
-                    <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8">
-                      <p class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center">
-                        {{ sponsor.name }}
-                      </p>
+                  <template v-for="sponsor in sponsors" :key="sponsor.id">
+                    <a
+                      v-if="sponsor.link"
+                      class="group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-[0_16px_32px_rgba(8,15,28,0.45)]"
+                      :href="sponsor.link"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      :aria-label="sponsor.name"
+                    >
+                      <div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                      <img
+                        :src="sponsor.image"
+                        :alt="sponsor.name"
+                        class="relative h-full w-full object-cover"
+                      />
+                      <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8">
+                        <p class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center">
+                          {{ sponsor.name }}
+                        </p>
+                      </div>
+                    </a>
+                    <div
+                      v-else
+                      class="group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-[0_16px_32px_rgba(8,15,28,0.45)]"
+                      :aria-label="sponsor.name"
+                    >
+                      <div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                      <img
+                        :src="sponsor.image"
+                        :alt="sponsor.name"
+                        class="relative h-full w-full object-cover"
+                      />
+                      <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8">
+                        <p class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center">
+                          {{ sponsor.name }}
+                        </p>
+                      </div>
                     </div>
-                  </article>
+                  </template>
                 </div>
               </div>
             </div>
