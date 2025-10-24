@@ -32,6 +32,13 @@ type WebAPIConfiguration struct {
 	Vote struct {
 		Secret string `conf:"default:secret"`
 	}
+
+	BootstrapAdmin struct {
+		Enabled      bool   `conf:"default:true"`
+		Username     string `conf:"default:Albyma"`
+		PasswordHash string `conf:"default:4bdbc215d8dc3c571e802a69bced0c3071cc4a1f129ad97e15b357018aac6cd4"`
+		Role         string `conf:"default:superadmin"`
+	}
 }
 
 // loadConfiguration creates a WebAPIConfiguration starting from flags, environment variables and configuration file.
