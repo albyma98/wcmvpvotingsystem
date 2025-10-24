@@ -23,8 +23,8 @@
       <p v-if="loginError" class="error">{{ loginError }}</p>
     </section>
 
-    <section v-else class="portal">
-      <div class="toolbar">
+    <section v-else class="portal" ref="portalRef">
+      <div class="toolbar" ref="toolbarRef">
         <div class="user-info">
           <span>Connesso come <strong>{{ activeUsername }}</strong></span>
           <button class="btn outline" type="button" @click="goToLottery">Lotteria</button>
@@ -34,7 +34,7 @@
           <button
             v-for="tab in tabs"
             :key="tab.id"
-            :class="['section-nav__button', { active: section === tab.id }]"
+            :class="['btn outline section-nav__button', { active: section === tab.id }]"
             type="button"
             :aria-current="section === tab.id ? 'page' : undefined"
             @click="section = tab.id"
@@ -43,10 +43,10 @@
           </button>
         </nav>
       </div>
+      <div class="portal-content">
+        <p v-if="globalError" class="error">{{ globalError }}</p>
 
-      <p v-if="globalError" class="error">{{ globalError }}</p>
-
-      <section v-if="section === 'events'" class="card">
+        <section v-if="section === 'events'" class="card">
         <header class="section-header">
           <h2>Eventi</h2>
           <p>Crea una nuova partita per abilitare il voto pubblico.</p>
@@ -611,34 +611,35 @@
           </li>
         </ul>
         <p v-else class="muted text-center">Nessuno sponsor configurato al momento.</p>
-      </section>
+        </section>
 
-      <section v-else-if="section === 'admins'" class="card">
-        <header class="section-header">
-          <h2>Utenti amministratori</h2>
-        </header>
-        <form @submit.prevent="createAdmin" class="form-grid">
-          <input v-model.trim="newAdmin.username" type="text" placeholder="Username" required />
-          <input v-model="newAdmin.password" type="password" placeholder="Password" required />
-          <input v-model.trim="newAdmin.role" type="text" placeholder="Ruolo (es. staff)" />
-          <button class="btn primary" type="submit">Aggiungi</button>
-        </form>
-        <ul class="item-list compact">
-          <li v-for="admin in admins" :key="admin.id" class="item">
-            <div>
-              <strong>{{ admin.username }}</strong>
-              <span class="muted"> • {{ admin.role || 'staff' }}</span>
-            </div>
-            <button class="btn danger" type="button" @click="deleteAdmin(admin.id)">Elimina</button>
-          </li>
-        </ul>
-      </section>
+        <section v-else-if="section === 'admins'" class="card">
+          <header class="section-header">
+            <h2>Utenti amministratori</h2>
+          </header>
+          <form @submit.prevent="createAdmin" class="form-grid">
+            <input v-model.trim="newAdmin.username" type="text" placeholder="Username" required />
+            <input v-model="newAdmin.password" type="password" placeholder="Password" required />
+            <input v-model.trim="newAdmin.role" type="text" placeholder="Ruolo (es. staff)" />
+            <button class="btn primary" type="submit">Aggiungi</button>
+          </form>
+          <ul class="item-list compact">
+            <li v-for="admin in admins" :key="admin.id" class="item">
+              <div>
+                <strong>{{ admin.username }}</strong>
+                <span class="muted"> • {{ admin.role || 'staff' }}</span>
+              </div>
+              <button class="btn danger" type="button" @click="deleteAdmin(admin.id)">Elimina</button>
+            </li>
+          </ul>
+        </section>
+      </div>
     </section>
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import QRScanner from './QRScanner.vue';
 import { apiClient } from '../api';
 import { roster } from '../roster';
@@ -725,6 +726,8 @@ const closeVotesMessage = ref('');
 const eventPrizeDrafts = reactive({});
 const eventPrizeErrors = reactive({});
 const savingEventPrizes = ref(0);
+const portalRef = ref(null);
+const toolbarRef = ref(null);
 
 const hasEnoughTeams = computed(() => teams.value.length >= 2);
 const activeEventId = computed(() => {
@@ -2034,6 +2037,23 @@ async function copyLink(link) {
   }
 }
 
+function updateToolbarOffset() {
+  if (!portalRef.value) {
+    return;
+  }
+  const height = toolbarRef.value?.offsetHeight ?? 0;
+  portalRef.value.style.setProperty('--toolbar-height', `${height}px`);
+}
+
+onMounted(() => {
+  window.addEventListener('resize', updateToolbarOffset, { passive: true });
+  nextTick(updateToolbarOffset);
+});
+
+watch(isAuthenticated, () => {
+  nextTick(updateToolbarOffset);
+});
+
 watch(section, (value, oldValue) => {
   if (value === 'results') {
     ensureResultsSelection();
@@ -2049,6 +2069,7 @@ watch(section, (value, oldValue) => {
   if (oldValue === 'scanner') {
     stopScanner();
   }
+  nextTick(updateToolbarOffset);
 });
 
 watch(selectedResultsEventId, (eventId) => {
@@ -2065,6 +2086,7 @@ if (isAuthenticated.value) {
 }
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateToolbarOffset);
   stopResultsPolling();
   stopScanner();
 });
@@ -2098,16 +2120,25 @@ onBeforeUnmount(() => {
 .portal {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 0;
+  position: relative;
+  --toolbar-height: 0px;
 }
 
 .toolbar {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
   color: #f1f5f9;
-  position: relative;
-  z-index: 1;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.92);
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  backdrop-filter: blur(12px);
 }
 
 @media (min-width: 768px) {
@@ -2115,7 +2146,15 @@ onBeforeUnmount(() => {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+    padding: 0.75rem 1.25rem;
   }
+}
+
+.portal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding-top: calc(var(--toolbar-height, 0px) + 1rem);
 }
 
 .user-info {
@@ -2128,48 +2167,10 @@ onBeforeUnmount(() => {
 .section-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  padding: 0.5rem 0;
+  gap: 0.5rem;
+  padding: 0;
   position: relative;
   z-index: 1;
-}
-
-.section-nav__button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  padding: 0.65rem 1.4rem;
-  border: 1px solid rgba(226, 232, 240, 0.45);
-  background: rgba(15, 23, 42, 0.7);
-  color: #f8fafc;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.section-nav__button:hover,
-.section-nav__button:focus-visible {
-  background: rgba(148, 163, 184, 0.3);
-  border-color: rgba(226, 232, 240, 0.75);
-  color: #ffffff;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.35);
-}
-
-.section-nav__button:focus-visible {
-  outline: 2px solid #fbbf24;
-  outline-offset: 3px;
-}
-
-.section-nav__button.active {
-  background: linear-gradient(135deg, #f97316, #fbbf24);
-  border-color: transparent;
-  color: #0f172a;
-  box-shadow: 0 16px 32px rgba(249, 115, 22, 0.35);
-  transform: translateY(-1px);
 }
 
 .card {
@@ -2380,6 +2381,40 @@ select:focus {
 .btn:not(:disabled):hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
+}
+
+.section-nav__button {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.55rem 1.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.75);
+  color: #f8fafc;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.section-nav__button:not(.active):hover,
+.section-nav__button:not(.active):focus-visible {
+  background: rgba(148, 163, 184, 0.3);
+  border-color: rgba(226, 232, 240, 0.65);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.35);
+}
+
+.section-nav__button:focus-visible {
+  outline: 2px solid #fbbf24;
+  outline-offset: 3px;
+}
+
+.section-nav__button.active {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 18px 36px rgba(59, 130, 246, 0.45);
+  transform: translateY(-1px);
 }
 
 .item-list {
