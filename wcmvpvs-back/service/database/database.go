@@ -34,6 +34,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -54,15 +55,33 @@ type Player struct {
 }
 
 type Event struct {
-	ID            int    `json:"id"`
-	Team1ID       int    `json:"team1_id"`
-	Team2ID       int    `json:"team2_id"`
-	StartDateTime string `json:"start_datetime"`
-	Location      string `json:"location"`
-	IsActive      bool   `json:"is_active"`
-	VotesClosed   bool   `json:"votes_closed"`
-	Team1Name     string `json:"team1_name,omitempty"`
-	Team2Name     string `json:"team2_name,omitempty"`
+	ID            int          `json:"id"`
+	Team1ID       int          `json:"team1_id"`
+	Team2ID       int          `json:"team2_id"`
+	StartDateTime string       `json:"start_datetime"`
+	Location      string       `json:"location"`
+	IsActive      bool         `json:"is_active"`
+	VotesClosed   bool         `json:"votes_closed"`
+	Team1Name     string       `json:"team1_name,omitempty"`
+	Team2Name     string       `json:"team2_name,omitempty"`
+	Prizes        []EventPrize `json:"prizes,omitempty"`
+}
+
+type EventPrize struct {
+	ID       int               `json:"id"`
+	EventID  int               `json:"event_id"`
+	Name     string            `json:"name"`
+	Position int               `json:"position"`
+	Winner   *EventPrizeWinner `json:"winner,omitempty"`
+}
+
+type EventPrizeWinner struct {
+	VoteID          int    `json:"vote_id"`
+	TicketCode      string `json:"ticket_code"`
+	PlayerID        int    `json:"player_id"`
+	PlayerFirstName string `json:"player_first_name"`
+	PlayerLastName  string `json:"player_last_name"`
+	AssignedAt      string `json:"assigned_at"`
 }
 
 type Vote struct {
@@ -130,6 +149,9 @@ type AppDatabase interface {
 	GetActiveEvent() (Event, error)
 	ListVotes() ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
+	ListEventPrizes(eventID int) ([]EventPrize, error)
+	AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize, error)
+	ClearPrizeWinner(eventID, prizeID int) error
 	GetEventResults(eventID int) ([]EventVoteResult, error)
 	DeleteVote(id int) error
 	CreateAdmin(a Admin) (int, error)
@@ -152,9 +174,13 @@ type appdbimpl struct {
 const maxSponsorSlots = 4
 
 var (
-	ErrMaxSponsors        = errors.New("maximum number of sponsors reached")
-	ErrInvalidSponsorPos  = errors.New("invalid sponsor position")
-	ErrInvalidSponsorData = errors.New("invalid sponsor data")
+	ErrMaxSponsors          = errors.New("maximum number of sponsors reached")
+	ErrInvalidSponsorPos    = errors.New("invalid sponsor position")
+	ErrInvalidSponsorData   = errors.New("invalid sponsor data")
+	ErrPrizeAlreadyAssigned = errors.New("prize already has a winner")
+	ErrPrizeWinnerConflict  = errors.New("winner already assigned to another prize")
+	ErrPrizeVoteMismatch    = errors.New("selected ticket is not valid for this event")
+	ErrPrizeLockedByWinner  = errors.New("cannot remove a prize that already has a winner")
 )
 
 // New returns a new instance of AppDatabase based on the SQLite connection `db`.
@@ -206,6 +232,36 @@ func New(db *sql.DB) (AppDatabase, error) {
 			return nil, fmt.Errorf("error creating events table: %w", err)
 		}
 
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='event_prizes';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE event_prizes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 1,
+        winner_vote_id INTEGER,
+        winner_assigned_at TEXT,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+        FOREIGN KEY (winner_vote_id) REFERENCES votes(id)
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating event_prizes table: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_event_prizes_event ON event_prizes(event_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring event_prizes event index: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_prizes_event_position ON event_prizes(event_id, position)`); err != nil {
+		return nil, fmt.Errorf("error ensuring event_prizes position index: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_prizes_winner_vote ON event_prizes(winner_vote_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring event_prizes winner index: %w", err)
 	}
 
 	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0`); err != nil {
@@ -351,13 +407,127 @@ func (db *appdbimpl) DeletePlayer(id int) error {
 }
 
 // Event operations
+func sanitizePrizeInputs(prizes []EventPrize) []EventPrize {
+	cleaned := make([]EventPrize, 0, len(prizes))
+	for _, prize := range prizes {
+		name := strings.TrimSpace(prize.Name)
+		if name == "" {
+			continue
+		}
+		cleaned = append(cleaned, EventPrize{
+			ID:       prize.ID,
+			EventID:  prize.EventID,
+			Name:     name,
+			Position: prize.Position,
+		})
+	}
+	if len(cleaned) == 0 {
+		return cleaned
+	}
+	sort.SliceStable(cleaned, func(i, j int) bool {
+		if cleaned[i].Position == cleaned[j].Position {
+			return i < j
+		}
+		if cleaned[i].Position <= 0 {
+			return false
+		}
+		if cleaned[j].Position <= 0 {
+			return true
+		}
+		return cleaned[i].Position < cleaned[j].Position
+	})
+	for idx := range cleaned {
+		cleaned[idx].Position = idx + 1
+	}
+	return cleaned
+}
+
+func (db *appdbimpl) syncEventPrizesTx(tx *sql.Tx, eventID int, prizes []EventPrize) error {
+	cleaned := sanitizePrizeInputs(prizes)
+
+	if _, err := tx.Exec(`UPDATE event_prizes SET position = position + 1000 WHERE event_id = ?`, eventID); err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(`SELECT id, IFNULL(winner_vote_id, 0) FROM event_prizes WHERE event_id = ?`, eventID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type existingPrize struct {
+		id        int
+		hasWinner bool
+	}
+
+	existing := make(map[int]existingPrize)
+	for rows.Next() {
+		var id int
+		var winnerVoteID int
+		if err := rows.Scan(&id, &winnerVoteID); err != nil {
+			return err
+		}
+		existing[id] = existingPrize{id: id, hasWinner: winnerVoteID > 0}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	processed := make(map[int]struct{})
+
+	for _, prize := range cleaned {
+		if prize.ID > 0 {
+			if _, ok := existing[prize.ID]; ok {
+				if _, err := tx.Exec(`UPDATE event_prizes SET name = ?, position = ? WHERE id = ?`, prize.Name, prize.Position, prize.ID); err != nil {
+					return err
+				}
+				processed[prize.ID] = struct{}{}
+				continue
+			}
+		}
+		if _, err := tx.Exec(`INSERT INTO event_prizes (event_id, name, position) VALUES (?, ?, ?)`, eventID, prize.Name, prize.Position); err != nil {
+			return err
+		}
+	}
+
+	for id, info := range existing {
+		if _, ok := processed[id]; ok {
+			continue
+		}
+		if info.hasWinner {
+			return ErrPrizeLockedByWinner
+		}
+		if _, err := tx.Exec(`DELETE FROM event_prizes WHERE id = ?`, id); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (db *appdbimpl) CreateEvent(e Event) (int, error) {
-	res, err := db.c.Exec(`INSERT INTO events (team1_id, team2_id, start_datetime, location) VALUES (?, ?, ?, ?)`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location)
+	tx, err := db.c.Begin()
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
-	return int(id), nil
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`INSERT INTO events (team1_id, team2_id, start_datetime, location) VALUES (?, ?, ?, ?)`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location)
+	if err != nil {
+		return 0, err
+	}
+	id64, _ := res.LastInsertId()
+	eventID := int(id64)
+
+	if err := db.syncEventPrizesTx(tx, eventID, e.Prizes); err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	return eventID, nil
 }
 
 func (db *appdbimpl) ListEvents() ([]Event, error) {
@@ -378,17 +548,50 @@ func (db *appdbimpl) ListEvents() ([]Event, error) {
 		e.VotesClosed = votesClosed == 1
 		es = append(es, e)
 	}
+	for i := range es {
+		prizes, err := db.ListEventPrizes(es[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		es[i].Prizes = prizes
+	}
+
 	return es, nil
 }
 
 func (db *appdbimpl) UpdateEvent(e Event) error {
-	_, err := db.c.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, e.ID)
-	return err
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, e.ID); err != nil {
+		return err
+	}
+
+	if err := db.syncEventPrizesTx(tx, e.ID, e.Prizes); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (db *appdbimpl) DeleteEvent(id int) error {
-	_, err := db.c.Exec(`DELETE FROM events WHERE id=?`, id)
-	return err
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM event_prizes WHERE event_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM events WHERE id=?`, id); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (db *appdbimpl) SetActiveEvent(eventID int) error {
@@ -488,9 +691,10 @@ func (db *appdbimpl) ListEventTickets(eventID int) ([]EventTicket, error) {
 SELECT v.id, v.ticket_code, v.player_id, IFNULL(p.first_name, ''), IFNULL(p.last_name, ''), v.created_at
 FROM votes v
 LEFT JOIN players p ON p.id = v.player_id
-WHERE v.event_id = ?
+LEFT JOIN event_prizes ep ON ep.winner_vote_id = v.id AND ep.event_id = ?
+WHERE v.event_id = ? AND ep.id IS NULL
 ORDER BY v.created_at ASC
-`, eventID)
+`, eventID, eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -504,6 +708,164 @@ ORDER BY v.created_at ASC
 		tickets = append(tickets, t)
 	}
 	return tickets, nil
+}
+
+func (db *appdbimpl) ListEventPrizes(eventID int) ([]EventPrize, error) {
+	rows, err := db.c.Query(`
+SELECT p.id,
+       p.event_id,
+       p.name,
+        p.position,
+       p.winner_vote_id,
+       IFNULL(p.winner_assigned_at, ''),
+       IFNULL(v.ticket_code, ''),
+       IFNULL(v.player_id, 0),
+       IFNULL(pl.first_name, ''),
+       IFNULL(pl.last_name, '')
+FROM event_prizes p
+LEFT JOIN votes v ON v.id = p.winner_vote_id
+LEFT JOIN players pl ON pl.id = v.player_id
+WHERE p.event_id = ?
+ORDER BY p.position ASC, p.id ASC
+`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var prizes []EventPrize
+	for rows.Next() {
+		var p EventPrize
+		var winnerID sql.NullInt64
+		var assignedAt sql.NullString
+		var ticketCode string
+		var playerID int
+		var playerFirstName string
+		var playerLastName string
+		if err := rows.Scan(&p.ID, &p.EventID, &p.Name, &p.Position, &winnerID, &assignedAt, &ticketCode, &playerID, &playerFirstName, &playerLastName); err != nil {
+			return nil, err
+		}
+		if winnerID.Valid {
+			p.Winner = &EventPrizeWinner{
+				VoteID:          int(winnerID.Int64),
+				TicketCode:      ticketCode,
+				PlayerID:        playerID,
+				PlayerFirstName: playerFirstName,
+				PlayerLastName:  playerLastName,
+				AssignedAt:      assignedAt.String,
+			}
+		}
+		prizes = append(prizes, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return prizes, nil
+}
+
+func (db *appdbimpl) getEventPrize(prizeID int) (EventPrize, error) {
+	var p EventPrize
+	var winnerID sql.NullInt64
+	var assignedAt sql.NullString
+	var ticketCode string
+	var playerID int
+	var playerFirstName string
+	var playerLastName string
+
+	err := db.c.QueryRow(`
+SELECT p.id,
+       p.event_id,
+       p.name,
+       p.position,
+       p.winner_vote_id,
+       IFNULL(p.winner_assigned_at, ''),
+       IFNULL(v.ticket_code, ''),
+       IFNULL(v.player_id, 0),
+       IFNULL(pl.first_name, ''),
+       IFNULL(pl.last_name, '')
+FROM event_prizes p
+LEFT JOIN votes v ON v.id = p.winner_vote_id
+LEFT JOIN players pl ON pl.id = v.player_id
+WHERE p.id = ?
+`, prizeID).Scan(&p.ID, &p.EventID, &p.Name, &p.Position, &winnerID, &assignedAt, &ticketCode, &playerID, &playerFirstName, &playerLastName)
+	if err != nil {
+		return EventPrize{}, err
+	}
+	if winnerID.Valid {
+		p.Winner = &EventPrizeWinner{
+			VoteID:          int(winnerID.Int64),
+			TicketCode:      ticketCode,
+			PlayerID:        playerID,
+			PlayerFirstName: playerFirstName,
+			PlayerLastName:  playerLastName,
+			AssignedAt:      assignedAt.String,
+		}
+	}
+	return p, nil
+}
+
+func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize, error) {
+	tx, err := db.c.Begin()
+	if err != nil {
+		return EventPrize{}, err
+	}
+	defer tx.Rollback()
+
+	var prizeEventID int
+	var winnerID sql.NullInt64
+	if err := tx.QueryRow(`SELECT event_id, winner_vote_id FROM event_prizes WHERE id = ?`, prizeID).Scan(&prizeEventID, &winnerID); err != nil {
+		return EventPrize{}, err
+	}
+	if prizeEventID != eventID {
+		return EventPrize{}, sql.ErrNoRows
+	}
+	if winnerID.Valid && winnerID.Int64 > 0 {
+		return EventPrize{}, ErrPrizeAlreadyAssigned
+	}
+
+	var voteEventID int
+	if err := tx.QueryRow(`SELECT event_id FROM votes WHERE id = ?`, voteID).Scan(&voteEventID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return EventPrize{}, ErrPrizeVoteMismatch
+		}
+		return EventPrize{}, err
+	}
+	if voteEventID != eventID {
+		return EventPrize{}, ErrPrizeVoteMismatch
+	}
+
+	var alreadyAssigned int
+	if err := tx.QueryRow(`SELECT COUNT(1) FROM event_prizes WHERE event_id = ? AND winner_vote_id = ?`, eventID, voteID).Scan(&alreadyAssigned); err != nil {
+		return EventPrize{}, err
+	}
+	if alreadyAssigned > 0 {
+		return EventPrize{}, ErrPrizeWinnerConflict
+	}
+
+	if _, err := tx.Exec(`UPDATE event_prizes SET winner_vote_id = ?, winner_assigned_at = CURRENT_TIMESTAMP WHERE id = ?`, voteID, prizeID); err != nil {
+		return EventPrize{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return EventPrize{}, err
+	}
+
+	return db.getEventPrize(prizeID)
+}
+
+func (db *appdbimpl) ClearPrizeWinner(eventID, prizeID int) error {
+	res, err := db.c.Exec(`UPDATE event_prizes SET winner_vote_id = NULL, winner_assigned_at = NULL WHERE id = ? AND event_id = ?`, prizeID, eventID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // GetEventResults returns aggregated vote results for an event
