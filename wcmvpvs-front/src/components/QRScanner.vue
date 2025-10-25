@@ -68,17 +68,14 @@ function clearScanningFeedback() {
   }
 }
 
-const constraints = computed(() => {
-  const desiredFacingMode = props.facingMode === 'user' ? 'user' : 'environment'
-  return {
-    audio: false,
-    video: {
-      facingMode: {
-        ideal: desiredFacingMode,
-      },
-    },
+const constraints = computed(() => ({
+  audio: false,
+  video: {
+    facingMode: { exact: 'environment' }, // 👈 forza la posteriore
+    width: { ideal: 1280 },
+    height: { ideal: 720 }
   }
-})
+}))
 
 function normalizeError(error) {
   if (!error) {
