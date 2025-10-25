@@ -103,6 +103,7 @@ type EventVoteResult struct {
 type EventTicket struct {
 	VoteID          int    `json:"vote_id"`
 	TicketCode      string `json:"ticket_code"`
+	TicketSignature string `json:"ticket_signature"`
 	PlayerID        int    `json:"player_id"`
 	PlayerFirstName string `json:"player_first_name"`
 	PlayerLastName  string `json:"player_last_name"`
@@ -719,7 +720,7 @@ func (db *appdbimpl) ListVotes() ([]Vote, error) {
 
 func (db *appdbimpl) ListEventTickets(eventID int) ([]EventTicket, error) {
 	rows, err := db.c.Query(`
-SELECT v.id, v.ticket_code, v.player_id, IFNULL(p.first_name, ''), IFNULL(p.last_name, ''), v.created_at
+SELECT v.id, v.ticket_code, v.ticket_signature, v.player_id, IFNULL(p.first_name, ''), IFNULL(p.last_name, ''), v.created_at
 FROM votes v
 LEFT JOIN players p ON p.id = v.player_id
 LEFT JOIN event_prizes ep ON ep.winner_vote_id = v.id AND ep.event_id = ?
@@ -733,7 +734,7 @@ ORDER BY v.created_at ASC
 	var tickets []EventTicket
 	for rows.Next() {
 		var t EventTicket
-		if err := rows.Scan(&t.VoteID, &t.TicketCode, &t.PlayerID, &t.PlayerFirstName, &t.PlayerLastName, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.VoteID, &t.TicketCode, &t.TicketSignature, &t.PlayerID, &t.PlayerFirstName, &t.PlayerLastName, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		tickets = append(tickets, t)
