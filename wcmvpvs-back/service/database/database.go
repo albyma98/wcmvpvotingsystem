@@ -169,6 +169,7 @@ type AppDatabase interface {
 	ListVotes() ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
 	ValidateTicket(eventID int, code string) (TicketValidationResult, error)
+	RedeemTicket(eventID int, code, signature string) (bool, error)
 	ListEventPrizes(eventID int) ([]EventPrize, error)
 	AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize, error)
 	ClearPrizeWinner(eventID, prizeID int) error
@@ -194,13 +195,14 @@ type appdbimpl struct {
 const maxSponsorSlots = 4
 
 var (
-	ErrMaxSponsors          = errors.New("maximum number of sponsors reached")
-	ErrInvalidSponsorPos    = errors.New("invalid sponsor position")
-	ErrInvalidSponsorData   = errors.New("invalid sponsor data")
-	ErrPrizeAlreadyAssigned = errors.New("prize already has a winner")
-	ErrPrizeWinnerConflict  = errors.New("winner already assigned to another prize")
-	ErrPrizeVoteMismatch    = errors.New("selected ticket is not valid for this event")
-	ErrPrizeLockedByWinner  = errors.New("cannot remove a prize that already has a winner")
+	ErrMaxSponsors             = errors.New("maximum number of sponsors reached")
+	ErrInvalidSponsorPos       = errors.New("invalid sponsor position")
+	ErrInvalidSponsorData      = errors.New("invalid sponsor data")
+	ErrPrizeAlreadyAssigned    = errors.New("prize already has a winner")
+	ErrPrizeWinnerConflict     = errors.New("winner already assigned to another prize")
+	ErrPrizeVoteMismatch       = errors.New("selected ticket is not valid for this event")
+	ErrPrizeLockedByWinner     = errors.New("cannot remove a prize that already has a winner")
+	ErrTicketSignatureMismatch = errors.New("ticket signature mismatch")
 )
 
 // New returns a new instance of AppDatabase based on the SQLite connection `db`.
@@ -326,6 +328,35 @@ func New(db *sql.DB) (AppDatabase, error) {
 	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_code_per_event ON votes (event_id, ticket_code);`)
 	if err != nil {
 		return nil, fmt.Errorf("error ensuring votes code index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tickets';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE tickets (
+        event_id INTEGER NOT NULL,
+        code TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        redeemed_at TEXT,
+        PRIMARY KEY (event_id, code)
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating tickets table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying tickets table: %w", err)
+	}
+
+	if _, err = db.Exec(`ALTER TABLE tickets ADD COLUMN redeemed_at TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring tickets redeemed_at column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE tickets ADD COLUMN signature TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring tickets signature column: %w", err)
+		}
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsors';`).Scan(&tableName)
@@ -793,6 +824,44 @@ LIMIT 1
 	}
 
 	return result, nil
+}
+
+func (db *appdbimpl) RedeemTicket(eventID int, code, signature string) (bool, error) {
+	var storedSignature sql.NullString
+	var redeemedAt sql.NullString
+
+	err := db.c.QueryRow(`SELECT signature, redeemed_at FROM tickets WHERE event_id = ? AND code = ? LIMIT 1`, eventID, code).Scan(&storedSignature, &redeemedAt)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		_, err = db.c.Exec(`INSERT INTO tickets (event_id, code, signature, redeemed_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)`, eventID, code, signature)
+		if err != nil {
+			if isTicketUniqueConstraintError(err) {
+				return db.RedeemTicket(eventID, code, signature)
+			}
+			return false, err
+		}
+		return false, nil
+	case err != nil:
+		return false, err
+	}
+
+	if storedSignature.Valid && storedSignature.String != "" && !strings.EqualFold(storedSignature.String, signature) {
+		return true, ErrTicketSignatureMismatch
+	}
+
+	if !redeemedAt.Valid || strings.TrimSpace(redeemedAt.String) == "" {
+		_, err = db.c.Exec(`UPDATE tickets SET signature = ?, redeemed_at = CURRENT_TIMESTAMP WHERE event_id = ? AND code = ?`, signature, eventID, code)
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func isTicketUniqueConstraintError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
 func (db *appdbimpl) ListEventPrizes(eventID int) ([]EventPrize, error) {
