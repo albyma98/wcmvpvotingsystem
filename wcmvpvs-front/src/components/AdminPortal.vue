@@ -740,6 +740,10 @@ const cameraPermissionDenied = ref(false);
 const newTeamName = ref('');
 const playerSlotCount = PLAYER_LAYOUT.length;
 
+const PLAYER_IMAGE_MAX_WIDTH = 600;
+const PLAYER_IMAGE_MAX_HEIGHT = 600;
+const PLAYER_IMAGE_QUALITY = 0.75;
+
 const createEmptyPlayerSlot = (teamId = 0) => ({
   id: 0,
   first_name: '',
@@ -749,6 +753,7 @@ const createEmptyPlayerSlot = (teamId = 0) => ({
   team_id: teamId,
   image_url: '',
   image_preview: '',
+  _imageChangeToken: null,
 });
 
 const playerSlots = reactive(
@@ -844,7 +849,88 @@ const normalizePlayerPayload = (slot, fallbackTeam) => {
   };
 };
 
-const handlePlayerImageChange = (index, event) => {
+const loadImageFromDataUrl = (dataUrl) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Impossibile caricare l\'immagine selezionata.'));
+    image.src = dataUrl;
+  });
+
+const toDataUrlSafely = (canvas, type, quality) => {
+  try {
+    if (typeof quality === 'number') {
+      return canvas.toDataURL(type, quality);
+    }
+    return canvas.toDataURL(type);
+  } catch (error) {
+    console.warn('Impossibile convertire l\'immagine nel formato richiesto:', error);
+    return '';
+  }
+};
+
+const extractMimeType = (dataUrl) => {
+  if (typeof dataUrl !== 'string') {
+    return '';
+  }
+  const match = /^data:([^;]+);/i.exec(dataUrl);
+  return match ? match[1] : '';
+};
+
+const optimizePlayerImage = async (file) => {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  if (!originalDataUrl) {
+    return '';
+  }
+
+  try {
+    const image = await loadImageFromDataUrl(originalDataUrl);
+    const { naturalWidth: width, naturalHeight: height } = image;
+    if (!width || !height) {
+      return originalDataUrl;
+    }
+
+    const scale = Math.min(1, PLAYER_IMAGE_MAX_WIDTH / width, PLAYER_IMAGE_MAX_HEIGHT / height);
+    const targetWidth = Math.max(1, Math.round(width * scale));
+    const targetHeight = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return originalDataUrl;
+    }
+
+    context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    const originalType = extractMimeType(originalDataUrl);
+    const candidateTypes = Array.from(
+      new Set(['image/webp', 'image/jpeg', originalType].filter(Boolean)),
+    );
+
+    let bestDataUrl = originalDataUrl;
+    let bestSize = originalDataUrl.length;
+
+    candidateTypes.forEach((type) => {
+      const quality = type === 'image/png' ? undefined : PLAYER_IMAGE_QUALITY;
+      const candidate = toDataUrlSafely(canvas, type, quality);
+      if (candidate && candidate.length < bestSize) {
+        bestDataUrl = candidate;
+        bestSize = candidate.length;
+      }
+    });
+
+    return bestDataUrl;
+  } catch (error) {
+    console.warn('Impossibile ottimizzare l\'immagine del giocatore:', error);
+    return originalDataUrl;
+  }
+};
+
+const handlePlayerImageChange = async (index, event) => {
   const slot = playerSlots[index];
   if (!slot) {
     return;
@@ -857,17 +943,24 @@ const handlePlayerImageChange = (index, event) => {
     slot.image_preview = slot.image_url || '';
     return;
   }
-  const reader = new FileReader();
-  reader.onload = () => {
-    const result = typeof reader.result === 'string' ? reader.result : '';
-    if (result) {
-      slot.image_url = result;
-      slot.image_preview = result;
+  const changeToken = Symbol('player-image-change');
+  slot._imageChangeToken = changeToken;
+
+  try {
+    const optimizedDataUrl = await optimizePlayerImage(file);
+    if (slot._imageChangeToken === changeToken && optimizedDataUrl) {
+      slot.image_url = optimizedDataUrl;
+      slot.image_preview = optimizedDataUrl;
     }
-  };
-  reader.readAsDataURL(file);
-  if (input) {
-    input.value = '';
+  } catch (error) {
+    console.warn('Caricamento immagine giocatore non riuscito:', error);
+  } finally {
+    if (slot._imageChangeToken === changeToken) {
+      slot._imageChangeToken = null;
+    }
+    if (input) {
+      input.value = '';
+    }
   }
 };
 
