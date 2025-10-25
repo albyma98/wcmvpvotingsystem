@@ -49,6 +49,7 @@ let startPromise = null
 let startResolve = null
 let startReject = null
 let lastValue = ''
+let scanningFeedbackTimeout = null
 
 function setInfo(message) {
   infoMessage.value = message
@@ -58,12 +59,21 @@ function resetLastValue() {
   lastValue = ''
 }
 
+function clearScanningFeedback() {
+  if (scanningFeedbackTimeout) {
+    clearTimeout(scanningFeedbackTimeout)
+    scanningFeedbackTimeout = null
+  }
+}
+
 const constraints = computed(() => {
   const desiredFacingMode = props.facingMode === 'user' ? 'user' : 'environment'
   return {
     audio: false,
     video: {
-      facingMode: desiredFacingMode,
+      facingMode: {
+        ideal: desiredFacingMode,
+      },
     },
   }
 })
@@ -119,6 +129,7 @@ function handleStartError(error) {
   isVisible.value = false
   isActive.value = false
   resetLastValue()
+  clearScanningFeedback()
 
   if (wasActive) {
     emit('state-change', { active: false })
@@ -148,6 +159,7 @@ function handleDecode(value) {
   }
 
   lastValue = normalizedValue
+  clearScanningFeedback()
   emit('detected', normalizedValue)
 
   if (props.stopOnDetection) {
@@ -217,6 +229,7 @@ async function stop({ silent = false } = {}) {
   isVisible.value = false
   isActive.value = false
   resetLastValue()
+  clearScanningFeedback()
 
   if (!silent) {
     setInfo('Scansione interrotta.')
@@ -237,17 +250,26 @@ function reset() {
   if (!isActive.value) {
     setInfo(defaultInfoMessage)
   }
+  clearScanningFeedback()
 }
 
 onBeforeUnmount(() => {
   stop({ silent: true }).catch(() => {})
+  clearScanningFeedback()
 })
 
 function handleCameraOn() {
   isActive.value = true
   errorMessage.value = ''
-  setInfo('Inquadra il QR code del ticket.')
+  setInfo('Scansione in corso… inquadra il QR code del ticket.')
   emit('state-change', { active: true })
+
+  clearScanningFeedback()
+  scanningFeedbackTimeout = setTimeout(() => {
+    if (isActive.value && !lastValue) {
+      setInfo("Nessun QR rilevato ancora. Prova ad avvicinarti o migliora l'illuminazione.")
+    }
+  }, 4000)
 
   if (startResolve) {
     startResolve()
@@ -257,6 +279,7 @@ function handleCameraOn() {
 function handleCameraOff() {
   const wasActive = isActive.value
   isActive.value = false
+  clearScanningFeedback()
 
   if (wasActive) {
     emit('state-change', { active: false })
