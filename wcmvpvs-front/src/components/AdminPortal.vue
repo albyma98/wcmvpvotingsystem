@@ -2153,7 +2153,7 @@ onBeforeUnmount(() => {
 .portal-content {
   display: flex;
   flex-direction: column;
-  padding-top: var(--toolbar-height, 0px);
+  padding-top: 1px;
 }
 
 .user-info {
