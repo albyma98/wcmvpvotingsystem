@@ -220,12 +220,7 @@ function eventLabel(event) {
 }
 
 function formatTicketDisplay(ticket) {
-  const parts = [ticket.ticketCode];
-  const fullName = [ticket.playerFirstName, ticket.playerLastName].filter(Boolean).join(' ');
-  if (fullName) {
-    parts.push(fullName);
-  }
-  return parts.join(' • ');
+  return ticket.ticketCode || '';
 }
 
 function normalizePrize(prize, index = 0) {
