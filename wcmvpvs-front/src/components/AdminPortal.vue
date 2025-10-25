@@ -2131,7 +2131,6 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 0.75rem;
   color: #f1f5f9;
-  position: sticky;
   top: 0;
   z-index: 10;
   background: rgba(15, 23, 42, 0.92);
@@ -2155,7 +2154,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  padding-top: calc(var(--toolbar-height, 0px) + 1rem);
+  padding-top: var(--toolbar-height, 0px);
 }
 
 .user-info {
