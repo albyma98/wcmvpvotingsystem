@@ -550,7 +550,19 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 }
 
 func (db *appdbimpl) ListEvents() ([]Event, error) {
-	rows, err := db.c.Query(`SELECT id, team1_id, team2_id, start_datetime, location, is_active, votes_closed FROM events`)
+	rows, err := db.c.Query(`
+SELECT e.id,
+       e.team1_id,
+       e.team2_id,
+       e.start_datetime,
+       e.location,
+       e.is_active,
+       e.votes_closed,
+       IFNULL(t1.name, ''),
+       IFNULL(t2.name, '')
+FROM events e
+LEFT JOIN teams t1 ON t1.id = e.team1_id
+LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -560,7 +572,7 @@ func (db *appdbimpl) ListEvents() ([]Event, error) {
 		var e Event
 		var isActive int
 		var votesClosed int
-		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed); err != nil {
+		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &e.Team1Name, &e.Team2Name); err != nil {
 			return nil, err
 		}
 		e.IsActive = isActive == 1
