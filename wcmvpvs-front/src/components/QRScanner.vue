@@ -66,30 +66,90 @@ function clearScanningFeedback() {
     scanningFeedbackTimeout = null
   }
 }
-onMounted(async () => {
+const backCameraPatterns = ['back', 'rear', 'environment', 'posteriore', 'world']
+const frontCameraPatterns = ['front', 'user', 'anteriore', 'selfie']
+
+function isBackLabel(label = '') {
+  const normalized = label.toLowerCase()
+  return backCameraPatterns.some(pattern => normalized.includes(pattern))
+}
+
+function isFrontLabel(label = '') {
+  const normalized = label.toLowerCase()
+  return frontCameraPatterns.some(pattern => normalized.includes(pattern))
+}
+
+function isBackFacingMode(value = '') {
+  const normalized = value.toLowerCase()
+  return normalized === 'environment' || normalized === 'rear' || normalized === 'back' || normalized === 'world'
+}
+
+async function selectPreferredCamera() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices()
     const videoDevices = devices.filter(d => d.kind === 'videoinput')
 
-    // Cerca la fotocamera posteriore per nome
-    const backCamera = videoDevices.find(d =>
-      d.label.toLowerCase().includes('back') ||
-      d.label.toLowerCase().includes('rear')
-    )
+    if (!videoDevices.length) {
+      deviceId.value = null
+      return false
+    }
 
-    // Se trova la posteriore, la usa, altrimenti la prima disponibile
-    deviceId.value = backCamera ? backCamera.deviceId : videoDevices[0]?.deviceId || null
+    const scoredDevices = videoDevices
+      .map(device => {
+        const label = device.label || ''
+        let score = 0
+
+        if (isBackLabel(label)) {
+          score += 3
+        }
+
+        if (!label) {
+          score += 1
+        }
+
+        if (isFrontLabel(label)) {
+          score -= 2
+        }
+
+        return { device, score }
+      })
+      .sort((a, b) => b.score - a.score)
+
+    const preferred = scoredDevices[0]?.device
+
+    if (preferred?.deviceId && preferred.deviceId !== deviceId.value) {
+      deviceId.value = preferred.deviceId
+      return true
+    }
   } catch (err) {
-    console.warn('Errore ottenendo lista fotocamere:', err)
+    console.warn('Errore selezionando la fotocamera preferita:', err)
   }
+
+  return false
+}
+
+onMounted(() => {
+  selectPreferredCamera().catch(err => {
+    console.warn('Errore inizializzando la fotocamera preferita:', err)
+  })
 })
 
-const constraints = computed(() => ({
-  audio: false,
-  video: deviceId.value
-    ? { deviceId: { exact: deviceId.value } }
-    : { facingMode: { ideal: 'environment' } }
-}))
+const constraints = computed(() => {
+  if (deviceId.value) {
+    return {
+      audio: false,
+      video: { deviceId: { exact: deviceId.value } },
+    }
+  }
+
+  return {
+    audio: false,
+    video: {
+      facingMode: { ideal: props.facingMode || 'environment' },
+      advanced: [{ facingMode: { exact: 'environment' } }, { facingMode: 'environment' }],
+    },
+  }
+})
 
 function normalizeError(error) {
   if (!error) {
@@ -271,7 +331,39 @@ onBeforeUnmount(() => {
   clearScanningFeedback()
 })
 
-function handleCameraOn() {
+async function ensureRearCamera(capabilities) {
+  try {
+    const facingModes = capabilities?.facingMode
+      ? Array.isArray(capabilities.facingMode)
+        ? capabilities.facingMode
+        : [capabilities.facingMode]
+      : []
+
+    const isAlreadyRear = facingModes.some(isBackFacingMode)
+
+    if (isAlreadyRear) {
+      return true
+    }
+
+    const switched = await selectPreferredCamera()
+
+    if (switched) {
+      setInfo('Passaggio alla fotocamera posteriore…')
+      return false
+    }
+
+    return true
+  } catch (err) {
+    console.warn('Errore verificando la fotocamera attiva:', err)
+    return true
+  }
+}
+
+async function handleCameraOn(capabilities) {
+  if (!(await ensureRearCamera(capabilities))) {
+    return
+  }
+
   isActive.value = true
   errorMessage.value = ''
   setInfo('Scansione in corso… inquadra il QR code del ticket.')
