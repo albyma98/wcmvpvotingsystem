@@ -485,35 +485,87 @@
       <section v-else-if="section === 'players'" class="card">
         <header class="section-header">
           <h2>Giocatori</h2>
+          <p>Gestisci fino a {{ playerSlotCount }} giocatori da mostrare nella pagina di voto.</p>
         </header>
-        <form @submit.prevent="createPlayer" class="form-grid">
-          <input v-model.trim="newPlayer.first_name" type="text" placeholder="Nome" required />
-          <input v-model.trim="newPlayer.last_name" type="text" placeholder="Cognome" required />
-          <input v-model.trim="newPlayer.role" type="text" placeholder="Ruolo" required />
-          <input v-model.number="newPlayer.jersey_number" type="number" min="0" placeholder="Numero maglia" />
-          <input v-model.trim="newPlayer.image_url" type="url" placeholder="URL immagine" />
-          <label>
-            Squadra
-            <select v-model.number="newPlayer.team_id" required>
-              <option disabled value="0">Seleziona squadra</option>
-              <option v-for="team in teams" :key="team.id" :value="team.id">
-                {{ team.name }}
-              </option>
-            </select>
-          </label>
-          <button class="btn primary" type="submit">Aggiungi</button>
-        </form>
-        <ul class="item-list">
-          <li v-for="player in players" :key="player.id" class="item">
-            <div class="item-body">
-              <h3>{{ player.first_name }} {{ player.last_name }}</h3>
-              <p class="muted">{{ player.role }} • #{{ player.jersey_number }} • {{ teamName(player.team_id) }}</p>
+
+        <p v-if="!teams.length" class="info-banner">
+          Aggiungi almeno una squadra per assegnare correttamente i giocatori salvati nel database.
+        </p>
+
+        <p v-if="playerOverflow.length" class="info-banner warning">
+          Sono presenti {{ playerOverflow.length }} giocatori aggiuntivi nel database. Verranno rimossi al prossimo
+          salvataggio.
+        </p>
+
+        <div class="player-slots">
+          <fieldset
+            v-for="(slot, index) in playerSlots"
+            :key="`player-slot-${index}`"
+            class="player-slot"
+          >
+            <legend>Giocatore {{ index + 1 }}</legend>
+            <div class="player-slot__grid">
+              <label>
+                Nome
+                <input v-model.trim="slot.first_name" type="text" placeholder="Es. Mario" />
+              </label>
+              <label>
+                Cognome
+                <input v-model.trim="slot.last_name" type="text" placeholder="Es. Rossi" />
+              </label>
+              <label>
+                Ruolo
+                <input v-model.trim="slot.role" type="text" placeholder="Es. Schiacciatore" />
+              </label>
+              <label>
+                Numero di maglia
+                <input
+                  v-model="slot.jersey_number"
+                  type="number"
+                  min="0"
+                  inputmode="numeric"
+                  placeholder="Es. 7"
+                />
+              </label>
+              <label>
+                Squadra
+                <select v-model.number="slot.team_id">
+                  <option :value="0">Seleziona squadra</option>
+                  <option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option>
+                </select>
+              </label>
+              <label>
+                URL immagine (opzionale)
+                <input
+                  v-model.trim="slot.image_url"
+                  type="url"
+                  placeholder="https://..."
+                  @input="handlePlayerUrlChange(index)"
+                />
+              </label>
+              <label class="file-input">
+                Oppure carica immagine
+                <input type="file" accept="image/*" @change="handlePlayerImageChange(index, $event)" />
+              </label>
+              <div v-if="slot.image_preview" class="player-slot__preview" aria-label="Anteprima immagine giocatore">
+                <img :src="slot.image_preview" alt="Anteprima giocatore" />
+                <button class="btn link" type="button" @click="removePlayerImage(index)">Rimuovi</button>
+              </div>
             </div>
-            <div class="item-actions">
-              <button class="btn danger" type="button" @click="deletePlayer(player.id)">Elimina</button>
-            </div>
-          </li>
-        </ul>
+          </fieldset>
+        </div>
+
+        <div class="actions-row">
+          <button class="btn outline" type="button" @click="restorePlayerSlots" :disabled="isSavingPlayers">
+            Ripristina dati salvati
+          </button>
+          <button class="btn primary" type="button" @click="savePlayers" :disabled="isSavingPlayers">
+            {{ isSavingPlayers ? 'Salvataggio…' : 'Salva giocatori' }}
+          </button>
+        </div>
+
+        <p v-if="playerSaveError" class="error">{{ playerSaveError }}</p>
+        <p v-if="playerSaveMessage" class="success-message">{{ playerSaveMessage }}</p>
       </section>
 
       <section v-else-if="section === 'sponsors'" class="card">
@@ -643,7 +695,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import QRScanner from './QRScanner.vue';
 import { apiClient } from '../api';
-import { roster } from '../roster';
+import { PLAYER_LAYOUT } from '../roster';
 
 const basePath = import.meta.env.BASE_URL ?? '/';
 const baseVoteUrl = new URL(basePath, window.location.origin);
@@ -686,14 +738,26 @@ const isScannerActive = ref(false);
 const cameraPermissionDenied = ref(false);
 
 const newTeamName = ref('');
-const newPlayer = reactive({
+const playerSlotCount = PLAYER_LAYOUT.length;
+
+const createEmptyPlayerSlot = (teamId = 0) => ({
+  id: 0,
   first_name: '',
   last_name: '',
   role: '',
-  jersey_number: 0,
+  jersey_number: '',
+  team_id: teamId,
   image_url: '',
-  team_id: 0,
+  image_preview: '',
 });
+
+const playerSlots = reactive(
+  Array.from({ length: playerSlotCount }, () => createEmptyPlayerSlot()),
+);
+const playerOverflow = ref([]);
+const isSavingPlayers = ref(false);
+const playerSaveError = ref('');
+const playerSaveMessage = ref('');
 const newEvent = reactive({
   team1_id: 0,
   team2_id: 0,
@@ -730,6 +794,246 @@ const eventPrizeErrors = reactive({});
 const savingEventPrizes = ref(0);
 const portalRef = ref(null);
 const toolbarRef = ref(null);
+
+const fallbackTeamId = () => (teams.value.length ? teams.value[0].id : 0);
+
+const resetPlayerSlot = (slot) => {
+  Object.assign(slot, createEmptyPlayerSlot(fallbackTeamId()));
+};
+
+const resetAllPlayerSlots = () => {
+  playerSlots.forEach((slot) => resetPlayerSlot(slot));
+};
+
+const ensurePlayerSlotTeams = () => {
+  const fallback = fallbackTeamId();
+  if (!fallback) {
+    return;
+  }
+  playerSlots.forEach((slot) => {
+    if (!slot.team_id) {
+      slot.team_id = fallback;
+    }
+  });
+};
+
+const slotHasContent = (slot) => {
+  if (!slot) {
+    return false;
+  }
+  const jersey = typeof slot.jersey_number === 'number' ? slot.jersey_number.toString() : `${slot.jersey_number || ''}`;
+  return (
+    slot.first_name.trim() ||
+    slot.last_name.trim() ||
+    slot.role.trim() ||
+    jersey.trim() ||
+    slot.image_url.trim()
+  );
+};
+
+const normalizePlayerPayload = (slot, fallbackTeam) => {
+  const sanitizedJersey = Number(slot.jersey_number);
+  const jerseyNumber = Number.isFinite(sanitizedJersey) ? sanitizedJersey : 0;
+  return {
+    first_name: slot.first_name.trim(),
+    last_name: slot.last_name.trim(),
+    role: slot.role.trim(),
+    jersey_number: jerseyNumber,
+    image_url: slot.image_url.trim(),
+    team_id: slot.team_id || fallbackTeam || 0,
+  };
+};
+
+const handlePlayerImageChange = (index, event) => {
+  const slot = playerSlots[index];
+  if (!slot) {
+    return;
+  }
+  playerSaveMessage.value = '';
+  playerSaveError.value = '';
+  const input = event?.target;
+  const file = input?.files?.[0];
+  if (!file) {
+    slot.image_preview = slot.image_url || '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = typeof reader.result === 'string' ? reader.result : '';
+    if (result) {
+      slot.image_url = result;
+      slot.image_preview = result;
+    }
+  };
+  reader.readAsDataURL(file);
+  if (input) {
+    input.value = '';
+  }
+};
+
+const handlePlayerUrlChange = (index) => {
+  const slot = playerSlots[index];
+  if (!slot) {
+    return;
+  }
+  playerSaveMessage.value = '';
+  playerSaveError.value = '';
+  slot.image_preview = slot.image_url || '';
+};
+
+const removePlayerImage = (index) => {
+  const slot = playerSlots[index];
+  if (!slot) {
+    return;
+  }
+  playerSaveMessage.value = '';
+  playerSaveError.value = '';
+  slot.image_url = '';
+  slot.image_preview = '';
+};
+
+const normalizePlayerResponse = (item) => {
+  const firstName = typeof item?.first_name === 'string' ? item.first_name.trim() : '';
+  const lastName = typeof item?.last_name === 'string' ? item.last_name.trim() : '';
+  const role = typeof item?.role === 'string' ? item.role.trim() : '';
+  const jerseyRaw =
+    typeof item?.jersey_number === 'number' ? item.jersey_number : Number(item?.jersey_number);
+  const jerseyNumber = Number.isFinite(jerseyRaw) ? jerseyRaw : 0;
+  const image = typeof item?.image_url === 'string' ? item.image_url.trim() : '';
+  const team = Number(item?.team_id) || 0;
+  return {
+    id: Number(item?.id) || 0,
+    first_name: firstName,
+    last_name: lastName,
+    role,
+    jersey_number: jerseyNumber,
+    image_url: image,
+    team_id: team,
+  };
+};
+
+const sortPlayersForDisplay = (a, b) => {
+  if (a.jersey_number !== b.jersey_number) {
+    const jerseyA = a.jersey_number || Number.MAX_SAFE_INTEGER;
+    const jerseyB = b.jersey_number || Number.MAX_SAFE_INTEGER;
+    if (jerseyA !== jerseyB) {
+      return jerseyA - jerseyB;
+    }
+  }
+  const lastComparison = a.last_name.localeCompare(b.last_name);
+  if (lastComparison !== 0) {
+    return lastComparison;
+  }
+  const firstComparison = a.first_name.localeCompare(b.first_name);
+  if (firstComparison !== 0) {
+    return firstComparison;
+  }
+  return a.id - b.id;
+};
+
+const applyPlayersToSlots = () => {
+  const sorted = [...players.value];
+  sorted.sort(sortPlayersForDisplay);
+  players.value = sorted;
+  playerOverflow.value = sorted.length > playerSlotCount ? sorted.slice(playerSlotCount) : [];
+  const fallback = fallbackTeamId();
+  for (let index = 0; index < playerSlotCount; index += 1) {
+    const slot = playerSlots[index];
+    const player = sorted[index];
+    if (slot && player) {
+      Object.assign(slot, {
+        id: player.id,
+        first_name: player.first_name,
+        last_name: player.last_name,
+        role: player.role,
+        jersey_number: player.jersey_number ? player.jersey_number.toString() : '',
+        team_id: player.team_id || fallback,
+        image_url: player.image_url,
+        image_preview: player.image_url || '',
+      });
+    } else if (slot) {
+      resetPlayerSlot(slot);
+    }
+  }
+  ensurePlayerSlotTeams();
+};
+
+const restorePlayerSlots = () => {
+  applyPlayersToSlots();
+  playerSaveError.value = '';
+  playerSaveMessage.value = '';
+};
+
+const savePlayers = async () => {
+  if (isSavingPlayers.value) {
+    return;
+  }
+  playerSaveError.value = '';
+  playerSaveMessage.value = '';
+
+  const fallback = fallbackTeamId();
+  const hasAnyContent = playerSlots.some((slot) => slotHasContent(slot));
+  if (!fallback && hasAnyContent) {
+    playerSaveError.value = 'Crea almeno una squadra e assegnala ai giocatori prima di salvare.';
+    return;
+  }
+
+  isSavingPlayers.value = true;
+  const handledIds = new Set();
+
+  try {
+    for (const slot of playerSlots) {
+      const hasContent = slotHasContent(slot);
+      if (hasContent) {
+        const payload = normalizePlayerPayload(slot, fallback);
+        if (!payload.first_name || !payload.last_name || !payload.role) {
+          playerSaveError.value = 'Nome, cognome e ruolo sono obbligatori per ogni giocatore salvato.';
+          isSavingPlayers.value = false;
+          return;
+        }
+        if (!payload.team_id) {
+          playerSaveError.value = 'Seleziona una squadra per ogni giocatore salvato.';
+          isSavingPlayers.value = false;
+          return;
+        }
+
+        if (slot.id) {
+          await secureRequest(() => apiClient.put(`/players/${slot.id}`, payload, authHeaders.value));
+          handledIds.add(slot.id);
+        } else {
+          const { data } = await secureRequest(() => apiClient.post('/players', payload, authHeaders.value));
+          const createdId = Number(data?.id) || 0;
+          if (createdId) {
+            slot.id = createdId;
+            handledIds.add(createdId);
+          }
+        }
+      } else if (slot.id) {
+        await secureRequest(() => apiClient.delete(`/players/${slot.id}`, authHeaders.value));
+        handledIds.add(slot.id);
+        resetPlayerSlot(slot);
+      } else {
+        resetPlayerSlot(slot);
+      }
+    }
+
+    for (const player of players.value) {
+      if (!handledIds.has(player.id)) {
+        await secureRequest(() => apiClient.delete(`/players/${player.id}`, authHeaders.value));
+        handledIds.add(player.id);
+      }
+    }
+
+    await loadPlayers();
+    playerSaveMessage.value = 'Giocatori salvati con successo.';
+  } catch (error) {
+    if (!playerSaveError.value) {
+      playerSaveError.value = 'Si è verificato un errore durante il salvataggio dei giocatori. Riprova.';
+    }
+  } finally {
+    isSavingPlayers.value = false;
+  }
+};
 
 const hasEnoughTeams = computed(() => teams.value.length >= 2);
 const activeEventId = computed(() => {
@@ -773,25 +1077,36 @@ const resultsLeaderboard = computed(() => {
     ]),
   );
 
-  const entries = roster.map((player) => {
+  const entries = players.value.map((player) => {
     const stats = aggregated.get(player.id) || { votes: 0, lastVoteAt: '' };
-    const firstName = player.firstName || player.name.split(/\s+/)[0] || player.name || '';
-    const remainingParts = player.lastName
-      ? player.lastName
-      : player.name.split(/\s+/).slice(1).join(' ');
-    const lastName = remainingParts;
-    const baseName = `${firstName}${lastName ? ` ${lastName}` : ''}`.trim();
-    const fallback = baseName || player.name;
-    const lastNameUpper = (lastName || firstName || player.name || '').toUpperCase();
+    const firstName = player.first_name || '';
+    const lastName = player.last_name || '';
+    const fullName = `${firstName} ${lastName}`.trim() || `Giocatore ${player.id}`;
+    const lastNameUpper = (lastName || firstName || fullName).toUpperCase();
     return {
       id: player.id,
-      firstName: firstName || fallback,
+      firstName: firstName || fullName,
       lastName,
       lastNameUpper,
-      fullName: fallback,
+      fullName,
       votes: stats.votes,
       lastVoteAt: stats.lastVoteAt,
     };
+  });
+
+  aggregated.forEach((stats, playerId) => {
+    if (!entries.some((entry) => entry.id === playerId)) {
+      const fallbackName = `Giocatore ${playerId}`;
+      entries.push({
+        id: playerId,
+        firstName: fallbackName,
+        lastName: '',
+        lastNameUpper: fallbackName.toUpperCase(),
+        fullName: fallbackName,
+        votes: stats.votes,
+        lastVoteAt: stats.lastVoteAt,
+      });
+    }
   });
 
   entries.sort((a, b) => {
@@ -888,14 +1203,6 @@ function resetNewEventPrizes() {
 
 function resetForms() {
   newTeamName.value = '';
-  Object.assign(newPlayer, {
-    first_name: '',
-    last_name: '',
-    role: '',
-    jersey_number: 0,
-    image_url: '',
-    team_id: 0,
-  });
   Object.assign(newEvent, {
     team1_id: 0,
     team2_id: 0,
@@ -908,6 +1215,9 @@ function resetForms() {
   Object.assign(newAdmin, { username: '', password: '', role: '' });
   resetNewSponsorForm();
   desiredActiveSponsorCount.value = Math.min(sponsorSliderMax.value, activeSponsorCount.value);
+  restorePlayerSlots();
+  playerSaveError.value = '';
+  playerSaveMessage.value = '';
 }
 
 function ensureValidTeamSelection() {
@@ -937,7 +1247,10 @@ function ensureValidTeamSelection() {
   syncTeamInputsFromIds();
 }
 
-watch(teams, ensureValidTeamSelection);
+watch(teams, () => {
+  ensureValidTeamSelection();
+  ensurePlayerSlotTeams();
+});
 watch(hasEnoughTeams, (enough) => {
   if (!enough) {
     newEvent.team1_id = 0;
@@ -978,6 +1291,10 @@ function clearCollections() {
   events.value = [];
   admins.value = [];
   sponsors.value = [];
+  resetAllPlayerSlots();
+  playerOverflow.value = [];
+  playerSaveError.value = '';
+  playerSaveMessage.value = '';
   Object.keys(eventPrizeDrafts).forEach((key) => {
     delete eventPrizeDrafts[key];
   });
@@ -1724,7 +2041,11 @@ async function loadTeams() {
 
 async function loadPlayers() {
   const { data } = await secureRequest(() => apiClient.get('/players', authHeaders.value));
-  players.value = data;
+  const normalized = Array.isArray(data)
+    ? data.map((item) => normalizePlayerResponse(item))
+    : [];
+  players.value = normalized;
+  applyPlayersToSlots();
 }
 
 async function loadEvents() {
@@ -1757,11 +2078,11 @@ async function loadAll() {
   if (!isAuthenticated.value) {
     return;
   }
-  const requests = [loadEvents(), loadTeams()];
+  await Promise.all([loadEvents(), loadTeams()]);
+  await loadPlayers();
   if (isSuperAdmin.value) {
-    requests.push(loadPlayers(), loadAdmins(), loadSponsors());
+    await Promise.all([loadAdmins(), loadSponsors()]);
   }
-  await Promise.all(requests);
   resetForms();
 }
 
@@ -1779,26 +2100,6 @@ async function deleteTeam(id) {
   globalError.value = '';
   await secureRequest(() => apiClient.delete(`/teams/${id}`, authHeaders.value));
   await loadTeams();
-}
-
-async function createPlayer() {
-  globalError.value = '';
-  await secureRequest(() => apiClient.post('/players', newPlayer, authHeaders.value));
-  Object.assign(newPlayer, {
-    first_name: '',
-    last_name: '',
-    role: '',
-    jersey_number: 0,
-    image_url: '',
-    team_id: 0,
-  });
-  await loadPlayers();
-}
-
-async function deletePlayer(id) {
-  globalError.value = '';
-  await secureRequest(() => apiClient.delete(`/players/${id}`, authHeaders.value));
-  await loadPlayers();
 }
 
 async function createEvent() {
@@ -2256,6 +2557,11 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 
+.info-banner.warning {
+  background: rgba(251, 191, 36, 0.18);
+  color: #92400e;
+}
+
 .actions-row {
   display: flex;
   justify-content: flex-end;
@@ -2288,6 +2594,67 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
   font-weight: 600;
   color: #1e293b;
+}
+
+.player-slots {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.player-slot {
+  padding: 1.25rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(248, 250, 252, 0.95);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.player-slot legend {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #0f172a;
+  margin-bottom: 1rem;
+}
+
+.player-slot__grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.player-slot__grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.player-slot__grid input,
+.player-slot__grid select {
+  border-radius: 0.65rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.95rem;
+  background: #fff;
+}
+
+.player-slot__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.player-slot__preview img {
+  width: 100%;
+  max-width: 200px;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
 }
 
 .prize-editor {

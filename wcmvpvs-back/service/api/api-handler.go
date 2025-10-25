@@ -17,6 +17,8 @@ func (rt *_router) Handler() chi.Router {
 	// Admin CRUD routes
 	rt.router.Post("/admin/login", rt.wrap(rt.adminLogin))
 
+	rt.router.Get("/public/players", rt.wrap(rt.listPublicPlayers))
+
 	rt.router.Get("/teams", rt.wrapAdmin(rt.listTeams))
 	rt.router.Post("/teams", rt.wrapAdmin(rt.createTeam))
 	rt.router.Put("/teams/{id}", rt.wrapAdmin(rt.updateTeam))
