@@ -9,6 +9,7 @@ func (rt *_router) Handler() chi.Router {
 	// Register routes
 	rt.router.Get("/", rt.getHelloWorld)
 	rt.router.Get("/context", rt.wrap(rt.getContextReply))
+	rt.router.Get("/t", rt.ticketValidationPage)
 
 	// Special routes
 	rt.router.Get("/liveness", rt.liveness)

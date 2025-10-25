@@ -100,16 +100,16 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	qrDataBytes, _ := json.Marshal(struct {
-		Code      string `json:"code"`
-		Signature string `json:"signature"`
-	}{Code: code, Signature: signature})
+	validationURL, err := rt.buildTicketValidationURL(req.EventID, code, signature)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot build ticket validation URL")
+	}
 
 	resp := struct {
 		Code      string `json:"code"`
 		Signature string `json:"signature"`
 		QRData    string `json:"qr_data"`
-	}{Code: code, Signature: signature, QRData: string(qrDataBytes)}
+	}{Code: code, Signature: signature, QRData: validationURL}
 
 	w.Header().Set("content-type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)

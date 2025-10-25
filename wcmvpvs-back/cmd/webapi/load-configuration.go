@@ -33,6 +33,10 @@ type WebAPIConfiguration struct {
 		Secret string `conf:"default:secret"`
 	}
 
+	Tickets struct {
+		ValidationBaseURL string `conf:"default:http://localhost:3000"`
+	}
+
 	BootstrapAdmin struct {
 		Enabled      bool   `conf:"default:true"`
 		Username     string `conf:"default:Albyma"`

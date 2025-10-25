@@ -56,6 +56,9 @@ type Config struct {
 
 	// Secret is used to sign vote codes
 	VoteSecret string
+
+	// TicketValidationBaseURL is the public base URL used to generate ticket validation links
+	TicketValidationBaseURL string
 }
 
 // Router is the package API interface representing an API handler builder
@@ -82,12 +85,13 @@ func New(cfg Config) (Router, error) {
 	router := chi.NewRouter()
 
 	return &_router{
-		router:         router,
-		baseLogger:     cfg.Logger,
-		db:             cfg.Database,
-		VoteSecret:     cfg.VoteSecret,
-		adminSessions:  map[string]adminSession{},
-		sessionTimeout: 12 * time.Hour,
+		router:                  router,
+		baseLogger:              cfg.Logger,
+		db:                      cfg.Database,
+		VoteSecret:              cfg.VoteSecret,
+		ticketValidationBaseURL: cfg.TicketValidationBaseURL,
+		adminSessions:           map[string]adminSession{},
+		sessionTimeout:          12 * time.Hour,
 	}, nil
 }
 
@@ -101,6 +105,8 @@ type _router struct {
 	db database.AppDatabase
 
 	VoteSecret string
+
+	ticketValidationBaseURL string
 
 	adminSessionsMu sync.RWMutex
 	adminSessions   map[string]adminSession
