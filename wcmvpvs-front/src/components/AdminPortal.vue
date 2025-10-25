@@ -1752,17 +1752,7 @@ function prizeWinnerLabel(prize) {
   if (!prize || !prize.winner) {
     return '';
   }
-  const parts = [];
-  if (prize.winner.ticketCode) {
-    parts.push(prize.winner.ticketCode);
-  }
-  const fullName = [prize.winner.playerFirstName, prize.winner.playerLastName]
-    .filter(Boolean)
-    .join(' ');
-  if (fullName) {
-    parts.push(fullName);
-  }
-  return parts.join(' • ');
+  return prize.winner.ticketCode || '';
 }
 
 async function savePrizesForEvent(event) {
