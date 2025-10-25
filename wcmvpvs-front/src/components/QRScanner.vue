@@ -4,7 +4,6 @@
       <QrcodeStream
         v-if="isVisible"
         class="qr-scanner__camera"
-        camera="rear"
         :track="drawOutline"
         :constraints="constraints"
         @decode="handleDecode"
@@ -25,7 +24,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { QrcodeStream } from 'vue-qrcode-reader'
 
 const props = defineProps({
@@ -40,7 +39,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['detected', 'error', 'permission-denied', 'state-change'])
-
+const deviceId = ref(null)
 const defaultInfoMessage = 'Premi "Avvia scansione" per utilizzare la fotocamera.'
 const isVisible = ref(false)
 const isActive = ref(false)
@@ -67,14 +66,29 @@ function clearScanningFeedback() {
     scanningFeedbackTimeout = null
   }
 }
+onMounted(async () => {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const videoDevices = devices.filter(d => d.kind === 'videoinput')
+
+    // Cerca la fotocamera posteriore per nome
+    const backCamera = videoDevices.find(d =>
+      d.label.toLowerCase().includes('back') ||
+      d.label.toLowerCase().includes('rear')
+    )
+
+    // Se trova la posteriore, la usa, altrimenti la prima disponibile
+    deviceId.value = backCamera ? backCamera.deviceId : videoDevices[0]?.deviceId || null
+  } catch (err) {
+    console.warn('Errore ottenendo lista fotocamere:', err)
+  }
+})
 
 const constraints = computed(() => ({
   audio: false,
-  video: {
-    facingMode: { exact: 'environment' }, // 👈 forza la posteriore
-    width: { ideal: 1280 },
-    height: { ideal: 720 }
-  }
+  video: deviceId.value
+    ? { deviceId: { exact: deviceId.value } }
+    : { facingMode: { ideal: 'environment' } }
 }))
 
 function normalizeError(error) {
