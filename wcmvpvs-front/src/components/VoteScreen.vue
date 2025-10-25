@@ -43,7 +43,7 @@ async function loadSponsors() {
             return null;
           }
           const resolvedName =
-            typeof item?.name === 'string' && item.name.trim() ? item.name.trim() : 'Sponsor';
+            typeof item?.name === 'string' && item.name.trim() ? item.name.trim() : '';
           const resolvedLink =
             typeof item?.link_url === 'string' && item.link_url.trim()
               ? item.link_url.trim()
