@@ -29,7 +29,7 @@
           <span>Connesso come <strong>{{ activeUsername }}</strong></span>
           <button class="btn outline" type="button" @click="goToLottery">Lotteria</button>
           <button
-            v-for="tab in tabs"
+            v-for="tab in availableTabs"
             :key="tab.id"
             :class="['btn outline', { active: section === tab.id }]"
             type="button"
@@ -662,6 +662,7 @@ const tabs = [
   { id: 'sponsors', label: 'Sponsor' },
   { id: 'admins', label: 'Admin' },
 ];
+const STAFF_TAB_IDS = new Set(['closing', 'results', 'scanner']);
 
 const teams = ref([]);
 const players = ref([]);
@@ -857,7 +858,15 @@ const scannerHint = computed(() => {
 
 const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
+const activeRole = ref(localStorage.getItem('adminRole') || '');
 const isAuthenticated = computed(() => Boolean(token.value));
+const isSuperAdmin = computed(() => activeRole.value === 'superadmin');
+const availableTabs = computed(() => {
+  if (isSuperAdmin.value) {
+    return tabs;
+  }
+  return tabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
+});
 
 const loginForm = reactive({
   username: '',
@@ -1642,8 +1651,10 @@ async function login() {
     });
     token.value = data.token;
     activeUsername.value = data.username;
+    activeRole.value = data.role || '';
     localStorage.setItem('adminToken', token.value);
     localStorage.setItem('adminUsername', activeUsername.value);
+    localStorage.setItem('adminRole', activeRole.value);
     loginForm.username = '';
     loginForm.password = '';
     await loadAll();
@@ -1661,8 +1672,11 @@ async function login() {
 function logout() {
   token.value = '';
   activeUsername.value = '';
+  activeRole.value = '';
   localStorage.removeItem('adminToken');
   localStorage.removeItem('adminUsername');
+  localStorage.removeItem('adminRole');
+  section.value = 'events';
   clearCollections();
 }
 
@@ -1725,7 +1739,11 @@ async function loadAll() {
   if (!isAuthenticated.value) {
     return;
   }
-  await Promise.all([loadTeams(), loadPlayers(), loadEvents(), loadAdmins(), loadSponsors()]);
+  const requests = [loadEvents()];
+  if (isSuperAdmin.value) {
+    requests.push(loadTeams(), loadPlayers(), loadAdmins(), loadSponsors());
+  }
+  await Promise.all(requests);
   resetForms();
 }
 
@@ -2046,6 +2064,15 @@ function updateToolbarOffset() {
   portalRef.value.style.setProperty('--toolbar-height', `${height}px`);
 }
 
+function ensureSectionIsAllowed(tabList) {
+  if (!isAuthenticated.value) {
+    return;
+  }
+  if (!tabList.some((tab) => tab.id === section.value)) {
+    section.value = tabList.length ? tabList[0].id : '';
+  }
+}
+
 onMounted(() => {
   window.addEventListener('resize', updateToolbarOffset, { passive: true });
   nextTick(updateToolbarOffset);
@@ -2054,6 +2081,15 @@ onMounted(() => {
 watch(isAuthenticated, () => {
   nextTick(updateToolbarOffset);
 });
+
+watch(
+  availableTabs,
+  (currentTabs) => {
+    ensureSectionIsAllowed(currentTabs);
+    nextTick(updateToolbarOffset);
+  },
+  { immediate: true },
+);
 
 watch(section, (value, oldValue) => {
   if (value === 'results') {

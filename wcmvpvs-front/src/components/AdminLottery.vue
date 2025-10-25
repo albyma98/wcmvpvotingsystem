@@ -389,6 +389,7 @@ function logout() {
   activeUsername.value = '';
   localStorage.removeItem('adminToken');
   localStorage.removeItem('adminUsername');
+  localStorage.removeItem('adminRole');
   resetState();
 }
 
@@ -426,6 +427,7 @@ async function login() {
     activeUsername.value = data.username;
     localStorage.setItem('adminToken', token.value);
     localStorage.setItem('adminUsername', activeUsername.value);
+    localStorage.setItem('adminRole', data.role || '');
     loginForm.username = '';
     loginForm.password = '';
     await loadInitialData();
