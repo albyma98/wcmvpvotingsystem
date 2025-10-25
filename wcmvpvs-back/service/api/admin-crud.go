@@ -91,6 +91,17 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqco
 	ctx.Logger.WithField("players", len(players)).Info("listed players")
 }
 
+func (rt *_router) listPublicPlayers(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	players, err := rt.db.ListPlayers()
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot list public players")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(players)
+	ctx.Logger.WithField("players", len(players)).Info("listed public players")
+}
+
 func (rt *_router) createPlayer(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var p database.Player
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {

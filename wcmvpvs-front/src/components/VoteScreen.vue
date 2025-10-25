@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
 import { apiClient, vote } from '../api';
-import { roster } from '../roster';
+import { mapPlayersToLayout } from '../roster';
 
 const props = defineProps({
   eventId: {
@@ -24,7 +24,11 @@ const props = defineProps({
   },
 });
 
-const fieldPlayers = computed(() => roster);
+const rawPlayers = ref([]);
+const isLoadingPlayers = ref(false);
+const playersError = ref('');
+
+const fieldPlayers = computed(() => mapPlayersToLayout(rawPlayers.value));
 
 const sponsors = ref([]);
 
@@ -58,6 +62,37 @@ async function loadSponsors() {
   } catch (error) {
     console.error('Impossibile caricare gli sponsor', error);
     sponsors.value = [];
+  }
+}
+
+async function loadPlayers() {
+  isLoadingPlayers.value = true;
+  playersError.value = '';
+  try {
+    const { data } = await apiClient.get('/public/players');
+    if (Array.isArray(data)) {
+      rawPlayers.value = data.map((item) => ({
+        id: Number(item?.id) || 0,
+        first_name: typeof item?.first_name === 'string' ? item.first_name : '',
+        last_name: typeof item?.last_name === 'string' ? item.last_name : '',
+        role: typeof item?.role === 'string' ? item.role : '',
+        jersey_number:
+          typeof item?.jersey_number === 'number'
+            ? item.jersey_number
+            : Number.isFinite(Number(item?.jersey_number))
+            ? Number(item?.jersey_number)
+            : null,
+        image_url: typeof item?.image_url === 'string' ? item.image_url : '',
+      }));
+    } else {
+      rawPlayers.value = [];
+    }
+  } catch (error) {
+    console.error('Impossibile caricare i giocatori', error);
+    playersError.value = 'Non è stato possibile caricare i giocatori. Riprova più tardi.';
+    rawPlayers.value = [];
+  } finally {
+    isLoadingPlayers.value = false;
   }
 }
 
@@ -136,6 +171,18 @@ watch(currentEventId, () => {
   ticketQrUrl.value = '';
 });
 
+watch(fieldPlayers, (players) => {
+  if (!pendingPlayer.value) {
+    return;
+  }
+  const replacement = players.find((player) => player.id === pendingPlayer.value.id);
+  if (replacement) {
+    pendingPlayer.value = replacement;
+  } else {
+    pendingPlayer.value = null;
+  }
+});
+
 watch(isVotingClosed, (closed) => {
   if (closed) {
     pendingPlayer.value = null;
@@ -157,6 +204,7 @@ onMounted(() => {
   updateCardSize();
   window.addEventListener('resize', updateCardSize, { passive: true });
   loadSponsors();
+  loadPlayers();
 });
 
 onBeforeUnmount(() => {
@@ -292,7 +340,7 @@ const confirmVote = () => {
               Tocca la card del tuo giocatore preferito per assegnarli il voto
             </p>
           </div>
-          <div class="relative h-[95svh]">
+          <div v-if="fieldPlayers.length" class="relative h-[95svh]">
             <VolleyCourt
               class="block h-full w-full"
               :players="fieldPlayers"
@@ -302,8 +350,22 @@ const confirmVote = () => {
               :is-voting="isVoting"
               @select="openPlayerModal"
             />
-
           </div>
+          <p
+            v-else-if="isLoadingPlayers"
+            class="players-message"
+          >
+            Caricamento dei giocatori in corso…
+          </p>
+          <p
+            v-else-if="playersError"
+            class="players-message error"
+          >
+            {{ playersError }}
+          </p>
+          <p v-else class="players-message">
+            I giocatori non sono ancora stati configurati. Torna più tardi!
+          </p>
         </section>
 
         <section v-if="sponsors.length" class="px-4">
@@ -517,6 +579,26 @@ const confirmVote = () => {
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(15, 23, 42, 0.65);
   box-shadow: 0 30px 60px rgba(15, 23, 42, 0.55);
+}
+
+.players-message {
+  margin: 2rem auto;
+  max-width: 420px;
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.55);
+  text-align: center;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e2e8f0;
+}
+
+.players-message.error {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(127, 29, 29, 0.45);
+  color: #fee2e2;
 }
 
 .inactive-panel h2 {
