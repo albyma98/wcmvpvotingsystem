@@ -1044,7 +1044,7 @@ func (db *appdbimpl) GetAdminByUsername(username string) (Admin, error) {
 // Sponsor operations
 func (db *appdbimpl) CreateSponsor(s Sponsor) (int, error) {
 	sanitizedName := strings.TrimSpace(s.Name)
-	if sanitizedName == "" || strings.TrimSpace(s.LogoData) == "" {
+	if strings.TrimSpace(s.LogoData) == "" {
 		return 0, ErrInvalidSponsorData
 	}
 
@@ -1088,7 +1088,7 @@ func (db *appdbimpl) UpdateSponsor(s Sponsor) error {
 	}
 
 	sanitizedName := strings.TrimSpace(s.Name)
-	if sanitizedName == "" || strings.TrimSpace(s.LogoData) == "" {
+	if strings.TrimSpace(s.LogoData) == "" {
 		return ErrInvalidSponsorData
 	}
 

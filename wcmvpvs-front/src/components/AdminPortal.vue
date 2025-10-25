@@ -592,7 +592,7 @@
         <form @submit.prevent="createSponsor" class="form-grid sponsor-form">
           <label>
             Nome sponsor
-            <input v-model.trim="newSponsor.name" type="text" placeholder="Es. Partner ufficiale" required />
+            <input v-model.trim="newSponsor.name" type="text" placeholder="Es. Partner ufficiale" />
           </label>
           <label>
             Link (opzionale)
@@ -625,7 +625,7 @@
                 <div class="form-grid compact">
                   <label>
                     Nome sponsor
-                    <input v-model.trim="sponsor.name" type="text" required />
+                    <input v-model.trim="sponsor.name" type="text" />
                   </label>
                   <label>
                     Link (opzionale)
@@ -2318,10 +2318,6 @@ async function createSponsor() {
     return;
   }
   const trimmedName = newSponsor.name.trim();
-  if (!trimmedName) {
-    globalError.value = 'Inserisci il nome dello sponsor.';
-    return;
-  }
   if (!newSponsor.logoData) {
     globalError.value = 'Carica un logo per lo sponsor.';
     return;
@@ -2353,10 +2349,6 @@ async function updateSponsorEntry(sponsor) {
   }
   globalError.value = '';
   const trimmedName = sponsor.name.trim();
-  if (!trimmedName) {
-    globalError.value = 'Inserisci il nome dello sponsor.';
-    return;
-  }
   if (!sponsor.logoData) {
     globalError.value = 'Carica un logo per lo sponsor.';
     return;
