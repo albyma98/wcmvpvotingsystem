@@ -1430,7 +1430,25 @@ function syncEventPrizeDrafts(eventList) {
 }
 
 function eventLabel(event) {
-  return `${teamName(event.team1_id)} vs ${teamName(event.team2_id)}`;
+  return `${resolveEventTeamName(event, 'team1')} vs ${resolveEventTeamName(event, 'team2')}`;
+}
+
+function resolveEventTeamName(event, teamKey) {
+  const idKey = `${teamKey}_id`;
+  const nameFromTeams = teamName(event?.[idKey]);
+  if (nameFromTeams && nameFromTeams !== '—') {
+    return nameFromTeams;
+  }
+
+  const fallbackKeys = [`${teamKey}_name`, `${teamKey}Name`];
+  for (const key of fallbackKeys) {
+    const value = event?.[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return '—';
 }
 
 function teamName(id) {
@@ -1739,9 +1757,9 @@ async function loadAll() {
   if (!isAuthenticated.value) {
     return;
   }
-  const requests = [loadEvents()];
+  const requests = [loadEvents(), loadTeams()];
   if (isSuperAdmin.value) {
-    requests.push(loadTeams(), loadPlayers(), loadAdmins(), loadSponsors());
+    requests.push(loadPlayers(), loadAdmins(), loadSponsors());
   }
   await Promise.all(requests);
   resetForms();
