@@ -4,6 +4,8 @@
       <QrcodeStream
         v-if="isVisible"
         class="qr-scanner__camera"
+        camera="rear"
+        :track="drawOutline"
         :constraints="constraints"
         @decode="handleDecode"
         @init="handleInit"
