@@ -28,9 +28,6 @@
         <div class="user-info">
           <span>Connesso come <strong>{{ activeUsername }}</strong></span>
           <button class="btn outline" type="button" @click="goToLottery">Lotteria</button>
-          <button class="btn secondary" type="button" @click="logout">Esci</button>
-        </div>
-        <nav class="section-nav" aria-label="Sezioni amministrative">
           <button
             v-for="tab in tabs"
             :key="tab.id"
@@ -41,7 +38,11 @@
           >
             {{ tab.label }}
           </button>
-        </nav>
+          <button class="btn secondary" type="button" @click="logout">Esci</button>
+        </div>
+
+
+
       </div>
       <div class="portal-content">
         <p v-if="globalError" class="error">{{ globalError }}</p>
