@@ -34,7 +34,7 @@
           <button
             v-for="tab in tabs"
             :key="tab.id"
-            :class="['btn outline section-nav__button', { active: section === tab.id }]"
+            :class="['btn outline', { active: section === tab.id }]"
             type="button"
             :aria-current="section === tab.id ? 'page' : undefined"
             @click="section = tab.id"
@@ -2170,7 +2170,6 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
   padding: 0;
   position: relative;
-  z-index: 1;
 }
 
 .card {
