@@ -369,13 +369,27 @@
         <div class="scanner-controls">
           <label>
             Evento
-            <select v-model.number="selectedScanEventId" :disabled="!events.length">
+            <select
+              v-model.number="selectedScanEventId"
+              :disabled="!events.length || Boolean(activeEventId)"
+            >
               <option disabled value="0">Seleziona un evento</option>
               <option v-for="event in events" :key="event.id" :value="event.id">
                 {{ eventLabel(event) }}
               </option>
             </select>
+            <small v-if="activeEventId" class="field-hint">
+              L'evento attivo viene selezionato automaticamente.
+            </small>
           </label>
+          <button
+            class="btn outline"
+            type="button"
+            @click="refreshTickets"
+            :disabled="!selectedScanEventId || isLoadingTickets"
+          >
+            {{ isLoadingTickets ? 'Caricamento ticket…' : 'Aggiorna ticket' }}
+          </button>
           <button
             class="btn outline"
             type="button"
@@ -422,6 +436,39 @@
             </p>
             <p v-if="scanError" class="error">{{ scanError }}</p>
             <p v-if="isValidatingTicket" class="info-banner">Verifica del ticket in corso…</p>
+
+            <div v-if="selectedScanEventId" class="ticket-inventory">
+              <p v-if="ticketLoadError" class="error">{{ ticketLoadError }}</p>
+              <p v-else-if="isLoadingTickets" class="muted">Caricamento ticket in corso…</p>
+              <p v-else-if="!eventTickets.length" class="muted">
+                Nessun ticket generato per questo evento.
+              </p>
+              <template v-else>
+                <p class="muted">Ticket caricati: {{ eventTickets.length }}</p>
+                <ul class="ticket-list">
+                  <li
+                    v-for="ticket in eventTickets"
+                    :key="ticket.vote_id"
+                    :class="['ticket-entry', { active: ticket.ticket_code === lastScannedTicketCode }]"
+                  >
+                    <div class="ticket-entry__header">
+                      <span class="ticket-code">{{ ticket.ticket_code }}</span>
+                      <span class="ticket-time">{{ formatTicketDate(ticket.created_at) }}</span>
+                    </div>
+                    <div class="ticket-entry__meta">
+                      <span class="ticket-player">
+                        {{
+                          ticket.player_first_name || ticket.player_last_name
+                            ? `${ticket.player_first_name} ${ticket.player_last_name}`.trim()
+                            : 'Giocatore non disponibile'
+                        }}
+                      </span>
+                      <span class="ticket-signature">{{ ticket.ticket_signature }}</span>
+                    </div>
+                  </li>
+                </ul>
+              </template>
+            </div>
 
             <div
               v-if="validationResult"
@@ -731,11 +778,15 @@ const lastResultsUpdate = ref(null);
 const scannerRef = ref(null);
 const selectedScanEventId = ref(0);
 const lastScanRaw = ref('');
+const lastScannedTicketCode = ref('');
 const scanError = ref('');
 const validationResult = ref(null);
 const isValidatingTicket = ref(false);
 const isScannerActive = ref(false);
 const cameraPermissionDenied = ref(false);
+const eventTickets = ref([]);
+const isLoadingTickets = ref(false);
+const ticketLoadError = ref('');
 
 const newTeamName = ref('');
 const playerSlotCount = PLAYER_LAYOUT.length;
@@ -1364,6 +1415,7 @@ watch(events, (value) => {
 
 watch(activeEventId, () => {
   closeVotesMessage.value = '';
+  ensureScanEventSelection();
 });
 
 watch(activeEventVotesClosed, (closed) => {
@@ -1375,6 +1427,7 @@ watch(activeEventVotesClosed, (closed) => {
 watch(selectedScanEventId, (eventId, oldEventId) => {
   if (eventId !== oldEventId) {
     resetScanState({ stopCamera: true });
+    void fetchSelectedEventTickets({ showLoader: true });
   }
 });
 
@@ -1399,6 +1452,9 @@ function clearCollections() {
   resetResultsState();
   selectedScanEventId.value = 0;
   resetScanState({ stopCamera: true, clearPermission: true });
+  eventTickets.value = [];
+  ticketLoadError.value = '';
+  isLoadingTickets.value = false;
 }
 
 function stopResultsPolling() {
@@ -1446,13 +1502,23 @@ function ensureScanEventSelection() {
     if (selectedScanEventId.value !== 0) {
       selectedScanEventId.value = 0;
     }
+    eventTickets.value = [];
+    ticketLoadError.value = '';
     resetScanState({ stopCamera: true });
     return;
   }
+
+  const active = events.value.find((event) => event.is_active);
+  if (active) {
+    if (selectedScanEventId.value !== active.id) {
+      selectedScanEventId.value = active.id;
+    }
+    return;
+  }
+
   const exists = events.value.some((event) => event.id === selectedScanEventId.value);
   if (!exists) {
-    const active = events.value.find((event) => event.is_active);
-    selectedScanEventId.value = active ? active.id : events.value[0].id;
+    selectedScanEventId.value = events.value[0].id;
   }
 }
 
@@ -1881,6 +1947,7 @@ function formatTicketDate(value) {
 function resetScanState({ stopCamera = false, clearPermission = false } = {}) {
   scanError.value = '';
   lastScanRaw.value = '';
+  lastScannedTicketCode.value = '';
   validationResult.value = null;
   isValidatingTicket.value = false;
   if (clearPermission) {
@@ -1982,6 +2049,28 @@ function normalizeValidationResult(payload) {
   return normalized;
 }
 
+function normalizeEventTicket(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  const voteId = Number(payload.vote_id ?? payload.voteId) || 0;
+  const ticketCodeRaw = payload.ticket_code ?? payload.ticketCode;
+  const ticketSignatureRaw = payload.ticket_signature ?? payload.ticketSignature;
+  const playerId = Number(payload.player_id ?? payload.playerId) || 0;
+  const firstNameRaw = payload.player_first_name ?? payload.playerFirstName;
+  const lastNameRaw = payload.player_last_name ?? payload.playerLastName;
+  const createdAtRaw = payload.created_at ?? payload.createdAt;
+  return {
+    vote_id: voteId,
+    ticket_code: typeof ticketCodeRaw === 'string' ? ticketCodeRaw.trim() : '',
+    ticket_signature: typeof ticketSignatureRaw === 'string' ? ticketSignatureRaw.trim() : '',
+    player_id: playerId,
+    player_first_name: typeof firstNameRaw === 'string' ? firstNameRaw.trim() : '',
+    player_last_name: typeof lastNameRaw === 'string' ? lastNameRaw.trim() : '',
+    created_at: typeof createdAtRaw === 'string' ? createdAtRaw : '',
+  };
+}
+
 function translateTicketError(code, status) {
   switch (code) {
     case 'invalid_signature':
@@ -2001,10 +2090,64 @@ function translateTicketError(code, status) {
   }
 }
 
+function findTicketByCode(code) {
+  if (!code) {
+    return null;
+  }
+  return eventTickets.value.find((ticket) => ticket.ticket_code === code) || null;
+}
+
+async function fetchSelectedEventTickets({ showLoader = true } = {}) {
+  if (!selectedScanEventId.value) {
+    if (showLoader) {
+      isLoadingTickets.value = false;
+    }
+    eventTickets.value = [];
+    ticketLoadError.value = '';
+    return false;
+  }
+
+  if (showLoader) {
+    isLoadingTickets.value = true;
+  }
+  ticketLoadError.value = '';
+
+  try {
+    const { data } = await apiClient.get(
+      `/events/${selectedScanEventId.value}/tickets`,
+      authHeaders.value,
+    );
+    const normalized = Array.isArray(data)
+      ? data.map((item) => normalizeEventTicket(item)).filter(Boolean)
+      : [];
+    eventTickets.value = normalized;
+    return true;
+  } catch (error) {
+    if (error?.response?.status === 401) {
+      handleUnauthorized();
+    } else if (error?.response?.status === 404) {
+      eventTickets.value = [];
+      ticketLoadError.value = "Ticket non trovati per l'evento selezionato.";
+    } else if (!ticketLoadError.value) {
+      ticketLoadError.value = 'Impossibile caricare i ticket. Riprova.';
+    }
+    return false;
+  } finally {
+    if (showLoader) {
+      isLoadingTickets.value = false;
+    }
+  }
+}
+
+async function refreshTickets() {
+  await fetchSelectedEventTickets({ showLoader: true });
+}
+
 async function handleQrDetected(rawValue) {
   lastScanRaw.value = rawValue || '';
   scanError.value = '';
   validationResult.value = null;
+  lastScannedTicketCode.value = '';
 
   if (!selectedScanEventId.value) {
     scanError.value = 'Seleziona prima un evento per verificare il ticket.';
@@ -2015,8 +2158,26 @@ async function handleQrDetected(rawValue) {
   const code = (payload?.code || payload?.ticket_code || '').toString().trim();
   const signature = (payload?.signature || payload?.ticket_signature || '').toString().trim();
 
+  lastScannedTicketCode.value = code;
+
   if (!code || !signature) {
     scanError.value = 'Il QR scansionato non è riconosciuto come ticket della lotteria.';
+    return;
+  }
+
+  let ticket = findTicketByCode(code);
+  if (!ticket) {
+    await fetchSelectedEventTickets({ showLoader: false });
+    ticket = findTicketByCode(code);
+  }
+
+  if (!ticket) {
+    scanError.value = "Ticket non trovato tra quelli caricati per l'evento selezionato.";
+    return;
+  }
+
+  if (ticket.ticket_signature && ticket.ticket_signature !== signature) {
+    scanError.value = 'La firma del ticket non corrisponde ai dati caricati.';
     return;
   }
 
@@ -2136,8 +2297,12 @@ async function loadEvents() {
   const normalized = Array.isArray(data)
     ? data.map((event) => normalizeEventResponse(event)).filter(Boolean)
     : [];
+  const previousSelection = selectedScanEventId.value;
   events.value = normalized;
   ensureScanEventSelection();
+  if (selectedScanEventId.value === previousSelection && selectedScanEventId.value) {
+    await fetchSelectedEventTickets({ showLoader: section.value === 'scanner' });
+  }
 }
 
 async function loadAdmins() {
@@ -2494,8 +2659,12 @@ watch(section, (value, oldValue) => {
     stopResultsPolling();
   }
   if (value === 'scanner') {
+    const previousSelection = selectedScanEventId.value;
     ensureScanEventSelection();
     resetScanState();
+    if (selectedScanEventId.value === previousSelection) {
+      void fetchSelectedEventTickets({ showLoader: true });
+    }
   }
   if (oldValue === 'scanner') {
     stopScanner();
@@ -3227,6 +3396,80 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.ticket-inventory {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.85rem;
+  background: rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.ticket-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ticket-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.ticket-entry.active {
+  border-color: rgba(59, 130, 246, 0.65);
+  box-shadow: 0 8px 18px rgba(59, 130, 246, 0.2);
+}
+
+.ticket-entry__header,
+.ticket-entry__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: #1e293b;
+}
+
+.ticket-entry__meta {
+  align-items: baseline;
+}
+
+.ticket-code {
+  font-family: 'Fira Code', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.ticket-time {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.ticket-player {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.ticket-signature {
+  font-family: 'Fira Code', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: #475569;
+  word-break: break-all;
+  margin-left: auto;
 }
 
 .scanner-status code {
