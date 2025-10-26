@@ -102,6 +102,7 @@ const cardSize = ref(88);
 const errorMessage = ref('');
 const pendingPlayer = ref(null);
 const showTicketModal = ref(false);
+const showAlreadyVotedModal = ref(false);
 const ticketCode = ref('');
 const ticketQrUrl = ref('');
 
@@ -169,6 +170,7 @@ watch(currentEventId, () => {
   showTicketModal.value = false;
   ticketCode.value = '';
   ticketQrUrl.value = '';
+  showAlreadyVotedModal.value = false;
 });
 
 watch(fieldPlayers, (players) => {
@@ -187,6 +189,7 @@ watch(isVotingClosed, (closed) => {
   if (closed) {
     pendingPlayer.value = null;
     showTicketModal.value = false;
+    showAlreadyVotedModal.value = false;
   }
 });
 
@@ -241,6 +244,10 @@ const closeTicketModal = () => {
   ticketQrUrl.value = '';
 };
 
+const closeAlreadyVotedModal = () => {
+  showAlreadyVotedModal.value = false;
+};
+
 const voteForPlayer = async (player) => {
   if (isVotingClosed.value) {
     return;
@@ -285,7 +292,16 @@ const voteForPlayer = async (player) => {
         errorMessage.value = 'Non siamo riusciti a generare il QR del ticket. Riprova.';
       }
     } else {
-      errorMessage.value = "Non e stato possibile registrare il voto. Riprova.";
+      if (response?.status === 409) {
+        pendingPlayer.value = null;
+        showAlreadyVotedModal.value = true;
+        errorMessage.value = '';
+        if (!votedPlayerId.value) {
+          votedPlayerId.value = -1;
+        }
+      } else {
+        errorMessage.value = 'Non e stato possibile registrare il voto. Riprova.';
+      }
     }
   } catch (error) {
     console.error('vote error', error);
@@ -537,6 +553,30 @@ const confirmVote = () => {
             @click="closeTicketModal"
           >
             Chiudi
+          </button>
+        </div>
+      </div>
+    </transition>
+
+    <transition name="fade">
+      <div
+        v-if="!showInactiveNotice && showAlreadyVotedModal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-6 py-10"
+      >
+        <button class="absolute inset-0" type="button" @click="closeAlreadyVotedModal" aria-label="Chiudi"></button>
+        <div
+          class="relative z-10 w-full max-w-sm rounded-[2.25rem] border border-white/10 bg-slate-900/95 px-6 py-7 text-center shadow-[0_30px_60px_rgba(15,23,42,0.6)]"
+        >
+          <h3 class="text-lg font-semibold uppercase tracking-[0.35em] text-slate-100">Hai già votato</h3>
+          <p class="mt-3 text-sm text-slate-300">
+            Puoi esprimere il tuo voto una sola volta per partita. Attendi la fine della gara per scoprire l'estrazione dei premi.
+          </p>
+          <button
+            class="mt-7 w-full rounded-full bg-yellow-400 px-4 py-3 text-sm font-semibold uppercase tracking-[0.35em] text-slate-900 transition-colors duration-200 hover:bg-yellow-300"
+            type="button"
+            @click="closeAlreadyVotedModal"
+          >
+            Ho capito
           </button>
         </div>
       </div>
