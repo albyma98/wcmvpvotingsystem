@@ -2,6 +2,7 @@
   <div class="app-shell">
     <AdminLottery v-if="adminView === 'lottery'" />
     <AdminPortal v-else-if="adminView === 'portal'" />
+    <TicketValidationView v-else-if="adminView === 'ticket-validation'" />
     <VoteScreen
       v-else
       :event-id="resolvedEventId"
@@ -16,6 +17,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AdminPortal from './components/AdminPortal.vue';
 import AdminLottery from './components/AdminLottery.vue';
+import TicketValidationView from './components/TicketValidationView.vue';
 import VoteScreen from './components/VoteScreen.vue';
 import { apiClient } from './api';
 
@@ -33,13 +35,16 @@ const isFetchingActiveEvent = ref(false);
 const hasCheckedActiveEvent = ref(false);
 
 const adminView = computed(() => {
-  if (!currentPath.value.startsWith('/admin')) {
-    return 'public';
-  }
   if (currentPath.value.startsWith('/admin/lottery')) {
     return 'lottery';
   }
-  return 'portal';
+  if (currentPath.value.startsWith('/admin')) {
+    return 'portal';
+  }
+  if (currentPath.value.startsWith('/lottery/validate')) {
+    return 'ticket-validation';
+  }
+  return 'public';
 });
 
 const resolvedEventId = computed(() => currentEventId.value ?? activeEvent.value?.id);

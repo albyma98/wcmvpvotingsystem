@@ -75,3 +75,24 @@ export async function vote({ eventId, playerId }) {
     return { ok: false, error };
   }
 }
+
+export async function validateTicketStatus({ eventId, code, signature }) {
+  try {
+    const params = new URLSearchParams();
+    if (eventId) {
+      params.set('e', String(eventId));
+    }
+    if (code) {
+      params.set('c', code);
+    }
+    if (signature) {
+      params.set('s', signature);
+    }
+
+    const { data } = await apiClient.get(`/tickets/validate?${params.toString()}`);
+    return { ok: true, data };
+  } catch (error) {
+    const responseError = error?.response?.data?.error;
+    return { ok: false, error: responseError || 'unknown_error', details: error };
+  }
+}
