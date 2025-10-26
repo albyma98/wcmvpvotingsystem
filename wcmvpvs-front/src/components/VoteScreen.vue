@@ -523,7 +523,7 @@ const confirmVote = () => {
             </p>
           </div>
           <div class="mt-5 flex flex-col items-center gap-2 text-xs text-slate-200">
-            <p class="font-semibold tracking-[0.2em]">Codice: {{ ticketCode }}</p>
+            <p class="font-bold tracking-[0.2em]">Codice: {{ ticketCode }}</p>
           </div>
           <img
             v-if="ticketQrUrl"
