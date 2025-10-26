@@ -513,13 +513,13 @@ const confirmVote = () => {
         >
           <h3 class="text-lg font-semibold uppercase tracking-[0.35em] text-slate-100">Voto registrato</h3>
           <p class="mt-3 text-sm text-slate-300">
-            Mostra questo codice allo staff per completare la registrazione.
+            Fai subito uno screenshot di questa pagina e conservalo.
+              Attendi la fine della partita per l'estrazione dei premi e mostra lo screenshot allo staff nel caso in cui venga estratto il tuo codice.
           </p>
           <div class="important-notice" role="alert">
             <p class="font-semibold uppercase tracking-[0.25em] text-yellow-300">Importante</p>
             <p class="mt-2 text-sm leading-relaxed text-slate-100">
-              Appena vedi il QR code fai subito uno screenshot di questa pagina e conservalo.
-              Attendi la fine della partita per l'estrazione del premio e mostra lo screenshot allo staff.
+              SENZA LO SCREENSHOT IL PREMIO NON POTRA' ESSERE ASSEGNATO.
             </p>
           </div>
           <div class="mt-5 flex flex-col items-center gap-2 text-xs text-slate-200">
