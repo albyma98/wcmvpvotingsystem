@@ -105,6 +105,8 @@ const showTicketModal = ref(false);
 const showAlreadyVotedModal = ref(false);
 const ticketCode = ref('');
 const ticketQrUrl = ref('');
+const ticketLoadError = ref('');
+const isTicketLoading = ref(false);
 
 const sanitizeName = (value) => {
   if (typeof value !== 'string') {
@@ -170,6 +172,8 @@ watch(currentEventId, () => {
   showTicketModal.value = false;
   ticketCode.value = '';
   ticketQrUrl.value = '';
+  ticketLoadError.value = '';
+  isTicketLoading.value = false;
   showAlreadyVotedModal.value = false;
 });
 
@@ -190,6 +194,8 @@ watch(isVotingClosed, (closed) => {
     pendingPlayer.value = null;
     showTicketModal.value = false;
     showAlreadyVotedModal.value = false;
+    ticketLoadError.value = '';
+    isTicketLoading.value = false;
   }
 });
 
@@ -242,6 +248,8 @@ const closeTicketModal = () => {
   showTicketModal.value = false;
   ticketCode.value = '';
   ticketQrUrl.value = '';
+  ticketLoadError.value = '';
+  isTicketLoading.value = false;
 };
 
 const closeAlreadyVotedModal = () => {
@@ -283,9 +291,14 @@ const voteForPlayer = async (player) => {
 
       if (codeSource) {
         ticketCode.value = codeSource;
+        ticketLoadError.value = '';
+        isTicketLoading.value = Boolean(qrSource);
         ticketQrUrl.value = qrSource
           ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrSource)}`
           : '';
+        if (!qrSource) {
+          isTicketLoading.value = false;
+        }
         showTicketModal.value = true;
       } else {
         console.warn('voteForPlayer: missing ticket data', response);
@@ -331,6 +344,16 @@ const confirmVote = () => {
     return;
   }
   voteForPlayer(pendingPlayer.value);
+};
+
+const handleQrLoaded = () => {
+  isTicketLoading.value = false;
+};
+
+const handleQrError = () => {
+  isTicketLoading.value = false;
+  ticketQrUrl.value = '';
+  ticketLoadError.value = 'Non siamo riusciti a caricare il QR del ticket. Riprova tra qualche istante.';
 };
 </script>
 
@@ -541,11 +564,26 @@ const confirmVote = () => {
           <div class="mt-5 flex flex-col items-center gap-2 text-lg text-slate-200">
             <p class="font-bold tracking-[0.2em]">Codice: {{ ticketCode }}</p>
           </div>
+          <div
+            v-if="isTicketLoading"
+            class="mt-6 flex flex-col items-center gap-3 text-slate-200"
+            role="status"
+            aria-live="polite"
+          >
+            <span class="qr-loader"></span>
+            <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300">Attendi…</p>
+          </div>
+          <p v-if="ticketLoadError" class="mt-4 text-sm text-rose-300">
+            {{ ticketLoadError }}
+          </p>
           <img
             v-if="ticketQrUrl"
             :src="ticketQrUrl"
             alt="QR code"
             class="mx-auto mt-6 h-40 w-40 rounded-3xl border border-white/10 bg-white p-3"
+            :class="{ hidden: isTicketLoading }"
+            @load="handleQrLoaded"
+            @error="handleQrError"
           />
           <button
             class="mt-7 w-full rounded-full bg-yellow-400 px-4 py-3 text-sm font-semibold uppercase tracking-[0.35em] text-slate-900 transition-colors duration-200 hover:bg-yellow-300"
@@ -665,5 +703,20 @@ const confirmVote = () => {
 .inactive-panel p {
   margin: 0;
   line-height: 1.6;
+}
+
+.qr-loader {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  border: 4px solid rgba(148, 163, 184, 0.25);
+  border-top-color: #fbbf24;
+  animation: qr-spin 0.9s linear infinite;
+}
+
+@keyframes qr-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>
