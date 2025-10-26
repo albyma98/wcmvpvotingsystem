@@ -515,6 +515,13 @@ const confirmVote = () => {
           <p class="mt-3 text-sm text-slate-300">
             Mostra questo codice allo staff per completare la registrazione.
           </p>
+          <div class="important-notice" role="alert">
+            <p class="font-semibold uppercase tracking-[0.25em] text-yellow-300">Importante</p>
+            <p class="mt-2 text-sm leading-relaxed text-slate-100">
+              Appena vedi il QR code fai subito uno screenshot di questa pagina e conservalo.
+              Attendi la fine della partita per l'estrazione del premio e mostra lo screenshot allo staff.
+            </p>
+          </div>
           <div class="mt-5 flex flex-col items-center gap-2 text-xs text-slate-200">
             <p class="font-semibold tracking-[0.2em]">Codice: {{ ticketCode }}</p>
           </div>
@@ -599,6 +606,16 @@ const confirmVote = () => {
   border-color: rgba(248, 113, 113, 0.35);
   background: rgba(127, 29, 29, 0.45);
   color: #fee2e2;
+}
+
+.important-notice {
+  margin-top: 1.75rem;
+  padding: 1.5rem 1.25rem;
+  border-radius: 1.75rem;
+  border: 1px solid rgba(250, 204, 21, 0.5);
+  background: rgba(30, 64, 175, 0.35);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.45);
+  text-align: center;
 }
 
 .inactive-panel h2 {
