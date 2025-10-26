@@ -69,11 +69,12 @@ export async function vote({ eventId, playerId }) {
       device_id: getOrCreateDeviceId(),
     });
 
-    return { ok: true, vote: voteData };
+    return { ok: true, vote: voteData, message: voteData?.message };
   } catch (error) {
     console.error('vote api error', error);
     const status = axios.isAxiosError(error) ? error.response?.status : undefined;
-    return { ok: false, error, status };
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, error, status, message };
   }
 }
 

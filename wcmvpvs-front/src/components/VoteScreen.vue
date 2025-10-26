@@ -32,6 +32,70 @@ const fieldPlayers = computed(() => mapPlayersToLayout(rawPlayers.value));
 
 const sponsors = ref([]);
 
+const totalVotes = ref(0);
+const isVoteTotalLoading = ref(false);
+const voteTotalError = ref('');
+const isRefreshingVoteTotal = ref(false);
+let voteTotalTimer = null;
+
+const formattedVoteTotal = computed(() =>
+  Number.isFinite(totalVotes.value)
+    ? totalVotes.value.toLocaleString('it-IT')
+    : '0',
+);
+
+const stopVoteTotalPolling = () => {
+  if (voteTotalTimer) {
+    window.clearInterval(voteTotalTimer);
+    voteTotalTimer = null;
+  }
+};
+
+const startVoteTotalPolling = () => {
+  stopVoteTotalPolling();
+  voteTotalTimer = window.setInterval(() => {
+    refreshVoteTotal({ silent: true });
+  }, 4000);
+};
+
+const refreshVoteTotal = async ({ silent = false } = {}) => {
+  const eventId = currentEventId.value;
+  if (!eventId) {
+    totalVotes.value = 0;
+    voteTotalError.value = '';
+    if (!silent) {
+      isVoteTotalLoading.value = false;
+    }
+    return;
+  }
+
+  if (isRefreshingVoteTotal.value) {
+    return;
+  }
+
+  isRefreshingVoteTotal.value = true;
+  if (!silent) {
+    isVoteTotalLoading.value = true;
+  }
+
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/votes/count`);
+    const rawTotal = Number(
+      typeof data?.total === 'number' ? data.total : data?.count ?? 0,
+    );
+    totalVotes.value = Number.isFinite(rawTotal) ? rawTotal : 0;
+    voteTotalError.value = '';
+  } catch (error) {
+    console.error('Impossibile aggiornare il totale voti', error);
+    voteTotalError.value = 'Totale voti non disponibile in questo momento.';
+  } finally {
+    if (!silent) {
+      isVoteTotalLoading.value = false;
+    }
+    isRefreshingVoteTotal.value = false;
+  }
+};
+
 async function loadSponsors() {
   try {
     const { data } = await apiClient.get('/sponsors');
@@ -165,7 +229,7 @@ const isVotingClosed = computed(() => {
   return Boolean(raw);
 });
 
-watch(currentEventId, () => {
+watch(currentEventId, (eventId) => {
   votedPlayerId.value = null;
   pendingPlayer.value = null;
   errorMessage.value = '';
@@ -175,6 +239,13 @@ watch(currentEventId, () => {
   ticketLoadError.value = '';
   isTicketLoading.value = false;
   showAlreadyVotedModal.value = false;
+  totalVotes.value = 0;
+  voteTotalError.value = '';
+  stopVoteTotalPolling();
+  if (eventId) {
+    refreshVoteTotal();
+    startVoteTotalPolling();
+  }
 });
 
 watch(fieldPlayers, (players) => {
@@ -214,10 +285,15 @@ onMounted(() => {
   window.addEventListener('resize', updateCardSize, { passive: true });
   loadSponsors();
   loadPlayers();
+  if (currentEventId.value) {
+    refreshVoteTotal();
+    startVoteTotalPolling();
+  }
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateCardSize);
+  stopVoteTotalPolling();
 });
 
 const disableVotes = computed(
@@ -300,6 +376,7 @@ const voteForPlayer = async (player) => {
           isTicketLoading.value = false;
         }
         showTicketModal.value = true;
+        refreshVoteTotal({ silent: true });
       } else {
         console.warn('voteForPlayer: missing ticket data', response);
         errorMessage.value = 'Non siamo riusciti a generare il QR del ticket. Riprova.';
@@ -312,13 +389,18 @@ const voteForPlayer = async (player) => {
         if (!votedPlayerId.value) {
           votedPlayerId.value = -1;
         }
+      } else if (response?.status === 429) {
+        errorMessage.value =
+          response?.message ||
+          'Stai votando troppo rapidamente. Attendi qualche istante e riprova.';
       } else {
-        errorMessage.value = 'Non e stato possibile registrare il voto. Riprova.';
+        errorMessage.value =
+          response?.message || 'Non è stato possibile registrare il voto. Riprova.';
       }
     }
   } catch (error) {
     console.error('vote error', error);
-    errorMessage.value = 'Si e verificato un errore. Riprova tra qualche istante.';
+    errorMessage.value = 'Si è verificato un errore. Riprova tra qualche istante.';
   } finally {
     isVoting.value = false;
   }
@@ -405,6 +487,26 @@ const handleQrError = () => {
           <p v-else class="players-message">
             I giocatori non sono ancora stati configurati. Torna più tardi!
           </p>
+        </section>
+
+        <section v-if="currentEventId" class="px-4">
+          <div class="vote-counter" role="status" aria-live="polite">
+            <div class="vote-counter__header">
+              <p class="vote-counter__title">Totale voti registrati</p>
+              <span
+                v-if="isVoteTotalLoading"
+                class="vote-counter__spinner"
+                aria-hidden="true"
+              ></span>
+            </div>
+            <p class="vote-counter__value">{{ formattedVoteTotal }}</p>
+            <p v-if="voteTotalError" class="vote-counter__message error">
+              {{ voteTotalError }}
+            </p>
+            <p v-else class="vote-counter__message">
+              Aggiornamento automatico ogni pochi secondi
+            </p>
+          </div>
         </section>
 
         <section v-if="sponsors.length" class="px-4">
@@ -714,7 +816,68 @@ const handleQrError = () => {
   animation: qr-spin 0.9s linear infinite;
 }
 
+.vote-counter {
+  margin-top: -0.5rem;
+  margin-bottom: 1rem;
+  padding: 1.75rem 1.5rem;
+  border-radius: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.65));
+  box-shadow: 0 28px 48px rgba(15, 23, 42, 0.5);
+}
+
+.vote-counter__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.vote-counter__title {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: #e2e8f0;
+}
+
+.vote-counter__spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  border: 3px solid rgba(148, 163, 184, 0.25);
+  border-top-color: #38bdf8;
+  animation: counter-spin 0.8s linear infinite;
+}
+
+.vote-counter__value {
+  margin: 1rem 0 0;
+  font-size: clamp(2.5rem, 6vw, 3.25rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fbbf24;
+  text-shadow: 0 12px 24px rgba(251, 191, 36, 0.35);
+}
+
+.vote-counter__message {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: #cbd5f5;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vote-counter__message.error {
+  color: #fecaca;
+}
+
 @keyframes qr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes counter-spin {
   to {
     transform: rotate(360deg);
   }

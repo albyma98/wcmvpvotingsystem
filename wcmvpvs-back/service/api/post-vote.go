@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 )
@@ -19,13 +20,14 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ctx.Logger.WithError(err).Error("cannot decode vote request")
-		w.WriteHeader(http.StatusBadRequest)
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta di voto non valida.")
 		return
 	}
 
-	if strings.TrimSpace(req.DeviceID) == "" {
+	req.DeviceID = strings.TrimSpace(req.DeviceID)
+	if req.DeviceID == "" {
 		ctx.Logger.Warn("vote request missing device id")
-		w.WriteHeader(http.StatusBadRequest)
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Impossibile registrare il voto senza un identificativo dispositivo valido.")
 		return
 	}
 
@@ -35,23 +37,33 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			ctx.Logger.Warn("vote attempted with no active event")
-			w.WriteHeader(http.StatusConflict)
+			_ = writeJSONMessage(w, http.StatusConflict, "Nessuna votazione attiva al momento.")
 			return
 		}
 		ctx.Logger.WithError(err).Error("cannot retrieve active event")
-		w.WriteHeader(http.StatusInternalServerError)
+		_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 		return
 	}
 
 	if activeEvent.ID != req.EventID || !activeEvent.IsActive {
 		ctx.Logger.Warn("vote attempted for inactive event")
-		w.WriteHeader(http.StatusConflict)
+		_ = writeJSONMessage(w, http.StatusConflict, "Le votazioni per questa partita non sono disponibili.")
 		return
 	}
 
 	if activeEvent.VotesClosed {
 		ctx.Logger.Warn("vote attempted but voting is closed")
-		w.WriteHeader(http.StatusConflict)
+		_ = writeJSONMessage(w, http.StatusConflict, "Le votazioni per questa partita sono chiuse.")
+		return
+	}
+
+	clientIP := rt.getClientIP(r)
+	if limited, message := rt.shouldThrottleVoteAttempt(req.DeviceID, clientIP, time.Now()); limited {
+		ctx.Logger.WithFields(map[string]interface{}{
+			"device_id": req.DeviceID,
+			"client_ip": clientIP,
+		}).Warn("vote attempt throttled")
+		_ = writeJSONMessage(w, http.StatusTooManyRequests, message)
 		return
 	}
 
@@ -65,7 +77,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		code, err = generateNumericCode()
 		if err != nil {
 			ctx.Logger.WithError(err).Error("cannot generate vote code")
-			w.WriteHeader(http.StatusInternalServerError)
+			_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 			return
 		}
 		signature = signCode(rt.VoteSecret, code)
@@ -77,15 +89,15 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 				continue
 			case isVoteDeviceCollision(err):
 				ctx.Logger.WithError(err).Warn("duplicate vote attempt for device")
-				w.WriteHeader(http.StatusConflict)
+				_ = writeJSONMessage(w, http.StatusConflict, "Hai già votato per questa partita.")
 				return
 			case isUniqueConstraintError(err):
 				ctx.Logger.WithError(err).Error("vote unique constraint violation")
-				w.WriteHeader(http.StatusInternalServerError)
+				_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 				return
 			default:
 				ctx.Logger.WithError(err).Error("cannot store vote")
-				w.WriteHeader(http.StatusInternalServerError)
+				_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 				return
 			}
 		}
@@ -97,7 +109,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 
 	if code == "" {
 		ctx.Logger.Error("unable to generate unique vote code after multiple attempts")
-		w.WriteHeader(http.StatusInternalServerError)
+		_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 		return
 	}
 	validationURL, err := rt.buildTicketValidationURL(req.EventID, code, signature)
@@ -109,10 +121,12 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		Code      string `json:"code"`
 		Signature string `json:"signature"`
 		QRData    string `json:"qr_data"`
-	}{Code: code, Signature: signature, QRData: validationURL}
+		Message   string `json:"message"`
+	}{Code: code, Signature: signature, QRData: validationURL, Message: "Voto registrato con successo."}
 
-	w.Header().Set("content-type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	if err := writeJSON(w, http.StatusOK, resp); err != nil {
+		ctx.Logger.WithError(err).Error("cannot encode vote response")
+	}
 	ctx.Logger.WithFields(map[string]interface{}{
 		"event_id":  req.EventID,
 		"player_id": req.PlayerID,

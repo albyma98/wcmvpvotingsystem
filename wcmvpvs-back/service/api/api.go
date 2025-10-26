@@ -92,6 +92,8 @@ func New(cfg Config) (Router, error) {
 		ticketValidationBaseURL: cfg.TicketValidationBaseURL,
 		adminSessions:           map[string]adminSession{},
 		sessionTimeout:          12 * time.Hour,
+		voteRateByDevice:        map[string][]time.Time{},
+		voteRateByIP:            map[string][]time.Time{},
 	}, nil
 }
 
@@ -111,6 +113,10 @@ type _router struct {
 	adminSessionsMu sync.RWMutex
 	adminSessions   map[string]adminSession
 	sessionTimeout  time.Duration
+
+	voteRateMu       sync.Mutex
+	voteRateByDevice map[string][]time.Time
+	voteRateByIP     map[string][]time.Time
 }
 
 type adminSession struct {
