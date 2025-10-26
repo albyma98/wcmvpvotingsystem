@@ -34,7 +34,7 @@ type WebAPIConfiguration struct {
 	}
 
 	Tickets struct {
-		ValidationBaseURL string `conf:"default:http://localhost:3000"`
+		ValidationBaseURL string `conf:"default:https://mvp.wearingcash.it"`
 	}
 
 	BootstrapAdmin struct {

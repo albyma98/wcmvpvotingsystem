@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 )
 
@@ -39,60 +43,19 @@ func (rt *_router) ticketValidationPage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	expectedSignature := signCode(rt.VoteSecret, code)
-	if !strings.EqualFold(expectedSignature, signature) {
-		logger.WithFields(map[string]interface{}{
-			"event_id": eventID,
-			"code":     code,
-		}).Warn("ticket validation signature mismatch")
-		renderInvalid(http.StatusBadRequest)
-		return
-	}
-
-	result, err := rt.db.ValidateTicket(eventID, code)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			logger.WithFields(map[string]interface{}{
-				"event_id": eventID,
-				"code":     code,
-			}).Warn("ticket validation - ticket not found")
+	outcome, status := rt.processTicketValidation(logger, eventID, code, signature)
+	if outcome.ErrorCode != "" {
+		if status >= http.StatusInternalServerError {
+			renderInvalid(http.StatusInternalServerError)
+		} else {
 			renderInvalid(http.StatusBadRequest)
-			return
 		}
-
-		logger.WithError(err).Error("ticket validation - database error")
-		renderInvalid(http.StatusInternalServerError)
-		return
-	}
-
-	if !strings.EqualFold(result.TicketSignature, expectedSignature) {
-		logger.WithFields(map[string]interface{}{
-			"event_id": eventID,
-			"code":     code,
-		}).Warn("ticket validation - stored signature mismatch")
-		renderInvalid(http.StatusBadRequest)
-		return
-	}
-
-	alreadyRedeemed, err := rt.db.RedeemTicket(eventID, code, expectedSignature)
-	if err != nil {
-		if errors.Is(err, database.ErrTicketSignatureMismatch) {
-			logger.WithFields(map[string]interface{}{
-				"event_id": eventID,
-				"code":     code,
-			}).Warn("ticket validation - redemption signature mismatch")
-			renderInvalid(http.StatusBadRequest)
-			return
-		}
-
-		logger.WithError(err).Error("ticket validation - cannot update redemption state")
-		renderInvalid(http.StatusInternalServerError)
 		return
 	}
 
 	message := "✅ QR VALIDO"
 	detail := ""
-	if alreadyRedeemed {
+	if outcome.AlreadyRedeemed {
 		detail = "Questo ticket risulta già riscattato."
 	}
 
@@ -103,7 +66,7 @@ func (rt *_router) ticketValidationPage(w http.ResponseWriter, r *http.Request) 
 	logger.WithFields(map[string]interface{}{
 		"event_id":        eventID,
 		"code":            code,
-		"alreadyRedeemed": alreadyRedeemed,
+		"alreadyRedeemed": outcome.AlreadyRedeemed,
 	}).Info("ticket validation completed")
 }
 
@@ -118,7 +81,7 @@ func (rt *_router) buildTicketValidationURL(eventID int, code, signature string)
 		return "", err
 	}
 
-	parsed.Path = strings.TrimSuffix(parsed.Path, "/") + "/t"
+	parsed.Path = strings.TrimSuffix(parsed.Path, "/") + "/lottery/validate"
 	q := parsed.Query()
 	q.Set("e", strconv.Itoa(eventID))
 	q.Set("c", code)
@@ -126,6 +89,85 @@ func (rt *_router) buildTicketValidationURL(eventID int, code, signature string)
 	parsed.RawQuery = q.Encode()
 
 	return parsed.String(), nil
+}
+
+type ticketValidationOutcome struct {
+	AlreadyRedeemed bool
+	ErrorCode       string
+}
+
+func (rt *_router) processTicketValidation(logger logrus.FieldLogger, eventID int, code, signature string) (ticketValidationOutcome, int) {
+	var outcome ticketValidationOutcome
+
+	if eventID <= 0 {
+		logger.WithField("event_id", eventID).Warn("ticket validation with invalid event id")
+		outcome.ErrorCode = "invalid_event_id"
+		return outcome, http.StatusBadRequest
+	}
+
+	code = strings.TrimSpace(code)
+	signature = strings.TrimSpace(signature)
+	if code == "" || signature == "" {
+		logger.WithFields(map[string]interface{}{
+			"event_id": eventID,
+		}).Warn("ticket validation missing code or signature")
+		outcome.ErrorCode = "missing_parameters"
+		return outcome, http.StatusBadRequest
+	}
+
+	expectedSignature := signCode(rt.VoteSecret, code)
+	if !strings.EqualFold(expectedSignature, signature) {
+		logger.WithFields(map[string]interface{}{
+			"event_id": eventID,
+			"code":     code,
+		}).Warn("ticket validation signature mismatch")
+		outcome.ErrorCode = "invalid_signature"
+		return outcome, http.StatusBadRequest
+	}
+
+	result, err := rt.db.ValidateTicket(eventID, code)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			logger.WithFields(map[string]interface{}{
+				"event_id": eventID,
+				"code":     code,
+			}).Warn("ticket validation - ticket not found")
+			outcome.ErrorCode = "ticket_not_found"
+			return outcome, http.StatusNotFound
+		}
+
+		logger.WithError(err).Error("ticket validation - database error")
+		outcome.ErrorCode = "internal_error"
+		return outcome, http.StatusInternalServerError
+	}
+
+	if !strings.EqualFold(result.TicketSignature, expectedSignature) {
+		logger.WithFields(map[string]interface{}{
+			"event_id": eventID,
+			"code":     code,
+		}).Warn("ticket validation - stored signature mismatch")
+		outcome.ErrorCode = "stored_signature_mismatch"
+		return outcome, http.StatusBadRequest
+	}
+
+	alreadyRedeemed, err := rt.db.RedeemTicket(eventID, code, expectedSignature)
+	if err != nil {
+		if errors.Is(err, database.ErrTicketSignatureMismatch) {
+			logger.WithFields(map[string]interface{}{
+				"event_id": eventID,
+				"code":     code,
+			}).Warn("ticket validation - redemption signature mismatch")
+			outcome.ErrorCode = "redemption_signature_mismatch"
+			return outcome, http.StatusBadRequest
+		}
+
+		logger.WithError(err).Error("ticket validation - cannot update redemption state")
+		outcome.ErrorCode = "internal_error"
+		return outcome, http.StatusInternalServerError
+	}
+
+	outcome.AlreadyRedeemed = alreadyRedeemed
+	return outcome, http.StatusOK
 }
 
 func ticketValidationHTML(mainText, detail string) string {
@@ -173,4 +215,34 @@ func ticketValidationHTML(mainText, detail string) string {
     </main>
 </body>
 </html>`, mainText, mainText, extra)
+}
+
+func (rt *_router) ticketValidationStatus(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	query := r.URL.Query()
+	eventIDStr := strings.TrimSpace(query.Get("e"))
+	code := strings.TrimSpace(query.Get("c"))
+	signature := strings.TrimSpace(query.Get("s"))
+
+	eventID, err := strconv.Atoi(eventIDStr)
+	if err != nil {
+		ctx.Logger.WithField("event_id", eventIDStr).Warn("ticket validation api request with invalid event id")
+		writeJSONError(w, http.StatusBadRequest, "invalid_event_id")
+		return
+	}
+
+	outcome, status := rt.processTicketValidation(ctx.Logger, eventID, code, signature)
+	if outcome.ErrorCode != "" {
+		writeJSONError(w, status, outcome.ErrorCode)
+		return
+	}
+
+	resp := struct {
+		Valid           bool `json:"valid"`
+		AlreadyRedeemed bool `json:"already_redeemed"`
+	}{Valid: true, AlreadyRedeemed: outcome.AlreadyRedeemed}
+
+	w.Header().Set("content-type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		ctx.Logger.WithError(err).Error("ticket validation api - cannot encode response")
+	}
 }
