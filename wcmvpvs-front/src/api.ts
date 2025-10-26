@@ -72,7 +72,8 @@ export async function vote({ eventId, playerId }) {
     return { ok: true, vote: voteData };
   } catch (error) {
     console.error('vote api error', error);
-    return { ok: false, error };
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    return { ok: false, error, status };
   }
 }
 
