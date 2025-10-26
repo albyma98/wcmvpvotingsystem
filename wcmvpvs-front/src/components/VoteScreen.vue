@@ -37,6 +37,28 @@ const isVoteTotalLoading = ref(false);
 const voteTotalError = ref('');
 const isRefreshingVoteTotal = ref(false);
 let voteTotalTimer = null;
+let countdownTimer = null;
+const nowTimestamp = ref(Date.now());
+
+const updateNowTimestamp = () => {
+  nowTimestamp.value = Date.now();
+};
+
+const stopCountdownTimer = () => {
+  if (typeof window !== 'undefined' && countdownTimer) {
+    window.clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+};
+
+const startCountdownTimer = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  stopCountdownTimer();
+  updateNowTimestamp();
+  countdownTimer = window.setInterval(updateNowTimestamp, 1000);
+};
 
 const formattedVoteTotal = computed(() =>
   Number.isFinite(totalVotes.value)
@@ -229,6 +251,125 @@ const isVotingClosed = computed(() => {
   return Boolean(raw);
 });
 
+const resolveEventStartValue = (event) => {
+  if (!event || typeof event !== 'object') {
+    return null;
+  }
+
+  const candidateKeys = [
+    'start_datetime',
+    'startDatetime',
+    'startDateTime',
+    'start_time',
+    'startTime',
+    'start_at',
+    'startAt',
+    'start',
+  ];
+
+  for (const key of candidateKeys) {
+    if (key in event) {
+      const value = event[key];
+      if (value instanceof Date) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed) {
+          return trimmed;
+        }
+      }
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+};
+
+const eventStartTimestamp = computed(() => {
+  const raw = resolveEventStartValue(props.activeEvent);
+  if (!raw) {
+    return null;
+  }
+
+  if (raw instanceof Date) {
+    const timestamp = raw.getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+
+  if (typeof raw === 'number') {
+    return raw > 0 ? raw : null;
+  }
+
+  if (typeof raw === 'string') {
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+    const parsed = new Date(normalized);
+    const timestamp = parsed.getTime();
+    return Number.isNaN(timestamp) ? null : timestamp;
+  }
+
+  return null;
+});
+
+const timeUntilEventStartMs = computed(() => {
+  const start = eventStartTimestamp.value;
+  if (!start) {
+    return 0;
+  }
+  const diff = start - nowTimestamp.value;
+  return diff > 0 ? diff : 0;
+});
+
+const countdownSeconds = computed(() => Math.ceil(timeUntilEventStartMs.value / 1000));
+
+const countdownParts = computed(() => {
+  const total = countdownSeconds.value;
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const totalHours = Math.floor(total / 3600);
+  return { days, hours, minutes, seconds, totalHours };
+});
+
+const countdownLabel = computed(() => {
+  const { totalHours, minutes, seconds } = countdownParts.value;
+  return [totalHours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
+});
+
+const countdownDaysLabel = computed(() => {
+  const { days, hours } = countdownParts.value;
+  if (days <= 0) {
+    return '';
+  }
+  const dayLabel = days === 1 ? 'giorno' : 'giorni';
+  const hourLabel = hours === 1 ? 'ora' : 'ore';
+  return `${days} ${dayLabel} e ${hours} ${hourLabel} rimanenti`;
+});
+
+const countdownStartTimeLabel = computed(() => {
+  const start = eventStartTimestamp.value;
+  if (!start) {
+    return '';
+  }
+  try {
+    return new Intl.DateTimeFormat('it-IT', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+    }).format(new Date(start));
+  } catch (error) {
+    const date = new Date(start);
+    if (typeof date.toLocaleString === 'function') {
+      return date.toLocaleString('it-IT');
+    }
+    return date.toString();
+  }
+});
+
+const isEventUpcoming = computed(() => timeUntilEventStartMs.value > 0);
+
 watch(currentEventId, (eventId) => {
   votedPlayerId.value = null;
   pendingPlayer.value = null;
@@ -270,6 +411,23 @@ watch(isVotingClosed, (closed) => {
   }
 });
 
+watch(
+  isEventUpcoming,
+  (upcoming) => {
+    if (upcoming) {
+      startCountdownTimer();
+      pendingPlayer.value = null;
+      showTicketModal.value = false;
+      showAlreadyVotedModal.value = false;
+      ticketLoadError.value = '';
+      isTicketLoading.value = false;
+    } else {
+      stopCountdownTimer();
+    }
+  },
+  { immediate: true },
+);
+
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const updateCardSize = () => {
@@ -294,15 +452,20 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateCardSize);
   stopVoteTotalPolling();
+  stopCountdownTimer();
 });
 
 const disableVotes = computed(
   () =>
-    Boolean(votedPlayerId.value) || showInactiveNotice.value || isCheckingActiveEvent.value || isVotingClosed.value,
+    Boolean(votedPlayerId.value) ||
+    showInactiveNotice.value ||
+    isCheckingActiveEvent.value ||
+    isVotingClosed.value ||
+    isEventUpcoming.value,
 );
 
 const openPlayerModal = (player) => {
-  if (isVotingClosed.value) {
+  if (isVotingClosed.value || isEventUpcoming.value) {
     return;
   }
 
@@ -333,7 +496,7 @@ const closeAlreadyVotedModal = () => {
 };
 
 const voteForPlayer = async (player) => {
-  if (isVotingClosed.value) {
+  if (isVotingClosed.value || isEventUpcoming.value) {
     return;
   }
 
@@ -457,8 +620,11 @@ const handleQrError = () => {
             <h2 class="text-lg font-semibold uppercase tracking-[0.1em] text-slate-200">
               {{ eventTitle }}
             </h2>
-            <p class="mt-2 text-sm text-slate-300">
+            <p v-if="!isEventUpcoming" class="mt-2 text-sm text-slate-300">
               Tocca la card del tuo giocatore preferito per assegnarli il voto
+            </p>
+            <p v-else class="mt-2 text-sm text-slate-300">
+              La votazione sarà disponibile all'inizio della partita.
             </p>
           </div>
           <div v-if="fieldPlayers.length" class="relative h-[95svh]">
@@ -603,6 +769,26 @@ const handleQrError = () => {
         </template>
       </div>
     </div>
+
+    <transition name="fade">
+      <div
+        v-if="!showInactiveNotice && isEventUpcoming"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 px-6 py-10"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="countdown-title"
+      >
+        <div class="countdown-dialog">
+          <p id="countdown-title" class="countdown-dialog__title">La votazione inizierà a breve</p>
+          <p class="countdown-dialog__subtitle">Il voto sarà disponibile tra</p>
+          <p class="countdown-timer">{{ countdownLabel }}</p>
+          <p v-if="countdownDaysLabel" class="countdown-dialog__details">{{ countdownDaysLabel }}</p>
+          <p v-if="countdownStartTimeLabel" class="countdown-dialog__details">
+            Inizio previsto: {{ countdownStartTimeLabel }}
+          </p>
+        </div>
+      </div>
+    </transition>
 
     <transition name="fade">
       <div
@@ -814,6 +1000,49 @@ const handleQrError = () => {
   border: 4px solid rgba(148, 163, 184, 0.25);
   border-top-color: #fbbf24;
   animation: qr-spin 0.9s linear infinite;
+}
+
+.countdown-dialog {
+  width: 100%;
+  max-width: 480px;
+  padding: 2.75rem 2.25rem;
+  border-radius: 2.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 35px 60px rgba(15, 23, 42, 0.6);
+  text-align: center;
+}
+
+.countdown-dialog__title {
+  margin: 0;
+  font-size: 1.1rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #fbbf24;
+}
+
+.countdown-dialog__subtitle {
+  margin: 1rem 0 0;
+  font-size: 0.9rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #cbd5f5;
+}
+
+.countdown-timer {
+  margin: 1.75rem 0 1rem;
+  font-size: clamp(2.75rem, 8vw, 3.75rem);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #38bdf8;
+  text-shadow: 0 18px 36px rgba(56, 189, 248, 0.45);
+}
+
+.countdown-dialog__details {
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: #e2e8f0;
 }
 
 .vote-counter {
