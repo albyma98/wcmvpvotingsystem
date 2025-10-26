@@ -522,7 +522,7 @@ const confirmVote = () => {
               SENZA LO SCREENSHOT IL PREMIO NON POTRA' ESSERE ASSEGNATO.
             </p>
           </div>
-          <div class="mt-5 flex flex-col items-center gap-2 text-xs text-slate-200">
+          <div class="mt-5 flex flex-col items-center gap-2 text-lg text-slate-200">
             <p class="font-bold tracking-[0.2em]">Codice: {{ ticketCode }}</p>
           </div>
           <img
