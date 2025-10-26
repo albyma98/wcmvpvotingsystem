@@ -174,6 +174,7 @@ type AppDatabase interface {
 	AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize, error)
 	ClearPrizeWinner(eventID, prizeID int) error
 	GetEventResults(eventID int) ([]EventVoteResult, error)
+	GetEventVoteCount(eventID int) (int, error)
 	DeleteVote(id int) error
 	CreateAdmin(a Admin) (int, error)
 	ListAdmins() ([]Admin, error)
@@ -329,6 +330,9 @@ func New(db *sql.DB) (AppDatabase, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error ensuring votes code index: %w", err)
 	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_votes_event ON votes (event_id);`); err != nil {
+		return nil, fmt.Errorf("error ensuring votes event index: %w", err)
+	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tickets';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -381,6 +385,16 @@ func (db *appdbimpl) Ping() error {
 func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string) error {
 	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id) VALUES (?, ?, ?, ?, ?)`, eventID, playerID, code, signature, deviceID)
 	return err
+}
+
+// GetEventVoteCount returns the total number of votes for a specific event
+func (db *appdbimpl) GetEventVoteCount(eventID int) (int, error) {
+	var count int
+	err := db.c.QueryRow(`SELECT COUNT(1) FROM votes WHERE event_id = ?`, eventID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 // Team operations

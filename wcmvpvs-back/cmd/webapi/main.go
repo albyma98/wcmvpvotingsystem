@@ -126,6 +126,21 @@ func run() error {
 		logger.WithError(err).Error("error opening SQLite DB")
 		return fmt.Errorf("opening SQLite: %w", err)
 	}
+	dbconn.SetMaxOpenConns(24)
+	dbconn.SetMaxIdleConns(24)
+	dbconn.SetConnMaxLifetime(0)
+	if _, err := dbconn.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
+		logger.WithError(err).Warn("unable to enable WAL journal mode")
+	}
+	if _, err := dbconn.Exec(`PRAGMA synchronous=NORMAL;`); err != nil {
+		logger.WithError(err).Warn("unable to tune synchronous mode")
+	}
+	if _, err := dbconn.Exec(`PRAGMA busy_timeout=5000;`); err != nil {
+		logger.WithError(err).Warn("unable to configure busy timeout")
+	}
+	if _, err := dbconn.Exec(`PRAGMA foreign_keys=ON;`); err != nil {
+		logger.WithError(err).Warn("unable to enforce foreign keys")
+	}
 	defer func() {
 		logger.Debug("database stopping")
 		_ = dbconn.Close()
