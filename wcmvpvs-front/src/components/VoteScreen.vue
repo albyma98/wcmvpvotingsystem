@@ -489,26 +489,6 @@ const handleQrError = () => {
           </p>
         </section>
 
-        <section v-if="currentEventId" class="px-4">
-          <div class="vote-counter" role="status" aria-live="polite">
-            <div class="vote-counter__header">
-              <p class="vote-counter__title">Totale voti registrati</p>
-              <span
-                v-if="isVoteTotalLoading"
-                class="vote-counter__spinner"
-                aria-hidden="true"
-              ></span>
-            </div>
-            <p class="vote-counter__value">{{ formattedVoteTotal }}</p>
-            <p v-if="voteTotalError" class="vote-counter__message error">
-              {{ voteTotalError }}
-            </p>
-            <p v-else class="vote-counter__message">
-              Aggiornamento automatico ogni pochi secondi
-            </p>
-          </div>
-        </section>
-
         <section v-if="sponsors.length" class="px-4">
           <div
             class="relative overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
@@ -571,6 +551,26 @@ const handleQrError = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section v-if="currentEventId" class="px-4">
+          <div class="vote-counter" role="status" aria-live="polite">
+            <div class="vote-counter__header">
+              <p class="vote-counter__title">Totale voti registrati</p>
+              <span
+                v-if="isVoteTotalLoading"
+                class="vote-counter__spinner"
+                aria-hidden="true"
+              ></span>
+            </div>
+            <p class="vote-counter__value">{{ formattedVoteTotal }}</p>
+            <p v-if="voteTotalError" class="vote-counter__message error">
+              {{ voteTotalError }}
+            </p>
+            <p v-else class="vote-counter__message">
+              Aggiornamento automatico ogni pochi secondi
+            </p>
           </div>
         </section>
 
