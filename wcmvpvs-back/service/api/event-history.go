@@ -262,13 +262,16 @@ func buildVoteTimeline(start time.Time, votes []time.Time) []historyTimelineBuck
 		bucketCount = 1
 	}
 
+	windowStart := start.Add(-1 * time.Hour)
+
 	counts := make([]int, bucketCount)
 	for _, ts := range votes {
 		if ts.IsZero() {
 			continue
 		}
+
+		diff := ts.Sub(windowStart)
 		index := 0
-		diff := ts.Sub(start)
 		if diff > 0 {
 			index = int(diff / bucketDuration)
 			if index >= bucketCount {
@@ -280,7 +283,7 @@ func buildVoteTimeline(start time.Time, votes []time.Time) []historyTimelineBuck
 
 	timeline := make([]historyTimelineBucket, 0, bucketCount)
 	for i := 0; i < bucketCount; i++ {
-		bucketStart := start.Add(time.Duration(i) * bucketDuration)
+		bucketStart := windowStart.Add(time.Duration(i) * bucketDuration)
 		bucketEnd := bucketStart.Add(bucketDuration)
 		timeline = append(timeline, historyTimelineBucket{
 			Start: bucketStart.UTC().Format(time.RFC3339),

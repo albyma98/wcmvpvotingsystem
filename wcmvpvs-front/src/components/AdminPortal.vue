@@ -436,7 +436,7 @@
             </div>
 
             <div class="history-chart-wrapper" v-if="entry.timeline.length">
-              <h4>Andamento voti (prime 3 ore)</h4>
+              <h4>Andamento voti (da 1 ora prima a 2 ore dopo)</h4>
               <div class="history-chart" role="img" :aria-label="`Andamento voti per ${entry.title}`">
                 <div
                   v-for="bucket in entry.timeline"
