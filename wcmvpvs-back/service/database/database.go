@@ -63,6 +63,7 @@ type Event struct {
 	Location      string       `json:"location"`
 	IsActive      bool         `json:"is_active"`
 	VotesClosed   bool         `json:"votes_closed"`
+	IsConcluded   bool         `json:"is_concluded"`
 	Team1Name     string       `json:"team1_name,omitempty"`
 	Team2Name     string       `json:"team2_name,omitempty"`
 	Prizes        []EventPrize `json:"prizes,omitempty"`
@@ -181,6 +182,7 @@ type AppDatabase interface {
 	SetActiveEvent(eventID int) error
 	ClearActiveEvent() error
 	CloseEventVoting(eventID int) error
+	ConcludeEvent(eventID int) error
 	GetActiveEvent() (Event, error)
 	ListVotes() ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
@@ -226,6 +228,7 @@ var (
 	ErrPrizeVoteMismatch       = errors.New("selected ticket is not valid for this event")
 	ErrPrizeLockedByWinner     = errors.New("cannot remove a prize that already has a winner")
 	ErrTicketSignatureMismatch = errors.New("ticket signature mismatch")
+	ErrEventAlreadyConcluded   = errors.New("event already concluded")
 )
 
 // New returns a new instance of AppDatabase based on the SQLite connection `db`.
@@ -318,6 +321,12 @@ func New(db *sql.DB) (AppDatabase, error) {
 	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN votes_closed INTEGER NOT NULL DEFAULT 0`); err != nil {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring events votes closed column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN is_concluded INTEGER NOT NULL DEFAULT 0`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events concluded column: %w", err)
 		}
 	}
 
@@ -708,6 +717,7 @@ SELECT e.id,
        e.location,
        e.is_active,
        e.votes_closed,
+       e.is_concluded,
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -722,11 +732,13 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 		var e Event
 		var isActive int
 		var votesClosed int
-		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &e.Team1Name, &e.Team2Name); err != nil {
+		var isConcluded int
+		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &e.Team1Name, &e.Team2Name); err != nil {
 			return nil, err
 		}
 		e.IsActive = isActive == 1
 		e.VotesClosed = votesClosed == 1
+		e.IsConcluded = isConcluded == 1
 		es = append(es, e)
 	}
 	for i := range es {
@@ -820,7 +832,7 @@ func (db *appdbimpl) SetActiveEvent(eventID int) error {
 		return err
 	}
 
-	res, err := tx.Exec(`UPDATE events SET is_active = 1, votes_closed = 0 WHERE id = ?`, eventID)
+	res, err := tx.Exec(`UPDATE events SET is_active = 1, votes_closed = 0 WHERE id = ? AND is_concluded = 0`, eventID)
 	if err != nil {
 		return err
 	}
@@ -829,6 +841,17 @@ func (db *appdbimpl) SetActiveEvent(eventID int) error {
 		return err
 	}
 	if affected == 0 {
+		var concluded int
+		err := tx.QueryRow(`SELECT is_concluded FROM events WHERE id = ?`, eventID).Scan(&concluded)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return sql.ErrNoRows
+			}
+			return err
+		}
+		if concluded == 1 {
+			return ErrEventAlreadyConcluded
+		}
 		return sql.ErrNoRows
 	}
 
@@ -841,7 +864,7 @@ func (db *appdbimpl) ClearActiveEvent() error {
 }
 
 func (db *appdbimpl) CloseEventVoting(eventID int) error {
-	res, err := db.c.Exec(`UPDATE events SET votes_closed = 1 WHERE id = ? AND is_active = 1`, eventID)
+	res, err := db.c.Exec(`UPDATE events SET votes_closed = 1 WHERE id = ? AND is_active = 1 AND is_concluded = 0`, eventID)
 	if err != nil {
 		return err
 	}
@@ -855,10 +878,36 @@ func (db *appdbimpl) CloseEventVoting(eventID int) error {
 	return nil
 }
 
+func (db *appdbimpl) ConcludeEvent(eventID int) error {
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var concluded int
+	if err := tx.QueryRow(`SELECT is_concluded FROM events WHERE id = ?`, eventID).Scan(&concluded); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return sql.ErrNoRows
+		}
+		return err
+	}
+	if concluded == 1 {
+		return ErrEventAlreadyConcluded
+	}
+
+	if _, err := tx.Exec(`UPDATE events SET is_active = 0, votes_closed = 1, is_concluded = 1 WHERE id = ?`, eventID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (db *appdbimpl) GetActiveEvent() (Event, error) {
 	var e Event
 	var isActive int
 	var votesClosed int
+	var isConcluded int
 	err := db.c.QueryRow(`
 SELECT e.id,
        e.team1_id,
@@ -867,6 +916,7 @@ SELECT e.id,
        e.location,
        e.is_active,
        e.votes_closed,
+       e.is_concluded,
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -874,12 +924,13 @@ LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
 WHERE e.is_active = 1
 LIMIT 1
-`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &e.Team1Name, &e.Team2Name)
+`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &e.Team1Name, &e.Team2Name)
 	if err != nil {
 		return Event{}, err
 	}
 	e.IsActive = isActive == 1
 	e.VotesClosed = votesClosed == 1
+	e.IsConcluded = isConcluded == 1
 	return e, nil
 }
 

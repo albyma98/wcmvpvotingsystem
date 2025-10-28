@@ -223,12 +223,15 @@ func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ctx req
 	}
 
 	if err := rt.db.SetActiveEvent(id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
 			w.WriteHeader(http.StatusNotFound)
-			return
+		case errors.Is(err, database.ErrEventAlreadyConcluded):
+			w.WriteHeader(http.StatusConflict)
+		default:
+			ctx.Logger.WithError(err).Error("cannot activate event")
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		ctx.Logger.WithError(err).Error("cannot activate event")
-		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -256,6 +259,31 @@ func (rt *_router) closeEventVoting(w http.ResponseWriter, r *http.Request, ctx 
 
 	w.WriteHeader(http.StatusNoContent)
 	ctx.Logger.WithField("event_id", id).Info("event voting closed")
+}
+
+func (rt *_router) concludeEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil || id <= 0 {
+		ctx.Logger.Warn("invalid event id while concluding event")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := rt.db.ConcludeEvent(id); err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			w.WriteHeader(http.StatusNotFound)
+		case errors.Is(err, database.ErrEventAlreadyConcluded):
+			w.WriteHeader(http.StatusConflict)
+		default:
+			ctx.Logger.WithError(err).Error("cannot conclude event")
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithField("event_id", id).Info("event concluded")
 }
 
 func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

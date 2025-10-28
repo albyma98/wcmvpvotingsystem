@@ -162,7 +162,7 @@
         </div>
 
         <ul class="item-list">
-          <li v-for="event in events" :key="event.id" :class="['item', { active: event.is_active }]">
+          <li v-for="event in visibleEvents" :key="event.id" :class="['item', { active: event.is_active }]">
             <div class="item-body">
               <h3>
                 {{ eventLabel(event) }}
@@ -192,6 +192,15 @@
                 <span v-else>Attiva</span>
               </button>
               <button class="btn secondary" type="button" @click="openVote(event.id)">Apri pagina voto</button>
+              <button
+                class="btn warning"
+                type="button"
+                @click="concludeEvent(event.id)"
+                :disabled="concludingEventId === event.id"
+              >
+                <span v-if="concludingEventId === event.id">Conclusione…</span>
+                <span v-else>Evento terminato</span>
+              </button>
               <button class="btn danger" type="button" @click="deleteEvent(event.id)">Elimina</button>
             </div>
             <div class="prize-editor existing-prizes">
@@ -767,6 +776,7 @@ const purgeDialog = reactive({
   isSubmitting: false,
 });
 const updatingEventId = ref(0);
+const concludingEventId = ref(0);
 const isDisablingEvents = ref(false);
 const selectedResultsEventId = ref(0);
 const eventResults = ref([]);
@@ -1165,6 +1175,8 @@ const savePlayers = async () => {
 };
 
 const hasEnoughTeams = computed(() => teams.value.length >= 2);
+const visibleEvents = computed(() => events.value.filter((event) => !event.is_concluded));
+
 const activeEventId = computed(() => {
   const activeEvent = events.value.find((event) => event.is_active);
   return activeEvent ? activeEvent.id : 0;
@@ -1373,7 +1385,10 @@ watch(hasEnoughTeams, (enough) => {
 
 watch(events, (value) => {
   ensureResultsSelection();
-  syncEventPrizeDrafts(Array.isArray(value) ? value : []);
+  const editableEvents = Array.isArray(value)
+    ? value.filter((event) => !event.is_concluded)
+    : [];
+  syncEventPrizeDrafts(editableEvents);
   if (section.value === 'results' && selectedResultsEventId.value) {
     fetchEventResults();
   }
@@ -1533,6 +1548,9 @@ function normalizePrizeResponse(prize, index = 0) {
 
 function normalizeEventResponse(event) {
   const normalized = { ...event };
+  normalized.is_active = Boolean(event?.is_active);
+  normalized.votes_closed = Boolean(event?.votes_closed);
+  normalized.is_concluded = Boolean(event?.is_concluded);
   if (Array.isArray(event.prizes)) {
     const mapped = event.prizes
       .map((prize, index) => normalizePrizeResponse(prize, index))
@@ -2306,6 +2324,40 @@ async function deactivateEvents() {
     await loadEvents();
   } finally {
     isDisablingEvents.value = false;
+  }
+}
+
+async function concludeEvent(id) {
+  if (concludingEventId.value === id) {
+    return;
+  }
+  globalError.value = '';
+  closeVotesMessage.value = '';
+  const eventInfo = events.value.find((event) => event.id === id);
+  const concludedLabel = eventInfo ? eventLabel(eventInfo) : '';
+  concludingEventId.value = id;
+  try {
+    await secureRequest(() => apiClient.post(`/events/${id}/conclude`, {}, authHeaders.value));
+    await loadEvents();
+    await loadEventHistory({ force: true });
+    if (!eventHistoryError.value) {
+      eventHistorySuccess.value = concludedLabel
+        ? `Evento "${concludedLabel}" spostato nello storico.`
+        : 'Evento spostato nello storico.';
+    }
+  } catch (error) {
+    const status = error?.response?.status;
+    if (status === 401) {
+      return;
+    }
+    if (status === 404) {
+      globalError.value = 'Evento non trovato o già rimosso.';
+    } else if (status === 409) {
+      globalError.value = "L'evento è già stato segnato come concluso.";
+    }
+    await loadEvents();
+  } finally {
+    concludingEventId.value = 0;
   }
 }
 
