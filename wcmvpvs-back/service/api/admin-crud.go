@@ -643,7 +643,7 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 
-	token, err := rt.createAdminSession(admin.ID)
+	token, err := rt.createAdminSession(admin.ID, admin.Username, admin.Role)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot create admin session")
 		w.WriteHeader(http.StatusInternalServerError)

@@ -18,4 +18,13 @@ type RequestContext struct {
 
 	// Logger is a custom field logger for the request
 	Logger logrus.FieldLogger
+
+	// AdminID is filled for authenticated admin requests. Zero if the request is not authenticated as admin.
+	AdminID int
+
+	// AdminRole is the role associated with the authenticated admin (e.g. "superadmin"). Empty if not available.
+	AdminRole string
+
+	// AdminUsername is the username associated with the authenticated admin. Empty if unauthenticated.
+	AdminUsername string
 }

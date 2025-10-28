@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 // AppDatabase is the high level interface for the DB
@@ -145,6 +146,21 @@ type Sponsor struct {
 	IsActive bool   `json:"is_active"`
 }
 
+type SponsorClickStat struct {
+	SponsorID int    `json:"sponsor_id"`
+	Name      string `json:"name"`
+	LinkURL   string `json:"link_url"`
+	Clicks    int    `json:"clicks"`
+}
+
+type EventMVP struct {
+	PlayerID   int    `json:"player_id"`
+	FirstName  string `json:"first_name"`
+	LastName   string `json:"last_name"`
+	Votes      int    `json:"votes"`
+	LastVoteAt string `json:"last_vote_at"`
+}
+
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
 	GetName() (string, error)
@@ -175,17 +191,23 @@ type AppDatabase interface {
 	ClearPrizeWinner(eventID, prizeID int) error
 	GetEventResults(eventID int) ([]EventVoteResult, error)
 	GetEventVoteCount(eventID int) (int, error)
+	ListEventVoteTimestamps(eventID int) ([]time.Time, error)
+	GetEventMVP(eventID int) (EventMVP, error)
 	DeleteVote(id int) error
 	CreateAdmin(a Admin) (int, error)
 	ListAdmins() ([]Admin, error)
 	UpdateAdmin(a Admin) error
 	DeleteAdmin(id int) error
 	GetAdminByUsername(username string) (Admin, error)
+	GetAdminByID(id int) (Admin, error)
 	CreateSponsor(s Sponsor) (int, error)
 	UpdateSponsor(s Sponsor) error
 	DeleteSponsor(id int) error
 	ListSponsors() ([]Sponsor, error)
 	ListActiveSponsors() ([]Sponsor, error)
+	RecordSponsorClick(eventID, sponsorID int) error
+	GetSponsorClickStats(eventID int) ([]SponsorClickStat, error)
+	PurgeEventData(eventID int) error
 	Ping() error
 }
 
@@ -372,6 +394,31 @@ func New(db *sql.DB) (AppDatabase, error) {
 		}
 	}
 
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsor_clicks';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE sponsor_clicks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        sponsor_id INTEGER NOT NULL,
+        clicked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+        FOREIGN KEY (sponsor_id) REFERENCES sponsors(id) ON DELETE CASCADE
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating sponsor_clicks table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying sponsor_clicks table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_clicks_event ON sponsor_clicks(event_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring sponsor_clicks event index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_clicks_sponsor ON sponsor_clicks(sponsor_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring sponsor_clicks sponsor index: %w", err)
+	}
+
 	return &appdbimpl{
 		c: db,
 	}, nil
@@ -395,6 +442,63 @@ func (db *appdbimpl) GetEventVoteCount(eventID int) (int, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+func (db *appdbimpl) ListEventVoteTimestamps(eventID int) ([]time.Time, error) {
+	rows, err := db.c.Query(`SELECT created_at FROM votes WHERE event_id = ? ORDER BY created_at ASC`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var timestamps []time.Time
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		ts, parseErr := parseSQLiteTimestamp(raw)
+		if parseErr != nil {
+			continue
+		}
+		timestamps = append(timestamps, ts)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return timestamps, nil
+}
+
+func (db *appdbimpl) GetEventMVP(eventID int) (EventMVP, error) {
+	row := db.c.QueryRow(`
+SELECT v.player_id,
+       IFNULL(p.first_name, ''),
+        IFNULL(p.last_name, ''),
+        COUNT(v.id) AS votes,
+        IFNULL(MAX(v.created_at), '')
+FROM votes v
+INNER JOIN players p ON p.id = v.player_id
+WHERE v.event_id = ?
+GROUP BY v.player_id, p.first_name, p.last_name
+ORDER BY votes DESC, MAX(v.created_at) DESC, v.player_id ASC
+LIMIT 1
+`, eventID)
+
+	var mvp EventMVP
+	var lastVoteRaw string
+	if err := row.Scan(&mvp.PlayerID, &mvp.FirstName, &mvp.LastName, &mvp.Votes, &lastVoteRaw); err != nil {
+		return EventMVP{}, err
+	}
+
+	if ts, err := parseSQLiteTimestamp(lastVoteRaw); err == nil && !ts.IsZero() {
+		mvp.LastVoteAt = ts.UTC().Format(time.RFC3339)
+	} else {
+		mvp.LastVoteAt = strings.TrimSpace(lastVoteRaw)
+	}
+
+	return mvp, nil
 }
 
 // Team operations
@@ -655,17 +759,51 @@ func (db *appdbimpl) UpdateEvent(e Event) error {
 }
 
 func (db *appdbimpl) DeleteEvent(id int) error {
+	return db.PurgeEventData(id)
+}
+
+func (db *appdbimpl) PurgeEventData(eventID int) error {
+	if eventID <= 0 {
+		return sql.ErrNoRows
+	}
+
 	tx, err := db.c.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`DELETE FROM event_prizes WHERE event_id=?`, id); err != nil {
+	if _, err := tx.Exec(`UPDATE event_prizes SET winner_vote_id = NULL, winner_assigned_at = NULL WHERE event_id = ?`, eventID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM events WHERE id=?`, id); err != nil {
+
+	if _, err := tx.Exec(`DELETE FROM sponsor_clicks WHERE event_id = ?`, eventID); err != nil {
 		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM votes WHERE event_id = ?`, eventID); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM tickets WHERE event_id = ?`, eventID); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM event_prizes WHERE event_id = ?`, eventID); err != nil {
+		return err
+	}
+
+	res, err := tx.Exec(`DELETE FROM events WHERE id = ?`, eventID)
+	if err != nil {
+		return err
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
 	}
 
 	return tx.Commit()
@@ -1125,6 +1263,15 @@ func (db *appdbimpl) GetAdminByUsername(username string) (Admin, error) {
 	return admin, nil
 }
 
+func (db *appdbimpl) GetAdminByID(id int) (Admin, error) {
+	var admin Admin
+	err := db.c.QueryRow(`SELECT id, username, password_hash, role, created_at FROM admins WHERE id = ?`, id).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.Role, &admin.CreatedAt)
+	if err != nil {
+		return Admin{}, err
+	}
+	return admin, nil
+}
+
 // Sponsor operations
 func (db *appdbimpl) CreateSponsor(s Sponsor) (int, error) {
 	sanitizedName := strings.TrimSpace(s.Name)
@@ -1222,6 +1369,49 @@ func (db *appdbimpl) ListActiveSponsors() ([]Sponsor, error) {
 	return db.querySponsors(true)
 }
 
+func (db *appdbimpl) RecordSponsorClick(eventID, sponsorID int) error {
+	if eventID <= 0 || sponsorID <= 0 {
+		return sql.ErrNoRows
+	}
+	_, err := db.c.Exec(`INSERT INTO sponsor_clicks (event_id, sponsor_id) VALUES (?, ?)`, eventID, sponsorID)
+	return err
+}
+
+func (db *appdbimpl) GetSponsorClickStats(eventID int) ([]SponsorClickStat, error) {
+	rows, err := db.c.Query(`
+SELECT s.id,
+       IFNULL(s.name, ''),
+       IFNULL(s.link_url, ''),
+       COUNT(c.id) AS clicks,
+       IFNULL(s.position, 0)
+FROM sponsor_clicks c
+INNER JOIN sponsors s ON s.id = c.sponsor_id
+WHERE c.event_id = ?
+GROUP BY s.id, s.name, s.link_url, s.position
+ORDER BY s.position ASC, s.id ASC
+`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []SponsorClickStat
+	for rows.Next() {
+		var stat SponsorClickStat
+		var position int
+		if err := rows.Scan(&stat.SponsorID, &stat.Name, &stat.LinkURL, &stat.Clicks, &position); err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
 func (db *appdbimpl) querySponsors(activeOnly bool) ([]Sponsor, error) {
 	baseQuery := `SELECT id, position, name, logo_data, IFNULL(link_url, ''), is_active FROM sponsors`
 	if activeOnly {
@@ -1292,6 +1482,39 @@ func (db *appdbimpl) normalizeSponsorPositions() error {
 		position++
 	}
 	return nil
+}
+
+func parseSQLiteTimestamp(value string) (time.Time, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return time.Time{}, fmt.Errorf("empty timestamp")
+	}
+
+	candidates := []string{trimmed}
+	if !strings.Contains(trimmed, "T") {
+		candidates = append(candidates, strings.Replace(trimmed, " ", "T", 1))
+	}
+
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.000000000",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02T15:04:05.000000000",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+	}
+
+	for _, candidate := range candidates {
+		for _, layout := range layouts {
+			if ts, err := time.ParseInLocation(layout, candidate, time.UTC); err == nil {
+				return ts, nil
+			}
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unsupported timestamp format: %s", value)
 }
 
 func boolToInt(value bool) int {

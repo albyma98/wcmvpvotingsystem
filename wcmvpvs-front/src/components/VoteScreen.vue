@@ -151,6 +151,70 @@ async function loadSponsors() {
   }
 }
 
+function resolveApiUrl(path) {
+  const sanitizedPath = path.startsWith('/') ? path : `/${path}`;
+  const baseURL = apiClient.defaults?.baseURL;
+  if (typeof baseURL === 'string' && baseURL) {
+    try {
+      return new URL(sanitizedPath, baseURL).toString();
+    } catch (error) {
+      if (typeof window !== 'undefined') {
+        try {
+          const originBase = baseURL.startsWith('/')
+            ? `${window.location.origin}${baseURL}`
+            : baseURL;
+          return new URL(sanitizedPath, originBase).toString();
+        } catch (innerError) {
+          // ignore and fall back below
+        }
+      }
+    }
+  }
+  if (typeof window !== 'undefined') {
+    return new URL(sanitizedPath, window.location.origin).toString();
+  }
+  return sanitizedPath;
+}
+
+function recordSponsorClick(sponsor) {
+  if (!sponsor || !sponsor.id) {
+    return;
+  }
+  const eventId = currentEventId.value;
+  if (!eventId) {
+    return;
+  }
+  const endpoint = `/events/${eventId}/sponsors/${sponsor.id}/click`;
+  const url = resolveApiUrl(endpoint);
+  const payload = JSON.stringify({ at: new Date().toISOString() });
+
+  if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    try {
+      const blob = new Blob([payload], { type: 'application/json' });
+      navigator.sendBeacon(url, blob);
+      return;
+    } catch (error) {
+      // ignore and try fetch fallback
+    }
+  }
+
+  if (typeof fetch === 'function') {
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      keepalive: true,
+    }).catch(() => {});
+    return;
+  }
+
+  apiClient.post(endpoint).catch(() => {});
+}
+
+const handleSponsorClick = (sponsor) => {
+  recordSponsorClick(sponsor);
+};
+
 async function loadPlayers() {
   isLoadingPlayers.value = true;
   playersError.value = '';
@@ -683,6 +747,7 @@ const handleQrError = () => {
                       target="_blank"
                       rel="noopener noreferrer"
                       :aria-label="sponsor.name"
+                      @click="handleSponsorClick(sponsor)"
                     >
                       <div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
                       <img
