@@ -8,17 +8,21 @@ import (
 )
 
 const (
-	voteDeviceLimit       = 5
-	voteDeviceWindow      = 30 * time.Second
-	voteIPLimit           = 40
-	voteIPWindow          = 10 * time.Second
-	voteThrottleMessage   = "Stai tentando di votare troppo frequentemente. Attendi qualche secondo e riprova."
-	voteThrottleIPMessage = "Troppi tentativi ravvicinati da questo indirizzo. Attendi qualche istante e riprova."
+	voteDeviceLimit        = 5
+	voteDeviceWindow       = 30 * time.Second
+	voteFingerprintLimit   = 3
+	voteFingerprintWindow  = time.Minute
+	voteIPLimit            = 40
+	voteIPWindow           = 10 * time.Second
+	voteThrottleMessage    = "Stai tentando di votare troppo frequentemente. Attendi qualche secondo e riprova."
+	voteThrottleIPMessage  = "Troppi tentativi ravvicinati da questo indirizzo. Attendi qualche istante e riprova."
+	voteFingerprintMessage = "Stiamo verificando il dispositivo. Completa il controllo e riprova tra qualche secondo."
 )
 
 var voteThrottleMessages = map[string]string{
-	"device": voteThrottleMessage,
-	"ip":     voteThrottleIPMessage,
+	"device":      voteThrottleMessage,
+	"fingerprint": voteFingerprintMessage,
+	"ip":          voteThrottleIPMessage,
 }
 
 func (rt *_router) getClientIP(r *http.Request) string {
@@ -64,13 +68,19 @@ func (rt *_router) recordAttempt(store map[string][]time.Time, key string, now t
 	return true
 }
 
-func (rt *_router) shouldThrottleVoteAttempt(deviceID, ip string, now time.Time) (bool, string) {
+func (rt *_router) shouldThrottleVoteAttempt(deviceKey, fingerprintKey, ip string, now time.Time) (bool, string) {
 	rt.voteRateMu.Lock()
 	defer rt.voteRateMu.Unlock()
 
-	if deviceID != "" {
-		if !rt.recordAttempt(rt.voteRateByDevice, deviceID, now, voteDeviceLimit, voteDeviceWindow) {
+	if deviceKey != "" {
+		if !rt.recordAttempt(rt.voteRateByDevice, deviceKey, now, voteDeviceLimit, voteDeviceWindow) {
 			return true, voteThrottleMessages["device"]
+		}
+	}
+
+	if fingerprintKey != "" {
+		if !rt.recordAttempt(rt.voteRateByFingerprint, fingerprintKey, now, voteFingerprintLimit, voteFingerprintWindow) {
+			return true, voteThrottleMessages["fingerprint"]
 		}
 	}
 

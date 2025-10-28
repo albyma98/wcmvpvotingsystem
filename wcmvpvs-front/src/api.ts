@@ -1,72 +1,41 @@
 import axios from 'axios';
-import { getOrCreateDeviceId } from './deviceId';
-
-const ensureApiPath = (baseUrl: string) => {
-  const sanitized = baseUrl.replace(/\/+$/, '');
-  if (sanitized === '' || sanitized === '.') {
-    return '/api';
-  }
-
-  if (/\/api$/i.test(sanitized)) {
-    return sanitized;
-  }
-
-  return `${sanitized}/api`;
-};
-
-const resolveApiBaseUrl = () => {
-  const envUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-  const resolveFromWindow = () => {
-    if (typeof window === 'undefined') {
-      return { hostname: 'localhost', protocol: 'http:', port: '' };
-    }
-    return {
-      hostname: window.location.hostname || 'localhost',
-      protocol: window.location.protocol || 'http:',
-      port: window.location.port || '',
-    };
-  };
-
-  if (envUrl) {
-    if (envUrl.toLowerCase() === 'auto') {
-      // fall through to auto-detected host/port
-    } else if (envUrl.includes('{host}')) {
-      const { hostname } = resolveFromWindow();
-      return envUrl.replace('{host}', hostname).replace(/\/+$/, '');
-    } else {
-      return envUrl.replace(/\/+$/, '');
-    }
-  }
-
-  const envPortRaw = import.meta.env.VITE_API_PORT;
-  const envPort = typeof envPortRaw === 'number' ? envPortRaw.toString() : envPortRaw?.toString().trim();
-  const { hostname, protocol, port: windowPort } = resolveFromWindow();
-
-  if (envPort) {
-    const sanitizedPort = envPort.replace(/^:/, '');
-    const targetHost = hostname || 'localhost';
-    return ensureApiPath(`${protocol}//${targetHost}:${sanitizedPort}`);
-  }
-
-  if (import.meta.env.DEV) {
-    const devHost = hostname || 'localhost';
-    return ensureApiPath(`${protocol}//${devHost}:3000`);
-  }
-
-  const originPort = windowPort ? `:${windowPort}` : '';
-  return ensureApiPath(`${protocol}//${hostname}${originPort}`);
-};
+import { API_BASE_URL } from './apiBaseUrl';
+import { collectDeviceFingerprint, type FingerprintPayload } from './fingerprint';
+import { getOrCreateDeviceToken } from './deviceToken';
 
 export const apiClient = axios.create({
-  baseURL: resolveApiBaseUrl(),
+  baseURL: API_BASE_URL,
 });
+
+const fallbackFingerprint: FingerprintPayload = {
+  browser: 'unknown',
+  platform: 'unknown',
+  screen: 'unknown',
+  color_depth: 0,
+  timezone: 'unknown',
+  timezone_offset: 0,
+  device_memory: 'unknown',
+  hardware_concurrency: 0,
+  languages: 'unknown',
+  graphics: 'unknown',
+  touch_support: 'unknown',
+};
 
 export async function vote({ eventId, playerId }) {
   try {
+    const [deviceToken, fingerprint] = await Promise.all([
+      getOrCreateDeviceToken(),
+      collectDeviceFingerprint().catch((error) => {
+        console.warn('collectDeviceFingerprint failed', error);
+        return fallbackFingerprint;
+      }),
+    ]);
+
     const { data: voteData } = await apiClient.post('/vote', {
       player_id: playerId,
       event_id: eventId,
-      device_id: getOrCreateDeviceId(),
+      device_token: deviceToken,
+      fingerprint,
     });
 
     return { ok: true, vote: voteData, message: voteData?.message };
