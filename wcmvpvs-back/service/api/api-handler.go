@@ -40,6 +40,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/events", rt.wrapAdmin(rt.createEvent))
 	rt.router.Post("/events/deactivate", rt.wrapAdmin(rt.deactivateEvents))
 	rt.router.Post("/events/{id}/close-votes", rt.wrapAdmin(rt.closeEventVoting))
+	rt.router.Post("/events/{id}/conclude", rt.wrapAdmin(rt.concludeEvent))
 	rt.router.Post("/events/{id}/activate", rt.wrapAdmin(rt.activateEvent))
 	rt.router.Put("/events/{id}", rt.wrapAdmin(rt.updateEvent))
 	rt.router.Delete("/events/{id}", rt.wrapAdmin(rt.deleteEvent))

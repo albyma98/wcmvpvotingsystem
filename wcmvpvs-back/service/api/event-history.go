@@ -75,7 +75,7 @@ func (rt *_router) getEventHistory(w http.ResponseWriter, r *http.Request, ctx r
 	wrappers := make([]historyEntryWrapper, 0, len(events))
 
 	for _, event := range events {
-		if !event.VotesClosed && event.IsActive {
+		if !event.IsConcluded {
 			continue
 		}
 
