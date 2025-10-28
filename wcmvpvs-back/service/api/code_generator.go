@@ -56,5 +56,11 @@ func isVoteCodeCollision(err error) bool {
 }
 
 func isVoteFingerprintCollision(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "votes.event_id, votes.fingerprint_hash")
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "votes.event_id, votes.fingerprint_hash") ||
+		strings.Contains(msg, "votes.fingerprint_hash") ||
+		strings.Contains(strings.ToLower(msg), "unique_vote_per_event_fingerprint")
 }

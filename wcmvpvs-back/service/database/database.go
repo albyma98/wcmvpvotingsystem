@@ -341,6 +341,25 @@ func New(db *sql.DB) (AppDatabase, error) {
 		return nil, fmt.Errorf("error dropping legacy vote device index: %w", err)
 	}
 
+	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='votes' AND sql LIKE '%fingerprint_hash%' AND sql NOT LIKE '%event_id%'`)
+	if err != nil {
+		return nil, fmt.Errorf("error identifying legacy vote fingerprint indexes: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var indexName string
+		if err := rows.Scan(&indexName); err != nil {
+			return nil, fmt.Errorf("error scanning legacy vote fingerprint index: %w", err)
+		}
+		dropStmt := fmt.Sprintf("DROP INDEX IF EXISTS %q", indexName)
+		if _, err = db.Exec(dropStmt); err != nil {
+			return nil, fmt.Errorf("error dropping legacy vote fingerprint index %s: %w", indexName, err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error reading legacy vote fingerprint indexes: %w", err)
+	}
+
 	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_per_event_fingerprint ON votes (event_id, fingerprint_hash);`)
 	if err != nil {
 		return nil, fmt.Errorf("error ensuring votes fingerprint index: %w", err)
