@@ -121,5 +121,7 @@ type _router struct {
 
 type adminSession struct {
 	AdminID   int
+	Username  string
+	Role      string
 	ExpiresAt time.Time
 }

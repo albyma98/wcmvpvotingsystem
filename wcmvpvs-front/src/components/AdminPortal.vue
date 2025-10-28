@@ -360,6 +360,102 @@
         </div>
       </section>
 
+      <section v-else-if="section === 'history'" class="card history-card">
+        <header class="section-header">
+          <h2>Storico eventi</h2>
+          <p>Consulta i dati degli eventi passati con riepilogo voti, MVP e interazioni sponsor.</p>
+        </header>
+
+        <div class="history-toolbar">
+          <button
+            class="btn secondary"
+            type="button"
+            @click="refreshEventHistory"
+            :disabled="isLoadingEventHistory"
+          >
+            {{ isLoadingEventHistory ? 'Aggiornamento…' : 'Aggiorna' }}
+          </button>
+        </div>
+
+        <p v-if="eventHistorySuccess" class="success-message">{{ eventHistorySuccess }}</p>
+        <p v-if="eventHistoryError" class="error">{{ eventHistoryError }}</p>
+        <p v-else-if="isLoadingEventHistory" class="muted text-center">Caricamento storico in corso…</p>
+        <p v-else-if="!eventHistory.length" class="muted text-center">Non sono presenti eventi conclusi al momento.</p>
+
+        <ul v-else class="history-list">
+          <li v-for="entry in eventHistory" :key="entry.id" class="history-item">
+            <div class="history-item__header">
+              <div>
+                <h3>{{ entry.title }}</h3>
+                <p class="muted">
+                  {{ formatHistoryDate(entry.startDatetime) }}
+                  <span v-if="entry.location">• {{ entry.location }}</span>
+                </p>
+              </div>
+              <div class="history-item__meta">
+                <div class="history-item__totals">
+                  <span class="history-item__total">
+                    <strong>{{ entry.totalVotesLabel }}</strong> voti totali
+                  </span>
+                  <span class="history-item__sponsor-total">
+                    <strong>{{ entry.sponsorClicksTotalLabel }}</strong> click sponsor
+                  </span>
+                </div>
+                <button
+                  v-if="isSuperAdmin"
+                  class="btn danger"
+                  type="button"
+                  @click="openPurgeDialog(entry)"
+                >
+                  Elimina evento
+                </button>
+              </div>
+            </div>
+
+            <div class="history-details">
+              <div class="history-details__column">
+                <h4>MVP</h4>
+                <p v-if="entry.mvp">
+                  {{ entry.mvp.name }} • {{ entry.mvp.votes.toLocaleString('it-IT') }} voti
+                </p>
+                <p v-else class="muted">Nessun MVP assegnato.</p>
+              </div>
+              <div class="history-details__column">
+                <h4>Interazioni sponsor</h4>
+                <ul v-if="entry.sponsorClicks.length" class="history-sponsor-list">
+                  <li
+                    v-for="sponsor in entry.sponsorClicks"
+                    :key="`${entry.id}-sponsor-${sponsor.id}`"
+                  >
+                    <span class="history-sponsor-name">{{ sponsor.name }}</span>
+                    <span class="history-sponsor-clicks">{{ sponsor.clicks.toLocaleString('it-IT') }} click</span>
+                  </li>
+                </ul>
+                <p v-else class="muted">Nessun click registrato.</p>
+              </div>
+            </div>
+
+            <div class="history-chart-wrapper" v-if="entry.timeline.length">
+              <h4>Andamento voti (prime 3 ore)</h4>
+              <div class="history-chart" role="img" :aria-label="`Andamento voti per ${entry.title}`">
+                <div
+                  v-for="bucket in entry.timeline"
+                  :key="`${entry.id}-bucket-${bucket.start || bucket.label}`"
+                  class="history-chart__bar"
+                >
+                  <div
+                    class="history-chart__fill"
+                    :style="{ height: bucket.height }"
+                    :title="`${bucket.label || 'Intervallo'}: ${bucket.votes} voti`"
+                  ></div>
+                  <span class="history-chart__label">{{ bucket.label }}</span>
+                </div>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </section>
+
       <section v-else-if="section === 'teams'" class="card">
         <header class="section-header">
           <h2>Squadre</h2>
@@ -580,6 +676,42 @@
             </li>
           </ul>
         </section>
+        <div
+          v-if="purgeDialog.visible"
+          class="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="purgeDialog.event ? `Conferma eliminazione per ${purgeDialog.event.title}` : 'Conferma eliminazione evento'"
+        >
+          <div class="modal-card">
+            <h3>Elimina evento</h3>
+            <p>Questa operazione è permanente e rimuoverà tutti i dati collegati all'evento.</p>
+            <p class="muted">Conferma inserendo la password del super admin.</p>
+            <p v-if="purgeDialog.error" class="error">{{ purgeDialog.error }}</p>
+            <label>
+              Password super admin
+              <input
+                v-model="purgeDialog.password"
+                type="password"
+                autocomplete="current-password"
+                required
+              />
+            </label>
+            <div class="modal-actions">
+              <button class="btn outline" type="button" @click="closePurgeDialog" :disabled="purgeDialog.isSubmitting">
+                Annulla
+              </button>
+              <button
+                class="btn danger"
+                type="button"
+                @click="confirmPurge"
+                :disabled="purgeDialog.isSubmitting || !purgeDialog.password"
+              >
+                {{ purgeDialog.isSubmitting ? 'Eliminazione…' : 'Elimina definitivamente' }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -593,6 +725,14 @@ import { PLAYER_LAYOUT } from '../roster';
 const basePath = import.meta.env.BASE_URL ?? '/';
 const baseVoteUrl = new URL(basePath, window.location.origin);
 const RESULTS_POLL_INTERVAL = 5000;
+const historyDateFormatter = new Intl.DateTimeFormat('it-IT', {
+  dateStyle: 'full',
+  timeStyle: 'short',
+});
+const historyTimeFormatter = new Intl.DateTimeFormat('it-IT', {
+  hour: '2-digit',
+  minute: '2-digit',
+});
 
 let resultsPollHandle = 0;
 
@@ -601,18 +741,31 @@ const tabs = [
   { id: 'events', label: 'Eventi' },
   { id: 'closing', label: 'Chiusura votazioni' },
   { id: 'results', label: 'Risultati' },
+  { id: 'history', label: 'Storico eventi' },
   { id: 'teams', label: 'Squadre' },
   { id: 'players', label: 'Giocatori' },
   { id: 'sponsors', label: 'Sponsor' },
   { id: 'admins', label: 'Admin' },
 ];
-const STAFF_TAB_IDS = new Set(['closing', 'results']);
+const STAFF_TAB_IDS = new Set(['closing', 'results', 'history']);
 
 const teams = ref([]);
 const players = ref([]);
 const events = ref([]);
 const admins = ref([]);
 const sponsors = ref([]);
+const eventHistory = ref([]);
+const isLoadingEventHistory = ref(false);
+const eventHistoryError = ref('');
+const eventHistorySuccess = ref('');
+const hasLoadedEventHistory = ref(false);
+const purgeDialog = reactive({
+  visible: false,
+  event: null,
+  password: '',
+  error: '',
+  isSubmitting: false,
+});
 const updatingEventId = ref(0);
 const isDisablingEvents = ref(false);
 const selectedResultsEventId = ref(0);
@@ -1242,6 +1395,10 @@ function clearCollections() {
   events.value = [];
   admins.value = [];
   sponsors.value = [];
+  eventHistory.value = [];
+  hasLoadedEventHistory.value = false;
+  eventHistoryError.value = '';
+  eventHistorySuccess.value = '';
   resetAllPlayerSlots();
   playerOverflow.value = [];
   playerSaveError.value = '';
@@ -1790,6 +1947,7 @@ async function loadEvents() {
     ? data.map((event) => normalizeEventResponse(event)).filter(Boolean)
     : [];
   events.value = normalized;
+  hasLoadedEventHistory.value = false;
 }
 
 async function loadAdmins() {
@@ -1809,6 +1967,229 @@ async function loadSponsors() {
   recomputeActiveSponsorSlider();
 }
 
+function parseHistoryDate(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatHistoryDate(value) {
+  const parsed = parseHistoryDate(value);
+  if (!parsed) {
+    return 'Data non disponibile';
+  }
+  try {
+    return historyDateFormatter.format(parsed);
+  } catch (error) {
+    try {
+      return parsed.toLocaleString('it-IT');
+    } catch (innerError) {
+      return parsed.toString();
+    }
+  }
+}
+
+function normalizeHistoryEntry(item) {
+  const id = Number(item?.id) || 0;
+  const homeTeam = typeof item?.home_team === 'string' ? item.home_team.trim() : '';
+  const awayTeam = typeof item?.away_team === 'string' ? item.away_team.trim() : '';
+  const rawTitle = typeof item?.title === 'string' ? item.title.trim() : '';
+  const fallbackTitle = [homeTeam, awayTeam].filter(Boolean).join(' - ') || (id ? `Evento #${id}` : 'Evento');
+  const startDatetime = typeof item?.start_datetime === 'string' ? item.start_datetime : '';
+  const location = typeof item?.location === 'string' ? item.location.trim() : '';
+  const totalVotes = Number(item?.total_votes ?? item?.totalVotes ?? 0) || 0;
+
+  const sponsorClicks = Array.isArray(item?.sponsor_clicks)
+    ? item.sponsor_clicks
+        .map((entry) => ({
+          id: Number(entry?.sponsor_id) || 0,
+          name:
+            typeof entry?.name === 'string' && entry.name.trim() ? entry.name.trim() : 'Sponsor',
+          link: typeof entry?.link_url === 'string' ? entry.link_url.trim() : '',
+          clicks: Number(entry?.clicks ?? 0) || 0,
+        }))
+        .sort((a, b) => {
+          if (b.clicks !== a.clicks) {
+            return b.clicks - a.clicks;
+          }
+          return a.name.localeCompare(b.name, 'it');
+        })
+    : [];
+
+  const sponsorClicksTotalRaw = Number(item?.sponsor_clicks_total ?? item?.sponsorClicksTotal ?? 0);
+  const sponsorClicksTotal = Number.isFinite(sponsorClicksTotalRaw)
+    ? sponsorClicksTotalRaw
+    : sponsorClicks.reduce((sum, sponsor) => sum + (Number(sponsor.clicks) || 0), 0);
+  const sponsorClicksTotalLabel = Number.isFinite(sponsorClicksTotal)
+    ? sponsorClicksTotal.toLocaleString('it-IT')
+    : '0';
+
+  const timelineRaw = Array.isArray(item?.timeline) ? item.timeline : [];
+  const timeline = timelineRaw
+    .map((bucket) => {
+      const start = typeof bucket?.start === 'string' ? bucket.start : '';
+      const end = typeof bucket?.end === 'string' ? bucket.end : '';
+      const votes = Number(bucket?.votes ?? 0) || 0;
+      const explicitLabel = typeof bucket?.label === 'string' ? bucket.label.trim() : '';
+      if (explicitLabel) {
+        return { start, end, label: explicitLabel, votes };
+      }
+      const startDate = parseHistoryDate(start);
+      const endDate = parseHistoryDate(end);
+      if (startDate && endDate) {
+        return {
+          start,
+          end,
+          label: `${historyTimeFormatter.format(startDate)}-${historyTimeFormatter.format(endDate)}`,
+          votes,
+        };
+      }
+      if (startDate) {
+        return {
+          start,
+          end,
+          label: historyTimeFormatter.format(startDate),
+          votes,
+        };
+      }
+      return { start, end, label: '', votes };
+    })
+    .filter((bucket) => bucket.label || bucket.votes || bucket.start);
+
+  const maxTimelineVotes = timeline.reduce((max, bucket) => Math.max(max, bucket.votes), 0);
+  const timelineWithHeights = timeline.map((bucket) => {
+    const percentage = maxTimelineVotes > 0 ? Math.round((bucket.votes / maxTimelineVotes) * 100) : 0;
+    const height = maxTimelineVotes === 0 ? (bucket.votes > 0 ? '100%' : '6%') : `${Math.max(6, percentage)}%`;
+    return { ...bucket, height };
+  });
+
+  const mvpRaw = item?.mvp;
+  let mvp = null;
+  if (mvpRaw && Number(mvpRaw?.votes ?? 0) > 0) {
+    const firstName = typeof mvpRaw?.first_name === 'string' ? mvpRaw.first_name.trim() : '';
+    const lastName = typeof mvpRaw?.last_name === 'string' ? mvpRaw.last_name.trim() : '';
+    const fallbackName = mvpRaw?.player_id ? `Giocatore ${mvpRaw.player_id}` : 'Giocatore';
+    const name = [firstName, lastName].filter(Boolean).join(' ') || fallbackName;
+    mvp = {
+      id: Number(mvpRaw?.player_id) || 0,
+      votes: Number(mvpRaw?.votes) || 0,
+      name,
+    };
+  }
+
+  return {
+    id,
+    title: rawTitle || fallbackTitle,
+    startDatetime,
+    location,
+    totalVotes,
+    totalVotesLabel: Number.isFinite(totalVotes) ? totalVotes.toLocaleString('it-IT') : '0',
+    sponsorClicks,
+    sponsorClicksTotal,
+    sponsorClicksTotalLabel,
+    timeline: timelineWithHeights,
+    timelineMax: maxTimelineVotes,
+    mvp,
+    homeTeam,
+    awayTeam,
+  };
+}
+
+async function loadEventHistory({ force = false } = {}) {
+  if (isLoadingEventHistory.value) {
+    return;
+  }
+  if (!force && hasLoadedEventHistory.value) {
+    return;
+  }
+
+  if (force) {
+    hasLoadedEventHistory.value = false;
+  }
+
+  isLoadingEventHistory.value = true;
+  eventHistoryError.value = '';
+  if (force) {
+    eventHistorySuccess.value = '';
+  }
+
+  try {
+    const { data } = await apiClient.get('/admin/events/history', authHeaders.value);
+    const normalized = Array.isArray(data) ? data.map((entry) => normalizeHistoryEntry(entry)) : [];
+    eventHistory.value = normalized;
+    hasLoadedEventHistory.value = true;
+  } catch (error) {
+    const status = error?.response?.status;
+    if (status === 401) {
+      handleUnauthorized();
+    } else {
+      eventHistorySuccess.value = '';
+      eventHistoryError.value = 'Impossibile caricare lo storico eventi. Riprova più tardi.';
+    }
+  } finally {
+    isLoadingEventHistory.value = false;
+  }
+}
+
+async function refreshEventHistory() {
+  await loadEventHistory({ force: true });
+}
+
+function openPurgeDialog(entry) {
+  purgeDialog.visible = true;
+  purgeDialog.event = entry;
+  purgeDialog.password = '';
+  purgeDialog.error = '';
+  purgeDialog.isSubmitting = false;
+}
+
+function closePurgeDialog() {
+  purgeDialog.visible = false;
+  purgeDialog.event = null;
+  purgeDialog.password = '';
+  purgeDialog.error = '';
+  purgeDialog.isSubmitting = false;
+}
+
+async function confirmPurge() {
+  if (!purgeDialog.event || purgeDialog.isSubmitting || !purgeDialog.password) {
+    return;
+  }
+  purgeDialog.isSubmitting = true;
+  purgeDialog.error = '';
+
+  try {
+    await apiClient.post(
+      `/admin/events/${purgeDialog.event.id}/purge`,
+      { password: purgeDialog.password },
+      authHeaders.value,
+    );
+    const removedTitle = purgeDialog.event.title;
+    closePurgeDialog();
+    await loadEvents();
+    await loadEventHistory({ force: true });
+    eventHistorySuccess.value = `Evento "${removedTitle}" eliminato.`;
+  } catch (error) {
+    const status = error?.response?.status;
+    if (status === 401) {
+      handleUnauthorized();
+      return;
+    }
+    if (status === 403) {
+      purgeDialog.error = 'Password non valida o privilegi insufficienti.';
+    } else if (status === 404) {
+      purgeDialog.error = 'Evento già rimosso.';
+      eventHistory.value = eventHistory.value.filter((entry) => entry.id !== purgeDialog.event.id);
+    } else {
+      purgeDialog.error = 'Impossibile eliminare l\'evento. Riprova.';
+    }
+  } finally {
+    purgeDialog.isSubmitting = false;
+  }
+}
+
 async function loadAll() {
   if (!isAuthenticated.value) {
     return;
@@ -1817,6 +2198,10 @@ async function loadAll() {
   await loadPlayers();
   if (isSuperAdmin.value) {
     await Promise.all([loadAdmins(), loadSponsors()]);
+  }
+  hasLoadedEventHistory.value = false;
+  if (section.value === 'history') {
+    await loadEventHistory({ force: true });
   }
   resetForms();
 }
@@ -2144,6 +2529,9 @@ watch(section, (value, oldValue) => {
     startResultsPolling();
   } else if (oldValue === 'results') {
     stopResultsPolling();
+  }
+  if (value === 'history') {
+    loadEventHistory();
   }
   nextTick(updateToolbarOffset);
 });
@@ -2662,6 +3050,213 @@ select:focus {
   flex-direction: column;
   gap: 0.75rem;
   margin-bottom: 1.5rem;
+}
+
+.history-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.history-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.history-item {
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1.25rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-shadow: 0 18px 28px rgba(15, 23, 42, 0.08);
+}
+
+.history-item__header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.history-item__header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.history-item__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  text-align: right;
+}
+
+.history-item__totals {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.history-item__total {
+  color: #1e293b;
+}
+
+.history-item__sponsor-total {
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+.history-item__sponsor-total strong {
+  color: #1e293b;
+}
+
+.history-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.history-details__column {
+  flex: 1 1 220px;
+  background: #edf2f7;
+  border-radius: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+.history-details__column h4 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.history-sponsor-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.history-sponsor-name {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.history-sponsor-clicks {
+  margin-left: 0.5rem;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.history-chart-wrapper {
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  padding-top: 1rem;
+}
+
+.history-chart-wrapper h4 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.history-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  min-height: 180px;
+}
+
+.history-chart__bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.history-chart__fill {
+  width: 100%;
+  border-radius: 0.75rem 0.75rem 0.25rem 0.25rem;
+  background: linear-gradient(180deg, #1d4ed8 0%, #3b82f6 100%);
+  transition: height 0.3s ease;
+  min-height: 6%;
+}
+
+.history-chart__label {
+  font-size: 0.75rem;
+  color: #475569;
+  text-align: center;
+  max-width: 4.5rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 20;
+}
+
+.modal-card {
+  background: #f8fafc;
+  border-radius: 1rem;
+  padding: 2rem;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 32px 48px rgba(15, 23, 42, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-card h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #b91c1c;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+@media (max-width: 720px) {
+  .history-item {
+    padding: 1.25rem;
+  }
+
+  .history-chart {
+    gap: 0.5rem;
+  }
+
+  .history-chart__label {
+    font-size: 0.7rem;
+  }
+
+  .modal-card {
+    padding: 1.5rem;
+  }
 }
 
 .sponsor-range {

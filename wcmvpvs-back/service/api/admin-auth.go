@@ -14,10 +14,15 @@ import (
 func (rt *_router) wrapAdmin(fn httpRouterHandler) http.HandlerFunc {
 	return rt.wrap(func(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 		token := parseBearerToken(r.Header.Get("Authorization"))
-		if !rt.validateAdminToken(token) {
+		session, ok := rt.getAdminSession(token)
+		if !ok {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
+
+		ctx.AdminID = session.AdminID
+		ctx.AdminRole = session.Role
+		ctx.AdminUsername = session.Username
 
 		fn(w, r, ctx)
 	})
@@ -34,23 +39,23 @@ func parseBearerToken(header string) string {
 	return strings.TrimSpace(header[len(prefix):])
 }
 
-func (rt *_router) validateAdminToken(token string) bool {
+func (rt *_router) getAdminSession(token string) (adminSession, bool) {
 	if token == "" {
-		return false
+		return adminSession{}, false
 	}
 
 	rt.adminSessionsMu.RLock()
 	session, ok := rt.adminSessions[token]
 	rt.adminSessionsMu.RUnlock()
 	if !ok {
-		return false
+		return adminSession{}, false
 	}
 
 	if time.Now().After(session.ExpiresAt) {
 		rt.adminSessionsMu.Lock()
 		delete(rt.adminSessions, token)
 		rt.adminSessionsMu.Unlock()
-		return false
+		return adminSession{}, false
 	}
 
 	// extend the session deadline on each successful validation
@@ -59,10 +64,10 @@ func (rt *_router) validateAdminToken(token string) bool {
 	rt.adminSessions[token] = session
 	rt.adminSessionsMu.Unlock()
 
-	return true
+	return session, true
 }
 
-func (rt *_router) createAdminSession(adminID int) (string, error) {
+func (rt *_router) createAdminSession(adminID int, username, role string) (string, error) {
 	token, err := generateSessionToken()
 	if err != nil {
 		return "", err
@@ -71,6 +76,8 @@ func (rt *_router) createAdminSession(adminID int) (string, error) {
 	rt.adminSessionsMu.Lock()
 	rt.adminSessions[token] = adminSession{
 		AdminID:   adminID,
+		Username:  username,
+		Role:      role,
 		ExpiresAt: time.Now().Add(rt.sessionTimeout),
 	}
 	rt.adminSessionsMu.Unlock()
