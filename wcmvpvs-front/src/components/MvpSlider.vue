@@ -50,7 +50,8 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import axios from 'axios'
-import { getOrCreateDeviceId } from '../deviceId'
+import { collectDeviceFingerprint } from '../fingerprint'
+import { getOrCreateDeviceToken } from '../deviceToken'
 
 const props = defineProps({
   eventId: { type: Number, default: null },
@@ -137,10 +138,27 @@ function cancelVote() {
 
 async function confirmVote() {
   try {
+    const [token, fingerprint] = await Promise.all([
+      getOrCreateDeviceToken(),
+      collectDeviceFingerprint().catch(() => ({
+        browser: 'unknown',
+        platform: 'unknown',
+        screen: 'unknown',
+        color_depth: 0,
+        timezone: 'unknown',
+        timezone_offset: 0,
+        device_memory: 'unknown',
+        hardware_concurrency: 0,
+        languages: 'unknown',
+        graphics: 'unknown',
+        touch_support: 'unknown',
+      })),
+    ])
     const { data: voteResult } = await api.post('/vote', {
       player_id: selectedPlayer.value.id,
       event_id: props.eventId,
-      device_id: getOrCreateDeviceId(),
+      device_token: token,
+      fingerprint,
     })
     voteCode.value = voteResult.code
     signature.value = voteResult.signature

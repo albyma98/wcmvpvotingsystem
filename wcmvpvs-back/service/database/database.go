@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 // AppDatabase is the high level interface for the DB
@@ -90,7 +91,7 @@ type Vote struct {
 	PlayerID        int    `json:"player_id"`
 	TicketCode      string `json:"ticket_code"`
 	TicketSignature string `json:"ticket_signature"`
-	DeviceID        string `json:"device_id"`
+	FingerprintHash string `json:"fingerprint_hash"`
 	CreatedAt       string `json:"created_at"`
 }
 
@@ -149,7 +150,11 @@ type Sponsor struct {
 type AppDatabase interface {
 	GetName() (string, error)
 	SetName(name string) error
-	AddVote(eventID, playerID int, code, signature, deviceID string) error
+	AddVote(eventID, playerID int, code, signature, fingerprintHash string) error
+	LockFingerprint(eventID int, fingerprintHash string, expiresAt time.Time) error
+	UnlockFingerprint(eventID int, fingerprintHash string) error
+	PruneExpiredFingerprintLocks(now time.Time) error
+	ClearExpiredVoteFingerprints(cutoff time.Time) error
 	CreateTeam(name string) (int, error)
 	ListTeams() ([]Team, error)
 	UpdateTeam(id int, name string) error
@@ -204,6 +209,7 @@ var (
 	ErrPrizeVoteMismatch       = errors.New("selected ticket is not valid for this event")
 	ErrPrizeLockedByWinner     = errors.New("cannot remove a prize that already has a winner")
 	ErrTicketSignatureMismatch = errors.New("ticket signature mismatch")
+	ErrFingerprintAlreadyUsed  = errors.New("fingerprint already used")
 )
 
 // New returns a new instance of AppDatabase based on the SQLite connection `db`.
@@ -312,26 +318,55 @@ func New(db *sql.DB) (AppDatabase, error) {
 	// Create votes table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='votes';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE votes (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, player_id INTEGER NOT NULL, ticket_code TEXT NOT NULL, ticket_signature TEXT NOT NULL, device_id TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (event_id) REFERENCES events(id), FOREIGN KEY (player_id) REFERENCES players(id));`
+		sqlStmt := `CREATE TABLE votes (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, player_id INTEGER NOT NULL, ticket_code TEXT NOT NULL, ticket_signature TEXT NOT NULL, fingerprint_hash TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (event_id) REFERENCES events(id), FOREIGN KEY (player_id) REFERENCES players(id));`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating votes table: %w", err)
 		}
-		_, err = db.Exec(`CREATE UNIQUE INDEX unique_vote_per_event_device ON votes (event_id, device_id);`)
-		if err != nil {
-			return nil, fmt.Errorf("error creating votes index: %w", err)
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying votes table: %w", err)
+	}
+
+	if _, err = db.Exec(`ALTER TABLE votes ADD COLUMN fingerprint_hash TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring votes fingerprint column: %w", err)
+		}
+	} else {
+		if _, err = db.Exec(`UPDATE votes SET fingerprint_hash = COALESCE(fingerprint_hash, device_id, '') WHERE fingerprint_hash IS NULL OR fingerprint_hash = '';`); err != nil {
+			return nil, fmt.Errorf("error backfilling vote fingerprint data: %w", err)
 		}
 	}
-	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_per_event_device ON votes (event_id, device_id);`)
-	if err != nil {
-		return nil, fmt.Errorf("error ensuring votes device index: %w", err)
+
+	if _, err = db.Exec(`DROP INDEX IF EXISTS unique_vote_per_event_device;`); err != nil {
+		return nil, fmt.Errorf("error dropping legacy vote device index: %w", err)
 	}
+
+	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_per_event_fingerprint ON votes (event_id, fingerprint_hash);`)
+	if err != nil {
+		return nil, fmt.Errorf("error ensuring votes fingerprint index: %w", err)
+	}
+
 	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_code_per_event ON votes (event_id, ticket_code);`)
 	if err != nil {
 		return nil, fmt.Errorf("error ensuring votes code index: %w", err)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_votes_event ON votes (event_id);`); err != nil {
 		return nil, fmt.Errorf("error ensuring votes event index: %w", err)
+	}
+
+	// Create vote fingerprint locks table
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='vote_fingerprint_locks';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE vote_fingerprint_locks (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, fingerprint_hash TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (event_id) REFERENCES events(id));`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating vote fingerprint locks table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying vote fingerprint locks table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_fingerprint_lock ON vote_fingerprint_locks (event_id, fingerprint_hash);`); err != nil {
+		return nil, fmt.Errorf("error ensuring vote fingerprint lock index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tickets';`).Scan(&tableName)
@@ -382,8 +417,41 @@ func (db *appdbimpl) Ping() error {
 }
 
 // AddVote stores a vote in the database
-func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string) error {
-	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id) VALUES (?, ?, ?, ?, ?)`, eventID, playerID, code, signature, deviceID)
+func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, fingerprintHash string) error {
+	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, fingerprint_hash) VALUES (?, ?, ?, ?, ?)`, eventID, playerID, code, signature, fingerprintHash)
+	return err
+}
+
+// LockFingerprint stores a temporary lock preventing the same fingerprint from voting twice
+func (db *appdbimpl) LockFingerprint(eventID int, fingerprintHash string, expiresAt time.Time) error {
+	expiry := expiresAt.UTC().Format("2006-01-02 15:04:05")
+	_, err := db.c.Exec(`INSERT INTO vote_fingerprint_locks (event_id, fingerprint_hash, expires_at) VALUES (?, ?, ?)`, eventID, fingerprintHash, expiry)
+	if err != nil {
+		if strings.Contains(err.Error(), "vote_fingerprint_locks.event_id, vote_fingerprint_locks.fingerprint_hash") || strings.Contains(err.Error(), "UNIQUE constraint failed: vote_fingerprint_locks.event_id, vote_fingerprint_locks.fingerprint_hash") {
+			return ErrFingerprintAlreadyUsed
+		}
+		return err
+	}
+	return nil
+}
+
+// UnlockFingerprint removes a previously stored fingerprint lock
+func (db *appdbimpl) UnlockFingerprint(eventID int, fingerprintHash string) error {
+	_, err := db.c.Exec(`DELETE FROM vote_fingerprint_locks WHERE event_id = ? AND fingerprint_hash = ?`, eventID, fingerprintHash)
+	return err
+}
+
+// PruneExpiredFingerprintLocks removes expired fingerprint locks from the database
+func (db *appdbimpl) PruneExpiredFingerprintLocks(now time.Time) error {
+	cutoff := now.UTC().Format("2006-01-02 15:04:05")
+	_, err := db.c.Exec(`DELETE FROM vote_fingerprint_locks WHERE expires_at <= ?`, cutoff)
+	return err
+}
+
+// ClearExpiredVoteFingerprints anonymizes fingerprint hashes older than the cutoff
+func (db *appdbimpl) ClearExpiredVoteFingerprints(cutoff time.Time) error {
+	cutoffValue := cutoff.UTC().Format("2006-01-02 15:04:05")
+	_, err := db.c.Exec(`UPDATE votes SET fingerprint_hash = 'expired_' || id WHERE fingerprint_hash NOT LIKE 'expired_%' AND datetime(created_at) <= datetime(?)`, cutoffValue)
 	return err
 }
 
@@ -747,7 +815,7 @@ LIMIT 1
 
 // Votes listing and deletion
 func (db *appdbimpl) ListVotes() ([]Vote, error) {
-	rows, err := db.c.Query(`SELECT id, event_id, player_id, ticket_code, ticket_signature, device_id, created_at FROM votes`)
+	rows, err := db.c.Query(`SELECT id, event_id, player_id, ticket_code, ticket_signature, fingerprint_hash, created_at FROM votes`)
 	if err != nil {
 		return nil, err
 	}
@@ -755,7 +823,7 @@ func (db *appdbimpl) ListVotes() ([]Vote, error) {
 	var vs []Vote
 	for rows.Next() {
 		var v Vote
-		if err := rows.Scan(&v.ID, &v.EventID, &v.PlayerID, &v.TicketCode, &v.TicketSignature, &v.DeviceID, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.EventID, &v.PlayerID, &v.TicketCode, &v.TicketSignature, &v.FingerprintHash, &v.CreatedAt); err != nil {
 			return nil, err
 		}
 		vs = append(vs, v)

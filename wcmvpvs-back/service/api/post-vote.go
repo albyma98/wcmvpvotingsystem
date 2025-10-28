@@ -9,25 +9,22 @@ import (
 	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 )
 
 // postVote handles a vote submission
+const fingerprintRetentionWindow = 48 * time.Hour
+
 func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var req struct {
-		PlayerID int    `json:"player_id"`
-		EventID  int    `json:"event_id"`
-		DeviceID string `json:"device_id"`
+		PlayerID    int                      `json:"player_id"`
+		EventID     int                      `json:"event_id"`
+		DeviceToken string                   `json:"device_token"`
+		Fingerprint deviceFingerprintPayload `json:"fingerprint"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ctx.Logger.WithError(err).Error("cannot decode vote request")
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta di voto non valida.")
-		return
-	}
-
-	req.DeviceID = strings.TrimSpace(req.DeviceID)
-	if req.DeviceID == "" {
-		ctx.Logger.Warn("vote request missing device id")
-		_ = writeJSONMessage(w, http.StatusBadRequest, "Impossibile registrare il voto senza un identificativo dispositivo valido.")
 		return
 	}
 
@@ -57,15 +54,65 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		return
 	}
 
+	now := time.Now()
+
+	if err := req.Fingerprint.validate(); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid fingerprint payload")
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Impossibile verificare il dispositivo. Ricarica la pagina e riprova.")
+		return
+	}
+
+	fingerprintHash := generateDailyFingerprintHash(req.EventID, req.Fingerprint, now)
+
 	clientIP := rt.getClientIP(r)
-	if limited, message := rt.shouldThrottleVoteAttempt(req.DeviceID, clientIP, time.Now()); limited {
+
+	req.DeviceToken = strings.TrimSpace(req.DeviceToken)
+	deviceKey := req.DeviceToken
+	if deviceKey == "" {
+		deviceKey = fingerprintHash
+	}
+
+	if limited, message := rt.shouldThrottleVoteAttempt(deviceKey, fingerprintHash, clientIP, now); limited {
 		ctx.Logger.WithFields(map[string]interface{}{
-			"device_id": req.DeviceID,
-			"client_ip": clientIP,
+			"device_token": deviceKey,
+			"fingerprint":  fingerprintHash,
+			"client_ip":    clientIP,
 		}).Warn("vote attempt throttled")
 		_ = writeJSONMessage(w, http.StatusTooManyRequests, message)
 		return
 	}
+
+	if err := rt.db.PruneExpiredFingerprintLocks(now); err != nil {
+		ctx.Logger.WithError(err).Warn("cannot prune fingerprint locks")
+	}
+
+	if err := rt.db.ClearExpiredVoteFingerprints(now.Add(-fingerprintRetentionWindow)); err != nil {
+		ctx.Logger.WithError(err).Warn("cannot clear expired vote fingerprints")
+	}
+
+	if err := rt.db.LockFingerprint(req.EventID, fingerprintHash, now.Add(fingerprintRetentionWindow)); err != nil {
+		if errors.Is(err, database.ErrFingerprintAlreadyUsed) {
+			ctx.Logger.WithFields(map[string]interface{}{
+				"event_id":     req.EventID,
+				"fingerprint":  fingerprintHash,
+				"device_token": deviceKey,
+			}).Warn("duplicate fingerprint vote detected")
+			_ = writeJSONMessage(w, http.StatusConflict, "Hai già espresso un voto per questa partita oggi.")
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot lock fingerprint for vote")
+		_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
+		return
+	}
+
+	unlockOnFailure := true
+	defer func() {
+		if unlockOnFailure {
+			if err := rt.db.UnlockFingerprint(req.EventID, fingerprintHash); err != nil {
+				ctx.Logger.WithError(err).Warn("cannot release fingerprint lock")
+			}
+		}
+	}()
 
 	var (
 		code      string
@@ -82,21 +129,30 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		}
 		signature = signCode(rt.VoteSecret, code)
 
-		if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID); err != nil {
+		if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, fingerprintHash); err != nil {
 			switch {
 			case isVoteCodeCollision(err):
 				ctx.Logger.WithError(err).Warn("duplicate vote code detected, retrying")
 				continue
-			case isVoteDeviceCollision(err):
-				ctx.Logger.WithError(err).Warn("duplicate vote attempt for device")
-				_ = writeJSONMessage(w, http.StatusConflict, "Hai già votato per questa partita.")
+			case isVoteFingerprintCollision(err):
+				ctx.Logger.WithError(err).Warn("duplicate vote attempt for fingerprint")
+				unlockOnFailure = false
+				_ = writeJSONMessage(w, http.StatusConflict, "Hai già espresso un voto per questa partita oggi.")
 				return
 			case isUniqueConstraintError(err):
 				ctx.Logger.WithError(err).Error("vote unique constraint violation")
+				unlockOnFailure = false
+				if err := rt.db.UnlockFingerprint(req.EventID, fingerprintHash); err != nil {
+					ctx.Logger.WithError(err).Warn("cannot unlock fingerprint after constraint error")
+				}
 				_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 				return
 			default:
 				ctx.Logger.WithError(err).Error("cannot store vote")
+				unlockOnFailure = false
+				if err := rt.db.UnlockFingerprint(req.EventID, fingerprintHash); err != nil {
+					ctx.Logger.WithError(err).Warn("cannot unlock fingerprint after store failure")
+				}
 				_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 				return
 			}
@@ -109,6 +165,10 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 
 	if code == "" {
 		ctx.Logger.Error("unable to generate unique vote code after multiple attempts")
+		unlockOnFailure = false
+		if err := rt.db.UnlockFingerprint(req.EventID, fingerprintHash); err != nil {
+			ctx.Logger.WithError(err).Warn("cannot unlock fingerprint after code exhaustion")
+		}
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 		return
 	}
@@ -116,6 +176,8 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot build ticket validation URL")
 	}
+
+	unlockOnFailure = false
 
 	resp := struct {
 		Code      string `json:"code"`
