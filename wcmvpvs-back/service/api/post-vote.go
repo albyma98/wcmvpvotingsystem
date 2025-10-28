@@ -64,22 +64,10 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 
 	fingerprintHash := generateDailyFingerprintHash(req.EventID, req.Fingerprint, now)
 
-	clientIP := rt.getClientIP(r)
-
 	req.DeviceToken = strings.TrimSpace(req.DeviceToken)
 	deviceKey := req.DeviceToken
 	if deviceKey == "" {
 		deviceKey = fingerprintHash
-	}
-
-	if limited, message := rt.shouldThrottleVoteAttempt(deviceKey, fingerprintHash, clientIP, now); limited {
-		ctx.Logger.WithFields(map[string]interface{}{
-			"device_token": deviceKey,
-			"fingerprint":  fingerprintHash,
-			"client_ip":    clientIP,
-		}).Warn("vote attempt throttled")
-		_ = writeJSONMessage(w, http.StatusTooManyRequests, message)
-		return
 	}
 
 	if err := rt.db.PruneExpiredFingerprintLocks(now); err != nil {
