@@ -235,6 +235,9 @@ const ticketCode = ref('');
 const ticketQrUrl = ref('');
 const ticketLoadError = ref('');
 const isTicketLoading = ref(false);
+const showVoteSummary = computed(
+  () => hasVoted.value && Boolean(ticketCode.value || ticketQrUrl.value),
+);
 
 const handleSelfieSubmitted = () => {
   hasVoted.value = true;
@@ -554,9 +557,6 @@ const closeModal = () => {
 
 const closeTicketModal = () => {
   showTicketModal.value = false;
-  ticketCode.value = '';
-  ticketQrUrl.value = '';
-  ticketLoadError.value = '';
   isTicketLoading.value = false;
 };
 
@@ -679,14 +679,43 @@ const handleQrError = () => {
       v-if="!isCheckingActiveEvent && !showInactiveNotice"
       class="flex-1 overflow-y-auto"
     >
-      <div class="flex flex-col gap-10">
+      <div
+        class="flex flex-col"
+        :class="hasVoted ? 'gap-6' : 'gap-10'"
+      >
         <section v-if="isVotingClosed" class="px-4">
           <div class="closed-banner" role="status" aria-live="polite">
             <h3>Votazioni chiuse</h3>
             <p>Grazie per aver partecipato! Ti aspettiamo alla prossima partita al palazzetto.</p>
           </div>
         </section>
-        <section class="px-4">
+        <section v-if="showVoteSummary" class="px-4">
+          <div class="vote-summary" role="status" aria-live="polite">
+            <div class="vote-summary__content">
+              <p class="vote-summary__eyebrow">Hai votato!</p>
+              <h3 class="vote-summary__title">Conserva il tuo codice per l'estrazione</h3>
+              <p class="vote-summary__code" aria-label="Codice di voto">
+                Codice: <span>{{ ticketCode }}</span>
+              </p>
+              <p class="vote-summary__hint">
+                Mostra questo codice e il QR allo staff in caso di estrazione del premio.
+              </p>
+              <p v-if="ticketLoadError" class="vote-summary__error">{{ ticketLoadError }}</p>
+            </div>
+            <div class="vote-summary__qr" aria-hidden="true">
+              <div v-if="isTicketLoading" class="vote-summary__qr-loader">
+                <span class="qr-loader"></span>
+              </div>
+              <img
+                v-else-if="ticketQrUrl"
+                :src="ticketQrUrl"
+                alt="QR code"
+              />
+              <div v-else class="vote-summary__qr-placeholder">QR non disponibile</div>
+            </div>
+          </div>
+        </section>
+        <section v-if="!hasVoted" class="px-4">
           <div class="mb-6 text-center">
             <h2 class="text-lg font-semibold uppercase tracking-[0.1em] text-slate-200">
               {{ eventTitle }}
@@ -725,13 +754,22 @@ const handleQrError = () => {
             I giocatori non sono ancora stati configurati. Torna più tardi!
           </p>
         </section>
+        <section v-else class="px-4">
+          <div class="after-vote-panel">
+            <h3>{{ eventTitle }}</h3>
+            <p>
+              Hai già espresso il tuo voto per questa partita. Conserva il codice mostrato in alto e attendi l'estrazione dei premi.
+            </p>
+          </div>
+        </section>
 
         <SelfieMvpSection
           v-if="currentEventId && (hasVoted || isCheckingVoteStatus)"
-          class="px-4"
+          :class="['px-4', hasVoted ? 'pt-0' : '']"
           :event-id="currentEventId"
           :enabled="hasVoted"
           :loading-status="isCheckingVoteStatus"
+          :compact="hasVoted"
           @selfie-submitted="handleSelfieSubmitted"
         />
 
@@ -1023,6 +1061,151 @@ const handleQrError = () => {
   margin: 0;
   font-size: 0.95rem;
   color: #e2e8f0;
+}
+
+.vote-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.75rem 1.5rem;
+  border-radius: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.75));
+  box-shadow: 0 28px 52px rgba(15, 23, 42, 0.55);
+}
+
+.vote-summary__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.vote-summary__eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.45em;
+  text-transform: uppercase;
+  color: #facc15;
+}
+
+.vote-summary__title {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f8fafc;
+}
+
+.vote-summary__code {
+  margin: 0.25rem 0 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #f8fafc;
+}
+
+.vote-summary__code span {
+  color: #38bdf8;
+}
+
+.vote-summary__hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.85);
+  line-height: 1.5;
+}
+
+.vote-summary__error {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: #fecaca;
+}
+
+.vote-summary__qr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vote-summary__qr img {
+  width: 112px;
+  height: 112px;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: #fff;
+  padding: 0.75rem;
+}
+
+.vote-summary__qr-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112px;
+  height: 112px;
+  border-radius: 1.5rem;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+}
+
+.vote-summary__qr-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112px;
+  height: 112px;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: rgba(148, 163, 184, 0.75);
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 0.75rem;
+}
+
+.vote-summary__qr-loader .qr-loader {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.after-vote-panel {
+  padding: 1.5rem 1.5rem;
+  border-radius: 1.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.6);
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.45);
+  text-align: center;
+}
+
+.after-vote-panel h3 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #f8fafc;
+}
+
+.after-vote-panel p {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+@media (min-width: 640px) {
+  .vote-summary {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2rem;
+  }
+
+  .vote-summary__content {
+    flex: 1;
+  }
+
+  .vote-summary__qr {
+    flex-shrink: 0;
+  }
 }
 
 .inactive-panel {

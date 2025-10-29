@@ -1,5 +1,8 @@
 <template>
-  <section class="selfie-section">
+  <section
+    class="selfie-section"
+    :class="{ 'selfie-section--compact': props.compact }"
+  >
     <input
       ref="fileInputRef"
       type="file"
@@ -118,6 +121,10 @@ const props = defineProps({
     default: false,
   },
   loadingStatus: {
+    type: Boolean,
+    default: false,
+  },
+  compact: {
     type: Boolean,
     default: false,
   },
@@ -597,6 +604,69 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 0.8rem;
   color: rgba(148, 163, 184, 0.8);
+}
+
+.selfie-section--compact .selfie-card {
+  max-width: 420px;
+  margin: 0 auto;
+  border-radius: 1.75rem;
+}
+
+.selfie-section--compact .selfie-card__content {
+  padding: 1.25rem 1.25rem 1.5rem;
+  gap: 1rem;
+}
+
+.selfie-section--compact .selfie-card__header {
+  text-align: center;
+}
+
+.selfie-section--compact .selfie-card__eyebrow {
+  font-size: 0.65rem;
+  letter-spacing: 0.35em;
+}
+
+.selfie-section--compact .selfie-card__title {
+  font-size: 1.05rem;
+}
+
+.selfie-section--compact .selfie-card__subtitle {
+  font-size: 0.8rem;
+}
+
+.selfie-section--compact .selfie-body {
+  gap: 0.9rem;
+}
+
+.selfie-section--compact .selfie-preview {
+  max-width: 220px;
+  margin: 0 auto;
+  border-radius: 1.25rem;
+}
+
+.selfie-section--compact .selfie-preview__placeholder {
+  font-size: 0.85rem;
+}
+
+.selfie-section--compact .selfie-actions {
+  gap: 0.5rem;
+}
+
+.selfie-section--compact .selfie-button {
+  min-width: 120px;
+  padding: 0.6rem 1rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+}
+
+.selfie-section--compact .selfie-caption textarea {
+  font-size: 0.85rem;
+  padding: 0.65rem 0.9rem;
+}
+
+.selfie-section--compact .selfie-message,
+.selfie-section--compact .selfie-hint {
+  font-size: 0.75rem;
 }
 
 @media (min-width: 768px) {
