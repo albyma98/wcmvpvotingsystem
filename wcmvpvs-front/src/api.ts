@@ -61,6 +61,38 @@ export const apiClient = axios.create({
   baseURL: resolveApiBaseUrl(),
 });
 
+export function resolveApiUrl(path: string) {
+  const sanitizedPath = path.startsWith('/') ? path : `/${path}`;
+  const baseURL = apiClient.defaults?.baseURL;
+  if (typeof baseURL === 'string' && baseURL) {
+    try {
+      return new URL(sanitizedPath, baseURL).toString();
+    } catch (error) {
+      if (typeof window !== 'undefined') {
+        try {
+          const originBase = baseURL.startsWith('/')
+            ? `${window.location.origin}${baseURL}`
+            : baseURL;
+          return new URL(sanitizedPath, originBase).toString();
+        } catch (innerError) {
+          // fall back below
+        }
+      }
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    return new URL(sanitizedPath, window.location.origin).toString();
+  }
+
+  return sanitizedPath;
+}
+
+export function getDeviceHeaders() {
+  const deviceId = getOrCreateDeviceId();
+  return deviceId ? { 'X-Device-ID': deviceId } : {};
+}
+
 export async function vote({ eventId, playerId }) {
   try {
     const { data: voteData } = await apiClient.post('/vote', {
@@ -96,5 +128,103 @@ export async function validateTicketStatus({ eventId, code, signature }) {
   } catch (error) {
     const responseError = error?.response?.data?.error;
     return { ok: false, error: responseError || 'unknown_error', details: error };
+  }
+}
+
+export async function fetchVoteStatus(eventId: number) {
+  if (!eventId) {
+    return { ok: true, hasVoted: false };
+  }
+
+  const headers = getDeviceHeaders();
+  if (!headers['X-Device-ID']) {
+    return { ok: false, error: new Error('missing_device_id') };
+  }
+
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/vote-status`, {
+      headers,
+    });
+    return { ok: true, hasVoted: Boolean(data?.has_voted) };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export async function fetchMySelfie(eventId: number) {
+  if (!eventId) {
+    return { ok: true, selfie: null };
+  }
+  const headers = getDeviceHeaders();
+  if (!headers['X-Device-ID']) {
+    return { ok: false, error: new Error('missing_device_id') };
+  }
+
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/selfies/me`, {
+      headers,
+    });
+    return { ok: true, selfie: data };
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return { ok: true, selfie: null };
+    }
+    return { ok: false, error };
+  }
+}
+
+export async function uploadSelfie(
+  eventId: number,
+  { file, caption, imageBase64 }: { file?: File; caption?: string; imageBase64?: string },
+) {
+  if (!eventId) {
+    return { ok: false, error: new Error('missing_event_id') };
+  }
+
+  const headers = getDeviceHeaders();
+  if (!headers['X-Device-ID']) {
+    return { ok: false, error: new Error('missing_device_id') };
+  }
+
+  try {
+    if (file instanceof File) {
+      const formData = new FormData();
+      formData.append('image', file);
+      if (caption) {
+        formData.append('caption', caption);
+      }
+
+      const { data } = await apiClient.post(`/events/${eventId}/selfies`, formData, {
+        headers,
+      });
+      return { ok: true, selfie: data };
+    }
+
+    if (typeof imageBase64 === 'string' && imageBase64.trim()) {
+      const payload = {
+        caption: caption ?? '',
+        image_base64: imageBase64,
+      };
+      const { data } = await apiClient.post(`/events/${eventId}/selfies`, payload, {
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      });
+      return { ok: true, selfie: data };
+    }
+
+    return { ok: false, error: new Error('missing_image_data') };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export async function listApprovedSelfies(eventId: number) {
+  if (!eventId) {
+    return { ok: true, selfies: [] };
+  }
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/selfies/approved`);
+    return { ok: true, selfies: Array.isArray(data) ? data : [] };
+  } catch (error) {
+    return { ok: false, error };
   }
 }
