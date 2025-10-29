@@ -62,27 +62,43 @@ export const apiClient = axios.create({
 });
 
 export function resolveApiUrl(path: string) {
+  if (!path) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
   const sanitizedPath = path.startsWith('/') ? path : `/${path}`;
   const baseURL = apiClient.defaults?.baseURL;
+
+  const joinUrl = (base: string) => {
+    const normalizedBase = base.replace(/\/+$/, '');
+    return `${normalizedBase}${sanitizedPath}`;
+  };
+
   if (typeof baseURL === 'string' && baseURL) {
+    if (/^https?:\/\//i.test(baseURL)) {
+      return joinUrl(baseURL);
+    }
+
+    if (baseURL.startsWith('/')) {
+      if (typeof window !== 'undefined' && window.location?.origin) {
+        return joinUrl(`${window.location.origin}${baseURL}`);
+      }
+      return joinUrl(baseURL);
+    }
+
     try {
       return new URL(sanitizedPath, baseURL).toString();
     } catch (error) {
-      if (typeof window !== 'undefined') {
-        try {
-          const originBase = baseURL.startsWith('/')
-            ? `${window.location.origin}${baseURL}`
-            : baseURL;
-          return new URL(sanitizedPath, originBase).toString();
-        } catch (innerError) {
-          // fall back below
-        }
-      }
+      // ignore and fall back
     }
   }
 
-  if (typeof window !== 'undefined') {
-    return new URL(sanitizedPath, window.location.origin).toString();
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}${sanitizedPath}`;
   }
 
   return sanitizedPath;
