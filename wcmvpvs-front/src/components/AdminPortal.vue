@@ -837,7 +837,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { apiClient, resolveApiUrl } from '../api';
+import { apiClient, resolveApiUrl, resolveStaticAssetUrl } from '../api';
 import { PLAYER_LAYOUT } from '../roster';
 
 const basePath = import.meta.env.BASE_URL ?? '/';
@@ -1198,7 +1198,7 @@ const normalizeSelfieResponse = (item) => {
     event_id: eventId,
     caption,
     image_url: imageUrl,
-    image_src: imageUrl ? resolveApiUrl(imageUrl) : '',
+    image_src: imageUrl ? resolveStaticAssetUrl(imageUrl) : '',
     content_type: typeof item?.content_type === 'string' ? item.content_type : '',
     approved,
     show_on_screen: showOnScreen,

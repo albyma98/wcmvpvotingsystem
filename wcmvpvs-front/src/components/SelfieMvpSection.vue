@@ -92,7 +92,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { fetchMySelfie, resolveApiUrl, uploadSelfie } from '../api';
+import { fetchMySelfie, resolveStaticAssetUrl, uploadSelfie } from '../api';
 
 const CAPTION_LIMIT = 80;
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
@@ -137,7 +137,7 @@ const storedImageUrl = computed(() => {
     return '';
   }
   try {
-    return resolveApiUrl(selfie.value.image_url);
+    return resolveStaticAssetUrl(selfie.value.image_url);
   } catch (error) {
     return selfie.value.image_url;
   }
