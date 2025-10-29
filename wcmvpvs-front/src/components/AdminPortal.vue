@@ -444,22 +444,23 @@
               </div>
             </div>
 
-            <div class="history-chart-wrapper" v-if="entry.timeline.length">
-              <h4>Andamento voti (da 1 ora prima a 2 ore dopo)</h4>
-              <div class="history-chart" role="img" :aria-label="`Andamento voti per ${entry.title}`">
-                <div
-                  v-for="bucket in entry.timeline"
-                  :key="`${entry.id}-bucket-${bucket.start || bucket.label}`"
-                  class="history-chart__bar"
-                >
-                  <div
-                    class="history-chart__fill"
-                    :style="{ height: bucket.height }"
-                    :title="`${bucket.label || 'Intervallo'}: ${bucket.votes} voti`"
-                  ></div>
-                  <span class="history-chart__label">{{ bucket.label }}</span>
-                </div>
+            <div class="history-votes" v-if="entry.timeline.length">
+              <div class="history-votes__header">
+                <h4>Votazioni</h4>
+                <p v-if="entry.timelineRange" class="history-votes__range">
+                  Dal {{ entry.timelineRange.start }} al {{ entry.timelineRange.end }}
+                </p>
               </div>
+              <ul class="history-votes-list">
+                <li
+                  v-for="bucket in entry.timeline"
+                  :key="`${entry.id}-bucket-${bucket.start || bucket.rangeLabel}`"
+                  class="history-votes-list__item"
+                >
+                  <span class="history-votes-list__range">{{ bucket.rangeLabel }}</span>
+                  <span class="history-votes-list__votes">{{ bucket.votesLabel }}</span>
+                </li>
+              </ul>
             </div>
           </li>
         </ul>
@@ -2045,43 +2046,71 @@ function normalizeHistoryEntry(item) {
     : '0';
 
   const timelineRaw = Array.isArray(item?.timeline) ? item.timeline : [];
-  const timeline = timelineRaw
+  const timelineBuckets = timelineRaw
     .map((bucket) => {
       const start = typeof bucket?.start === 'string' ? bucket.start : '';
       const end = typeof bucket?.end === 'string' ? bucket.end : '';
       const votes = Number(bucket?.votes ?? 0) || 0;
       const explicitLabel = typeof bucket?.label === 'string' ? bucket.label.trim() : '';
-      if (explicitLabel) {
-        return { start, end, label: explicitLabel, votes };
-      }
-      const startDate = parseHistoryDate(start);
-      const endDate = parseHistoryDate(end);
-      if (startDate && endDate) {
-        return {
-          start,
-          end,
-          label: `${historyTimeFormatter.format(startDate)}-${historyTimeFormatter.format(endDate)}`,
-          votes,
-        };
-      }
-      if (startDate) {
-        return {
-          start,
-          end,
-          label: historyTimeFormatter.format(startDate),
-          votes,
-        };
-      }
-      return { start, end, label: '', votes };
+      const startDate = start ? parseHistoryDate(start) : null;
+      const endDate = end ? parseHistoryDate(end) : null;
+      const startTimestamp = startDate ? startDate.getTime() : Number.NaN;
+      const endTimestamp = endDate ? endDate.getTime() : Number.NaN;
+      const startLabel = startDate ? historyTimeFormatter.format(startDate) : '';
+      const endLabel = endDate ? historyTimeFormatter.format(endDate) : '';
+      const rangeLabel = explicitLabel
+        ? explicitLabel
+        : startLabel && endLabel
+        ? `${startLabel} - ${endLabel}`
+        : startLabel || endLabel || '';
+      return {
+        start,
+        end,
+        votes,
+        startLabel,
+        endLabel,
+        rangeLabel,
+        startTimestamp,
+        endTimestamp,
+      };
     })
-    .filter((bucket) => bucket.label || bucket.votes || bucket.start);
+    .filter((bucket) => bucket.rangeLabel || bucket.votes || bucket.start)
+    .sort((a, b) => {
+      const aTime = Number.isFinite(a.startTimestamp)
+        ? a.startTimestamp
+        : Number.isFinite(a.endTimestamp)
+        ? a.endTimestamp
+        : Number.POSITIVE_INFINITY;
+      const bTime = Number.isFinite(b.startTimestamp)
+        ? b.startTimestamp
+        : Number.isFinite(b.endTimestamp)
+        ? b.endTimestamp
+        : Number.POSITIVE_INFINITY;
+      if (aTime !== bTime) {
+        return aTime - bTime;
+      }
+      return a.rangeLabel.localeCompare(b.rangeLabel, 'it');
+    })
+    .map((bucket) => ({
+      start: bucket.start,
+      end: bucket.end,
+      rangeLabel: bucket.rangeLabel || 'Intervallo',
+      votes: bucket.votes,
+      votesLabel: Number.isFinite(bucket.votes) ? `${bucket.votes.toLocaleString('it-IT')} voti` : '0 voti',
+      startLabel: bucket.startLabel,
+      endLabel: bucket.endLabel,
+    }));
 
-  const maxTimelineVotes = timeline.reduce((max, bucket) => Math.max(max, bucket.votes), 0);
-  const timelineWithHeights = timeline.map((bucket) => {
-    const percentage = maxTimelineVotes > 0 ? Math.round((bucket.votes / maxTimelineVotes) * 100) : 0;
-    const height = maxTimelineVotes === 0 ? (bucket.votes > 0 ? '100%' : '6%') : `${Math.max(6, percentage)}%`;
-    return { ...bucket, height };
-  });
+  const firstBucketWithStart = timelineBuckets.find((bucket) => bucket.startLabel);
+  const lastBucketWithEnd = [...timelineBuckets].reverse().find((bucket) => bucket.endLabel);
+  const timelineRangeStart = firstBucketWithStart?.startLabel || timelineBuckets[0]?.rangeLabel || '';
+  const timelineRangeEnd = lastBucketWithEnd?.endLabel || timelineBuckets[timelineBuckets.length - 1]?.rangeLabel || '';
+  const timelineRange = timelineRangeStart || timelineRangeEnd
+    ? {
+        start: timelineRangeStart || timelineRangeEnd,
+        end: timelineRangeEnd || timelineRangeStart,
+      }
+    : null;
 
   const mvpRaw = item?.mvp;
   let mvp = null;
@@ -2107,8 +2136,8 @@ function normalizeHistoryEntry(item) {
     sponsorClicks,
     sponsorClicksTotal,
     sponsorClicksTotalLabel,
-    timeline: timelineWithHeights,
-    timelineMax: maxTimelineVotes,
+    timeline: timelineBuckets,
+    timelineRange,
     mvp,
     homeTeam,
     awayTeam,
@@ -3217,45 +3246,61 @@ select:focus {
   font-size: 0.9rem;
 }
 
-.history-chart-wrapper {
+.history-votes {
   border-top: 1px solid rgba(15, 23, 42, 0.08);
   padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
-.history-chart-wrapper h4 {
-  margin: 0 0 0.75rem;
+.history-votes__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.history-votes__header h4 {
+  margin: 0;
   font-size: 1rem;
   color: #0f172a;
 }
 
-.history-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.75rem;
-  min-height: 180px;
+.history-votes__range {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #475569;
 }
 
-.history-chart__bar {
-  flex: 1;
+.history-votes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 0.5rem;
 }
 
-.history-chart__fill {
-  width: 100%;
-  border-radius: 0.75rem 0.75rem 0.25rem 0.25rem;
-  background: linear-gradient(180deg, #1d4ed8 0%, #3b82f6 100%);
-  transition: height 0.3s ease;
-  min-height: 6%;
+.history-votes-list__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(59, 130, 246, 0.08);
+  color: #0f172a;
 }
 
-.history-chart__label {
-  font-size: 0.75rem;
-  color: #475569;
-  text-align: center;
-  max-width: 4.5rem;
+.history-votes-list__range {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.history-votes-list__votes {
+  font-size: 0.9rem;
+  color: #1d4ed8;
+  font-weight: 600;
 }
 
 .modal-backdrop {
@@ -3298,12 +3343,9 @@ select:focus {
     padding: 1.25rem;
   }
 
-  .history-chart {
-    gap: 0.5rem;
-  }
-
-  .history-chart__label {
-    font-size: 0.7rem;
+  .history-votes-list__item {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .modal-card {
