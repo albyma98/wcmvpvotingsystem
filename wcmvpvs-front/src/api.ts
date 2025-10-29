@@ -185,6 +185,19 @@ export async function fetchVoteStatus(eventId: number) {
   }
 }
 
+export async function fetchLiveVoteSummary(eventId: number) {
+  if (!eventId) {
+    return { ok: false, error: new Error('invalid_event_id') };
+  }
+
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/votes/live`);
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
 export async function fetchMySelfie(eventId: number) {
   if (!eventId) {
     return { ok: true, selfie: null };

@@ -102,6 +102,15 @@ type EventVoteResult struct {
 	LastVoteAt string `json:"last_vote_at"`
 }
 
+type EventVoteLeaderboardEntry struct {
+	PlayerID   int    `json:"player_id"`
+	FirstName  string `json:"first_name"`
+	LastName   string `json:"last_name"`
+	ImageURL   string `json:"image_url"`
+	Votes      int    `json:"votes"`
+	LastVoteAt string `json:"last_vote_at"`
+}
+
 type EventTicket struct {
 	VoteID          int    `json:"vote_id"`
 	TicketCode      string `json:"ticket_code"`
@@ -219,6 +228,7 @@ type AppDatabase interface {
 	AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize, error)
 	ClearPrizeWinner(eventID, prizeID int) error
 	GetEventResults(eventID int) ([]EventVoteResult, error)
+	GetEventVoteLeaderboard(eventID, limit int) ([]EventVoteLeaderboardEntry, error)
 	GetEventVoteCount(eventID int) (int, error)
 	ListEventVoteTimestamps(eventID int) ([]time.Time, error)
 	GetEventMVP(eventID int) (EventMVP, error)
@@ -555,6 +565,60 @@ func (db *appdbimpl) GetEventVoteCount(eventID int) (int, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+func (db *appdbimpl) GetEventVoteLeaderboard(eventID, limit int) ([]EventVoteLeaderboardEntry, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	rows, err := db.c.Query(`
+SELECT v.player_id,
+       IFNULL(p.first_name, ''),
+       IFNULL(p.last_name, ''),
+       IFNULL(p.image_url, ''),
+       COUNT(v.id) AS votes,
+       IFNULL(MAX(v.created_at), '') AS last_vote_at
+FROM votes v
+INNER JOIN players p ON p.id = v.player_id
+WHERE v.event_id = ?
+GROUP BY v.player_id, p.first_name, p.last_name, p.image_url
+ORDER BY votes DESC, last_vote_at DESC, v.player_id ASC
+LIMIT ?
+`, eventID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := make([]EventVoteLeaderboardEntry, 0)
+	for rows.Next() {
+		var entry EventVoteLeaderboardEntry
+		var lastVoteRaw string
+		if err := rows.Scan(&entry.PlayerID, &entry.FirstName, &entry.LastName, &entry.ImageURL, &entry.Votes, &lastVoteRaw); err != nil {
+			return nil, err
+		}
+
+		if ts, parseErr := parseSQLiteTimestamp(lastVoteRaw); parseErr == nil {
+			entry.LastVoteAt = ts.UTC().Format(time.RFC3339)
+		} else {
+			entry.LastVoteAt = strings.TrimSpace(lastVoteRaw)
+		}
+
+		entry.FirstName = strings.TrimSpace(entry.FirstName)
+		entry.LastName = strings.TrimSpace(entry.LastName)
+		entry.ImageURL = strings.TrimSpace(entry.ImageURL)
+		entries = append(entries, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return entries, nil
 }
 
 func (db *appdbimpl) ListEventVoteTimestamps(eventID int) ([]time.Time, error) {
