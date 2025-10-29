@@ -46,25 +46,6 @@
             </div>
           </div>
 
-          <div v-if="selfie" class="selfie-status">
-            <p class="selfie-status__label">
-              Stato: <strong>{{ statusLabel }}</strong>
-            </p>
-            <p v-if="submittedAtLabel" class="selfie-status__time">Inviato il {{ submittedAtLabel }}</p>
-          </div>
-
-          <label class="selfie-caption">
-            <span>Didascalia (max {{ CAPTION_LIMIT }} caratteri)</span>
-            <textarea
-              v-model="captionInput"
-              :maxlength="CAPTION_LIMIT"
-              :disabled="interactionDisabled"
-              placeholder="Es. Forza squadra!"
-              rows="2"
-            ></textarea>
-            <span class="selfie-caption__counter">{{ captionRemaining }} caratteri rimanenti</span>
-          </label>
-
           <div class="selfie-actions">
             <button
               type="button"
@@ -107,7 +88,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { fetchMySelfie, resolveApiUrl, uploadSelfie } from '../api';
 
-const CAPTION_LIMIT = 80;
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
 const DEFAULT_ASPECT_RATIO = '16 / 10';
 
@@ -137,7 +117,6 @@ const isLoadingSelfie = ref(false);
 const selectedFile = ref(null);
 const previewUrl = ref('');
 const previewDimensions = ref({ width: 0, height: 0 });
-const captionInput = ref('');
 const errorMessage = ref('');
 const successMessage = ref('');
 const isSubmitting = ref(false);
@@ -145,11 +124,6 @@ const fileInputRef = ref(null);
 
 const showLoader = computed(() => props.loadingStatus || isLoadingSelfie.value);
 const interactionDisabled = computed(() => !props.enabled || isSubmitting.value || props.loadingStatus);
-
-const captionRemaining = computed(() => {
-  const length = Array.from(captionInput.value || '').length;
-  return Math.max(0, CAPTION_LIMIT - length);
-});
 
 const storedImageUrl = computed(() => {
   if (!selfie.value?.image_url) {
@@ -170,31 +144,6 @@ const previewStyle = computed(() => {
     return { aspectRatio: `${width} / ${height}` };
   }
   return { aspectRatio: DEFAULT_ASPECT_RATIO };
-});
-
-const statusLabel = computed(() => {
-  if (!selfie.value) {
-    return 'In attesa di invio';
-  }
-  if (selfie.value.approved) {
-    return selfie.value.show_on_screen ? 'Approvato per il maxischermo' : 'Approvato';
-  }
-  return 'In attesa di approvazione';
-});
-
-const submittedAtLabel = computed(() => {
-  if (!selfie.value?.submitted_at && !selfie.value?.created_at) {
-    return '';
-  }
-  const raw = selfie.value.submitted_at || selfie.value.created_at;
-  try {
-    return new Intl.DateTimeFormat('it-IT', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(raw));
-  } catch (error) {
-    return raw;
-  }
 });
 
 const canSubmit = computed(() => Boolean(selectedFile.value) && !isSubmitting.value && props.enabled);
@@ -235,13 +184,13 @@ function handleFileChange(event) {
     return;
   }
   if (!file.type?.startsWith('image/')) {
-    errorMessage.value = 'Seleziona un file immagine valido.';
     clearSelection();
+    errorMessage.value = 'Errore';
     return;
   }
   if (file.size > MAX_FILE_SIZE) {
-    errorMessage.value = 'L\'immagine è troppo pesante. Dimensione massima 8 MB.';
     clearSelection();
+    errorMessage.value = 'Errore';
     return;
   }
   revokePreview();
@@ -271,7 +220,6 @@ function resetPreviewDimensions() {
 async function loadSelfie(eventId) {
   if (!eventId || !props.enabled) {
     selfie.value = null;
-    captionInput.value = '';
     return;
   }
   isLoadingSelfie.value = true;
@@ -280,13 +228,12 @@ async function loadSelfie(eventId) {
     const { ok, selfie: data } = await fetchMySelfie(eventId);
     if (ok) {
       selfie.value = data || null;
-      captionInput.value = data?.caption || '';
       successMessage.value = '';
       clearSelection();
     }
   } catch (error) {
     console.error('Impossibile caricare il selfie', error);
-    errorMessage.value = 'Impossibile caricare il tuo selfie in questo momento.';
+    errorMessage.value = 'Errore';
     selfie.value = null;
   } finally {
     isLoadingSelfie.value = false;
@@ -301,25 +248,21 @@ async function submitSelfie() {
   errorMessage.value = '';
   successMessage.value = '';
   try {
-    const { ok, selfie: data, error } = await uploadSelfie(props.eventId, {
+    const { ok, selfie: data } = await uploadSelfie(props.eventId, {
       file: selectedFile.value,
-      caption: captionInput.value.trim(),
+      caption: '',
     });
     if (ok) {
       selfie.value = data || null;
-      captionInput.value = data?.caption || '';
-      successMessage.value = 'Selfie inviato! Attendi la conferma dello staff.';
+      successMessage.value = 'Selfie inviato';
       emit('selfie-submitted', data);
       clearSelection();
     } else {
-      const message =
-        error?.response?.data?.message || error?.message || 'Impossibile inviare il selfie. Riprova.';
-      errorMessage.value = message;
+      errorMessage.value = 'Errore';
     }
   } catch (error) {
-    const message =
-      error?.response?.data?.message || error?.message || 'Impossibile inviare il selfie. Riprova.';
-    errorMessage.value = message;
+    console.error('Impossibile inviare il selfie', error);
+    errorMessage.value = 'Errore';
   } finally {
     isSubmitting.value = false;
   }
@@ -330,7 +273,6 @@ watch(
   ([eventId, enabled]) => {
     if (!enabled) {
       selfie.value = null;
-      captionInput.value = '';
       successMessage.value = '';
       errorMessage.value = '';
       clearSelection();
@@ -346,13 +288,6 @@ watch(
 watch(previewSource, (value) => {
   if (!value) {
     resetPreviewDimensions();
-  }
-});
-
-watch(captionInput, (value) => {
-  const limited = Array.from(value || '').slice(0, CAPTION_LIMIT).join('');
-  if (limited !== value) {
-    captionInput.value = limited;
   }
 });
 
@@ -455,7 +390,8 @@ onBeforeUnmount(() => {
 
 .selfie-preview {
   position: relative;
-  width: 100%;
+  width: 75%;
+  margin: 0 auto;
   border-radius: 1.75rem;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -494,57 +430,11 @@ onBeforeUnmount(() => {
   font-size: 1.75rem;
 }
 
-.selfie-status {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.9rem;
-  color: rgba(226, 232, 240, 0.9);
-}
-
-.selfie-status__label {
-  margin: 0;
-}
-
-.selfie-status__time {
-  margin: 0;
-  color: rgba(148, 163, 184, 0.85);
-}
-
-.selfie-caption {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.9rem;
-  color: rgba(226, 232, 240, 0.92);
-}
-
-.selfie-caption textarea {
-  width: 100%;
-  border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.6);
-  color: #f8fafc;
-  padding: 0.75rem 1rem;
-  font-size: 0.95rem;
-  resize: none;
-}
-
-.selfie-caption textarea:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.selfie-caption__counter {
-  font-size: 0.75rem;
-  color: rgba(148, 163, 184, 0.85);
-  align-self: flex-end;
-}
-
 .selfie-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+  justify-content: center;
 }
 
 .selfie-button {
@@ -639,7 +529,7 @@ onBeforeUnmount(() => {
 }
 
 .selfie-section--compact .selfie-preview {
-  max-width: 220px;
+  max-width: 165px;
   margin: 0 auto;
   border-radius: 1.25rem;
 }
@@ -657,11 +547,6 @@ onBeforeUnmount(() => {
   padding: 0.6rem 1rem;
   font-size: 0.75rem;
   letter-spacing: 0.18em;
-}
-
-.selfie-section--compact .selfie-caption textarea {
-  font-size: 0.85rem;
-  padding: 0.65rem 0.9rem;
 }
 
 .selfie-section--compact .selfie-message,
