@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -43,9 +44,9 @@ type selfieResponse struct {
 }
 
 type adminSelfieResponse struct {
-        selfieResponse
-        DeviceToken   string `json:"device_token"`
-        FileSizeBytes int64  `json:"file_size_bytes"`
+	selfieResponse
+	DeviceToken   string `json:"device_token"`
+	FileSizeBytes int64  `json:"file_size_bytes"`
 }
 
 func (rt *_router) deviceIDFromRequest(r *http.Request) string {
@@ -88,18 +89,38 @@ func detectContentType(data []byte, fallback string) string {
 	return fallback
 }
 
-func (rt *_router) buildSelfieImagePath(eventID, selfieID int) string {
-	return fmt.Sprintf("/events/%d/selfies/%d/image", eventID, selfieID)
+func (rt *_router) buildSelfieImagePath(selfie database.Selfie) string {
+	if selfie.ID == 0 || selfie.EventID == 0 {
+		return ""
+	}
+
+	base := fmt.Sprintf("/events/%d/selfies/%d/image", selfie.EventID, selfie.ID)
+	if selfie.Approved {
+		return base
+	}
+
+	deviceID := strings.TrimSpace(selfie.DeviceID)
+	if deviceID == "" {
+		return base
+	}
+
+	return fmt.Sprintf("%s?device_id=%s", base, url.QueryEscape(deviceID))
 }
 
 func (rt *_router) ensureSelfieURL(selfie database.Selfie) (database.Selfie, error) {
-	if strings.TrimSpace(selfie.ImageURL) != "" {
-		return selfie, nil
-	}
 	if selfie.ID == 0 || selfie.EventID == 0 {
 		return selfie, nil
 	}
-	imageURL := rt.buildSelfieImagePath(selfie.EventID, selfie.ID)
+	imageURL := strings.TrimSpace(rt.buildSelfieImagePath(selfie))
+	if imageURL == "" {
+		return selfie, nil
+	}
+
+	if strings.TrimSpace(selfie.ImageURL) == imageURL {
+		selfie.ImageURL = imageURL
+		return selfie, nil
+	}
+
 	if err := rt.db.UpdateSelfieURL(selfie.ID, imageURL); err != nil {
 		return selfie, err
 	}
@@ -411,10 +432,10 @@ func (rt *_router) listApprovedSelfies(w http.ResponseWriter, r *http.Request, c
 }
 
 func (rt *_router) listAdminSelfies(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-        eventID, err := strconv.Atoi(chi.URLParam(r, "eventId"))
-        if err != nil || eventID <= 0 {
-                w.WriteHeader(http.StatusBadRequest)
-                return
+	eventID, err := strconv.Atoi(chi.URLParam(r, "eventId"))
+	if err != nil || eventID <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 	selfies, err := rt.db.ListEventSelfies(eventID)
 	if err != nil {
@@ -423,20 +444,20 @@ func (rt *_router) listAdminSelfies(w http.ResponseWriter, r *http.Request, ctx 
 		return
 	}
 	responses := make([]adminSelfieResponse, 0, len(selfies))
-        for _, selfie := range selfies {
-                selfie, err = rt.ensureSelfieURL(selfie)
-                if err != nil {
-                        ctx.Logger.WithError(err).Warn("cannot ensure selfie url")
-                }
-                responses = append(responses, adminSelfieResponse{
-                        selfieResponse: buildSelfieResponsePayload(selfie),
-                        DeviceToken:    selfie.DeviceID,
-                        FileSizeBytes:  rt.getSelfieFileSize(selfie),
-                })
-        }
-        if err := writeJSON(w, http.StatusOK, responses); err != nil {
-                ctx.Logger.WithError(err).Error("cannot encode admin selfie list")
-        }
+	for _, selfie := range selfies {
+		selfie, err = rt.ensureSelfieURL(selfie)
+		if err != nil {
+			ctx.Logger.WithError(err).Warn("cannot ensure selfie url")
+		}
+		responses = append(responses, adminSelfieResponse{
+			selfieResponse: buildSelfieResponsePayload(selfie),
+			DeviceToken:    selfie.DeviceID,
+			FileSizeBytes:  rt.getSelfieFileSize(selfie),
+		})
+	}
+	if err := writeJSON(w, http.StatusOK, responses); err != nil {
+		ctx.Logger.WithError(err).Error("cannot encode admin selfie list")
+	}
 }
 
 func (rt *_router) updateSelfieModeration(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -493,26 +514,26 @@ func (rt *_router) updateSelfieModeration(w http.ResponseWriter, r *http.Request
 		ctx.Logger.WithError(err).Warn("cannot ensure selfie url")
 	}
 
-        response := adminSelfieResponse{
-                selfieResponse: buildSelfieResponsePayload(updated),
-                DeviceToken:    updated.DeviceID,
-                FileSizeBytes:  rt.getSelfieFileSize(updated),
-        }
-        if err := writeJSON(w, http.StatusOK, response); err != nil {
-                ctx.Logger.WithError(err).Error("cannot encode moderation response")
-        }
+	response := adminSelfieResponse{
+		selfieResponse: buildSelfieResponsePayload(updated),
+		DeviceToken:    updated.DeviceID,
+		FileSizeBytes:  rt.getSelfieFileSize(updated),
+	}
+	if err := writeJSON(w, http.StatusOK, response); err != nil {
+		ctx.Logger.WithError(err).Error("cannot encode moderation response")
+	}
 }
 
 func (rt *_router) getSelfieFileSize(selfie database.Selfie) int64 {
-        path := strings.TrimSpace(selfie.ImagePath)
-        if path == "" {
-                return 0
-        }
-        info, err := os.Stat(path)
-        if err != nil {
-                return 0
-        }
-        return info.Size()
+	path := strings.TrimSpace(selfie.ImagePath)
+	if path == "" {
+		return 0
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }
 
 func (rt *_router) getSelfieImage(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
