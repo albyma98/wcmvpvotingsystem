@@ -217,6 +217,7 @@ type AppDatabase interface {
 	ListEventSelfies(eventID int) ([]Selfie, error)
 	ListApprovedSelfies(eventID int) ([]Selfie, error)
 	UpdateSelfieStatus(id int, approved bool, showOnScreen bool) error
+	DeleteSelfie(id int) error
 	CreateAdmin(a Admin) (int, error)
 	ListAdmins() ([]Admin, error)
 	UpdateAdmin(a Admin) error
@@ -715,6 +716,11 @@ func (db *appdbimpl) UpdateSelfieStatus(id int, approved bool, showOnScreen bool
 		showOnScreen = false
 	}
 	_, err := db.c.Exec(`UPDATE selfies SET approved = ?, show_on_screen = ? WHERE id = ?`, boolToInt(approved), boolToInt(showOnScreen), id)
+	return err
+}
+
+func (db *appdbimpl) DeleteSelfie(id int) error {
+	_, err := db.c.Exec(`DELETE FROM selfies WHERE id = ?`, id)
 	return err
 }
 

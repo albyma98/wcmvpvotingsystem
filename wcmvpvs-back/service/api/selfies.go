@@ -524,6 +524,40 @@ func (rt *_router) updateSelfieModeration(w http.ResponseWriter, r *http.Request
 	}
 }
 
+func (rt *_router) deleteSelfie(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	selfieID, err := strconv.Atoi(chi.URLParam(r, "selfieId"))
+	if err != nil || selfieID <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	selfie, err := rt.db.GetSelfieByID(selfieID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot load selfie")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err := rt.db.DeleteSelfie(selfieID); err != nil {
+		ctx.Logger.WithError(err).Error("cannot delete selfie")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	imagePath := strings.TrimSpace(selfie.ImagePath)
+	if imagePath != "" {
+		if err := os.Remove(imagePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			ctx.Logger.WithError(err).Warn("cannot remove selfie file")
+		}
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (rt *_router) getSelfieFileSize(selfie database.Selfie) int64 {
 	path := strings.TrimSpace(selfie.ImagePath)
 	if path == "" {

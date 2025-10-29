@@ -423,30 +423,12 @@
               </p>
               <div class="selfie-admin-actions">
                 <button
-                  v-if="!selfie.approved"
-                  class="btn success"
+                  class="btn danger"
                   type="button"
                   :disabled="isSelfieBusy(selfie.id)"
-                  @click="approveSelfie(selfie)"
+                  @click="deleteSelfie(selfie)"
                 >
-                  Approva
-                </button>
-                <button
-                  v-else
-                  class="btn outline"
-                  type="button"
-                  :disabled="isSelfieBusy(selfie.id)"
-                  @click="markSelfiePending(selfie)"
-                >
-                  Segna in revisione
-                </button>
-                <button
-                  class="btn secondary"
-                  type="button"
-                  :disabled="isSelfieBusy(selfie.id)"
-                  @click="toggleSelfieHighlight(selfie)"
-                >
-                  {{ selfie.show_on_screen ? 'Rimuovi da maxischermo' : 'Mostra su maxischermo' }}
+                  Elimina foto
                 </button>
               </div>
             </div>
@@ -2257,7 +2239,7 @@ function ensureSelfieSelection() {
   selectedSelfieEventId.value = active ? active.id : events.value[0].id;
 }
 
-async function applySelfieUpdate(selfie, payload, successMessage) {
+async function deleteSelfie(selfie) {
   if (!selfie?.id) {
     return;
   }
@@ -2265,49 +2247,21 @@ async function applySelfieUpdate(selfie, payload, successMessage) {
   selfieModerationMessage.value = '';
   setSelfieBusy(selfie.id, true);
   try {
-    const { data } = await secureRequest(() =>
-      apiClient.put(`/admin/selfies/${selfie.id}`, payload, authHeaders.value),
+    await secureRequest(() =>
+      apiClient.delete(`/admin/selfies/${selfie.id}`, authHeaders.value),
     );
-    const normalized = normalizeSelfieResponse(data);
-    if (normalized) {
-      eventSelfies.value = eventSelfies.value.map((item) =>
-        item.id === normalized.id ? normalized : item,
-      );
-      selfieModerationMessage.value = successMessage;
-    }
+    eventSelfies.value = eventSelfies.value.filter((item) => item.id !== selfie.id);
+    selfieModerationMessage.value = 'Selfie eliminato.';
   } catch (error) {
     if (error?.response?.status === 404) {
       eventSelfies.value = eventSelfies.value.filter((item) => item.id !== selfie.id);
       selfieLoadError.value = 'Il selfie selezionato non è più disponibile.';
     } else if (error?.response?.status !== 401) {
-      selfieLoadError.value = 'Impossibile aggiornare il selfie. Riprova più tardi.';
+      selfieLoadError.value = 'Impossibile eliminare il selfie. Riprova più tardi.';
     }
   } finally {
     setSelfieBusy(selfie.id, false);
   }
-}
-
-async function approveSelfie(selfie) {
-  await applySelfieUpdate(selfie, { approved: true }, 'Selfie approvato.');
-}
-
-async function markSelfiePending(selfie) {
-  await applySelfieUpdate(
-    selfie,
-    { approved: false, show_on_screen: false },
-    'Il selfie è stato rimesso in revisione.',
-  );
-}
-
-async function toggleSelfieHighlight(selfie) {
-  const desired = !selfie?.show_on_screen;
-  const payload = desired
-    ? { show_on_screen: true, approved: true }
-    : { show_on_screen: false };
-  const message = desired
-    ? 'Selfie contrassegnato per il maxischermo.'
-    : 'Selfie rimosso dal maxischermo.';
-  await applySelfieUpdate(selfie, payload, message);
 }
 
 function parseHistoryDate(value) {
