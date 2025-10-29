@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
 import SelfieMvpSection from './SelfieMvpSection.vue';
+import ReactionTestSection from './ReactionTestSection.vue';
 import { apiClient, vote, fetchVoteStatus, resolveApiUrl } from '../api';
 import { mapPlayersToLayout } from '../roster';
 
@@ -771,6 +772,13 @@ const handleQrError = () => {
           :loading-status="isCheckingVoteStatus"
           :compact="hasVoted"
           @selfie-submitted="handleSelfieSubmitted"
+        />
+
+        <ReactionTestSection
+          v-if="currentEventId && hasVoted"
+          class="mt-8"
+          :event-id="currentEventId"
+          :enabled="hasVoted"
         />
 
         <section v-if="sponsors.length" class="px-4">

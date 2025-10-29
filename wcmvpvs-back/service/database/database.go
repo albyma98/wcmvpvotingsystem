@@ -175,6 +175,20 @@ type Selfie struct {
 	CreatedAt    string `json:"created_at"`
 }
 
+type ReactionTestAttempt struct {
+	ID             int       `json:"id"`
+	EventID        int       `json:"event_id"`
+	DeviceID       string    `json:"device_id"`
+	ReactionTimeMs int       `json:"reaction_time_ms"`
+	IsValid        bool      `json:"is_valid"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type ReactionTestStats struct {
+	Attempts int     `json:"attempts"`
+	Average  float64 `json:"average_ms"`
+}
+
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
 	GetName() (string, error)
@@ -218,6 +232,9 @@ type AppDatabase interface {
 	ListApprovedSelfies(eventID int) ([]Selfie, error)
 	UpdateSelfieStatus(id int, approved bool, showOnScreen bool) error
 	DeleteSelfie(id int) error
+	RecordReactionTestAttempt(eventID int, deviceID string, reactionMs int) (ReactionTestAttempt, error)
+	GetLatestReactionTestAttempt(eventID int, deviceID string) (ReactionTestAttempt, error)
+	GetReactionTestStats(eventID int) (ReactionTestStats, error)
 	CreateAdmin(a Admin) (int, error)
 	ListAdmins() ([]Admin, error)
 	UpdateAdmin(a Admin) error
@@ -423,6 +440,33 @@ func New(db *sql.DB) (AppDatabase, error) {
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_selfies_approved ON selfies(event_id, approved);`); err != nil {
 		return nil, fmt.Errorf("error ensuring selfies approval index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='reaction_tests';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE reaction_tests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL,
+        reaction_time_ms INTEGER NOT NULL,
+        is_valid INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating reaction_tests table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying reaction_tests table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_reaction_tests_event ON reaction_tests(event_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring reaction_tests event index: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_reaction_tests_device ON reaction_tests(event_id, device_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring reaction_tests device index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tickets';`).Scan(&tableName)
@@ -722,6 +766,53 @@ func (db *appdbimpl) UpdateSelfieStatus(id int, approved bool, showOnScreen bool
 func (db *appdbimpl) DeleteSelfie(id int) error {
 	_, err := db.c.Exec(`DELETE FROM selfies WHERE id = ?`, id)
 	return err
+}
+
+func scanReactionTestAttempt(row rowScanner) (ReactionTestAttempt, error) {
+	var attempt ReactionTestAttempt
+	var createdAtRaw string
+	var isValid int
+	if err := row.Scan(&attempt.ID, &attempt.EventID, &attempt.DeviceID, &attempt.ReactionTimeMs, &isValid, &createdAtRaw); err != nil {
+		return ReactionTestAttempt{}, err
+	}
+	attempt.IsValid = isValid != 0
+	if createdAtRaw != "" {
+		if ts, err := parseSQLiteTimestamp(createdAtRaw); err == nil {
+			attempt.CreatedAt = ts
+		}
+	}
+	return attempt, nil
+}
+
+func (db *appdbimpl) RecordReactionTestAttempt(eventID int, deviceID string, reactionMs int) (ReactionTestAttempt, error) {
+	res, err := db.c.Exec(`INSERT INTO reaction_tests (event_id, device_id, reaction_time_ms, is_valid) VALUES (?, ?, ?, 1)`, eventID, deviceID, reactionMs)
+	if err != nil {
+		return ReactionTestAttempt{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return ReactionTestAttempt{}, err
+	}
+	row := db.c.QueryRow(`SELECT id, event_id, device_id, reaction_time_ms, is_valid, created_at FROM reaction_tests WHERE id = ?`, id)
+	return scanReactionTestAttempt(row)
+}
+
+func (db *appdbimpl) GetLatestReactionTestAttempt(eventID int, deviceID string) (ReactionTestAttempt, error) {
+	row := db.c.QueryRow(`SELECT id, event_id, device_id, reaction_time_ms, is_valid, created_at FROM reaction_tests WHERE event_id = ? AND device_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`, eventID, deviceID)
+	return scanReactionTestAttempt(row)
+}
+
+func (db *appdbimpl) GetReactionTestStats(eventID int) (ReactionTestStats, error) {
+	var stats ReactionTestStats
+	var avg sql.NullFloat64
+	err := db.c.QueryRow(`SELECT COUNT(1) AS attempts, AVG(reaction_time_ms) FROM reaction_tests WHERE event_id = ? AND is_valid = 1`, eventID).Scan(&stats.Attempts, &avg)
+	if err != nil {
+		return ReactionTestStats{}, err
+	}
+	if avg.Valid {
+		stats.Average = avg.Float64
+	}
+	return stats, nil
 }
 
 // Team operations
