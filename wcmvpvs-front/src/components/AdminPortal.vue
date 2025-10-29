@@ -369,6 +369,87 @@
         </div>
       </section>
 
+      <section v-else-if="section === 'selfies'" class="card">
+        <header class="section-header">
+          <h2>Selfie MVP</h2>
+          <p>Gestisci i selfie inviati dai tifosi per l'evento selezionato.</p>
+        </header>
+
+        <div class="form-grid">
+          <label>
+            Evento
+            <select v-model.number="selectedSelfieEventId">
+              <option v-if="!events.length" value="0" disabled>Nessun evento disponibile</option>
+              <option v-for="event in events" :key="event.id" :value="event.id">
+                {{ eventLabel(event) }} • {{ formatEventDate(event.start_datetime) }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <p v-if="selfieModerationMessage" class="success">{{ selfieModerationMessage }}</p>
+        <p v-if="selfieLoadError" class="error">{{ selfieLoadError }}</p>
+
+        <div v-if="isLoadingSelfies" class="selfie-admin-loader" role="status" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          <p>Caricamento selfie…</p>
+        </div>
+        <p v-else-if="!events.length" class="muted">Crea un evento per raccogliere selfie dal pubblico.</p>
+        <p v-else-if="!eventSelfies.length" class="muted">Nessun selfie ricevuto per questo evento al momento.</p>
+        <div v-else class="selfie-admin-grid">
+          <article v-for="selfie in eventSelfies" :key="selfie.id" class="selfie-admin-card">
+            <a
+              v-if="selfie.image_src"
+              :href="selfie.image_src"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="selfie-admin-thumb"
+            >
+              <img :src="selfie.image_src" :alt="`Selfie ${selfie.id}`" />
+            </a>
+            <div v-else class="selfie-admin-thumb selfie-admin-thumb--empty">
+              <span>Immagine non disponibile</span>
+            </div>
+            <div class="selfie-admin-body">
+              <h3 class="selfie-admin-caption">{{ selfie.caption || 'Senza didascalia' }}</h3>
+              <p class="selfie-admin-meta">Inviato: {{ formatSelfieDate(selfie.submitted_at) || 'N/D' }}</p>
+              <p class="selfie-admin-meta">Device: {{ selfie.device_token || 'Non disponibile' }}</p>
+              <p class="selfie-admin-status">
+                Stato: <strong>{{ selfieStatusLabel(selfie) }}</strong>
+              </p>
+              <div class="selfie-admin-actions">
+                <button
+                  v-if="!selfie.approved"
+                  class="btn success"
+                  type="button"
+                  :disabled="isSelfieBusy(selfie.id)"
+                  @click="approveSelfie(selfie)"
+                >
+                  Approva
+                </button>
+                <button
+                  v-else
+                  class="btn outline"
+                  type="button"
+                  :disabled="isSelfieBusy(selfie.id)"
+                  @click="markSelfiePending(selfie)"
+                >
+                  Segna in revisione
+                </button>
+                <button
+                  class="btn secondary"
+                  type="button"
+                  :disabled="isSelfieBusy(selfie.id)"
+                  @click="toggleSelfieHighlight(selfie)"
+                >
+                  {{ selfie.show_on_screen ? 'Rimuovi da maxischermo' : 'Mostra su maxischermo' }}
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section v-else-if="section === 'history'" class="card history-card">
         <header class="section-header">
           <h2>Storico eventi</h2>
@@ -752,7 +833,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { apiClient } from '../api';
+import { apiClient, resolveApiUrl } from '../api';
 import { PLAYER_LAYOUT } from '../roster';
 
 const basePath = import.meta.env.BASE_URL ?? '/';
@@ -766,6 +847,10 @@ const historyTimeFormatter = new Intl.DateTimeFormat('it-IT', {
   hour: '2-digit',
   minute: '2-digit',
 });
+const selfieDateFormatter = new Intl.DateTimeFormat('it-IT', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
 
 let resultsPollHandle = 0;
 
@@ -774,13 +859,14 @@ const tabs = [
   { id: 'events', label: 'Eventi' },
   { id: 'closing', label: 'Chiusura votazioni' },
   { id: 'results', label: 'Risultati' },
+  { id: 'selfies', label: 'Selfie MVP' },
   { id: 'history', label: 'Storico eventi' },
   { id: 'teams', label: 'Squadre' },
   { id: 'players', label: 'Giocatori' },
   { id: 'sponsors', label: 'Sponsor' },
   { id: 'admins', label: 'Admin' },
 ];
-const STAFF_TAB_IDS = new Set(['closing', 'results', 'history']);
+const STAFF_TAB_IDS = new Set(['closing', 'results', 'history', 'selfies']);
 
 const teams = ref([]);
 const players = ref([]);
@@ -788,10 +874,16 @@ const events = ref([]);
 const admins = ref([]);
 const sponsors = ref([]);
 const eventHistory = ref([]);
+const eventSelfies = ref([]);
 const isLoadingEventHistory = ref(false);
 const eventHistoryError = ref('');
 const eventHistorySuccess = ref('');
 const hasLoadedEventHistory = ref(false);
+const isLoadingSelfies = ref(false);
+const selfieLoadError = ref('');
+const selfieModerationMessage = ref('');
+const selectedSelfieEventId = ref(0);
+const selfieBusyState = reactive({});
 const purgeDialog = reactive({
   visible: false,
   event: null,
@@ -1075,6 +1167,40 @@ const normalizePlayerResponse = (item) => {
   };
 };
 
+const normalizeSelfieResponse = (item) => {
+  if (!item) {
+    return null;
+  }
+  const id = Number(item?.id) || 0;
+  if (!id) {
+    return null;
+  }
+  const eventId = Number(item?.event_id) || 0;
+  const caption = typeof item?.caption === 'string' ? item.caption.trim() : '';
+  const imageUrl = typeof item?.image_url === 'string' ? item.image_url.trim() : '';
+  const approved = Boolean(item?.approved);
+  const showOnScreen = Boolean(item?.show_on_screen);
+  const deviceToken = typeof item?.device_token === 'string' ? item.device_token : '';
+  const submittedAt =
+    typeof item?.submitted_at === 'string'
+      ? item.submitted_at
+      : typeof item?.created_at === 'string'
+      ? item.created_at
+      : '';
+  return {
+    id,
+    event_id: eventId,
+    caption,
+    image_url: imageUrl,
+    image_src: imageUrl ? resolveApiUrl(imageUrl) : '',
+    content_type: typeof item?.content_type === 'string' ? item.content_type : '',
+    approved,
+    show_on_screen: showOnScreen,
+    device_token: deviceToken,
+    submitted_at: submittedAt,
+  };
+};
+
 const sortPlayersForDisplay = (a, b) => {
   if (a.jersey_number !== b.jersey_number) {
     const jerseyA = a.jersey_number || Number.MAX_SAFE_INTEGER;
@@ -1214,6 +1340,12 @@ const selectedResultsEvent = computed(() =>
 );
 const activeEventEntry = computed(() =>
   events.value.find((event) => event.id === activeEventId.value) || null,
+);
+const selectedSelfieEvent = computed(() =>
+  events.value.find((event) => event.id === selectedSelfieEventId.value) || null,
+);
+const selectedSelfieEventLabel = computed(() =>
+  selectedSelfieEvent.value ? eventLabel(selectedSelfieEvent.value) : '',
 );
 const activeEventVotesClosed = computed(() => Boolean(activeEventEntry.value?.votes_closed));
 const activeEventLabel = computed(() =>
@@ -1409,6 +1541,7 @@ watch(hasEnoughTeams, (enough) => {
 
 watch(events, (value) => {
   ensureResultsSelection();
+  ensureSelfieSelection();
   const editableEvents = Array.isArray(value)
     ? value.filter((event) => !event.is_concluded)
     : [];
@@ -1435,9 +1568,14 @@ function clearCollections() {
   admins.value = [];
   sponsors.value = [];
   eventHistory.value = [];
+  eventSelfies.value = [];
   hasLoadedEventHistory.value = false;
   eventHistoryError.value = '';
   eventHistorySuccess.value = '';
+  isLoadingSelfies.value = false;
+  selfieLoadError.value = '';
+  selfieModerationMessage.value = '';
+  selectedSelfieEventId.value = 0;
   resetAllPlayerSlots();
   playerOverflow.value = [];
   playerSaveError.value = '';
@@ -1447,6 +1585,9 @@ function clearCollections() {
   });
   Object.keys(eventPrizeErrors).forEach((key) => {
     delete eventPrizeErrors[key];
+  });
+  Object.keys(selfieBusyState).forEach((key) => {
+    delete selfieBusyState[key];
   });
   lastCreatedEventLink.value = '';
   resetNewEventPrizes();
@@ -2009,6 +2150,140 @@ async function loadSponsors() {
   recomputeActiveSponsorSlider();
 }
 
+async function loadEventSelfies(eventId) {
+  if (!eventId) {
+    eventSelfies.value = [];
+    return;
+  }
+  isLoadingSelfies.value = true;
+  selfieLoadError.value = '';
+  selfieModerationMessage.value = '';
+  try {
+    const { data } = await secureRequest(() =>
+      apiClient.get(`/admin/events/${eventId}/selfies`, authHeaders.value),
+    );
+    const normalized = Array.isArray(data)
+      ? data
+          .map((item) => normalizeSelfieResponse(item))
+          .filter((item) => item && item.id)
+      : [];
+    eventSelfies.value = normalized;
+  } catch (error) {
+    if (error?.response?.status !== 401) {
+      selfieLoadError.value = 'Impossibile caricare i selfie per questo evento.';
+    }
+    eventSelfies.value = [];
+  } finally {
+    isLoadingSelfies.value = false;
+  }
+}
+
+function setSelfieBusy(id, busy) {
+  if (!id) {
+    return;
+  }
+  if (busy) {
+    selfieBusyState[id] = true;
+  } else {
+    delete selfieBusyState[id];
+  }
+}
+
+function isSelfieBusy(id) {
+  return Boolean(selfieBusyState[id]);
+}
+
+function selfieStatusLabel(selfie) {
+  if (!selfie) {
+    return '';
+  }
+  if (!selfie.approved) {
+    return 'In attesa di approvazione';
+  }
+  if (selfie.show_on_screen) {
+    return 'Approvato per il maxischermo';
+  }
+  return 'Approvato';
+}
+
+function formatSelfieDate(value) {
+  if (!value) {
+    return '';
+  }
+  try {
+    return selfieDateFormatter.format(new Date(value));
+  } catch (error) {
+    return value;
+  }
+}
+
+function ensureSelfieSelection() {
+  if (!events.value.length) {
+    selectedSelfieEventId.value = 0;
+    return;
+  }
+  const current = selectedSelfieEventId.value;
+  const stillValid = events.value.some((event) => event.id === current);
+  if (stillValid) {
+    return;
+  }
+  const active = events.value.find((event) => event.is_active);
+  selectedSelfieEventId.value = active ? active.id : events.value[0].id;
+}
+
+async function applySelfieUpdate(selfie, payload, successMessage) {
+  if (!selfie?.id) {
+    return;
+  }
+  selfieLoadError.value = '';
+  selfieModerationMessage.value = '';
+  setSelfieBusy(selfie.id, true);
+  try {
+    const { data } = await secureRequest(() =>
+      apiClient.put(`/admin/selfies/${selfie.id}`, payload, authHeaders.value),
+    );
+    const normalized = normalizeSelfieResponse(data);
+    if (normalized) {
+      eventSelfies.value = eventSelfies.value.map((item) =>
+        item.id === normalized.id ? normalized : item,
+      );
+      selfieModerationMessage.value = successMessage;
+    }
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      eventSelfies.value = eventSelfies.value.filter((item) => item.id !== selfie.id);
+      selfieLoadError.value = 'Il selfie selezionato non è più disponibile.';
+    } else if (error?.response?.status !== 401) {
+      selfieLoadError.value = 'Impossibile aggiornare il selfie. Riprova più tardi.';
+    }
+  } finally {
+    setSelfieBusy(selfie.id, false);
+  }
+}
+
+async function approveSelfie(selfie) {
+  await applySelfieUpdate(selfie, { approved: true }, 'Selfie approvato.');
+}
+
+async function markSelfiePending(selfie) {
+  await applySelfieUpdate(
+    selfie,
+    { approved: false, show_on_screen: false },
+    'Il selfie è stato rimesso in revisione.',
+  );
+}
+
+async function toggleSelfieHighlight(selfie) {
+  const desired = !selfie?.show_on_screen;
+  const payload = desired
+    ? { show_on_screen: true, approved: true }
+    : { show_on_screen: false };
+  const message = desired
+    ? 'Selfie contrassegnato per il maxischermo.'
+    : 'Selfie rimosso dal maxischermo.';
+  await applySelfieUpdate(selfie, payload, message);
+}
+
 function parseHistoryDate(value) {
   if (typeof value !== 'string' || !value.trim()) {
     return null;
@@ -2307,6 +2582,10 @@ async function loadAll() {
   await loadPlayers();
   if (isSuperAdmin.value) {
     await Promise.all([loadAdmins(), loadSponsors()]);
+  }
+  ensureSelfieSelection();
+  if (section.value === 'selfies' && selectedSelfieEventId.value) {
+    await loadEventSelfies(selectedSelfieEventId.value);
   }
   hasLoadedEventHistory.value = false;
   if (section.value === 'history') {
@@ -2673,6 +2952,15 @@ watch(section, (value, oldValue) => {
   } else if (oldValue === 'results') {
     stopResultsPolling();
   }
+  if (value === 'selfies') {
+    ensureSelfieSelection();
+    if (selectedSelfieEventId.value) {
+      loadEventSelfies(selectedSelfieEventId.value);
+    }
+  } else if (oldValue === 'selfies') {
+    selfieModerationMessage.value = '';
+    selfieLoadError.value = '';
+  }
   if (value === 'history') {
     loadEventHistory();
   }
@@ -2685,6 +2973,19 @@ watch(selectedResultsEventId, (eventId) => {
     startResultsPolling();
   } else if (!eventId) {
     stopResultsPolling();
+  }
+});
+
+watch(selectedSelfieEventId, (eventId) => {
+  if (section.value !== 'selfies') {
+    return;
+  }
+  selfieModerationMessage.value = '';
+  selfieLoadError.value = '';
+  if (eventId) {
+    loadEventSelfies(eventId);
+  } else {
+    eventSelfies.value = [];
   }
 });
 
@@ -3694,5 +3995,111 @@ select:focus {
     grid-column: 1 / -1;
     justify-content: flex-start;
   }
+}
+
+.selfie-admin-loader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem 0;
+  color: #475569;
+}
+
+.selfie-admin-loader .spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  border: 2px solid rgba(148, 163, 184, 0.35);
+  border-top-color: rgba(59, 130, 246, 0.9);
+  animation: admin-selfie-spin 0.8s linear infinite;
+}
+
+@keyframes admin-selfie-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.selfie-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.selfie-admin-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 18px 30px rgba(15, 23, 42, 0.12);
+}
+
+.selfie-admin-thumb {
+  position: relative;
+  width: 100%;
+  padding-top: 65%;
+  background: #0f172a;
+  overflow: hidden;
+}
+
+.selfie-admin-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.selfie-admin-thumb--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  color: #64748b;
+  background: rgba(226, 232, 240, 0.4);
+}
+
+.selfie-admin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.selfie-admin-caption {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.selfie-admin-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.selfie-admin-status {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+.selfie-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.selfie-admin-actions .btn {
+  flex: 1 1 auto;
+  min-width: 160px;
 }
 </style>

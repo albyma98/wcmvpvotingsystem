@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
-import { apiClient, vote } from '../api';
+import SelfieMvpSection from './SelfieMvpSection.vue';
+import { apiClient, vote, fetchVoteStatus, resolveApiUrl } from '../api';
 import { mapPlayersToLayout } from '../roster';
 
 const props = defineProps({
@@ -31,6 +32,8 @@ const playersError = ref('');
 const fieldPlayers = computed(() => mapPlayersToLayout(rawPlayers.value));
 
 const sponsors = ref([]);
+const hasVoted = ref(false);
+const isCheckingVoteStatus = ref(false);
 
 const totalVotes = ref(0);
 const isVoteTotalLoading = ref(false);
@@ -151,31 +154,6 @@ async function loadSponsors() {
   }
 }
 
-function resolveApiUrl(path) {
-  const sanitizedPath = path.startsWith('/') ? path : `/${path}`;
-  const baseURL = apiClient.defaults?.baseURL;
-  if (typeof baseURL === 'string' && baseURL) {
-    try {
-      return new URL(sanitizedPath, baseURL).toString();
-    } catch (error) {
-      if (typeof window !== 'undefined') {
-        try {
-          const originBase = baseURL.startsWith('/')
-            ? `${window.location.origin}${baseURL}`
-            : baseURL;
-          return new URL(sanitizedPath, originBase).toString();
-        } catch (innerError) {
-          // ignore and fall back below
-        }
-      }
-    }
-  }
-  if (typeof window !== 'undefined') {
-    return new URL(sanitizedPath, window.location.origin).toString();
-  }
-  return sanitizedPath;
-}
-
 function recordSponsorClick(sponsor) {
   if (!sponsor || !sponsor.id) {
     return;
@@ -257,6 +235,28 @@ const ticketCode = ref('');
 const ticketQrUrl = ref('');
 const ticketLoadError = ref('');
 const isTicketLoading = ref(false);
+
+const handleSelfieSubmitted = () => {
+  hasVoted.value = true;
+};
+
+async function refreshVoteStatus(eventId) {
+  if (!eventId) {
+    hasVoted.value = false;
+    return;
+  }
+  isCheckingVoteStatus.value = true;
+  try {
+    const { ok, hasVoted: status } = await fetchVoteStatus(eventId);
+    if (ok) {
+      hasVoted.value = Boolean(status);
+    }
+  } catch (error) {
+    console.warn('Impossibile verificare lo stato del voto', error);
+  } finally {
+    isCheckingVoteStatus.value = false;
+  }
+}
 
 const sanitizeName = (value) => {
   if (typeof value !== 'string') {
@@ -450,6 +450,10 @@ watch(currentEventId, (eventId) => {
   if (eventId) {
     refreshVoteTotal();
     startVoteTotalPolling();
+    hasVoted.value = false;
+    refreshVoteStatus(eventId);
+  } else {
+    hasVoted.value = false;
   }
 });
 
@@ -510,6 +514,7 @@ onMounted(() => {
   if (currentEventId.value) {
     refreshVoteTotal();
     startVoteTotalPolling();
+    refreshVoteStatus(currentEventId.value);
   }
 });
 
@@ -588,6 +593,7 @@ const voteForPlayer = async (player) => {
       const voteResult = response.vote || {};
       votedPlayerId.value = player.id;
       pendingPlayer.value = null;
+      hasVoted.value = true;
 
       const codeSource = voteResult.code || '';
       const qrSource = voteResult.qr_data || '';
@@ -616,6 +622,7 @@ const voteForPlayer = async (player) => {
         if (!votedPlayerId.value) {
           votedPlayerId.value = -1;
         }
+        hasVoted.value = true;
       } else if (response?.status === 429) {
         errorMessage.value =
           response?.message ||
@@ -718,6 +725,15 @@ const handleQrError = () => {
             I giocatori non sono ancora stati configurati. Torna più tardi!
           </p>
         </section>
+
+        <SelfieMvpSection
+          v-if="currentEventId && (hasVoted || isCheckingVoteStatus)"
+          class="px-4"
+          :event-id="currentEventId"
+          :enabled="hasVoted"
+          :loading-status="isCheckingVoteStatus"
+          @selfie-submitted="handleSelfieSubmitted"
+        />
 
         <section v-if="sponsors.length" class="px-4">
           <div
