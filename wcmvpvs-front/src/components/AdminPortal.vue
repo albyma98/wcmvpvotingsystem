@@ -414,6 +414,10 @@
               <h3 class="selfie-admin-caption">{{ selfie.caption || 'Senza didascalia' }}</h3>
               <p class="selfie-admin-meta">Inviato: {{ formatSelfieDate(selfie.submitted_at) || 'N/D' }}</p>
               <p class="selfie-admin-meta">Device: {{ selfie.device_token || 'Non disponibile' }}</p>
+              <p class="selfie-admin-meta">
+                Dimensione:
+                {{ formatSelfieFileSize(selfie.file_size_bytes) || 'N/D' }}
+              </p>
               <p class="selfie-admin-status">
                 Stato: <strong>{{ selfieStatusLabel(selfie) }}</strong>
               </p>
@@ -1181,6 +1185,8 @@ const normalizeSelfieResponse = (item) => {
   const approved = Boolean(item?.approved);
   const showOnScreen = Boolean(item?.show_on_screen);
   const deviceToken = typeof item?.device_token === 'string' ? item.device_token : '';
+  const fileSize = Number(item?.file_size_bytes);
+  const fileSizeBytes = Number.isFinite(fileSize) && fileSize >= 0 ? fileSize : 0;
   const submittedAt =
     typeof item?.submitted_at === 'string'
       ? item.submitted_at
@@ -1197,6 +1203,7 @@ const normalizeSelfieResponse = (item) => {
     approved,
     show_on_screen: showOnScreen,
     device_token: deviceToken,
+    file_size_bytes: fileSizeBytes,
     submitted_at: submittedAt,
   };
 };
@@ -2215,6 +2222,25 @@ function formatSelfieDate(value) {
   } catch (error) {
     return value;
   }
+}
+
+function formatSelfieFileSize(value) {
+  const size = Number(value);
+  if (!Number.isFinite(size) || size <= 0) {
+    return '';
+  }
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let unitIndex = 0;
+  let display = size;
+  while (display >= 1024 && unitIndex < units.length - 1) {
+    display /= 1024;
+    unitIndex += 1;
+  }
+  const formatter = new Intl.NumberFormat('it-IT', {
+    minimumFractionDigits: display < 10 && unitIndex > 0 ? 1 : 0,
+    maximumFractionDigits: 1,
+  });
+  return `${formatter.format(display)} ${units[unitIndex]}`;
 }
 
 function ensureSelfieSelection() {
