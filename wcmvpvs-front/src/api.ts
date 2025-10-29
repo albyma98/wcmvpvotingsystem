@@ -104,6 +104,24 @@ export function resolveApiUrl(path: string) {
   return sanitizedPath;
 }
 
+export function resolveStaticAssetUrl(path: string) {
+  if (!path) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const sanitizedPath = path.startsWith('/') ? path : `/${path}`;
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}${sanitizedPath}`;
+  }
+
+  return sanitizedPath;
+}
+
 export function getDeviceHeaders() {
   const deviceId = getOrCreateDeviceId();
   return deviceId ? { 'X-Device-ID': deviceId } : {};
