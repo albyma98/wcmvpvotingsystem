@@ -23,6 +23,13 @@ type historyTimelineBucket struct {
 	Votes int    `json:"votes"`
 }
 
+type eventHistoryPrize struct {
+	ID               int    `json:"id"`
+	Name             string `json:"name"`
+	Position         int    `json:"position"`
+	WinnerTicketCode string `json:"winner_ticket_code,omitempty"`
+}
+
 type eventHistoryEntry struct {
 	ID                 int                         `json:"id"`
 	Title              string                      `json:"title"`
@@ -35,6 +42,8 @@ type eventHistoryEntry struct {
 	Timeline           []historyTimelineBucket     `json:"timeline"`
 	HomeTeam           string                      `json:"home_team"`
 	AwayTeam           string                      `json:"away_team"`
+	Prizes             []eventHistoryPrize         `json:"prizes"`
+	HasPrizeDraw       bool                        `json:"has_prize_draw"`
 }
 
 type historyEntryWrapper struct {
@@ -113,6 +122,38 @@ func (rt *_router) getEventHistory(w http.ResponseWriter, r *http.Request, ctx r
 			voteTimestamps = nil
 		}
 
+		prizeList, err := rt.db.ListEventPrizes(event.ID)
+		if err != nil {
+			ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load prizes for history")
+			prizeList = nil
+		}
+
+		prizes := make([]eventHistoryPrize, 0, len(prizeList))
+		hasPrizeDraw := false
+		for _, prize := range prizeList {
+			winnerCode := ""
+			if prize.Winner != nil {
+				winnerCode = strings.TrimSpace(prize.Winner.TicketCode)
+				if winnerCode != "" {
+					hasPrizeDraw = true
+				}
+			}
+
+			prizes = append(prizes, eventHistoryPrize{
+				ID:               prize.ID,
+				Name:             strings.TrimSpace(prize.Name),
+				Position:         prize.Position,
+				WinnerTicketCode: winnerCode,
+			})
+		}
+
+		sort.SliceStable(prizes, func(i, j int) bool {
+			if prizes[i].Position == prizes[j].Position {
+				return prizes[i].ID < prizes[j].ID
+			}
+			return prizes[i].Position < prizes[j].Position
+		})
+
 		if startTime.IsZero() && len(voteTimestamps) > 0 {
 			startTime = voteTimestamps[0]
 			normalizedStart = startTime.UTC().Format(time.RFC3339)
@@ -132,6 +173,8 @@ func (rt *_router) getEventHistory(w http.ResponseWriter, r *http.Request, ctx r
 			Timeline:           timeline,
 			HomeTeam:           strings.TrimSpace(event.Team1Name),
 			AwayTeam:           strings.TrimSpace(event.Team2Name),
+			Prizes:             prizes,
+			HasPrizeDraw:       hasPrizeDraw,
 		}
 
 		wrappers = append(wrappers, historyEntryWrapper{entry: entry, startTime: startTime})

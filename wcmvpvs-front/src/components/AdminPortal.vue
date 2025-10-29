@@ -442,6 +442,29 @@
                 </ul>
                 <p v-else class="muted">Nessun click registrato.</p>
               </div>
+              <div class="history-details__column history-details__column--prizes">
+                <h4>Estrazione premi</h4>
+                <p
+                  class="history-prize-status"
+                  :class="entry.hasPrizeDraw ? 'history-prize-status--success' : 'history-prize-status--pending'"
+                >
+                  {{ entry.hasPrizeDraw ? 'Estrazione eseguita' : 'Estrazione non eseguita' }}
+                </p>
+                <p v-if="!entry.prizes.length" class="muted">Nessun premio configurato per l'evento.</p>
+                <ul v-else class="history-prize-list">
+                  <li
+                    v-for="prize in entry.prizes"
+                    :key="`${entry.id}-prize-${prize.id}`"
+                    class="history-prize-item"
+                  >
+                    <span class="history-prize-name">{{ prize.name }}</span>
+                    <span v-if="prize.hasWinner" class="history-prize-code">
+                      Codice vincente: <strong>{{ prize.winnerTicketCode }}</strong>
+                    </span>
+                    <span v-else class="history-prize-code muted">Nessun codice vincente assegnato.</span>
+                  </li>
+                </ul>
+              </div>
             </div>
 
             <div class="history-votes" v-if="entry.timeline.length">
@@ -2045,6 +2068,43 @@ function normalizeHistoryEntry(item) {
     ? sponsorClicksTotal.toLocaleString('it-IT')
     : '0';
 
+  const prizesRaw = Array.isArray(item?.prizes) ? item.prizes : [];
+  const normalizedPrizes = prizesRaw
+    .map((prize, index) => {
+      if (!prize || typeof prize !== 'object') {
+        return null;
+      }
+      const id = Number(prize?.id ?? prize?.ID) || 0;
+      const position = Number(prize?.position ?? prize?.Position) || index + 1;
+      const rawName =
+        typeof (prize?.name ?? prize?.Name) === 'string' ? (prize?.name ?? prize?.Name).trim() : '';
+      const name = rawName || `Premio ${position || index + 1}`;
+      const winnerCodeRaw =
+        typeof (prize?.winner_ticket_code ?? prize?.winnerTicketCode) === 'string'
+          ? (prize?.winner_ticket_code ?? prize?.winnerTicketCode)
+          : '';
+      const winnerTicketCode = winnerCodeRaw.trim().toUpperCase();
+      return {
+        id,
+        position,
+        name,
+        winnerTicketCode,
+        hasWinner: Boolean(winnerTicketCode),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.position === b.position) {
+        return a.id - b.id;
+      }
+      return a.position - b.position;
+    });
+
+  let hasPrizeDraw = Boolean(item?.has_prize_draw ?? item?.hasPrizeDraw);
+  if (!hasPrizeDraw) {
+    hasPrizeDraw = normalizedPrizes.some((prize) => prize.hasWinner);
+  }
+
   const timelineRaw = Array.isArray(item?.timeline) ? item.timeline : [];
   const timelineBuckets = timelineRaw
     .map((bucket) => {
@@ -2141,6 +2201,8 @@ function normalizeHistoryEntry(item) {
     mvp,
     homeTeam,
     awayTeam,
+    prizes: normalizedPrizes,
+    hasPrizeDraw,
   };
 }
 
@@ -3244,6 +3306,49 @@ select:focus {
   margin-left: 0.5rem;
   color: #475569;
   font-size: 0.9rem;
+}
+
+.history-prize-status {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.history-prize-status--success {
+  color: #166534;
+}
+
+.history-prize-status--pending {
+  color: #b45309;
+}
+
+.history-prize-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.history-prize-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.history-prize-name {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.history-prize-code {
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.history-prize-code strong {
+  color: #0f172a;
 }
 
 .history-votes {
