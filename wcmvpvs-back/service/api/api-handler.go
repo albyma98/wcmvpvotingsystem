@@ -55,6 +55,8 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/events/{eventId}/selfies/me", rt.wrap(rt.getOwnSelfie))
 	rt.router.Get("/events/{eventId}/selfies/approved", rt.wrap(rt.listApprovedSelfies))
 	rt.router.Get("/events/{eventId}/selfies/{selfieId}/image", rt.wrap(rt.getSelfieImage))
+	rt.router.Get("/events/{eventId}/reaction-test", rt.wrap(rt.getReactionTestStatus))
+	rt.router.Post("/events/{eventId}/reaction-test", rt.wrap(rt.postReactionTestResult))
 	rt.router.Get("/admin/events/history", rt.wrapAdmin(rt.getEventHistory))
 	rt.router.Post("/admin/events/{id}/purge", rt.wrapAdmin(rt.purgeEvent))
 	rt.router.Get("/admin/events/{eventId}/selfies", rt.wrapAdmin(rt.listAdminSelfies))

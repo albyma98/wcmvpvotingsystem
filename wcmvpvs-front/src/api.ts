@@ -207,6 +207,56 @@ export async function fetchMySelfie(eventId: number) {
   }
 }
 
+export async function fetchReactionTestStatus(eventId: number) {
+  if (!eventId) {
+    return { ok: false, error: new Error('missing_event_id') };
+  }
+
+  const headers = getDeviceHeaders();
+  if (!headers['X-Device-ID']) {
+    return { ok: false, error: new Error('missing_device_id') };
+  }
+
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/reaction-test`, {
+      headers,
+    });
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export async function submitReactionTestResult(eventId: number, reactionTimeMs: number) {
+  if (!eventId) {
+    return { ok: false, error: new Error('missing_event_id') };
+  }
+
+  const headers = getDeviceHeaders();
+  if (!headers['X-Device-ID']) {
+    return { ok: false, error: new Error('missing_device_id') };
+  }
+
+  try {
+    const { data } = await apiClient.post(
+      `/events/${eventId}/reaction-test`,
+      { reaction_time_ms: reactionTimeMs },
+      { headers },
+    );
+    return { ok: true, data };
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      return {
+        ok: false,
+        status: error.response?.status,
+        data: error.response?.data,
+        error,
+      };
+    }
+    return { ok: false, error };
+  }
+}
+
 export async function uploadSelfie(
   eventId: number,
   { file, caption, imageBase64 }: { file?: File; caption?: string; imageBase64?: string },
