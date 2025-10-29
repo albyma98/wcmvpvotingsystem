@@ -4,6 +4,7 @@ import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
 import SelfieMvpSection from './SelfieMvpSection.vue';
 import ReactionTestSection from './ReactionTestSection.vue';
+import LiveResultsSection from './LiveResultsSection.vue';
 import { apiClient, vote, fetchVoteStatus, resolveApiUrl } from '../api';
 import { mapPlayersToLayout } from '../roster';
 
@@ -775,6 +776,13 @@ const handleQrError = () => {
         />
 
         <ReactionTestSection
+          v-if="currentEventId && hasVoted"
+          class="mt-8"
+          :event-id="currentEventId"
+          :enabled="hasVoted"
+        />
+
+        <LiveResultsSection
           v-if="currentEventId && hasVoted"
           class="mt-8"
           :event-id="currentEventId"
