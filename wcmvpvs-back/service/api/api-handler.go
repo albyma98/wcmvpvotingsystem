@@ -59,6 +59,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admin/events/{id}/purge", rt.wrapAdmin(rt.purgeEvent))
 	rt.router.Get("/admin/events/{eventId}/selfies", rt.wrapAdmin(rt.listAdminSelfies))
 	rt.router.Put("/admin/selfies/{selfieId}", rt.wrapAdmin(rt.updateSelfieModeration))
+	rt.router.Delete("/admin/selfies/{selfieId}", rt.wrapAdmin(rt.deleteSelfie))
 	rt.router.Get("/admin/selfies/{selfieId}/image", rt.wrapAdmin(rt.getAdminSelfieImage))
 
 	rt.router.Get("/votes", rt.wrapAdmin(rt.listVotes))
