@@ -25,8 +25,18 @@
         </div>
 
         <div v-else class="selfie-body">
-          <div class="selfie-preview" :class="{ 'selfie-preview--empty': !previewSource }">
-            <img v-if="previewSource" :src="previewSource" alt="Anteprima selfie" />
+          <div
+            class="selfie-preview"
+            :class="{ 'selfie-preview--empty': !previewSource }"
+            :style="previewStyle"
+          >
+            <img
+              v-if="previewSource"
+              :src="previewSource"
+              alt="Anteprima selfie"
+              @load="handleImageLoad"
+              @error="handleImageError"
+            />
             <div v-else class="selfie-preview__placeholder">
               <span class="selfie-preview__icon" aria-hidden="true">📸</span>
               <p>Seleziona uno scatto per vedere l'anteprima.</p>
@@ -96,6 +106,7 @@ import { fetchMySelfie, resolveApiUrl, uploadSelfie } from '../api';
 
 const CAPTION_LIMIT = 80;
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
+const DEFAULT_ASPECT_RATIO = '16 / 10';
 
 const props = defineProps({
   eventId: {
@@ -118,6 +129,7 @@ const selfie = ref(null);
 const isLoadingSelfie = ref(false);
 const selectedFile = ref(null);
 const previewUrl = ref('');
+const previewDimensions = ref({ width: 0, height: 0 });
 const captionInput = ref('');
 const errorMessage = ref('');
 const successMessage = ref('');
@@ -144,6 +156,14 @@ const storedImageUrl = computed(() => {
 });
 
 const previewSource = computed(() => previewUrl.value || storedImageUrl.value);
+
+const previewStyle = computed(() => {
+  const { width, height } = previewDimensions.value || {};
+  if (width > 0 && height > 0) {
+    return { aspectRatio: `${width} / ${height}` };
+  }
+  return { aspectRatio: DEFAULT_ASPECT_RATIO };
+});
 
 const statusLabel = computed(() => {
   if (!selfie.value) {
@@ -186,6 +206,7 @@ function clearSelection() {
     fileInputRef.value.value = '';
   }
   errorMessage.value = '';
+  resetPreviewDimensions();
 }
 
 function triggerCapture() {
@@ -221,6 +242,23 @@ function handleFileChange(event) {
   previewUrl.value = URL.createObjectURL(file);
   successMessage.value = '';
   errorMessage.value = '';
+}
+
+function handleImageLoad(event) {
+  const target = event?.target;
+  const width = target?.naturalWidth || 0;
+  const height = target?.naturalHeight || 0;
+  if (width > 0 && height > 0) {
+    previewDimensions.value = { width, height };
+  }
+}
+
+function handleImageError() {
+  resetPreviewDimensions();
+}
+
+function resetPreviewDimensions() {
+  previewDimensions.value = { width: 0, height: 0 };
 }
 
 async function loadSelfie(eventId) {
@@ -297,6 +335,12 @@ watch(
   },
   { immediate: true },
 );
+
+watch(previewSource, (value) => {
+  if (!value) {
+    resetPreviewDimensions();
+  }
+});
 
 watch(captionInput, (value) => {
   const limited = Array.from(value || '').slice(0, CAPTION_LIMIT).join('');
@@ -405,7 +449,6 @@ onBeforeUnmount(() => {
 .selfie-preview {
   position: relative;
   width: 100%;
-  padding-top: 62%;
   border-radius: 1.75rem;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -417,7 +460,8 @@ onBeforeUnmount(() => {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: rgba(15, 23, 42, 0.85);
 }
 
 .selfie-preview--empty {
