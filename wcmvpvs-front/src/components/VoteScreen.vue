@@ -1,12 +1,13 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
 import SelfieMvpSection from './SelfieMvpSection.vue';
 import ReactionTestSection from './ReactionTestSection.vue';
 import LiveResultsSection from './LiveResultsSection.vue';
-import { apiClient, vote, fetchVoteStatus, resolveApiUrl } from '../api';
+import { apiClient, vote, fetchVoteStatus, sendJsonBeacon } from '../api';
 import { mapPlayersToLayout } from '../roster';
+import { getOrCreateDeviceId } from '../deviceId';
 
 const props = defineProps({
   eventId: {
@@ -32,8 +33,28 @@ const isLoadingPlayers = ref(false);
 const playersError = ref('');
 
 const fieldPlayers = computed(() => mapPlayersToLayout(rawPlayers.value));
+const activeSponsorIds = computed(() =>
+  sponsors.value
+    .map((item) => {
+      const parsed = Number(item?.id);
+      return Number.isFinite(parsed) ? parsed : 0;
+    })
+    .filter((id) => id > 0),
+);
 
 const sponsors = ref([]);
+const sponsorSectionRef = ref(null);
+const sponsorObserverThresholds = [0, 0.25, 0.5, 0.75, 1];
+let sponsorIntersectionObserver = null;
+let sponsorVisibilityInterval = 0;
+const sponsorVisibilityState = {
+  isVisible: false,
+  visibleSince: 0,
+  accumulatedMs: 0,
+};
+const recordedSponsorSessions = new Set();
+const recordedSponsorSeen = new Set();
+const recordedSponsorWatched = new Set();
 const hasVoted = ref(false);
 const isCheckingVoteStatus = ref(false);
 
@@ -164,36 +185,163 @@ function recordSponsorClick(sponsor) {
   if (!eventId) {
     return;
   }
-  const endpoint = `/events/${eventId}/sponsors/${sponsor.id}/click`;
-  const url = resolveApiUrl(endpoint);
-  const payload = JSON.stringify({ at: new Date().toISOString() });
-
-  if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-    try {
-      const blob = new Blob([payload], { type: 'application/json' });
-      navigator.sendBeacon(url, blob);
-      return;
-    } catch (error) {
-      // ignore and try fetch fallback
-    }
-  }
-
-  if (typeof fetch === 'function') {
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: payload,
-      keepalive: true,
-    }).catch(() => {});
-    return;
-  }
-
-  apiClient.post(endpoint).catch(() => {});
+  const payload = {
+    device_id: getOrCreateDeviceId(),
+    at: new Date().toISOString(),
+  };
+  sendJsonBeacon(`/events/${eventId}/sponsors/${sponsor.id}/click`, payload).catch(() => {});
 }
 
 const handleSponsorClick = (sponsor) => {
   recordSponsorClick(sponsor);
 };
+
+const getNow = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+
+function resetSponsorVisibility() {
+  sponsorVisibilityState.isVisible = false;
+  sponsorVisibilityState.visibleSince = 0;
+  sponsorVisibilityState.accumulatedMs = 0;
+}
+
+function stopSponsorVisibilityInterval() {
+  if (sponsorVisibilityInterval) {
+    window.clearInterval(sponsorVisibilityInterval);
+    sponsorVisibilityInterval = 0;
+  }
+}
+
+function currentSponsorViewDuration() {
+  const now = getNow();
+  let total = sponsorVisibilityState.accumulatedMs;
+  if (sponsorVisibilityState.isVisible && sponsorVisibilityState.visibleSince) {
+    total += now - sponsorVisibilityState.visibleSince;
+  }
+  return total;
+}
+
+function startSponsorVisibilityInterval() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (sponsorVisibilityInterval) {
+    return;
+  }
+  sponsorVisibilityInterval = window.setInterval(() => {
+    const eventId = currentEventId.value;
+    if (!eventId) {
+      stopSponsorVisibilityInterval();
+      return;
+    }
+    if (!sponsorVisibilityState.isVisible) {
+      return;
+    }
+    const durationMs = currentSponsorViewDuration();
+    if (durationMs >= 2000 && !recordedSponsorWatched.has(eventId)) {
+      sendSponsorExposureEvent(eventId, 'watched', durationMs);
+    }
+  }, 250);
+}
+
+function ensureSponsorSession(eventId) {
+  if (!eventId || recordedSponsorSessions.has(eventId)) {
+    return;
+  }
+  recordedSponsorSessions.add(eventId);
+  sendJsonBeacon(`/events/${eventId}/sponsors/session`, {
+    device_id: getOrCreateDeviceId(),
+    at: new Date().toISOString(),
+  }).catch(() => {});
+}
+
+function sendSponsorExposureEvent(eventId, type, durationMs = 0) {
+  if (!eventId) {
+    return;
+  }
+  if (type === 'seen') {
+    if (recordedSponsorSeen.has(eventId)) {
+      return;
+    }
+    recordedSponsorSeen.add(eventId);
+  } else if (type === 'watched') {
+    if (recordedSponsorWatched.has(eventId)) {
+      return;
+    }
+    recordedSponsorWatched.add(eventId);
+  }
+
+  const ids = activeSponsorIds.value;
+  if (!ids.length) {
+    return;
+  }
+
+  const payload = {
+    device_id: getOrCreateDeviceId(),
+    sponsor_ids: ids,
+    type,
+    duration_ms: type === 'watched' && durationMs > 0 ? Math.round(durationMs) : undefined,
+  };
+
+  sendJsonBeacon(`/events/${eventId}/sponsors/exposures`, payload).catch(() => {});
+}
+
+function handleSponsorVisibility(isVisible) {
+  const eventId = currentEventId.value;
+  if (!eventId) {
+    return;
+  }
+
+  if (isVisible) {
+    ensureSponsorSession(eventId);
+    if (!sponsorVisibilityState.isVisible) {
+      sponsorVisibilityState.isVisible = true;
+      sponsorVisibilityState.visibleSince = getNow();
+    }
+    sendSponsorExposureEvent(eventId, 'seen');
+    startSponsorVisibilityInterval();
+  } else {
+    if (sponsorVisibilityState.isVisible && sponsorVisibilityState.visibleSince) {
+      sponsorVisibilityState.accumulatedMs += getNow() - sponsorVisibilityState.visibleSince;
+      sponsorVisibilityState.visibleSince = 0;
+      sponsorVisibilityState.isVisible = false;
+    }
+    const durationMs = currentSponsorViewDuration();
+    if (durationMs >= 2000 && !recordedSponsorWatched.has(eventId)) {
+      sendSponsorExposureEvent(eventId, 'watched', durationMs);
+    }
+    stopSponsorVisibilityInterval();
+  }
+}
+
+function setupSponsorObserver() {
+  if (typeof window === 'undefined' || !('IntersectionObserver' in window)) {
+    return;
+  }
+  const target = sponsorSectionRef.value;
+  if (!target) {
+    return;
+  }
+  if (sponsorIntersectionObserver) {
+    sponsorIntersectionObserver.disconnect();
+  }
+  sponsorIntersectionObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.target !== target) {
+        return;
+      }
+      const visible = entry.isIntersecting && entry.intersectionRatio > 0;
+      handleSponsorVisibility(visible);
+    });
+  }, { threshold: sponsorObserverThresholds });
+  sponsorIntersectionObserver.observe(target);
+}
+
+function teardownSponsorObserver() {
+  if (sponsorIntersectionObserver) {
+    sponsorIntersectionObserver.disconnect();
+    sponsorIntersectionObserver = null;
+  }
+}
 
 async function loadPlayers() {
   isLoadingPlayers.value = true;
@@ -461,10 +609,41 @@ watch(currentEventId, (eventId) => {
     startVoteTotalPolling();
     hasVoted.value = false;
     refreshVoteStatus(eventId);
+    ensureSponsorSession(eventId);
+    resetSponsorVisibility();
+    stopSponsorVisibilityInterval();
+    teardownSponsorObserver();
+    nextTick(() => {
+      if (sponsors.value.length) {
+        setupSponsorObserver();
+      }
+    });
   } else {
     hasVoted.value = false;
+    resetSponsorVisibility();
+    stopSponsorVisibilityInterval();
+    teardownSponsorObserver();
   }
 });
+
+watch(
+  sponsors,
+  (list) => {
+    if (!list.length) {
+      resetSponsorVisibility();
+      stopSponsorVisibilityInterval();
+      teardownSponsorObserver();
+      return;
+    }
+    if (!currentEventId.value) {
+      return;
+    }
+    nextTick(() => {
+      setupSponsorObserver();
+    });
+  },
+  { deep: true },
+);
 
 watch(fieldPlayers, (players) => {
   if (!pendingPlayer.value) {
@@ -524,13 +703,21 @@ onMounted(() => {
     refreshVoteTotal();
     startVoteTotalPolling();
     refreshVoteStatus(currentEventId.value);
+    ensureSponsorSession(currentEventId.value);
   }
+  nextTick(() => {
+    if (currentEventId.value && sponsors.value.length) {
+      setupSponsorObserver();
+    }
+  });
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateCardSize);
   stopVoteTotalPolling();
   stopCountdownTimer();
+  stopSponsorVisibilityInterval();
+  teardownSponsorObserver();
 });
 
 const disableVotes = computed(
@@ -793,7 +980,7 @@ const handleQrError = () => {
           :enabled="hasVoted"
         />
 
-        <section v-if="sponsors.length" class="px-4">
+        <section v-if="sponsors.length" ref="sponsorSectionRef" class="px-4">
           <div
             class="relative overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
             aria-labelledby="sponsor-title"

@@ -366,6 +366,56 @@
               </div>
             </li>
           </ul>
+          <div v-if="selectedResultsEventId" class="sponsor-analytics">
+            <h3>Analisi sponsor</h3>
+            <p v-if="sponsorAnalyticsError" class="error">{{ sponsorAnalyticsError }}</p>
+            <p v-else-if="isLoadingSponsorAnalytics" class="muted">Caricamento dati sponsor…</p>
+            <div v-else-if="!hasSponsorAnalyticsData" class="muted">Nessun dato sponsor disponibile al momento.</div>
+            <div v-else class="sponsor-analytics__content">
+              <div v-if="sponsorAnalyticsDisplay" class="sponsor-analytics__grid">
+                <div class="sponsor-analytics__card">
+                  <span class="sponsor-analytics__label">Utenti totali</span>
+                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.totalUsersLabel }}</strong>
+                </div>
+                <div class="sponsor-analytics__card">
+                  <span class="sponsor-analytics__label">Sezione vista</span>
+                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.seenRateLabel }}</strong>
+                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.seenUsersLabel }} utenti</span>
+                </div>
+                <div class="sponsor-analytics__card">
+                  <span class="sponsor-analytics__label">Tempo medio visione</span>
+                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.averageWatchTimeLabel }}</strong>
+                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.watchedUsersLabel }} utenti</span>
+                </div>
+                <div class="sponsor-analytics__card">
+                  <span class="sponsor-analytics__label">Click totali</span>
+                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.totalClicksLabel }}</strong>
+                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.clickRateLabel }} • {{ sponsorAnalyticsDisplay.uniqueClickersLabel }} utenti</span>
+                </div>
+                <div class="sponsor-analytics__card sponsor-analytics__card--wide">
+                  <span class="sponsor-analytics__label">Sponsor più visualizzato</span>
+                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.topSponsorName }}</strong>
+                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.topSponsorViewsLabel }} visualizzazioni</span>
+                </div>
+              </div>
+              <div v-if="sponsorChartRows.length" class="sponsor-analytics__chart">
+                <h4>Andamento visualizzazioni e click</h4>
+                <ul class="sponsor-chart">
+                  <li v-for="point in sponsorChartRows" :key="point.timestamp || point.label" class="sponsor-chart__row">
+                    <div class="sponsor-chart__label">{{ point.label }}</div>
+                    <div class="sponsor-chart__bars" aria-hidden="true">
+                      <div class="sponsor-chart__bar sponsor-chart__bar--seen" :style="{ width: `${point.seenPercent}%` }"></div>
+                      <div class="sponsor-chart__bar sponsor-chart__bar--clicks" :style="{ width: `${point.clicksPercent}%` }"></div>
+                    </div>
+                    <div class="sponsor-chart__values">
+                      <span>{{ point.seen.toLocaleString('it-IT') }} viste</span>
+                      <span>{{ point.clicks.toLocaleString('it-IT') }} click</span>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -833,6 +883,10 @@ const historyTimeFormatter = new Intl.DateTimeFormat('it-IT', {
   hour: '2-digit',
   minute: '2-digit',
 });
+const analyticsTimeFormatter = new Intl.DateTimeFormat('it-IT', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+});
 const selfieDateFormatter = new Intl.DateTimeFormat('it-IT', {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -885,6 +939,9 @@ const eventResults = ref([]);
 const isLoadingResults = ref(false);
 const resultsError = ref('');
 const lastResultsUpdate = ref(null);
+const sponsorAnalytics = ref(null);
+const sponsorAnalyticsError = ref('');
+const isLoadingSponsorAnalytics = ref(false);
 const newTeamName = ref('');
 const playerSlotCount = PLAYER_LAYOUT.length;
 
@@ -1431,6 +1488,80 @@ const resultsLeaderboard = computed(() => {
     percentage: highestVotes > 0 ? Math.round((entry.votes / highestVotes) * 100) : 0,
   }));
 });
+
+const sponsorAnalyticsDisplay = computed(() => {
+  const data = sponsorAnalytics.value;
+  if (!data) {
+    return null;
+  }
+
+  const formatPercent = (value) =>
+    Number.isFinite(value) ? value.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '0,0';
+
+  return {
+    totalUsers: data.totalUsers,
+    totalUsersLabel: data.totalUsers.toLocaleString('it-IT'),
+    seenUsers: data.seenUsers,
+    seenUsersLabel: data.seenUsers.toLocaleString('it-IT'),
+    seenRateLabel: `${formatPercent(data.seenRate)}%`,
+    watchedUsers: data.watchedUsers,
+    watchedUsersLabel: data.watchedUsers.toLocaleString('it-IT'),
+    averageWatchTimeLabel: formatWatchDuration(data.averageWatchTimeMs),
+    totalClicks: data.totalClicks,
+    totalClicksLabel: data.totalClicks.toLocaleString('it-IT'),
+    uniqueClickersLabel: data.uniqueClickers.toLocaleString('it-IT'),
+    clickRateLabel: `${formatPercent(data.clickRate)}%`,
+    topSponsorName: data.topSponsor?.name || 'Nessuno',
+    topSponsorViewsLabel: data.topSponsor ? data.topSponsor.views.toLocaleString('it-IT') : '0',
+  };
+});
+
+const sponsorTimelinePoints = computed(() => {
+  if (!sponsorAnalytics.value || !Array.isArray(sponsorAnalytics.value.timeline)) {
+    return [];
+  }
+
+  return sponsorAnalytics.value.timeline.map((item) => {
+    const timestamp = typeof item.timestamp === 'string' ? item.timestamp : '';
+    let label = timestamp;
+    if (timestamp) {
+      const date = new Date(timestamp);
+      if (!Number.isNaN(date.getTime())) {
+        label = analyticsTimeFormatter.format(date);
+      }
+    }
+    const seen = Number(item.seen) || 0;
+    const watched = Number(item.watched) || 0;
+    const clicks = Number(item.clicks) || 0;
+    return { timestamp, label, seen, watched, clicks };
+  });
+});
+
+const sponsorTimelineMaxValue = computed(() => {
+  const points = sponsorTimelinePoints.value;
+  if (!points.length) {
+    return 1;
+  }
+  return points.reduce((max, point) => Math.max(max, point.seen, point.clicks), 1);
+});
+
+const sponsorChartRows = computed(() => {
+  const maxValue = sponsorTimelineMaxValue.value || 1;
+  return sponsorTimelinePoints.value.map((point) => ({
+    ...point,
+    seenPercent: maxValue ? Math.round((point.seen / maxValue) * 100) : 0,
+    clicksPercent: maxValue ? Math.round((point.clicks / maxValue) * 100) : 0,
+  }));
+});
+
+const hasSponsorAnalyticsData = computed(() => {
+  const data = sponsorAnalytics.value;
+  if (!data) {
+    return false;
+  }
+  const timelineLength = Array.isArray(data.timeline) ? data.timeline.length : 0;
+  return Boolean(data.totalUsers || data.totalClicks || timelineLength);
+});
 const totalVotes = computed(() =>
   eventResults.value.reduce((sum, item) => sum + (Number(item.votes) || 0), 0),
 );
@@ -1581,6 +1712,9 @@ function clearCollections() {
   lastCreatedEventLink.value = '';
   resetNewEventPrizes();
   resetResultsState();
+  sponsorAnalytics.value = null;
+  sponsorAnalyticsError.value = '';
+  isLoadingSponsorAnalytics.value = false;
 }
 
 function stopResultsPolling() {
@@ -1609,6 +1743,9 @@ function resetResultsState() {
   resultsError.value = '';
   lastResultsUpdate.value = null;
   isLoadingResults.value = false;
+  sponsorAnalytics.value = null;
+  sponsorAnalyticsError.value = '';
+  isLoadingSponsorAnalytics.value = false;
 }
 
 function ensureResultsSelection() {
@@ -1659,6 +1796,95 @@ async function fetchEventResults({ showLoader = false } = {}) {
   } finally {
     if (showLoader) {
       isLoadingResults.value = false;
+    }
+  }
+
+  fetchSponsorAnalytics({ showLoader }).catch(() => {});
+}
+
+function normalizeSponsorAnalyticsResponse(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      totalUsers: 0,
+      seenUsers: 0,
+      watchedUsers: 0,
+      averageWatchTimeMs: 0,
+      totalWatchTimeMs: 0,
+      totalClicks: 0,
+      uniqueClickers: 0,
+      seenRate: 0,
+      clickRate: 0,
+      topSponsor: null,
+      timeline: [],
+    };
+  }
+
+  const resolveNumber = (value) => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const topSponsorRaw = raw.top_sponsor ?? raw.topSponsor ?? null;
+  let topSponsor = null;
+  if (topSponsorRaw && typeof topSponsorRaw === 'object') {
+    const id = resolveNumber(topSponsorRaw.sponsor_id ?? topSponsorRaw.sponsorId);
+    const name = typeof topSponsorRaw.name === 'string' ? topSponsorRaw.name : '';
+    const views = resolveNumber(topSponsorRaw.views);
+    topSponsor = { id, name, views };
+  }
+
+  const timeline = Array.isArray(raw.timeline)
+    ? raw.timeline.map((item) => ({
+        timestamp: typeof item?.timestamp === 'string' ? item.timestamp : '',
+        seen: resolveNumber(item?.seen),
+        watched: resolveNumber(item?.watched),
+        clicks: resolveNumber(item?.clicks),
+      }))
+    : [];
+
+  return {
+    totalUsers: resolveNumber(raw.total_users ?? raw.totalUsers),
+    seenUsers: resolveNumber(raw.seen_users ?? raw.seenUsers),
+    watchedUsers: resolveNumber(raw.watched_users ?? raw.watchedUsers),
+    averageWatchTimeMs: resolveNumber(raw.average_watch_time_ms ?? raw.averageWatchTimeMs),
+    totalWatchTimeMs: resolveNumber(raw.total_watch_time_ms ?? raw.totalWatchTimeMs),
+    totalClicks: resolveNumber(raw.total_clicks ?? raw.totalClicks),
+    uniqueClickers: resolveNumber(raw.unique_clickers ?? raw.uniqueClickers),
+    seenRate: resolveNumber(raw.seen_rate ?? raw.seenRate),
+    clickRate: resolveNumber(raw.click_rate ?? raw.clickRate),
+    topSponsor,
+    timeline,
+  };
+}
+
+async function fetchSponsorAnalytics({ showLoader = false } = {}) {
+  if (!selectedResultsEventId.value) {
+    sponsorAnalytics.value = null;
+    sponsorAnalyticsError.value = '';
+    return;
+  }
+
+  if (showLoader) {
+    isLoadingSponsorAnalytics.value = true;
+  }
+  sponsorAnalyticsError.value = '';
+
+  try {
+    const { data } = await secureRequest(() =>
+      apiClient.get(`/admin/events/${selectedResultsEventId.value}/sponsors/analytics`, authHeaders.value),
+    );
+    sponsorAnalytics.value = normalizeSponsorAnalyticsResponse(data);
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      sponsorAnalytics.value = null;
+      sponsorAnalyticsError.value = 'Nessun dato sponsor disponibile per questo evento.';
+    } else if (error?.response?.status !== 401) {
+      sponsorAnalyticsError.value = 'Impossibile caricare le statistiche sponsor.';
+    }
+    throw error;
+  } finally {
+    if (showLoader) {
+      isLoadingSponsorAnalytics.value = false;
     }
   }
 }
@@ -2035,6 +2261,25 @@ function formatEventDate(value) {
     return date.toLocaleString('it-IT');
   }
   return value.replace('T', ' ');
+}
+
+function formatWatchDuration(ms) {
+  const value = Number(ms);
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0 s';
+  }
+  if (value >= 60000) {
+    const minutes = Math.floor(value / 60000);
+    const seconds = Math.round((value % 60000) / 1000);
+    if (seconds === 0) {
+      return `${minutes}m`;
+    }
+    return `${minutes}m ${seconds}s`;
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)} s`;
+  }
+  return `${Math.round(value)} ms`;
 }
 
 async function login() {
@@ -3964,6 +4209,144 @@ select:focus {
   background: linear-gradient(135deg, #facc15, #f97316);
   border-radius: inherit;
   transition: width 0.4s ease;
+}
+
+.sponsor-analytics {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 64, 175, 0.75));
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #e2e8f0;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.35);
+}
+
+.sponsor-analytics h3 {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.sponsor-analytics__content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.sponsor-analytics__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.sponsor-analytics__card {
+  padding: 1rem 1.25rem;
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sponsor-analytics__card--wide {
+  grid-column: span 2;
+}
+
+.sponsor-analytics__label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.sponsor-analytics__value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #facc15;
+}
+
+.sponsor-analytics__hint {
+  font-size: 0.8rem;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.sponsor-analytics__chart h4 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.sponsor-chart {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sponsor-chart__row {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) 1fr minmax(160px, 200px);
+  gap: 1rem;
+  align-items: center;
+}
+
+.sponsor-chart__label {
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.sponsor-chart__bars {
+  display: flex;
+  gap: 0.5rem;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+}
+
+.sponsor-chart__bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.sponsor-chart__bar--seen {
+  background: linear-gradient(135deg, #38bdf8, #22d3ee);
+}
+
+.sponsor-chart__bar--clicks {
+  background: linear-gradient(135deg, #f97316, #fb7185);
+}
+
+.sponsor-chart__values {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+@media (max-width: 768px) {
+  .sponsor-analytics__grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .sponsor-analytics__card--wide {
+    grid-column: span 1;
+  }
+
+  .sponsor-chart__row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .sponsor-chart__values {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 640px) {
