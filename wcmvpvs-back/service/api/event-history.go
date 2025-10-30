@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -66,7 +67,22 @@ func (rt *_router) recordSponsorClick(w http.ResponseWriter, r *http.Request, ct
 		return
 	}
 
-	if err := rt.db.RecordSponsorClick(eventID, sponsorID); err != nil {
+	var payload struct {
+		DeviceID string `json:"device_id"`
+	}
+	if r.Body != nil {
+		defer r.Body.Close()
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
+			ctx.Logger.WithError(err).Warn("invalid sponsor click payload")
+		}
+	}
+
+	deviceID := strings.TrimSpace(payload.DeviceID)
+	if deviceID == "" {
+		deviceID = rt.deviceIDFromRequest(r)
+	}
+
+	if err := rt.db.RecordSponsorClick(eventID, sponsorID, deviceID); err != nil {
 		ctx.Logger.WithError(err).Warn("cannot record sponsor click")
 	}
 

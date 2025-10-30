@@ -104,6 +104,37 @@ export function resolveApiUrl(path: string) {
   return sanitizedPath;
 }
 
+export function sendJsonBeacon(path: string, payload: Record<string, unknown> = {}) {
+  if (!path) {
+    return Promise.resolve();
+  }
+
+  const url = resolveApiUrl(path);
+  const body = JSON.stringify(payload);
+
+  if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    try {
+      const blob = new Blob([body], { type: 'application/json' });
+      if (navigator.sendBeacon(url, blob)) {
+        return Promise.resolve();
+      }
+    } catch (error) {
+      // fall back to fetch
+    }
+  }
+
+  if (typeof fetch === 'function') {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true,
+    }).then(() => {});
+  }
+
+  return apiClient.post(path, payload).then(() => {});
+}
+
 export function resolveStaticAssetUrl(path: string) {
   if (!path) {
     return '';

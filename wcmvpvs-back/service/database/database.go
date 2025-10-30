@@ -163,6 +163,31 @@ type SponsorClickStat struct {
 	Clicks    int    `json:"clicks"`
 }
 
+type SponsorViewStat struct {
+	SponsorID int    `json:"sponsor_id"`
+	Name      string `json:"name"`
+	Views     int    `json:"views"`
+}
+
+type SponsorTimelinePoint struct {
+	Timestamp string `json:"timestamp"`
+	Seen      int    `json:"seen"`
+	Watched   int    `json:"watched"`
+	Clicks    int    `json:"clicks"`
+}
+
+type SponsorAnalytics struct {
+	TotalSessions    int                    `json:"total_sessions"`
+	SeenSessions     int                    `json:"seen_sessions"`
+	WatchedSessions  int                    `json:"watched_sessions"`
+	TotalWatchTimeMs int64                  `json:"total_watch_time_ms"`
+	AverageWatchTime float64                `json:"average_watch_time_ms"`
+	TotalClicks      int                    `json:"total_clicks"`
+	UniqueClickers   int                    `json:"unique_clickers"`
+	TopSponsor       *SponsorViewStat       `json:"top_sponsor,omitempty"`
+	Timeline         []SponsorTimelinePoint `json:"timeline"`
+}
+
 type EventMVP struct {
 	PlayerID   int    `json:"player_id"`
 	FirstName  string `json:"first_name"`
@@ -256,7 +281,10 @@ type AppDatabase interface {
 	DeleteSponsor(id int) error
 	ListSponsors() ([]Sponsor, error)
 	ListActiveSponsors() ([]Sponsor, error)
-	RecordSponsorClick(eventID, sponsorID int) error
+	RecordSponsorSession(eventID int, deviceID string) error
+	RecordSponsorExposure(eventID int, sponsorIDs []int, deviceID, exposureType string, durationMs int) error
+	RecordSponsorClick(eventID, sponsorID int, deviceID string) error
+	GetSponsorAnalytics(eventID int) (SponsorAnalytics, error)
 	GetSponsorClickStats(eventID int) ([]SponsorClickStat, error)
 	PurgeEventData(eventID int) error
 	Ping() error
@@ -523,6 +551,7 @@ func New(db *sql.DB) (AppDatabase, error) {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         event_id INTEGER NOT NULL,
         sponsor_id INTEGER NOT NULL,
+        device_id TEXT,
         clicked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
         FOREIGN KEY (sponsor_id) REFERENCES sponsors(id) ON DELETE CASCADE
@@ -535,11 +564,69 @@ func New(db *sql.DB) (AppDatabase, error) {
 		return nil, fmt.Errorf("error verifying sponsor_clicks table: %w", err)
 	}
 
+	if _, err = db.Exec(`ALTER TABLE sponsor_clicks ADD COLUMN device_id TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring sponsor_clicks device_id column: %w", err)
+		}
+	}
+
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_clicks_event ON sponsor_clicks(event_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring sponsor_clicks event index: %w", err)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_clicks_sponsor ON sponsor_clicks(sponsor_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring sponsor_clicks sponsor index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsor_sessions';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE sponsor_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL,
+        first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(event_id, device_id),
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating sponsor_sessions table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying sponsor_sessions table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_sessions_event ON sponsor_sessions(event_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring sponsor_sessions event index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsor_exposures';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE sponsor_exposures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        sponsor_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL,
+        exposure_type TEXT NOT NULL,
+        duration_ms INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+        FOREIGN KEY (sponsor_id) REFERENCES sponsors(id) ON DELETE CASCADE
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating sponsor_exposures table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying sponsor_exposures table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_event ON sponsor_exposures(event_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring sponsor_exposures event index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_sponsor ON sponsor_exposures(sponsor_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring sponsor_exposures sponsor index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_device_event ON sponsor_exposures(event_id, device_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring sponsor_exposures device index: %w", err)
 	}
 
 	return &appdbimpl{
@@ -1159,6 +1246,14 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	}
 
 	if _, err := tx.Exec(`DELETE FROM sponsor_clicks WHERE event_id = ?`, eventID); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM sponsor_exposures WHERE event_id = ?`, eventID); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM sponsor_sessions WHERE event_id = ?`, eventID); err != nil {
 		return err
 	}
 
@@ -1793,12 +1888,200 @@ func (db *appdbimpl) ListActiveSponsors() ([]Sponsor, error) {
 	return db.querySponsors(true)
 }
 
-func (db *appdbimpl) RecordSponsorClick(eventID, sponsorID int) error {
+func (db *appdbimpl) RecordSponsorSession(eventID int, deviceID string) error {
+	if eventID <= 0 {
+		return sql.ErrNoRows
+	}
+	trimmed := strings.TrimSpace(deviceID)
+	if trimmed == "" {
+		return sql.ErrNoRows
+	}
+
+	_, err := db.c.Exec(`
+INSERT INTO sponsor_sessions (event_id, device_id)
+VALUES (?, ?)
+ON CONFLICT(event_id, device_id) DO UPDATE SET last_seen = CURRENT_TIMESTAMP
+`, eventID, trimmed)
+	return err
+}
+
+func (db *appdbimpl) RecordSponsorExposure(eventID int, sponsorIDs []int, deviceID, exposureType string, durationMs int) error {
+	if eventID <= 0 {
+		return sql.ErrNoRows
+	}
+	trimmedDevice := strings.TrimSpace(deviceID)
+	if trimmedDevice == "" {
+		return sql.ErrNoRows
+	}
+	normalizedType := strings.ToLower(strings.TrimSpace(exposureType))
+	if normalizedType != "seen" && normalizedType != "watched" {
+		return ErrInvalidSponsorData
+	}
+	if len(sponsorIDs) == 0 {
+		return sql.ErrNoRows
+	}
+
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`INSERT INTO sponsor_exposures (event_id, sponsor_id, device_id, exposure_type, duration_ms) VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, sponsorID := range sponsorIDs {
+		if sponsorID <= 0 {
+			continue
+		}
+		var duration interface{}
+		if normalizedType == "watched" && durationMs > 0 {
+			duration = durationMs
+		} else {
+			duration = nil
+		}
+		if _, err := stmt.Exec(eventID, sponsorID, trimmedDevice, normalizedType, duration); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (db *appdbimpl) RecordSponsorClick(eventID, sponsorID int, deviceID string) error {
 	if eventID <= 0 || sponsorID <= 0 {
 		return sql.ErrNoRows
 	}
-	_, err := db.c.Exec(`INSERT INTO sponsor_clicks (event_id, sponsor_id) VALUES (?, ?)`, eventID, sponsorID)
+	trimmed := strings.TrimSpace(deviceID)
+	_, err := db.c.Exec(`INSERT INTO sponsor_clicks (event_id, sponsor_id, device_id) VALUES (?, ?, ?)`, eventID, sponsorID, trimmed)
 	return err
+}
+
+func (db *appdbimpl) GetSponsorAnalytics(eventID int) (SponsorAnalytics, error) {
+	summary := SponsorAnalytics{}
+	if eventID <= 0 {
+		return summary, sql.ErrNoRows
+	}
+
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM sponsor_sessions WHERE event_id = ?`, eventID).Scan(&summary.TotalSessions); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			summary.TotalSessions = 0
+		} else {
+			return summary, err
+		}
+	}
+
+	if err := db.c.QueryRow(`SELECT COUNT(DISTINCT device_id) FROM sponsor_exposures WHERE event_id = ? AND exposure_type = 'seen'`, eventID).Scan(&summary.SeenSessions); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			summary.SeenSessions = 0
+		} else {
+			return summary, err
+		}
+	}
+
+	if err := db.c.QueryRow(`SELECT COUNT(DISTINCT device_id) FROM sponsor_exposures WHERE event_id = ? AND exposure_type = 'watched'`, eventID).Scan(&summary.WatchedSessions); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			summary.WatchedSessions = 0
+		} else {
+			return summary, err
+		}
+	}
+
+	var totalWatch sql.NullInt64
+	if err := db.c.QueryRow(`SELECT SUM(COALESCE(duration_ms, 0)) FROM sponsor_exposures WHERE event_id = ? AND exposure_type = 'watched'`, eventID).Scan(&totalWatch); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return summary, err
+		}
+	}
+	if totalWatch.Valid {
+		summary.TotalWatchTimeMs = totalWatch.Int64
+	}
+	if summary.WatchedSessions > 0 && summary.TotalWatchTimeMs > 0 {
+		summary.AverageWatchTime = float64(summary.TotalWatchTimeMs) / float64(summary.WatchedSessions)
+	}
+
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM sponsor_clicks WHERE event_id = ?`, eventID).Scan(&summary.TotalClicks); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			summary.TotalClicks = 0
+		} else {
+			return summary, err
+		}
+	}
+
+	if err := db.c.QueryRow(`SELECT COUNT(DISTINCT device_id) FROM sponsor_clicks WHERE event_id = ?`, eventID).Scan(&summary.UniqueClickers); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			summary.UniqueClickers = 0
+		} else {
+			return summary, err
+		}
+	}
+
+	row := db.c.QueryRow(`
+SELECT e.sponsor_id,
+       IFNULL(s.name, ''),
+       COUNT(e.id) AS views
+FROM sponsor_exposures e
+INNER JOIN sponsors s ON s.id = e.sponsor_id
+WHERE e.event_id = ? AND e.exposure_type = 'seen'
+GROUP BY e.sponsor_id, s.name
+ORDER BY views DESC, s.id ASC
+LIMIT 1
+`, eventID)
+	var top SponsorViewStat
+	switch err := row.Scan(&top.SponsorID, &top.Name, &top.Views); err {
+	case nil:
+		summary.TopSponsor = &top
+	case sql.ErrNoRows:
+		summary.TopSponsor = nil
+	default:
+		return summary, err
+	}
+
+	timelineRows, err := db.c.Query(`
+SELECT bucket,
+       SUM(seen) AS seen,
+        SUM(watched) AS watched,
+        SUM(clicks) AS clicks
+FROM (
+        SELECT strftime('%Y-%m-%dT%H:%M:00Z', created_at) AS bucket,
+               CASE WHEN exposure_type = 'seen' THEN 1 ELSE 0 END AS seen,
+               CASE WHEN exposure_type = 'watched' THEN 1 ELSE 0 END AS watched,
+               0 AS clicks
+        FROM sponsor_exposures
+        WHERE event_id = ?
+        UNION ALL
+        SELECT strftime('%Y-%m-%dT%H:%M:00Z', clicked_at) AS bucket,
+               0 AS seen,
+               0 AS watched,
+               1 AS clicks
+        FROM sponsor_clicks
+        WHERE event_id = ?
+)
+GROUP BY bucket
+ORDER BY bucket ASC
+`, eventID, eventID)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return summary, err
+		}
+	} else {
+		defer timelineRows.Close()
+		for timelineRows.Next() {
+			var point SponsorTimelinePoint
+			if err := timelineRows.Scan(&point.Timestamp, &point.Seen, &point.Watched, &point.Clicks); err != nil {
+				return summary, err
+			}
+			summary.Timeline = append(summary.Timeline, point)
+		}
+		if err := timelineRows.Err(); err != nil {
+			return summary, err
+		}
+	}
+
+	return summary, nil
 }
 
 func (db *appdbimpl) GetSponsorClickStats(eventID int) ([]SponsorClickStat, error) {
