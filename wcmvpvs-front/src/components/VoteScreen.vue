@@ -437,6 +437,10 @@ const countdownStartTimeLabel = computed(() => {
   }
 });
 
+const isCountdownMoreThanTwoHoursAway = computed(
+  () => timeUntilEventStartMs.value > 2 * 60 * 60 * 1000,
+);
+
 const isEventUpcoming = computed(() => timeUntilEventStartMs.value > 0);
 
 watch(currentEventId, (eventId) => {
@@ -915,12 +919,22 @@ const handleQrError = () => {
       >
         <div class="countdown-dialog">
           <p id="countdown-title" class="countdown-dialog__title">La votazione inizierà a breve</p>
-          <p class="countdown-dialog__subtitle">Il voto sarà disponibile tra</p>
-          <p class="countdown-timer">{{ countdownLabel }}</p>
-          <p v-if="countdownDaysLabel" class="countdown-dialog__details">{{ countdownDaysLabel }}</p>
-          <p v-if="countdownStartTimeLabel" class="countdown-dialog__details">
-            Inizio previsto: {{ countdownStartTimeLabel }}
-          </p>
+          <template v-if="isCountdownMoreThanTwoHoursAway">
+            <p
+              v-if="countdownStartTimeLabel"
+              class="countdown-dialog__details"
+            >
+              Inizio previsto: {{ countdownStartTimeLabel }}
+            </p>
+          </template>
+          <template v-else>
+            <p class="countdown-dialog__subtitle">Il voto sarà disponibile tra</p>
+            <p class="countdown-timer">{{ countdownLabel }}</p>
+            <p v-if="countdownDaysLabel" class="countdown-dialog__details">{{ countdownDaysLabel }}</p>
+            <p v-if="countdownStartTimeLabel" class="countdown-dialog__details">
+              Inizio previsto: {{ countdownStartTimeLabel }}
+            </p>
+          </template>
         </div>
       </div>
     </transition>
