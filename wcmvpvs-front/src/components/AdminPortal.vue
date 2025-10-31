@@ -662,6 +662,14 @@
                   Dal {{ entry.timelineRange.start }} al {{ entry.timelineRange.end }}
                 </p>
               </div>
+              <VoteTrendChart
+                v-if="entry.timelineChart.points.length"
+                class="history-votes__chart"
+                :points="entry.timelineChart.points"
+                :start-label="entry.timelineChart.startLabel"
+                :end-label="entry.timelineChart.endLabel"
+                accessible-label="Andamento dei voti ogni 15 minuti"
+              />
               <ul class="history-votes-list">
                 <li
                   v-for="bucket in entry.timeline"
@@ -942,6 +950,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { apiClient, resolveApiUrl } from '../api';
 import { PLAYER_LAYOUT } from '../roster';
+import VoteTrendChart from './VoteTrendChart.vue';
 
 const basePath = import.meta.env.BASE_URL ?? '/';
 const baseVoteUrl = new URL(basePath, window.location.origin);
@@ -2614,6 +2623,80 @@ function formatHistoryDate(value) {
   }
 }
 
+function formatHistoryTime(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.valueOf())) {
+    return '';
+  }
+  try {
+    return historyTimeFormatter.format(date);
+  } catch (error) {
+    try {
+      return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    } catch (innerError) {
+      return '';
+    }
+  }
+}
+
+function buildHistoryTimelineChart(buckets, windowLabels = null) {
+  if (!Array.isArray(buckets) || !buckets.length) {
+    return {
+      points: [],
+      startLabel: windowLabels?.start || '',
+      endLabel: windowLabels?.end || '',
+    };
+  }
+
+  let cumulative = 0;
+  const points = [];
+  let computedStart = '';
+  let computedEnd = '';
+
+  buckets.forEach((bucket) => {
+    const votes = Number(bucket?.votes ?? 0) || 0;
+    cumulative += votes;
+
+    const reference = bucket?.end || bucket?.start || '';
+    const date = reference ? parseHistoryDate(reference) : null;
+    if (!date) {
+      return;
+    }
+
+    const label = bucket?.rangeLabel || bucket?.endLabel || bucket?.startLabel || '';
+    if (!computedStart) {
+      computedStart = bucket?.startLabel || label || '';
+    }
+    if (bucket?.endLabel || label) {
+      computedEnd = bucket?.endLabel || label || computedEnd;
+    }
+
+    const votesLabel = votes.toLocaleString('it-IT');
+    const cumulativeLabel = cumulative.toLocaleString('it-IT');
+    const tooltipParts = [];
+    if (label) {
+      tooltipParts.push(label);
+    }
+    tooltipParts.push(`${votesLabel} voti nel periodo`);
+    tooltipParts.push(`${cumulativeLabel} voti totali`);
+
+    points.push({
+      date,
+      value: cumulative,
+      label: label || formatHistoryTime(date),
+      tooltip: tooltipParts.join(' · '),
+    });
+  });
+
+  const startLabel = windowLabels?.start || computedStart || buckets[0]?.rangeLabel || '';
+  const endLabel = windowLabels?.end || computedEnd || buckets[buckets.length - 1]?.rangeLabel || '';
+
+  return {
+    points,
+    startLabel,
+    endLabel,
+  };
+}
+
 function normalizeHistoryEntry(item) {
   const id = Number(item?.id) || 0;
   const homeTeam = typeof item?.home_team === 'string' ? item.home_team.trim() : '';
@@ -2806,6 +2889,8 @@ function normalizeHistoryEntry(item) {
       }
     : null;
 
+  const timelineChart = buildHistoryTimelineChart(timelineBuckets, timelineRange);
+
   const mvpRaw = item?.mvp;
   let mvp = null;
   if (mvpRaw && Number(mvpRaw?.votes ?? 0) > 0) {
@@ -2835,6 +2920,7 @@ function normalizeHistoryEntry(item) {
     sponsorAnalyticsHasData,
     sponsorAnalyticsTimeline,
     timeline: timelineBuckets,
+    timelineChart,
     timelineRange,
     mvp,
     homeTeam,
@@ -4146,6 +4232,10 @@ select:focus {
   margin: 0;
   font-size: 0.9rem;
   color: #475569;
+}
+
+:deep(.history-votes__chart) {
+  margin-top: 0.5rem;
 }
 
 .history-votes-list {

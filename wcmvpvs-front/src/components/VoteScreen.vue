@@ -954,6 +954,13 @@ const handleQrError = () => {
               Hai già espresso il tuo voto per questa partita. Conserva il codice mostrato in alto e attendi l'estrazione dei premi.
             </p>
           </div>
+
+          <LiveResultsSection
+            v-if="currentEventId"
+            class="mt-6"
+            :event-id="currentEventId"
+            :enabled="hasVoted"
+          />
         </section>
 
         <SelfieMvpSection
@@ -967,13 +974,6 @@ const handleQrError = () => {
         />
 
         <ReactionTestSection
-          v-if="currentEventId && hasVoted"
-          class="mt-8"
-          :event-id="currentEventId"
-          :enabled="hasVoted"
-        />
-
-        <LiveResultsSection
           v-if="currentEventId && hasVoted"
           class="mt-8"
           :event-id="currentEventId"
