@@ -316,9 +316,9 @@
         <div class="results-controls">
           <label>
             Evento
-            <select v-model.number="selectedResultsEventId" :disabled="!events.length">
+            <select v-model.number="selectedResultsEventId" :disabled="!availableEvents.length">
               <option disabled value="0">Seleziona un evento</option>
-              <option v-for="event in events" :key="event.id" :value="event.id">
+              <option v-for="event in availableEvents" :key="event.id" :value="event.id">
                 {{ eventLabel(event) }}
               </option>
             </select>
@@ -339,7 +339,7 @@
         </div>
 
         <p v-if="resultsError" class="error">{{ resultsError }}</p>
-        <div v-else-if="!events.length" class="info-banner">
+        <div v-else-if="!availableEvents.length" class="info-banner">
           Crea un evento per visualizzare i risultati delle votazioni MVP.
         </div>
         <div v-else class="results-leaderboard">
@@ -429,8 +429,8 @@
           <label>
             Evento
             <select v-model.number="selectedSelfieEventId">
-              <option v-if="!events.length" value="0" disabled>Nessun evento disponibile</option>
-              <option v-for="event in events" :key="event.id" :value="event.id">
+              <option v-if="!availableEvents.length" value="0" disabled>Nessun evento disponibile</option>
+              <option v-for="event in availableEvents" :key="event.id" :value="event.id">
                 {{ eventLabel(event) }} • {{ formatEventDate(event.start_datetime) }}
               </option>
             </select>
@@ -444,7 +444,7 @@
           <span class="spinner" aria-hidden="true"></span>
           <p>Caricamento selfie…</p>
         </div>
-        <p v-else-if="!events.length" class="muted">Crea un evento per raccogliere selfie dal pubblico.</p>
+        <p v-else-if="!availableEvents.length" class="muted">Crea un evento per raccogliere selfie dal pubblico.</p>
         <p v-else-if="!eventSelfies.length" class="muted">Nessun selfie ricevuto per questo evento al momento.</p>
         <div v-else class="selfie-admin-grid">
           <article v-for="selfie in eventSelfies" :key="selfie.id" class="selfie-admin-card">
@@ -1371,7 +1371,8 @@ const savePlayers = async () => {
 };
 
 const hasEnoughTeams = computed(() => teams.value.length >= 2);
-const visibleEvents = computed(() => events.value.filter((event) => !event.is_concluded));
+const availableEvents = computed(() => events.value.filter((event) => !event.is_concluded));
+const visibleEvents = computed(() => availableEvents.value);
 
 const activeEventId = computed(() => {
   const activeEvent = events.value.find((event) => event.is_active);
@@ -1382,13 +1383,13 @@ const sponsorSliderMax = computed(() =>
   sponsors.value.length ? Math.min(maxSponsors, sponsors.value.length) : maxSponsors,
 );
 const selectedResultsEvent = computed(() =>
-  events.value.find((event) => event.id === selectedResultsEventId.value) || null,
+  availableEvents.value.find((event) => event.id === selectedResultsEventId.value) || null,
 );
 const activeEventEntry = computed(() =>
   events.value.find((event) => event.id === activeEventId.value) || null,
 );
 const selectedSelfieEvent = computed(() =>
-  events.value.find((event) => event.id === selectedSelfieEventId.value) || null,
+  availableEvents.value.find((event) => event.id === selectedSelfieEventId.value) || null,
 );
 const selectedSelfieEventLabel = computed(() =>
   selectedSelfieEvent.value ? eventLabel(selectedSelfieEvent.value) : '',
@@ -1749,14 +1750,15 @@ function resetResultsState() {
 }
 
 function ensureResultsSelection() {
-  if (!events.value.length) {
+  const available = availableEvents.value;
+  if (!available.length) {
     selectedResultsEventId.value = 0;
     return;
   }
-  const exists = events.value.some((event) => event.id === selectedResultsEventId.value);
+  const exists = available.some((event) => event.id === selectedResultsEventId.value);
   if (!exists) {
-    const active = events.value.find((event) => event.is_active);
-    selectedResultsEventId.value = active ? active.id : events.value[0].id;
+    const active = available.find((event) => event.is_active);
+    selectedResultsEventId.value = active ? active.id : available[0].id;
   }
 }
 
@@ -2471,17 +2473,18 @@ function formatSelfieFileSize(value) {
 }
 
 function ensureSelfieSelection() {
-  if (!events.value.length) {
+  const available = availableEvents.value;
+  if (!available.length) {
     selectedSelfieEventId.value = 0;
     return;
   }
   const current = selectedSelfieEventId.value;
-  const stillValid = events.value.some((event) => event.id === current);
+  const stillValid = available.some((event) => event.id === current);
   if (stillValid) {
     return;
   }
-  const active = events.value.find((event) => event.is_active);
-  selectedSelfieEventId.value = active ? active.id : events.value[0].id;
+  const active = available.find((event) => event.is_active);
+  selectedSelfieEventId.value = active ? active.id : available[0].id;
 }
 
 async function deleteSelfie(selfie) {
