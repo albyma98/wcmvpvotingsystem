@@ -18,16 +18,19 @@
         stroke-linejoin="round"
       />
       <g v-if="chartDots.length">
-        <circle
-          v-for="(dot, index) in chartDots"
-          :key="`dot-${index}`"
-          :cx="dot.x"
-          :cy="dot.y"
-          r="4.2"
-          fill="#0ea5e9"
-        >
-          <title>{{ dot.tooltip }}</title>
-        </circle>
+        <template v-for="(dot, index) in chartDots" :key="`dot-${index}`">
+          <circle :cx="dot.x" :cy="dot.y" r="4.2" fill="#0ea5e9">
+            <title>{{ dot.tooltip }}</title>
+          </circle>
+          <text
+            :x="dot.x"
+            :y="dot.y - 10"
+            text-anchor="middle"
+            class="vote-trend-chart__dot-label"
+          >
+            {{ dot.label }}
+          </text>
+        </template>
       </g>
     </svg>
 
@@ -198,6 +201,7 @@ const chartDots = computed(() => {
       x: Number(point.x.toFixed(2)),
       y: Number(point.y.toFixed(2)),
       tooltip,
+      label: Number(point.value || 0).toLocaleString('it-IT'),
     };
   });
 });
@@ -232,6 +236,13 @@ const resolvedWindow = computed(() => {
   width: 100%;
   height: auto;
   display: block;
+}
+
+.vote-trend-chart__dot-label {
+  font-size: 0.65rem;
+  fill: #e2e8f0;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .vote-trend-chart__labels {
