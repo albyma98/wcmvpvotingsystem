@@ -548,6 +548,54 @@
               </div>
               <div class="history-details__column">
                 <h4>Interazioni sponsor</h4>
+                <div v-if="entry.sponsorAnalyticsHasData" class="history-sponsor-summary">
+                  <div class="history-sponsor-summary__grid">
+                    <div class="history-sponsor-summary__card">
+                      <span class="history-sponsor-summary__label">Utenti totali</span>
+                      <strong class="history-sponsor-summary__value">
+                        {{ entry.sponsorAnalyticsDisplay.totalUsersLabel }}
+                      </strong>
+                    </div>
+                    <div class="history-sponsor-summary__card">
+                      <span class="history-sponsor-summary__label">Sezione vista</span>
+                      <strong class="history-sponsor-summary__value">
+                        {{ entry.sponsorAnalyticsDisplay.seenRateLabel }}
+                      </strong>
+                      <span class="history-sponsor-summary__hint">
+                        {{ entry.sponsorAnalyticsDisplay.seenUsersLabel }} utenti
+                      </span>
+                    </div>
+                    <div class="history-sponsor-summary__card">
+                      <span class="history-sponsor-summary__label">Tempo medio visione</span>
+                      <strong class="history-sponsor-summary__value">
+                        {{ entry.sponsorAnalyticsDisplay.averageWatchTimeLabel }}
+                      </strong>
+                      <span class="history-sponsor-summary__hint">
+                        {{ entry.sponsorAnalyticsDisplay.watchedUsersLabel }} utenti •
+                        {{ entry.sponsorAnalyticsDisplay.totalWatchTimeLabel }} totali
+                      </span>
+                    </div>
+                    <div class="history-sponsor-summary__card">
+                      <span class="history-sponsor-summary__label">Click totali</span>
+                      <strong class="history-sponsor-summary__value">
+                        {{ entry.sponsorAnalyticsDisplay.totalClicksLabel }}
+                      </strong>
+                      <span class="history-sponsor-summary__hint">
+                        {{ entry.sponsorAnalyticsDisplay.clickRateLabel }} •
+                        {{ entry.sponsorAnalyticsDisplay.uniqueClickersLabel }} utenti
+                      </span>
+                    </div>
+                    <div class="history-sponsor-summary__card history-sponsor-summary__card--wide">
+                      <span class="history-sponsor-summary__label">Sponsor più visualizzato</span>
+                      <strong class="history-sponsor-summary__value">
+                        {{ entry.sponsorAnalyticsDisplay.topSponsorName }}
+                      </strong>
+                      <span class="history-sponsor-summary__hint">
+                        {{ entry.sponsorAnalyticsDisplay.topSponsorViewsLabel }} visualizzazioni
+                      </span>
+                    </div>
+                  </div>
+                </div>
                 <ul v-if="entry.sponsorClicks.length" class="history-sponsor-list">
                   <li
                     v-for="sponsor in entry.sponsorClicks"
@@ -558,6 +606,29 @@
                   </li>
                 </ul>
                 <p v-else class="muted">Nessun click registrato.</p>
+                <div v-if="entry.sponsorAnalyticsTimeline.length" class="history-sponsor-timeline">
+                  <h5>Andamento interazioni</h5>
+                  <ul class="history-sponsor-timeline__list">
+                    <li
+                      v-for="point in entry.sponsorAnalyticsTimeline"
+                      :key="`${entry.id}-analytics-${point.timestamp || point.label}`"
+                      class="history-sponsor-timeline__item"
+                    >
+                      <span class="history-sponsor-timeline__time">{{ point.label }}</span>
+                      <div class="history-sponsor-timeline__values">
+                        <span class="history-sponsor-timeline__value history-sponsor-timeline__value--seen">
+                          {{ point.seen.toLocaleString('it-IT') }} viste
+                        </span>
+                        <span class="history-sponsor-timeline__value history-sponsor-timeline__value--watched">
+                          {{ point.watched.toLocaleString('it-IT') }} guardate
+                        </span>
+                        <span class="history-sponsor-timeline__value history-sponsor-timeline__value--clicks">
+                          {{ point.clicks.toLocaleString('it-IT') }} click
+                        </span>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
               </div>
               <div class="history-details__column history-details__column--prizes">
                 <h4>Estrazione premi</h4>
@@ -1496,9 +1567,6 @@ const sponsorAnalyticsDisplay = computed(() => {
     return null;
   }
 
-  const formatPercent = (value) =>
-    Number.isFinite(value) ? value.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '0,0';
-
   return {
     totalUsers: data.totalUsers,
     totalUsersLabel: data.totalUsers.toLocaleString('it-IT'),
@@ -2284,6 +2352,16 @@ function formatWatchDuration(ms) {
   return `${Math.round(value)} ms`;
 }
 
+function formatPercent(value, minimumFractionDigits = 1, maximumFractionDigits = 1) {
+  if (!Number.isFinite(value)) {
+    return '0,0';
+  }
+  return value.toLocaleString('it-IT', {
+    minimumFractionDigits,
+    maximumFractionDigits,
+  });
+}
+
 async function login() {
   if (isLoggingIn.value) {
     return;
@@ -2571,6 +2649,59 @@ function normalizeHistoryEntry(item) {
     ? sponsorClicksTotal.toLocaleString('it-IT')
     : '0';
 
+  const sponsorAnalyticsRaw = item?.sponsor_analytics ?? item?.sponsorAnalytics ?? null;
+  const sponsorAnalyticsData = normalizeSponsorAnalyticsResponse(sponsorAnalyticsRaw);
+  const sponsorAnalyticsDisplay = {
+    totalUsers: sponsorAnalyticsData.totalUsers,
+    totalUsersLabel: sponsorAnalyticsData.totalUsers.toLocaleString('it-IT'),
+    seenUsers: sponsorAnalyticsData.seenUsers,
+    seenUsersLabel: sponsorAnalyticsData.seenUsers.toLocaleString('it-IT'),
+    seenRateLabel: `${formatPercent(sponsorAnalyticsData.seenRate)}%`,
+    watchedUsers: sponsorAnalyticsData.watchedUsers,
+    watchedUsersLabel: sponsorAnalyticsData.watchedUsers.toLocaleString('it-IT'),
+    averageWatchTimeLabel: formatWatchDuration(sponsorAnalyticsData.averageWatchTimeMs),
+    totalWatchTimeLabel: formatWatchDuration(sponsorAnalyticsData.totalWatchTimeMs),
+    totalClicks: sponsorAnalyticsData.totalClicks,
+    totalClicksLabel: sponsorAnalyticsData.totalClicks.toLocaleString('it-IT'),
+    clickRateLabel: `${formatPercent(sponsorAnalyticsData.clickRate)}%`,
+    uniqueClickersLabel: sponsorAnalyticsData.uniqueClickers.toLocaleString('it-IT'),
+    topSponsorName: sponsorAnalyticsData.topSponsor?.name || 'Nessuno',
+    topSponsorViewsLabel: sponsorAnalyticsData.topSponsor
+      ? sponsorAnalyticsData.topSponsor.views.toLocaleString('it-IT')
+      : '0',
+  };
+
+  const sponsorAnalyticsTimelineRaw = Array.isArray(sponsorAnalyticsData.timeline)
+    ? sponsorAnalyticsData.timeline
+    : [];
+  const sponsorAnalyticsTimeline = sponsorAnalyticsTimelineRaw.map((point) => {
+    const timestamp = typeof point?.timestamp === 'string' ? point.timestamp : '';
+    const seen = Number(point?.seen ?? 0) || 0;
+    const watched = Number(point?.watched ?? 0) || 0;
+    const clicks = Number(point?.clicks ?? 0) || 0;
+    let label = timestamp || '';
+    if (timestamp) {
+      const parsed = new Date(timestamp);
+      if (!Number.isNaN(parsed.valueOf())) {
+        label = historyTimeFormatter.format(parsed);
+      }
+    }
+    return {
+      timestamp,
+      label: label || '—',
+      seen,
+      watched,
+      clicks,
+    };
+  });
+
+  const sponsorAnalyticsHasData = Boolean(
+    sponsorAnalyticsData.totalUsers ||
+      sponsorAnalyticsData.totalClicks ||
+      sponsorAnalyticsTimeline.length ||
+      (sponsorAnalyticsData.topSponsor && sponsorAnalyticsData.topSponsor.views),
+  );
+
   const prizesRaw = Array.isArray(item?.prizes) ? item.prizes : [];
   const normalizedPrizes = prizesRaw
     .map((prize, index) => {
@@ -2699,6 +2830,10 @@ function normalizeHistoryEntry(item) {
     sponsorClicks,
     sponsorClicksTotal,
     sponsorClicksTotalLabel,
+    sponsorAnalytics: sponsorAnalyticsData,
+    sponsorAnalyticsDisplay,
+    sponsorAnalyticsHasData,
+    sponsorAnalyticsTimeline,
     timeline: timelineBuckets,
     timelineRange,
     mvp,
@@ -3826,6 +3961,50 @@ select:focus {
   gap: 0.5rem;
 }
 
+.history-sponsor-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.history-sponsor-summary__grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.history-sponsor-summary__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: #ffffff;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.history-sponsor-summary__card--wide {
+  grid-column: 1 / -1;
+}
+
+.history-sponsor-summary__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #475569;
+}
+
+.history-sponsor-summary__value {
+  font-size: 1.1rem;
+  color: #0f172a;
+}
+
+.history-sponsor-summary__hint {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
 .history-sponsor-name {
   font-weight: 600;
   color: #1e293b;
@@ -3835,6 +4014,69 @@ select:focus {
   margin-left: 0.5rem;
   color: #475569;
   font-size: 0.9rem;
+}
+
+.history-sponsor-timeline {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.history-sponsor-timeline h5 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.history-sponsor-timeline__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.history-sponsor-timeline__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #ffffff;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.history-sponsor-timeline__time {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.history-sponsor-timeline__values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.85rem;
+}
+
+.history-sponsor-timeline__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: #475569;
+}
+
+.history-sponsor-timeline__value--seen {
+  color: #0284c7;
+}
+
+.history-sponsor-timeline__value--watched {
+  color: #14b8a6;
+}
+
+.history-sponsor-timeline__value--clicks {
+  color: #f97316;
 }
 
 .history-prize-status {

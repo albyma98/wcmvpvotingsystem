@@ -49,17 +49,56 @@ type sponsorAnalyticsTopSponsor struct {
 }
 
 type sponsorAnalyticsTimelinePoint struct {
-	Timestamp string `json:"timestamp"`
-	Seen      int    `json:"seen"`
-	Watched   int    `json:"watched"`
-	Clicks    int    `json:"clicks"`
+        Timestamp string `json:"timestamp"`
+        Seen      int    `json:"seen"`
+        Watched   int    `json:"watched"`
+        Clicks    int    `json:"clicks"`
+}
+
+func buildSponsorAnalyticsResponse(summary database.SponsorAnalytics) sponsorAnalyticsResponse {
+        response := sponsorAnalyticsResponse{
+                TotalUsers:         summary.TotalSessions,
+                SeenUsers:          summary.SeenSessions,
+                WatchedUsers:       summary.WatchedSessions,
+                AverageWatchTimeMs: summary.AverageWatchTime,
+                TotalWatchTimeMs:   summary.TotalWatchTimeMs,
+                TotalClicks:        summary.TotalClicks,
+                UniqueClickers:     summary.UniqueClickers,
+        }
+
+        if summary.TotalSessions > 0 {
+                response.SeenRate = float64(summary.SeenSessions) / float64(summary.TotalSessions) * 100
+                response.ClickRate = float64(summary.UniqueClickers) / float64(summary.TotalSessions) * 100
+        }
+
+        if summary.TopSponsor != nil {
+                response.TopSponsor = &sponsorAnalyticsTopSponsor{
+                        SponsorID: summary.TopSponsor.SponsorID,
+                        Name:      summary.TopSponsor.Name,
+                        Views:     summary.TopSponsor.Views,
+                }
+        }
+
+        if len(summary.Timeline) > 0 {
+                response.Timeline = make([]sponsorAnalyticsTimelinePoint, 0, len(summary.Timeline))
+                for _, item := range summary.Timeline {
+                        response.Timeline = append(response.Timeline, sponsorAnalyticsTimelinePoint{
+                                Timestamp: item.Timestamp,
+                                Seen:      item.Seen,
+                                Watched:   item.Watched,
+                                Clicks:    item.Clicks,
+                        })
+                }
+        }
+
+        return response
 }
 
 func (payload *sponsorExposurePayload) normalizedSponsorIDs() []int {
-	ids := make([]int, 0, len(payload.SponsorIDs)+len(payload.Sponsors))
-	ids = append(ids, payload.SponsorIDs...)
-	ids = append(ids, payload.Sponsors...)
-	seen := make(map[int]struct{}, len(ids))
+        ids := make([]int, 0, len(payload.SponsorIDs)+len(payload.Sponsors))
+        ids = append(ids, payload.SponsorIDs...)
+        ids = append(ids, payload.Sponsors...)
+        seen := make(map[int]struct{}, len(ids))
 	normalized := make([]int, 0, len(ids))
 	for _, id := range ids {
 		if id <= 0 {
@@ -169,43 +208,10 @@ func (rt *_router) getSponsorAnalytics(w http.ResponseWriter, r *http.Request, c
 		return
 	}
 
-	response := sponsorAnalyticsResponse{
-		TotalUsers:         summary.TotalSessions,
-		SeenUsers:          summary.SeenSessions,
-		WatchedUsers:       summary.WatchedSessions,
-		AverageWatchTimeMs: summary.AverageWatchTime,
-		TotalWatchTimeMs:   summary.TotalWatchTimeMs,
-		TotalClicks:        summary.TotalClicks,
-		UniqueClickers:     summary.UniqueClickers,
-	}
+        response := buildSponsorAnalyticsResponse(summary)
 
-	if summary.TotalSessions > 0 {
-		response.SeenRate = float64(summary.SeenSessions) / float64(summary.TotalSessions) * 100
-		response.ClickRate = float64(summary.UniqueClickers) / float64(summary.TotalSessions) * 100
-	}
-
-	if summary.TopSponsor != nil {
-		response.TopSponsor = &sponsorAnalyticsTopSponsor{
-			SponsorID: summary.TopSponsor.SponsorID,
-			Name:      summary.TopSponsor.Name,
-			Views:     summary.TopSponsor.Views,
-		}
-	}
-
-	if len(summary.Timeline) > 0 {
-		response.Timeline = make([]sponsorAnalyticsTimelinePoint, 0, len(summary.Timeline))
-		for _, item := range summary.Timeline {
-			response.Timeline = append(response.Timeline, sponsorAnalyticsTimelinePoint{
-				Timestamp: item.Timestamp,
-				Seen:      item.Seen,
-				Watched:   item.Watched,
-				Clicks:    item.Clicks,
-			})
-		}
-	}
-
-	w.Header().Set("content-type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		ctx.Logger.WithError(err).Error("cannot encode sponsor analytics response")
-	}
+        w.Header().Set("content-type", "application/json")
+        if err := json.NewEncoder(w).Encode(response); err != nil {
+                ctx.Logger.WithError(err).Error("cannot encode sponsor analytics response")
+        }
 }
