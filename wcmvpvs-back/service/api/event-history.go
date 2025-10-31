@@ -32,19 +32,20 @@ type eventHistoryPrize struct {
 }
 
 type eventHistoryEntry struct {
-	ID                 int                         `json:"id"`
-	Title              string                      `json:"title"`
-	StartDateTime      string                      `json:"start_datetime"`
-	Location           string                      `json:"location"`
-	TotalVotes         int                         `json:"total_votes"`
-	SponsorClicksTotal int                         `json:"sponsor_clicks_total"`
-	MVP                *database.EventMVP          `json:"mvp,omitempty"`
-	SponsorClicks      []database.SponsorClickStat `json:"sponsor_clicks"`
-	Timeline           []historyTimelineBucket     `json:"timeline"`
-	HomeTeam           string                      `json:"home_team"`
-	AwayTeam           string                      `json:"away_team"`
-	Prizes             []eventHistoryPrize         `json:"prizes"`
-	HasPrizeDraw       bool                        `json:"has_prize_draw"`
+        ID                 int                         `json:"id"`
+        Title              string                      `json:"title"`
+        StartDateTime      string                      `json:"start_datetime"`
+        Location           string                      `json:"location"`
+        TotalVotes         int                         `json:"total_votes"`
+        SponsorClicksTotal int                         `json:"sponsor_clicks_total"`
+        MVP                *database.EventMVP          `json:"mvp,omitempty"`
+        SponsorClicks      []database.SponsorClickStat `json:"sponsor_clicks"`
+        SponsorAnalytics   sponsorAnalyticsResponse    `json:"sponsor_analytics"`
+        Timeline           []historyTimelineBucket     `json:"timeline"`
+        HomeTeam           string                      `json:"home_team"`
+        AwayTeam           string                      `json:"away_team"`
+        Prizes             []eventHistoryPrize         `json:"prizes"`
+        HasPrizeDraw       bool                        `json:"has_prize_draw"`
 }
 
 type historyEntryWrapper struct {
@@ -122,21 +123,28 @@ func (rt *_router) getEventHistory(w http.ResponseWriter, r *http.Request, ctx r
 			mvpPtr = &mvp
 		}
 
-		sponsorStats, err := rt.db.GetSponsorClickStats(event.ID)
-		sponsorTotal := 0
-		if err != nil {
-			ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load sponsor stats for history")
-			sponsorStats = []database.SponsorClickStat{}
-		}
-		for _, stat := range sponsorStats {
-			sponsorTotal += stat.Clicks
-		}
+                sponsorStats, err := rt.db.GetSponsorClickStats(event.ID)
+                sponsorTotal := 0
+                if err != nil {
+                        ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load sponsor stats for history")
+                        sponsorStats = []database.SponsorClickStat{}
+                }
+                for _, stat := range sponsorStats {
+                        sponsorTotal += stat.Clicks
+                }
 
-		voteTimestamps, err := rt.db.ListEventVoteTimestamps(event.ID)
-		if err != nil {
-			ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load vote timestamps for history")
-			voteTimestamps = nil
-		}
+                sponsorSummary, err := rt.db.GetSponsorAnalytics(event.ID)
+                if err != nil && !errors.Is(err, sql.ErrNoRows) {
+                        ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load sponsor analytics for history")
+                        sponsorSummary = database.SponsorAnalytics{}
+                }
+                sponsorAnalytics := buildSponsorAnalyticsResponse(sponsorSummary)
+
+                voteTimestamps, err := rt.db.ListEventVoteTimestamps(event.ID)
+                if err != nil {
+                        ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load vote timestamps for history")
+                        voteTimestamps = nil
+                }
 
 		prizeList, err := rt.db.ListEventPrizes(event.ID)
 		if err != nil {
@@ -182,15 +190,16 @@ func (rt *_router) getEventHistory(w http.ResponseWriter, r *http.Request, ctx r
 			Title:              buildEventTitle(event),
 			StartDateTime:      normalizedStart,
 			Location:           strings.TrimSpace(event.Location),
-			TotalVotes:         totalVotes,
-			SponsorClicksTotal: sponsorTotal,
-			MVP:                mvpPtr,
-			SponsorClicks:      sponsorStats,
-			Timeline:           timeline,
-			HomeTeam:           strings.TrimSpace(event.Team1Name),
-			AwayTeam:           strings.TrimSpace(event.Team2Name),
-			Prizes:             prizes,
-			HasPrizeDraw:       hasPrizeDraw,
+                        TotalVotes:         totalVotes,
+                        SponsorClicksTotal: sponsorTotal,
+                        MVP:                mvpPtr,
+                        SponsorClicks:      sponsorStats,
+                        SponsorAnalytics:   sponsorAnalytics,
+                        Timeline:           timeline,
+                        HomeTeam:           strings.TrimSpace(event.Team1Name),
+                        AwayTeam:           strings.TrimSpace(event.Team2Name),
+                        Prizes:             prizes,
+                        HasPrizeDraw:       hasPrizeDraw,
 		}
 
 		wrappers = append(wrappers, historyEntryWrapper{entry: entry, startTime: startTime})
