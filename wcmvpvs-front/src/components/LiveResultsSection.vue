@@ -52,35 +52,13 @@
               </li>
             </ol>
 
-            <div class="live-chart" role="img" aria-label="Andamento dei voti minuto per minuto">
-              <svg :viewBox="chartViewBox" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <linearGradient id="liveChartFill" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stop-color="rgba(14, 165, 233, 0.55)" />
-                    <stop offset="100%" stop-color="rgba(14, 165, 233, 0.05)" />
-                  </linearGradient>
-                </defs>
-                <path v-if="chartAreaPath" :d="chartAreaPath" fill="url(#liveChartFill)" />
-                <path v-if="chartLinePath" :d="chartLinePath" fill="none" stroke="rgba(125, 211, 252, 0.9)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-                <g v-if="chartDots.length">
-                  <circle
-                    v-for="(dot, dotIndex) in chartDots"
-                    :key="`dot-${dotIndex}`"
-                    :cx="dot.x"
-                    :cy="dot.y"
-                    r="4.2"
-                    fill="#0ea5e9"
-                  >
-                    <title>{{ dot.tooltip }}</title>
-                  </circle>
-                </g>
-              </svg>
-
-              <div class="live-chart__labels" aria-hidden="true">
-                <span>{{ timelineWindow.start }}</span>
-                <span>{{ timelineWindow.end }}</span>
-              </div>
-            </div>
+            <VoteTrendChart
+              v-if="chartPoints.length"
+              :points="chartPoints"
+              :start-label="timelineWindow.start"
+              :end-label="timelineWindow.end"
+              accessible-label="Andamento dei voti minuto per minuto"
+            />
           </template>
 
           <p v-if="updatedLabel" class="live-results-card__updated">Aggiornato alle {{ updatedLabel }}</p>
@@ -93,6 +71,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { fetchLiveVoteSummary } from '../api';
+import VoteTrendChart from './VoteTrendChart.vue';
 
 const props = defineProps({
   eventId: {
@@ -114,11 +93,6 @@ const isLoading = ref(false);
 const errorMessage = ref('');
 const isFetching = ref(false);
 let pollTimer = null;
-
-const chartWidth = 320;
-const chartHeight = 140;
-const chartPaddingX = 18;
-const chartPaddingY = 18;
 
 const resolvedSummary = computed(() => {
   if (!state.value || typeof state.value !== 'object') {
@@ -226,75 +200,14 @@ const parsedTimeline = computed(() => {
   return points;
 });
 
-const chartCoordinates = computed(() => {
-  const points = parsedTimeline.value;
-  if (!points.length) {
-    return [];
-  }
-
-  const minTime = points[0].date.getTime();
-  const maxTime = points[points.length - 1].date.getTime();
-  const duration = Math.max(1, maxTime - minTime);
-  const maxVotes = points.reduce((acc, point) => Math.max(acc, point.votes), 0);
-  const safeMaxVotes = Math.max(1, maxVotes);
-
-  const effectiveWidth = chartWidth - chartPaddingX * 2;
-  const effectiveHeight = chartHeight - chartPaddingY * 2;
-
-  return points.map((point, index) => {
-    const rawRatio = duration === 0 ? index / Math.max(1, points.length - 1) : (point.date.getTime() - minTime) / duration;
-    const xRatio = Number.isFinite(rawRatio) ? rawRatio : 0;
-    const yRatio = point.votes <= 0 ? 0 : point.votes / safeMaxVotes;
-
-    return {
-      x: chartPaddingX + xRatio * effectiveWidth,
-      y: chartHeight - chartPaddingY - yRatio * effectiveHeight,
-      votes: point.votes,
-      date: point.date,
-    };
-  });
-});
-
-const chartLinePath = computed(() => {
-  const coords = chartCoordinates.value;
-  if (!coords.length) {
-    return '';
-  }
-
-  return coords
-    .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
-    .join(' ');
-});
-
-const chartAreaPath = computed(() => {
-  const coords = chartCoordinates.value;
-  if (!coords.length) {
-    return '';
-  }
-
-  const baselineY = chartHeight - chartPaddingY;
-  const start = `M${coords[0].x.toFixed(2)},${baselineY.toFixed(2)}`;
-  const lines = coords
-    .map((point) => `L${point.x.toFixed(2)},${point.y.toFixed(2)}`)
-    .join(' ');
-  const end = `L${coords[coords.length - 1].x.toFixed(2)},${baselineY.toFixed(2)} Z`;
-  return `${start} ${lines} ${end}`;
-});
-
-const chartDots = computed(() => {
-  const coords = chartCoordinates.value;
-  if (!coords.length) {
-    return [];
-  }
-
-  return coords.map((point) => ({
-    x: Number(point.x.toFixed(2)),
-    y: Number(point.y.toFixed(2)),
+const chartPoints = computed(() => {
+  return parsedTimeline.value.map((point) => ({
+    date: point.date,
+    value: point.votes,
+    label: formatTimeLabel(point.date),
     tooltip: `${formatVotesLabel(point.votes)} voti · ${formatTimeLabel(point.date)}`,
   }));
 });
-
-const chartViewBox = computed(() => `0 0 ${chartWidth} ${chartHeight}`);
 
 const timelineWindow = computed(() => {
   const points = parsedTimeline.value;
@@ -638,28 +551,6 @@ onBeforeUnmount(() => {
 .live-leaderboard__percentage {
   color: #38bdf8;
   font-weight: 600;
-}
-
-.live-chart {
-  margin-top: 1rem;
-  border-radius: 1.5rem;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  background: rgba(15, 23, 42, 0.6);
-  padding: 1rem 1.1rem 1rem 1rem;
-}
-
-.live-chart svg {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.live-chart__labels {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 0.6rem;
-  font-size: 0.75rem;
-  color: rgba(148, 163, 184, 0.7);
 }
 
 .live-results-card__updated {
