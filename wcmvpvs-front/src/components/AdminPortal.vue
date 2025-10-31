@@ -676,7 +676,22 @@
                 :end-label="entry.timelineChart.endLabel"
                 accessible-label="Andamento dei voti ogni 15 minuti"
               />
-              <ul class="history-votes-list">
+              <div class="history-votes__actions" v-if="entry.timeline.length">
+                <button
+                  class="btn link"
+                  type="button"
+                  @click="toggleHistoryTimeline(entry)"
+                  :aria-expanded="entry.isTimelineExpanded ? 'true' : 'false'"
+                  :aria-controls="`history-votes-list-${entry.id}`"
+                >
+                  {{ entry.isTimelineExpanded ? 'Nascondi dettagli' : 'Visualizza altro' }}
+                </button>
+              </div>
+              <ul
+                v-if="entry.isTimelineExpanded"
+                class="history-votes-list"
+                :id="`history-votes-list-${entry.id}`"
+              >
                 <li
                   v-for="bucket in entry.timeline"
                   :key="`${entry.id}-bucket-${bucket.start || bucket.rangeLabel}`"
@@ -2942,6 +2957,7 @@ function normalizeHistoryEntry(item) {
     awayTeam,
     prizes: normalizedPrizes,
     hasPrizeDraw,
+    isTimelineExpanded: false,
   };
 }
 
@@ -2979,6 +2995,13 @@ async function loadEventHistory({ force = false } = {}) {
   } finally {
     isLoadingEventHistory.value = false;
   }
+}
+
+function toggleHistoryTimeline(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return;
+  }
+  entry.isTimelineExpanded = !entry.isTimelineExpanded;
 }
 
 async function refreshEventHistory() {
@@ -4244,6 +4267,14 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.history-votes__actions {
+  display: flex;
+}
+
+.history-votes__actions .btn.link {
+  padding-left: 0;
 }
 
 .history-votes__header h4 {
