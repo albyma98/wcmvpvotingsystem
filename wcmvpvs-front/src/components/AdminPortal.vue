@@ -523,6 +523,12 @@
                   <span class="history-item__total">
                     <strong>{{ entry.totalVotesLabel }}</strong> voti totali
                   </span>
+                  <span class="history-item__total">
+                    <strong>{{ entry.totalVisitorsLabel }}</strong> visitatori totali
+                  </span>
+                  <span class="history-item__unique-visitors">
+                    <strong>{{ entry.uniqueVisitorsLabel }}</strong> visitatori unici
+                  </span>
                   <span class="history-item__sponsor-total">
                     <strong>{{ entry.sponsorClicksTotalLabel }}</strong> click sponsor
                   </span>
@@ -2754,6 +2760,11 @@ function normalizeHistoryEntry(item) {
       : '0',
   };
 
+  const totalVisitors = Number(sponsorAnalyticsData.totalUsers) || 0;
+  const uniqueVisitors = Number(sponsorAnalyticsData.seenUsers) || 0;
+  const totalVisitorsLabel = totalVisitors.toLocaleString('it-IT');
+  const uniqueVisitorsLabel = uniqueVisitors.toLocaleString('it-IT');
+
   const sponsorAnalyticsTimelineRaw = Array.isArray(sponsorAnalyticsData.timeline)
     ? sponsorAnalyticsData.timeline
     : [];
@@ -2911,6 +2922,10 @@ function normalizeHistoryEntry(item) {
     startDatetime,
     location,
     totalVotes,
+    totalVisitors,
+    totalVisitorsLabel,
+    uniqueVisitors,
+    uniqueVisitorsLabel,
     totalVotesLabel: Number.isFinite(totalVotes) ? totalVotes.toLocaleString('it-IT') : '0',
     sponsorClicks,
     sponsorClicksTotal,
@@ -4007,6 +4022,15 @@ select:focus {
 }
 
 .history-item__total {
+  color: #1e293b;
+}
+
+.history-item__unique-visitors {
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+.history-item__unique-visitors strong {
   color: #1e293b;
 }
 
