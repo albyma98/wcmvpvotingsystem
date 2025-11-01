@@ -700,6 +700,58 @@
                   </ul>
                 </div>
               </div>
+              <div class="history-details__column history-details__column--feedback">
+                <h4>Sondaggio feedback</h4>
+                <div v-if="entry.feedbackSummary" class="history-feedback-summary">
+                  <p class="history-feedback-summary__total">{{ entry.feedbackSummary.totalResponsesLabel }}</p>
+                  <div
+                    v-for="question in entry.feedbackSummary.questions"
+                    :key="`${entry.id}-feedback-${question.id}`"
+                    class="history-feedback-summary__question"
+                  >
+                    <h5>{{ question.title }}</h5>
+                    <ul class="history-feedback-summary__answers">
+                      <li
+                        v-for="answer in question.answers"
+                        :key="`${entry.id}-feedback-${question.id}-${answer.value}`"
+                        class="history-feedback-summary__answer"
+                      >
+                        <div class="history-feedback-summary__answer-header">
+                          <span class="history-feedback-summary__answer-label">{{ answer.label }}</span>
+                          <span class="history-feedback-summary__answer-count">
+                            {{ answer.countLabel }}
+                            <span v-if="entry.feedbackSummary.hasResponses">({{ answer.percentLabel }})</span>
+                          </span>
+                        </div>
+                        <div class="history-feedback-summary__answer-bar" role="presentation">
+                          <span
+                            class="history-feedback-summary__answer-bar-fill"
+                            :style="{ width: answer.barWidth }"
+                            aria-hidden="true"
+                          ></span>
+                        </div>
+                      </li>
+                    </ul>
+                    <p v-if="!question.hasAnswers" class="muted small">Nessuna risposta registrata.</p>
+                  </div>
+                  <div class="history-feedback-summary__question">
+                    <h5>{{ entry.feedbackSummary.suggestionQuestion.title }}</h5>
+                    <ul
+                      v-if="entry.feedbackSummary.suggestionQuestion.hasSuggestions"
+                      class="history-feedback-summary__suggestions"
+                    >
+                      <li
+                        v-for="(suggestion, suggestionIndex) in entry.feedbackSummary.suggestionQuestion.suggestions"
+                        :key="`${entry.id}-feedback-suggestion-${suggestionIndex}`"
+                      >
+                        {{ suggestion }}
+                      </li>
+                    </ul>
+                    <p v-else class="muted small">Nessun suggerimento inviato.</p>
+                  </div>
+                </div>
+                <p v-else class="muted">Nessun feedback raccolto.</p>
+              </div>
               <div class="history-details__column history-details__column--prizes">
                 <h4>Estrazione premi</h4>
                 <p
@@ -1056,6 +1108,53 @@ const selfieDateFormatter = new Intl.DateTimeFormat('it-IT', {
   dateStyle: 'medium',
   timeStyle: 'short',
 });
+
+const feedbackSummaryQuestions = [
+  {
+    id: 'experience',
+    title: "Com’è stata la tua esperienza di voto oggi?",
+    answers: [
+      { value: 'very_easy', label: 'Facilissima' },
+      { value: 'easy', label: 'Abbastanza semplice' },
+      { value: 'complex', label: 'Un po’ macchinosa' },
+      { value: 'hard', label: 'Difficile' },
+    ],
+  },
+  {
+    id: 'team_spirit',
+    title: 'Ti sei sentito parte della squadra mentre sceglievi l’MVP del pubblico?',
+    answers: [
+      { value: 'high', label: 'Sì, tantissimo!' },
+      { value: 'medium', label: 'In parte' },
+      { value: 'low', label: 'Non proprio' },
+    ],
+  },
+  {
+    id: 'perks_interest',
+    title:
+      'Immagina che la tua partecipazione ti permetta di vivere esperienze speciali o vantaggi come vero tifoso… ti piacerebbe?',
+    answers: [
+      { value: 'yes', label: 'Sì, assolutamente' },
+      { value: 'maybe', label: 'Forse' },
+      { value: 'no', label: 'No' },
+    ],
+  },
+  {
+    id: 'mini_games_interest',
+    title:
+      'Ti piacerebbe divertirti ancora di più con mini-giochi o sfide tra un set e l’altro per mettere alla prova i tuoi riflessi?',
+    answers: [
+      { value: 'super_excited', label: 'Sì, carichissimo!' },
+      { value: 'maybe', label: 'Forse più avanti' },
+      { value: 'no', label: 'No grazie' },
+    ],
+  },
+];
+
+const feedbackSummarySuggestion = {
+  id: 'suggestions',
+  title: 'Se potessi migliorare qualcosa, cosa ti piacerebbe aggiungere o cambiare?',
+};
 
 let resultsPollHandle = 0;
 
@@ -2152,6 +2251,93 @@ function normalizeSponsorResponse(item) {
   };
 }
 
+const toCamelCaseKey = (key) => {
+  if (typeof key !== 'string' || !key.includes('_')) {
+    return key;
+  }
+  return key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+};
+
+function normalizeFeedbackSummary(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const totalRaw = Number(raw.total_responses ?? raw.totalResponses ?? 0);
+  const totalResponses = Number.isFinite(totalRaw) ? totalRaw : 0;
+  const hasResponses = totalResponses > 0;
+  const totalResponsesLabel =
+    totalResponses === 1
+      ? '1 risposta'
+      : `${totalResponses.toLocaleString('it-IT')} risposte`;
+
+  const questions = feedbackSummaryQuestions.map((question) => {
+    const camelKey = toCamelCaseKey(question.id);
+    const countsSource =
+      (raw[question.id] && typeof raw[question.id] === 'object' ? raw[question.id] : null) ??
+      (raw[camelKey] && typeof raw[camelKey] === 'object' ? raw[camelKey] : null);
+    const counts = countsSource && typeof countsSource === 'object' ? countsSource : {};
+
+    const answers = question.answers.map((option) => {
+      const resolved = Number(counts?.[option.value] ?? 0);
+      const count = Number.isFinite(resolved) ? resolved : 0;
+      const percent = hasResponses && totalResponses > 0 ? Math.round((count / totalResponses) * 100) : 0;
+      const clampedPercent = Math.min(100, Math.max(0, percent));
+      const barPercent = hasResponses ? Math.max(clampedPercent, count > 0 ? 6 : 0) : 0;
+      return {
+        value: option.value,
+        label: option.label,
+        count,
+        countLabel: count.toLocaleString('it-IT'),
+        percent: clampedPercent,
+        percentLabel: `${clampedPercent}%`,
+        barWidth: `${barPercent}%`,
+        hasCount: count > 0,
+      };
+    });
+
+    const questionTotal = answers.reduce((sum, answer) => sum + answer.count, 0);
+    return {
+      id: question.id,
+      title: question.title,
+      answers,
+      totalCount: questionTotal,
+      totalCountLabel:
+        questionTotal === 1
+          ? '1 risposta'
+          : `${questionTotal.toLocaleString('it-IT')} risposte`,
+      hasAnswers: answers.some((answer) => answer.count > 0),
+    };
+  });
+
+  const suggestionsSource = Array.isArray(raw.suggestions)
+    ? raw.suggestions
+    : Array.isArray(raw.suggestion)
+    ? raw.suggestion
+    : [];
+  const suggestions = suggestionsSource
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+
+  const suggestionQuestion = {
+    id: feedbackSummarySuggestion.id,
+    title: feedbackSummarySuggestion.title,
+    suggestions,
+    hasSuggestions: suggestions.length > 0,
+  };
+
+  const hasAnyData = hasResponses || questions.some((question) => question.hasAnswers) || suggestionQuestion.hasSuggestions;
+
+  return {
+    totalResponses,
+    totalResponsesLabel,
+    hasResponses,
+    questions,
+    suggestionQuestion,
+    hasAnyData,
+  };
+}
+
 function serializeSponsorPayload(sponsor) {
   return {
     name: sponsor.name.trim(),
@@ -3023,6 +3209,8 @@ function normalizeHistoryEntry(item) {
     };
   }
 
+  const feedbackSummary = normalizeFeedbackSummary(item?.feedback_summary ?? item?.feedbackSummary);
+
   return {
     id,
     title: rawTitle || fallbackTitle,
@@ -3050,6 +3238,7 @@ function normalizeHistoryEntry(item) {
     prizes: normalizedPrizes,
     hasPrizeDraw,
     isTimelineExpanded: false,
+    feedbackSummary,
   };
 }
 
@@ -4368,6 +4557,92 @@ select:focus {
 
 .history-sponsor-timeline__value--clicks {
   color: #f97316;
+}
+
+.history-feedback-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.history-feedback-summary__total {
+  margin: 0;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.history-feedback-summary__question {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.history-feedback-summary__question h5 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #1e293b;
+}
+
+.history-feedback-summary__answers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.history-feedback-summary__answer {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.history-feedback-summary__answer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.history-feedback-summary__answer-label {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.history-feedback-summary__answer-count {
+  font-variant-numeric: tabular-nums;
+  color: #334155;
+}
+
+.history-feedback-summary__answer-bar {
+  height: 0.4rem;
+  border-radius: 999px;
+  background: #dbeafe;
+  overflow: hidden;
+}
+
+.history-feedback-summary__answer-bar-fill {
+  display: block;
+  height: 100%;
+  background: #0ea5e9;
+  transition: width 0.3s ease;
+}
+
+.history-feedback-summary__suggestions {
+  list-style: disc;
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: #334155;
+  font-size: 0.9rem;
 }
 
 .history-prize-status {
