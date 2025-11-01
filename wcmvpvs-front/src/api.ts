@@ -356,3 +356,33 @@ export async function listApprovedSelfies(eventId: number) {
     return { ok: false, error };
   }
 }
+
+type EventFeedbackPayload = {
+  experience: string;
+  team_spirit: string;
+  perks_interest: string;
+  mini_games_interest: string;
+  suggestion?: string;
+};
+
+export async function submitEventFeedback(eventId: number, feedback: EventFeedbackPayload) {
+  if (!eventId) {
+    return { ok: false, error: new Error('missing_event_id') };
+  }
+
+  const payload: EventFeedbackPayload = {
+    experience: feedback.experience,
+    team_spirit: feedback.team_spirit,
+    perks_interest: feedback.perks_interest,
+    mini_games_interest: feedback.mini_games_interest,
+    suggestion: (feedback.suggestion ?? '').slice(0, 80),
+  };
+
+  try {
+    await apiClient.post(`/events/${eventId}/feedback`, payload);
+    return { ok: true };
+  } catch (error) {
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    return { ok: false, error, status };
+  }
+}

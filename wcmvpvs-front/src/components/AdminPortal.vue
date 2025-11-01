@@ -119,6 +119,30 @@
               :disabled="!hasEnoughTeams"
             />
           </label>
+          <div class="postvote-options new-event-postvote">
+            <div class="postvote-options__header">
+              <span>Esperienze post voto</span>
+              <p class="field-hint">Scegli quali contenuti mostrare ai tifosi dopo aver votato.</p>
+            </div>
+            <div class="postvote-options__grid">
+              <label class="postvote-toggle">
+                <input type="checkbox" v-model="newEvent.show_vote_trend" :disabled="!hasEnoughTeams" />
+                <span class="postvote-toggle__label">Andamento dei voti</span>
+              </label>
+              <label class="postvote-toggle">
+                <input type="checkbox" v-model="newEvent.show_selfie" :disabled="!hasEnoughTeams" />
+                <span class="postvote-toggle__label">Selfie MVP</span>
+              </label>
+              <label class="postvote-toggle">
+                <input type="checkbox" v-model="newEvent.show_reaction_test" :disabled="!hasEnoughTeams" />
+                <span class="postvote-toggle__label">Mini-gioco riflessi</span>
+              </label>
+              <label class="postvote-toggle">
+                <input type="checkbox" v-model="newEvent.show_feedback_survey" :disabled="!hasEnoughTeams" />
+                <span class="postvote-toggle__label">Sondaggio feedback</span>
+              </label>
+            </div>
+          </div>
           <div class="prize-editor new-event-prizes">
             <div class="prize-editor__header">
               <span>Premi in palio</span>
@@ -203,6 +227,46 @@
               </button>
               <button class="btn danger" type="button" @click="deleteEvent(event.id)">Elimina</button>
             </div>
+            <div class="postvote-options">
+              <div class="postvote-options__header">
+                <strong>Esperienze post voto</strong>
+                <p class="field-hint">Attiva i contenuti che vuoi offrire dopo la votazione.</p>
+              </div>
+              <div class="postvote-options__grid">
+                <label class="postvote-toggle">
+                  <input
+                    type="checkbox"
+                    v-model="event.show_vote_trend"
+                    :disabled="isSavingPrizesFor(event.id)"
+                  />
+                  <span class="postvote-toggle__label">Andamento dei voti</span>
+                </label>
+                <label class="postvote-toggle">
+                  <input
+                    type="checkbox"
+                    v-model="event.show_selfie"
+                    :disabled="isSavingPrizesFor(event.id)"
+                  />
+                  <span class="postvote-toggle__label">Selfie MVP</span>
+                </label>
+                <label class="postvote-toggle">
+                  <input
+                    type="checkbox"
+                    v-model="event.show_reaction_test"
+                    :disabled="isSavingPrizesFor(event.id)"
+                  />
+                  <span class="postvote-toggle__label">Mini-gioco riflessi</span>
+                </label>
+                <label class="postvote-toggle">
+                  <input
+                    type="checkbox"
+                    v-model="event.show_feedback_survey"
+                    :disabled="isSavingPrizesFor(event.id)"
+                  />
+                  <span class="postvote-toggle__label">Sondaggio feedback</span>
+                </label>
+              </div>
+            </div>
             <div class="prize-editor existing-prizes">
               <div class="prize-editor__header">
                 <strong>Premi in palio</strong>
@@ -246,7 +310,7 @@
                   @click="savePrizesForEvent(event)"
                   :disabled="isSavingPrizesFor(event.id)"
                 >
-                  {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva premi' }}
+                  {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva impostazioni' }}
                 </button>
               </div>
               <p v-if="eventPrizeErrors[event.id]" class="error">{{ eventPrizeErrors[event.id] }}</p>
@@ -1069,12 +1133,20 @@ const playerOverflow = ref([]);
 const isSavingPlayers = ref(false);
 const playerSaveError = ref('');
 const playerSaveMessage = ref('');
-const newEvent = reactive({
-  team1_id: 0,
-  team2_id: 0,
-  start_datetime: '',
-  location: '',
-});
+function createDefaultNewEventState() {
+  return {
+    team1_id: 0,
+    team2_id: 0,
+    start_datetime: '',
+    location: '',
+    show_reaction_test: true,
+    show_selfie: true,
+    show_vote_trend: true,
+    show_feedback_survey: true,
+  };
+}
+
+const newEvent = reactive(createDefaultNewEventState());
 const newEventPrizes = ref([{ name: '' }]);
 const teamInputs = reactive({
   home: '',
@@ -1701,12 +1773,7 @@ function resetNewEventPrizes() {
 
 function resetForms() {
   newTeamName.value = '';
-  Object.assign(newEvent, {
-    team1_id: 0,
-    team2_id: 0,
-    start_datetime: '',
-    location: '',
-  });
+  Object.assign(newEvent, createDefaultNewEventState());
   resetNewEventPrizes();
   teamInputs.home = '';
   teamInputs.away = '';
@@ -2031,6 +2098,27 @@ function normalizeEventResponse(event) {
   normalized.is_active = Boolean(event?.is_active);
   normalized.votes_closed = Boolean(event?.votes_closed);
   normalized.is_concluded = Boolean(event?.is_concluded);
+  const resolveFlag = (keys, fallback = true) => {
+    if (!event || typeof event !== 'object') {
+      return fallback;
+    }
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(event, key)) {
+        return Boolean(event[key]);
+      }
+    }
+    return fallback;
+  };
+  normalized.show_reaction_test = resolveFlag(['show_reaction_test', 'showReactionTest'], true);
+  normalized.show_selfie = resolveFlag(['show_selfie', 'showSelfie'], true);
+  normalized.show_vote_trend = resolveFlag(
+    ['show_vote_trend', 'showVoteTrend', 'show_live_results'],
+    true,
+  );
+  normalized.show_feedback_survey = resolveFlag(
+    ['show_feedback_survey', 'showFeedbackSurvey'],
+    true,
+  );
   if (Array.isArray(event.prizes)) {
     const mapped = event.prizes
       .map((prize, index) => normalizePrizeResponse(prize, index))
@@ -2272,6 +2360,10 @@ async function savePrizesForEvent(event) {
     team2_id: event.team2_id,
     start_datetime: event.start_datetime,
     location: event.location,
+    show_reaction_test: Boolean(event.show_reaction_test),
+    show_selfie: Boolean(event.show_selfie),
+    show_vote_trend: Boolean(event.show_vote_trend),
+    show_feedback_survey: Boolean(event.show_feedback_survey),
     prizes: sanitized,
   };
 
@@ -3129,6 +3221,10 @@ async function createEvent() {
     team2_id: newEvent.team2_id,
     start_datetime: newEvent.start_datetime,
     location: newEvent.location,
+    show_reaction_test: Boolean(newEvent.show_reaction_test),
+    show_selfie: Boolean(newEvent.show_selfie),
+    show_vote_trend: Boolean(newEvent.show_vote_trend),
+    show_feedback_survey: Boolean(newEvent.show_feedback_survey),
     prizes: prizesPayload,
   };
 
@@ -3137,12 +3233,7 @@ async function createEvent() {
   if (data?.id) {
     lastCreatedEventLink.value = buildEventLink(data.id);
   }
-  Object.assign(newEvent, {
-    team1_id: 0,
-    team2_id: 0,
-    start_datetime: '',
-    location: '',
-  });
+  Object.assign(newEvent, createDefaultNewEventState());
   teamInputs.home = '';
   teamInputs.away = '';
   resetNewEventPrizes();
@@ -3632,6 +3723,73 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
   font-weight: 600;
   color: #1e293b;
+}
+
+.postvote-options {
+  margin: 1.25rem 0;
+  padding: 1.25rem 1.5rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(248, 250, 252, 0.9);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  grid-column: 1 / -1;
+}
+
+.postvote-options.new-event-postvote {
+  margin-top: 0.5rem;
+}
+
+.postvote-options__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  color: #1e293b;
+}
+
+.postvote-options__header span,
+.postvote-options__header strong {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.postvote-options__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem;
+}
+
+.postvote-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.postvote-toggle input[type='checkbox'] {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.postvote-toggle__label {
+  flex: 1;
+  cursor: pointer;
+}
+
+.postvote-toggle input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+
+.postvote-toggle input[type='checkbox']:disabled + .postvote-toggle__label {
+  opacity: 0.55;
 }
 
 .player-slots {

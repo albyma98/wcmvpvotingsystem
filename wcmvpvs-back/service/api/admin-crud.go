@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -163,11 +164,28 @@ func (rt *_router) listEvents(w http.ResponseWriter, r *http.Request, ctx reqcon
 }
 
 func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	var e database.Event
-	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
+	reader := http.MaxBytesReader(w, r.Body, 1<<16)
+	defer reader.Close()
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while creating event")
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+
+	var e database.Event
+	if err := json.Unmarshal(body, &e); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while creating event")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err == nil {
+		applyEventPostVoteDefaults(&e, raw)
+	} else {
+		applyEventPostVoteDefaults(&e, nil)
 	}
 	id, err := rt.db.CreateEvent(e)
 	if err != nil {
@@ -183,11 +201,28 @@ func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 
 func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
-	var e database.Event
-	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
+	reader := http.MaxBytesReader(w, r.Body, 1<<16)
+	defer reader.Close()
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while updating event")
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+
+	var e database.Event
+	if err := json.Unmarshal(body, &e); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while updating event")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err == nil {
+		applyEventPostVoteDefaults(&e, raw)
+	} else {
+		applyEventPostVoteDefaults(&e, nil)
 	}
 	e.ID = id
 	if err := rt.db.UpdateEvent(e); err != nil {
@@ -700,4 +735,46 @@ func adminPasswordMatches(hash, password string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(hash), []byte(candidate)) == 1
+}
+
+func applyEventPostVoteDefaults(e *database.Event, raw map[string]json.RawMessage) {
+	if e == nil {
+		return
+	}
+
+	if !eventFlagProvided(raw, "show_reaction_test", "showReactionTest") {
+		if !e.ShowReactionTest {
+			e.ShowReactionTest = true
+		}
+	}
+
+	if !eventFlagProvided(raw, "show_selfie", "showSelfie") {
+		if !e.ShowSelfie {
+			e.ShowSelfie = true
+		}
+	}
+
+	if !eventFlagProvided(raw, "show_vote_trend", "showVoteTrend") {
+		if !e.ShowVoteTrend {
+			e.ShowVoteTrend = true
+		}
+	}
+
+	if !eventFlagProvided(raw, "show_feedback_survey", "showFeedbackSurvey") {
+		if !e.ShowFeedbackSurvey {
+			e.ShowFeedbackSurvey = true
+		}
+	}
+}
+
+func eventFlagProvided(raw map[string]json.RawMessage, keys ...string) bool {
+	if raw == nil {
+		return false
+	}
+	for _, key := range keys {
+		if _, ok := raw[key]; ok {
+			return true
+		}
+	}
+	return false
 }

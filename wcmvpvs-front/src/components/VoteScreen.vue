@@ -1,11 +1,11 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import VolleyCourt from './VolleyCourt.vue';
 import PlayerCard from './PlayerCard.vue';
 import SelfieMvpSection from './SelfieMvpSection.vue';
 import ReactionTestSection from './ReactionTestSection.vue';
 import LiveResultsSection from './LiveResultsSection.vue';
-import { apiClient, vote, fetchVoteStatus, sendJsonBeacon } from '../api';
+import { apiClient, vote, fetchVoteStatus, sendJsonBeacon, submitEventFeedback } from '../api';
 import { mapPlayersToLayout } from '../roster';
 import { getOrCreateDeviceId } from '../deviceId';
 
@@ -389,9 +389,257 @@ const showVoteSummary = computed(
   () => hasVoted.value && Boolean(ticketCode.value || ticketQrUrl.value),
 );
 
+const feedbackQuestions = [
+  {
+    id: 'experience',
+    answerKey: 'experience',
+    title: 'Com’è stata la tua esperienza di voto oggi?',
+    options: [
+      { value: 'very_easy', label: 'Facilissima', icon: '🤩' },
+      { value: 'easy', label: 'Abbastanza semplice', icon: '🙂' },
+      { value: 'complex', label: 'Un po’ macchinosa', icon: '😐' },
+      { value: 'hard', label: 'Difficile', icon: '😣' },
+    ],
+  },
+  {
+    id: 'team_spirit',
+    answerKey: 'team_spirit',
+    title: 'Ti sei sentito parte della squadra mentre sceglievi l’MVP del pubblico?',
+    options: [
+      { value: 'high', label: 'Sì, tantissimo!', icon: '🔥' },
+      { value: 'medium', label: 'In parte', icon: '🙂' },
+      { value: 'low', label: 'Non proprio', icon: '🙄' },
+    ],
+  },
+  {
+    id: 'perks_interest',
+    answerKey: 'perks_interest',
+    title:
+      'Immagina che la tua partecipazione ti permetta di vivere esperienze speciali o vantaggi come vero tifoso… ti piacerebbe?',
+    options: [
+      { value: 'yes', label: 'Sì, assolutamente', icon: '💙' },
+      { value: 'maybe', label: 'Forse', icon: '🙂' },
+      { value: 'no', label: 'No', icon: '🙄' },
+    ],
+  },
+  {
+    id: 'mini_games_interest',
+    answerKey: 'mini_games_interest',
+    title:
+      'Ti piacerebbe divertirti ancora di più con mini-giochi o sfide tra un set e l’altro per mettere alla prova i tuoi riflessi?',
+    options: [
+      { value: 'super_excited', label: 'Sì, carichissimo!', icon: '🔥' },
+      { value: 'maybe', label: 'Forse più avanti', icon: '🙂' },
+      { value: 'no', label: 'No grazie', icon: '🙄' },
+    ],
+  },
+];
+
+const optionalFeedbackQuestion = {
+  id: 'suggestion',
+  answerKey: 'suggestion',
+  title: 'Se potessi migliorare qualcosa, cosa ti piacerebbe aggiungere o cambiare?',
+};
+
+const feedbackAnswers = reactive({
+  experience: '',
+  team_spirit: '',
+  perks_interest: '',
+  mini_games_interest: '',
+  suggestion: '',
+});
+
+const feedbackStep = ref(0);
+const showFeedbackModal = ref(false);
+const isFeedbackSubmitting = ref(false);
+const feedbackError = ref('');
+const showFeedbackThankYou = ref(false);
+const hasCompletedFeedback = ref(false);
+const optionalFeedbackMaxLength = 80;
+const feedbackStoragePrefix = 'wcmvpvs-feedback';
+const mandatoryFeedbackKeys = ['experience', 'team_spirit', 'perks_interest', 'mini_games_interest'];
+
+const activeFeedbackQuestion = computed(() =>
+  feedbackStep.value < feedbackQuestions.length
+    ? feedbackQuestions[feedbackStep.value]
+    : null,
+);
+
+const isOptionalFeedbackStep = computed(() => feedbackStep.value >= feedbackQuestions.length);
+
+const feedbackStepLabel = computed(() => {
+  if (feedbackStep.value < feedbackQuestions.length) {
+    return `Step ${feedbackStep.value + 1} di ${feedbackQuestions.length}`;
+  }
+  return 'Extra (opzionale)';
+});
+
+const feedbackProgress = computed(() => {
+  if (!feedbackQuestions.length) {
+    return 0;
+  }
+  const effectiveStep = Math.min(feedbackStep.value, feedbackQuestions.length - 1);
+  return Math.round(((effectiveStep + 1) / feedbackQuestions.length) * 100);
+});
+
+const shouldShowFeedbackCta = computed(
+  () => hasVoted.value && postVoteSettings.value.showFeedbackSurvey && !hasCompletedFeedback.value,
+);
+
+const showFeedbackThankYouMessage = computed(
+  () => postVoteSettings.value.showFeedbackSurvey && hasCompletedFeedback.value && showFeedbackThankYou.value,
+);
+
 const handleSelfieSubmitted = () => {
   hasVoted.value = true;
 };
+
+const feedbackStorageKey = (eventId) => {
+  if (!eventId) {
+    return '';
+  }
+  return `${feedbackStoragePrefix}:${eventId}`;
+};
+
+function clearFeedbackAnswers() {
+  feedbackAnswers.experience = '';
+  feedbackAnswers.team_spirit = '';
+  feedbackAnswers.perks_interest = '';
+  feedbackAnswers.mini_games_interest = '';
+  feedbackAnswers.suggestion = '';
+}
+
+function resetFeedbackFlow() {
+  feedbackStep.value = 0;
+  feedbackError.value = '';
+  isFeedbackSubmitting.value = false;
+  showFeedbackModal.value = false;
+  clearFeedbackAnswers();
+}
+
+function readFeedbackCompletion(eventId) {
+  if (!eventId || typeof window === 'undefined') {
+    return false;
+  }
+  try {
+    return window.localStorage?.getItem(feedbackStorageKey(eventId)) === '1';
+  } catch (error) {
+    return false;
+  }
+}
+
+function persistFeedbackCompletion(eventId) {
+  if (!eventId || typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage?.setItem(feedbackStorageKey(eventId), '1');
+  } catch (error) {
+    // ignore storage errors
+  }
+}
+
+function openFeedbackModal() {
+  if (!shouldShowFeedbackCta.value) {
+    return;
+  }
+  const firstIncompleteIndex = feedbackQuestions.findIndex(
+    (question) => !feedbackAnswers[question.answerKey],
+  );
+  feedbackStep.value = firstIncompleteIndex >= 0 ? firstIncompleteIndex : feedbackQuestions.length;
+  feedbackError.value = '';
+  showFeedbackModal.value = true;
+}
+
+function closeFeedbackModal() {
+  if (isFeedbackSubmitting.value) {
+    return;
+  }
+  showFeedbackModal.value = false;
+  feedbackError.value = '';
+}
+
+function isFeedbackOptionSelected(question, option) {
+  if (!question || !option) {
+    return false;
+  }
+  return feedbackAnswers[question.answerKey] === option.value;
+}
+
+function handleFeedbackOptionSelect(option) {
+  if (!option) {
+    return;
+  }
+  const question = activeFeedbackQuestion.value;
+  if (!question) {
+    return;
+  }
+  feedbackAnswers[question.answerKey] = option.value;
+  feedbackError.value = '';
+  const nextStep = Math.min(feedbackStep.value + 1, feedbackQuestions.length);
+  feedbackStep.value = nextStep;
+}
+
+function goToPreviousFeedbackStep() {
+  if (feedbackStep.value <= 0 || isFeedbackSubmitting.value) {
+    return;
+  }
+  feedbackStep.value -= 1;
+  feedbackError.value = '';
+}
+
+function skipOptionalFeedback() {
+  if (isFeedbackSubmitting.value) {
+    return;
+  }
+  feedbackAnswers.suggestion = '';
+  submitFeedback();
+}
+
+async function submitFeedback() {
+  if (isFeedbackSubmitting.value) {
+    return;
+  }
+  const eventId = currentEventId.value;
+  if (!eventId) {
+    feedbackError.value = 'Evento non disponibile in questo momento.';
+    return;
+  }
+  for (const key of mandatoryFeedbackKeys) {
+    if (!feedbackAnswers[key]) {
+      feedbackError.value = 'Rispondi a tutte le domande per continuare.';
+      return;
+    }
+  }
+  isFeedbackSubmitting.value = true;
+  feedbackError.value = '';
+  try {
+    const suggestion = feedbackAnswers.suggestion.trim();
+    const result = await submitEventFeedback(eventId, {
+      experience: feedbackAnswers.experience,
+      team_spirit: feedbackAnswers.team_spirit,
+      perks_interest: feedbackAnswers.perks_interest,
+      mini_games_interest: feedbackAnswers.mini_games_interest,
+      suggestion,
+    });
+    if (result?.ok) {
+      persistFeedbackCompletion(eventId);
+      hasCompletedFeedback.value = true;
+      showFeedbackThankYou.value = true;
+      resetFeedbackFlow();
+      return;
+    }
+    if (result?.status === 400) {
+      feedbackError.value = 'Controlla le risposte e riprova.';
+    } else {
+      feedbackError.value = 'Non siamo riusciti a salvare il tuo feedback. Riprova tra qualche istante.';
+    }
+  } catch (error) {
+    feedbackError.value = 'Non siamo riusciti a salvare il tuo feedback. Riprova tra qualche istante.';
+  } finally {
+    isFeedbackSubmitting.value = false;
+  }
+}
 
 async function refreshVoteStatus(eventId) {
   if (!eventId) {
@@ -457,6 +705,29 @@ const eventTitle = computed(() => {
 });
 
 const currentEventId = computed(() => props.eventId ?? props.activeEvent?.id);
+
+const resolveEventFlag = (event, keys, fallback = true) => {
+  if (!event || typeof event !== 'object') {
+    return fallback;
+  }
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(event, key)) {
+      return Boolean(event[key]);
+    }
+  }
+  return fallback;
+};
+
+const postVoteSettings = computed(() => {
+  const event = props.activeEvent || null;
+  return {
+    showReactionTest: resolveEventFlag(event, ['show_reaction_test', 'showReactionTest'], true),
+    showSelfie: resolveEventFlag(event, ['show_selfie', 'showSelfie'], true),
+    showVoteTrend: resolveEventFlag(event, ['show_vote_trend', 'showVoteTrend', 'show_live_results'], true),
+    showFeedbackSurvey: resolveEventFlag(event, ['show_feedback_survey', 'showFeedbackSurvey'], true),
+  };
+});
+
 const showInactiveNotice = computed(() => props.activeEventChecked && !props.activeEvent);
 const isCheckingActiveEvent = computed(() => props.loadingActiveEvent && !props.activeEventChecked);
 const isVotingClosed = computed(() => {
@@ -466,6 +737,36 @@ const isVotingClosed = computed(() => {
   const raw =
     props.activeEvent.votes_closed ?? props.activeEvent.votesClosed ?? props.activeEvent.is_voting_closed;
   return Boolean(raw);
+});
+
+const showLiveResultsSection = computed(() => {
+  if (!postVoteSettings.value.showVoteTrend) {
+    return false;
+  }
+  if (!currentEventId.value) {
+    return false;
+  }
+  return hasVoted.value || isCheckingVoteStatus.value;
+});
+
+const showSelfieSection = computed(() => {
+  if (!postVoteSettings.value.showSelfie) {
+    return false;
+  }
+  if (!currentEventId.value) {
+    return false;
+  }
+  return hasVoted.value || isCheckingVoteStatus.value;
+});
+
+const showReactionTestSection = computed(() => {
+  if (!postVoteSettings.value.showReactionTest) {
+    return false;
+  }
+  if (!currentEventId.value) {
+    return false;
+  }
+  return hasVoted.value;
 });
 
 const resolveEventStartValue = (event) => {
@@ -624,6 +925,15 @@ watch(currentEventId, (eventId) => {
     stopSponsorVisibilityInterval();
     teardownSponsorObserver();
   }
+  resetFeedbackFlow();
+  if (eventId) {
+    const completed = readFeedbackCompletion(eventId);
+    hasCompletedFeedback.value = completed;
+    showFeedbackThankYou.value = completed && hasVoted.value;
+  } else {
+    hasCompletedFeedback.value = false;
+    showFeedbackThankYou.value = false;
+  }
 });
 
 watch(
@@ -643,6 +953,28 @@ watch(
     });
   },
   { deep: true },
+);
+
+watch(hasVoted, (voted) => {
+  if (!voted) {
+    if (!hasCompletedFeedback.value) {
+      showFeedbackThankYou.value = false;
+    }
+    showFeedbackModal.value = false;
+    return;
+  }
+  if (hasCompletedFeedback.value && postVoteSettings.value.showFeedbackSurvey) {
+    showFeedbackThankYou.value = true;
+  }
+});
+
+watch(
+  () => postVoteSettings.value.showFeedbackSurvey,
+  (enabled) => {
+    if (!enabled) {
+      showFeedbackModal.value = false;
+    }
+  },
 );
 
 watch(fieldPlayers, (players) => {
@@ -947,7 +1279,24 @@ const handleQrError = () => {
             I giocatori non sono ancora stati configurati. Torna più tardi!
           </p>
         </section>
-        <section v-else class="px-4">
+        <section v-else class="px-4 after-vote-section">
+          <div class="after-vote-success">
+            <p class="after-vote-success__eyebrow">Voto registrato <span aria-hidden="true">✅</span></p>
+            <h3 class="after-vote-success__title">Grazie per aver partecipato!</h3>
+            <button
+              v-if="shouldShowFeedbackCta"
+              type="button"
+              class="feedback-cta"
+              @click="openFeedbackModal"
+            >
+              <span class="feedback-cta__label">Aiutaci a migliorare</span>
+              <span class="feedback-cta__time">(15 secondi)</span>
+            </button>
+            <p v-else-if="showFeedbackThankYouMessage" class="after-vote-success__thanks">
+              Grazie 💙 Hai aiutato a migliorare l’esperienza dei tifosi 🙌
+            </p>
+          </div>
+
           <div class="after-vote-panel">
             <h3>{{ eventTitle }}</h3>
             <p>
@@ -956,28 +1305,28 @@ const handleQrError = () => {
           </div>
 
           <LiveResultsSection
-            v-if="currentEventId"
+            v-if="showLiveResultsSection"
             class="mt-6"
             :event-id="currentEventId"
-            :enabled="hasVoted"
+            :enabled="hasVoted && postVoteSettings.showVoteTrend"
           />
         </section>
 
         <SelfieMvpSection
-          v-if="currentEventId && (hasVoted || isCheckingVoteStatus)"
+          v-if="showSelfieSection"
           :class="['px-4', hasVoted ? 'pt-0' : '']"
           :event-id="currentEventId"
-          :enabled="hasVoted"
+          :enabled="hasVoted && postVoteSettings.showSelfie"
           :loading-status="isCheckingVoteStatus"
           :compact="hasVoted"
           @selfie-submitted="handleSelfieSubmitted"
         />
 
         <ReactionTestSection
-          v-if="currentEventId && hasVoted"
+          v-if="showReactionTestSection"
           class="mt-8"
           :event-id="currentEventId"
-          :enabled="hasVoted"
+          :enabled="hasVoted && postVoteSettings.showReactionTest"
         />
 
         <section v-if="sponsors.length" ref="sponsorSectionRef" class="px-4">
@@ -1069,6 +1418,100 @@ const handleQrError = () => {
         <p v-if="errorMessage" class="px-4 pb-6 text-center text-sm text-rose-400">
           {{ errorMessage }}
         </p>
+
+        <transition name="feedback-modal-fade">
+          <div
+            v-if="showFeedbackModal"
+            class="feedback-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="feedback-modal-title"
+            @click.self="closeFeedbackModal"
+          >
+            <div class="feedback-modal__panel">
+              <header class="feedback-modal__header">
+                <button
+                  class="feedback-modal__close"
+                  type="button"
+                  @click="closeFeedbackModal"
+                  aria-label="Chiudi sondaggio"
+                >
+                  ×
+                </button>
+                <p class="feedback-modal__step">{{ feedbackStepLabel }}</p>
+                <div class="feedback-modal__progress">
+                  <div class="feedback-modal__progress-bar" :style="{ width: `${feedbackProgress}%` }"></div>
+                </div>
+              </header>
+
+              <div class="feedback-modal__body">
+                <h2 id="feedback-modal-title" class="feedback-modal__title">
+                  {{ isOptionalFeedbackStep ? optionalFeedbackQuestion.title : activeFeedbackQuestion?.title }}
+                </h2>
+                <p v-if="isOptionalFeedbackStep" class="feedback-modal__hint">
+                  Risposta facoltativa (max {{ optionalFeedbackMaxLength }} caratteri)
+                </p>
+                <div v-if="!isOptionalFeedbackStep && activeFeedbackQuestion" class="feedback-modal__options">
+                  <button
+                    v-for="option in activeFeedbackQuestion.options"
+                    :key="option.value"
+                    type="button"
+                    class="feedback-modal__option"
+                    :class="{ active: isFeedbackOptionSelected(activeFeedbackQuestion, option) }"
+                    @click="handleFeedbackOptionSelect(option)"
+                  >
+                    <span class="feedback-modal__option-icon" aria-hidden="true">{{ option.icon }}</span>
+                    <span class="feedback-modal__option-label">{{ option.label }}</span>
+                  </button>
+                </div>
+                <div v-else class="feedback-modal__optional">
+                  <input
+                    v-model="feedbackAnswers.suggestion"
+                    :maxlength="optionalFeedbackMaxLength"
+                    type="text"
+                    class="feedback-modal__input"
+                    placeholder="Scrivi qui (max 80 caratteri)"
+                  />
+                  <span class="feedback-modal__counter"
+                    >{{ feedbackAnswers.suggestion.length }}/{{ optionalFeedbackMaxLength }}</span
+                  >
+                </div>
+                <p v-if="feedbackError" class="feedback-modal__error" role="alert">{{ feedbackError }}</p>
+              </div>
+
+              <footer class="feedback-modal__footer">
+                <button
+                  v-if="feedbackStep > 0 && !isFeedbackSubmitting"
+                  type="button"
+                  class="feedback-modal__back"
+                  @click="goToPreviousFeedbackStep"
+                >
+                  Indietro
+                </button>
+                <div class="feedback-modal__footer-actions" :class="{ 'is-hidden': !isOptionalFeedbackStep }">
+                  <button
+                    v-if="isOptionalFeedbackStep"
+                    type="button"
+                    class="feedback-modal__skip"
+                    @click="skipOptionalFeedback"
+                    :disabled="isFeedbackSubmitting"
+                  >
+                    Salta
+                  </button>
+                  <button
+                    v-if="isOptionalFeedbackStep"
+                    type="button"
+                    class="feedback-modal__submit"
+                    @click="submitFeedback"
+                    :disabled="isFeedbackSubmitting"
+                  >
+                    {{ isFeedbackSubmitting ? 'Invio…' : 'Invia' }}
+                  </button>
+                </div>
+              </footer>
+            </div>
+          </div>
+        </transition>
       </div>
     </main>
 
@@ -1406,6 +1849,363 @@ const handleQrError = () => {
   margin: 0.75rem 0 0;
   font-size: 0.9rem;
   color: rgba(226, 232, 240, 0.85);
+}
+
+.after-vote-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  padding-bottom: 1.5rem;
+}
+
+.after-vote-success {
+  padding: 1.75rem 1.5rem;
+  border-radius: 1.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.75);
+  box-shadow: 0 26px 48px rgba(15, 23, 42, 0.5);
+  text-align: center;
+}
+
+.after-vote-success__eyebrow {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.after-vote-success__title {
+  margin: 0.5rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #f8fafc;
+}
+
+.after-vote-success__thanks {
+  margin: 1.25rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(191, 219, 254, 0.95);
+}
+
+.feedback-cta {
+  margin: 1.25rem auto 0;
+  min-width: 100%;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.95rem 1.5rem;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  box-shadow: 0 22px 40px rgba(99, 102, 241, 0.4);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.feedback-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 26px 48px rgba(99, 102, 241, 0.45);
+}
+
+.feedback-cta:active {
+  transform: translateY(1px);
+  filter: brightness(0.95);
+}
+
+.feedback-cta__label {
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+}
+
+.feedback-cta__time {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+
+@media (min-width: 640px) {
+  .feedback-cta {
+    min-width: auto;
+    padding: 0.95rem 2.5rem;
+  }
+}
+
+.feedback-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(1.5rem + env(safe-area-inset-top, 0px)) 1.25rem
+    calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  background: rgba(8, 15, 28, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.feedback-modal__panel {
+  width: min(440px, 100%);
+  max-height: 100%;
+  padding: 1.5rem 1.5rem 1.75rem;
+  border-radius: 1.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 30px 60px rgba(8, 15, 28, 0.6);
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow-y: auto;
+}
+
+.feedback-modal__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  position: relative;
+}
+
+.feedback-modal__close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.85);
+  color: rgba(226, 232, 240, 0.95);
+  font-size: 1.5rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.feedback-modal__close:hover {
+  filter: brightness(1.1);
+}
+
+.feedback-modal__step {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.feedback-modal__progress {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.feedback-modal__progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  transition: width 0.3s ease;
+}
+
+.feedback-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.feedback-modal__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.feedback-modal__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(191, 219, 254, 0.75);
+}
+
+.feedback-modal__options {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.feedback-modal__option {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.65);
+  color: rgba(226, 232, 240, 0.95);
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.feedback-modal__option:hover {
+  transform: translateY(-1px);
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+.feedback-modal__option.active {
+  border-color: rgba(96, 165, 250, 0.8);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(99, 102, 241, 0.3));
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.35);
+}
+
+.feedback-modal__option-icon {
+  font-size: 1.75rem;
+}
+
+.feedback-modal__option-label {
+  flex: 1;
+  text-align: left;
+}
+
+.feedback-modal__optional {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.feedback-modal__input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.6);
+  color: #f8fafc;
+  font-size: 0.95rem;
+}
+
+.feedback-modal__input:focus {
+  outline: none;
+  border-color: rgba(94, 234, 212, 0.85);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.25);
+}
+
+.feedback-modal__counter {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  color: rgba(148, 163, 184, 0.75);
+}
+
+.feedback-modal__error {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fca5a5;
+}
+
+.feedback-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.feedback-modal__back {
+  border: none;
+  background: none;
+  color: rgba(148, 163, 184, 0.8);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0.5rem 0.75rem;
+  border-radius: 999px;
+  transition: color 0.2s ease;
+}
+
+.feedback-modal__back:hover {
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.feedback-modal__footer-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.feedback-modal__footer-actions.is-hidden {
+  display: none;
+}
+
+.feedback-modal__skip,
+.feedback-modal__submit {
+  border-radius: 999px;
+  padding: 0.65rem 1.4rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.feedback-modal__skip {
+  background: rgba(148, 163, 184, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.feedback-modal__skip:hover {
+  background: rgba(148, 163, 184, 0.3);
+}
+
+.feedback-modal__submit {
+  border: none;
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  color: #0f172a;
+  box-shadow: 0 18px 36px rgba(99, 102, 241, 0.45);
+}
+
+.feedback-modal__submit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 44px rgba(99, 102, 241, 0.5);
+}
+
+.feedback-modal__submit:active {
+  transform: translateY(1px);
+  filter: brightness(0.95);
+}
+
+.feedback-modal__skip:disabled,
+.feedback-modal__submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.feedback-modal-fade-enter-active,
+.feedback-modal-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.feedback-modal-fade-enter-from,
+.feedback-modal-fade-leave-to {
+  opacity: 0;
 }
 
 @media (min-width: 640px) {
