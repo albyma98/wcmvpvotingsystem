@@ -597,14 +597,28 @@
                     <strong>{{ entry.sponsorClicksTotalLabel }}</strong> click sponsor
                   </span>
                 </div>
-                <button
-                  v-if="isSuperAdmin"
-                  class="btn danger"
-                  type="button"
-                  @click="openPurgeDialog(entry)"
-                >
-                  Elimina evento
-                </button>
+                <div class="history-item__actions">
+                  <button
+                    class="btn outline"
+                    type="button"
+                    :disabled="isDownloadingHistoryReport(entry.id)"
+                    @click="downloadEventHistoryReport(entry)"
+                  >
+                    {{
+                      isDownloadingHistoryReport(entry.id)
+                        ? 'Generazione report…'
+                        : 'Scarica report'
+                    }}
+                  </button>
+                  <button
+                    v-if="isSuperAdmin"
+                    class="btn danger"
+                    type="button"
+                    @click="openPurgeDialog(entry)"
+                  >
+                    Elimina evento
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1188,6 +1202,7 @@ const selfieLoadError = ref('');
 const selfieModerationMessage = ref('');
 const selectedSelfieEventId = ref(0);
 const selfieBusyState = reactive({});
+const historyReportDownloadState = reactive({});
 const purgeDialog = reactive({
   visible: false,
   event: null,
@@ -1973,6 +1988,9 @@ function clearCollections() {
   });
   Object.keys(selfieBusyState).forEach((key) => {
     delete selfieBusyState[key];
+  });
+  Object.keys(historyReportDownloadState).forEach((key) => {
+    delete historyReportDownloadState[key];
   });
   lastCreatedEventLink.value = '';
   resetNewEventPrizes();
@@ -2815,6 +2833,21 @@ function isSelfieBusy(id) {
   return Boolean(selfieBusyState[id]);
 }
 
+function setHistoryReportBusy(id, busy) {
+  if (!id) {
+    return;
+  }
+  if (busy) {
+    historyReportDownloadState[id] = true;
+  } else {
+    delete historyReportDownloadState[id];
+  }
+}
+
+function isDownloadingHistoryReport(id) {
+  return Boolean(id && historyReportDownloadState[id]);
+}
+
 function selfieStatusLabel(selfie) {
   if (!selfie) {
     return '';
@@ -3240,6 +3273,79 @@ function normalizeHistoryEntry(item) {
     isTimelineExpanded: false,
     feedbackSummary,
   };
+}
+
+function buildHistoryReportFilename(entry) {
+  const eventId = Number(entry?.id) || 0;
+  const parsedDate = parseHistoryDate(entry?.startDatetime);
+  const datePart = parsedDate
+    ? `${parsedDate.getFullYear()}${String(parsedDate.getMonth() + 1).padStart(2, '0')}${String(
+        parsedDate.getDate(),
+      ).padStart(2, '0')}`
+    : '';
+  const rawTitle = typeof entry?.title === 'string' ? entry.title : '';
+  const normalizedTitle = rawTitle
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const parts = [];
+  if (datePart) {
+    parts.push(datePart);
+  }
+  if (normalizedTitle) {
+    parts.push(normalizedTitle);
+  }
+  if (eventId) {
+    parts.push(`evento-${eventId}`);
+  } else {
+    parts.push('evento-storico');
+  }
+  return `${parts.join('_')}.pdf`;
+}
+
+async function downloadEventHistoryReport(entry) {
+  if (!entry || typeof entry !== 'object' || !entry.id) {
+    return;
+  }
+
+  const eventId = entry.id;
+  setHistoryReportBusy(eventId, true);
+  eventHistoryError.value = '';
+
+  try {
+    await nextTick();
+    const config = {
+      ...authHeaders.value,
+      responseType: 'blob',
+    };
+    const response = await apiClient.get(`/admin/events/history/${eventId}/report`, config);
+    const blob = new Blob([response?.data], { type: 'application/pdf' });
+    const filename = buildHistoryReportFilename(entry) || `evento-${eventId}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    const safeTitle = typeof entry.title === 'string' ? entry.title : `Evento #${entry.id}`;
+    eventHistorySuccess.value = `Report per "${safeTitle}" scaricato correttamente.`;
+  } catch (error) {
+    if (error?.response?.status === 401) {
+      handleUnauthorized();
+    } else if (error?.response?.status === 404) {
+      eventHistoryError.value = 'Il report richiesto non è disponibile.';
+    } else {
+      console.error('history report download error', error);
+      eventHistoryError.value = 'Impossibile generare il report PDF. Riprova più tardi.';
+    }
+    eventHistorySuccess.value = '';
+  } finally {
+    setHistoryReportBusy(eventId, false);
+  }
 }
 
 async function loadEventHistory({ force = false } = {}) {
@@ -4382,6 +4488,17 @@ select:focus {
   gap: 0.5rem;
   font-size: 0.95rem;
   text-align: right;
+}
+
+.history-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.history-item__actions .btn {
+  min-width: 0;
 }
 
 .history-item__totals {
