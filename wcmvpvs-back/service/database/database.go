@@ -56,17 +56,32 @@ type Player struct {
 }
 
 type Event struct {
-	ID            int          `json:"id"`
-	Team1ID       int          `json:"team1_id"`
-	Team2ID       int          `json:"team2_id"`
-	StartDateTime string       `json:"start_datetime"`
-	Location      string       `json:"location"`
-	IsActive      bool         `json:"is_active"`
-	VotesClosed   bool         `json:"votes_closed"`
-	IsConcluded   bool         `json:"is_concluded"`
-	Team1Name     string       `json:"team1_name,omitempty"`
-	Team2Name     string       `json:"team2_name,omitempty"`
-	Prizes        []EventPrize `json:"prizes,omitempty"`
+	ID                 int          `json:"id"`
+	Team1ID            int          `json:"team1_id"`
+	Team2ID            int          `json:"team2_id"`
+	StartDateTime      string       `json:"start_datetime"`
+	Location           string       `json:"location"`
+	IsActive           bool         `json:"is_active"`
+	VotesClosed        bool         `json:"votes_closed"`
+	IsConcluded        bool         `json:"is_concluded"`
+	ShowReactionTest   bool         `json:"show_reaction_test"`
+	ShowSelfie         bool         `json:"show_selfie"`
+	ShowVoteTrend      bool         `json:"show_vote_trend"`
+	ShowFeedbackSurvey bool         `json:"show_feedback_survey"`
+	Team1Name          string       `json:"team1_name,omitempty"`
+	Team2Name          string       `json:"team2_name,omitempty"`
+	Prizes             []EventPrize `json:"prizes,omitempty"`
+}
+
+type EventFeedback struct {
+	ID                int    `json:"id"`
+	EventID           int    `json:"event_id"`
+	Experience        string `json:"experience"`
+	TeamSpirit        string `json:"team_spirit"`
+	PerksInterest     string `json:"perks_interest"`
+	MiniGamesInterest string `json:"mini_games_interest"`
+	Suggestion        string `json:"suggestion"`
+	CreatedAt         string `json:"created_at"`
 }
 
 type EventPrize struct {
@@ -287,6 +302,7 @@ type AppDatabase interface {
 	GetSponsorAnalytics(eventID int) (SponsorAnalytics, error)
 	GetSponsorClickStats(eventID int) ([]SponsorClickStat, error)
 	PurgeEventData(eventID int) error
+	RecordEventFeedback(feedback EventFeedback) error
 	Ping() error
 }
 
@@ -411,6 +427,30 @@ func New(db *sql.DB) (AppDatabase, error) {
 		}
 	}
 
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN show_reaction_test INTEGER NOT NULL DEFAULT 1`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events reaction test column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN show_selfie INTEGER NOT NULL DEFAULT 1`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events selfie column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN show_vote_trend INTEGER NOT NULL DEFAULT 1`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events vote trend column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN show_feedback_survey INTEGER NOT NULL DEFAULT 1`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events feedback survey column: %w", err)
+		}
+	}
+
 	// Create admins table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='admins';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -505,6 +545,31 @@ func New(db *sql.DB) (AppDatabase, error) {
 
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_reaction_tests_device ON reaction_tests(event_id, device_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring reaction_tests device index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='event_feedback';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE event_feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        experience TEXT NOT NULL,
+        team_spirit TEXT NOT NULL,
+        perks_interest TEXT NOT NULL,
+        mini_games_interest TEXT NOT NULL,
+        suggestion TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating event_feedback table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying event_feedback table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_event_feedback_event ON event_feedback(event_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring event_feedback event index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tickets';`).Scan(&tableName)
@@ -1146,7 +1211,7 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 	}
 	defer tx.Rollback()
 
-	res, err := tx.Exec(`INSERT INTO events (team1_id, team2_id, start_datetime, location) VALUES (?, ?, ?, ?)`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location)
+	res, err := tx.Exec(`INSERT INTO events (team1_id, team2_id, start_datetime, location, show_reaction_test, show_selfie, show_vote_trend, show_feedback_survey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey))
 	if err != nil {
 		return 0, err
 	}
@@ -1174,6 +1239,10 @@ SELECT e.id,
        e.is_active,
        e.votes_closed,
        e.is_concluded,
+       e.show_reaction_test,
+       e.show_selfie,
+       e.show_vote_trend,
+       e.show_feedback_survey,
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -1189,12 +1258,20 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 		var isActive int
 		var votesClosed int
 		var isConcluded int
-		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &e.Team1Name, &e.Team2Name); err != nil {
+		var showReaction int
+		var showSelfie int
+		var showVoteTrend int
+		var showFeedback int
+		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &e.Team1Name, &e.Team2Name); err != nil {
 			return nil, err
 		}
 		e.IsActive = isActive == 1
 		e.VotesClosed = votesClosed == 1
 		e.IsConcluded = isConcluded == 1
+		e.ShowReactionTest = showReaction == 1
+		e.ShowSelfie = showSelfie == 1
+		e.ShowVoteTrend = showVoteTrend == 1
+		e.ShowFeedbackSurvey = showFeedback == 1
 		es = append(es, e)
 	}
 	for i := range es {
@@ -1215,7 +1292,7 @@ func (db *appdbimpl) UpdateEvent(e Event) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, e.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=?, show_reaction_test=?, show_selfie=?, show_vote_trend=?, show_feedback_survey=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), e.ID); err != nil {
 		return err
 	}
 
@@ -1376,6 +1453,10 @@ func (db *appdbimpl) GetActiveEvent() (Event, error) {
 	var isActive int
 	var votesClosed int
 	var isConcluded int
+	var showReaction int
+	var showSelfie int
+	var showVoteTrend int
+	var showFeedback int
 	err := db.c.QueryRow(`
 SELECT e.id,
        e.team1_id,
@@ -1385,6 +1466,10 @@ SELECT e.id,
        e.is_active,
        e.votes_closed,
        e.is_concluded,
+       e.show_reaction_test,
+       e.show_selfie,
+       e.show_vote_trend,
+       e.show_feedback_survey,
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -1392,13 +1477,17 @@ LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
 WHERE e.is_active = 1
 LIMIT 1
-`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &e.Team1Name, &e.Team2Name)
+`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &e.Team1Name, &e.Team2Name)
 	if err != nil {
 		return Event{}, err
 	}
 	e.IsActive = isActive == 1
 	e.VotesClosed = votesClosed == 1
 	e.IsConcluded = isConcluded == 1
+	e.ShowReactionTest = showReaction == 1
+	e.ShowSelfie = showSelfie == 1
+	e.ShowVoteTrend = showVoteTrend == 1
+	e.ShowFeedbackSurvey = showFeedback == 1
 	return e, nil
 }
 
@@ -2229,4 +2318,30 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func (db *appdbimpl) RecordEventFeedback(feedback EventFeedback) error {
+	if feedback.EventID <= 0 {
+		return sql.ErrNoRows
+	}
+
+	experience := strings.TrimSpace(feedback.Experience)
+	teamSpirit := strings.TrimSpace(feedback.TeamSpirit)
+	perksInterest := strings.TrimSpace(feedback.PerksInterest)
+	miniGamesInterest := strings.TrimSpace(feedback.MiniGamesInterest)
+
+	if experience == "" || teamSpirit == "" || perksInterest == "" || miniGamesInterest == "" {
+		return fmt.Errorf("invalid feedback payload")
+	}
+
+	suggestion := strings.TrimSpace(feedback.Suggestion)
+	if suggestion != "" {
+		runes := []rune(suggestion)
+		if len(runes) > 80 {
+			suggestion = string(runes[:80])
+		}
+	}
+
+	_, err := db.c.Exec(`INSERT INTO event_feedback (event_id, experience, team_spirit, perks_interest, mini_games_interest, suggestion) VALUES (?, ?, ?, ?, ?, ?)`, feedback.EventID, experience, teamSpirit, perksInterest, miniGamesInterest, suggestion)
+	return err
 }
