@@ -84,6 +84,15 @@ type EventFeedback struct {
 	CreatedAt         string `json:"created_at"`
 }
 
+type EventFeedbackSummary struct {
+	TotalResponses          int
+	ExperienceCounts        map[string]int
+	TeamSpiritCounts        map[string]int
+	PerksInterestCounts     map[string]int
+	MiniGamesInterestCounts map[string]int
+	Suggestions             []string
+}
+
 type EventPrize struct {
 	ID       int               `json:"id"`
 	EventID  int               `json:"event_id"`
@@ -303,6 +312,7 @@ type AppDatabase interface {
 	GetSponsorClickStats(eventID int) ([]SponsorClickStat, error)
 	PurgeEventData(eventID int) error
 	RecordEventFeedback(feedback EventFeedback) error
+	GetEventFeedbackSummary(eventID int) (EventFeedbackSummary, error)
 	Ping() error
 }
 
@@ -2344,4 +2354,87 @@ func (db *appdbimpl) RecordEventFeedback(feedback EventFeedback) error {
 
 	_, err := db.c.Exec(`INSERT INTO event_feedback (event_id, experience, team_spirit, perks_interest, mini_games_interest, suggestion) VALUES (?, ?, ?, ?, ?, ?)`, feedback.EventID, experience, teamSpirit, perksInterest, miniGamesInterest, suggestion)
 	return err
+}
+
+func (db *appdbimpl) GetEventFeedbackSummary(eventID int) (EventFeedbackSummary, error) {
+	summary := EventFeedbackSummary{
+		ExperienceCounts:        map[string]int{"very_easy": 0, "easy": 0, "complex": 0, "hard": 0},
+		TeamSpiritCounts:        map[string]int{"high": 0, "medium": 0, "low": 0},
+		PerksInterestCounts:     map[string]int{"yes": 0, "maybe": 0, "no": 0},
+		MiniGamesInterestCounts: map[string]int{"super_excited": 0, "maybe": 0, "no": 0},
+		Suggestions:             []string{},
+	}
+
+	if eventID <= 0 {
+		return summary, fmt.Errorf("invalid event id")
+	}
+
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM event_feedback WHERE event_id=?`, eventID).Scan(&summary.TotalResponses); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			summary.TotalResponses = 0
+			return summary, nil
+		}
+		return summary, err
+	}
+
+	if err := db.loadFeedbackCounts(eventID, `SELECT experience, COUNT(*) FROM event_feedback WHERE event_id=? GROUP BY experience`, summary.ExperienceCounts); err != nil {
+		return summary, err
+	}
+	if err := db.loadFeedbackCounts(eventID, `SELECT team_spirit, COUNT(*) FROM event_feedback WHERE event_id=? GROUP BY team_spirit`, summary.TeamSpiritCounts); err != nil {
+		return summary, err
+	}
+	if err := db.loadFeedbackCounts(eventID, `SELECT perks_interest, COUNT(*) FROM event_feedback WHERE event_id=? GROUP BY perks_interest`, summary.PerksInterestCounts); err != nil {
+		return summary, err
+	}
+	if err := db.loadFeedbackCounts(eventID, `SELECT mini_games_interest, COUNT(*) FROM event_feedback WHERE event_id=? GROUP BY mini_games_interest`, summary.MiniGamesInterestCounts); err != nil {
+		return summary, err
+	}
+
+	rows, err := db.c.Query(`SELECT suggestion FROM event_feedback WHERE event_id=? AND TRIM(suggestion) <> '' ORDER BY created_at DESC, id DESC`, eventID)
+	if err != nil {
+		return summary, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var suggestion string
+		if err := rows.Scan(&suggestion); err != nil {
+			return summary, err
+		}
+		trimmed := strings.TrimSpace(suggestion)
+		if trimmed != "" {
+			summary.Suggestions = append(summary.Suggestions, trimmed)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return summary, err
+	}
+
+	return summary, nil
+}
+
+func (db *appdbimpl) loadFeedbackCounts(eventID int, query string, counts map[string]int) error {
+	rows, err := db.c.Query(query, eventID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var value string
+		var total int
+		if err := rows.Scan(&value, &total); err != nil {
+			return err
+		}
+		key := strings.TrimSpace(strings.ToLower(value))
+		if key == "" {
+			continue
+		}
+		if _, ok := counts[key]; ok {
+			counts[key] = total
+		}
+	}
+
+	return rows.Err()
 }

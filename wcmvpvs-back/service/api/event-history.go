@@ -31,21 +31,31 @@ type eventHistoryPrize struct {
 	WinnerTicketCode string `json:"winner_ticket_code,omitempty"`
 }
 
+type eventFeedbackSummaryResponse struct {
+	TotalResponses    int            `json:"total_responses"`
+	Experience        map[string]int `json:"experience"`
+	TeamSpirit        map[string]int `json:"team_spirit"`
+	PerksInterest     map[string]int `json:"perks_interest"`
+	MiniGamesInterest map[string]int `json:"mini_games_interest"`
+	Suggestions       []string       `json:"suggestions"`
+}
+
 type eventHistoryEntry struct {
-        ID                 int                         `json:"id"`
-        Title              string                      `json:"title"`
-        StartDateTime      string                      `json:"start_datetime"`
-        Location           string                      `json:"location"`
-        TotalVotes         int                         `json:"total_votes"`
-        SponsorClicksTotal int                         `json:"sponsor_clicks_total"`
-        MVP                *database.EventMVP          `json:"mvp,omitempty"`
-        SponsorClicks      []database.SponsorClickStat `json:"sponsor_clicks"`
-        SponsorAnalytics   sponsorAnalyticsResponse    `json:"sponsor_analytics"`
-        Timeline           []historyTimelineBucket     `json:"timeline"`
-        HomeTeam           string                      `json:"home_team"`
-        AwayTeam           string                      `json:"away_team"`
-        Prizes             []eventHistoryPrize         `json:"prizes"`
-        HasPrizeDraw       bool                        `json:"has_prize_draw"`
+	ID                 int                           `json:"id"`
+	Title              string                        `json:"title"`
+	StartDateTime      string                        `json:"start_datetime"`
+	Location           string                        `json:"location"`
+	TotalVotes         int                           `json:"total_votes"`
+	SponsorClicksTotal int                           `json:"sponsor_clicks_total"`
+	MVP                *database.EventMVP            `json:"mvp,omitempty"`
+	SponsorClicks      []database.SponsorClickStat   `json:"sponsor_clicks"`
+	SponsorAnalytics   sponsorAnalyticsResponse      `json:"sponsor_analytics"`
+	Timeline           []historyTimelineBucket       `json:"timeline"`
+	HomeTeam           string                        `json:"home_team"`
+	AwayTeam           string                        `json:"away_team"`
+	Prizes             []eventHistoryPrize           `json:"prizes"`
+	HasPrizeDraw       bool                          `json:"has_prize_draw"`
+	FeedbackSummary    *eventFeedbackSummaryResponse `json:"feedback_summary,omitempty"`
 }
 
 type historyEntryWrapper struct {
@@ -123,28 +133,28 @@ func (rt *_router) getEventHistory(w http.ResponseWriter, r *http.Request, ctx r
 			mvpPtr = &mvp
 		}
 
-                sponsorStats, err := rt.db.GetSponsorClickStats(event.ID)
-                sponsorTotal := 0
-                if err != nil {
-                        ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load sponsor stats for history")
-                        sponsorStats = []database.SponsorClickStat{}
-                }
-                for _, stat := range sponsorStats {
-                        sponsorTotal += stat.Clicks
-                }
+		sponsorStats, err := rt.db.GetSponsorClickStats(event.ID)
+		sponsorTotal := 0
+		if err != nil {
+			ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load sponsor stats for history")
+			sponsorStats = []database.SponsorClickStat{}
+		}
+		for _, stat := range sponsorStats {
+			sponsorTotal += stat.Clicks
+		}
 
-                sponsorSummary, err := rt.db.GetSponsorAnalytics(event.ID)
-                if err != nil && !errors.Is(err, sql.ErrNoRows) {
-                        ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load sponsor analytics for history")
-                        sponsorSummary = database.SponsorAnalytics{}
-                }
-                sponsorAnalytics := buildSponsorAnalyticsResponse(sponsorSummary)
+		sponsorSummary, err := rt.db.GetSponsorAnalytics(event.ID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load sponsor analytics for history")
+			sponsorSummary = database.SponsorAnalytics{}
+		}
+		sponsorAnalytics := buildSponsorAnalyticsResponse(sponsorSummary)
 
-                voteTimestamps, err := rt.db.ListEventVoteTimestamps(event.ID)
-                if err != nil {
-                        ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load vote timestamps for history")
-                        voteTimestamps = nil
-                }
+		voteTimestamps, err := rt.db.ListEventVoteTimestamps(event.ID)
+		if err != nil {
+			ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load vote timestamps for history")
+			voteTimestamps = nil
+		}
 
 		prizeList, err := rt.db.ListEventPrizes(event.ID)
 		if err != nil {
@@ -185,21 +195,30 @@ func (rt *_router) getEventHistory(w http.ResponseWriter, r *http.Request, ctx r
 
 		timeline := buildVoteTimeline(startTime, voteTimestamps)
 
+		var feedbackSummaryPtr *eventFeedbackSummaryResponse
+		if feedbackSummary, err := rt.db.GetEventFeedbackSummary(event.ID); err != nil {
+			ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load feedback summary for history")
+		} else {
+			summaryResponse := buildEventFeedbackSummaryResponse(feedbackSummary)
+			feedbackSummaryPtr = &summaryResponse
+		}
+
 		entry := eventHistoryEntry{
 			ID:                 event.ID,
 			Title:              buildEventTitle(event),
 			StartDateTime:      normalizedStart,
 			Location:           strings.TrimSpace(event.Location),
-                        TotalVotes:         totalVotes,
-                        SponsorClicksTotal: sponsorTotal,
-                        MVP:                mvpPtr,
-                        SponsorClicks:      sponsorStats,
-                        SponsorAnalytics:   sponsorAnalytics,
-                        Timeline:           timeline,
-                        HomeTeam:           strings.TrimSpace(event.Team1Name),
-                        AwayTeam:           strings.TrimSpace(event.Team2Name),
-                        Prizes:             prizes,
-                        HasPrizeDraw:       hasPrizeDraw,
+			TotalVotes:         totalVotes,
+			SponsorClicksTotal: sponsorTotal,
+			MVP:                mvpPtr,
+			SponsorClicks:      sponsorStats,
+			SponsorAnalytics:   sponsorAnalytics,
+			Timeline:           timeline,
+			HomeTeam:           strings.TrimSpace(event.Team1Name),
+			AwayTeam:           strings.TrimSpace(event.Team2Name),
+			Prizes:             prizes,
+			HasPrizeDraw:       hasPrizeDraw,
+			FeedbackSummary:    feedbackSummaryPtr,
 		}
 
 		wrappers = append(wrappers, historyEntryWrapper{entry: entry, startTime: startTime})
@@ -362,4 +381,34 @@ func buildVoteTimeline(start time.Time, votes []time.Time) []historyTimelineBuck
 	}
 
 	return timeline
+}
+
+func buildEventFeedbackSummaryResponse(summary database.EventFeedbackSummary) eventFeedbackSummaryResponse {
+	cloneMap := func(source map[string]int) map[string]int {
+		if source == nil {
+			return map[string]int{}
+		}
+		cloned := make(map[string]int, len(source))
+		for key, value := range source {
+			cloned[key] = value
+		}
+		return cloned
+	}
+
+	suggestions := make([]string, 0, len(summary.Suggestions))
+	for _, suggestion := range summary.Suggestions {
+		trimmed := strings.TrimSpace(suggestion)
+		if trimmed != "" {
+			suggestions = append(suggestions, trimmed)
+		}
+	}
+
+	return eventFeedbackSummaryResponse{
+		TotalResponses:    summary.TotalResponses,
+		Experience:        cloneMap(summary.ExperienceCounts),
+		TeamSpirit:        cloneMap(summary.TeamSpiritCounts),
+		PerksInterest:     cloneMap(summary.PerksInterestCounts),
+		MiniGamesInterest: cloneMap(summary.MiniGamesInterestCounts),
+		Suggestions:       suggestions,
+	}
 }
