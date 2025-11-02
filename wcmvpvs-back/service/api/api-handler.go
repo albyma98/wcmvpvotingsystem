@@ -20,6 +20,9 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admin/login", rt.wrap(rt.adminLogin))
 
 	rt.router.Get("/public/players", rt.wrap(rt.listPublicPlayers))
+	rt.router.Get("/shop/products", rt.wrap(rt.listShopProducts))
+	rt.router.Get("/shop/products/{id}", rt.wrap(rt.getShopProduct))
+	rt.router.Post("/shop/checkout", rt.wrap(rt.checkoutShopOrder))
 
 	rt.router.Get("/teams", rt.wrapAdmin(rt.listTeams))
 	rt.router.Post("/teams", rt.wrapAdmin(rt.createTeam))

@@ -247,6 +247,35 @@ type ReactionTestStats struct {
 	Average  float64 `json:"average_ms"`
 }
 
+type ShopProduct struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	PriceCents  int    `json:"price_cents"`
+	ImageURL    string `json:"image_url"`
+	CreatedAt   string `json:"created_at"`
+}
+
+type ShopOrder struct {
+	ID            int             `json:"id"`
+	CustomerName  string          `json:"customer_name"`
+	CustomerEmail string          `json:"customer_email"`
+	CustomerNotes string          `json:"customer_notes"`
+	TotalCents    int             `json:"total_cents"`
+	CreatedAt     string          `json:"created_at"`
+	Items         []ShopOrderItem `json:"items,omitempty"`
+}
+
+type ShopOrderItem struct {
+	ID              int    `json:"id"`
+	OrderID         int    `json:"order_id"`
+	ProductID       int    `json:"product_id"`
+	ProductName     string `json:"product_name"`
+	Quantity        int    `json:"quantity"`
+	UnitPriceCents  int    `json:"unit_price_cents"`
+	ProductImageURL string `json:"product_image_url,omitempty"`
+}
+
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
 	GetName() (string, error)
@@ -313,6 +342,9 @@ type AppDatabase interface {
 	PurgeEventData(eventID int) error
 	RecordEventFeedback(feedback EventFeedback) error
 	GetEventFeedbackSummary(eventID int) (EventFeedbackSummary, error)
+	ListShopProducts() ([]ShopProduct, error)
+	GetShopProduct(id int) (ShopProduct, error)
+	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
 	Ping() error
 }
 
@@ -702,6 +734,117 @@ func New(db *sql.DB) (AppDatabase, error) {
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_device_event ON sponsor_exposures(event_id, device_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring sponsor_exposures device index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_products';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE shop_products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        price_cents INTEGER NOT NULL,
+        image_url TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating shop_products table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying shop_products table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_products_name ON shop_products(name)`); err != nil {
+		return nil, fmt.Errorf("error ensuring shop_products name index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_orders';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE shop_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_name TEXT NOT NULL,
+        customer_email TEXT NOT NULL,
+        customer_notes TEXT,
+        total_cents INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating shop_orders table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying shop_orders table: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_order_items';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE shop_order_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL,
+        product_image_url TEXT,
+        quantity INTEGER NOT NULL,
+        unit_price_cents INTEGER NOT NULL,
+        FOREIGN KEY (order_id) REFERENCES shop_orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES shop_products(id)
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating shop_order_items table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying shop_order_items table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_order_items_order ON shop_order_items(order_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring shop_order_items order index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_order_items_product ON shop_order_items(product_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring shop_order_items product index: %w", err)
+	}
+
+	var shopProductCount int
+	if err = db.QueryRow(`SELECT COUNT(*) FROM shop_products`).Scan(&shopProductCount); err != nil {
+		return nil, fmt.Errorf("error counting shop_products: %w", err)
+	}
+
+	if shopProductCount == 0 {
+		sampleProducts := []ShopProduct{
+			{
+				Name:        "Wearing Cash Street Hoodie",
+				Description: "Felpa premium in cotone organico con logo ricamato Wearing Cash, ideale per le serate fresche in città.",
+				PriceCents:  7900,
+				ImageURL:    "https://dummyimage.com/600x600/111827/ffffff&text=Wearing+Cash+Hoodie",
+			},
+			{
+				Name:        "Wearing Cash Signature Tee",
+				Description: "T-shirt leggera unisex con stampa frontale Wearing Cash Signature, perfetta per ogni outfit quotidiano.",
+				PriceCents:  3200,
+				ImageURL:    "https://dummyimage.com/600x600/1f2937/ffffff&text=Wearing+Cash+Tee",
+			},
+			{
+				Name:        "Wearing Cash Essential Cap",
+				Description: "Cappellino regolabile in tessuto tecnico con visiera curva e ricamo tono su tono del brand.",
+				PriceCents:  2800,
+				ImageURL:    "https://dummyimage.com/600x600/0f172a/ffffff&text=Wearing+Cash+Cap",
+			},
+			{
+				Name:        "Wearing Cash Jetset Bomber",
+				Description: "Bomber leggero con fodera satinata e dettagli metal per uno stile urbano deciso e contemporaneo.",
+				PriceCents:  12900,
+				ImageURL:    "https://dummyimage.com/600x600/0b1120/ffffff&text=Wearing+Cash+Bomber",
+			},
+			{
+				Name:        "Wearing Cash Iconic Sneakers",
+				Description: "Sneakers in pelle con inserti reflective e suola memory foam per un comfort premium 24/7.",
+				PriceCents:  14900,
+				ImageURL:    "https://dummyimage.com/600x600/111111/ffffff&text=Wearing+Cash+Sneakers",
+			},
+		}
+
+		for _, product := range sampleProducts {
+			if _, err = db.Exec(`INSERT INTO shop_products (name, description, price_cents, image_url) VALUES (?, ?, ?, ?)`, product.Name, product.Description, product.PriceCents, product.ImageURL); err != nil {
+				return nil, fmt.Errorf("error seeding shop_products: %w", err)
+			}
+		}
 	}
 
 	return &appdbimpl{
@@ -2437,4 +2580,125 @@ func (db *appdbimpl) loadFeedbackCounts(eventID int, query string, counts map[st
 	}
 
 	return rows.Err()
+}
+
+func (db *appdbimpl) ListShopProducts() ([]ShopProduct, error) {
+	rows, err := db.c.Query(`SELECT id, name, description, price_cents, image_url, IFNULL(created_at, '') FROM shop_products ORDER BY id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var products []ShopProduct
+	for rows.Next() {
+		var product ShopProduct
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &product.PriceCents, &product.ImageURL, &product.CreatedAt); err != nil {
+			return nil, err
+		}
+		products = append(products, product)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return products, nil
+}
+
+func (db *appdbimpl) GetShopProduct(id int) (ShopProduct, error) {
+	if id <= 0 {
+		return ShopProduct{}, sql.ErrNoRows
+	}
+
+	var product ShopProduct
+	err := db.c.QueryRow(`SELECT id, name, description, price_cents, image_url, IFNULL(created_at, '') FROM shop_products WHERE id = ?`, id).
+		Scan(&product.ID, &product.Name, &product.Description, &product.PriceCents, &product.ImageURL, &product.CreatedAt)
+	if err != nil {
+		return ShopProduct{}, err
+	}
+
+	return product, nil
+}
+
+func (db *appdbimpl) CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error) {
+	if len(items) == 0 {
+		return ShopOrder{}, fmt.Errorf("order must contain at least one item")
+	}
+
+	customerName := strings.TrimSpace(order.CustomerName)
+	customerEmail := strings.TrimSpace(order.CustomerEmail)
+	customerNotes := strings.TrimSpace(order.CustomerNotes)
+
+	if customerName == "" || customerEmail == "" {
+		return ShopOrder{}, fmt.Errorf("customer information is required")
+	}
+
+	tx, err := db.c.Begin()
+	if err != nil {
+		return ShopOrder{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	res, err := tx.Exec(`INSERT INTO shop_orders (customer_name, customer_email, customer_notes, total_cents) VALUES (?, ?, ?, ?)`, customerName, customerEmail, customerNotes, order.TotalCents)
+	if err != nil {
+		return ShopOrder{}, err
+	}
+
+	orderID, err := res.LastInsertId()
+	if err != nil {
+		return ShopOrder{}, err
+	}
+
+	order.ID = int(orderID)
+	order.CustomerName = customerName
+	order.CustomerEmail = customerEmail
+	order.CustomerNotes = customerNotes
+
+	storedItems := make([]ShopOrderItem, 0, len(items))
+	for _, item := range items {
+		if item.ProductID <= 0 || item.Quantity <= 0 {
+			return ShopOrder{}, fmt.Errorf("invalid order item")
+		}
+
+		cleanName := strings.TrimSpace(item.ProductName)
+		cleanImage := strings.TrimSpace(item.ProductImageURL)
+
+		result, err := tx.Exec(`INSERT INTO shop_order_items (order_id, product_id, product_name, product_image_url, quantity, unit_price_cents) VALUES (?, ?, ?, ?, ?, ?)`, order.ID, item.ProductID, cleanName, cleanImage, item.Quantity, item.UnitPriceCents)
+		if err != nil {
+			return ShopOrder{}, err
+		}
+
+		itemID, err := result.LastInsertId()
+		if err != nil {
+			return ShopOrder{}, err
+		}
+
+		storedItems = append(storedItems, ShopOrderItem{
+			ID:              int(itemID),
+			OrderID:         order.ID,
+			ProductID:       item.ProductID,
+			ProductName:     cleanName,
+			ProductImageURL: cleanImage,
+			Quantity:        item.Quantity,
+			UnitPriceCents:  item.UnitPriceCents,
+		})
+	}
+
+	if err := tx.QueryRow(`SELECT IFNULL(created_at, '') FROM shop_orders WHERE id = ?`, order.ID).Scan(&order.CreatedAt); err != nil {
+		return ShopOrder{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return ShopOrder{}, err
+	}
+	committed = true
+
+	order.Items = storedItems
+
+	return order, nil
 }
