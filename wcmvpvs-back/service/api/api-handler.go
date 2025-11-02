@@ -23,6 +23,9 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/shop/products", rt.wrap(rt.listShopProducts))
 	rt.router.Get("/shop/products/{id}", rt.wrap(rt.getShopProduct))
 	rt.router.Post("/shop/checkout", rt.wrap(rt.checkoutShopOrder))
+	rt.router.Get("/admin/shop/products", rt.wrapAdmin(rt.listAdminShopProducts))
+	rt.router.Post("/admin/shop/products", rt.wrapAdmin(rt.createAdminShopProduct))
+	rt.router.Get("/admin/shop/orders", rt.wrapAdmin(rt.listAdminShopOrders))
 
 	rt.router.Get("/teams", rt.wrapAdmin(rt.listTeams))
 	rt.router.Post("/teams", rt.wrapAdmin(rt.createTeam))
