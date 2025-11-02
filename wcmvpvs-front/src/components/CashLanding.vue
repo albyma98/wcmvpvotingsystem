@@ -6,7 +6,7 @@ import cashLogo from '../assets/cash-logo.svg'
   <main class="landing-page">
     <section class="hero" data-animate>
       <div class="hero__logo" data-animate>
-        <h1 class="hero__title">Welcome to Cash</h1>
+        <h1 class="hero__title">Welcome to</h1>
         <img :src="cashLogo" alt="Cash brand logo" class="logo-image" />
         <p class="hero__subtitle">Sport. Tech. Motivation.</p>
       </div>
@@ -49,18 +49,8 @@ import cashLogo from '../assets/cash-logo.svg'
         <div class="content__body">
           <p class="content__highlight">🖤 Wearing Cash</p>
           <p>La parte emotiva e visiva del brand. Una linea streetwear che racconta la determinazione di chi crede nei propri sogni e non smette di inseguirli. Ogni capo è un simbolo: rappresenta la costanza, la resilienza, l’identità sportiva di chi vive con passione e disciplina.</p>
-          <p class="content__quote">“Wear your grind. Chase your dreams.”<br />Non è uno slogan: è una promessa.</p>
-        </div>
-      </article>
-
-      <span class="divider" aria-hidden="true">⸻</span>
-
-      <article class="content__block">
-        <header class="content__header">
-          <h2 class="content__title">⚡ Cash MVP System</h2>
-          <span class="content__underline"></span>
-        </header>
-        <div class="content__body">
+          <p class="content__quote">“Wear your grind. Chase your dreams.”<br />Non è uno slogan: è una promessa.</p><br>
+          <p class="content__highlight">⚡ Cash MVP System</p>
           <p>La parte tecnologica e interattiva del mondo Cash. Una piattaforma che trasforma i tifosi in protagonisti, permettendo loro di votare in tempo reale il miglior giocatore della partita e di vivere un’esperienza digitale dentro al palazzetto.</p>
           <p>Cash MVP System è pensato per le società sportive che vogliono dare più valore ai propri sponsor e coinvolgere il pubblico come mai prima. Ogni voto, ogni interazione, ogni dato raccolto racconta qualcosa di più grande: l’energia condivisa dello sport.</p>
           <p class="content__quote">“Diamo voce ai tifosi.<br />Diamo dati concreti alle società.<br />Diamo valore a chi crede nella passione sportiva.”</p>
@@ -114,7 +104,6 @@ import cashLogo from '../assets/cash-logo.svg'
     <footer class="footer" data-animate>
       <p class="footer__location">📍 #PoweredByCash</p>
       <p class="footer__hashtags">#WearingCash • #CashMVPSystem</p>
-      <p class="footer__hashtags">#PoweredByCash • #WearingCash • #CashMVPSystem</p>
     </footer>
   </main>
 </template>
