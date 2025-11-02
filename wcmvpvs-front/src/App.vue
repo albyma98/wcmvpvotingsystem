@@ -4,6 +4,12 @@
     <AdminPortal v-else-if="appView === 'portal'" />
     <TicketValidationView v-else-if="appView === 'ticket-validation'" />
     <CashLanding v-else-if="appView === 'landing'" />
+    <ShopAdminPortal
+      v-else-if="appView === 'shop-admin'"
+      :current-path="currentPath"
+      :current-search="currentSearch"
+      :on-navigate="navigateTo"
+    />
     <ShopShell
       v-else-if="appView === 'shop'"
       :current-path="currentPath"
@@ -28,6 +34,7 @@ import TicketValidationView from './components/TicketValidationView.vue';
 import CashLanding from './components/CashLanding.vue';
 import VoteScreen from './components/VoteScreen.vue';
 import ShopShell from './components/shop/ShopShell.vue';
+import ShopAdminPortal from './components/shop/ShopAdminPortal.vue';
 import { apiClient } from './api';
 
 function readEventId(search) {
@@ -56,6 +63,9 @@ const appView = computed(() => {
   }
   if (currentPath.value.startsWith('/welcome')) {
     return 'landing';
+  }
+  if (currentPath.value.startsWith('/shop/admin')) {
+    return 'shop-admin';
   }
   if (currentPath.value.startsWith('/shop')) {
     return 'shop';

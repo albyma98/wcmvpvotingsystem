@@ -344,6 +344,8 @@ type AppDatabase interface {
 	GetEventFeedbackSummary(eventID int) (EventFeedbackSummary, error)
 	ListShopProducts() ([]ShopProduct, error)
 	GetShopProduct(id int) (ShopProduct, error)
+	CreateShopProduct(product ShopProduct) (ShopProduct, error)
+	ListShopOrders() ([]ShopOrder, error)
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
 	Ping() error
 }
@@ -2618,6 +2620,90 @@ func (db *appdbimpl) GetShopProduct(id int) (ShopProduct, error) {
 	}
 
 	return product, nil
+}
+
+func (db *appdbimpl) CreateShopProduct(product ShopProduct) (ShopProduct, error) {
+	name := strings.TrimSpace(product.Name)
+	if name == "" {
+		return ShopProduct{}, fmt.Errorf("product name is required")
+	}
+
+	description := strings.TrimSpace(product.Description)
+	imageURL := strings.TrimSpace(product.ImageURL)
+	price := product.PriceCents
+	if price <= 0 {
+		return ShopProduct{}, fmt.Errorf("product price must be greater than zero")
+	}
+
+	res, err := db.c.Exec(`INSERT INTO shop_products (name, description, price_cents, image_url) VALUES (?, ?, ?, ?)`, name, description, price, imageURL)
+	if err != nil {
+		return ShopProduct{}, err
+	}
+
+	productID, err := res.LastInsertId()
+	if err != nil {
+		return ShopProduct{}, err
+	}
+
+	created := ShopProduct{
+		ID:          int(productID),
+		Name:        name,
+		Description: description,
+		PriceCents:  price,
+		ImageURL:    imageURL,
+	}
+
+	if err := db.c.QueryRow(`SELECT IFNULL(created_at, '') FROM shop_products WHERE id = ?`, created.ID).Scan(&created.CreatedAt); err != nil {
+		return ShopProduct{}, err
+	}
+
+	return created, nil
+}
+
+func (db *appdbimpl) ListShopOrders() ([]ShopOrder, error) {
+	rows, err := db.c.Query(`SELECT id, customer_name, customer_email, customer_notes, total_cents, IFNULL(created_at, '') FROM shop_orders ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []ShopOrder
+	for rows.Next() {
+		var order ShopOrder
+		if err := rows.Scan(&order.ID, &order.CustomerName, &order.CustomerEmail, &order.CustomerNotes, &order.TotalCents, &order.CreatedAt); err != nil {
+			return nil, err
+		}
+
+		itemRows, err := db.c.Query(`SELECT id, order_id, product_id, product_name, product_image_url, quantity, unit_price_cents FROM shop_order_items WHERE order_id = ? ORDER BY id ASC`, order.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		var items []ShopOrderItem
+		for itemRows.Next() {
+			var item ShopOrderItem
+			if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.ProductImageURL, &item.Quantity, &item.UnitPriceCents); err != nil {
+				itemRows.Close()
+				return nil, err
+			}
+			items = append(items, item)
+		}
+
+		if err := itemRows.Err(); err != nil {
+			itemRows.Close()
+			return nil, err
+		}
+		itemRows.Close()
+
+		order.Items = items
+		orders = append(orders, order)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return orders, nil
 }
 
 func (db *appdbimpl) CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error) {

@@ -29,6 +29,13 @@ type checkoutResponsePayload struct {
 	Order database.ShopOrder `json:"order"`
 }
 
+type createShopProductPayload struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	PriceCents  int    `json:"price_cents"`
+	ImageURL    string `json:"image_url"`
+}
+
 func (rt *_router) listShopProducts(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	products, err := rt.db.ListShopProducts()
 	if err != nil {
@@ -164,4 +171,70 @@ func (rt *_router) checkoutShopOrder(w http.ResponseWriter, r *http.Request, ctx
 		"total_cents": order.TotalCents,
 		"items":       len(order.Items),
 	}).Info("shop order created")
+}
+
+func (rt *_router) listAdminShopProducts(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	products, err := rt.db.ListShopProducts()
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot list admin shop products")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(products)
+	ctx.Logger.WithField("products", len(products)).Info("admin listed shop products")
+}
+
+func (rt *_router) createAdminShopProduct(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	var payload createShopProductPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid shop product payload")
+		_ = writeJSONMessage(w, http.StatusBadRequest, "payload non valido")
+		return
+	}
+
+	payload.Name = strings.TrimSpace(payload.Name)
+	payload.Description = strings.TrimSpace(payload.Description)
+	payload.ImageURL = strings.TrimSpace(payload.ImageURL)
+
+	if payload.Name == "" {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "inserisci un nome per il prodotto")
+		return
+	}
+
+	if payload.PriceCents <= 0 {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "inserisci un prezzo valido per il prodotto")
+		return
+	}
+
+	product, err := rt.db.CreateShopProduct(database.ShopProduct{
+		Name:        payload.Name,
+		Description: payload.Description,
+		PriceCents:  payload.PriceCents,
+		ImageURL:    payload.ImageURL,
+	})
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot create shop product")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("content-type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(product)
+	ctx.Logger.WithField("product_id", product.ID).Info("shop product created")
+}
+
+func (rt *_router) listAdminShopOrders(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	orders, err := rt.db.ListShopOrders()
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot list shop orders")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(orders)
+	ctx.Logger.WithField("orders", len(orders)).Info("admin listed shop orders")
 }
