@@ -3,6 +3,7 @@
     <AdminLottery v-if="adminView === 'lottery'" />
     <AdminPortal v-else-if="adminView === 'portal'" />
     <TicketValidationView v-else-if="adminView === 'ticket-validation'" />
+    <CashLanding v-else-if="adminView === 'landing'" />
     <VoteScreen
       v-else
       :event-id="resolvedEventId"
@@ -18,6 +19,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AdminPortal from './components/AdminPortal.vue';
 import AdminLottery from './components/AdminLottery.vue';
 import TicketValidationView from './components/TicketValidationView.vue';
+import CashLanding from './components/CashLanding.vue';
 import VoteScreen from './components/VoteScreen.vue';
 import { apiClient } from './api';
 
@@ -43,6 +45,9 @@ const adminView = computed(() => {
   }
   if (currentPath.value.startsWith('/lottery/validate')) {
     return 'ticket-validation';
+  }
+  if (currentPath.value.startsWith('/welcome')) {
+    return 'landing';
   }
   return 'public';
 });
