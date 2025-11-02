@@ -1,9 +1,13 @@
+<script setup>
+import cashLogo from '../assets/cash-logo.svg'
+</script>
+
 <template>
   <main class="landing-page">
     <section class="hero" data-animate>
       <div class="hero__logo" data-animate>
         <h1 class="hero__title">Welcome to Cash</h1>
-        <span class="logo-text">CASH</span>
+        <img :src="cashLogo" alt="Cash brand logo" class="logo-image" />
         <p class="hero__subtitle">Sport. Tech. Motivation.</p>
       </div>
       <span class="divider" aria-hidden="true">⸻</span>
@@ -160,14 +164,11 @@
   margin: 0;
 }
 
-.logo-text {
-  font-size: clamp(4rem, 10vw, 7rem);
-  letter-spacing: 0.8rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  background: linear-gradient(90deg, #f5f5f5 0%, #cfcfcf 50%, #f5f5f5 100%);
-  -webkit-background-clip: text;
-  color: transparent;
+.logo-image {
+  max-width: 100%;
+  width: clamp(180px, 45vw, 360px);
+  height: auto;
+  filter: drop-shadow(0 12px 20px rgba(255, 44, 32, 0.35));
 }
 
 .hero__subtitle {
