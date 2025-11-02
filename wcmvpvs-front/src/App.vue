@@ -1,9 +1,15 @@
 <template>
   <div class="app-shell">
-    <AdminLottery v-if="adminView === 'lottery'" />
-    <AdminPortal v-else-if="adminView === 'portal'" />
-    <TicketValidationView v-else-if="adminView === 'ticket-validation'" />
-    <CashLanding v-else-if="adminView === 'landing'" />
+    <AdminLottery v-if="appView === 'lottery'" />
+    <AdminPortal v-else-if="appView === 'portal'" />
+    <TicketValidationView v-else-if="appView === 'ticket-validation'" />
+    <CashLanding v-else-if="appView === 'landing'" />
+    <ShopShell
+      v-else-if="appView === 'shop'"
+      :current-path="currentPath"
+      :current-search="currentSearch"
+      :on-navigate="navigateTo"
+    />
     <VoteScreen
       v-else
       :event-id="resolvedEventId"
@@ -21,6 +27,7 @@ import AdminLottery from './components/AdminLottery.vue';
 import TicketValidationView from './components/TicketValidationView.vue';
 import CashLanding from './components/CashLanding.vue';
 import VoteScreen from './components/VoteScreen.vue';
+import ShopShell from './components/shop/ShopShell.vue';
 import { apiClient } from './api';
 
 function readEventId(search) {
@@ -31,12 +38,13 @@ function readEventId(search) {
 }
 
 const currentPath = ref(typeof window !== 'undefined' ? window.location.pathname : '/');
+const currentSearch = ref(typeof window !== 'undefined' ? window.location.search : '');
 const currentEventId = ref(typeof window !== 'undefined' ? readEventId(window.location.search) : undefined);
 const activeEvent = ref(null);
 const isFetchingActiveEvent = ref(false);
 const hasCheckedActiveEvent = ref(false);
 
-const adminView = computed(() => {
+const appView = computed(() => {
   if (currentPath.value.startsWith('/admin/lottery')) {
     return 'lottery';
   }
@@ -49,6 +57,9 @@ const adminView = computed(() => {
   if (currentPath.value.startsWith('/welcome')) {
     return 'landing';
   }
+  if (currentPath.value.startsWith('/shop')) {
+    return 'shop';
+  }
   return 'public';
 });
 
@@ -56,15 +67,16 @@ const resolvedEventId = computed(() => currentEventId.value ?? activeEvent.value
 
 function handlePopState() {
   currentPath.value = window.location.pathname;
+  currentSearch.value = window.location.search;
   currentEventId.value = readEventId(window.location.search);
 
-  if (adminView.value === 'public') {
+  if (appView.value === 'public') {
     fetchActiveEvent();
   }
 }
 
 async function fetchActiveEvent() {
-  if (adminView.value !== 'public') {
+  if (appView.value !== 'public') {
     return;
   }
 
@@ -90,9 +102,36 @@ async function fetchActiveEvent() {
   }
 }
 
+function navigateTo(path, replace = false) {
+  if (typeof window === 'undefined') {
+    currentPath.value = path || '/';
+    currentSearch.value = '';
+    currentEventId.value = undefined;
+    return;
+  }
+
+  try {
+    const target = new URL(path, window.location.origin);
+    if (replace) {
+      window.history.replaceState({}, '', target);
+    } else {
+      window.history.pushState({}, '', target);
+    }
+    currentPath.value = target.pathname;
+    currentSearch.value = target.search;
+    currentEventId.value = readEventId(target.search);
+  } catch (error) {
+    console.error('Navigazione shop non riuscita', error);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('popstate'));
+  }
+}
+
 onMounted(() => {
   window.addEventListener('popstate', handlePopState, { passive: true });
-  if (adminView.value === 'public') {
+  if (appView.value === 'public') {
     fetchActiveEvent();
   }
 });
@@ -101,7 +140,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('popstate', handlePopState);
 });
 
-watch(adminView, (view) => {
+watch(appView, (view) => {
   if (view === 'public') {
     fetchActiveEvent();
   } else {
