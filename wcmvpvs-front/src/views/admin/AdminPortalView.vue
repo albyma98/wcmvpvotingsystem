@@ -1,1107 +1,1391 @@
 <template>
-  <div class="admin-portal">
-    <header class="admin-header">
-      <h1>Area amministratore</h1>
-      <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
-    </header>
+  <div class="admin-portal-view">
+    <Toast />
 
-    <section v-if="!isAuthenticated" class="card login-card">
-      <h2>Accedi</h2>
-      <form @submit.prevent="login" class="form-grid">
-        <label>
-          Username
-          <input v-model.trim="loginForm.username" type="text" autocomplete="username" required />
-        </label>
-        <label>
-          Password
-          <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
-        </label>
-        <button class="btn primary" type="submit" :disabled="isLoggingIn">
-          {{ isLoggingIn ? 'Accesso in corso…' : 'Entra' }}
-        </button>
-      </form>
-      <p v-if="loginError" class="error">{{ loginError }}</p>
-    </section>
-
-    <section v-else class="portal" ref="portalRef">
-      <div class="toolbar" ref="toolbarRef">
-        <div class="user-info">
-          <span>Connesso come <strong>{{ activeUsername }}</strong></span>
-          <button class="btn outline" type="button" @click="goToLottery">Lotteria</button>
-          <button
-            v-for="tab in availableTabs"
-            :key="tab.id"
-            :class="['btn outline', { active: section === tab.id }]"
-            type="button"
-            :aria-current="section === tab.id ? 'page' : undefined"
-            @click="section = tab.id"
-          >
-            {{ tab.label }}
-          </button>
-          <button class="btn secondary" type="button" @click="logout">Esci</button>
-        </div>
-
-
-
-      </div>
-      <div class="portal-content">
-        <p v-if="globalError" class="error">{{ globalError }}</p>
-
-        <section v-if="section === 'events'" class="card">
-        <header class="section-header">
-          <h2>Eventi</h2>
-          <p>Crea una nuova partita per abilitare il voto pubblico.</p>
-        </header>
-        <div class="actions-row">
-          <button
-            class="btn outline"
-            type="button"
-            @click="deactivateEvents"
-            :disabled="!activeEventId || isDisablingEvents"
-          >
-            {{ isDisablingEvents ? 'Disattivazione…' : 'Disattiva eventi' }}
-          </button>
-        </div>
-        <p v-if="!hasEnoughTeams" class="info-banner">
-          Aggiungi almeno due squadre dalla sezione "Squadre" per abilitare la creazione di un evento.
-        </p>
-        <form @submit.prevent="createEvent" class="form-grid">
-          <label>
-            Squadra di casa
-            <input
-              v-model="teamInputs.home"
-              type="text"
-              list="admin-team-options"
-              :disabled="!hasEnoughTeams"
-              placeholder="Digita il nome della squadra"
-              required
-              @change="handleTeamInput('home')"
-              @blur="handleTeamInput('home')"
-            />
-            <small class="field-hint" v-if="hasEnoughTeams">
-              Scegli dalla lista oppure digita per filtrare le squadre disponibili.
-            </small>
-          </label>
-          <label>
-            Squadra ospite
-            <input
-              v-model="teamInputs.away"
-              type="text"
-              list="admin-team-options"
-              :disabled="!hasEnoughTeams"
-              placeholder="Digita il nome della squadra"
-              required
-              @change="handleTeamInput('away')"
-              @blur="handleTeamInput('away')"
-            />
-            <small class="field-hint" v-if="hasEnoughTeams">
-              Seleziona una squadra diversa da quella di casa.
-            </small>
-          </label>
-          <datalist id="admin-team-options">
-            <option v-for="team in teams" :key="team.id" :value="teamOptionValue(team)"></option>
-          </datalist>
-          <label>
-            Data e ora
-            <input
-              v-model="newEvent.start_datetime"
-              type="datetime-local"
-              :disabled="!hasEnoughTeams"
-              required
-            />
-          </label>
-          <label>
-            Location
-            <input
-              v-model.trim="newEvent.location"
-              type="text"
-              placeholder="Es. Palazzetto dello Sport"
-              :disabled="!hasEnoughTeams"
-            />
-          </label>
-          <div class="postvote-options new-event-postvote">
-            <div class="postvote-options__header">
-              <span>Esperienze post voto</span>
-              <p class="field-hint">Scegli quali contenuti mostrare ai tifosi dopo aver votato.</p>
-            </div>
-            <div class="postvote-options__grid">
-              <label class="postvote-toggle">
-                <input type="checkbox" v-model="newEvent.show_vote_trend" :disabled="!hasEnoughTeams" />
-                <span class="postvote-toggle__label">Andamento dei voti</span>
-              </label>
-              <label class="postvote-toggle">
-                <input type="checkbox" v-model="newEvent.show_selfie" :disabled="!hasEnoughTeams" />
-                <span class="postvote-toggle__label">Selfie MVP</span>
-              </label>
-              <label class="postvote-toggle">
-                <input type="checkbox" v-model="newEvent.show_reaction_test" :disabled="!hasEnoughTeams" />
-                <span class="postvote-toggle__label">Mini-gioco riflessi</span>
-              </label>
-              <label class="postvote-toggle">
-                <input type="checkbox" v-model="newEvent.show_feedback_survey" :disabled="!hasEnoughTeams" />
-                <span class="postvote-toggle__label">Sondaggio feedback</span>
-              </label>
-            </div>
-          </div>
-          <div class="prize-editor new-event-prizes">
-            <div class="prize-editor__header">
-              <span>Premi in palio</span>
-              <p class="field-hint">Aggiungi i premi disponibili per la lotteria dell'evento.</p>
-            </div>
-            <div class="prize-editor__list">
-              <div
-                v-for="(prize, index) in newEventPrizes"
-                :key="`new-event-prize-${index}`"
-                class="prize-editor__row"
-              >
-                <input
-                  v-model.trim="prize.name"
-                  type="text"
-                  :placeholder="`Premio ${index + 1}`"
-                  :disabled="!hasEnoughTeams"
-                />
-                <button
-                  class="btn outline"
-                  type="button"
-                  @click="removeNewEventPrize(index)"
-                  :disabled="newEventPrizes.length <= 1"
-                >
-                  Rimuovi
-                </button>
-              </div>
-            </div>
-            <div class="prize-editor__actions">
-              <button class="btn secondary" type="button" @click="addNewEventPrize" :disabled="!hasEnoughTeams">
-                Aggiungi premio
-              </button>
-            </div>
-          </div>
-          <button class="btn primary" type="submit" :disabled="!hasEnoughTeams">Crea evento</button>
-        </form>
-
-        <div v-if="lastCreatedEventLink" class="hint">
-          Nuovo evento creato! Link pubblico:
-          <a :href="lastCreatedEventLink" target="_blank" rel="noopener">{{ lastCreatedEventLink }}</a>
-          <button class="btn link" type="button" @click="copyLink(lastCreatedEventLink)">Copia</button>
-        </div>
-
-        <ul class="item-list">
-          <li v-for="event in visibleEvents" :key="event.id" :class="['item', { active: event.is_active }]">
-            <div class="item-body">
-              <h3>
-                {{ eventLabel(event) }}
-                <span v-if="event.is_active" class="badge">Attivo</span>
-                <span
-                  v-if="event.is_active && event.votes_closed"
-                  class="badge badge-closed"
-                >
-                  Votazioni chiuse
-                </span>
-              </h3>
-              <p class="muted">{{ formatEventDate(event.start_datetime) }} • {{ event.location || 'Location da definire' }}</p>
-              <p class="muted">
-                Link voto:
-                <a :href="buildEventLink(event.id)" target="_blank" rel="noopener">{{ buildEventLink(event.id) }}</a>
-              </p>
-            </div>
-            <div class="item-actions">
-              <button
-                class="btn success"
-                type="button"
-                @click="activateEvent(event.id)"
-                :disabled="event.is_active || updatingEventId === event.id"
-              >
-                <span v-if="event.is_active">Evento attivo</span>
-                <span v-else-if="updatingEventId === event.id">Attivazione…</span>
-                <span v-else>Attiva</span>
-              </button>
-              <button class="btn secondary" type="button" @click="openVote(event.id)">Apri pagina voto</button>
-              <button
-                class="btn warning"
-                type="button"
-                @click="concludeEvent(event.id)"
-                :disabled="concludingEventId === event.id"
-              >
-                <span v-if="concludingEventId === event.id">Conclusione…</span>
-                <span v-else>Evento terminato</span>
-              </button>
-              <button class="btn danger" type="button" @click="deleteEvent(event.id)">Elimina</button>
-            </div>
-            <div class="postvote-options">
-              <div class="postvote-options__header">
-                <strong>Esperienze post voto</strong>
-                <p class="field-hint">Attiva i contenuti che vuoi offrire dopo la votazione.</p>
-              </div>
-              <div class="postvote-options__grid">
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="event.show_vote_trend"
-                    :disabled="isSavingPrizesFor(event.id)"
-                  />
-                  <span class="postvote-toggle__label">Andamento dei voti</span>
-                </label>
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="event.show_selfie"
-                    :disabled="isSavingPrizesFor(event.id)"
-                  />
-                  <span class="postvote-toggle__label">Selfie MVP</span>
-                </label>
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="event.show_reaction_test"
-                    :disabled="isSavingPrizesFor(event.id)"
-                  />
-                  <span class="postvote-toggle__label">Mini-gioco riflessi</span>
-                </label>
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="event.show_feedback_survey"
-                    :disabled="isSavingPrizesFor(event.id)"
-                  />
-                  <span class="postvote-toggle__label">Sondaggio feedback</span>
-                </label>
-              </div>
-            </div>
-            <div class="prize-editor existing-prizes">
-              <div class="prize-editor__header">
-                <strong>Premi in palio</strong>
-                <p class="field-hint">Modifica l'elenco dei premi. I premi già assegnati non possono essere rimossi.</p>
-              </div>
-              <div class="prize-editor__list">
-                <div
-                  v-for="(prize, index) in prizeDraftsFor(event.id)"
-                  :key="`event-${event.id}-prize-${prize.id || index}`"
-                  class="prize-editor__row"
-                >
-                  <input
-                    v-model="prize.name"
-                    type="text"
-                    :placeholder="`Premio ${index + 1}`"
-                    :disabled="isSavingPrizesFor(event.id)"
-                  />
-                  <span v-if="prize.winner" class="prize-editor__winner">Assegnato a {{ prizeWinnerLabel(prize) }}</span>
-                  <button
-                    class="btn outline"
-                    type="button"
-                    @click="removePrizeDraft(event.id, index)"
-                    :disabled="prize.winner || prizeDraftsFor(event.id).length <= 1 || isSavingPrizesFor(event.id)"
-                  >
-                    Rimuovi
-                  </button>
-                </div>
-              </div>
-              <div class="prize-editor__actions">
-                <button
-                  class="btn secondary"
-                  type="button"
-                  @click="addPrizeDraft(event.id)"
-                  :disabled="isSavingPrizesFor(event.id)"
-                >
-                  Aggiungi premio
-                </button>
-                <button
-                  class="btn primary"
-                  type="button"
-                  @click="savePrizesForEvent(event)"
-                  :disabled="isSavingPrizesFor(event.id)"
-                >
-                  {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva impostazioni' }}
-                </button>
-              </div>
-              <p v-if="eventPrizeErrors[event.id]" class="error">{{ eventPrizeErrors[event.id] }}</p>
-            </div>
-          </li>
-        </ul>
-      </section>
-
-      <section v-else-if="section === 'closing'" class="card closing-card">
-        <header class="section-header">
-          <h2>Chiusura votazioni</h2>
-          <p>Gestisci lo stato delle votazioni per la partita attualmente attiva.</p>
-        </header>
-
-        <div v-if="activeEventEntry" class="active-event-summary">
-          <div class="summary-header">
-            <h3>{{ activeEventLabel }}</h3>
-            <span :class="['badge', activeEventVotesClosed ? 'badge-closed' : 'badge-open']">
-              {{ activeEventVotesClosed ? 'Votazioni chiuse' : 'Votazioni aperte' }}
-            </span>
-          </div>
-          <p class="muted">{{ activeEventDateLabel }} • {{ activeEventLocation }}</p>
-
-          <div class="actions-row">
-            <button
-              class="btn warning"
-              type="button"
-              @click="closeActiveEventVoting"
-              :disabled="isClosingVotes || activeEventVotesClosed"
-            >
-              {{ isClosingVotes ? 'Chiusura…' : 'Chiudi votazioni' }}
-            </button>
-            <button
-              class="btn success"
-              type="button"
-              @click="activateEvent(activeEventEntry.id)"
-              :disabled="
-                !activeEventEntry || updatingEventId === activeEventEntry.id || !activeEventVotesClosed
-              "
-            >
-              <span v-if="updatingEventId === activeEventEntry.id">Riattivazione…</span>
-              <span v-else>Attiva</span>
-            </button>
-            <button
-              class="btn outline"
-              type="button"
-              @click="deactivateEvents"
-              :disabled="isDisablingEvents"
-            >
-              {{ isDisablingEvents ? 'Disattivazione…' : 'Disattiva' }}
-            </button>
-          </div>
-        </div>
-        <div v-else class="info-banner">
-          Nessun evento attivo al momento. Attiva una partita dalla sezione "Eventi" per gestire le votazioni.
-        </div>
-
-        <p v-if="closeVotesMessage" class="success-message">{{ closeVotesMessage }}</p>
-      </section>
-
-      <section v-else-if="section === 'results'" class="card results-card">
-        <header class="section-header">
-          <h2>Risultati votazioni</h2>
-          <p>Seleziona un evento per vedere la classifica MVP aggiornata in tempo reale.</p>
-        </header>
-
-        <div class="results-controls">
-          <label>
-            Evento
-            <select v-model.number="selectedResultsEventId" :disabled="!availableEvents.length">
-              <option disabled value="0">Seleziona un evento</option>
-              <option v-for="event in availableEvents" :key="event.id" :value="event.id">
-                {{ eventLabel(event) }}
-              </option>
-            </select>
-          </label>
-          <button
-            class="btn secondary"
-            type="button"
-            @click="fetchEventResults({ showLoader: true })"
-            :disabled="isLoadingResults || !selectedResultsEventId"
-          >
-            {{ isLoadingResults ? 'Aggiornamento…' : 'Aggiorna ora' }}
-          </button>
-        </div>
-
-        <div v-if="selectedResultsEvent" class="results-summary">
-          <h3>{{ selectedResultsEventLabel }}</h3>
-          <p class="muted">{{ selectedResultsEventDate || 'Data da definire' }}</p>
-        </div>
-
-        <p v-if="resultsError" class="error">{{ resultsError }}</p>
-        <div v-else-if="!availableEvents.length" class="info-banner">
-          Crea un evento per visualizzare i risultati delle votazioni MVP.
-        </div>
-        <div v-else class="results-leaderboard">
-          <div class="results-meta">
-            <span><strong>Voti totali:</strong> {{ totalVotes }}</span>
-            <span v-if="lastResultsUpdateLabel"><strong>Ultimo aggiornamento:</strong> {{ lastResultsUpdateLabel }}</span>
-            <span class="auto-refresh">Aggiornamento automatico ogni 5 secondi</span>
-          </div>
-          <p v-if="isLoadingResults" class="muted">Caricamento risultati…</p>
-          <p v-else-if="!hasResultsVotes" class="muted">Non ci sono ancora voti per questo evento.</p>
-          <ul class="leaderboard-list" aria-live="polite">
-            <li v-for="(entry, index) in resultsLeaderboard" :key="entry.id" class="leaderboard-item">
-              <div class="rank">#{{ index + 1 }}</div>
-              <div class="player-name">
-                <span class="lastname">{{ entry.lastNameUpper }}</span>
-                <span class="firstname">{{ entry.firstName }}</span>
-              </div>
-              <div class="votes">
-                <strong>{{ entry.votes }}</strong>
-                <span class="muted">{{ entry.votes === 1 ? 'voto' : 'voti' }}</span>
-              </div>
-              <div class="progress" role="presentation">
-                <div class="progress-bar" :style="{ width: `${entry.percentage}%` }"></div>
-              </div>
-            </li>
-          </ul>
-          <div v-if="selectedResultsEventId" class="sponsor-analytics">
-            <h3>Analisi sponsor</h3>
-            <p v-if="sponsorAnalyticsError" class="error">{{ sponsorAnalyticsError }}</p>
-            <p v-else-if="isLoadingSponsorAnalytics" class="muted">Caricamento dati sponsor…</p>
-            <div v-else-if="!hasSponsorAnalyticsData" class="muted">Nessun dato sponsor disponibile al momento.</div>
-            <div v-else class="sponsor-analytics__content">
-              <div v-if="sponsorAnalyticsDisplay" class="sponsor-analytics__grid">
-                <div class="sponsor-analytics__card">
-                  <span class="sponsor-analytics__label">Utenti totali</span>
-                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.totalUsersLabel }}</strong>
-                </div>
-                <div class="sponsor-analytics__card">
-                  <span class="sponsor-analytics__label">Sezione vista</span>
-                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.seenRateLabel }}</strong>
-                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.seenUsersLabel }} utenti</span>
-                </div>
-                <div class="sponsor-analytics__card">
-                  <span class="sponsor-analytics__label">Tempo medio visione</span>
-                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.averageWatchTimeLabel }}</strong>
-                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.watchedUsersLabel }} utenti</span>
-                </div>
-                <div class="sponsor-analytics__card">
-                  <span class="sponsor-analytics__label">Click totali</span>
-                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.totalClicksLabel }}</strong>
-                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.clickRateLabel }} • {{ sponsorAnalyticsDisplay.uniqueClickersLabel }} utenti</span>
-                </div>
-                <div class="sponsor-analytics__card sponsor-analytics__card--wide">
-                  <span class="sponsor-analytics__label">Sponsor più visualizzato</span>
-                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.topSponsorName }}</strong>
-                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.topSponsorViewsLabel }} visualizzazioni</span>
-                </div>
-              </div>
-              <div v-if="sponsorChartRows.length" class="sponsor-analytics__chart">
-                <h4>Andamento visualizzazioni e click</h4>
-                <ul class="sponsor-chart">
-                  <li v-for="point in sponsorChartRows" :key="point.timestamp || point.label" class="sponsor-chart__row">
-                    <div class="sponsor-chart__label">{{ point.label }}</div>
-                    <div class="sponsor-chart__bars" aria-hidden="true">
-                      <div class="sponsor-chart__bar sponsor-chart__bar--seen" :style="{ width: `${point.seenPercent}%` }"></div>
-                      <div class="sponsor-chart__bar sponsor-chart__bar--clicks" :style="{ width: `${point.clicksPercent}%` }"></div>
-                    </div>
-                    <div class="sponsor-chart__values">
-                      <span>{{ point.seen.toLocaleString('it-IT') }} viste</span>
-                      <span>{{ point.clicks.toLocaleString('it-IT') }} click</span>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section v-else-if="section === 'selfies'" class="card">
-        <header class="section-header">
-          <h2>Selfie MVP</h2>
-          <p>Gestisci i selfie inviati dai tifosi per l'evento selezionato.</p>
-        </header>
-
-        <div class="form-grid">
-          <label>
-            Evento
-            <select v-model.number="selectedSelfieEventId">
-              <option v-if="!availableEvents.length" value="0" disabled>Nessun evento disponibile</option>
-              <option v-for="event in availableEvents" :key="event.id" :value="event.id">
-                {{ eventLabel(event) }} • {{ formatEventDate(event.start_datetime) }}
-              </option>
-            </select>
-          </label>
-        </div>
-
-        <p v-if="selfieModerationMessage" class="success">{{ selfieModerationMessage }}</p>
-        <p v-if="selfieLoadError" class="error">{{ selfieLoadError }}</p>
-
-        <div v-if="isLoadingSelfies" class="selfie-admin-loader" role="status" aria-live="polite">
-          <span class="spinner" aria-hidden="true"></span>
-          <p>Caricamento selfie…</p>
-        </div>
-        <p v-else-if="!availableEvents.length" class="muted">Crea un evento per raccogliere selfie dal pubblico.</p>
-        <p v-else-if="!eventSelfies.length" class="muted">Nessun selfie ricevuto per questo evento al momento.</p>
-        <div v-else class="selfie-admin-grid">
-          <article v-for="selfie in eventSelfies" :key="selfie.id" class="selfie-admin-card">
-            <a
-              v-if="selfie.image_src"
-              :href="selfie.image_src"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="selfie-admin-thumb"
-            >
-              <img :src="selfie.image_src" :alt="`Selfie ${selfie.id}`" />
-            </a>
-            <div v-else class="selfie-admin-thumb selfie-admin-thumb--empty">
-              <span>Immagine non disponibile</span>
-            </div>
-            <div class="selfie-admin-body">
-              <h3 class="selfie-admin-caption">{{ selfie.caption || 'Senza didascalia' }}</h3>
-              <p class="selfie-admin-meta">Inviato: {{ formatSelfieDate(selfie.submitted_at) || 'N/D' }}</p>
-              <p class="selfie-admin-meta">Device: {{ selfie.device_token || 'Non disponibile' }}</p>
-              <p class="selfie-admin-meta">
-                Dimensione:
-                {{ formatSelfieFileSize(selfie.file_size_bytes) || 'N/D' }}
-              </p>
-              <p class="selfie-admin-status">
-                Stato: <strong>{{ selfieStatusLabel(selfie) }}</strong>
-              </p>
-              <div class="selfie-admin-actions">
-                <button
-                  class="btn danger"
-                  type="button"
-                  :disabled="isSelfieBusy(selfie.id)"
-                  @click="deleteSelfie(selfie)"
-                >
-                  Elimina foto
-                </button>
-              </div>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section v-else-if="section === 'history'" class="card history-card">
-        <header class="section-header">
-          <h2>Storico eventi</h2>
-          <p>Consulta i dati degli eventi passati con riepilogo voti, MVP e interazioni sponsor.</p>
-        </header>
-
-        <div class="history-toolbar">
-          <button
-            class="btn secondary"
-            type="button"
-            @click="refreshEventHistory"
-            :disabled="isLoadingEventHistory"
-          >
-            {{ isLoadingEventHistory ? 'Aggiornamento…' : 'Aggiorna' }}
-          </button>
-        </div>
-
-        <p v-if="eventHistorySuccess" class="success-message">{{ eventHistorySuccess }}</p>
-        <p v-if="eventHistoryError" class="error">{{ eventHistoryError }}</p>
-        <p v-else-if="isLoadingEventHistory" class="muted text-center">Caricamento storico in corso…</p>
-        <p v-else-if="!eventHistory.length" class="muted text-center">Non sono presenti eventi conclusi al momento.</p>
-
-        <ul v-else class="history-list">
-          <li v-for="entry in eventHistory" :key="entry.id" class="history-item">
-            <div class="history-item__header">
-              <div>
-                <h3>{{ entry.title }}</h3>
-                <p class="muted">
-                  {{ formatHistoryDate(entry.startDatetime) }}
-                  <span v-if="entry.location">• {{ entry.location }}</span>
-                </p>
-              </div>
-              <div class="history-item__meta">
-                <div class="history-item__totals">
-                  <span class="history-item__total">
-                    <strong>{{ entry.totalVotesLabel }}</strong> voti totali
-                  </span>
-                  <span class="history-item__total">
-                    <strong>{{ entry.totalVisitorsLabel }}</strong> visitatori totali
-                  </span>
-                  <span class="history-item__unique-visitors">
-                    <strong>{{ entry.uniqueVisitorsLabel }}</strong> visitatori unici
-                  </span>
-                  <span class="history-item__sponsor-total">
-                    <strong>{{ entry.sponsorClicksTotalLabel }}</strong> click sponsor
-                  </span>
-                </div>
-                <div class="history-item__actions">
-                  <button
-                    class="btn outline"
-                    type="button"
-                    :disabled="isDownloadingHistoryReport(entry.id)"
-                    @click="downloadEventHistoryReport(entry)"
-                  >
-                    {{
-                      isDownloadingHistoryReport(entry.id)
-                        ? 'Generazione report…'
-                        : 'Scarica report'
-                    }}
-                  </button>
-                  <button
-                    v-if="isSuperAdmin"
-                    class="btn danger"
-                    type="button"
-                    @click="openPurgeDialog(entry)"
-                  >
-                    Elimina evento
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="history-details">
-              <div class="history-details__column">
-                <h4>MVP</h4>
-                <p v-if="entry.mvp">
-                  {{ entry.mvp.name }} • {{ entry.mvp.votes.toLocaleString('it-IT') }} voti
-                </p>
-                <p v-else class="muted">Nessun MVP assegnato.</p>
-              </div>
-              <div class="history-details__column">
-                <h4>Interazioni sponsor</h4>
-                <div v-if="entry.sponsorAnalyticsHasData" class="history-sponsor-summary">
-                  <div class="history-sponsor-summary__grid">
-                    <div class="history-sponsor-summary__card">
-                      <span class="history-sponsor-summary__label">Utenti totali</span>
-                      <strong class="history-sponsor-summary__value">
-                        {{ entry.sponsorAnalyticsDisplay.totalUsersLabel }}
-                      </strong>
-                    </div>
-                    <div class="history-sponsor-summary__card">
-                      <span class="history-sponsor-summary__label">Sezione vista</span>
-                      <strong class="history-sponsor-summary__value">
-                        {{ entry.sponsorAnalyticsDisplay.seenRateLabel }}
-                      </strong>
-                      <span class="history-sponsor-summary__hint">
-                        {{ entry.sponsorAnalyticsDisplay.seenUsersLabel }} utenti
-                      </span>
-                    </div>
-                    <div class="history-sponsor-summary__card">
-                      <span class="history-sponsor-summary__label">Tempo medio visione</span>
-                      <strong class="history-sponsor-summary__value">
-                        {{ entry.sponsorAnalyticsDisplay.averageWatchTimeLabel }}
-                      </strong>
-                      <span class="history-sponsor-summary__hint">
-                        {{ entry.sponsorAnalyticsDisplay.watchedUsersLabel }} utenti •
-                        {{ entry.sponsorAnalyticsDisplay.totalWatchTimeLabel }} totali
-                      </span>
-                    </div>
-                    <div class="history-sponsor-summary__card">
-                      <span class="history-sponsor-summary__label">Click totali</span>
-                      <strong class="history-sponsor-summary__value">
-                        {{ entry.sponsorAnalyticsDisplay.totalClicksLabel }}
-                      </strong>
-                      <span class="history-sponsor-summary__hint">
-                        {{ entry.sponsorAnalyticsDisplay.clickRateLabel }} •
-                        {{ entry.sponsorAnalyticsDisplay.uniqueClickersLabel }} utenti
-                      </span>
-                    </div>
-                    <div class="history-sponsor-summary__card history-sponsor-summary__card--wide">
-                      <span class="history-sponsor-summary__label">Sponsor più visualizzato</span>
-                      <strong class="history-sponsor-summary__value">
-                        {{ entry.sponsorAnalyticsDisplay.topSponsorName }}
-                      </strong>
-                      <span class="history-sponsor-summary__hint">
-                        {{ entry.sponsorAnalyticsDisplay.topSponsorViewsLabel }} visualizzazioni
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <ul v-if="entry.sponsorClicks.length" class="history-sponsor-list">
-                  <li
-                    v-for="sponsor in entry.sponsorClicks"
-                    :key="`${entry.id}-sponsor-${sponsor.id}`"
-                  >
-                    <span class="history-sponsor-name">{{ sponsor.name }}</span>
-                    <span class="history-sponsor-clicks">{{ sponsor.clicks.toLocaleString('it-IT') }} click</span>
-                  </li>
-                </ul>
-                <p v-else class="muted">Nessun click registrato.</p>
-                <div v-if="entry.sponsorAnalyticsTimeline.length" class="history-sponsor-timeline">
-                  <h5>Andamento interazioni</h5>
-                  <ul class="history-sponsor-timeline__list">
-                    <li
-                      v-for="point in entry.sponsorAnalyticsTimeline"
-                      :key="`${entry.id}-analytics-${point.timestamp || point.label}`"
-                      class="history-sponsor-timeline__item"
-                    >
-                      <span class="history-sponsor-timeline__time">{{ point.label }}</span>
-                      <div class="history-sponsor-timeline__values">
-                        <span class="history-sponsor-timeline__value history-sponsor-timeline__value--seen">
-                          {{ point.seen.toLocaleString('it-IT') }} viste
-                        </span>
-                        <span class="history-sponsor-timeline__value history-sponsor-timeline__value--watched">
-                          {{ point.watched.toLocaleString('it-IT') }} guardate
-                        </span>
-                        <span class="history-sponsor-timeline__value history-sponsor-timeline__value--clicks">
-                          {{ point.clicks.toLocaleString('it-IT') }} click
-                        </span>
-                      </div>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-              <div class="history-details__column history-details__column--feedback">
-                <h4>Sondaggio feedback</h4>
-                <div v-if="entry.feedbackSummary" class="history-feedback-summary">
-                  <p class="history-feedback-summary__total">{{ entry.feedbackSummary.totalResponsesLabel }}</p>
-                  <div
-                    v-for="question in entry.feedbackSummary.questions"
-                    :key="`${entry.id}-feedback-${question.id}`"
-                    class="history-feedback-summary__question"
-                  >
-                    <h5>{{ question.title }}</h5>
-                    <ul class="history-feedback-summary__answers">
-                      <li
-                        v-for="answer in question.answers"
-                        :key="`${entry.id}-feedback-${question.id}-${answer.value}`"
-                        class="history-feedback-summary__answer"
-                      >
-                        <div class="history-feedback-summary__answer-header">
-                          <span class="history-feedback-summary__answer-label">{{ answer.label }}</span>
-                          <span class="history-feedback-summary__answer-count">
-                            {{ answer.countLabel }}
-                            <span v-if="entry.feedbackSummary.hasResponses">({{ answer.percentLabel }})</span>
-                          </span>
-                        </div>
-                        <div class="history-feedback-summary__answer-bar" role="presentation">
-                          <span
-                            class="history-feedback-summary__answer-bar-fill"
-                            :style="{ width: answer.barWidth }"
-                            aria-hidden="true"
-                          ></span>
-                        </div>
-                      </li>
-                    </ul>
-                    <p v-if="!question.hasAnswers" class="muted small">Nessuna risposta registrata.</p>
-                  </div>
-                  <div class="history-feedback-summary__question">
-                    <h5>{{ entry.feedbackSummary.suggestionQuestion.title }}</h5>
-                    <ul
-                      v-if="entry.feedbackSummary.suggestionQuestion.hasSuggestions"
-                      class="history-feedback-summary__suggestions"
-                    >
-                      <li
-                        v-for="(suggestion, suggestionIndex) in entry.feedbackSummary.suggestionQuestion.suggestions"
-                        :key="`${entry.id}-feedback-suggestion-${suggestionIndex}`"
-                      >
-                        {{ suggestion }}
-                      </li>
-                    </ul>
-                    <p v-else class="muted small">Nessun suggerimento inviato.</p>
-                  </div>
-                </div>
-                <p v-else class="muted">Nessun feedback raccolto.</p>
-              </div>
-              <div class="history-details__column history-details__column--prizes">
-                <h4>Estrazione premi</h4>
-                <p
-                  class="history-prize-status"
-                  :class="entry.hasPrizeDraw ? 'history-prize-status--success' : 'history-prize-status--pending'"
-                >
-                  {{ entry.hasPrizeDraw ? 'Estrazione eseguita' : 'Estrazione non eseguita' }}
-                </p>
-                <p v-if="!entry.prizes.length" class="muted">Nessun premio configurato per l'evento.</p>
-                <ul v-else class="history-prize-list">
-                  <li
-                    v-for="prize in entry.prizes"
-                    :key="`${entry.id}-prize-${prize.id}`"
-                    class="history-prize-item"
-                  >
-                    <span class="history-prize-name">{{ prize.name }}</span>
-                    <span v-if="prize.hasWinner" class="history-prize-code">
-                      Codice vincente: <strong>{{ prize.winnerTicketCode }}</strong>
-                    </span>
-                    <span v-else class="history-prize-code muted">Nessun codice vincente assegnato.</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            <div class="history-votes" v-if="entry.timeline.length">
-              <div class="history-votes__header">
-                <h4>Votazioni</h4>
-                <p v-if="entry.timelineRange" class="history-votes__range">
-                  Dal {{ entry.timelineRange.start }} al {{ entry.timelineRange.end }}
-                </p>
-              </div>
-              <VoteTrendChart
-                v-if="entry.timelineChart.points.length"
-                class="history-votes__chart"
-                :points="entry.timelineChart.points"
-                :start-label="entry.timelineChart.startLabel"
-                :end-label="entry.timelineChart.endLabel"
-                accessible-label="Andamento dei voti ogni 15 minuti"
+    <div v-if="!isAuthenticated" class="admin-portal-view__login">
+      <Card class="admin-portal-view__login-card">
+        <template #title>Area amministratore</template>
+        <template #subtitle>Gestisci eventi, squadre e votazioni MVP</template>
+        <form class="admin-portal-view__login-form" @submit.prevent="login">
+          <div class="p-fluid p-formgrid p-grid">
+            <div class="p-col-12">
+              <label class="admin-field-label" for="admin-login-username">Username</label>
+              <InputText
+                id="admin-login-username"
+                v-model.trim="loginForm.username"
+                autocomplete="username"
+                required
               />
-              <div class="history-votes__actions" v-if="entry.timeline.length">
-                <button
-                  class="btn link"
-                  type="button"
-                  @click="toggleHistoryTimeline(entry)"
-                  :aria-expanded="entry.isTimelineExpanded ? 'true' : 'false'"
-                  :aria-controls="`history-votes-list-${entry.id}`"
-                >
-                  {{ entry.isTimelineExpanded ? 'Nascondi dettagli' : 'Visualizza altro' }}
-                </button>
-              </div>
-              <ul
-                v-if="entry.isTimelineExpanded"
-                class="history-votes-list"
-                :id="`history-votes-list-${entry.id}`"
-              >
-                <li
-                  v-for="bucket in entry.timeline"
-                  :key="`${entry.id}-bucket-${bucket.start || bucket.rangeLabel}`"
-                  class="history-votes-list__item"
-                >
-                  <span class="history-votes-list__range">{{ bucket.rangeLabel }}</span>
-                  <span class="history-votes-list__votes">{{ bucket.votesLabel }}</span>
-                </li>
-              </ul>
             </div>
-          </li>
-        </ul>
-      </section>
-
-      <section v-else-if="section === 'teams'" class="card">
-        <header class="section-header">
-          <h2>Squadre</h2>
-        </header>
-        <form @submit.prevent="createTeam" class="form-inline">
-          <input v-model.trim="newTeamName" type="text" placeholder="Nome squadra" required />
-          <button class="btn primary" type="submit">Aggiungi</button>
-        </form>
-        <ul class="item-list compact">
-          <li v-for="team in teams" :key="team.id" class="item">
-            <span>{{ team.name }}</span>
-            <button class="btn danger" type="button" @click="deleteTeam(team.id)">Elimina</button>
-          </li>
-        </ul>
-      </section>
-
-      <section v-else-if="section === 'players'" class="card">
-        <header class="section-header">
-          <h2>Giocatori</h2>
-          <p>Gestisci fino a {{ playerSlotCount }} giocatori da mostrare nella pagina di voto.</p>
-        </header>
-
-        <p v-if="!teams.length" class="info-banner">
-          Aggiungi almeno una squadra per assegnare correttamente i giocatori salvati nel database.
-        </p>
-
-        <p v-if="playerOverflow.length" class="info-banner warning">
-          Sono presenti {{ playerOverflow.length }} giocatori aggiuntivi nel database. Verranno rimossi al prossimo
-          salvataggio.
-        </p>
-
-        <div class="player-slots">
-          <fieldset
-            v-for="(slot, index) in playerSlots"
-            :key="`player-slot-${index}`"
-            class="player-slot"
-          >
-            <legend>Giocatore {{ index + 1 }}</legend>
-            <div class="player-slot__grid">
-              <label>
-                Nome
-                <input v-model.trim="slot.first_name" type="text" placeholder="Es. Mario" />
-              </label>
-              <label>
-                Cognome
-                <input v-model.trim="slot.last_name" type="text" placeholder="Es. Rossi" />
-              </label>
-              <label>
-                Ruolo
-                <input v-model.trim="slot.role" type="text" placeholder="Es. Schiacciatore" />
-              </label>
-              <label>
-                Numero di maglia
-                <input
-                  v-model="slot.jersey_number"
-                  type="number"
-                  min="0"
-                  inputmode="numeric"
-                  placeholder="Es. 7"
-                />
-              </label>
-              <label>
-                Squadra
-                <select v-model.number="slot.team_id">
-                  <option :value="0">Seleziona squadra</option>
-                  <option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option>
-                </select>
-              </label>
-              <label>
-                URL immagine (opzionale)
-                <input
-                  v-model.trim="slot.image_url"
-                  type="url"
-                  placeholder="https://..."
-                  @input="handlePlayerUrlChange(index)"
-                />
-              </label>
-              <label class="file-input">
-                Oppure carica immagine
-                <input type="file" accept="image/*" @change="handlePlayerImageChange(index, $event)" />
-              </label>
-              <div v-if="slot.image_preview" class="player-slot__preview" aria-label="Anteprima immagine giocatore">
-                <img :src="slot.image_preview" alt="Anteprima giocatore" />
-                <button class="btn link" type="button" @click="removePlayerImage(index)">Rimuovi</button>
-              </div>
-            </div>
-          </fieldset>
-        </div>
-
-        <div class="actions-row">
-          <button class="btn outline" type="button" @click="restorePlayerSlots" :disabled="isSavingPlayers">
-            Ripristina dati salvati
-          </button>
-          <button class="btn primary" type="button" @click="savePlayers" :disabled="isSavingPlayers">
-            {{ isSavingPlayers ? 'Salvataggio…' : 'Salva giocatori' }}
-          </button>
-        </div>
-
-        <p v-if="playerSaveError" class="error">{{ playerSaveError }}</p>
-        <p v-if="playerSaveMessage" class="success-message">{{ playerSaveMessage }}</p>
-      </section>
-
-      <section v-else-if="section === 'sponsors'" class="card">
-        <header class="section-header">
-          <h2>Sponsor</h2>
-          <p>Gestisci fino a {{ maxSponsors }} sponsor da mostrare nella schermata pubblica.</p>
-        </header>
-
-        <div class="sponsor-controls" role="group" aria-label="Visibilità sponsor">
-          <label class="sponsor-range">
-            <span>Numero di sponsor visibili: {{ desiredActiveSponsorCount }} / {{ maxSponsors }}</span>
-            <input
-              type="range"
-              min="0"
-              :max="sponsorSliderMax"
-              v-model.number="desiredActiveSponsorCount"
-              @change="applyActiveSponsorCount"
-              :disabled="!sponsors.length || isApplyingSponsorCount"
-            />
-          </label>
-          <p class="muted small">Gli sponsor attivi vengono mostrati nell'ordine indicato qui sotto.</p>
-        </div>
-
-        <form @submit.prevent="createSponsor" class="form-grid sponsor-form">
-          <label>
-            Nome sponsor
-            <input v-model.trim="newSponsor.name" type="text" placeholder="Es. Partner ufficiale" />
-          </label>
-          <label>
-            Link (opzionale)
-            <input v-model.trim="newSponsor.linkUrl" type="url" placeholder="https://example.com" />
-          </label>
-          <label class="file-input">
-            Logo sponsor
-            <input type="file" accept="image/*" @change="handleNewSponsorLogoChange" />
-          </label>
-          <div v-if="newSponsor.logoData" class="sponsor-preview new" aria-label="Anteprima logo nuovo sponsor">
-            <img :src="newSponsor.logoData" alt="Anteprima logo sponsor" />
-          </div>
-          <button class="btn primary" type="submit" :disabled="isCreatingSponsor">
-            {{ isCreatingSponsor ? 'Salvataggio…' : 'Aggiungi sponsor' }}
-          </button>
-        </form>
-
-        <ul v-if="sponsors.length" class="item-list sponsors-list">
-          <li v-for="sponsor in sponsors" :key="sponsor.id" class="item sponsor-item">
-            <div class="item-body sponsor-body">
-              <div class="sponsor-preview" :aria-label="`Logo sponsor ${sponsor.name || sponsor.position}`">
-                <img
-                  v-if="sponsor.logoData"
-                  :src="sponsor.logoData"
-                  :alt="`Logo ${sponsor.name || 'sponsor'}`"
-                />
-                <span v-else class="empty-logo">Logo non disponibile</span>
-              </div>
-              <div class="sponsor-fields">
-                <div class="form-grid compact">
-                  <label>
-                    Nome sponsor
-                    <input v-model.trim="sponsor.name" type="text" />
-                  </label>
-                  <label>
-                    Link (opzionale)
-                    <input v-model.trim="sponsor.linkUrl" type="url" placeholder="https://example.com" />
-                  </label>
-                  <label class="file-input">
-                    Aggiorna logo
-                    <input type="file" accept="image/*" @change="(event) => handleSponsorLogoChange(event, sponsor)" />
-                  </label>
-                </div>
-                <p class="muted sponsor-meta">
-                  Posizione {{ sponsor.position }} • {{ sponsor.isActive ? 'Visibile' : 'Nascosto' }}
-                </p>
-              </div>
-            </div>
-            <div class="item-actions vertical">
-              <button
-                class="btn secondary"
-                type="button"
-                @click="updateSponsorEntry(sponsor)"
-                :disabled="sponsorBeingUpdated === sponsor.id"
-              >
-                <span v-if="sponsorBeingUpdated === sponsor.id">Salvataggio…</span>
-                <span v-else>Salva</span>
-              </button>
-              <button
-                class="btn danger"
-                type="button"
-                @click="deleteSponsorEntry(sponsor.id)"
-                :disabled="sponsorBeingDeleted === sponsor.id"
-              >
-                <span v-if="sponsorBeingDeleted === sponsor.id">Eliminazione…</span>
-                <span v-else>Elimina</span>
-              </button>
-            </div>
-          </li>
-        </ul>
-        <p v-else class="muted text-center">Nessuno sponsor configurato al momento.</p>
-        </section>
-
-        <section v-else-if="section === 'admins'" class="card">
-          <header class="section-header">
-            <h2>Utenti amministratori</h2>
-          </header>
-          <form @submit.prevent="createAdmin" class="form-grid">
-            <input v-model.trim="newAdmin.username" type="text" placeholder="Username" required />
-            <input v-model="newAdmin.password" type="password" placeholder="Password" required />
-            <input v-model.trim="newAdmin.role" type="text" placeholder="Ruolo (es. staff)" />
-            <button class="btn primary" type="submit">Aggiungi</button>
-          </form>
-          <ul class="item-list compact">
-            <li v-for="admin in admins" :key="admin.id" class="item">
-              <div>
-                <strong>{{ admin.username }}</strong>
-                <span class="muted"> • {{ admin.role || 'staff' }}</span>
-              </div>
-              <button class="btn danger" type="button" @click="deleteAdmin(admin.id)">Elimina</button>
-            </li>
-          </ul>
-        </section>
-        <div
-          v-if="purgeDialog.visible"
-          class="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          :aria-label="purgeDialog.event ? `Conferma eliminazione per ${purgeDialog.event.title}` : 'Conferma eliminazione evento'"
-        >
-          <div class="modal-card">
-            <h3>Elimina evento</h3>
-            <p>Questa operazione è permanente e rimuoverà tutti i dati collegati all'evento.</p>
-            <p class="muted">Conferma inserendo la password del super admin.</p>
-            <p v-if="purgeDialog.error" class="error">{{ purgeDialog.error }}</p>
-            <label>
-              Password super admin
-              <input
-                v-model="purgeDialog.password"
-                type="password"
+            <div class="p-col-12">
+              <label class="admin-field-label" for="admin-login-password">Password</label>
+              <Password
+                id="admin-login-password"
+                v-model="loginForm.password"
+                :feedback="false"
+                toggle-mask
                 autocomplete="current-password"
                 required
               />
-            </label>
-            <div class="modal-actions">
-              <button class="btn outline" type="button" @click="closePurgeDialog" :disabled="purgeDialog.isSubmitting">
-                Annulla
-              </button>
-              <button
-                class="btn danger"
-                type="button"
-                @click="confirmPurge"
-                :disabled="purgeDialog.isSubmitting || !purgeDialog.password"
-              >
-                {{ purgeDialog.isSubmitting ? 'Eliminazione…' : 'Elimina definitivamente' }}
-              </button>
             </div>
           </div>
+          <div class="admin-portal-view__login-actions">
+            <Button
+              type="submit"
+              label="Entra"
+              icon="pi pi-sign-in"
+              :loading="isLoggingIn"
+              class="admin-portal-view__primary-button"
+            />
+          </div>
+          <Message
+            v-if="loginError"
+            severity="error"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            {{ loginError }}
+          </Message>
+        </form>
+      </Card>
+    </div>
+
+    <AdminLayout
+      v-else
+      :tabs="availableTabs"
+      :active-tab="section"
+      :username="activeUsername"
+      @tab-change="handleSectionChange"
+      @logout="logout"
+      @navigate-lottery="goToLottery"
+    >
+      <template #brand>
+        <span class="admin-brand">
+          <i class="pi pi-chart-bar admin-brand__icon" />
+          WC MVP Control
+        </span>
+      </template>
+
+      <template #alerts>
+        <Message
+          v-if="globalError"
+          severity="error"
+          :closable="false"
+          class="admin-portal-view__inline-message"
+        >
+          {{ globalError }}
+        </Message>
+      </template>
+
+      <template #toolbar-actions>
+        <Tag
+          v-if="activeEventEntry"
+          value="Evento attivo"
+          severity="info"
+          icon="pi pi-bolt"
+          class="admin-active-event-tag"
+        />
+      </template>
+
+      <template #default>
+        <!-- Events Section -->
+        <Card v-if="section === 'events'" class="admin-section-card">
+          <template #title>Eventi</template>
+          <template #subtitle>Crea partite e gestisci gli eventi attivi.</template>
+
+          <div class="admin-section__toolbar">
+            <Button
+              label="Disattiva eventi"
+              icon="pi pi-power-off"
+              severity="secondary"
+              outlined
+              :disabled="!activeEventId || isDisablingEvents"
+              @click="deactivateEvents"
+            />
+          </div>
+
+          <Message
+            v-if="!hasEnoughTeams"
+            severity="warn"
+            icon="pi pi-users"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            Aggiungi almeno due squadre nella sezione "Squadre" per creare un evento.
+          </Message>
+
+          <form class="admin-form admin-form--grid" @submit.prevent="createEvent">
+            <div class="admin-form__field">
+              <label class="admin-field-label" for="event-home-team">Squadra di casa</label>
+              <AutoComplete
+                id="event-home-team"
+                v-model="teamInputs.home"
+                :suggestions="teamSearchResults"
+                :disabled="!hasEnoughTeams"
+                placeholder="Seleziona o digita il nome della squadra"
+                @complete="searchTeams"
+              />
+            </div>
+            <div class="admin-form__field">
+              <label class="admin-field-label" for="event-away-team">Squadra ospite</label>
+              <AutoComplete
+                id="event-away-team"
+                v-model="teamInputs.away"
+                :suggestions="teamSearchResults"
+                :disabled="!hasEnoughTeams"
+                placeholder="Seleziona o digita il nome della squadra"
+                @complete="searchTeams"
+              />
+            </div>
+            <div class="admin-form__field">
+              <label class="admin-field-label" for="event-date">Data e ora</label>
+              <InputText
+                id="event-date"
+                v-model="newEvent.start_datetime"
+                type="datetime-local"
+                :disabled="!hasEnoughTeams"
+                required
+              />
+            </div>
+            <div class="admin-form__field">
+              <label class="admin-field-label" for="event-location">Location</label>
+              <InputText
+                id="event-location"
+                v-model.trim="newEvent.location"
+                placeholder="Es. Palazzetto dello Sport"
+                :disabled="!hasEnoughTeams"
+              />
+            </div>
+            <div class="admin-form__field admin-form__field--full">
+              <Panel header="Esperienze post voto" toggleable collapsed-icon="pi pi-chevron-down" expanded-icon="pi pi-chevron-up">
+                <div class="admin-toggle-grid">
+                  <div class="admin-toggle">
+                    <span class="admin-toggle__label">Andamento dei voti</span>
+                    <InputSwitch v-model="newEvent.show_vote_trend" :disabled="!hasEnoughTeams" />
+                  </div>
+                  <div class="admin-toggle">
+                    <span class="admin-toggle__label">Selfie MVP</span>
+                    <InputSwitch v-model="newEvent.show_selfie" :disabled="!hasEnoughTeams" />
+                  </div>
+                  <div class="admin-toggle">
+                    <span class="admin-toggle__label">Mini-gioco riflessi</span>
+                    <InputSwitch v-model="newEvent.show_reaction_test" :disabled="!hasEnoughTeams" />
+                  </div>
+                  <div class="admin-toggle">
+                    <span class="admin-toggle__label">Sondaggio feedback</span>
+                    <InputSwitch v-model="newEvent.show_feedback_survey" :disabled="!hasEnoughTeams" />
+                  </div>
+                </div>
+              </Panel>
+            </div>
+            <div class="admin-form__field admin-form__field--full">
+              <Panel header="Premi in palio" toggleable collapsed-icon="pi pi-gift">
+                <div class="admin-prize-grid">
+                  <div
+                    v-for="(prize, index) in newEventPrizes"
+                    :key="`new-event-prize-${index}`"
+                    class="admin-prize-grid__row"
+                  >
+                    <InputText
+                      :placeholder="`Premio ${index + 1}`"
+                      v-model.trim="prize.name"
+                      :disabled="!hasEnoughTeams"
+                    />
+                    <Button
+                      icon="pi pi-times"
+                      severity="secondary"
+                      text
+                      rounded
+                      :disabled="newEventPrizes.length <= 1"
+                      @click="removeNewEventPrize(index)"
+                    />
+                  </div>
+                </div>
+                <div class="admin-prize-grid__actions">
+                  <Button
+                    type="button"
+                    icon="pi pi-plus"
+                    label="Aggiungi premio"
+                    severity="secondary"
+                    outlined
+                    :disabled="!hasEnoughTeams"
+                    @click="addNewEventPrize"
+                  />
+                </div>
+              </Panel>
+            </div>
+            <div class="admin-form__actions">
+              <Button
+                type="submit"
+                label="Crea evento"
+                icon="pi pi-calendar-plus"
+                :disabled="!hasEnoughTeams"
+              />
+            </div>
+          </form>
+
+          <Message
+            v-if="lastCreatedEventLink"
+            severity="success"
+            class="admin-portal-view__inline-message"
+            icon="pi pi-link"
+            :closable="false"
+          >
+            <span class="admin-inline-link">
+              <a :href="lastCreatedEventLink" target="_blank" rel="noopener">
+                {{ lastCreatedEventLink }}
+              </a>
+              <Button
+                type="button"
+                icon="pi pi-copy"
+                label="Copia"
+                text
+                class="admin-inline-link__copy"
+                @click="copyLink(lastCreatedEventLink)"
+              />
+            </span>
+          </Message>
+
+          <Divider />
+
+          <DataView
+            :value="visibleEvents"
+            data-key="id"
+            layout="list"
+            class="admin-events__list"
+            empty-message="Nessun evento disponibile"
+          >
+            <template #list="{ items }">
+              <div v-for="event in items" :key="event.id" class="admin-event-card">
+                <Card>
+                  <template #title>
+                    <span class="admin-event-card__title">
+                      {{ eventLabel(event) }}
+                      <Tag
+                        v-if="event.is_active"
+                        value="Attivo"
+                        severity="success"
+                        icon="pi pi-play"
+                        class="admin-event-card__tag"
+                      />
+                      <Tag
+                        v-if="event.is_active && event.votes_closed"
+                        value="Votazioni chiuse"
+                        severity="warning"
+                        icon="pi pi-lock"
+                        class="admin-event-card__tag"
+                      />
+                    </span>
+                  </template>
+                  <template #subtitle>
+                    <span class="admin-event-card__subtitle">
+                      {{ formatEventDate(event.start_datetime) }} • {{ event.location || 'Location da definire' }}
+                    </span>
+                  </template>
+                  <div class="admin-event-card__body">
+                    <div class="admin-event-card__info">
+                      <span class="admin-event-card__link">
+                        Link voto:
+                        <a :href="buildEventLink(event.id)" target="_blank" rel="noopener">
+                          {{ buildEventLink(event.id) }}
+                        </a>
+                      </span>
+                    </div>
+                    <div class="admin-event-card__actions">
+                      <Button
+                        label="Attiva"
+                        icon="pi pi-check"
+                        severity="success"
+                        :disabled="event.is_active || updatingEventId === event.id"
+                        @click="activateEvent(event.id)"
+                      />
+                      <Button
+                        label="Apri voto"
+                        icon="pi pi-external-link"
+                        severity="secondary"
+                        outlined
+                        @click="openVote(event.id)"
+                      />
+                      <Button
+                        label="Evento terminato"
+                        icon="pi pi-flag"
+                        severity="warning"
+                        outlined
+                        :loading="concludingEventId === event.id"
+                        @click="concludeEvent(event.id)"
+                      />
+                      <Button
+                        label="Elimina"
+                        icon="pi pi-trash"
+                        severity="danger"
+                        outlined
+                        @click="deleteEvent(event.id)"
+                      />
+                    </div>
+
+                    <Divider />
+
+                    <div class="admin-event-card__postvote">
+                      <h4>Esperienze post voto</h4>
+                      <div class="admin-toggle-grid">
+                        <div class="admin-toggle">
+                          <span class="admin-toggle__label">Andamento dei voti</span>
+                          <InputSwitch
+                            v-model="event.show_vote_trend"
+                            :disabled="isSavingPrizesFor(event.id)"
+                          />
+                        </div>
+                        <div class="admin-toggle">
+                          <span class="admin-toggle__label">Selfie MVP</span>
+                          <InputSwitch
+                            v-model="event.show_selfie"
+                            :disabled="isSavingPrizesFor(event.id)"
+                          />
+                        </div>
+                        <div class="admin-toggle">
+                          <span class="admin-toggle__label">Mini-gioco riflessi</span>
+                          <InputSwitch
+                            v-model="event.show_reaction_test"
+                            :disabled="isSavingPrizesFor(event.id)"
+                          />
+                        </div>
+                        <div class="admin-toggle">
+                          <span class="admin-toggle__label">Sondaggio feedback</span>
+                          <InputSwitch
+                            v-model="event.show_feedback_survey"
+                            :disabled="isSavingPrizesFor(event.id)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="admin-event-card__prizes">
+                      <h4>Premi in palio</h4>
+                      <div class="admin-prize-grid">
+                        <div
+                          v-for="(prize, index) in prizeDraftsFor(event.id)"
+                          :key="`event-${event.id}-prize-${prize.id || index}`"
+                          class="admin-prize-grid__row"
+                        >
+                          <InputText
+                            :placeholder="`Premio ${index + 1}`"
+                            v-model="prize.name"
+                            :disabled="isSavingPrizesFor(event.id)"
+                          />
+                          <Tag
+                            v-if="prize.winner"
+                            severity="success"
+                            value="Assegnato"
+                            icon="pi pi-ticket"
+                          />
+                          <Button
+                            icon="pi pi-times"
+                            severity="secondary"
+                            text
+                            rounded
+                            :disabled="
+                              prize.winner || prizeDraftsFor(event.id).length <= 1 || isSavingPrizesFor(event.id)
+                            "
+                            @click="removePrizeDraft(event.id, index)"
+                          />
+                        </div>
+                      </div>
+                      <div class="admin-prize-grid__actions">
+                        <Button
+                          type="button"
+                          icon="pi pi-plus"
+                          label="Aggiungi premio"
+                          severity="secondary"
+                          outlined
+                          :disabled="isSavingPrizesFor(event.id)"
+                          @click="addPrizeDraft(event.id)"
+                        />
+                        <Button
+                          type="button"
+                          icon="pi pi-save"
+                          label="Salva impostazioni"
+                          :loading="isSavingPrizesFor(event.id)"
+                          @click="savePrizesForEvent(event)"
+                        />
+                      </div>
+                      <Message
+                        v-if="eventPrizeErrors[event.id]"
+                        severity="error"
+                        :closable="false"
+                        class="admin-portal-view__inline-message"
+                      >
+                        {{ eventPrizeErrors[event.id] }}
+                      </Message>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            </template>
+          </DataView>
+        </Card>
+
+        <!-- Closing Section -->
+        <Card v-else-if="section === 'closing'" class="admin-section-card">
+          <template #title>Chiusura votazioni</template>
+          <template #subtitle>Controlla lo stato delle votazioni per l'evento attivo.</template>
+
+          <div v-if="activeEventEntry" class="admin-status-card">
+            <div class="admin-status-card__header">
+              <div>
+                <h3 class="admin-status-card__title">{{ activeEventLabel }}</h3>
+                <span class="admin-status-card__subtitle">
+                  {{ activeEventDateLabel }} • {{ activeEventLocation }}
+                </span>
+              </div>
+              <Tag
+                :value="activeEventVotesClosed ? 'Votazioni chiuse' : 'Votazioni aperte'"
+                :severity="activeEventVotesClosed ? 'warning' : 'success'"
+                icon="pi pi-clock"
+              />
+            </div>
+            <div class="admin-status-card__actions">
+              <Button
+                label="Chiudi votazioni"
+                icon="pi pi-lock"
+                severity="warning"
+                :loading="isClosingVotes"
+                :disabled="isClosingVotes || activeEventVotesClosed"
+                @click="closeActiveEventVoting"
+              />
+              <Button
+                label="Riattiva"
+                icon="pi pi-refresh"
+                severity="success"
+                :disabled="!activeEventEntry || updatingEventId === activeEventEntry.id || !activeEventVotesClosed"
+                :loading="updatingEventId === activeEventEntry.id"
+                @click="activateEvent(activeEventEntry.id)"
+              />
+              <Button
+                label="Disattiva"
+                icon="pi pi-power-off"
+                severity="secondary"
+                outlined
+                :loading="isDisablingEvents"
+                @click="deactivateEvents"
+              />
+            </div>
+            <Message
+              v-if="closeVotesMessage"
+              severity="success"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              {{ closeVotesMessage }}
+            </Message>
+          </div>
+          <Message
+            v-else
+            severity="info"
+            icon="pi pi-info-circle"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            Nessun evento attivo al momento. Attiva una partita dalla sezione "Eventi" per gestire le votazioni.
+          </Message>
+        </Card>
+
+        <!-- Results Section -->
+        <Card v-else-if="section === 'results'" class="admin-section-card">
+          <template #title>Risultati votazioni</template>
+          <template #subtitle>Monitora la classifica MVP e i dati sponsor in tempo reale.</template>
+
+          <div class="admin-results__controls">
+            <Dropdown
+              v-model="selectedResultsEventId"
+              :options="resultsEventOptions"
+              option-label="label"
+              option-value="value"
+              placeholder="Seleziona un evento"
+              :disabled="!resultsEventOptions.length"
+              class="admin-results__dropdown"
+            />
+            <Button
+              label="Aggiorna"
+              icon="pi pi-refresh"
+              severity="secondary"
+              :loading="isLoadingResults"
+              :disabled="isLoadingResults || !selectedResultsEventId"
+              @click="fetchEventResults({ showLoader: true })"
+            />
+          </div>
+
+          <div v-if="selectedResultsEvent" class="admin-results__summary">
+            <h3>{{ selectedResultsEventLabel }}</h3>
+            <span>{{ selectedResultsEventDate || 'Data da definire' }}</span>
+          </div>
+
+          <Message
+            v-if="resultsError"
+            severity="error"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            {{ resultsError }}
+          </Message>
+
+          <Message
+            v-else-if="!availableEvents.length"
+            severity="info"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            Crea un evento per visualizzare i risultati delle votazioni MVP.
+          </Message>
+
+          <div v-else class="admin-results__content">
+            <div class="admin-results__meta">
+              <span><strong>Voti totali:</strong> {{ totalVotes }}</span>
+              <span v-if="lastResultsUpdateLabel">
+                <strong>Ultimo aggiornamento:</strong> {{ lastResultsUpdateLabel }}
+              </span>
+              <span class="admin-results__auto">Aggiornamento automatico ogni 5 secondi</span>
+            </div>
+            <DataTable
+              :value="resultsLeaderboard"
+              data-key="id"
+              scrollable
+              scroll-height="400px"
+              class="admin-results__table"
+              striped-rows
+            >
+              <Column header="#" body-class="admin-results__rank" :body="rankTemplate" />
+              <Column field="lastNameUpper" header="Cognome" />
+              <Column field="firstName" header="Nome" />
+              <Column field="votes" header="Voti">
+                <template #body="{ data }">
+                  <div class="admin-results__votes">
+                    <strong>{{ data.votes }}</strong>
+                    <span>{{ data.votes === 1 ? 'voto' : 'voti' }}</span>
+                  </div>
+                </template>
+              </Column>
+              <Column header="%">
+                <template #body="{ data }">
+                  <ProgressBar :value="data.percentage" show-value />
+                </template>
+              </Column>
+            </DataTable>
+
+            <Panel header="Analisi sponsor" toggleable>
+              <Message
+                v-if="sponsorAnalyticsError"
+                severity="error"
+                :closable="false"
+                class="admin-portal-view__inline-message"
+              >
+                {{ sponsorAnalyticsError }}
+              </Message>
+              <Message
+                v-else-if="isLoadingSponsorAnalytics"
+                severity="info"
+                icon="pi pi-spin pi-spinner"
+                :closable="false"
+                class="admin-portal-view__inline-message"
+              >
+                Caricamento dati sponsor…
+              </Message>
+              <Message
+                v-else-if="!hasSponsorAnalyticsData"
+                severity="warn"
+                :closable="false"
+                class="admin-portal-view__inline-message"
+              >
+                Nessun dato sponsor disponibile per questo evento.
+              </Message>
+              <div v-else class="admin-sponsor-analytics">
+                <div class="admin-sponsor-analytics__grid">
+                  <Card class="admin-sponsor-analytics__stat" v-for="card in sponsorAnalyticsCards" :key="card.label">
+                    <template #title>{{ card.label }}</template>
+                    <template #content>
+                      <div class="admin-sponsor-analytics__value">{{ card.value }}</div>
+                      <small v-if="card.hint" class="admin-sponsor-analytics__hint">{{ card.hint }}</small>
+                    </template>
+                  </Card>
+                </div>
+                <div v-if="sponsorChartRows.length" class="admin-sponsor-analytics__chart">
+                  <h4>Andamento visualizzazioni e click</h4>
+                  <DataTable :value="sponsorChartRows" scrollable scroll-height="260px">
+                    <Column field="label" header="Intervallo" />
+                    <Column header="Viste">
+                      <template #body="{ data }">
+                        <ProgressBar :value="data.seenPercent" show-value>
+                          {{ data.seen.toLocaleString('it-IT') }} viste
+                        </ProgressBar>
+                      </template>
+                    </Column>
+                    <Column header="Click">
+                      <template #body="{ data }">
+                        <ProgressBar :value="data.clicksPercent" show-value severity="info">
+                          {{ data.clicks.toLocaleString('it-IT') }} click
+                        </ProgressBar>
+                      </template>
+                    </Column>
+                  </DataTable>
+                </div>
+              </div>
+            </Panel>
+          </div>
+        </Card>
+
+        <!-- Selfies Section -->
+        <Card v-else-if="section === 'selfies'" class="admin-section-card">
+          <template #title>Selfie MVP</template>
+          <template #subtitle>Modera i selfie inviati dai tifosi.</template>
+
+          <div class="admin-form admin-form--compact">
+            <div class="admin-form__field admin-form__field--medium">
+              <label class="admin-field-label" for="selfie-event-select">Evento</label>
+              <Dropdown
+                id="selfie-event-select"
+                v-model="selectedSelfieEventId"
+                :options="eventDropdownOptions"
+                option-label="label"
+                option-value="value"
+                placeholder="Seleziona evento"
+                :disabled="!eventDropdownOptions.length"
+              />
+            </div>
+          </div>
+
+          <Message
+            v-if="selfieModerationMessage"
+            severity="success"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            {{ selfieModerationMessage }}
+          </Message>
+          <Message
+            v-if="selfieLoadError"
+            severity="error"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            {{ selfieLoadError }}
+          </Message>
+
+          <div v-if="isLoadingSelfies" class="admin-loader" role="status" aria-live="polite">
+            <i class="pi pi-spin pi-spinner" aria-hidden="true" />
+            <span>Caricamento selfie…</span>
+          </div>
+          <Message
+            v-else-if="!availableEvents.length"
+            severity="info"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            Crea un evento per raccogliere selfie dal pubblico.
+          </Message>
+          <Message
+            v-else-if="!eventSelfies.length"
+            severity="warn"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            Nessun selfie ricevuto per questo evento al momento.
+          </Message>
+          <div v-else class="admin-selfie-grid">
+            <Card v-for="selfie in eventSelfies" :key="selfie.id" class="admin-selfie-card">
+              <template #header>
+                <div class="admin-selfie-card__thumb" :class="{ 'admin-selfie-card__thumb--empty': !selfie.image_src }">
+                  <img v-if="selfie.image_src" :src="selfie.image_src" :alt="`Selfie ${selfie.id}`" />
+                  <span v-else>Immagine non disponibile</span>
+                </div>
+              </template>
+              <template #title>{{ selfie.caption || 'Senza didascalia' }}</template>
+              <template #subtitle>
+                Inviato: {{ formatSelfieDate(selfie.submitted_at) || 'N/D' }} • Device: {{ selfie.device_token || 'N/D' }}
+              </template>
+              <template #content>
+                <p>Dimensione: {{ formatSelfieFileSize(selfie.file_size_bytes) || 'N/D' }}</p>
+                <Tag :value="selfieStatusLabel(selfie)" severity="secondary" icon="pi pi-user" />
+              </template>
+              <template #footer>
+                <Button
+                  label="Elimina"
+                  icon="pi pi-trash"
+                  severity="danger"
+                  outlined
+                  :loading="isSelfieBusy(selfie.id)"
+                  @click="deleteSelfie(selfie)"
+                />
+              </template>
+            </Card>
+          </div>
+        </Card>
+
+        <!-- History Section -->
+        <Card v-else-if="section === 'history'" class="admin-section-card">
+          <template #title>Storico eventi</template>
+          <template #subtitle>Analizza prestazioni, voti e interazioni passate.</template>
+
+          <div class="admin-section__toolbar">
+            <Button
+              label="Aggiorna"
+              icon="pi pi-refresh"
+              severity="secondary"
+              :loading="isLoadingEventHistory"
+              :disabled="isLoadingEventHistory"
+              @click="refreshEventHistory"
+            />
+          </div>
+
+          <Message
+            v-if="eventHistorySuccess"
+            severity="success"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            {{ eventHistorySuccess }}
+          </Message>
+          <Message
+            v-if="eventHistoryError"
+            severity="error"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            {{ eventHistoryError }}
+          </Message>
+          <Message
+            v-else-if="isLoadingEventHistory"
+            severity="info"
+            icon="pi pi-spin pi-spinner"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            Caricamento storico in corso…
+          </Message>
+          <Message
+            v-else-if="!eventHistory.length"
+            severity="warn"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            Non sono presenti eventi conclusi al momento.
+          </Message>
+
+          <Accordion v-else multiple class="admin-history">
+            <AccordionPanel v-for="entry in eventHistory" :key="entry.id">
+              <template #header>
+                <div class="admin-history__header">
+                  <div>
+                    <h3>{{ entry.title }}</h3>
+                    <span>{{ formatHistoryDate(entry.startDatetime) }}<span v-if="entry.location"> • {{ entry.location }}</span></span>
+                  </div>
+                  <div class="admin-history__chips">
+                    <Tag
+                      :value="`${entry.totalVotesLabel} voti`"
+                      icon="pi pi-users"
+                      severity="info"
+                    />
+                    <Tag
+                      :value="`${entry.totalVisitorsLabel} visitatori`"
+                      icon="pi pi-compass"
+                      severity="secondary"
+                    />
+                    <Tag
+                      :value="`${entry.uniqueVisitorsLabel} unici`"
+                      icon="pi pi-star"
+                      severity="contrast"
+                    />
+                  </div>
+                </div>
+              </template>
+              <div class="admin-history__content">
+                <div class="admin-history__actions">
+                  <Button
+                    label="Scarica report"
+                    icon="pi pi-download"
+                    severity="secondary"
+                    :loading="isDownloadingHistoryReport(entry.id)"
+                    @click="downloadEventHistoryReport(entry)"
+                  />
+                  <Button
+                    v-if="isSuperAdmin"
+                    label="Elimina evento"
+                    icon="pi pi-trash"
+                    severity="danger"
+                    outlined
+                    @click="openPurgeDialog(entry)"
+                  />
+                </div>
+                <div class="admin-history__grid">
+                  <Card class="admin-history__panel">
+                    <template #title>MVP</template>
+                    <template #content>
+                      <p v-if="entry.mvp">
+                        {{ entry.mvp.name }} • {{ entry.mvp.votes.toLocaleString('it-IT') }} voti
+                      </p>
+                      <Message v-else severity="info" :closable="false">Nessun MVP assegnato.</Message>
+                    </template>
+                  </Card>
+                  <Card class="admin-history__panel">
+                    <template #title>Interazioni sponsor</template>
+                    <template #content>
+                      <div v-if="entry.sponsorAnalyticsHasData" class="admin-history__stats">
+                        <div class="admin-history__stat" v-for="stat in sponsorHistoryCards(entry)" :key="stat.label">
+                          <span class="admin-history__stat-label">{{ stat.label }}</span>
+                          <strong class="admin-history__stat-value">{{ stat.value }}</strong>
+                          <small v-if="stat.hint" class="admin-history__stat-hint">{{ stat.hint }}</small>
+                        </div>
+                      </div>
+                      <Message v-else severity="warn" :closable="false">Nessun dato registrato.</Message>
+                      <DataTable v-if="entry.sponsorClicks.length" :value="entry.sponsorClicks" size="small">
+                        <Column field="name" header="Sponsor" />
+                        <Column field="clicks" header="Click">
+                          <template #body="{ data }">{{ data.clicks.toLocaleString('it-IT') }}</template>
+                        </Column>
+                      </DataTable>
+                      <DataTable
+                        v-if="entry.sponsorAnalyticsTimeline.length"
+                        :value="entry.sponsorAnalyticsTimeline"
+                        size="small"
+                        class="admin-history__timeline"
+                      >
+                        <Column field="label" header="Intervallo" />
+                        <Column header="Viste">
+                          <template #body="{ data }">{{ data.seen.toLocaleString('it-IT') }}</template>
+                        </Column>
+                        <Column header="Guardate">
+                          <template #body="{ data }">{{ data.watched.toLocaleString('it-IT') }}</template>
+                        </Column>
+                        <Column header="Click">
+                          <template #body="{ data }">{{ data.clicks.toLocaleString('it-IT') }}</template>
+                        </Column>
+                      </DataTable>
+                    </template>
+                  </Card>
+                  <Card class="admin-history__panel">
+                    <template #title>Sondaggio feedback</template>
+                    <template #content>
+                      <div v-if="entry.feedbackSummary">
+                        <p class="admin-history__stat">{{ entry.feedbackSummary.totalResponsesLabel }}</p>
+                        <div
+                          v-for="question in entry.feedbackSummary.questions"
+                          :key="question.id"
+                          class="admin-history__question"
+                        >
+                          <h4>{{ question.title }}</h4>
+                          <DataTable :value="question.answers" size="small">
+                            <Column field="label" header="Risposta" />
+                            <Column field="countLabel" header="Totale" />
+                            <Column field="percentLabel" header="Percentuale" />
+                          </DataTable>
+                        </div>
+                        <div class="admin-history__question">
+                          <h4>{{ entry.feedbackSummary.suggestionQuestion.title }}</h4>
+                          <Message
+                            v-if="!entry.feedbackSummary.suggestionQuestion.hasSuggestions"
+                            severity="info"
+                            :closable="false"
+                          >
+                            Nessun suggerimento inviato.
+                          </Message>
+                          <DataTable
+                            v-else
+                            :value="entry.feedbackSummary.suggestionQuestion.suggestions"
+                            size="small"
+                          >
+                            <Column field="" header="Suggerimenti">
+                              <template #body="{ data }">{{ data }}</template>
+                            </Column>
+                          </DataTable>
+                        </div>
+                      </div>
+                      <Message v-else severity="info" :closable="false">Nessun feedback raccolto.</Message>
+                    </template>
+                  </Card>
+                  <Card class="admin-history__panel">
+                    <template #title>Estrazione premi</template>
+                    <template #content>
+                      <Tag
+                        :value="entry.hasPrizeDraw ? 'Estrazione eseguita' : 'Estrazione non eseguita'"
+                        :severity="entry.hasPrizeDraw ? 'success' : 'warn'"
+                        icon="pi pi-gift"
+                      />
+                      <Message
+                        v-if="!entry.prizes.length"
+                        severity="info"
+                        :closable="false"
+                        class="admin-portal-view__inline-message"
+                      >
+                        Nessun premio configurato per l'evento.
+                      </Message>
+                      <DataTable v-else :value="entry.prizes" size="small">
+                        <Column field="name" header="Premio" />
+                        <Column header="Codice vincente">
+                          <template #body="{ data }">
+                            <span v-if="data.hasWinner">{{ data.winnerTicketCode }}</span>
+                            <span v-else class="admin-text-muted">Nessun vincitore</span>
+                          </template>
+                        </Column>
+                      </DataTable>
+                    </template>
+                  </Card>
+                </div>
+                <div class="admin-history__votes" v-if="entry.timeline.length">
+                  <h4>Andamento voti</h4>
+                  <VoteTrendChart
+                    v-if="entry.timelineChart.points.length"
+                    :points="entry.timelineChart.points"
+                    :start-label="entry.timelineChart.startLabel"
+                    :end-label="entry.timelineChart.endLabel"
+                    accessible-label="Andamento dei voti ogni 15 minuti"
+                  />
+                  <Button
+                    text
+                    :label="entry.isTimelineExpanded ? 'Nascondi dettagli' : 'Visualizza altro'"
+                    :icon="entry.isTimelineExpanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"
+                    @click="toggleHistoryTimeline(entry)"
+                  />
+                  <DataTable v-if="entry.isTimelineExpanded" :value="entry.timeline" size="small">
+                    <Column field="rangeLabel" header="Intervallo" />
+                    <Column field="votesLabel" header="Voti" />
+                  </DataTable>
+                </div>
+              </div>
+            </AccordionPanel>
+          </Accordion>
+        </Card>
+
+        <!-- Teams Section -->
+        <Card v-else-if="section === 'teams'" class="admin-section-card">
+          <template #title>Squadre</template>
+          <template #subtitle>Gestisci le squadre disponibili per gli eventi.</template>
+
+          <form class="admin-form admin-form--inline" @submit.prevent="createTeam">
+            <div class="admin-form__field admin-form__field--grow">
+              <InputText v-model.trim="newTeamName" placeholder="Nome squadra" required />
+            </div>
+            <Button type="submit" label="Aggiungi" icon="pi pi-plus" />
+          </form>
+
+          <DataTable
+            :value="teams"
+            data-key="id"
+            striped-rows
+            class="admin-simple-table"
+            empty-message="Nessuna squadra configurata"
+          >
+            <Column field="name" header="Nome" />
+            <Column header="Azioni" body-class="admin-table-actions">
+              <template #body="{ data }">
+                <Button
+                  label="Elimina"
+                  icon="pi pi-trash"
+                  severity="danger"
+                  text
+                  @click="deleteTeam(data.id)"
+                />
+              </template>
+            </Column>
+          </DataTable>
+        </Card>
+
+        <!-- Players Section -->
+        <Card v-else-if="section === 'players'" class="admin-section-card">
+          <template #title>Giocatori</template>
+          <template #subtitle>Gestisci fino a {{ playerSlotCount }} giocatori mostrati nella pagina voto.</template>
+
+          <Message
+            v-if="!teams.length"
+            severity="warn"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            Aggiungi almeno una squadra per assegnare correttamente i giocatori salvati.
+          </Message>
+          <Message
+            v-if="playerOverflow.length"
+            severity="info"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            Sono presenti {{ playerOverflow.length }} giocatori aggiuntivi nel database. Verranno rimossi al prossimo salvataggio.
+          </Message>
+
+          <div class="admin-player-grid">
+            <Card v-for="(slot, index) in playerSlots" :key="`player-slot-${index}`" class="admin-player-card">
+              <template #title>Giocatore {{ index + 1 }}</template>
+              <template #content>
+                <div class="admin-form admin-form--compact">
+                  <div class="admin-form__field">
+                    <label class="admin-field-label" :for="`player-first-${index}`">Nome</label>
+                    <InputText :id="`player-first-${index}`" v-model.trim="slot.first_name" placeholder="Es. Mario" />
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-field-label" :for="`player-last-${index}`">Cognome</label>
+                    <InputText :id="`player-last-${index}`" v-model.trim="slot.last_name" placeholder="Es. Rossi" />
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-field-label" :for="`player-role-${index}`">Ruolo</label>
+                    <InputText :id="`player-role-${index}`" v-model.trim="slot.role" placeholder="Es. Schiacciatore" />
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-field-label" :for="`player-jersey-${index}`">Numero</label>
+                    <InputNumber
+                      :id="`player-jersey-${index}`"
+                      v-model="slot.jersey_number"
+                      :min="0"
+                      show-buttons
+                    />
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-field-label" :for="`player-team-${index}`">Squadra</label>
+                    <Dropdown
+                      :id="`player-team-${index}`"
+                      v-model="slot.team_id"
+                      :options="teamDropdownOptions"
+                      option-label="label"
+                      option-value="value"
+                      placeholder="Seleziona squadra"
+                    />
+                  </div>
+                  <div class="admin-form__field admin-form__field--full">
+                    <label class="admin-field-label" :for="`player-url-${index}`">URL immagine</label>
+                    <InputText
+                      :id="`player-url-${index}`"
+                      v-model.trim="slot.image_url"
+                      type="url"
+                      placeholder="https://..."
+                      @input="handlePlayerUrlChange(index)"
+                    />
+                  </div>
+                  <div class="admin-form__field admin-form__field--full">
+                    <FileUpload
+                      mode="basic"
+                      auto
+                      accept="image/*"
+                      choose-label="Carica immagine"
+                      :custom-upload="true"
+                      @uploader="(event) => handlePlayerFileUpload(index, event)"
+                    />
+                  </div>
+                  <div v-if="slot.image_preview" class="admin-player-card__preview">
+                    <img :src="slot.image_preview" alt="Anteprima giocatore" />
+                    <Button
+                      label="Rimuovi"
+                      icon="pi pi-times"
+                      text
+                      severity="secondary"
+                      @click="removePlayerImage(index)"
+                    />
+                  </div>
+                </div>
+              </template>
+            </Card>
+          </div>
+
+          <div class="admin-player-actions">
+            <Button
+              label="Ripristina dati salvati"
+              icon="pi pi-undo"
+              severity="secondary"
+              outlined
+              :disabled="isSavingPlayers"
+              @click="restorePlayerSlots"
+            />
+            <Button
+              label="Salva giocatori"
+              icon="pi pi-save"
+              :loading="isSavingPlayers"
+              @click="savePlayers"
+            />
+          </div>
+          <Message
+            v-if="playerSaveError"
+            severity="error"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            {{ playerSaveError }}
+          </Message>
+          <Message
+            v-if="playerSaveMessage"
+            severity="success"
+            :closable="false"
+            class="admin-portal-view__inline-message"
+          >
+            {{ playerSaveMessage }}
+          </Message>
+        </Card>
+
+        <!-- Sponsors Section -->
+        <Card v-else-if="section === 'sponsors'" class="admin-section-card">
+          <template #title>Sponsor</template>
+          <template #subtitle>Configura gli sponsor e il numero di loghi visibili.</template>
+
+          <Panel header="Nuovo sponsor" toggleable>
+            <div class="admin-form admin-form--grid">
+              <div class="admin-form__field">
+                <label class="admin-field-label" for="sponsor-name">Nome</label>
+                <InputText id="sponsor-name" v-model.trim="newSponsor.name" placeholder="Nome sponsor" />
+              </div>
+              <div class="admin-form__field">
+                <label class="admin-field-label" for="sponsor-link">Link</label>
+                <InputText id="sponsor-link" v-model.trim="newSponsor.linkUrl" type="url" placeholder="https://..." />
+              </div>
+              <div class="admin-form__field admin-form__field--full">
+                <label class="admin-field-label">Logo</label>
+                <FileUpload
+                  mode="basic"
+                  auto
+                  accept="image/*"
+                  choose-label="Carica logo"
+                  :custom-upload="true"
+                  @uploader="handleNewSponsorUpload"
+                />
+              </div>
+            </div>
+            <div class="admin-form__actions">
+              <Button
+                label="Crea sponsor"
+                icon="pi pi-plus"
+                :loading="isCreatingSponsor"
+                @click="createSponsor"
+              />
+            </div>
+          </Panel>
+
+          <Panel header="Sponsor visibili" toggleable>
+            <div class="admin-form admin-form--inline">
+              <div class="admin-form__field admin-form__field--grow">
+                <InputNumber
+                  v-model="desiredActiveSponsorCount"
+                  :min="0"
+                  :max="sponsorSliderMax"
+                  show-buttons
+                />
+              </div>
+              <Button
+                label="Aggiorna visibilità"
+                icon="pi pi-eye"
+                :loading="isApplyingSponsorCount"
+                @click="applyActiveSponsorCount"
+              />
+            </div>
+          </Panel>
+
+          <DataView
+            :value="sortedSponsors()"
+            data-key="id"
+            layout="grid"
+            :rows="2"
+            paginator
+            class="admin-sponsor-grid"
+            empty-message="Nessuno sponsor configurato"
+          >
+            <template #grid="{ items }">
+              <div class="p-grid">
+                <div v-for="sponsor in items" :key="sponsor.id" class="p-col-12 p-md-6">
+                  <Card class="admin-sponsor-card">
+                    <template #title>
+                      <div class="admin-sponsor-card__title">
+                        {{ sponsor.name }}
+                        <Tag
+                          :value="sponsor.isActive ? 'Visibile' : 'Nascosto'"
+                          :severity="sponsor.isActive ? 'success' : 'danger'"
+                        />
+                      </div>
+                    </template>
+                    <template #content>
+                      <div class="admin-form admin-form--compact">
+                        <div class="admin-form__field">
+                          <label class="admin-field-label">Nome</label>
+                          <InputText v-model.trim="sponsor.name" />
+                        </div>
+                        <div class="admin-form__field">
+                          <label class="admin-field-label">Link</label>
+                          <InputText v-model.trim="sponsor.linkUrl" type="url" />
+                        </div>
+                        <div class="admin-form__field admin-form__field--full">
+                          <FileUpload
+                            mode="basic"
+                            auto
+                            accept="image/*"
+                            choose-label="Aggiorna logo"
+                            :custom-upload="true"
+                            @uploader="(event) => handleSponsorFileUpload(event, sponsor)"
+                          />
+                        </div>
+                        <div class="admin-form__field admin-form__field--full">
+                          <ToggleButton
+                            v-model="sponsor.isActive"
+                            on-label="Visibile"
+                            off-label="Nascosto"
+                            on-icon="pi pi-eye"
+                            off-icon="pi pi-eye-slash"
+                          />
+                        </div>
+                      </div>
+                    </template>
+                    <template #footer>
+                      <div class="admin-sponsor-card__actions">
+                        <Button
+                          label="Salva"
+                          icon="pi pi-save"
+                          :loading="sponsorBeingUpdated === sponsor.id"
+                          @click="updateSponsorEntry(sponsor)"
+                        />
+                        <Button
+                          label="Elimina"
+                          icon="pi pi-trash"
+                          severity="danger"
+                          outlined
+                          :loading="sponsorBeingDeleted === sponsor.id"
+                          @click="deleteSponsorEntry(sponsor.id)"
+                        />
+                      </div>
+                    </template>
+                  </Card>
+                </div>
+              </div>
+            </template>
+          </DataView>
+        </Card>
+
+        <!-- Admins Section -->
+        <Card v-else-if="section === 'admins'" class="admin-section-card">
+          <template #title>Admin</template>
+          <template #subtitle>Gestisci gli account con accesso al portale.</template>
+
+          <form class="admin-form admin-form--grid" @submit.prevent="createAdmin">
+            <div class="admin-form__field">
+              <label class="admin-field-label" for="admin-username">Username</label>
+              <InputText id="admin-username" v-model.trim="newAdmin.username" required />
+            </div>
+            <div class="admin-form__field">
+              <label class="admin-field-label" for="admin-password">Password</label>
+              <Password id="admin-password" v-model="newAdmin.password" :feedback="false" required />
+            </div>
+            <div class="admin-form__field">
+              <label class="admin-field-label" for="admin-role">Ruolo</label>
+              <Dropdown
+                id="admin-role"
+                v-model="newAdmin.role"
+                :options="adminRoleOptions"
+                option-label="label"
+                option-value="value"
+                placeholder="Seleziona ruolo"
+                required
+              />
+            </div>
+            <div class="admin-form__actions">
+              <Button type="submit" label="Crea admin" icon="pi pi-user-plus" />
+            </div>
+          </form>
+
+          <DataTable
+            :value="admins"
+            data-key="id"
+            striped-rows
+            class="admin-simple-table"
+            empty-message="Nessun admin configurato"
+          >
+            <Column field="username" header="Username" />
+            <Column field="role" header="Ruolo" />
+            <Column header="Azioni" body-class="admin-table-actions">
+              <template #body="{ data }">
+                <Button
+                  label="Rimuovi"
+                  icon="pi pi-trash"
+                  severity="danger"
+                  text
+                  @click="deleteAdmin(data.id)"
+                />
+              </template>
+            </Column>
+          </DataTable>
+        </Card>
+      </template>
+    </AdminLayout>
+
+    <Dialog
+      v-model:visible="purgeDialog.visible"
+      modal
+      header="Elimina evento"
+      :style="{ width: '30rem' }"
+      :draggable="false"
+    >
+      <p class="admin-dialog__lead">
+        Stai per eliminare definitivamente l'evento <strong>{{ purgeDialog.event?.title }}</strong>.
+      </p>
+      <p>Questa operazione non può essere annullata.</p>
+      <div class="admin-form">
+        <div class="admin-form__field admin-form__field--full">
+          <label class="admin-field-label" for="purge-password">Conferma con password super admin</label>
+          <Password
+            id="purge-password"
+            v-model="purgeDialog.password"
+            :feedback="false"
+            toggle-mask
+            placeholder="Password"
+          />
         </div>
       </div>
-    </section>
+      <Message
+        v-if="purgeDialog.error"
+        severity="error"
+        :closable="false"
+        class="admin-portal-view__inline-message"
+      >
+        {{ purgeDialog.error }}
+      </Message>
+      <template #footer>
+        <Button
+          label="Annulla"
+          icon="pi pi-times"
+          severity="secondary"
+          outlined
+          :disabled="purgeDialog.isSubmitting"
+          @click="closePurgeDialog"
+        />
+        <Button
+          label="Elimina definitivamente"
+          icon="pi pi-trash"
+          severity="danger"
+          :loading="purgeDialog.isSubmitting"
+          :disabled="!purgeDialog.password"
+          @click="confirmPurge"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
-
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { apiClient, resolveApiUrl } from '../api';
-import { PLAYER_LAYOUT } from '../roster';
-import VoteTrendChart from './VoteTrendChart.vue';
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { useToast } from 'primevue/usetoast';
+import Toast from 'primevue/toast';
+import Card from 'primevue/card';
+import InputText from 'primevue/inputtext';
+import Password from 'primevue/password';
+import Message from 'primevue/message';
+import Button from 'primevue/button';
+import Tag from 'primevue/tag';
+import AutoComplete from 'primevue/autocomplete';
+import Panel from 'primevue/panel';
+import InputSwitch from 'primevue/inputswitch';
+import Divider from 'primevue/divider';
+import DataView from 'primevue/dataview';
+import Dropdown from 'primevue/dropdown';
+import DataTable from 'primevue/datatable';
+import Column from 'primevue/column';
+import ProgressBar from 'primevue/progressbar';
+import FileUpload from 'primevue/fileupload';
+import InputNumber from 'primevue/inputnumber';
+import ToggleButton from 'primevue/togglebutton';
+import Accordion from 'primevue/accordion';
+import AccordionPanel from 'primevue/accordionpanel';
+import Dialog from 'primevue/dialog';
+import { apiClient, resolveApiUrl } from '../../api';
+import { PLAYER_LAYOUT } from '../../roster';
+import VoteTrendChart from '../../components/VoteTrendChart.vue';
+import AdminLayout from '../../layouts/AdminLayout.vue';
 
 const basePath = import.meta.env.BASE_URL ?? '/';
 const baseVoteUrl = new URL(basePath, window.location.origin);
@@ -1172,17 +1456,19 @@ const feedbackSummarySuggestion = {
 
 let resultsPollHandle = 0;
 
+const toast = useToast();
+
 const section = ref('events');
 const tabs = [
-  { id: 'events', label: 'Eventi' },
-  { id: 'closing', label: 'Chiusura votazioni' },
-  { id: 'results', label: 'Risultati' },
-  { id: 'selfies', label: 'Selfie MVP' },
-  { id: 'history', label: 'Storico eventi' },
-  { id: 'teams', label: 'Squadre' },
-  { id: 'players', label: 'Giocatori' },
-  { id: 'sponsors', label: 'Sponsor' },
-  { id: 'admins', label: 'Admin' },
+  { id: 'events', label: 'Eventi', icon: 'pi pi-calendar' },
+  { id: 'closing', label: 'Chiusura votazioni', icon: 'pi pi-lock' },
+  { id: 'results', label: 'Risultati', icon: 'pi pi-chart-line' },
+  { id: 'selfies', label: 'Selfie MVP', icon: 'pi pi-camera' },
+  { id: 'history', label: 'Storico eventi', icon: 'pi pi-clock' },
+  { id: 'teams', label: 'Squadre', icon: 'pi pi-users' },
+  { id: 'players', label: 'Giocatori', icon: 'pi pi-user' },
+  { id: 'sponsors', label: 'Sponsor', icon: 'pi pi-megaphone' },
+  { id: 'admins', label: 'Admin', icon: 'pi pi-shield' },
 ];
 const STAFF_TAB_IDS = new Set(['closing', 'results', 'history', 'selfies']);
 
@@ -1191,6 +1477,7 @@ const players = ref([]);
 const events = ref([]);
 const admins = ref([]);
 const sponsors = ref([]);
+const teamSearchResults = ref([]);
 const eventHistory = ref([]);
 const eventSelfies = ref([]);
 const isLoadingEventHistory = ref(false);
@@ -1271,6 +1558,10 @@ const newAdmin = reactive({
   password: '',
   role: '',
 });
+const adminRoleOptions = [
+  { value: 'superadmin', label: 'Super admin' },
+  { value: 'staff', label: 'Staff' },
+];
 const maxSponsors = 4;
 const newSponsor = reactive({
   name: '',
@@ -1289,8 +1580,6 @@ const closeVotesMessage = ref('');
 const eventPrizeDrafts = reactive({});
 const eventPrizeErrors = reactive({});
 const savingEventPrizes = ref(0);
-const portalRef = ref(null);
-const toolbarRef = ref(null);
 
 const fallbackTeamId = () => (teams.value.length ? teams.value[0].id : 0);
 
@@ -1422,15 +1711,13 @@ const optimizePlayerImage = async (file) => {
   }
 };
 
-const handlePlayerImageChange = async (index, event) => {
+const applyPlayerImageFile = async (index, file) => {
   const slot = playerSlots[index];
   if (!slot) {
     return;
   }
   playerSaveMessage.value = '';
   playerSaveError.value = '';
-  const input = event?.target;
-  const file = input?.files?.[0];
   if (!file) {
     slot.image_preview = slot.image_url || '';
     return;
@@ -1450,10 +1737,13 @@ const handlePlayerImageChange = async (index, event) => {
     if (slot._imageChangeToken === changeToken) {
       slot._imageChangeToken = null;
     }
-    if (input) {
-      input.value = '';
-    }
   }
+};
+
+const handlePlayerFileUpload = async (index, payload) => {
+  const files = Array.isArray(payload?.files) ? payload.files : [];
+  await applyPlayerImageFile(index, files[0] ?? null);
+  payload?.options?.clear?.();
 };
 
 const handlePlayerUrlChange = (index) => {
@@ -1660,6 +1950,16 @@ const savePlayers = async () => {
 const hasEnoughTeams = computed(() => teams.value.length >= 2);
 const availableEvents = computed(() => events.value.filter((event) => !event.is_concluded));
 const visibleEvents = computed(() => availableEvents.value);
+const resultsEventOptions = computed(() =>
+  availableEvents.value.map((event) => ({ value: event.id, label: eventLabel(event) })),
+);
+const eventDropdownOptions = computed(() =>
+  availableEvents.value.map((event) => ({
+    value: event.id,
+    label: `${eventLabel(event)} • ${formatEventDate(event.start_datetime)}`,
+  })),
+);
+const teamDropdownOptions = computed(() => teams.value.map((team) => ({ value: team.id, label: team.name })));
 
 const activeEventId = computed(() => {
   const activeEvent = events.value.find((event) => event.is_active);
@@ -1777,6 +2077,8 @@ const resultsLeaderboard = computed(() => {
   }));
 });
 
+const rankTemplate = (slotProps) => slotProps.index + 1;
+
 const sponsorAnalyticsDisplay = computed(() => {
   const data = sponsorAnalytics.value;
   if (!data) {
@@ -1800,6 +2102,50 @@ const sponsorAnalyticsDisplay = computed(() => {
     topSponsorViewsLabel: data.topSponsor ? data.topSponsor.views.toLocaleString('it-IT') : '0',
   };
 });
+
+const sponsorAnalyticsCards = computed(() => {
+  const display = sponsorAnalyticsDisplay.value;
+  if (!display) {
+    return [];
+  }
+  return [
+    { label: 'Utenti totali', value: display.totalUsersLabel },
+    { label: 'Sezione vista', value: display.seenRateLabel, hint: `${display.seenUsersLabel} utenti` },
+    {
+      label: 'Tempo medio visione',
+      value: display.averageWatchTimeLabel,
+      hint: `${display.watchedUsersLabel} utenti`,
+    },
+    {
+      label: 'Click totali',
+      value: display.totalClicksLabel,
+      hint: `${display.clickRateLabel} • ${display.uniqueClickersLabel} utenti`,
+    },
+    { label: 'Top sponsor', value: display.topSponsorName, hint: display.topSponsorViewsLabel },
+  ];
+});
+
+const sponsorHistoryCards = (entry) => {
+  const display = entry?.sponsorAnalyticsDisplay;
+  if (!display) {
+    return [];
+  }
+  return [
+    { label: 'Utenti totali', value: display.totalUsersLabel },
+    { label: 'Sezione vista', value: display.seenRateLabel, hint: `${display.seenUsersLabel} utenti` },
+    {
+      label: 'Tempo medio visione',
+      value: display.averageWatchTimeLabel,
+      hint: `${display.watchedUsersLabel} utenti • ${display.totalWatchTimeLabel}`,
+    },
+    {
+      label: 'Click totali',
+      value: display.totalClicksLabel,
+      hint: `${display.clickRateLabel} • ${display.uniqueClickersLabel} utenti`,
+    },
+    { label: 'Sponsor più visualizzato', value: display.topSponsorName, hint: display.topSponsorViewsLabel },
+  ];
+};
 
 const sponsorTimelinePoints = computed(() => {
   if (!sponsorAnalytics.value || !Array.isArray(sponsorAnalytics.value.timeline)) {
@@ -1929,7 +2275,24 @@ function ensureValidTeamSelection() {
 watch(teams, () => {
   ensureValidTeamSelection();
   ensurePlayerSlotTeams();
+  teamSearchResults.value = teams.value.map((team) => teamOptionValue(team)).slice(0, 10);
 });
+watch(
+  () => teamInputs.home,
+  (value, oldValue) => {
+    if (value !== oldValue) {
+      handleTeamInput('home');
+    }
+  },
+);
+watch(
+  () => teamInputs.away,
+  (value, oldValue) => {
+    if (value !== oldValue) {
+      handleTeamInput('away');
+    }
+  },
+);
 watch(hasEnoughTeams, (enough) => {
   if (!enough) {
     newEvent.team1_id = 0;
@@ -2401,8 +2764,7 @@ async function readFileAsDataUrl(file) {
   });
 }
 
-async function handleSponsorLogoChange(event, targetSponsor) {
-  const [file] = event?.target?.files || [];
+async function applySponsorLogoFile(file, targetSponsor) {
   if (!file) {
     return;
   }
@@ -2415,15 +2777,24 @@ async function handleSponsorLogoChange(event, targetSponsor) {
   } catch (error) {
     console.error('Errore caricamento logo sponsor', error);
     globalError.value = 'Impossibile caricare il logo selezionato.';
-  } finally {
-    if (event?.target) {
-      event.target.value = '';
-    }
   }
 }
 
-async function handleNewSponsorLogoChange(event) {
-  await handleSponsorLogoChange(event, newSponsor);
+async function handleSponsorFileUpload(event, targetSponsor) {
+  const files = Array.isArray(event?.files) ? event.files : [];
+  if (!files.length) {
+    event?.options?.clear?.();
+    return;
+  }
+  try {
+    await applySponsorLogoFile(files[0], targetSponsor);
+  } finally {
+    event?.options?.clear?.();
+  }
+}
+
+async function handleNewSponsorUpload(event) {
+  await handleSponsorFileUpload(event, newSponsor);
 }
 
 function buildEventLink(eventId) {
@@ -2447,6 +2818,18 @@ function goToLottery() {
 
 function teamOptionValue(team) {
   return `${team.name} (#${team.id})`;
+}
+
+function searchTeams(event) {
+  const query = typeof event?.query === 'string' ? event.query.toLowerCase().trim() : '';
+  const options = teams.value.map((team) => teamOptionValue(team));
+  if (!query) {
+    teamSearchResults.value = options.slice(0, 10);
+    return;
+  }
+  teamSearchResults.value = options
+    .filter((option) => option.toLowerCase().includes(query))
+    .slice(0, 10);
 }
 
 function syncTeamInputsFromIds() {
@@ -3777,17 +4160,21 @@ async function copyLink(link) {
   try {
     await navigator.clipboard.writeText(link);
     globalError.value = '';
+    toast.add({
+      severity: 'success',
+      summary: 'Link copiato',
+      detail: 'Il link è stato copiato negli appunti.',
+      life: 3000,
+    });
   } catch (error) {
     globalError.value = 'Impossibile copiare il link automaticamente.';
+    toast.add({
+      severity: 'warn',
+      summary: 'Copia non riuscita',
+      detail: 'Copia il link manualmente dalla scheda evento.',
+      life: 4000,
+    });
   }
-}
-
-function updateToolbarOffset() {
-  if (!portalRef.value) {
-    return;
-  }
-  const height = toolbarRef.value?.offsetHeight ?? 0;
-  portalRef.value.style.setProperty('--toolbar-height', `${height}px`);
 }
 
 function ensureSectionIsAllowed(tabList) {
@@ -3799,20 +4186,16 @@ function ensureSectionIsAllowed(tabList) {
   }
 }
 
-onMounted(() => {
-  window.addEventListener('resize', updateToolbarOffset, { passive: true });
-  nextTick(updateToolbarOffset);
-});
-
-watch(isAuthenticated, () => {
-  nextTick(updateToolbarOffset);
-});
+function handleSectionChange(tabId) {
+  if (availableTabs.value.some((tab) => tab.id === tabId)) {
+    section.value = tabId;
+  }
+}
 
 watch(
   availableTabs,
   (currentTabs) => {
     ensureSectionIsAllowed(currentTabs);
-    nextTick(updateToolbarOffset);
   },
   { immediate: true },
 );
@@ -3837,7 +4220,6 @@ watch(section, (value, oldValue) => {
   if (value === 'history') {
     loadEventHistory();
   }
-  nextTick(updateToolbarOffset);
 });
 
 watch(selectedResultsEventId, (eventId) => {
@@ -3867,1491 +4249,388 @@ if (isAuthenticated.value) {
 }
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateToolbarOffset);
   stopResultsPolling();
 });
 </script>
 
+
 <style scoped>
-.admin-portal {
-  margin: 0 auto;
-  max-width: 960px;
+.admin-portal-view {
+  min-height: 100vh;
+  background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.25), transparent 45%),
+    radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.2), transparent 40%),
+    linear-gradient(180deg, var(--p-surface-100), var(--p-surface-0));
   padding: 2rem 1.5rem 3rem;
-  color: #0f172a;
+  color: var(--p-surface-800);
 }
 
-.admin-header {
-  text-align: center;
-  margin-bottom: 2rem;
-  color: #f8fafc;
-}
-
-.admin-header h1 {
-  font-size: 2rem;
-  margin: 0;
-  color: #f8fafc;
-}
-
-.subtitle {
-  margin: 0.5rem 0 0;
-  color: #cbd5f5;
-}
-
-.portal {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  position: relative;
-  --toolbar-height: 0px;
-}
-
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  color: #f1f5f9;
-  top: 0;
-  z-index: 10;
-  background: rgba(15, 23, 42, 0.92);
-  border-radius: 1rem;
-  padding: 0.75rem 1rem;
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  backdrop-filter: blur(12px);
-}
-
-@media (min-width: 768px) {
-  .toolbar {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1.25rem;
-  }
-}
-
-.portal-content {
-  display: flex;
-  flex-direction: column;
-  padding-top: 1px;
-}
-
-.user-info {
+.admin-portal-view__login {
+  min-height: 100vh;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
+  justify-content: center;
+  padding: 2rem 0;
 }
 
-.section-nav {
+.admin-portal-view__login-card {
+  width: 100%;
+  max-width: 420px;
+  border-radius: 1.25rem;
+  box-shadow: 0 20px 60px -40px rgba(15, 23, 42, 0.8);
+  overflow: hidden;
+}
+
+.admin-portal-view__login-form {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin-field-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  color: var(--p-surface-700);
+}
+
+.admin-portal-view__login-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-portal-view__inline-message {
+  margin-top: 1rem;
+}
+
+.admin-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--p-primary-700);
+  letter-spacing: 0.02em;
+}
+
+.admin-brand__icon {
+  font-size: 1.25rem;
+  color: var(--p-primary-500);
+}
+
+.admin-active-event-tag {
+  margin-right: 0.5rem;
+}
+
+.admin-section-card {
   position: relative;
 }
 
-.card {
-  background: #ffffff;
-  border-radius: 1rem;
-  padding: 1.5rem;
-  box-shadow: 0 15px 35px rgba(15, 23, 42, 0.1);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+.admin-section-card :deep(.p-card) {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 1.25rem;
+  border: 1px solid var(--p-surface-200);
+  box-shadow: 0 24px 60px -40px rgba(15, 23, 42, 0.35);
+  overflow: hidden;
 }
 
-.login-card {
-  max-width: 480px;
-  margin: 0 auto;
+.admin-section-card :deep(.p-card-title) {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--p-surface-900);
 }
 
-.section-header h2 {
-  margin: 0 0 0.5rem;
-}
-
-.section-header p {
-  margin: 0;
-  color: #64748b;
-}
-
-.info-banner {
-  margin: 0 0 1rem;
-  padding: 0.85rem 1rem;
-  border-radius: 0.75rem;
-  background: rgba(59, 130, 246, 0.12);
-  color: #1d4ed8;
+.admin-section-card :deep(.p-card-subtitle) {
+  color: var(--p-text-muted-color);
   font-weight: 500;
 }
 
-.info-banner.warning {
-  background: rgba(251, 191, 36, 0.18);
-  color: #92400e;
-}
-
-.actions-row {
+.admin-section__toolbar {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 
-.actions-row .btn {
-  padding-left: 1.25rem;
-  padding-right: 1.25rem;
-}
-
-.form-grid {
+.admin-form {
   display: grid;
   gap: 1rem;
+}
+
+.admin-form--grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  margin-bottom: 1.5rem;
 }
 
-.form-inline {
-  display: flex;
-  flex-wrap: wrap;
+.admin-form--inline {
+  grid-template-columns: auto auto;
+  align-items: end;
+  gap: 1rem;
+}
+
+.admin-form--compact {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 0.75rem;
-  margin-bottom: 1.5rem;
 }
 
-.form-grid label {
+.admin-form__field {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  font-weight: 600;
-  color: #1e293b;
+  gap: 0.35rem;
 }
 
-.postvote-options {
-  margin: 1.25rem 0;
-  padding: 1.25rem 1.5rem;
-  border-radius: 1.25rem;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(248, 250, 252, 0.9);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+.admin-form__field--full {
   grid-column: 1 / -1;
 }
 
-.postvote-options.new-event-postvote {
-  margin-top: 0.5rem;
+.admin-form__field--grow {
+  flex: 1 1 auto;
 }
 
-.postvote-options__header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin-bottom: 1rem;
-  color: #1e293b;
+.admin-form__field--medium {
+  max-width: 340px;
 }
 
-.postvote-options__header span,
-.postvote-options__header strong {
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.postvote-options__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 0.75rem;
-}
-
-.postvote-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.26);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.postvote-toggle input[type='checkbox'] {
-  width: 1.25rem;
-  height: 1.25rem;
-  accent-color: #2563eb;
-  cursor: pointer;
-}
-
-.postvote-toggle__label {
-  flex: 1;
-  cursor: pointer;
-}
-
-.postvote-toggle input[type='checkbox']:disabled {
-  cursor: not-allowed;
-}
-
-.postvote-toggle input[type='checkbox']:disabled + .postvote-toggle__label {
-  opacity: 0.55;
-}
-
-.player-slots {
-  display: grid;
-  gap: 1.5rem;
-  margin-top: 1.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-}
-
-.player-slot {
-  padding: 1.25rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: rgba(248, 250, 252, 0.95);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-}
-
-.player-slot legend {
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: #0f172a;
-  margin-bottom: 1rem;
-}
-
-.player-slot__grid {
-  display: grid;
-  gap: 1rem;
-}
-
-.player-slot__grid label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.player-slot__grid input,
-.player-slot__grid select {
-  border-radius: 0.65rem;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  padding: 0.55rem 0.75rem;
-  font-size: 0.95rem;
-  background: #fff;
-}
-
-.player-slot__preview {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  align-items: flex-start;
-}
-
-.player-slot__preview img {
-  width: 100%;
-  max-width: 200px;
-  aspect-ratio: 3 / 4;
-  object-fit: cover;
-  border-radius: 0.85rem;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
-}
-
-.prize-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
-}
-
-.prize-editor__header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.prize-editor__list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.prize-editor__row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  align-items: center;
-}
-
-.prize-editor__row input {
-  flex: 1 1 220px;
-}
-
-.prize-editor__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.prize-editor__winner {
-  font-size: 0.85rem;
-  color: #0f766e;
-  font-weight: 600;
-}
-
-.prize-editor.existing-prizes {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px dashed rgba(148, 163, 184, 0.5);
-}
-
-.prize-editor__row .btn {
-  flex: 0 0 auto;
-}
-
-input,
-select {
-  border-radius: 0.75rem;
-  border: 1px solid #cbd5f5;
-  padding: 0.65rem 0.85rem;
-  font-size: 0.95rem;
-  background: #f8fafc;
-  color: #0f172a;
-}
-
-.field-hint {
-  font-size: 0.75rem;
-  color: #64748b;
-}
-
-input:focus,
-select:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  border-radius: 999px;
-  border: none;
-  padding: 0.6rem 1.4rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.btn.primary {
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-  color: #fff;
-  box-shadow: 0 12px 25px rgba(59, 130, 246, 0.35);
-}
-
-.btn.warning {
-  background: #f59e0b;
-  color: #0f172a;
-}
-
-.btn.warning:disabled {
-  opacity: 0.85;
-}
-
-.btn.secondary {
-  background: #e2e8f0;
-  color: #0f172a;
-}
-
-.btn.success {
-  background: #22c55e;
-  color: #fff;
-}
-
-.btn.success:disabled {
-  opacity: 0.8;
-  cursor: default;
-}
-
-.btn.outline {
-  background: transparent;
-  color: #2563eb;
-  border: 1px solid rgba(37, 99, 235, 0.4);
-}
-
-.btn.danger {
-  background: #f87171;
-  color: #fff;
-}
-
-.btn.link {
-  background: transparent;
-  color: #2563eb;
-  padding: 0.2rem 0.4rem;
-}
-
-.btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-  box-shadow: none;
-}
-
-.btn:not(:disabled):hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
-}
-
-.section-nav__button {
-  font-size: 0.75rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 0.55rem 1.35rem;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  background: rgba(15, 23, 42, 0.75);
-  color: #f8fafc;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease,
-    box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.section-nav__button:not(.active):hover,
-.section-nav__button:not(.active):focus-visible {
-  background: rgba(148, 163, 184, 0.3);
-  border-color: rgba(226, 232, 240, 0.65);
-  color: #ffffff;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.35);
-}
-
-.section-nav__button:focus-visible {
-  outline: 2px solid #fbbf24;
-  outline-offset: 3px;
-}
-
-.section-nav__button.active {
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-  border-color: transparent;
-  color: #ffffff;
-  box-shadow: 0 18px 36px rgba(59, 130, 246, 0.45);
-  transform: translateY(-1px);
-}
-
-.item-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.item-list.compact {
-  gap: 0.5rem;
-}
-
-.item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
-  border-radius: 0.85rem;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  background: rgba(248, 250, 252, 0.8);
-}
-
-.item.active {
-  border-color: rgba(99, 102, 241, 0.55);
-  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.2);
-}
-
-@media (min-width: 768px) {
-  .item {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-}
-
-.item-body h3 {
-  margin: 0 0 0.35rem;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.15rem 0.55rem;
-  margin-left: 0.5rem;
-  border-radius: 999px;
-  background: rgba(79, 70, 229, 0.18);
-  color: #4338ca;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.badge-open {
-  background: rgba(34, 197, 94, 0.18);
-  color: #15803d;
-}
-
-.badge-closed {
-  background: rgba(249, 115, 22, 0.2);
-  color: #9a3412;
-}
-
-.closing-card .active-event-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.closing-card .summary-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.success-message {
-  margin-top: 1rem;
-  color: #15803d;
-  font-weight: 600;
-}
-
-.item-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.muted {
-  color: #64748b;
-  margin: 0;
-}
-
-.muted.small {
-  font-size: 0.8rem;
-}
-
-.text-center {
-  text-align: center;
-}
-
-.sponsor-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-}
-
-.history-card {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.history-toolbar {
+.admin-form__actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
-}
-
-.history-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.history-item {
-  background: #f8fafc;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 1.25rem;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  box-shadow: 0 18px 28px rgba(15, 23, 42, 0.08);
-}
-
-.history-item__header {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
-}
-
-.history-item__header h3 {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-.history-item__meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.5rem;
-  font-size: 0.95rem;
-  text-align: right;
-}
-
-.history-item__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.history-item__actions .btn {
-  min-width: 0;
-}
-
-.history-item__totals {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-
-.history-item__total {
-  color: #1e293b;
-}
-
-.history-item__unique-visitors {
-  color: #334155;
-  font-size: 0.9rem;
-}
-
-.history-item__unique-visitors strong {
-  color: #1e293b;
-}
-
-.history-item__sponsor-total {
-  color: #334155;
-  font-size: 0.9rem;
-}
-
-.history-item__sponsor-total strong {
-  color: #1e293b;
-}
-
-.history-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.5rem;
-}
-
-.history-details__column {
-  flex: 1 1 220px;
-  background: #edf2f7;
-  border-radius: 1rem;
-  padding: 1rem 1.25rem;
-}
-
-.history-details__column h4 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-  color: #0f172a;
-}
-
-.history-sponsor-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.history-sponsor-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.history-sponsor-summary__grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-}
-
-.history-sponsor-summary__card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  background: #ffffff;
-  border-radius: 0.75rem;
-  padding: 0.75rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-}
-
-.history-sponsor-summary__card--wide {
   grid-column: 1 / -1;
 }
 
-.history-sponsor-summary__label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #475569;
-}
-
-.history-sponsor-summary__value {
-  font-size: 1.1rem;
-  color: #0f172a;
-}
-
-.history-sponsor-summary__hint {
-  font-size: 0.8rem;
-  color: #64748b;
-}
-
-.history-sponsor-name {
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.history-sponsor-clicks {
-  margin-left: 0.5rem;
-  color: #475569;
-  font-size: 0.9rem;
-}
-
-.history-sponsor-timeline {
-  margin-top: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.history-sponsor-timeline h5 {
-  margin: 0;
-  font-size: 0.95rem;
-  color: #0f172a;
-}
-
-.history-sponsor-timeline__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.history-sponsor-timeline__item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  background: #ffffff;
-  border-radius: 0.75rem;
-  padding: 0.75rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-}
-
-.history-sponsor-timeline__time {
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.history-sponsor-timeline__values {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  font-size: 0.85rem;
-}
-
-.history-sponsor-timeline__value {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  color: #475569;
-}
-
-.history-sponsor-timeline__value--seen {
-  color: #0284c7;
-}
-
-.history-sponsor-timeline__value--watched {
-  color: #14b8a6;
-}
-
-.history-sponsor-timeline__value--clicks {
-  color: #f97316;
-}
-
-.history-feedback-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.history-feedback-summary__total {
-  margin: 0;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.history-feedback-summary__question {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.history-feedback-summary__question h5 {
-  margin: 0;
-  font-size: 0.95rem;
-  color: #1e293b;
-}
-
-.history-feedback-summary__answers {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.history-feedback-summary__answer {
-  background: #ffffff;
-  border-radius: 0.75rem;
-  padding: 0.6rem 0.75rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-}
-
-.history-feedback-summary__answer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  font-size: 0.9rem;
-}
-
-.history-feedback-summary__answer-label {
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.history-feedback-summary__answer-count {
-  font-variant-numeric: tabular-nums;
-  color: #334155;
-}
-
-.history-feedback-summary__answer-bar {
-  height: 0.4rem;
-  border-radius: 999px;
-  background: #dbeafe;
-  overflow: hidden;
-}
-
-.history-feedback-summary__answer-bar-fill {
-  display: block;
-  height: 100%;
-  background: #0ea5e9;
-  transition: width 0.3s ease;
-}
-
-.history-feedback-summary__suggestions {
-  list-style: disc;
-  margin: 0;
-  padding-left: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  color: #334155;
-  font-size: 0.9rem;
-}
-
-.history-prize-status {
-  margin: 0 0 0.5rem;
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-.history-prize-status--success {
-  color: #166534;
-}
-
-.history-prize-status--pending {
-  color: #b45309;
-}
-
-.history-prize-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.history-prize-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.history-prize-name {
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.history-prize-code {
-  color: #475569;
-  font-size: 0.9rem;
-}
-
-.history-prize-code strong {
-  color: #0f172a;
-}
-
-.history-votes {
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
-  padding-top: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.history-votes__header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.history-votes__actions {
-  display: flex;
-}
-
-.history-votes__actions .btn.link {
-  padding-left: 0;
-}
-
-.history-votes__header h4 {
-  margin: 0;
-  font-size: 1rem;
-  color: #0f172a;
-}
-
-.history-votes__range {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #475569;
-}
-
-:deep(.history-votes__chart) {
-  margin-top: 0.5rem;
-}
-
-.history-votes-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.history-votes-list__item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-  border-radius: 0.75rem;
-  background: rgba(59, 130, 246, 0.08);
-  color: #0f172a;
-}
-
-.history-votes-list__range {
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-.history-votes-list__votes {
-  font-size: 0.9rem;
-  color: #1d4ed8;
-  font-weight: 600;
-}
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  z-index: 20;
-}
-
-.modal-card {
-  background: #f8fafc;
-  border-radius: 1rem;
-  padding: 2rem;
-  max-width: 420px;
-  width: 100%;
-  box-shadow: 0 32px 48px rgba(15, 23, 42, 0.35);
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.modal-card h3 {
-  margin: 0;
-  font-size: 1.25rem;
-  color: #b91c1c;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-
-@media (max-width: 720px) {
-  .history-item {
-    padding: 1.25rem;
-  }
-
-  .history-votes-list__item {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .modal-card {
-    padding: 1.5rem;
-  }
-}
-
-.sponsor-range {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.sponsor-range input[type='range'] {
-  accent-color: #2563eb;
-}
-
-.sponsor-form {
-  align-items: flex-end;
-}
-
-.sponsor-preview {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.85rem;
-  border: 1px dashed rgba(148, 163, 184, 0.6);
-  background: rgba(241, 245, 249, 0.6);
-  overflow: hidden;
-  min-height: 120px;
-}
-
-.sponsor-preview.new {
-  min-height: 100px;
-}
-
-.sponsor-preview img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-.empty-logo {
-  font-size: 0.85rem;
-  color: #94a3b8;
-}
-
-.sponsors-list {
-  margin-top: 1.5rem;
-}
-
-.sponsor-item {
-  gap: 1.25rem;
-}
-
-.sponsor-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-@media (min-width: 768px) {
-  .sponsor-body {
-    flex-direction: row;
-    align-items: center;
-  }
-
-  .sponsor-preview {
-    flex: 0 0 220px;
-    min-height: 140px;
-  }
-}
-
-.sponsor-fields {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.form-grid.compact {
+.admin-toggle-grid {
+  display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  margin-bottom: 0.75rem;
+  gap: 1rem;
 }
 
-.sponsor-meta {
-  font-size: 0.85rem;
-}
-
-.item-actions.vertical {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.error {
-  color: #dc2626;
-  margin-top: 0.75rem;
-}
-
-.hint {
-  margin: 1rem 0 0;
-  padding: 1rem;
-  border-radius: 0.75rem;
-  background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+.admin-toggle {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  background: var(--p-surface-100);
+  border: 1px solid var(--p-surface-200);
+}
+
+.admin-toggle__label {
+  font-weight: 600;
+  color: var(--p-surface-700);
+}
+
+.admin-prize-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-prize-grid__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: 0.75rem;
   align-items: center;
 }
 
-.results-card {
+.admin-prize-grid__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.admin-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+}
+
+.admin-inline-link a {
+  color: var(--p-primary-500);
+  text-decoration: none;
+}
+
+.admin-events__list {
+  margin-top: 2rem;
+}
+
+.admin-event-card :deep(.p-card-content) {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
 }
 
-.results-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  align-items: flex-end;
-}
-
-.results-controls label {
-  display: flex;
-  flex-direction: column;
+.admin-event-card__title {
+  display: inline-flex;
+  align-items: center;
   gap: 0.5rem;
-  font-weight: 600;
-  color: #1e293b;
 }
 
-.results-summary h3 {
-  margin: 0;
-  font-size: 1.25rem;
+.admin-event-card__tag {
+  font-size: 0.75rem;
 }
 
-.results-summary .muted {
-  margin: 0.25rem 0 0;
+.admin-event-card__subtitle {
+  color: var(--p-text-muted-color);
+  font-weight: 500;
 }
 
-.results-leaderboard {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.results-meta {
+.admin-event-card__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
-  font-size: 0.95rem;
-  color: #475569;
-}
-
-.results-meta .auto-refresh {
-  font-size: 0.85rem;
-  color: #64748b;
-}
-
-.leaderboard-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
   gap: 0.75rem;
 }
 
-.leaderboard-item {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr) 120px;
-  gap: 1rem;
-  align-items: center;
-  padding: 0.85rem 1rem;
-  border-radius: 1rem;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 64, 175, 0.9));
-  color: #f8fafc;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.3);
+.admin-event-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--p-text-muted-color);
 }
 
-.leaderboard-item .rank {
-  font-size: 1.5rem;
-  font-weight: 700;
+.admin-event-card__postvote,
+.admin-event-card__prizes {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-status-card {
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(30, 64, 175, 0.05));
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin-status-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.admin-status-card__title {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.admin-status-card__subtitle {
+  color: var(--p-text-muted-color);
+}
+
+.admin-status-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.admin-results__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.admin-results__dropdown {
+  min-width: 260px;
+}
+
+.admin-results__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-results__content {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.admin-results__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  color: var(--p-text-muted-color);
+  font-weight: 600;
+}
+
+.admin-results__auto {
+  font-style: italic;
+  color: var(--p-primary-500);
+}
+
+.admin-results__votes {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.admin-sponsor-analytics {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.admin-sponsor-analytics__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.admin-sponsor-analytics__stat :deep(.p-card-content) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   text-align: center;
 }
 
-.leaderboard-item .player-name {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-}
-
-.leaderboard-item .player-name .lastname {
-  font-size: 1.2rem;
-  letter-spacing: 0.08em;
-}
-
-.leaderboard-item .player-name .firstname {
-  font-size: 0.95rem;
-  text-transform: capitalize;
-  opacity: 0.9;
-}
-
-.leaderboard-item .votes {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  font-size: 1rem;
-  justify-content: flex-end;
-}
-
-.leaderboard-item .votes strong {
-  font-size: 1.4rem;
-}
-
-.leaderboard-item .progress {
-  grid-column: 1 / -1;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.35);
-  overflow: hidden;
-}
-
-.leaderboard-item .progress-bar {
-  height: 100%;
-  background: linear-gradient(135deg, #facc15, #f97316);
-  border-radius: inherit;
-  transition: width 0.4s ease;
-}
-
-.sponsor-analytics {
-  margin-top: 1.5rem;
-  padding: 1.5rem;
-  border-radius: 1.5rem;
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 64, 175, 0.75));
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  color: #e2e8f0;
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.35);
-}
-
-.sponsor-analytics h3 {
-  margin: 0 0 1rem;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #f8fafc;
-}
-
-.sponsor-analytics__content {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.sponsor-analytics__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1rem;
-}
-
-.sponsor-analytics__card {
-  padding: 1rem 1.25rem;
-  border-radius: 1rem;
-  background: rgba(15, 23, 42, 0.65);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.sponsor-analytics__card--wide {
-  grid-column: span 2;
-}
-
-.sponsor-analytics__label {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(226, 232, 240, 0.75);
-}
-
-.sponsor-analytics__value {
-  font-size: 1.4rem;
+.admin-sponsor-analytics__value {
+  font-size: 1.35rem;
   font-weight: 700;
-  color: #facc15;
 }
 
-.sponsor-analytics__hint {
-  font-size: 0.8rem;
-  color: rgba(226, 232, 240, 0.8);
+.admin-sponsor-analytics__hint {
+  color: var(--p-text-muted-color);
 }
 
-.sponsor-analytics__chart h4 {
-  margin: 0 0 0.75rem;
-  font-size: 1rem;
+.admin-sponsor-analytics__chart h4 {
+  margin-bottom: 1rem;
+}
+
+.admin-loader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   font-weight: 600;
+  color: var(--p-text-muted-color);
 }
 
-.sponsor-chart {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.sponsor-chart__row {
+.admin-selfie-grid {
   display: grid;
-  grid-template-columns: minmax(140px, 200px) 1fr minmax(160px, 200px);
-  gap: 1rem;
-  align-items: center;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
 }
 
-.sponsor-chart__label {
-  font-size: 0.85rem;
-  color: rgba(226, 232, 240, 0.8);
-}
-
-.sponsor-chart__bars {
-  display: flex;
-  gap: 0.5rem;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.2);
+.admin-selfie-card :deep(.p-card)
+{
+  border-radius: 1.25rem;
+  border: 1px solid var(--p-surface-200);
   overflow: hidden;
 }
 
-.sponsor-chart__bar {
-  height: 100%;
-  border-radius: 999px;
-  transition: width 0.3s ease;
-}
-
-.sponsor-chart__bar--seen {
-  background: linear-gradient(135deg, #38bdf8, #22d3ee);
-}
-
-.sponsor-chart__bar--clicks {
-  background: linear-gradient(135deg, #f97316, #fb7185);
-}
-
-.sponsor-chart__values {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  font-size: 0.85rem;
-  color: rgba(226, 232, 240, 0.85);
-}
-
-@media (max-width: 768px) {
-  .sponsor-analytics__grid {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  }
-
-  .sponsor-analytics__card--wide {
-    grid-column: span 1;
-  }
-
-  .sponsor-chart__row {
-    grid-template-columns: 1fr;
-    gap: 0.5rem;
-  }
-
-  .sponsor-chart__values {
-    justify-content: flex-start;
-  }
-}
-
-@media (max-width: 640px) {
-  .leaderboard-item {
-    grid-template-columns: 56px minmax(0, 1fr);
-  }
-
-  .leaderboard-item .votes {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-  }
-}
-
-.selfie-admin-loader {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1.5rem 0;
-  color: #475569;
-}
-
-.selfie-admin-loader .spinner {
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 999px;
-  border: 2px solid rgba(148, 163, 184, 0.35);
-  border-top-color: rgba(59, 130, 246, 0.9);
-  animation: admin-selfie-spin 0.8s linear infinite;
-}
-
-@keyframes admin-selfie-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.selfie-admin-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1.5rem;
-  margin-top: 1.5rem;
-}
-
-.selfie-admin-card {
-  display: flex;
-  flex-direction: column;
-  border-radius: 1.5rem;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 18px 30px rgba(15, 23, 42, 0.12);
-}
-
-.selfie-admin-thumb {
+.admin-selfie-card__thumb {
   position: relative;
-  width: 100%;
-  padding-top: 65%;
-  background: #0f172a;
-  overflow: hidden;
+  padding-top: 60%;
+  background: var(--p-surface-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.selfie-admin-thumb img {
+.admin-selfie-card__thumb img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -5359,50 +4638,189 @@ select:focus {
   object-fit: cover;
 }
 
-.selfie-admin-thumb--empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.9rem;
-  color: #64748b;
-  background: rgba(226, 232, 240, 0.4);
+.admin-selfie-card__thumb--empty {
+  color: var(--p-text-muted-color);
+  font-weight: 600;
 }
 
-.selfie-admin-body {
+.admin-history {
+  margin-top: 1.5rem;
+  border-radius: 1.25rem;
+  overflow: hidden;
+}
+
+.admin-history__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  width: 100%;
+}
+
+.admin-history__header h3 {
+  margin: 0;
+}
+
+.admin-history__header span {
+  color: var(--p-text-muted-color);
+}
+
+.admin-history__chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.admin-history__content {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
-  padding: 1rem 1.25rem 1.25rem;
+  gap: 1.5rem;
+  padding-top: 1.25rem;
 }
 
-.selfie-admin-caption {
-  margin: 0;
-  font-size: 1rem;
+.admin-history__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.admin-history__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.admin-history__panel :deep(.p-card) {
+  border-radius: 1.25rem;
+  border: 1px solid var(--p-surface-200);
+}
+
+.admin-history__stats {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-history__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-history__stat-label {
   font-weight: 600;
-  color: #0f172a;
+  color: var(--p-text-muted-color);
 }
 
-.selfie-admin-meta {
-  margin: 0;
-  font-size: 0.85rem;
-  color: #64748b;
+.admin-history__stat-value {
+  font-size: 1.1rem;
 }
 
-.selfie-admin-status {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #1f2937;
+.admin-history__stat-hint {
+  color: var(--p-text-muted-color);
 }
 
-.selfie-admin-actions {
+.admin-history__question {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.admin-history__votes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-simple-table :deep(.p-datatable) {
+  border-radius: 1.25rem;
+  overflow: hidden;
+}
+
+.admin-table-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-player-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.admin-player-card :deep(.p-card) {
+  border-radius: 1.25rem;
+  border: 1px solid var(--p-surface-200);
+}
+
+.admin-player-card__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.admin-player-card__preview img {
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 0.75rem;
+  border: 1px solid var(--p-surface-200);
+}
+
+.admin-player-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
 }
 
-.selfie-admin-actions .btn {
-  flex: 1 1 auto;
-  min-width: 160px;
+.admin-sponsor-grid :deep(.p-dataview-grid .p-dataview-content) {
+  padding: 0;
+}
+
+.admin-sponsor-card :deep(.p-card) {
+  border-radius: 1.25rem;
+  border: 1px solid var(--p-surface-200);
+}
+
+.admin-sponsor-card__title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.admin-sponsor-card__actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.admin-dialog__lead {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--p-surface-800);
+}
+
+.admin-text-muted {
+  color: var(--p-text-muted-color);
+}
+
+@media (max-width: 768px) {
+  .admin-portal-view {
+    padding: 1.5rem 1rem 2.5rem;
+  }
+  .admin-section__toolbar,
+  .admin-player-actions {
+    justify-content: center;
+  }
+  .admin-results__controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

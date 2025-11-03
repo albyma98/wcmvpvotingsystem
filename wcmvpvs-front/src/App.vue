@@ -28,7 +28,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import AdminPortal from './components/AdminPortal.vue';
+import AdminPortal from './views/admin/AdminPortalView.vue';
 import AdminLottery from './components/AdminLottery.vue';
 import TicketValidationView from './components/TicketValidationView.vue';
 import CashLanding from './components/CashLanding.vue';
