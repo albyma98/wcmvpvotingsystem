@@ -6,7 +6,8 @@
       <Card class="admin-portal-view__login-card">
         <template #title>Area amministratore</template>
         <template #subtitle>Gestisci eventi, squadre e votazioni MVP</template>
-        <form class="admin-portal-view__login-form" @submit.prevent="login">
+        <template #content>
+          <form class="admin-portal-view__login-form" @submit.prevent="login">
           <div class="p-fluid p-formgrid p-grid">
             <div class="p-col-12">
               <label class="admin-field-label" for="admin-login-username">Username</label>
@@ -46,7 +47,8 @@
           >
             {{ loginError }}
           </Message>
-        </form>
+          </form>
+        </template>
       </Card>
     </div>
 
@@ -93,7 +95,8 @@
           <template #title>Eventi</template>
           <template #subtitle>Crea partite e gestisci gli eventi attivi.</template>
 
-          <div class="admin-section__toolbar">
+          <template #content>
+            <div class="admin-section__toolbar">
             <Button
               label="Disattiva eventi"
               icon="pi pi-power-off"
@@ -102,9 +105,9 @@
               :disabled="!activeEventId || isDisablingEvents"
               @click="deactivateEvents"
             />
-          </div>
+            </div>
 
-          <Message
+            <Message
             v-if="!hasEnoughTeams"
             severity="warn"
             icon="pi pi-users"
@@ -114,7 +117,7 @@
             Aggiungi almeno due squadre nella sezione "Squadre" per creare un evento.
           </Message>
 
-          <form class="admin-form admin-form--grid" @submit.prevent="createEvent">
+            <form class="admin-form admin-form--grid" @submit.prevent="createEvent">
             <div class="admin-form__field">
               <label class="admin-field-label" for="event-home-team">Squadra di casa</label>
               <AutoComplete
@@ -222,9 +225,9 @@
                 :disabled="!hasEnoughTeams"
               />
             </div>
-          </form>
+            </form>
 
-          <Message
+            <Message
             v-if="lastCreatedEventLink"
             severity="success"
             class="admin-portal-view__inline-message"
@@ -246,9 +249,9 @@
             </span>
           </Message>
 
-          <Divider />
+            <Divider />
 
-          <DataView
+            <DataView
             :value="visibleEvents"
             data-key="id"
             layout="list"
@@ -282,7 +285,8 @@
                       {{ formatEventDate(event.start_datetime) }} • {{ event.location || 'Location da definire' }}
                     </span>
                   </template>
-                  <div class="admin-event-card__body">
+                  <template #content>
+                    <div class="admin-event-card__body">
                     <div class="admin-event-card__info">
                       <span class="admin-event-card__link">
                         Link voto:
@@ -418,10 +422,12 @@
                       </Message>
                     </div>
                   </div>
+                  </template>
                 </Card>
               </div>
             </template>
-          </DataView>
+            </DataView>
+          </template>
         </Card>
 
         <!-- Closing Section -->
@@ -429,64 +435,66 @@
           <template #title>Chiusura votazioni</template>
           <template #subtitle>Controlla lo stato delle votazioni per l'evento attivo.</template>
 
-          <div v-if="activeEventEntry" class="admin-status-card">
-            <div class="admin-status-card__header">
-              <div>
-                <h3 class="admin-status-card__title">{{ activeEventLabel }}</h3>
-                <span class="admin-status-card__subtitle">
-                  {{ activeEventDateLabel }} • {{ activeEventLocation }}
-                </span>
+          <template #content>
+            <div v-if="activeEventEntry" class="admin-status-card">
+              <div class="admin-status-card__header">
+                <div>
+                  <h3 class="admin-status-card__title">{{ activeEventLabel }}</h3>
+                  <span class="admin-status-card__subtitle">
+                    {{ activeEventDateLabel }} • {{ activeEventLocation }}
+                  </span>
+                </div>
+                <Tag
+                  :value="activeEventVotesClosed ? 'Votazioni chiuse' : 'Votazioni aperte'"
+                  :severity="activeEventVotesClosed ? 'warning' : 'success'"
+                  icon="pi pi-clock"
+                />
               </div>
-              <Tag
-                :value="activeEventVotesClosed ? 'Votazioni chiuse' : 'Votazioni aperte'"
-                :severity="activeEventVotesClosed ? 'warning' : 'success'"
-                icon="pi pi-clock"
-              />
-            </div>
-            <div class="admin-status-card__actions">
-              <Button
-                label="Chiudi votazioni"
-                icon="pi pi-lock"
-                severity="warning"
-                :loading="isClosingVotes"
-                :disabled="isClosingVotes || activeEventVotesClosed"
-                @click="closeActiveEventVoting"
-              />
-              <Button
-                label="Riattiva"
-                icon="pi pi-refresh"
+              <div class="admin-status-card__actions">
+                <Button
+                  label="Chiudi votazioni"
+                  icon="pi pi-lock"
+                  severity="warning"
+                  :loading="isClosingVotes"
+                  :disabled="isClosingVotes || activeEventVotesClosed"
+                  @click="closeActiveEventVoting"
+                />
+                <Button
+                  label="Riattiva"
+                  icon="pi pi-refresh"
+                  severity="success"
+                  :disabled="!activeEventEntry || updatingEventId === activeEventEntry.id || !activeEventVotesClosed"
+                  :loading="updatingEventId === activeEventEntry.id"
+                  @click="activateEvent(activeEventEntry.id)"
+                />
+                <Button
+                  label="Disattiva"
+                  icon="pi pi-power-off"
+                  severity="secondary"
+                  outlined
+                  :loading="isDisablingEvents"
+                  @click="deactivateEvents"
+                />
+              </div>
+              <Message
+                v-if="closeVotesMessage"
                 severity="success"
-                :disabled="!activeEventEntry || updatingEventId === activeEventEntry.id || !activeEventVotesClosed"
-                :loading="updatingEventId === activeEventEntry.id"
-                @click="activateEvent(activeEventEntry.id)"
-              />
-              <Button
-                label="Disattiva"
-                icon="pi pi-power-off"
-                severity="secondary"
-                outlined
-                :loading="isDisablingEvents"
-                @click="deactivateEvents"
-              />
+                :closable="false"
+                class="admin-portal-view__inline-message"
+              >
+                {{ closeVotesMessage }}
+              </Message>
             </div>
             <Message
-              v-if="closeVotesMessage"
-              severity="success"
+              v-else
+              severity="info"
+              icon="pi pi-info-circle"
               :closable="false"
               class="admin-portal-view__inline-message"
             >
-              {{ closeVotesMessage }}
+              Nessun evento attivo al momento. Attiva una partita dalla sezione "Eventi" per gestire le votazioni.
             </Message>
-          </div>
-          <Message
-            v-else
-            severity="info"
-            icon="pi pi-info-circle"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            Nessun evento attivo al momento. Attiva una partita dalla sezione "Eventi" per gestire le votazioni.
-          </Message>
+          </template>
         </Card>
 
         <!-- Results Section -->
@@ -494,142 +502,144 @@
           <template #title>Risultati votazioni</template>
           <template #subtitle>Monitora la classifica MVP e i dati sponsor in tempo reale.</template>
 
-          <div class="admin-results__controls">
-            <Dropdown
-              v-model="selectedResultsEventId"
-              :options="resultsEventOptions"
-              option-label="label"
-              option-value="value"
-              placeholder="Seleziona un evento"
-              :disabled="!resultsEventOptions.length"
-              class="admin-results__dropdown"
-            />
-            <Button
-              label="Aggiorna"
-              icon="pi pi-refresh"
-              severity="secondary"
-              :loading="isLoadingResults"
-              :disabled="isLoadingResults || !selectedResultsEventId"
-              @click="fetchEventResults({ showLoader: true })"
-            />
-          </div>
-
-          <div v-if="selectedResultsEvent" class="admin-results__summary">
-            <h3>{{ selectedResultsEventLabel }}</h3>
-            <span>{{ selectedResultsEventDate || 'Data da definire' }}</span>
-          </div>
-
-          <Message
-            v-if="resultsError"
-            severity="error"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            {{ resultsError }}
-          </Message>
-
-          <Message
-            v-else-if="!availableEvents.length"
-            severity="info"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            Crea un evento per visualizzare i risultati delle votazioni MVP.
-          </Message>
-
-          <div v-else class="admin-results__content">
-            <div class="admin-results__meta">
-              <span><strong>Voti totali:</strong> {{ totalVotes }}</span>
-              <span v-if="lastResultsUpdateLabel">
-                <strong>Ultimo aggiornamento:</strong> {{ lastResultsUpdateLabel }}
-              </span>
-              <span class="admin-results__auto">Aggiornamento automatico ogni 5 secondi</span>
+          <template #content>
+            <div class="admin-results__controls">
+              <Dropdown
+                v-model="selectedResultsEventId"
+                :options="resultsEventOptions"
+                option-label="label"
+                option-value="value"
+                placeholder="Seleziona un evento"
+                :disabled="!resultsEventOptions.length"
+                class="admin-results__dropdown"
+              />
+              <Button
+                label="Aggiorna"
+                icon="pi pi-refresh"
+                severity="secondary"
+                :loading="isLoadingResults"
+                :disabled="isLoadingResults || !selectedResultsEventId"
+                @click="fetchEventResults({ showLoader: true })"
+              />
             </div>
-            <DataTable
-              :value="resultsLeaderboard"
-              data-key="id"
-              scrollable
-              scroll-height="400px"
-              class="admin-results__table"
-              striped-rows
-            >
-              <Column header="#" body-class="admin-results__rank" :body="rankTemplate" />
-              <Column field="lastNameUpper" header="Cognome" />
-              <Column field="firstName" header="Nome" />
-              <Column field="votes" header="Voti">
-                <template #body="{ data }">
-                  <div class="admin-results__votes">
-                    <strong>{{ data.votes }}</strong>
-                    <span>{{ data.votes === 1 ? 'voto' : 'voti' }}</span>
-                  </div>
-                </template>
-              </Column>
-              <Column header="%">
-                <template #body="{ data }">
-                  <ProgressBar :value="data.percentage" show-value />
-                </template>
-              </Column>
-            </DataTable>
 
-            <Panel header="Analisi sponsor" toggleable>
-              <Message
-                v-if="sponsorAnalyticsError"
-                severity="error"
-                :closable="false"
-                class="admin-portal-view__inline-message"
-              >
-                {{ sponsorAnalyticsError }}
-              </Message>
-              <Message
-                v-else-if="isLoadingSponsorAnalytics"
-                severity="info"
-                icon="pi pi-spin pi-spinner"
-                :closable="false"
-                class="admin-portal-view__inline-message"
-              >
-                Caricamento dati sponsor…
-              </Message>
-              <Message
-                v-else-if="!hasSponsorAnalyticsData"
-                severity="warn"
-                :closable="false"
-                class="admin-portal-view__inline-message"
-              >
-                Nessun dato sponsor disponibile per questo evento.
-              </Message>
-              <div v-else class="admin-sponsor-analytics">
-                <div class="admin-sponsor-analytics__grid">
-                  <Card class="admin-sponsor-analytics__stat" v-for="card in sponsorAnalyticsCards" :key="card.label">
-                    <template #title>{{ card.label }}</template>
-                    <template #content>
-                      <div class="admin-sponsor-analytics__value">{{ card.value }}</div>
-                      <small v-if="card.hint" class="admin-sponsor-analytics__hint">{{ card.hint }}</small>
-                    </template>
-                  </Card>
-                </div>
-                <div v-if="sponsorChartRows.length" class="admin-sponsor-analytics__chart">
-                  <h4>Andamento visualizzazioni e click</h4>
-                  <DataTable :value="sponsorChartRows" scrollable scroll-height="260px">
-                    <Column field="label" header="Intervallo" />
-                    <Column header="Viste">
-                      <template #body="{ data }">
-                        <ProgressBar :value="data.seenPercent" show-value>
-                          {{ data.seen.toLocaleString('it-IT') }} viste
-                        </ProgressBar>
-                      </template>
-                    </Column>
-                    <Column header="Click">
-                      <template #body="{ data }">
-                        <ProgressBar :value="data.clicksPercent" show-value severity="info">
-                          {{ data.clicks.toLocaleString('it-IT') }} click
-                        </ProgressBar>
-                      </template>
-                    </Column>
-                  </DataTable>
-                </div>
+            <div v-if="selectedResultsEvent" class="admin-results__summary">
+              <h3>{{ selectedResultsEventLabel }}</h3>
+              <span>{{ selectedResultsEventDate || 'Data da definire' }}</span>
+            </div>
+
+            <Message
+              v-if="resultsError"
+              severity="error"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              {{ resultsError }}
+            </Message>
+
+            <Message
+              v-else-if="!availableEvents.length"
+              severity="info"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              Crea un evento per visualizzare i risultati delle votazioni MVP.
+            </Message>
+
+            <div v-else class="admin-results__content">
+              <div class="admin-results__meta">
+                <span><strong>Voti totali:</strong> {{ totalVotes }}</span>
+                <span v-if="lastResultsUpdateLabel">
+                  <strong>Ultimo aggiornamento:</strong> {{ lastResultsUpdateLabel }}
+                </span>
+                <span class="admin-results__auto">Aggiornamento automatico ogni 5 secondi</span>
               </div>
-            </Panel>
-          </div>
+              <DataTable
+                :value="resultsLeaderboard"
+                data-key="id"
+                scrollable
+                scroll-height="400px"
+                class="admin-results__table"
+                striped-rows
+              >
+                <Column header="#" body-class="admin-results__rank" :body="rankTemplate" />
+                <Column field="lastNameUpper" header="Cognome" />
+                <Column field="firstName" header="Nome" />
+                <Column field="votes" header="Voti">
+                  <template #body="{ data }">
+                    <div class="admin-results__votes">
+                      <strong>{{ data.votes }}</strong>
+                      <span>{{ data.votes === 1 ? 'voto' : 'voti' }}</span>
+                    </div>
+                  </template>
+                </Column>
+                <Column header="%">
+                  <template #body="{ data }">
+                    <ProgressBar :value="data.percentage" show-value />
+                  </template>
+                </Column>
+              </DataTable>
+
+              <Panel header="Analisi sponsor" toggleable>
+                <Message
+                  v-if="sponsorAnalyticsError"
+                  severity="error"
+                  :closable="false"
+                  class="admin-portal-view__inline-message"
+                >
+                  {{ sponsorAnalyticsError }}
+                </Message>
+                <Message
+                  v-else-if="isLoadingSponsorAnalytics"
+                  severity="info"
+                  icon="pi pi-spin pi-spinner"
+                  :closable="false"
+                  class="admin-portal-view__inline-message"
+                >
+                  Caricamento dati sponsor…
+                </Message>
+                <Message
+                  v-else-if="!hasSponsorAnalyticsData"
+                  severity="warn"
+                  :closable="false"
+                  class="admin-portal-view__inline-message"
+                >
+                  Nessun dato sponsor disponibile per questo evento.
+                </Message>
+                <div v-else class="admin-sponsor-analytics">
+                  <div class="admin-sponsor-analytics__grid">
+                    <Card class="admin-sponsor-analytics__stat" v-for="card in sponsorAnalyticsCards" :key="card.label">
+                      <template #title>{{ card.label }}</template>
+                      <template #content>
+                        <div class="admin-sponsor-analytics__value">{{ card.value }}</div>
+                        <small v-if="card.hint" class="admin-sponsor-analytics__hint">{{ card.hint }}</small>
+                      </template>
+                    </Card>
+                  </div>
+                  <div v-if="sponsorChartRows.length" class="admin-sponsor-analytics__chart">
+                    <h4>Andamento visualizzazioni e click</h4>
+                    <DataTable :value="sponsorChartRows" scrollable scroll-height="260px">
+                      <Column field="label" header="Intervallo" />
+                      <Column header="Viste">
+                        <template #body="{ data }">
+                          <ProgressBar :value="data.seenPercent" show-value>
+                            {{ data.seen.toLocaleString('it-IT') }} viste
+                          </ProgressBar>
+                        </template>
+                      </Column>
+                      <Column header="Click">
+                        <template #body="{ data }">
+                          <ProgressBar :value="data.clicksPercent" show-value severity="info">
+                            {{ data.clicks.toLocaleString('it-IT') }} click
+                          </ProgressBar>
+                        </template>
+                      </Column>
+                    </DataTable>
+                  </div>
+                </div>
+              </Panel>
+            </div>
+          </template>
         </Card>
 
         <!-- Selfies Section -->
@@ -637,140 +647,142 @@
           <template #title>Selfie MVP</template>
           <template #subtitle>Modera i selfie inviati dai tifosi.</template>
 
-          <div class="admin-form admin-form--compact">
-            <div class="admin-form__field admin-form__field--medium">
-              <label class="admin-field-label" for="selfie-event-select">Evento</label>
-              <Dropdown
-                id="selfie-event-select"
-                v-model="selectedSelfieEventId"
-                :options="eventDropdownOptions"
-                option-label="label"
-                option-value="value"
-                placeholder="Seleziona evento"
-                :disabled="!eventDropdownOptions.length"
-              />
-            </div>
-          </div>
-
-          <Message
-            v-if="selfieModerationMessage"
-            severity="success"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            {{ selfieModerationMessage }}
-          </Message>
-          <Message
-            v-if="selfieLoadError"
-            severity="error"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            {{ selfieLoadError }}
-          </Message>
-
-          <div v-if="isLoadingSelfies" class="admin-loader" role="status" aria-live="polite">
-            <i class="pi pi-spin pi-spinner" aria-hidden="true" />
-            <span>Caricamento selfie…</span>
-          </div>
-          <Message
-            v-else-if="!availableEvents.length"
-            severity="info"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            Crea un evento per raccogliere selfie dal pubblico.
-          </Message>
-          <Message
-            v-else-if="!eventSelfies.length"
-            severity="warn"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            Nessun selfie ricevuto per questo evento al momento.
-          </Message>
-          <div v-else class="admin-selfie-grid">
-            <Card v-for="selfie in eventSelfies" :key="selfie.id" class="admin-selfie-card">
-              <template #header>
-                <div class="admin-selfie-card__thumb" :class="{ 'admin-selfie-card__thumb--empty': !selfie.image_src }">
-                  <img v-if="selfie.image_src" :src="selfie.image_src" :alt="`Selfie ${selfie.id}`" />
-                  <span v-else>Immagine non disponibile</span>
-                </div>
-              </template>
-              <template #title>{{ selfie.caption || 'Senza didascalia' }}</template>
-              <template #subtitle>
-                Inviato: {{ formatSelfieDate(selfie.submitted_at) || 'N/D' }} • Device: {{ selfie.device_token || 'N/D' }}
-              </template>
-              <template #content>
-                <p>Dimensione: {{ formatSelfieFileSize(selfie.file_size_bytes) || 'N/D' }}</p>
-                <Tag :value="selfieStatusLabel(selfie)" severity="secondary" icon="pi pi-user" />
-              </template>
-              <template #footer>
-                <Button
-                  label="Elimina"
-                  icon="pi pi-trash"
-                  severity="danger"
-                  outlined
-                  :loading="isSelfieBusy(selfie.id)"
-                  @click="deleteSelfie(selfie)"
+          <template #content>
+            <div class="admin-form admin-form--compact">
+              <div class="admin-form__field admin-form__field--medium">
+                <label class="admin-field-label" for="selfie-event-select">Evento</label>
+                <Dropdown
+                  id="selfie-event-select"
+                  v-model="selectedSelfieEventId"
+                  :options="eventDropdownOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="Seleziona evento"
+                  :disabled="!eventDropdownOptions.length"
                 />
-              </template>
-            </Card>
-          </div>
+              </div>
+            </div>
+
+            <Message
+              v-if="selfieModerationMessage"
+              severity="success"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              {{ selfieModerationMessage }}
+            </Message>
+            <Message
+              v-if="selfieLoadError"
+              severity="error"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              {{ selfieLoadError }}
+            </Message>
+
+            <div v-if="isLoadingSelfies" class="admin-loader" role="status" aria-live="polite">
+              <i class="pi pi-spin pi-spinner" aria-hidden="true" />
+              <span>Caricamento selfie…</span>
+            </div>
+            <Message
+              v-else-if="!availableEvents.length"
+              severity="info"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              Crea un evento per raccogliere selfie dal pubblico.
+            </Message>
+            <Message
+              v-else-if="!eventSelfies.length"
+              severity="warn"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              Nessun selfie ricevuto per questo evento al momento.
+            </Message>
+            <div v-else class="admin-selfie-grid">
+              <Card v-for="selfie in eventSelfies" :key="selfie.id" class="admin-selfie-card">
+                <template #header>
+                  <div class="admin-selfie-card__thumb" :class="{ 'admin-selfie-card__thumb--empty': !selfie.image_src }">
+                    <img v-if="selfie.image_src" :src="selfie.image_src" :alt="`Selfie ${selfie.id}`" />
+                    <span v-else>Immagine non disponibile</span>
+                  </div>
+                </template>
+                <template #title>{{ selfie.caption || 'Senza didascalia' }}</template>
+                <template #subtitle>
+                  Inviato: {{ formatSelfieDate(selfie.submitted_at) || 'N/D' }} • Device: {{ selfie.device_token || 'N/D' }}
+                </template>
+                <template #content>
+                  <p>Dimensione: {{ formatSelfieFileSize(selfie.file_size_bytes) || 'N/D' }}</p>
+                  <Tag :value="selfieStatusLabel(selfie)" severity="secondary" icon="pi pi-user" />
+                </template>
+                <template #footer>
+                  <Button
+                    label="Elimina"
+                    icon="pi pi-trash"
+                    severity="danger"
+                    outlined
+                    :loading="isSelfieBusy(selfie.id)"
+                    @click="deleteSelfie(selfie)"
+                  />
+                </template>
+              </Card>
+            </div>
+          </template>
         </Card>
 
         <!-- History Section -->
         <Card v-else-if="section === 'history'" class="admin-section-card">
           <template #title>Storico eventi</template>
           <template #subtitle>Analizza prestazioni, voti e interazioni passate.</template>
+          <template #content>
+            <div class="admin-section__toolbar">
+              <Button
+                label="Aggiorna"
+                icon="pi pi-refresh"
+                severity="secondary"
+                :loading="isLoadingEventHistory"
+                :disabled="isLoadingEventHistory"
+                @click="refreshEventHistory"
+              />
+            </div>
 
-          <div class="admin-section__toolbar">
-            <Button
-              label="Aggiorna"
-              icon="pi pi-refresh"
-              severity="secondary"
-              :loading="isLoadingEventHistory"
-              :disabled="isLoadingEventHistory"
-              @click="refreshEventHistory"
-            />
-          </div>
+            <Message
+              v-if="eventHistorySuccess"
+              severity="success"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              {{ eventHistorySuccess }}
+            </Message>
+            <Message
+              v-if="eventHistoryError"
+              severity="error"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              {{ eventHistoryError }}
+            </Message>
+            <Message
+              v-else-if="isLoadingEventHistory"
+              severity="info"
+              icon="pi pi-spin pi-spinner"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              Caricamento storico in corso…
+            </Message>
+            <Message
+              v-else-if="!eventHistory.length"
+              severity="warn"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              Non sono presenti eventi conclusi al momento.
+            </Message>
 
-          <Message
-            v-if="eventHistorySuccess"
-            severity="success"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            {{ eventHistorySuccess }}
-          </Message>
-          <Message
-            v-if="eventHistoryError"
-            severity="error"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            {{ eventHistoryError }}
-          </Message>
-          <Message
-            v-else-if="isLoadingEventHistory"
-            severity="info"
-            icon="pi pi-spin pi-spinner"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            Caricamento storico in corso…
-          </Message>
-          <Message
-            v-else-if="!eventHistory.length"
-            severity="warn"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            Non sono presenti eventi conclusi al momento.
-          </Message>
-
-          <Accordion v-else multiple class="admin-history">
-            <AccordionPanel v-for="entry in eventHistory" :key="entry.id">
+            <Accordion v-else multiple class="admin-history">
+              <AccordionPanel v-for="entry in eventHistory" :key="entry.id">
               <template #header>
                 <div class="admin-history__header">
                   <div>
@@ -949,8 +961,9 @@
                   </DataTable>
                 </div>
               </div>
-            </AccordionPanel>
-          </Accordion>
+              </AccordionPanel>
+            </Accordion>
+          </template>
         </Card>
 
         <!-- Teams Section -->
@@ -958,33 +971,35 @@
           <template #title>Squadre</template>
           <template #subtitle>Gestisci le squadre disponibili per gli eventi.</template>
 
-          <form class="admin-form admin-form--inline" @submit.prevent="createTeam">
-            <div class="admin-form__field admin-form__field--grow">
-              <InputText v-model.trim="newTeamName" placeholder="Nome squadra" required />
-            </div>
-            <Button type="submit" label="Aggiungi" icon="pi pi-plus" />
-          </form>
+          <template #content>
+            <form class="admin-form admin-form--inline" @submit.prevent="createTeam">
+              <div class="admin-form__field admin-form__field--grow">
+                <InputText v-model.trim="newTeamName" placeholder="Nome squadra" required />
+              </div>
+              <Button type="submit" label="Aggiungi" icon="pi pi-plus" />
+            </form>
 
-          <DataTable
-            :value="teams"
-            data-key="id"
-            striped-rows
-            class="admin-simple-table"
-            empty-message="Nessuna squadra configurata"
-          >
-            <Column field="name" header="Nome" />
-            <Column header="Azioni" body-class="admin-table-actions">
-              <template #body="{ data }">
-                <Button
-                  label="Elimina"
-                  icon="pi pi-trash"
-                  severity="danger"
-                  text
-                  @click="deleteTeam(data.id)"
-                />
-              </template>
-            </Column>
-          </DataTable>
+            <DataTable
+              :value="teams"
+              data-key="id"
+              striped-rows
+              class="admin-simple-table"
+              empty-message="Nessuna squadra configurata"
+            >
+              <Column field="name" header="Nome" />
+              <Column header="Azioni" body-class="admin-table-actions">
+                <template #body="{ data }">
+                  <Button
+                    label="Elimina"
+                    icon="pi pi-trash"
+                    severity="danger"
+                    text
+                    @click="deleteTeam(data.id)"
+                  />
+                </template>
+              </Column>
+            </DataTable>
+          </template>
         </Card>
 
         <!-- Players Section -->
@@ -992,127 +1007,129 @@
           <template #title>Giocatori</template>
           <template #subtitle>Gestisci fino a {{ playerSlotCount }} giocatori mostrati nella pagina voto.</template>
 
-          <Message
-            v-if="!teams.length"
-            severity="warn"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            Aggiungi almeno una squadra per assegnare correttamente i giocatori salvati.
-          </Message>
-          <Message
-            v-if="playerOverflow.length"
-            severity="info"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            Sono presenti {{ playerOverflow.length }} giocatori aggiuntivi nel database. Verranno rimossi al prossimo salvataggio.
-          </Message>
+          <template #content>
+            <Message
+              v-if="!teams.length"
+              severity="warn"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              Aggiungi almeno una squadra per assegnare correttamente i giocatori salvati.
+            </Message>
+            <Message
+              v-if="playerOverflow.length"
+              severity="info"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              Sono presenti {{ playerOverflow.length }} giocatori aggiuntivi nel database. Verranno rimossi al prossimo salvataggio.
+            </Message>
 
-          <div class="admin-player-grid">
-            <Card v-for="(slot, index) in playerSlots" :key="`player-slot-${index}`" class="admin-player-card">
-              <template #title>Giocatore {{ index + 1 }}</template>
-              <template #content>
-                <div class="admin-form admin-form--compact">
-                  <div class="admin-form__field">
-                    <label class="admin-field-label" :for="`player-first-${index}`">Nome</label>
-                    <InputText :id="`player-first-${index}`" v-model.trim="slot.first_name" placeholder="Es. Mario" />
+            <div class="admin-player-grid">
+              <Card v-for="(slot, index) in playerSlots" :key="`player-slot-${index}`" class="admin-player-card">
+                <template #title>Giocatore {{ index + 1 }}</template>
+                <template #content>
+                  <div class="admin-form admin-form--compact">
+                    <div class="admin-form__field">
+                      <label class="admin-field-label" :for="`player-first-${index}`">Nome</label>
+                      <InputText :id="`player-first-${index}`" v-model.trim="slot.first_name" placeholder="Es. Mario" />
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-field-label" :for="`player-last-${index}`">Cognome</label>
+                      <InputText :id="`player-last-${index}`" v-model.trim="slot.last_name" placeholder="Es. Rossi" />
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-field-label" :for="`player-role-${index}`">Ruolo</label>
+                      <InputText :id="`player-role-${index}`" v-model.trim="slot.role" placeholder="Es. Schiacciatore" />
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-field-label" :for="`player-jersey-${index}`">Numero</label>
+                      <InputNumber
+                        :id="`player-jersey-${index}`"
+                        v-model="slot.jersey_number"
+                        :min="0"
+                        show-buttons
+                      />
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-field-label" :for="`player-team-${index}`">Squadra</label>
+                      <Dropdown
+                        :id="`player-team-${index}`"
+                        v-model="slot.team_id"
+                        :options="teamDropdownOptions"
+                        option-label="label"
+                        option-value="value"
+                        placeholder="Seleziona squadra"
+                      />
+                    </div>
+                    <div class="admin-form__field admin-form__field--full">
+                      <label class="admin-field-label" :for="`player-url-${index}`">URL immagine</label>
+                      <InputText
+                        :id="`player-url-${index}`"
+                        v-model.trim="slot.image_url"
+                        type="url"
+                        placeholder="https://..."
+                        @input="handlePlayerUrlChange(index)"
+                      />
+                    </div>
+                    <div class="admin-form__field admin-form__field--full">
+                      <FileUpload
+                        mode="basic"
+                        auto
+                        accept="image/*"
+                        choose-label="Carica immagine"
+                        :custom-upload="true"
+                        @uploader="(event) => handlePlayerFileUpload(index, event)"
+                      />
+                    </div>
+                    <div v-if="slot.image_preview" class="admin-player-card__preview">
+                      <img :src="slot.image_preview" alt="Anteprima giocatore" />
+                      <Button
+                        label="Rimuovi"
+                        icon="pi pi-times"
+                        text
+                        severity="secondary"
+                        @click="removePlayerImage(index)"
+                      />
+                    </div>
                   </div>
-                  <div class="admin-form__field">
-                    <label class="admin-field-label" :for="`player-last-${index}`">Cognome</label>
-                    <InputText :id="`player-last-${index}`" v-model.trim="slot.last_name" placeholder="Es. Rossi" />
-                  </div>
-                  <div class="admin-form__field">
-                    <label class="admin-field-label" :for="`player-role-${index}`">Ruolo</label>
-                    <InputText :id="`player-role-${index}`" v-model.trim="slot.role" placeholder="Es. Schiacciatore" />
-                  </div>
-                  <div class="admin-form__field">
-                    <label class="admin-field-label" :for="`player-jersey-${index}`">Numero</label>
-                    <InputNumber
-                      :id="`player-jersey-${index}`"
-                      v-model="slot.jersey_number"
-                      :min="0"
-                      show-buttons
-                    />
-                  </div>
-                  <div class="admin-form__field">
-                    <label class="admin-field-label" :for="`player-team-${index}`">Squadra</label>
-                    <Dropdown
-                      :id="`player-team-${index}`"
-                      v-model="slot.team_id"
-                      :options="teamDropdownOptions"
-                      option-label="label"
-                      option-value="value"
-                      placeholder="Seleziona squadra"
-                    />
-                  </div>
-                  <div class="admin-form__field admin-form__field--full">
-                    <label class="admin-field-label" :for="`player-url-${index}`">URL immagine</label>
-                    <InputText
-                      :id="`player-url-${index}`"
-                      v-model.trim="slot.image_url"
-                      type="url"
-                      placeholder="https://..."
-                      @input="handlePlayerUrlChange(index)"
-                    />
-                  </div>
-                  <div class="admin-form__field admin-form__field--full">
-                    <FileUpload
-                      mode="basic"
-                      auto
-                      accept="image/*"
-                      choose-label="Carica immagine"
-                      :custom-upload="true"
-                      @uploader="(event) => handlePlayerFileUpload(index, event)"
-                    />
-                  </div>
-                  <div v-if="slot.image_preview" class="admin-player-card__preview">
-                    <img :src="slot.image_preview" alt="Anteprima giocatore" />
-                    <Button
-                      label="Rimuovi"
-                      icon="pi pi-times"
-                      text
-                      severity="secondary"
-                      @click="removePlayerImage(index)"
-                    />
-                  </div>
-                </div>
-              </template>
-            </Card>
-          </div>
+                </template>
+              </Card>
+            </div>
 
-          <div class="admin-player-actions">
-            <Button
-              label="Ripristina dati salvati"
-              icon="pi pi-undo"
-              severity="secondary"
-              outlined
-              :disabled="isSavingPlayers"
-              @click="restorePlayerSlots"
-            />
-            <Button
-              label="Salva giocatori"
-              icon="pi pi-save"
-              :loading="isSavingPlayers"
-              @click="savePlayers"
-            />
-          </div>
-          <Message
-            v-if="playerSaveError"
-            severity="error"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            {{ playerSaveError }}
-          </Message>
-          <Message
-            v-if="playerSaveMessage"
-            severity="success"
-            :closable="false"
-            class="admin-portal-view__inline-message"
-          >
-            {{ playerSaveMessage }}
-          </Message>
+            <div class="admin-player-actions">
+              <Button
+                label="Ripristina dati salvati"
+                icon="pi pi-undo"
+                severity="secondary"
+                outlined
+                :disabled="isSavingPlayers"
+                @click="restorePlayerSlots"
+              />
+              <Button
+                label="Salva giocatori"
+                icon="pi pi-save"
+                :loading="isSavingPlayers"
+                @click="savePlayers"
+              />
+            </div>
+            <Message
+              v-if="playerSaveError"
+              severity="error"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              {{ playerSaveError }}
+            </Message>
+            <Message
+              v-if="playerSaveMessage"
+              severity="success"
+              :closable="false"
+              class="admin-portal-view__inline-message"
+            >
+              {{ playerSaveMessage }}
+            </Message>
+          </template>
         </Card>
 
         <!-- Sponsors Section -->
@@ -1120,133 +1137,135 @@
           <template #title>Sponsor</template>
           <template #subtitle>Configura gli sponsor e il numero di loghi visibili.</template>
 
-          <Panel header="Nuovo sponsor" toggleable>
-            <div class="admin-form admin-form--grid">
-              <div class="admin-form__field">
-                <label class="admin-field-label" for="sponsor-name">Nome</label>
-                <InputText id="sponsor-name" v-model.trim="newSponsor.name" placeholder="Nome sponsor" />
-              </div>
-              <div class="admin-form__field">
-                <label class="admin-field-label" for="sponsor-link">Link</label>
-                <InputText id="sponsor-link" v-model.trim="newSponsor.linkUrl" type="url" placeholder="https://..." />
-              </div>
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-field-label">Logo</label>
-                <FileUpload
-                  mode="basic"
-                  auto
-                  accept="image/*"
-                  choose-label="Carica logo"
-                  :custom-upload="true"
-                  @uploader="handleNewSponsorUpload"
-                />
-              </div>
-            </div>
-            <div class="admin-form__actions">
-              <Button
-                label="Crea sponsor"
-                icon="pi pi-plus"
-                :loading="isCreatingSponsor"
-                @click="createSponsor"
-              />
-            </div>
-          </Panel>
-
-          <Panel header="Sponsor visibili" toggleable>
-            <div class="admin-form admin-form--inline">
-              <div class="admin-form__field admin-form__field--grow">
-                <InputNumber
-                  v-model="desiredActiveSponsorCount"
-                  :min="0"
-                  :max="sponsorSliderMax"
-                  show-buttons
-                />
-              </div>
-              <Button
-                label="Aggiorna visibilità"
-                icon="pi pi-eye"
-                :loading="isApplyingSponsorCount"
-                @click="applyActiveSponsorCount"
-              />
-            </div>
-          </Panel>
-
-          <DataView
-            :value="sortedSponsors()"
-            data-key="id"
-            layout="grid"
-            :rows="2"
-            paginator
-            class="admin-sponsor-grid"
-            empty-message="Nessuno sponsor configurato"
-          >
-            <template #grid="{ items }">
-              <div class="p-grid">
-                <div v-for="sponsor in items" :key="sponsor.id" class="p-col-12 p-md-6">
-                  <Card class="admin-sponsor-card">
-                    <template #title>
-                      <div class="admin-sponsor-card__title">
-                        {{ sponsor.name }}
-                        <Tag
-                          :value="sponsor.isActive ? 'Visibile' : 'Nascosto'"
-                          :severity="sponsor.isActive ? 'success' : 'danger'"
-                        />
-                      </div>
-                    </template>
-                    <template #content>
-                      <div class="admin-form admin-form--compact">
-                        <div class="admin-form__field">
-                          <label class="admin-field-label">Nome</label>
-                          <InputText v-model.trim="sponsor.name" />
-                        </div>
-                        <div class="admin-form__field">
-                          <label class="admin-field-label">Link</label>
-                          <InputText v-model.trim="sponsor.linkUrl" type="url" />
-                        </div>
-                        <div class="admin-form__field admin-form__field--full">
-                          <FileUpload
-                            mode="basic"
-                            auto
-                            accept="image/*"
-                            choose-label="Aggiorna logo"
-                            :custom-upload="true"
-                            @uploader="(event) => handleSponsorFileUpload(event, sponsor)"
-                          />
-                        </div>
-                        <div class="admin-form__field admin-form__field--full">
-                          <ToggleButton
-                            v-model="sponsor.isActive"
-                            on-label="Visibile"
-                            off-label="Nascosto"
-                            on-icon="pi pi-eye"
-                            off-icon="pi pi-eye-slash"
-                          />
-                        </div>
-                      </div>
-                    </template>
-                    <template #footer>
-                      <div class="admin-sponsor-card__actions">
-                        <Button
-                          label="Salva"
-                          icon="pi pi-save"
-                          :loading="sponsorBeingUpdated === sponsor.id"
-                          @click="updateSponsorEntry(sponsor)"
-                        />
-                        <Button
-                          label="Elimina"
-                          icon="pi pi-trash"
-                          severity="danger"
-                          outlined
-                          :loading="sponsorBeingDeleted === sponsor.id"
-                          @click="deleteSponsorEntry(sponsor.id)"
-                        />
-                      </div>
-                    </template>
-                  </Card>
+          <template #content>
+            <Panel header="Nuovo sponsor" toggleable>
+              <div class="admin-form admin-form--grid">
+                <div class="admin-form__field">
+                  <label class="admin-field-label" for="sponsor-name">Nome</label>
+                  <InputText id="sponsor-name" v-model.trim="newSponsor.name" placeholder="Nome sponsor" />
+                </div>
+                <div class="admin-form__field">
+                  <label class="admin-field-label" for="sponsor-link">Link</label>
+                  <InputText id="sponsor-link" v-model.trim="newSponsor.linkUrl" type="url" placeholder="https://..." />
+                </div>
+                <div class="admin-form__field admin-form__field--full">
+                  <label class="admin-field-label">Logo</label>
+                  <FileUpload
+                    mode="basic"
+                    auto
+                    accept="image/*"
+                    choose-label="Carica logo"
+                    :custom-upload="true"
+                    @uploader="handleNewSponsorUpload"
+                  />
                 </div>
               </div>
-            </template>
-          </DataView>
+              <div class="admin-form__actions">
+                <Button
+                  label="Crea sponsor"
+                  icon="pi pi-plus"
+                  :loading="isCreatingSponsor"
+                  @click="createSponsor"
+                />
+              </div>
+            </Panel>
+
+            <Panel header="Sponsor visibili" toggleable>
+              <div class="admin-form admin-form--inline">
+                <div class="admin-form__field admin-form__field--grow">
+                  <InputNumber
+                    v-model="desiredActiveSponsorCount"
+                    :min="0"
+                    :max="sponsorSliderMax"
+                    show-buttons
+                  />
+                </div>
+                <Button
+                  label="Aggiorna visibilità"
+                  icon="pi pi-eye"
+                  :loading="isApplyingSponsorCount"
+                  @click="applyActiveSponsorCount"
+                />
+              </div>
+            </Panel>
+
+            <DataView
+              :value="sortedSponsors()"
+              data-key="id"
+              layout="grid"
+              :rows="2"
+              paginator
+              class="admin-sponsor-grid"
+              empty-message="Nessuno sponsor configurato"
+            >
+              <template #grid="{ items }">
+                <div class="p-grid">
+                  <div v-for="sponsor in items" :key="sponsor.id" class="p-col-12 p-md-6">
+                    <Card class="admin-sponsor-card">
+                      <template #title>
+                        <div class="admin-sponsor-card__title">
+                          {{ sponsor.name }}
+                          <Tag
+                            :value="sponsor.isActive ? 'Visibile' : 'Nascosto'"
+                            :severity="sponsor.isActive ? 'success' : 'danger'"
+                          />
+                        </div>
+                      </template>
+                      <template #content>
+                        <div class="admin-form admin-form--compact">
+                          <div class="admin-form__field">
+                            <label class="admin-field-label">Nome</label>
+                            <InputText v-model.trim="sponsor.name" />
+                          </div>
+                          <div class="admin-form__field">
+                            <label class="admin-field-label">Link</label>
+                            <InputText v-model.trim="sponsor.linkUrl" type="url" />
+                          </div>
+                          <div class="admin-form__field admin-form__field--full">
+                            <FileUpload
+                              mode="basic"
+                              auto
+                              accept="image/*"
+                              choose-label="Aggiorna logo"
+                              :custom-upload="true"
+                              @uploader="(event) => handleSponsorFileUpload(event, sponsor)"
+                            />
+                          </div>
+                          <div class="admin-form__field admin-form__field--full">
+                            <ToggleButton
+                              v-model="sponsor.isActive"
+                              on-label="Visibile"
+                              off-label="Nascosto"
+                              on-icon="pi pi-eye"
+                              off-icon="pi pi-eye-slash"
+                            />
+                          </div>
+                        </div>
+                      </template>
+                      <template #footer>
+                        <div class="admin-sponsor-card__actions">
+                          <Button
+                            label="Salva"
+                            icon="pi pi-save"
+                            :loading="sponsorBeingUpdated === sponsor.id"
+                            @click="updateSponsorEntry(sponsor)"
+                          />
+                          <Button
+                            label="Elimina"
+                            icon="pi pi-trash"
+                            severity="danger"
+                            outlined
+                            :loading="sponsorBeingDeleted === sponsor.id"
+                            @click="deleteSponsorEntry(sponsor.id)"
+                          />
+                        </div>
+                      </template>
+                    </Card>
+                  </div>
+                </div>
+              </template>
+            </DataView>
+          </template>
         </Card>
 
         <!-- Admins Section -->
@@ -1254,53 +1273,55 @@
           <template #title>Admin</template>
           <template #subtitle>Gestisci gli account con accesso al portale.</template>
 
-          <form class="admin-form admin-form--grid" @submit.prevent="createAdmin">
-            <div class="admin-form__field">
-              <label class="admin-field-label" for="admin-username">Username</label>
-              <InputText id="admin-username" v-model.trim="newAdmin.username" required />
-            </div>
-            <div class="admin-form__field">
-              <label class="admin-field-label" for="admin-password">Password</label>
-              <Password id="admin-password" v-model="newAdmin.password" :feedback="false" required />
-            </div>
-            <div class="admin-form__field">
-              <label class="admin-field-label" for="admin-role">Ruolo</label>
-              <Dropdown
-                id="admin-role"
-                v-model="newAdmin.role"
-                :options="adminRoleOptions"
-                option-label="label"
-                option-value="value"
-                placeholder="Seleziona ruolo"
-                required
-              />
-            </div>
-            <div class="admin-form__actions">
-              <Button type="submit" label="Crea admin" icon="pi pi-user-plus" />
-            </div>
-          </form>
-
-          <DataTable
-            :value="admins"
-            data-key="id"
-            striped-rows
-            class="admin-simple-table"
-            empty-message="Nessun admin configurato"
-          >
-            <Column field="username" header="Username" />
-            <Column field="role" header="Ruolo" />
-            <Column header="Azioni" body-class="admin-table-actions">
-              <template #body="{ data }">
-                <Button
-                  label="Rimuovi"
-                  icon="pi pi-trash"
-                  severity="danger"
-                  text
-                  @click="deleteAdmin(data.id)"
+          <template #content>
+            <form class="admin-form admin-form--grid" @submit.prevent="createAdmin">
+              <div class="admin-form__field">
+                <label class="admin-field-label" for="admin-username">Username</label>
+                <InputText id="admin-username" v-model.trim="newAdmin.username" required />
+              </div>
+              <div class="admin-form__field">
+                <label class="admin-field-label" for="admin-password">Password</label>
+                <Password id="admin-password" v-model="newAdmin.password" :feedback="false" required />
+              </div>
+              <div class="admin-form__field">
+                <label class="admin-field-label" for="admin-role">Ruolo</label>
+                <Dropdown
+                  id="admin-role"
+                  v-model="newAdmin.role"
+                  :options="adminRoleOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="Seleziona ruolo"
+                  required
                 />
-              </template>
-            </Column>
-          </DataTable>
+              </div>
+              <div class="admin-form__actions">
+                <Button type="submit" label="Crea admin" icon="pi pi-user-plus" />
+              </div>
+            </form>
+
+            <DataTable
+              :value="admins"
+              data-key="id"
+              striped-rows
+              class="admin-simple-table"
+              empty-message="Nessun admin configurato"
+            >
+              <Column field="username" header="Username" />
+              <Column field="role" header="Ruolo" />
+              <Column header="Azioni" body-class="admin-table-actions">
+                <template #body="{ data }">
+                  <Button
+                    label="Rimuovi"
+                    icon="pi pi-trash"
+                    severity="danger"
+                    text
+                    @click="deleteAdmin(data.id)"
+                  />
+                </template>
+              </Column>
+            </DataTable>
+          </template>
         </Card>
       </template>
     </AdminLayout>
