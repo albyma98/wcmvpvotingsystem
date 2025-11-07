@@ -43,6 +43,7 @@ const activeSponsorIds = computed(() =>
 );
 
 const sponsors = ref([]);
+const courtSponsors = computed(() => sponsors.value.slice(0, 2));
 const sponsorSectionRef = ref(null);
 const sponsorObserverThresholds = [0, 0.25, 0.5, 0.75, 1];
 let sponsorIntersectionObserver = null;
@@ -1260,7 +1261,9 @@ const handleQrError = () => {
               :selected-player-id="votedPlayerId"
               :disable-votes="disableVotes"
               :is-voting="isVoting"
+              :court-sponsors="courtSponsors"
               @select="openPlayerModal"
+              @sponsor-click="handleSponsorClick"
             />
           </div>
           <p
