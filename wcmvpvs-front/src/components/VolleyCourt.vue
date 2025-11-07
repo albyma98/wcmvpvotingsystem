@@ -100,13 +100,13 @@ const rightColumnReference = computed(() => resolveColumnReference('right'));
 const leftSponsorStyle = computed(() => ({
   top: `${sponsorVerticalCenter.value}%`,
   left: `${leftColumnReference.value}%`,
-  transform: 'translate(-100%, -50%)',
+  transform: 'translate(-50%, -50%)',
 }));
 
 const rightSponsorStyle = computed(() => ({
   top: `${sponsorVerticalCenter.value}%`,
   left: `${rightColumnReference.value}%`,
-  transform: 'translate(0, -50%)',
+  transform: 'translate(-50%, -50%)',
 }));
 </script>
 
