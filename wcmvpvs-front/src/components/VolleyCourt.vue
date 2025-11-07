@@ -47,6 +47,67 @@ const emitSponsorClick = (sponsor) => {
   }
   emits('sponsor-click', sponsor);
 };
+
+const findCentralReferencePlayer = () => {
+  if (!Array.isArray(props.players) || !props.players.length) {
+    return null;
+  }
+
+  const perfectCenter = props.players.find(
+    (player) => Math.abs(player.position.x - 50) < 0.001 && Math.abs(player.position.y - 50) < 0.001,
+  );
+  if (perfectCenter) {
+    return perfectCenter;
+  }
+
+  const sortedByDistance = [...props.players].sort((a, b) => {
+    const distanceA = Math.hypot(a.position.x - 50, a.position.y - 50);
+    const distanceB = Math.hypot(b.position.x - 50, b.position.y - 50);
+    return distanceA - distanceB;
+  });
+
+  return sortedByDistance[0] ?? null;
+};
+
+const centralReferencePlayer = computed(() => findCentralReferencePlayer());
+
+const sponsorVerticalCenter = computed(() => centralReferencePlayer.value?.position.y ?? 50);
+
+const resolveColumnReference = (direction = 'left') => {
+  const center = centralReferencePlayer.value;
+  if (!center) {
+    return direction === 'left' ? 20 : 80;
+  }
+
+  const candidates = props.players
+    .filter((player) => (direction === 'left' ? player.position.x < center.position.x : player.position.x > center.position.x))
+    .sort((a, b) =>
+      direction === 'left'
+        ? b.position.x - a.position.x
+        : a.position.x - b.position.x,
+    );
+
+  if (candidates.length) {
+    return candidates[0].position.x;
+  }
+
+  return direction === 'left' ? Math.max(center.position.x - 30, 10) : Math.min(center.position.x + 30, 90);
+};
+
+const leftColumnReference = computed(() => resolveColumnReference('left'));
+const rightColumnReference = computed(() => resolveColumnReference('right'));
+
+const leftSponsorStyle = computed(() => ({
+  top: `${sponsorVerticalCenter.value}%`,
+  left: `${leftColumnReference.value}%`,
+  transform: 'translate(-100%, -50%)',
+}));
+
+const rightSponsorStyle = computed(() => ({
+  top: `${sponsorVerticalCenter.value}%`,
+  left: `${rightColumnReference.value}%`,
+  transform: 'translate(0, -50%)',
+}));
 </script>
 
 <template>
@@ -75,7 +136,7 @@ const emitSponsorClick = (sponsor) => {
     </div>
 
     <div class="absolute inset-0">
-      <div v-if="leftSponsor" class="absolute left-[6%] top-1/2 -translate-y-1/2 z-10">
+      <div v-if="leftSponsor" class="absolute z-10" :style="leftSponsorStyle">
         <div class="flex flex-col items-center gap-2 text-center">
           <p class="text-[0.625rem] font-semibold uppercase tracking-[0.4em] text-white/70">
             Sponsor
@@ -94,7 +155,7 @@ const emitSponsorClick = (sponsor) => {
               v-if="leftSponsor.image"
               :src="leftSponsor.image"
               :alt="leftSponsor.name || 'Sponsor'"
-              class="relative h-full w-full object-contain p-5"
+              class="relative h-full w-full object-cover"
             />
           </a>
           <div
@@ -109,13 +170,13 @@ const emitSponsorClick = (sponsor) => {
               v-if="leftSponsor.image"
               :src="leftSponsor.image"
               :alt="leftSponsor.name || 'Sponsor'"
-              class="relative h-full w-full object-contain p-5"
+              class="relative h-full w-full object-cover"
             />
           </div>
         </div>
       </div>
 
-      <div v-if="rightSponsor" class="absolute right-[6%] top-1/2 -translate-y-1/2 z-10">
+      <div v-if="rightSponsor" class="absolute z-10" :style="rightSponsorStyle">
         <div class="flex flex-col items-center gap-2 text-center">
           <p class="text-[0.625rem] font-semibold uppercase tracking-[0.4em] text-white/70">
             Sponsor
@@ -134,7 +195,7 @@ const emitSponsorClick = (sponsor) => {
               v-if="rightSponsor.image"
               :src="rightSponsor.image"
               :alt="rightSponsor.name || 'Sponsor'"
-              class="relative h-full w-full object-contain p-5"
+              class="relative h-full w-full object-cover"
             />
           </a>
           <div
@@ -149,7 +210,7 @@ const emitSponsorClick = (sponsor) => {
               v-if="rightSponsor.image"
               :src="rightSponsor.image"
               :alt="rightSponsor.name || 'Sponsor'"
-              class="relative h-full w-full object-contain p-5"
+              class="relative h-full w-full object-cover"
             />
           </div>
         </div>
