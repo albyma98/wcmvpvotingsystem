@@ -32,6 +32,17 @@ const props = defineProps({
 
 const emits = defineEmits(['select', 'sponsor-click']);
 
+const sponsorDimensions = computed(() => {
+  const cardBaseWidth = Number.isFinite(props.cardSize) ? props.cardSize : 90;
+  return {
+    width: `${cardBaseWidth * 3}px`,
+    height: `${cardBaseWidth * 1.5}px`,
+  };
+});
+
+const sponsorCardBaseClass =
+  'pointer-events-auto group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_42px_rgba(8,15,28,0.45)] backdrop-blur';
+
 const positionStyle = computed(() => (player) => ({
   left: `${player.position.x}%`,
   top: `${player.position.y}%`,
@@ -143,7 +154,8 @@ const rightSponsorStyle = computed(() => ({
           </p>
           <a
             v-if="leftSponsor.link"
-            class="pointer-events-auto group relative flex h-36 w-40 items-center justify-center overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_42px_rgba(8,15,28,0.45)] backdrop-blur"
+            :class="sponsorCardBaseClass"
+            :style="sponsorDimensions"
             :href="leftSponsor.link"
             target="_blank"
             rel="noopener noreferrer"
@@ -160,7 +172,8 @@ const rightSponsorStyle = computed(() => ({
           </a>
           <div
             v-else
-            class="pointer-events-auto group relative flex h-36 w-40 items-center justify-center overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_42px_rgba(8,15,28,0.45)] backdrop-blur"
+            :class="sponsorCardBaseClass"
+            :style="sponsorDimensions"
             :aria-label="leftSponsor.name || 'Sponsor'"
             role="group"
             @click="emitSponsorClick(leftSponsor)"
@@ -183,7 +196,8 @@ const rightSponsorStyle = computed(() => ({
           </p>
           <a
             v-if="rightSponsor.link"
-            class="pointer-events-auto group relative flex h-36 w-40 items-center justify-center overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_42px_rgba(8,15,28,0.45)] backdrop-blur"
+            :class="sponsorCardBaseClass"
+            :style="sponsorDimensions"
             :href="rightSponsor.link"
             target="_blank"
             rel="noopener noreferrer"
@@ -200,7 +214,8 @@ const rightSponsorStyle = computed(() => ({
           </a>
           <div
             v-else
-            class="pointer-events-auto group relative flex h-36 w-40 items-center justify-center overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_42px_rgba(8,15,28,0.45)] backdrop-blur"
+            :class="sponsorCardBaseClass"
+            :style="sponsorDimensions"
             :aria-label="rightSponsor.name || 'Sponsor'"
             role="group"
             @click="emitSponsorClick(rightSponsor)"
