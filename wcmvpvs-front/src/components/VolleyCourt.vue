@@ -24,15 +24,29 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  courtSponsors: {
+    type: Array,
+    default: () => [],
+  },
 });
 
-const emits = defineEmits(['select']);
+const emits = defineEmits(['select', 'sponsor-click']);
 
 const positionStyle = computed(() => (player) => ({
   left: `${player.position.x}%`,
   top: `${player.position.y}%`,
   transform: 'translate(-50%, -50%)',
 }));
+
+const leftSponsor = computed(() => (Array.isArray(props.courtSponsors) ? props.courtSponsors[0] ?? null : null));
+const rightSponsor = computed(() => (Array.isArray(props.courtSponsors) ? props.courtSponsors[1] ?? null : null));
+
+const emitSponsorClick = (sponsor) => {
+  if (!sponsor) {
+    return;
+  }
+  emits('sponsor-click', sponsor);
+};
 </script>
 
 <template>
@@ -61,6 +75,86 @@ const positionStyle = computed(() => (player) => ({
     </div>
 
     <div class="absolute inset-0">
+      <div v-if="leftSponsor" class="absolute left-[6%] top-1/2 -translate-y-1/2 z-10">
+        <div class="flex flex-col items-center gap-2 text-center">
+          <p class="text-[0.625rem] font-semibold uppercase tracking-[0.4em] text-white/70">
+            Sponsor
+          </p>
+          <a
+            v-if="leftSponsor.link"
+            class="pointer-events-auto group relative flex h-36 w-40 items-center justify-center overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_42px_rgba(8,15,28,0.45)] backdrop-blur"
+            :href="leftSponsor.link"
+            target="_blank"
+            rel="noopener noreferrer"
+            :aria-label="leftSponsor.name || 'Sponsor'"
+            @click="emitSponsorClick(leftSponsor)"
+          >
+            <div class="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-white/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+            <img
+              v-if="leftSponsor.image"
+              :src="leftSponsor.image"
+              :alt="leftSponsor.name || 'Sponsor'"
+              class="relative h-full w-full object-contain p-5"
+            />
+          </a>
+          <div
+            v-else
+            class="pointer-events-auto group relative flex h-36 w-40 items-center justify-center overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_42px_rgba(8,15,28,0.45)] backdrop-blur"
+            :aria-label="leftSponsor.name || 'Sponsor'"
+            role="group"
+            @click="emitSponsorClick(leftSponsor)"
+          >
+            <div class="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-white/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+            <img
+              v-if="leftSponsor.image"
+              :src="leftSponsor.image"
+              :alt="leftSponsor.name || 'Sponsor'"
+              class="relative h-full w-full object-contain p-5"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div v-if="rightSponsor" class="absolute right-[6%] top-1/2 -translate-y-1/2 z-10">
+        <div class="flex flex-col items-center gap-2 text-center">
+          <p class="text-[0.625rem] font-semibold uppercase tracking-[0.4em] text-white/70">
+            Sponsor
+          </p>
+          <a
+            v-if="rightSponsor.link"
+            class="pointer-events-auto group relative flex h-36 w-40 items-center justify-center overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_42px_rgba(8,15,28,0.45)] backdrop-blur"
+            :href="rightSponsor.link"
+            target="_blank"
+            rel="noopener noreferrer"
+            :aria-label="rightSponsor.name || 'Sponsor'"
+            @click="emitSponsorClick(rightSponsor)"
+          >
+            <div class="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-white/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+            <img
+              v-if="rightSponsor.image"
+              :src="rightSponsor.image"
+              :alt="rightSponsor.name || 'Sponsor'"
+              class="relative h-full w-full object-contain p-5"
+            />
+          </a>
+          <div
+            v-else
+            class="pointer-events-auto group relative flex h-36 w-40 items-center justify-center overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_42px_rgba(8,15,28,0.45)] backdrop-blur"
+            :aria-label="rightSponsor.name || 'Sponsor'"
+            role="group"
+            @click="emitSponsorClick(rightSponsor)"
+          >
+            <div class="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-white/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+            <img
+              v-if="rightSponsor.image"
+              :src="rightSponsor.image"
+              :alt="rightSponsor.name || 'Sponsor'"
+              class="relative h-full w-full object-contain p-5"
+            />
+          </div>
+        </div>
+      </div>
+
       <div
         v-for="player in players"
         :key="player.id"
