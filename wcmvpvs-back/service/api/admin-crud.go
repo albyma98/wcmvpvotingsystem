@@ -772,6 +772,12 @@ func applyEventPostVoteDefaults(e *database.Event, raw map[string]json.RawMessag
 		}
 	}
 
+	if !eventFlagProvided(raw, "show_pre_vote_bottom_sponsors", "showPreVoteBottomSponsors", "show_pre_vote_sponsor_wall") {
+		if !e.ShowPreVoteBottomSponsors {
+			e.ShowPreVoteBottomSponsors = true
+		}
+	}
+
 	if !eventFlagProvided(raw, "show_vote_counter", "showVoteCounter", "show_pre_vote_vote_counter") {
 		if !e.ShowVoteCounter {
 			e.ShowVoteCounter = true

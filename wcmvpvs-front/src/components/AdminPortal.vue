@@ -159,6 +159,16 @@
                 <label class="postvote-toggle">
                   <input
                     type="checkbox"
+                    v-model="newEvent.show_pre_vote_bottom_sponsors"
+                    :disabled="!hasEnoughTeams"
+                  />
+                  <span class="postvote-toggle__label"
+                    >Sponsor a fondo campo</span
+                  >
+                </label>
+                <label class="postvote-toggle">
+                  <input
+                    type="checkbox"
                     v-model="newEvent.show_vote_counter"
                     :disabled="!hasEnoughTeams"
                   />
@@ -423,6 +433,16 @@
                     />
                     <span class="postvote-toggle__label"
                       >Sponsor a bordo campo</span
+                    >
+                  </label>
+                  <label class="postvote-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="event.show_pre_vote_bottom_sponsors"
+                      :disabled="isSavingPrizesFor(event.id)"
+                    />
+                    <span class="postvote-toggle__label"
+                      >Sponsor a fondo campo</span
                     >
                   </label>
                   <label class="postvote-toggle">
@@ -2141,6 +2161,7 @@ function createDefaultNewEventState() {
     show_vote_trend: true,
     show_feedback_survey: true,
     show_pre_vote_sponsors: true,
+    show_pre_vote_bottom_sponsors: true,
     show_vote_counter: true,
   };
 }
@@ -3226,7 +3247,7 @@ function normalizeEventResponse(event) {
     ["show_feedback_survey", "showFeedbackSurvey"],
     true,
   );
-  normalized.show_pre_vote_sponsors = resolveFlag(
+  const preVoteSponsorBase = resolveFlag(
     [
       "show_pre_vote_sponsors",
       "showPreVoteSponsors",
@@ -3234,6 +3255,15 @@ function normalizeEventResponse(event) {
       "showSponsors",
     ],
     true,
+  );
+  normalized.show_pre_vote_sponsors = preVoteSponsorBase;
+  normalized.show_pre_vote_bottom_sponsors = resolveFlag(
+    [
+      "show_pre_vote_bottom_sponsors",
+      "showPreVoteBottomSponsors",
+      "show_pre_vote_sponsor_wall",
+    ],
+    preVoteSponsorBase,
   );
   normalized.show_vote_counter = resolveFlag(
     ["show_vote_counter", "showVoteCounter", "show_pre_vote_vote_counter"],
@@ -3624,6 +3654,9 @@ async function savePrizesForEvent(event) {
     start_datetime: event.start_datetime,
     location: event.location,
     show_pre_vote_sponsors: Boolean(event.show_pre_vote_sponsors),
+    show_pre_vote_bottom_sponsors: Boolean(
+      event.show_pre_vote_bottom_sponsors,
+    ),
     show_vote_counter: Boolean(event.show_vote_counter),
     show_reaction_test: Boolean(event.show_reaction_test),
     show_selfie: Boolean(event.show_selfie),
@@ -4715,6 +4748,9 @@ async function createEvent() {
     start_datetime: newEvent.start_datetime,
     location: newEvent.location,
     show_pre_vote_sponsors: Boolean(newEvent.show_pre_vote_sponsors),
+    show_pre_vote_bottom_sponsors: Boolean(
+      newEvent.show_pre_vote_bottom_sponsors,
+    ),
     show_vote_counter: Boolean(newEvent.show_vote_counter),
     show_reaction_test: Boolean(newEvent.show_reaction_test),
     show_selfie: Boolean(newEvent.show_selfie),
