@@ -1,13 +1,27 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import VolleyCourt from './VolleyCourt.vue';
-import PlayerCard from './PlayerCard.vue';
-import SelfieMvpSection from './SelfieMvpSection.vue';
-import ReactionTestSection from './ReactionTestSection.vue';
-import LiveResultsSection from './LiveResultsSection.vue';
-import { apiClient, vote, fetchVoteStatus, sendJsonBeacon, submitEventFeedback } from '../api';
-import { mapPlayersToLayout } from '../roster';
-import { getOrCreateDeviceId } from '../deviceId';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
+import VolleyCourt from "./VolleyCourt.vue";
+import PlayerCard from "./PlayerCard.vue";
+import SelfieMvpSection from "./SelfieMvpSection.vue";
+import ReactionTestSection from "./ReactionTestSection.vue";
+import LiveResultsSection from "./LiveResultsSection.vue";
+import {
+  apiClient,
+  vote,
+  fetchVoteStatus,
+  sendJsonBeacon,
+  submitEventFeedback,
+} from "../api";
+import { mapPlayersToLayout } from "../roster";
+import { getOrCreateDeviceId } from "../deviceId";
 
 const props = defineProps({
   eventId: {
@@ -30,7 +44,7 @@ const props = defineProps({
 
 const rawPlayers = ref([]);
 const isLoadingPlayers = ref(false);
-const playersError = ref('');
+const playersError = ref("");
 
 const fieldPlayers = computed(() => mapPlayersToLayout(rawPlayers.value));
 const activeSponsorIds = computed(() =>
@@ -61,7 +75,7 @@ const isCheckingVoteStatus = ref(false);
 
 const totalVotes = ref(0);
 const isVoteTotalLoading = ref(false);
-const voteTotalError = ref('');
+const voteTotalError = ref("");
 const isRefreshingVoteTotal = ref(false);
 let voteTotalTimer = null;
 let countdownTimer = null;
@@ -72,14 +86,14 @@ const updateNowTimestamp = () => {
 };
 
 const stopCountdownTimer = () => {
-  if (typeof window !== 'undefined' && countdownTimer) {
+  if (typeof window !== "undefined" && countdownTimer) {
     window.clearInterval(countdownTimer);
     countdownTimer = null;
   }
 };
 
 const startCountdownTimer = () => {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return;
   }
   stopCountdownTimer();
@@ -89,8 +103,8 @@ const startCountdownTimer = () => {
 
 const formattedVoteTotal = computed(() =>
   Number.isFinite(totalVotes.value)
-    ? totalVotes.value.toLocaleString('it-IT')
-    : '0',
+    ? totalVotes.value.toLocaleString("it-IT")
+    : "0",
 );
 
 const stopVoteTotalPolling = () => {
@@ -113,7 +127,7 @@ const startVoteTotalPolling = () => {
 const refreshVoteTotal = async ({ silent = false } = {}) => {
   if (!preVoteSettings.value.showVoteCounter) {
     totalVotes.value = 0;
-    voteTotalError.value = '';
+    voteTotalError.value = "";
     if (!silent) {
       isVoteTotalLoading.value = false;
     }
@@ -122,7 +136,7 @@ const refreshVoteTotal = async ({ silent = false } = {}) => {
   const eventId = currentEventId.value;
   if (!eventId) {
     totalVotes.value = 0;
-    voteTotalError.value = '';
+    voteTotalError.value = "";
     if (!silent) {
       isVoteTotalLoading.value = false;
     }
@@ -141,13 +155,13 @@ const refreshVoteTotal = async ({ silent = false } = {}) => {
   try {
     const { data } = await apiClient.get(`/events/${eventId}/votes/count`);
     const rawTotal = Number(
-      typeof data?.total === 'number' ? data.total : data?.count ?? 0,
+      typeof data?.total === "number" ? data.total : (data?.count ?? 0),
     );
     totalVotes.value = Number.isFinite(rawTotal) ? rawTotal : 0;
-    voteTotalError.value = '';
+    voteTotalError.value = "";
   } catch (error) {
-    console.error('Impossibile aggiornare il totale voti', error);
-    voteTotalError.value = 'Totale voti non disponibile in questo momento.';
+    console.error("Impossibile aggiornare il totale voti", error);
+    voteTotalError.value = "Totale voti non disponibile in questo momento.";
   } finally {
     if (!silent) {
       isVoteTotalLoading.value = false;
@@ -158,20 +172,23 @@ const refreshVoteTotal = async ({ silent = false } = {}) => {
 
 async function loadSponsors() {
   try {
-    const { data } = await apiClient.get('/sponsors');
+    const { data } = await apiClient.get("/sponsors");
     if (Array.isArray(data)) {
       sponsors.value = data
         .map((item, index) => {
-          const image = typeof item?.logo_data === 'string' ? item.logo_data : '';
+          const image =
+            typeof item?.logo_data === "string" ? item.logo_data : "";
           if (!image) {
             return null;
           }
           const resolvedName =
-            typeof item?.name === 'string' && item.name.trim() ? item.name.trim() : '';
+            typeof item?.name === "string" && item.name.trim()
+              ? item.name.trim()
+              : "";
           const resolvedLink =
-            typeof item?.link_url === 'string' && item.link_url.trim()
+            typeof item?.link_url === "string" && item.link_url.trim()
               ? item.link_url.trim()
-              : '';
+              : "";
           return {
             id: Number(item?.id) || index + 1,
             name: resolvedName,
@@ -184,7 +201,7 @@ async function loadSponsors() {
       sponsors.value = [];
     }
   } catch (error) {
-    console.error('Impossibile caricare gli sponsor', error);
+    console.error("Impossibile caricare gli sponsor", error);
     sponsors.value = [];
   }
 }
@@ -201,14 +218,20 @@ function recordSponsorClick(sponsor) {
     device_id: getOrCreateDeviceId(),
     at: new Date().toISOString(),
   };
-  sendJsonBeacon(`/events/${eventId}/sponsors/${sponsor.id}/click`, payload).catch(() => {});
+  sendJsonBeacon(
+    `/events/${eventId}/sponsors/${sponsor.id}/click`,
+    payload,
+  ).catch(() => {});
 }
 
 const handleSponsorClick = (sponsor) => {
   recordSponsorClick(sponsor);
 };
 
-const getNow = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+const getNow = () =>
+  typeof performance !== "undefined" && performance.now
+    ? performance.now()
+    : Date.now();
 
 function resetSponsorVisibility() {
   sponsorVisibilityState.isVisible = false;
@@ -233,7 +256,7 @@ function currentSponsorViewDuration() {
 }
 
 function startSponsorVisibilityInterval() {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return;
   }
   if (sponsorVisibilityInterval) {
@@ -250,7 +273,7 @@ function startSponsorVisibilityInterval() {
     }
     const durationMs = currentSponsorViewDuration();
     if (durationMs >= 2000 && !recordedSponsorWatched.has(eventId)) {
-      sendSponsorExposureEvent(eventId, 'watched', durationMs);
+      sendSponsorExposureEvent(eventId, "watched", durationMs);
     }
   }, 250);
 }
@@ -276,12 +299,12 @@ function sendSponsorExposureEvent(eventId, type, durationMs = 0) {
   if (!eventId) {
     return;
   }
-  if (type === 'seen') {
+  if (type === "seen") {
     if (recordedSponsorSeen.has(eventId)) {
       return;
     }
     recordedSponsorSeen.add(eventId);
-  } else if (type === 'watched') {
+  } else if (type === "watched") {
     if (recordedSponsorWatched.has(eventId)) {
       return;
     }
@@ -297,10 +320,13 @@ function sendSponsorExposureEvent(eventId, type, durationMs = 0) {
     device_id: getOrCreateDeviceId(),
     sponsor_ids: ids,
     type,
-    duration_ms: type === 'watched' && durationMs > 0 ? Math.round(durationMs) : undefined,
+    duration_ms:
+      type === "watched" && durationMs > 0 ? Math.round(durationMs) : undefined,
   };
 
-  sendJsonBeacon(`/events/${eventId}/sponsors/exposures`, payload).catch(() => {});
+  sendJsonBeacon(`/events/${eventId}/sponsors/exposures`, payload).catch(
+    () => {},
+  );
 }
 
 function handleSponsorVisibility(isVisible) {
@@ -315,24 +341,28 @@ function handleSponsorVisibility(isVisible) {
       sponsorVisibilityState.isVisible = true;
       sponsorVisibilityState.visibleSince = getNow();
     }
-    sendSponsorExposureEvent(eventId, 'seen');
+    sendSponsorExposureEvent(eventId, "seen");
     startSponsorVisibilityInterval();
   } else {
-    if (sponsorVisibilityState.isVisible && sponsorVisibilityState.visibleSince) {
-      sponsorVisibilityState.accumulatedMs += getNow() - sponsorVisibilityState.visibleSince;
+    if (
+      sponsorVisibilityState.isVisible &&
+      sponsorVisibilityState.visibleSince
+    ) {
+      sponsorVisibilityState.accumulatedMs +=
+        getNow() - sponsorVisibilityState.visibleSince;
       sponsorVisibilityState.visibleSince = 0;
       sponsorVisibilityState.isVisible = false;
     }
     const durationMs = currentSponsorViewDuration();
     if (durationMs >= 2000 && !recordedSponsorWatched.has(eventId)) {
-      sendSponsorExposureEvent(eventId, 'watched', durationMs);
+      sendSponsorExposureEvent(eventId, "watched", durationMs);
     }
     stopSponsorVisibilityInterval();
   }
 }
 
 function setupSponsorObserver() {
-  if (typeof window === 'undefined' || !('IntersectionObserver' in window)) {
+  if (typeof window === "undefined" || !("IntersectionObserver" in window)) {
     return;
   }
   const target = sponsorSectionRef.value;
@@ -342,15 +372,18 @@ function setupSponsorObserver() {
   if (sponsorIntersectionObserver) {
     sponsorIntersectionObserver.disconnect();
   }
-  sponsorIntersectionObserver = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (entry.target !== target) {
-        return;
-      }
-      const visible = entry.isIntersecting && entry.intersectionRatio > 0;
-      handleSponsorVisibility(visible);
-    });
-  }, { threshold: sponsorObserverThresholds });
+  sponsorIntersectionObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.target !== target) {
+          return;
+        }
+        const visible = entry.isIntersecting && entry.intersectionRatio > 0;
+        handleSponsorVisibility(visible);
+      });
+    },
+    { threshold: sponsorObserverThresholds },
+  );
   sponsorIntersectionObserver.observe(target);
 }
 
@@ -363,29 +396,30 @@ function teardownSponsorObserver() {
 
 async function loadPlayers() {
   isLoadingPlayers.value = true;
-  playersError.value = '';
+  playersError.value = "";
   try {
-    const { data } = await apiClient.get('/public/players');
+    const { data } = await apiClient.get("/public/players");
     if (Array.isArray(data)) {
       rawPlayers.value = data.map((item) => ({
         id: Number(item?.id) || 0,
-        first_name: typeof item?.first_name === 'string' ? item.first_name : '',
-        last_name: typeof item?.last_name === 'string' ? item.last_name : '',
-        role: typeof item?.role === 'string' ? item.role : '',
+        first_name: typeof item?.first_name === "string" ? item.first_name : "",
+        last_name: typeof item?.last_name === "string" ? item.last_name : "",
+        role: typeof item?.role === "string" ? item.role : "",
         jersey_number:
-          typeof item?.jersey_number === 'number'
+          typeof item?.jersey_number === "number"
             ? item.jersey_number
             : Number.isFinite(Number(item?.jersey_number))
-            ? Number(item?.jersey_number)
-            : null,
-        image_url: typeof item?.image_url === 'string' ? item.image_url : '',
+              ? Number(item?.jersey_number)
+              : null,
+        image_url: typeof item?.image_url === "string" ? item.image_url : "",
       }));
     } else {
       rawPlayers.value = [];
     }
   } catch (error) {
-    console.error('Impossibile caricare i giocatori', error);
-    playersError.value = 'Non è stato possibile caricare i giocatori. Riprova più tardi.';
+    console.error("Impossibile caricare i giocatori", error);
+    playersError.value =
+      "Non è stato possibile caricare i giocatori. Riprova più tardi.";
     rawPlayers.value = [];
   } finally {
     isLoadingPlayers.value = false;
@@ -395,117 +429,264 @@ async function loadPlayers() {
 const votedPlayerId = ref(null);
 const isVoting = ref(false);
 const cardSize = ref(88);
-const errorMessage = ref('');
+const errorMessage = ref("");
 const pendingPlayer = ref(null);
 const showTicketModal = ref(false);
 const showAlreadyVotedModal = ref(false);
-const ticketCode = ref('');
-const ticketQrUrl = ref('');
-const ticketLoadError = ref('');
+const ticketCode = ref("");
+const ticketQrUrl = ref("");
+const ticketLoadError = ref("");
 const isTicketLoading = ref(false);
 const showVoteSummary = computed(
   () => hasVoted.value && Boolean(ticketCode.value || ticketQrUrl.value),
 );
 
-const feedbackQuestions = [
-  {
-    id: 'experience',
-    answerKey: 'experience',
-    title: 'Com’è stata la tua esperienza di voto oggi?',
-    options: [
-      { value: 'very_easy', label: 'Facilissima', icon: '🤩' },
-      { value: 'easy', label: 'Abbastanza semplice', icon: '🙂' },
-      { value: 'complex', label: 'Un po’ macchinosa', icon: '😐' },
-      { value: 'hard', label: 'Difficile', icon: '😣' },
-    ],
-  },
-  {
-    id: 'team_spirit',
-    answerKey: 'team_spirit',
-    title: 'Ti sei sentito parte della squadra mentre sceglievi l’MVP del pubblico?',
-    options: [
-      { value: 'high', label: 'Sì, tantissimo!', icon: '🔥' },
-      { value: 'medium', label: 'In parte', icon: '🙂' },
-      { value: 'low', label: 'Non proprio', icon: '🙄' },
-    ],
-  },
-  {
-    id: 'perks_interest',
-    answerKey: 'perks_interest',
-    title:
-      'Immagina che la tua partecipazione ti permetta di vivere esperienze speciali o vantaggi come vero tifoso… ti piacerebbe?',
-    options: [
-      { value: 'yes', label: 'Sì, assolutamente', icon: '💙' },
-      { value: 'maybe', label: 'Forse', icon: '🙂' },
-      { value: 'no', label: 'No', icon: '🙄' },
-    ],
-  },
-  {
-    id: 'mini_games_interest',
-    answerKey: 'mini_games_interest',
-    title:
-      'Ti piacerebbe divertirti ancora di più con mini-giochi o sfide tra un set e l’altro per mettere alla prova i tuoi riflessi?',
-    options: [
-      { value: 'super_excited', label: 'Sì, carichissimo!', icon: '🔥' },
-      { value: 'maybe', label: 'Forse più avanti', icon: '🙂' },
-      { value: 'no', label: 'No grazie', icon: '🙄' },
-    ],
-  },
-];
+const DEFAULT_FEEDBACK_SURVEY = Object.freeze({
+  questions: [
+    {
+      id: "experience",
+      title: "Com’è stata la tua esperienza di voto oggi?",
+      answers: [
+        { value: "very_easy", label: "Facilissima", icon: "🤩" },
+        { value: "easy", label: "Abbastanza semplice", icon: "🙂" },
+        { value: "complex", label: "Un po’ macchinosa", icon: "😐" },
+        { value: "hard", label: "Difficile", icon: "😣" },
+      ],
+    },
+    {
+      id: "team_spirit",
+      title:
+        "Ti sei sentito parte della squadra mentre sceglievi l’MVP del pubblico?",
+      answers: [
+        { value: "high", label: "Sì, tantissimo!", icon: "🔥" },
+        { value: "medium", label: "In parte", icon: "🙂" },
+        { value: "low", label: "Non proprio", icon: "🙄" },
+      ],
+    },
+    {
+      id: "perks_interest",
+      title:
+        "Immagina che la tua partecipazione ti permetta di vivere esperienze speciali o vantaggi come vero tifoso… ti piacerebbe?",
+      answers: [
+        { value: "yes", label: "Sì, assolutamente", icon: "💙" },
+        { value: "maybe", label: "Forse", icon: "🙂" },
+        { value: "no", label: "No", icon: "🙄" },
+      ],
+    },
+    {
+      id: "mini_games_interest",
+      title:
+        "Ti piacerebbe divertirti ancora di più con mini-giochi o sfide tra un set e l’altro per mettere alla prova i tuoi riflessi?",
+      answers: [
+        { value: "super_excited", label: "Sì, carichissimo!", icon: "🔥" },
+        { value: "maybe", label: "Forse più avanti", icon: "🙂" },
+        { value: "no", label: "No grazie", icon: "🙄" },
+      ],
+    },
+  ],
+  suggestionPrompt:
+    "Se potessi migliorare qualcosa, cosa ti piacerebbe aggiungere o cambiare?",
+});
 
-const optionalFeedbackQuestion = {
-  id: 'suggestion',
-  answerKey: 'suggestion',
-  title: 'Se potessi migliorare qualcosa, cosa ti piacerebbe aggiungere o cambiare?',
-};
+function normalizeFeedbackSurvey(raw) {
+  const normalized = {
+    questions: DEFAULT_FEEDBACK_SURVEY.questions.map((question) => ({
+      id: question.id,
+      title: question.title,
+      answers: question.answers.map((answer) => ({
+        value: answer.value,
+        label: answer.label,
+        icon: answer.icon || "",
+      })),
+    })),
+    suggestionPrompt: DEFAULT_FEEDBACK_SURVEY.suggestionPrompt,
+  };
+
+  if (!raw || typeof raw !== "object") {
+    return normalized;
+  }
+
+  const questionOverrides = new Map();
+  const rawQuestions = Array.isArray(raw.questions)
+    ? raw.questions
+    : raw.Questions;
+  if (Array.isArray(rawQuestions)) {
+    rawQuestions.forEach((question) => {
+      if (!question || typeof question !== "object") {
+        return;
+      }
+      const id = typeof question.id === "string" ? question.id.trim() : "";
+      if (!id) {
+        return;
+      }
+      questionOverrides.set(id, question);
+    });
+  }
+
+  normalized.questions = normalized.questions.map((question) => {
+    const override = questionOverrides.get(question.id);
+    if (!override || typeof override !== "object") {
+      return question;
+    }
+
+    const overrideTitle =
+      typeof override.title === "string"
+        ? override.title.trim()
+        : typeof override.Title === "string"
+          ? override.Title.trim()
+          : "";
+    if (overrideTitle) {
+      question.title = overrideTitle;
+    }
+
+    const answerOverrides = new Map();
+    const rawAnswers = Array.isArray(override.answers)
+      ? override.answers
+      : override.Answers;
+    if (Array.isArray(rawAnswers)) {
+      rawAnswers.forEach((answer) => {
+        if (!answer || typeof answer !== "object") {
+          return;
+        }
+        const value =
+          typeof answer.value === "string" ? answer.value.trim() : "";
+        if (!value) {
+          return;
+        }
+        answerOverrides.set(value, answer);
+      });
+    }
+
+    question.answers = question.answers.map((answer) => {
+      const overrideAnswer = answerOverrides.get(answer.value);
+      if (!overrideAnswer || typeof overrideAnswer !== "object") {
+        return { ...answer };
+      }
+      const label =
+        typeof overrideAnswer.label === "string"
+          ? overrideAnswer.label.trim()
+          : typeof overrideAnswer.Label === "string"
+            ? overrideAnswer.Label.trim()
+            : "";
+      const icon =
+        typeof overrideAnswer.icon === "string"
+          ? overrideAnswer.icon.trim()
+          : typeof overrideAnswer.Icon === "string"
+            ? overrideAnswer.Icon.trim()
+            : "";
+      return {
+        value: answer.value,
+        label: label || answer.label,
+        icon: icon || answer.icon || "",
+      };
+    });
+
+    return question;
+  });
+
+  const rawSuggestion =
+    typeof raw.suggestion_prompt === "string"
+      ? raw.suggestion_prompt
+      : typeof raw.suggestionPrompt === "string"
+        ? raw.suggestionPrompt
+        : "";
+  if (rawSuggestion && rawSuggestion.trim()) {
+    normalized.suggestionPrompt = rawSuggestion.trim();
+  }
+
+  return normalized;
+}
+
+const feedbackSurvey = computed(() =>
+  normalizeFeedbackSurvey(
+    props.activeEvent?.feedback_survey ?? props.activeEvent?.feedbackSurvey,
+  ),
+);
+
+const feedbackQuestions = computed(() =>
+  feedbackSurvey.value.questions.map((question) => ({
+    id: question.id,
+    answerKey: question.id,
+    title: question.title,
+    options: question.answers.map((answer) => ({
+      value: answer.value,
+      label: answer.label,
+      icon: answer.icon || "",
+    })),
+  })),
+);
+
+const optionalFeedbackQuestion = computed(() => ({
+  id: "suggestion",
+  answerKey: "suggestion",
+  title: feedbackSurvey.value.suggestionPrompt,
+}));
 
 const feedbackAnswers = reactive({
-  experience: '',
-  team_spirit: '',
-  perks_interest: '',
-  mini_games_interest: '',
-  suggestion: '',
+  experience: "",
+  team_spirit: "",
+  perks_interest: "",
+  mini_games_interest: "",
+  suggestion: "",
 });
 
 const feedbackStep = ref(0);
 const showFeedbackModal = ref(false);
 const isFeedbackSubmitting = ref(false);
-const feedbackError = ref('');
+const feedbackError = ref("");
 const showFeedbackThankYou = ref(false);
 const hasCompletedFeedback = ref(false);
 const optionalFeedbackMaxLength = 80;
-const feedbackStoragePrefix = 'wcmvpvs-feedback';
-const mandatoryFeedbackKeys = ['experience', 'team_spirit', 'perks_interest', 'mini_games_interest'];
+const feedbackStoragePrefix = "wcmvpvs-feedback";
+const mandatoryFeedbackKeys = [
+  "experience",
+  "team_spirit",
+  "perks_interest",
+  "mini_games_interest",
+];
 
 const activeFeedbackQuestion = computed(() =>
-  feedbackStep.value < feedbackQuestions.length
-    ? feedbackQuestions[feedbackStep.value]
+  feedbackStep.value < feedbackQuestions.value.length
+    ? feedbackQuestions.value[feedbackStep.value]
     : null,
 );
 
-const isOptionalFeedbackStep = computed(() => feedbackStep.value >= feedbackQuestions.length);
+const isOptionalFeedbackStep = computed(
+  () => feedbackStep.value >= feedbackQuestions.value.length,
+);
 
 const feedbackStepLabel = computed(() => {
-  if (feedbackStep.value < feedbackQuestions.length) {
-    return `Step ${feedbackStep.value + 1} di ${feedbackQuestions.length}`;
+  if (feedbackStep.value < feedbackQuestions.value.length) {
+    return `Step ${feedbackStep.value + 1} di ${feedbackQuestions.value.length}`;
   }
-  return 'Extra (opzionale)';
+  return "Extra (opzionale)";
 });
 
 const feedbackProgress = computed(() => {
-  if (!feedbackQuestions.length) {
+  if (!feedbackQuestions.value.length) {
     return 0;
   }
-  const effectiveStep = Math.min(feedbackStep.value, feedbackQuestions.length - 1);
-  return Math.round(((effectiveStep + 1) / feedbackQuestions.length) * 100);
+  const effectiveStep = Math.min(
+    feedbackStep.value,
+    feedbackQuestions.value.length - 1,
+  );
+  return Math.round(
+    ((effectiveStep + 1) / feedbackQuestions.value.length) * 100,
+  );
 });
 
 const shouldShowFeedbackCta = computed(
-  () => hasVoted.value && postVoteSettings.value.showFeedbackSurvey && !hasCompletedFeedback.value,
+  () =>
+    hasVoted.value &&
+    postVoteSettings.value.showFeedbackSurvey &&
+    !hasCompletedFeedback.value,
 );
 
 const showFeedbackThankYouMessage = computed(
-  () => postVoteSettings.value.showFeedbackSurvey && hasCompletedFeedback.value && showFeedbackThankYou.value,
+  () =>
+    postVoteSettings.value.showFeedbackSurvey &&
+    hasCompletedFeedback.value &&
+    showFeedbackThankYou.value,
 );
 
 const handleSelfieSubmitted = () => {
@@ -514,44 +695,44 @@ const handleSelfieSubmitted = () => {
 
 const feedbackStorageKey = (eventId) => {
   if (!eventId) {
-    return '';
+    return "";
   }
   return `${feedbackStoragePrefix}:${eventId}`;
 };
 
 function clearFeedbackAnswers() {
-  feedbackAnswers.experience = '';
-  feedbackAnswers.team_spirit = '';
-  feedbackAnswers.perks_interest = '';
-  feedbackAnswers.mini_games_interest = '';
-  feedbackAnswers.suggestion = '';
+  feedbackAnswers.experience = "";
+  feedbackAnswers.team_spirit = "";
+  feedbackAnswers.perks_interest = "";
+  feedbackAnswers.mini_games_interest = "";
+  feedbackAnswers.suggestion = "";
 }
 
 function resetFeedbackFlow() {
   feedbackStep.value = 0;
-  feedbackError.value = '';
+  feedbackError.value = "";
   isFeedbackSubmitting.value = false;
   showFeedbackModal.value = false;
   clearFeedbackAnswers();
 }
 
 function readFeedbackCompletion(eventId) {
-  if (!eventId || typeof window === 'undefined') {
+  if (!eventId || typeof window === "undefined") {
     return false;
   }
   try {
-    return window.localStorage?.getItem(feedbackStorageKey(eventId)) === '1';
+    return window.localStorage?.getItem(feedbackStorageKey(eventId)) === "1";
   } catch (error) {
     return false;
   }
 }
 
 function persistFeedbackCompletion(eventId) {
-  if (!eventId || typeof window === 'undefined') {
+  if (!eventId || typeof window === "undefined") {
     return;
   }
   try {
-    window.localStorage?.setItem(feedbackStorageKey(eventId), '1');
+    window.localStorage?.setItem(feedbackStorageKey(eventId), "1");
   } catch (error) {
     // ignore storage errors
   }
@@ -561,11 +742,14 @@ function openFeedbackModal() {
   if (!shouldShowFeedbackCta.value) {
     return;
   }
-  const firstIncompleteIndex = feedbackQuestions.findIndex(
+  const firstIncompleteIndex = feedbackQuestions.value.findIndex(
     (question) => !feedbackAnswers[question.answerKey],
   );
-  feedbackStep.value = firstIncompleteIndex >= 0 ? firstIncompleteIndex : feedbackQuestions.length;
-  feedbackError.value = '';
+  feedbackStep.value =
+    firstIncompleteIndex >= 0
+      ? firstIncompleteIndex
+      : feedbackQuestions.value.length;
+  feedbackError.value = "";
   showFeedbackModal.value = true;
 }
 
@@ -574,7 +758,7 @@ function closeFeedbackModal() {
     return;
   }
   showFeedbackModal.value = false;
-  feedbackError.value = '';
+  feedbackError.value = "";
 }
 
 function isFeedbackOptionSelected(question, option) {
@@ -593,8 +777,11 @@ function handleFeedbackOptionSelect(option) {
     return;
   }
   feedbackAnswers[question.answerKey] = option.value;
-  feedbackError.value = '';
-  const nextStep = Math.min(feedbackStep.value + 1, feedbackQuestions.length);
+  feedbackError.value = "";
+  const nextStep = Math.min(
+    feedbackStep.value + 1,
+    feedbackQuestions.value.length,
+  );
   feedbackStep.value = nextStep;
 }
 
@@ -603,14 +790,14 @@ function goToPreviousFeedbackStep() {
     return;
   }
   feedbackStep.value -= 1;
-  feedbackError.value = '';
+  feedbackError.value = "";
 }
 
 function skipOptionalFeedback() {
   if (isFeedbackSubmitting.value) {
     return;
   }
-  feedbackAnswers.suggestion = '';
+  feedbackAnswers.suggestion = "";
   submitFeedback();
 }
 
@@ -620,17 +807,17 @@ async function submitFeedback() {
   }
   const eventId = currentEventId.value;
   if (!eventId) {
-    feedbackError.value = 'Evento non disponibile in questo momento.';
+    feedbackError.value = "Evento non disponibile in questo momento.";
     return;
   }
   for (const key of mandatoryFeedbackKeys) {
     if (!feedbackAnswers[key]) {
-      feedbackError.value = 'Rispondi a tutte le domande per continuare.';
+      feedbackError.value = "Rispondi a tutte le domande per continuare.";
       return;
     }
   }
   isFeedbackSubmitting.value = true;
-  feedbackError.value = '';
+  feedbackError.value = "";
   try {
     const suggestion = feedbackAnswers.suggestion.trim();
     const result = await submitEventFeedback(eventId, {
@@ -648,12 +835,14 @@ async function submitFeedback() {
       return;
     }
     if (result?.status === 400) {
-      feedbackError.value = 'Controlla le risposte e riprova.';
+      feedbackError.value = "Controlla le risposte e riprova.";
     } else {
-      feedbackError.value = 'Non siamo riusciti a salvare il tuo feedback. Riprova tra qualche istante.';
+      feedbackError.value =
+        "Non siamo riusciti a salvare il tuo feedback. Riprova tra qualche istante.";
     }
   } catch (error) {
-    feedbackError.value = 'Non siamo riusciti a salvare il tuo feedback. Riprova tra qualche istante.';
+    feedbackError.value =
+      "Non siamo riusciti a salvare il tuo feedback. Riprova tra qualche istante.";
   } finally {
     isFeedbackSubmitting.value = false;
   }
@@ -671,22 +860,22 @@ async function refreshVoteStatus(eventId) {
       hasVoted.value = Boolean(status);
     }
   } catch (error) {
-    console.warn('Impossibile verificare lo stato del voto', error);
+    console.warn("Impossibile verificare lo stato del voto", error);
   } finally {
     isCheckingVoteStatus.value = false;
   }
 }
 
 const sanitizeName = (value) => {
-  if (typeof value !== 'string') {
-    return '';
+  if (typeof value !== "string") {
+    return "";
   }
   return value.trim();
 };
 
 const resolveTeamName = (event, keys) => {
   if (!event) {
-    return '';
+    return "";
   }
 
   for (const key of keys) {
@@ -698,15 +887,27 @@ const resolveTeamName = (event, keys) => {
     }
   }
 
-  return '';
+  return "";
 };
 
 const homeTeamName = computed(() =>
-  resolveTeamName(props.activeEvent, ['team1_name', 'team1', 'home_team', 'homeTeam', 'team1Name'])
+  resolveTeamName(props.activeEvent, [
+    "team1_name",
+    "team1",
+    "home_team",
+    "homeTeam",
+    "team1Name",
+  ]),
 );
 
 const awayTeamName = computed(() =>
-  resolveTeamName(props.activeEvent, ['team2_name', 'team2', 'away_team', 'awayTeam', 'team2Name'])
+  resolveTeamName(props.activeEvent, [
+    "team2_name",
+    "team2",
+    "away_team",
+    "awayTeam",
+    "team2Name",
+  ]),
 );
 
 const eventTitle = computed(() => {
@@ -714,18 +915,18 @@ const eventTitle = computed(() => {
   const away = awayTeamName.value;
 
   if (home || away) {
-    const fallbackHome = home || 'Squadra di casa';
-    const fallbackAway = away || 'Squadra ospite';
+    const fallbackHome = home || "Squadra di casa";
+    const fallbackAway = away || "Squadra ospite";
     return `${fallbackHome} - ${fallbackAway}`;
   }
 
-  return 'Vota il tuo MVP';
+  return "Vota il tuo MVP";
 });
 
 const currentEventId = computed(() => props.eventId ?? props.activeEvent?.id);
 
 const resolveEventFlag = (event, keys, fallback = true) => {
-  if (!event || typeof event !== 'object') {
+  if (!event || typeof event !== "object") {
     return fallback;
   }
   for (const key of keys) {
@@ -741,12 +942,17 @@ const preVoteSettings = computed(() => {
   return {
     showSponsors: resolveEventFlag(
       event,
-      ['show_pre_vote_sponsors', 'showPreVoteSponsors', 'show_sponsors', 'showSponsors'],
+      [
+        "show_pre_vote_sponsors",
+        "showPreVoteSponsors",
+        "show_sponsors",
+        "showSponsors",
+      ],
       true,
     ),
     showVoteCounter: resolveEventFlag(
       event,
-      ['show_vote_counter', 'showVoteCounter', 'show_pre_vote_vote_counter'],
+      ["show_vote_counter", "showVoteCounter", "show_pre_vote_vote_counter"],
       true,
     ),
   };
@@ -755,10 +961,22 @@ const preVoteSettings = computed(() => {
 const postVoteSettings = computed(() => {
   const event = props.activeEvent || null;
   return {
-    showReactionTest: resolveEventFlag(event, ['show_reaction_test', 'showReactionTest'], true),
-    showSelfie: resolveEventFlag(event, ['show_selfie', 'showSelfie'], true),
-    showVoteTrend: resolveEventFlag(event, ['show_vote_trend', 'showVoteTrend', 'show_live_results'], true),
-    showFeedbackSurvey: resolveEventFlag(event, ['show_feedback_survey', 'showFeedbackSurvey'], true),
+    showReactionTest: resolveEventFlag(
+      event,
+      ["show_reaction_test", "showReactionTest"],
+      true,
+    ),
+    showSelfie: resolveEventFlag(event, ["show_selfie", "showSelfie"], true),
+    showVoteTrend: resolveEventFlag(
+      event,
+      ["show_vote_trend", "showVoteTrend", "show_live_results"],
+      true,
+    ),
+    showFeedbackSurvey: resolveEventFlag(
+      event,
+      ["show_feedback_survey", "showFeedbackSurvey"],
+      true,
+    ),
   };
 });
 
@@ -774,14 +992,20 @@ const showVoteCounterSection = computed(
   () => preVoteSettings.value.showVoteCounter && Boolean(currentEventId.value),
 );
 
-const showInactiveNotice = computed(() => props.activeEventChecked && !props.activeEvent);
-const isCheckingActiveEvent = computed(() => props.loadingActiveEvent && !props.activeEventChecked);
+const showInactiveNotice = computed(
+  () => props.activeEventChecked && !props.activeEvent,
+);
+const isCheckingActiveEvent = computed(
+  () => props.loadingActiveEvent && !props.activeEventChecked,
+);
 const isVotingClosed = computed(() => {
   if (!props.activeEvent) {
     return false;
   }
   const raw =
-    props.activeEvent.votes_closed ?? props.activeEvent.votesClosed ?? props.activeEvent.is_voting_closed;
+    props.activeEvent.votes_closed ??
+    props.activeEvent.votesClosed ??
+    props.activeEvent.is_voting_closed;
   return Boolean(raw);
 });
 
@@ -816,19 +1040,19 @@ const showReactionTestSection = computed(() => {
 });
 
 const resolveEventStartValue = (event) => {
-  if (!event || typeof event !== 'object') {
+  if (!event || typeof event !== "object") {
     return null;
   }
 
   const candidateKeys = [
-    'start_datetime',
-    'startDatetime',
-    'startDateTime',
-    'start_time',
-    'startTime',
-    'start_at',
-    'startAt',
-    'start',
+    "start_datetime",
+    "startDatetime",
+    "startDateTime",
+    "start_time",
+    "startTime",
+    "start_at",
+    "startAt",
+    "start",
   ];
 
   for (const key of candidateKeys) {
@@ -837,13 +1061,13 @@ const resolveEventStartValue = (event) => {
       if (value instanceof Date) {
         return value;
       }
-      if (typeof value === 'string') {
+      if (typeof value === "string") {
         const trimmed = value.trim();
         if (trimmed) {
           return trimmed;
         }
       }
-      if (typeof value === 'number' && Number.isFinite(value)) {
+      if (typeof value === "number" && Number.isFinite(value)) {
         return value;
       }
     }
@@ -863,12 +1087,12 @@ const eventStartTimestamp = computed(() => {
     return Number.isFinite(timestamp) ? timestamp : null;
   }
 
-  if (typeof raw === 'number') {
+  if (typeof raw === "number") {
     return raw > 0 ? raw : null;
   }
 
-  if (typeof raw === 'string') {
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+  if (typeof raw === "string") {
+    const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
     const parsed = new Date(normalized);
     const timestamp = parsed.getTime();
     return Number.isNaN(timestamp) ? null : timestamp;
@@ -886,7 +1110,9 @@ const timeUntilEventStartMs = computed(() => {
   return diff > 0 ? diff : 0;
 });
 
-const countdownSeconds = computed(() => Math.ceil(timeUntilEventStartMs.value / 1000));
+const countdownSeconds = computed(() =>
+  Math.ceil(timeUntilEventStartMs.value / 1000),
+);
 
 const countdownParts = computed(() => {
   const total = countdownSeconds.value;
@@ -900,33 +1126,35 @@ const countdownParts = computed(() => {
 
 const countdownLabel = computed(() => {
   const { totalHours, minutes, seconds } = countdownParts.value;
-  return [totalHours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
+  return [totalHours, minutes, seconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
 });
 
 const countdownDaysLabel = computed(() => {
   const { days, hours } = countdownParts.value;
   if (days <= 0) {
-    return '';
+    return "";
   }
-  const dayLabel = days === 1 ? 'giorno' : 'giorni';
-  const hourLabel = hours === 1 ? 'ora' : 'ore';
+  const dayLabel = days === 1 ? "giorno" : "giorni";
+  const hourLabel = hours === 1 ? "ora" : "ore";
   return `${days} ${dayLabel} e ${hours} ${hourLabel} rimanenti`;
 });
 
 const countdownStartTimeLabel = computed(() => {
   const start = eventStartTimestamp.value;
   if (!start) {
-    return '';
+    return "";
   }
   try {
-    return new Intl.DateTimeFormat('it-IT', {
-      dateStyle: 'full',
-      timeStyle: 'short',
+    return new Intl.DateTimeFormat("it-IT", {
+      dateStyle: "full",
+      timeStyle: "short",
     }).format(new Date(start));
   } catch (error) {
     const date = new Date(start);
-    if (typeof date.toLocaleString === 'function') {
-      return date.toLocaleString('it-IT');
+    if (typeof date.toLocaleString === "function") {
+      return date.toLocaleString("it-IT");
     }
     return date.toString();
   }
@@ -941,15 +1169,15 @@ const isEventUpcoming = computed(() => timeUntilEventStartMs.value > 0);
 watch(currentEventId, (eventId) => {
   votedPlayerId.value = null;
   pendingPlayer.value = null;
-  errorMessage.value = '';
+  errorMessage.value = "";
   showTicketModal.value = false;
-  ticketCode.value = '';
-  ticketQrUrl.value = '';
-  ticketLoadError.value = '';
+  ticketCode.value = "";
+  ticketQrUrl.value = "";
+  ticketLoadError.value = "";
   isTicketLoading.value = false;
   showAlreadyVotedModal.value = false;
   totalVotes.value = 0;
-  voteTotalError.value = '';
+  voteTotalError.value = "";
   stopVoteTotalPolling();
   if (eventId && preVoteSettings.value.showVoteCounter) {
     refreshVoteTotal();
@@ -1032,7 +1260,7 @@ watch(
     stopVoteTotalPolling();
     if (!enabled) {
       totalVotes.value = 0;
-      voteTotalError.value = '';
+      voteTotalError.value = "";
       isVoteTotalLoading.value = false;
       return;
     }
@@ -1067,7 +1295,9 @@ watch(fieldPlayers, (players) => {
   if (!pendingPlayer.value) {
     return;
   }
-  const replacement = players.find((player) => player.id === pendingPlayer.value.id);
+  const replacement = players.find(
+    (player) => player.id === pendingPlayer.value.id,
+  );
   if (replacement) {
     pendingPlayer.value = replacement;
   } else {
@@ -1080,7 +1310,7 @@ watch(isVotingClosed, (closed) => {
     pendingPlayer.value = null;
     showTicketModal.value = false;
     showAlreadyVotedModal.value = false;
-    ticketLoadError.value = '';
+    ticketLoadError.value = "";
     isTicketLoading.value = false;
   }
 });
@@ -1093,7 +1323,7 @@ watch(
       pendingPlayer.value = null;
       showTicketModal.value = false;
       showAlreadyVotedModal.value = false;
-      ticketLoadError.value = '';
+      ticketLoadError.value = "";
       isTicketLoading.value = false;
     } else {
       stopCountdownTimer();
@@ -1114,7 +1344,7 @@ const updateCardSize = () => {
 
 onMounted(() => {
   updateCardSize();
-  window.addEventListener('resize', updateCardSize, { passive: true });
+  window.addEventListener("resize", updateCardSize, { passive: true });
   loadSponsors();
   loadPlayers();
   if (currentEventId.value) {
@@ -1135,7 +1365,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateCardSize);
+  window.removeEventListener("resize", updateCardSize);
   stopVoteTotalPolling();
   stopCountdownTimer();
   stopSponsorVisibilityInterval();
@@ -1156,11 +1386,14 @@ const openPlayerModal = (player) => {
     return;
   }
 
-  if ((disableVotes.value && votedPlayerId.value !== player.id) || isVoting.value) {
+  if (
+    (disableVotes.value && votedPlayerId.value !== player.id) ||
+    isVoting.value
+  ) {
     return;
   }
   pendingPlayer.value = player;
-  errorMessage.value = '';
+  errorMessage.value = "";
 };
 
 const closeModal = () => {
@@ -1184,7 +1417,10 @@ const voteForPlayer = async (player) => {
     return;
   }
 
-  if (isVoting.value || (votedPlayerId.value && votedPlayerId.value !== player.id)) {
+  if (
+    isVoting.value ||
+    (votedPlayerId.value && votedPlayerId.value !== player.id)
+  ) {
     return;
   }
 
@@ -1192,12 +1428,12 @@ const voteForPlayer = async (player) => {
     return;
   }
 
-  errorMessage.value = '';
+  errorMessage.value = "";
   isVoting.value = true;
 
   const eventId = currentEventId.value;
   if (!eventId) {
-    errorMessage.value = 'Nessun evento attivo al momento.';
+    errorMessage.value = "Nessun evento attivo al momento.";
     isVoting.value = false;
     return;
   }
@@ -1210,30 +1446,31 @@ const voteForPlayer = async (player) => {
       pendingPlayer.value = null;
       hasVoted.value = true;
 
-      const codeSource = voteResult.code || '';
-      const qrSource = voteResult.qr_data || '';
+      const codeSource = voteResult.code || "";
+      const qrSource = voteResult.qr_data || "";
 
       if (codeSource) {
         ticketCode.value = codeSource;
-        ticketLoadError.value = '';
+        ticketLoadError.value = "";
         isTicketLoading.value = Boolean(qrSource);
         ticketQrUrl.value = qrSource
           ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrSource)}`
-          : '';
+          : "";
         if (!qrSource) {
           isTicketLoading.value = false;
         }
         showTicketModal.value = true;
         refreshVoteTotal({ silent: true });
       } else {
-        console.warn('voteForPlayer: missing ticket data', response);
-        errorMessage.value = 'Non siamo riusciti a generare il QR del ticket. Riprova.';
+        console.warn("voteForPlayer: missing ticket data", response);
+        errorMessage.value =
+          "Non siamo riusciti a generare il QR del ticket. Riprova.";
       }
     } else {
       if (response?.status === 409) {
         pendingPlayer.value = null;
         showAlreadyVotedModal.value = true;
-        errorMessage.value = '';
+        errorMessage.value = "";
         if (!votedPlayerId.value) {
           votedPlayerId.value = -1;
         }
@@ -1241,15 +1478,17 @@ const voteForPlayer = async (player) => {
       } else if (response?.status === 429) {
         errorMessage.value =
           response?.message ||
-          'Stai votando troppo rapidamente. Attendi qualche istante e riprova.';
+          "Stai votando troppo rapidamente. Attendi qualche istante e riprova.";
       } else {
         errorMessage.value =
-          response?.message || 'Non è stato possibile registrare il voto. Riprova.';
+          response?.message ||
+          "Non è stato possibile registrare il voto. Riprova.";
       }
     }
   } catch (error) {
-    console.error('vote error', error);
-    errorMessage.value = 'Si è verificato un errore. Riprova tra qualche istante.';
+    console.error("vote error", error);
+    errorMessage.value =
+      "Si è verificato un errore. Riprova tra qualche istante.";
   } finally {
     isVoting.value = false;
   }
@@ -1259,15 +1498,15 @@ const isModalOpen = computed(() => Boolean(pendingPlayer.value));
 
 const modalActionLabel = computed(() => {
   if (!pendingPlayer.value) {
-    return 'Vota MVP';
+    return "Vota MVP";
   }
   if (votedPlayerId.value === pendingPlayer.value.id) {
-    return 'Voto registrato';
+    return "Voto registrato";
   }
   if (isVoting.value) {
-    return 'Invio...';
+    return "Invio...";
   }
-  return 'Vota MVP';
+  return "Vota MVP";
 });
 
 const confirmVote = () => {
@@ -1283,56 +1522,64 @@ const handleQrLoaded = () => {
 
 const handleQrError = () => {
   isTicketLoading.value = false;
-  ticketQrUrl.value = '';
-  ticketLoadError.value = 'Non siamo riusciti a caricare il QR del ticket. Riprova tra qualche istante.';
+  ticketQrUrl.value = "";
+  ticketLoadError.value =
+    "Non siamo riusciti a caricare il QR del ticket. Riprova tra qualche istante.";
 };
 </script>
 
 <template>
-  <div class="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col">
+  <div
+    class="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col"
+  >
     <main
       v-if="!isCheckingActiveEvent && !showInactiveNotice"
       class="flex-1 overflow-y-auto"
     >
-      <div
-        class="flex flex-col"
-        :class="hasVoted ? 'gap-6' : 'gap-10'"
-      >
+      <div class="flex flex-col" :class="hasVoted ? 'gap-6' : 'gap-10'">
         <section v-if="isVotingClosed" class="px-4">
           <div class="closed-banner" role="status" aria-live="polite">
             <h3>Votazioni chiuse</h3>
-            <p>Grazie per aver partecipato! Ti aspettiamo alla prossima partita al palazzetto.</p>
+            <p>
+              Grazie per aver partecipato! Ti aspettiamo alla prossima partita
+              al palazzetto.
+            </p>
           </div>
         </section>
         <section v-if="showVoteSummary" class="px-4">
           <div class="vote-summary" role="status" aria-live="polite">
             <div class="vote-summary__content">
               <p class="vote-summary__eyebrow">Hai votato!</p>
-              <h3 class="vote-summary__title">Conserva il tuo codice per l'estrazione</h3>
+              <h3 class="vote-summary__title">
+                Conserva il tuo codice per l'estrazione
+              </h3>
               <p class="vote-summary__code" aria-label="Codice di voto">
                 Codice: <span>{{ ticketCode }}</span>
               </p>
               <p class="vote-summary__hint">
-                Mostra questo codice e il QR allo staff in caso di estrazione del premio.
+                Mostra questo codice e il QR allo staff in caso di estrazione
+                del premio.
               </p>
-              <p v-if="ticketLoadError" class="vote-summary__error">{{ ticketLoadError }}</p>
+              <p v-if="ticketLoadError" class="vote-summary__error">
+                {{ ticketLoadError }}
+              </p>
             </div>
             <div class="vote-summary__qr" aria-hidden="true">
               <div v-if="isTicketLoading" class="vote-summary__qr-loader">
                 <span class="qr-loader"></span>
               </div>
-              <img
-                v-else-if="ticketQrUrl"
-                :src="ticketQrUrl"
-                alt="QR code"
-              />
-              <div v-else class="vote-summary__qr-placeholder">QR non disponibile</div>
+              <img v-else-if="ticketQrUrl" :src="ticketQrUrl" alt="QR code" />
+              <div v-else class="vote-summary__qr-placeholder">
+                QR non disponibile
+              </div>
             </div>
           </div>
         </section>
         <section v-if="!hasVoted" class="px-4">
           <div class="mb-6 text-center">
-            <h2 class="text-lg font-semibold uppercase tracking-[0.1em] text-slate-200">
+            <h2
+              class="text-lg font-semibold uppercase tracking-[0.1em] text-slate-200"
+            >
               {{ eventTitle }}
             </h2>
             <p v-if="!isEventUpcoming" class="mt-2 text-sm text-slate-300">
@@ -1355,16 +1602,10 @@ const handleQrError = () => {
               @sponsor-click="handleSponsorClick"
             />
           </div>
-          <p
-            v-else-if="isLoadingPlayers"
-            class="players-message"
-          >
+          <p v-else-if="isLoadingPlayers" class="players-message">
             Caricamento dei giocatori in corso…
           </p>
-          <p
-            v-else-if="playersError"
-            class="players-message error"
-          >
+          <p v-else-if="playersError" class="players-message error">
             {{ playersError }}
           </p>
           <p v-else class="players-message">
@@ -1373,8 +1614,12 @@ const handleQrError = () => {
         </section>
         <section v-else class="px-4 after-vote-section">
           <div class="after-vote-success">
-            <p class="after-vote-success__eyebrow">Voto registrato <span aria-hidden="true">✅</span></p>
-            <h3 class="after-vote-success__title">Grazie per aver partecipato!</h3>
+            <p class="after-vote-success__eyebrow">
+              Voto registrato <span aria-hidden="true">✅</span>
+            </p>
+            <h3 class="after-vote-success__title">
+              Grazie per aver partecipato!
+            </h3>
             <button
               v-if="shouldShowFeedbackCta"
               type="button"
@@ -1384,7 +1629,10 @@ const handleQrError = () => {
               <span class="feedback-cta__label">Aiutaci a migliorare</span>
               <span class="feedback-cta__time">(15 secondi)</span>
             </button>
-            <p v-else-if="showFeedbackThankYouMessage" class="after-vote-success__thanks">
+            <p
+              v-else-if="showFeedbackThankYouMessage"
+              class="after-vote-success__thanks"
+            >
               Grazie 💙 Hai aiutato a migliorare l’esperienza dei tifosi 🙌
             </p>
           </div>
@@ -1392,7 +1640,8 @@ const handleQrError = () => {
           <div class="after-vote-panel">
             <h3>{{ eventTitle }}</h3>
             <p>
-              Hai già espresso il tuo voto per questa partita. Conserva il codice mostrato in alto e attendi l'estrazione dei premi.
+              Hai già espresso il tuo voto per questa partita. Conserva il
+              codice mostrato in alto e attendi l'estrazione dei premi.
             </p>
           </div>
 
@@ -1426,8 +1675,12 @@ const handleQrError = () => {
             class="relative overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
             aria-labelledby="sponsor-title"
           >
-            <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.18),_transparent_55%)]"></div>
-            <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,_rgba(30,41,59,0.45),_transparent_60%)] mix-blend-screen"></div>
+            <div
+              class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.18),_transparent_55%)]"
+            ></div>
+            <div
+              class="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,_rgba(30,41,59,0.45),_transparent_60%)] mix-blend-screen"
+            ></div>
 
             <div class="relative flex h-full flex-col">
               <header class="px-6 pt-6 pb-4">
@@ -1451,14 +1704,20 @@ const handleQrError = () => {
                       :aria-label="sponsor.name"
                       @click="handleSponsorClick(sponsor)"
                     >
-                      <div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                      <div
+                        class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                      ></div>
                       <img
                         :src="sponsor.image"
                         :alt="sponsor.name"
                         class="relative h-full w-full object-cover"
                       />
-                      <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8">
-                        <p class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center">
+                      <div
+                        class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8"
+                      >
+                        <p
+                          class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center"
+                        >
                           {{ sponsor.name }}
                         </p>
                       </div>
@@ -1468,14 +1727,20 @@ const handleQrError = () => {
                       class="group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-[0_16px_32px_rgba(8,15,28,0.45)]"
                       :aria-label="sponsor.name"
                     >
-                      <div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                      <div
+                        class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                      ></div>
                       <img
                         :src="sponsor.image"
                         :alt="sponsor.name"
                         class="relative h-full w-full object-cover"
                       />
-                      <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8">
-                        <p class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center">
+                      <div
+                        class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8"
+                      >
+                        <p
+                          class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center"
+                        >
                           {{ sponsor.name }}
                         </p>
                       </div>
@@ -1507,7 +1772,10 @@ const handleQrError = () => {
           </div>
         </section>
 
-        <p v-if="errorMessage" class="px-4 pb-6 text-center text-sm text-rose-400">
+        <p
+          v-if="errorMessage"
+          class="px-4 pb-6 text-center text-sm text-rose-400"
+        >
           {{ errorMessage }}
         </p>
 
@@ -1532,28 +1800,50 @@ const handleQrError = () => {
                 </button>
                 <p class="feedback-modal__step">{{ feedbackStepLabel }}</p>
                 <div class="feedback-modal__progress">
-                  <div class="feedback-modal__progress-bar" :style="{ width: `${feedbackProgress}%` }"></div>
+                  <div
+                    class="feedback-modal__progress-bar"
+                    :style="{ width: `${feedbackProgress}%` }"
+                  ></div>
                 </div>
               </header>
 
               <div class="feedback-modal__body">
                 <h2 id="feedback-modal-title" class="feedback-modal__title">
-                  {{ isOptionalFeedbackStep ? optionalFeedbackQuestion.title : activeFeedbackQuestion?.title }}
+                  {{
+                    isOptionalFeedbackStep
+                      ? optionalFeedbackQuestion.value.title
+                      : activeFeedbackQuestion?.title
+                  }}
                 </h2>
                 <p v-if="isOptionalFeedbackStep" class="feedback-modal__hint">
-                  Risposta facoltativa (max {{ optionalFeedbackMaxLength }} caratteri)
+                  Risposta facoltativa (max
+                  {{ optionalFeedbackMaxLength }} caratteri)
                 </p>
-                <div v-if="!isOptionalFeedbackStep && activeFeedbackQuestion" class="feedback-modal__options">
+                <div
+                  v-if="!isOptionalFeedbackStep && activeFeedbackQuestion"
+                  class="feedback-modal__options"
+                >
                   <button
                     v-for="option in activeFeedbackQuestion.options"
                     :key="option.value"
                     type="button"
                     class="feedback-modal__option"
-                    :class="{ active: isFeedbackOptionSelected(activeFeedbackQuestion, option) }"
+                    :class="{
+                      active: isFeedbackOptionSelected(
+                        activeFeedbackQuestion,
+                        option,
+                      ),
+                    }"
                     @click="handleFeedbackOptionSelect(option)"
                   >
-                    <span class="feedback-modal__option-icon" aria-hidden="true">{{ option.icon }}</span>
-                    <span class="feedback-modal__option-label">{{ option.label }}</span>
+                    <span
+                      class="feedback-modal__option-icon"
+                      aria-hidden="true"
+                      >{{ option.icon }}</span
+                    >
+                    <span class="feedback-modal__option-label">{{
+                      option.label
+                    }}</span>
                   </button>
                 </div>
                 <div v-else class="feedback-modal__optional">
@@ -1565,10 +1855,18 @@ const handleQrError = () => {
                     placeholder="Scrivi qui (max 80 caratteri)"
                   />
                   <span class="feedback-modal__counter"
-                    >{{ feedbackAnswers.suggestion.length }}/{{ optionalFeedbackMaxLength }}</span
+                    >{{ feedbackAnswers.suggestion.length }}/{{
+                      optionalFeedbackMaxLength
+                    }}</span
                   >
                 </div>
-                <p v-if="feedbackError" class="feedback-modal__error" role="alert">{{ feedbackError }}</p>
+                <p
+                  v-if="feedbackError"
+                  class="feedback-modal__error"
+                  role="alert"
+                >
+                  {{ feedbackError }}
+                </p>
               </div>
 
               <footer class="feedback-modal__footer">
@@ -1580,7 +1878,10 @@ const handleQrError = () => {
                 >
                   Indietro
                 </button>
-                <div class="feedback-modal__footer-actions" :class="{ 'is-hidden': !isOptionalFeedbackStep }">
+                <div
+                  class="feedback-modal__footer-actions"
+                  :class="{ 'is-hidden': !isOptionalFeedbackStep }"
+                >
                   <button
                     v-if="isOptionalFeedbackStep"
                     type="button"
@@ -1597,7 +1898,7 @@ const handleQrError = () => {
                     @click="submitFeedback"
                     :disabled="isFeedbackSubmitting"
                   >
-                    {{ isFeedbackSubmitting ? 'Invio…' : 'Invia' }}
+                    {{ isFeedbackSubmitting ? "Invio…" : "Invia" }}
                   </button>
                 </div>
               </footer>
@@ -1613,7 +1914,9 @@ const handleQrError = () => {
     >
       <div class="inactive-panel">
         <template v-if="isCheckingActiveEvent">
-          <h2 class="text-2xl font-semibold uppercase tracking-[0.2em] text-slate-100">
+          <h2
+            class="text-2xl font-semibold uppercase tracking-[0.2em] text-slate-100"
+          >
             Verifica evento in corso…
           </h2>
           <p class="mt-4 text-base text-slate-300">
@@ -1621,11 +1924,14 @@ const handleQrError = () => {
           </p>
         </template>
         <template v-else>
-          <h2 class="text-2xl font-semibold uppercase tracking-[0.2em] text-slate-100">
+          <h2
+            class="text-2xl font-semibold uppercase tracking-[0.2em] text-slate-100"
+          >
             Nessuna partita in corso
           </h2>
           <p class="mt-4 text-base text-slate-300">
-            Attendi la prossima partita per votare il tuo MVP. Ti aspettiamo al palazzetto!
+            Attendi la prossima partita per votare il tuo MVP. Ti aspettiamo al
+            palazzetto!
           </p>
         </template>
       </div>
@@ -1640,19 +1946,22 @@ const handleQrError = () => {
         aria-labelledby="countdown-title"
       >
         <div class="countdown-dialog">
-          <p id="countdown-title" class="countdown-dialog__title">La votazione inizierà a breve</p>
+          <p id="countdown-title" class="countdown-dialog__title">
+            La votazione inizierà a breve
+          </p>
           <template v-if="isCountdownMoreThanTwoHoursAway">
-            <p
-              v-if="countdownStartTimeLabel"
-              class="countdown-dialog__details"
-            >
+            <p v-if="countdownStartTimeLabel" class="countdown-dialog__details">
               Inizio previsto: {{ countdownStartTimeLabel }}
             </p>
           </template>
           <template v-else>
-            <p class="countdown-dialog__subtitle">Il voto sarà disponibile tra</p>
+            <p class="countdown-dialog__subtitle">
+              Il voto sarà disponibile tra
+            </p>
             <p class="countdown-timer">{{ countdownLabel }}</p>
-            <p v-if="countdownDaysLabel" class="countdown-dialog__details">{{ countdownDaysLabel }}</p>
+            <p v-if="countdownDaysLabel" class="countdown-dialog__details">
+              {{ countdownDaysLabel }}
+            </p>
             <p v-if="countdownStartTimeLabel" class="countdown-dialog__details">
               Inizio previsto: {{ countdownStartTimeLabel }}
             </p>
@@ -1666,24 +1975,31 @@ const handleQrError = () => {
         v-if="!showInactiveNotice && isModalOpen"
         class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-6 py-10"
       >
-        <button class="absolute inset-0" type="button" @click="closeModal" aria-label="Chiudi"></button>
+        <button
+          class="absolute inset-0"
+          type="button"
+          @click="closeModal"
+          aria-label="Chiudi"
+        ></button>
         <div
           class="relative z-10 w-full max-w-xs rounded-[2.25rem] border border-white/10 bg-slate-900/95 px-6 py-7 text-center shadow-[0_30px_60px_rgba(15,23,42,0.6)]"
         >
-        <div class="flex justify-center">
-          <PlayerCard
-            v-if="pendingPlayer"
-            :player="pendingPlayer"
-            :card-size="cardSize * 1.3"
-            :is-selected="votedPlayerId === pendingPlayer.id"
-            :disabled="true"
-          />
-        </div>
+          <div class="flex justify-center">
+            <PlayerCard
+              v-if="pendingPlayer"
+              :player="pendingPlayer"
+              :card-size="cardSize * 1.3"
+              :is-selected="votedPlayerId === pendingPlayer.id"
+              :disabled="true"
+            />
+          </div>
           <div class="mt-6 flex flex-col gap-3">
             <button
               class="w-full rounded-full bg-yellow-400 px-4 py-3 text-sm font-semibold uppercase tracking-[0.35em] text-slate-900 transition-colors duration-200 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-70"
               type="button"
-              :disabled="isVoting || !pendingPlayer || votedPlayerId === pendingPlayer.id"
+              :disabled="
+                isVoting || !pendingPlayer || votedPlayerId === pendingPlayer.id
+              "
               @click="confirmVote"
             >
               {{ modalActionLabel }}
@@ -1705,22 +2021,38 @@ const handleQrError = () => {
         v-if="!showInactiveNotice && showTicketModal"
         class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-6 py-10"
       >
-        <button class="absolute inset-0" type="button" @click="closeTicketModal" aria-label="Chiudi"></button>
+        <button
+          class="absolute inset-0"
+          type="button"
+          @click="closeTicketModal"
+          aria-label="Chiudi"
+        ></button>
         <div
           class="relative z-10 w-full max-w-sm rounded-[2.25rem] border border-white/10 bg-slate-900/95 px-6 py-7 text-center shadow-[0_30px_60px_rgba(15,23,42,0.6)]"
         >
-          <h3 class="text-lg font-semibold uppercase tracking-[0.35em] text-slate-100">Voto registrato</h3>
+          <h3
+            class="text-lg font-semibold uppercase tracking-[0.35em] text-slate-100"
+          >
+            Voto registrato
+          </h3>
           <p class="mt-3 text-sm text-slate-300">
-            Fai subito uno screenshot di questa pagina e conservalo.
-              Attendi la fine della partita per l'estrazione dei premi e mostra lo screenshot allo staff nel caso in cui venga estratto il tuo codice.
+            Fai subito uno screenshot di questa pagina e conservalo. Attendi la
+            fine della partita per l'estrazione dei premi e mostra lo screenshot
+            allo staff nel caso in cui venga estratto il tuo codice.
           </p>
           <div class="important-notice" role="alert">
-            <p class="font-semibold uppercase tracking-[0.25em] text-yellow-300">Importante</p>
+            <p
+              class="font-semibold uppercase tracking-[0.25em] text-yellow-300"
+            >
+              Importante
+            </p>
             <p class="mt-2 text-sm leading-relaxed text-slate-100">
               SENZA LO SCREENSHOT IL PREMIO NON POTRA' ESSERE ASSEGNATO.
             </p>
           </div>
-          <div class="mt-5 flex flex-col items-center gap-2 text-lg text-slate-200">
+          <div
+            class="mt-5 flex flex-col items-center gap-2 text-lg text-slate-200"
+          >
             <p class="font-bold tracking-[0.2em]">Codice: {{ ticketCode }}</p>
           </div>
           <div
@@ -1730,7 +2062,11 @@ const handleQrError = () => {
             aria-live="polite"
           >
             <span class="qr-loader"></span>
-            <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300">Attendi…</p>
+            <p
+              class="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300"
+            >
+              Attendi…
+            </p>
           </div>
           <p v-if="ticketLoadError" class="mt-4 text-sm text-rose-300">
             {{ ticketLoadError }}
@@ -1760,13 +2096,23 @@ const handleQrError = () => {
         v-if="!showInactiveNotice && showAlreadyVotedModal"
         class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-6 py-10"
       >
-        <button class="absolute inset-0" type="button" @click="closeAlreadyVotedModal" aria-label="Chiudi"></button>
+        <button
+          class="absolute inset-0"
+          type="button"
+          @click="closeAlreadyVotedModal"
+          aria-label="Chiudi"
+        ></button>
         <div
           class="relative z-10 w-full max-w-sm rounded-[2.25rem] border border-white/10 bg-slate-900/95 px-6 py-7 text-center shadow-[0_30px_60px_rgba(15,23,42,0.6)]"
         >
-          <h3 class="text-lg font-semibold uppercase tracking-[0.35em] text-slate-100">Hai già votato</h3>
+          <h3
+            class="text-lg font-semibold uppercase tracking-[0.35em] text-slate-100"
+          >
+            Hai già votato
+          </h3>
           <p class="mt-3 text-sm text-slate-300">
-            Puoi esprimere il tuo voto una sola volta per partita. Attendi la fine della gara per scoprire l'estrazione dei premi.
+            Puoi esprimere il tuo voto una sola volta per partita. Attendi la
+            fine della gara per scoprire l'estrazione dei premi.
           </p>
           <button
             class="mt-7 w-full rounded-full bg-yellow-400 px-4 py-3 text-sm font-semibold uppercase tracking-[0.35em] text-slate-900 transition-colors duration-200 hover:bg-yellow-300"
@@ -1822,7 +2168,11 @@ const handleQrError = () => {
   padding: 1.75rem 1.5rem;
   border-radius: 2rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.75));
+  background: linear-gradient(
+    145deg,
+    rgba(15, 23, 42, 0.9),
+    rgba(30, 41, 59, 0.75)
+  );
   box-shadow: 0 28px 52px rgba(15, 23, 42, 0.55);
 }
 
@@ -2001,7 +2351,10 @@ const handleQrError = () => {
   letter-spacing: 0.08em;
   box-shadow: 0 22px 40px rgba(99, 102, 241, 0.4);
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
 }
 
 .feedback-cta:hover {
@@ -2083,7 +2436,9 @@ const handleQrError = () => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: transform 0.2s ease, filter 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    filter 0.2s ease;
 }
 
 .feedback-modal__close:hover {
@@ -2149,7 +2504,10 @@ const handleQrError = () => {
   font-weight: 600;
   font-size: 1rem;
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .feedback-modal__option:hover {
@@ -2159,7 +2517,11 @@ const handleQrError = () => {
 
 .feedback-modal__option.active {
   border-color: rgba(96, 165, 250, 0.8);
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(99, 102, 241, 0.3));
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.25),
+    rgba(99, 102, 241, 0.3)
+  );
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.35);
 }
 
@@ -2252,7 +2614,10 @@ const handleQrError = () => {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
 }
 
 .feedback-modal__skip {
@@ -2424,7 +2789,11 @@ const handleQrError = () => {
   padding: 1.75rem 1.5rem;
   border-radius: 2rem;
   border: 1px solid rgba(148, 163, 184, 0.3);
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.65));
+  background: linear-gradient(
+    145deg,
+    rgba(15, 23, 42, 0.9),
+    rgba(30, 41, 59, 0.65)
+  );
   box-shadow: 0 28px 48px rgba(15, 23, 42, 0.5);
 }
 

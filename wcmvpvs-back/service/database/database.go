@@ -32,6 +32,7 @@ package database
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -56,23 +57,177 @@ type Player struct {
 }
 
 type Event struct {
-	ID                  int          `json:"id"`
-	Team1ID             int          `json:"team1_id"`
-	Team2ID             int          `json:"team2_id"`
-	StartDateTime       string       `json:"start_datetime"`
-	Location            string       `json:"location"`
-	IsActive            bool         `json:"is_active"`
-	VotesClosed         bool         `json:"votes_closed"`
-	IsConcluded         bool         `json:"is_concluded"`
-	ShowReactionTest    bool         `json:"show_reaction_test"`
-	ShowSelfie          bool         `json:"show_selfie"`
-	ShowVoteTrend       bool         `json:"show_vote_trend"`
-	ShowFeedbackSurvey  bool         `json:"show_feedback_survey"`
-	ShowPreVoteSponsors bool         `json:"show_pre_vote_sponsors"`
-	ShowVoteCounter     bool         `json:"show_vote_counter"`
-	Team1Name           string       `json:"team1_name,omitempty"`
-	Team2Name           string       `json:"team2_name,omitempty"`
-	Prizes              []EventPrize `json:"prizes,omitempty"`
+	ID                  int                        `json:"id"`
+	Team1ID             int                        `json:"team1_id"`
+	Team2ID             int                        `json:"team2_id"`
+	StartDateTime       string                     `json:"start_datetime"`
+	Location            string                     `json:"location"`
+	IsActive            bool                       `json:"is_active"`
+	VotesClosed         bool                       `json:"votes_closed"`
+	IsConcluded         bool                       `json:"is_concluded"`
+	ShowReactionTest    bool                       `json:"show_reaction_test"`
+	ShowSelfie          bool                       `json:"show_selfie"`
+	ShowVoteTrend       bool                       `json:"show_vote_trend"`
+	ShowFeedbackSurvey  bool                       `json:"show_feedback_survey"`
+	ShowPreVoteSponsors bool                       `json:"show_pre_vote_sponsors"`
+	ShowVoteCounter     bool                       `json:"show_vote_counter"`
+	Team1Name           string                     `json:"team1_name,omitempty"`
+	Team2Name           string                     `json:"team2_name,omitempty"`
+	Prizes              []EventPrize               `json:"prizes,omitempty"`
+	FeedbackSurvey      *EventFeedbackSurveyConfig `json:"feedback_survey,omitempty"`
+}
+
+type EventFeedbackSurveyConfig struct {
+	Questions        []EventFeedbackQuestionConfig `json:"questions"`
+	SuggestionPrompt string                        `json:"suggestion_prompt,omitempty"`
+}
+
+type EventFeedbackQuestionConfig struct {
+	ID      string                      `json:"id"`
+	Title   string                      `json:"title"`
+	Answers []EventFeedbackAnswerConfig `json:"answers"`
+}
+
+type EventFeedbackAnswerConfig struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+	Icon  string `json:"icon,omitempty"`
+}
+
+func DefaultEventFeedbackSurveyConfig() EventFeedbackSurveyConfig {
+	return EventFeedbackSurveyConfig{
+		Questions: []EventFeedbackQuestionConfig{
+			{
+				ID:    "experience",
+				Title: "Com’è stata la tua esperienza di voto oggi?",
+				Answers: []EventFeedbackAnswerConfig{
+					{Value: "very_easy", Label: "Facilissima", Icon: "🤩"},
+					{Value: "easy", Label: "Abbastanza semplice", Icon: "🙂"},
+					{Value: "complex", Label: "Un po’ macchinosa", Icon: "😐"},
+					{Value: "hard", Label: "Difficile", Icon: "😣"},
+				},
+			},
+			{
+				ID:    "team_spirit",
+				Title: "Ti sei sentito parte della squadra mentre sceglievi l’MVP del pubblico?",
+				Answers: []EventFeedbackAnswerConfig{
+					{Value: "high", Label: "Sì, tantissimo!", Icon: "🔥"},
+					{Value: "medium", Label: "In parte", Icon: "🙂"},
+					{Value: "low", Label: "Non proprio", Icon: "🙄"},
+				},
+			},
+			{
+				ID:    "perks_interest",
+				Title: "Immagina che la tua partecipazione ti permetta di vivere esperienze speciali o vantaggi come vero tifoso… ti piacerebbe?",
+				Answers: []EventFeedbackAnswerConfig{
+					{Value: "yes", Label: "Sì, assolutamente", Icon: "💙"},
+					{Value: "maybe", Label: "Forse", Icon: "🙂"},
+					{Value: "no", Label: "No", Icon: "🙄"},
+				},
+			},
+			{
+				ID:    "mini_games_interest",
+				Title: "Ti piacerebbe divertirti ancora di più con mini-giochi o sfide tra un set e l’altro per mettere alla prova i tuoi riflessi?",
+				Answers: []EventFeedbackAnswerConfig{
+					{Value: "super_excited", Label: "Sì, carichissimo!", Icon: "🔥"},
+					{Value: "maybe", Label: "Forse più avanti", Icon: "🙂"},
+					{Value: "no", Label: "No grazie", Icon: "🙄"},
+				},
+			},
+		},
+		SuggestionPrompt: "Se potessi migliorare qualcosa, cosa ti piacerebbe aggiungere o cambiare?",
+	}
+}
+
+func NormalizeEventFeedbackSurveyConfig(cfg *EventFeedbackSurveyConfig) EventFeedbackSurveyConfig {
+	defaults := DefaultEventFeedbackSurveyConfig()
+	if cfg == nil {
+		return defaults
+	}
+
+	sanitized := EventFeedbackSurveyConfig{
+		Questions:        make([]EventFeedbackQuestionConfig, len(defaults.Questions)),
+		SuggestionPrompt: defaults.SuggestionPrompt,
+	}
+
+	questionOverrides := make(map[string]EventFeedbackQuestionConfig, len(cfg.Questions))
+	for _, question := range cfg.Questions {
+		if question.ID == "" {
+			continue
+		}
+		questionOverrides[strings.TrimSpace(question.ID)] = question
+	}
+
+	for idx, base := range defaults.Questions {
+		sanitizedQuestion := EventFeedbackQuestionConfig{
+			ID:      base.ID,
+			Title:   base.Title,
+			Answers: make([]EventFeedbackAnswerConfig, len(base.Answers)),
+		}
+
+		override, ok := questionOverrides[base.ID]
+		if ok {
+			if trimmed := strings.TrimSpace(override.Title); trimmed != "" {
+				sanitizedQuestion.Title = trimmed
+			}
+		}
+
+		answerOverrides := make(map[string]EventFeedbackAnswerConfig)
+		if ok {
+			for _, answer := range override.Answers {
+				if answer.Value == "" {
+					continue
+				}
+				answerOverrides[strings.TrimSpace(answer.Value)] = answer
+			}
+		}
+
+		for answerIdx, baseAnswer := range base.Answers {
+			sanitizedAnswer := EventFeedbackAnswerConfig{
+				Value: baseAnswer.Value,
+				Label: baseAnswer.Label,
+				Icon:  baseAnswer.Icon,
+			}
+			if overrideAnswer, found := answerOverrides[baseAnswer.Value]; found {
+				if trimmed := strings.TrimSpace(overrideAnswer.Label); trimmed != "" {
+					sanitizedAnswer.Label = trimmed
+				}
+				if trimmedIcon := strings.TrimSpace(overrideAnswer.Icon); trimmedIcon != "" {
+					sanitizedAnswer.Icon = trimmedIcon
+				}
+			}
+			sanitizedQuestion.Answers[answerIdx] = sanitizedAnswer
+		}
+
+		sanitized.Questions[idx] = sanitizedQuestion
+	}
+
+	if trimmed := strings.TrimSpace(cfg.SuggestionPrompt); trimmed != "" {
+		sanitized.SuggestionPrompt = trimmed
+	}
+
+	return sanitized
+}
+
+func encodeEventFeedbackSurveyConfig(cfg EventFeedbackSurveyConfig) string {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func decodeEventFeedbackSurveyConfig(raw sql.NullString) EventFeedbackSurveyConfig {
+	if raw.Valid {
+		trimmed := strings.TrimSpace(raw.String)
+		if trimmed != "" {
+			var cfg EventFeedbackSurveyConfig
+			if err := json.Unmarshal([]byte(trimmed), &cfg); err == nil {
+				return NormalizeEventFeedbackSurveyConfig(&cfg)
+			}
+		}
+	}
+	return DefaultEventFeedbackSurveyConfig()
 }
 
 type EventFeedback struct {
@@ -506,6 +661,12 @@ func New(db *sql.DB) (AppDatabase, error) {
 	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN show_vote_counter INTEGER NOT NULL DEFAULT 1`); err != nil {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring events vote counter column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN feedback_survey_config TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events feedback survey config column: %w", err)
 		}
 	}
 
@@ -1380,7 +1541,11 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 	}
 	defer tx.Rollback()
 
-	res, err := tx.Exec(`INSERT INTO events (team1_id, team2_id, start_datetime, location, show_reaction_test, show_selfie, show_vote_trend, show_feedback_survey, show_pre_vote_sponsors, show_vote_counter) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowVoteCounter))
+	survey := NormalizeEventFeedbackSurveyConfig(e.FeedbackSurvey)
+	e.FeedbackSurvey = &survey
+	surveyJSON := encodeEventFeedbackSurveyConfig(survey)
+
+	res, err := tx.Exec(`INSERT INTO events (team1_id, team2_id, start_datetime, location, show_reaction_test, show_selfie, show_vote_trend, show_feedback_survey, show_pre_vote_sponsors, show_vote_counter, feedback_survey_config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowVoteCounter), surveyJSON)
 	if err != nil {
 		return 0, err
 	}
@@ -1414,6 +1579,7 @@ SELECT e.id,
        e.show_feedback_survey,
        e.show_pre_vote_sponsors,
        e.show_vote_counter,
+       e.feedback_survey_config,
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -1435,7 +1601,8 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 		var showFeedback int
 		var showPreVoteSponsors int
 		var showVoteCounter int
-		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showVoteCounter, &e.Team1Name, &e.Team2Name); err != nil {
+		var surveyConfig sql.NullString
+		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name); err != nil {
 			return nil, err
 		}
 		e.IsActive = isActive == 1
@@ -1447,6 +1614,8 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 		e.ShowFeedbackSurvey = showFeedback == 1
 		e.ShowPreVoteSponsors = showPreVoteSponsors == 1
 		e.ShowVoteCounter = showVoteCounter == 1
+		cfg := decodeEventFeedbackSurveyConfig(surveyConfig)
+		e.FeedbackSurvey = &cfg
 		es = append(es, e)
 	}
 	for i := range es {
@@ -1467,7 +1636,11 @@ func (db *appdbimpl) UpdateEvent(e Event) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=?, show_reaction_test=?, show_selfie=?, show_vote_trend=?, show_feedback_survey=?, show_pre_vote_sponsors=?, show_vote_counter=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowVoteCounter), e.ID); err != nil {
+	survey := NormalizeEventFeedbackSurveyConfig(e.FeedbackSurvey)
+	e.FeedbackSurvey = &survey
+	surveyJSON := encodeEventFeedbackSurveyConfig(survey)
+
+	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=?, show_reaction_test=?, show_selfie=?, show_vote_trend=?, show_feedback_survey=?, show_pre_vote_sponsors=?, show_vote_counter=?, feedback_survey_config=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowVoteCounter), surveyJSON, e.ID); err != nil {
 		return err
 	}
 
@@ -1634,6 +1807,7 @@ func (db *appdbimpl) GetActiveEvent() (Event, error) {
 	var showFeedback int
 	var showPreVoteSponsors int
 	var showVoteCounter int
+	var surveyConfig sql.NullString
 	err := db.c.QueryRow(`
 SELECT e.id,
        e.team1_id,
@@ -1649,6 +1823,7 @@ SELECT e.id,
        e.show_feedback_survey,
        e.show_pre_vote_sponsors,
        e.show_vote_counter,
+       e.feedback_survey_config,
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -1656,7 +1831,7 @@ LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
 WHERE e.is_active = 1
 LIMIT 1
-`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showVoteCounter, &e.Team1Name, &e.Team2Name)
+`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name)
 	if err != nil {
 		return Event{}, err
 	}
@@ -1669,6 +1844,8 @@ LIMIT 1
 	e.ShowFeedbackSurvey = showFeedback == 1
 	e.ShowPreVoteSponsors = showPreVoteSponsors == 1
 	e.ShowVoteCounter = showVoteCounter == 1
+	cfg := decodeEventFeedbackSurveyConfig(surveyConfig)
+	e.FeedbackSurvey = &cfg
 	return e, nil
 }
 
