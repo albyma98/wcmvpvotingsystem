@@ -94,6 +94,8 @@ func (rt *_router) buildTicketValidationURL(eventID int, code, signature string)
 type ticketValidationOutcome struct {
 	AlreadyRedeemed bool
 	ErrorCode       string
+	TicketCode      string
+	AssignedPrize   *database.TicketValidationPrize
 }
 
 func (rt *_router) processTicketValidation(logger logrus.FieldLogger, eventID int, code, signature string) (ticketValidationOutcome, int) {
@@ -167,6 +169,8 @@ func (rt *_router) processTicketValidation(logger logrus.FieldLogger, eventID in
 	}
 
 	outcome.AlreadyRedeemed = alreadyRedeemed
+	outcome.TicketCode = result.TicketCode
+	outcome.AssignedPrize = result.AssignedPrize
 	return outcome, http.StatusOK
 }
 
@@ -237,9 +241,11 @@ func (rt *_router) ticketValidationStatus(w http.ResponseWriter, r *http.Request
 	}
 
 	resp := struct {
-		Valid           bool `json:"valid"`
-		AlreadyRedeemed bool `json:"already_redeemed"`
-	}{Valid: true, AlreadyRedeemed: outcome.AlreadyRedeemed}
+		Valid           bool                            `json:"valid"`
+		AlreadyRedeemed bool                            `json:"already_redeemed"`
+		Code            string                          `json:"code"`
+		Prize           *database.TicketValidationPrize `json:"prize,omitempty"`
+	}{Valid: true, AlreadyRedeemed: outcome.AlreadyRedeemed, Code: outcome.TicketCode, Prize: outcome.AssignedPrize}
 
 	w.Header().Set("content-type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
