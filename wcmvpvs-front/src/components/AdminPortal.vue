@@ -119,6 +119,22 @@
               :disabled="!hasEnoughTeams"
             />
           </label>
+          <div class="postvote-options new-event-prevote">
+            <div class="postvote-options__header">
+              <span>Esperienze pre voto</span>
+              <p class="field-hint">Decidi quali contenuti mostrare prima della votazione.</p>
+            </div>
+            <div class="postvote-options__grid">
+              <label class="postvote-toggle">
+                <input type="checkbox" v-model="newEvent.show_pre_vote_sponsors" :disabled="!hasEnoughTeams" />
+                <span class="postvote-toggle__label">Sponsor a bordo campo</span>
+              </label>
+              <label class="postvote-toggle">
+                <input type="checkbox" v-model="newEvent.show_vote_counter" :disabled="!hasEnoughTeams" />
+                <span class="postvote-toggle__label">Totale voti in tempo reale</span>
+              </label>
+            </div>
+          </div>
           <div class="postvote-options new-event-postvote">
             <div class="postvote-options__header">
               <span>Esperienze post voto</span>
@@ -226,6 +242,30 @@
                 <span v-else>Evento terminato</span>
               </button>
               <button class="btn danger" type="button" @click="deleteEvent(event.id)">Elimina</button>
+            </div>
+            <div class="postvote-options">
+              <div class="postvote-options__header">
+                <strong>Esperienze pre voto</strong>
+                <p class="field-hint">Controlla le sezioni visibili prima della votazione.</p>
+              </div>
+              <div class="postvote-options__grid">
+                <label class="postvote-toggle">
+                  <input
+                    type="checkbox"
+                    v-model="event.show_pre_vote_sponsors"
+                    :disabled="isSavingPrizesFor(event.id)"
+                  />
+                  <span class="postvote-toggle__label">Sponsor a bordo campo</span>
+                </label>
+                <label class="postvote-toggle">
+                  <input
+                    type="checkbox"
+                    v-model="event.show_vote_counter"
+                    :disabled="isSavingPrizesFor(event.id)"
+                  />
+                  <span class="postvote-toggle__label">Totale voti in tempo reale</span>
+                </label>
+              </div>
             </div>
             <div class="postvote-options">
               <div class="postvote-options__header">
@@ -1257,6 +1297,8 @@ function createDefaultNewEventState() {
     show_selfie: true,
     show_vote_trend: true,
     show_feedback_survey: true,
+    show_pre_vote_sponsors: true,
+    show_vote_counter: true,
   };
 }
 
@@ -2236,6 +2278,14 @@ function normalizeEventResponse(event) {
     ['show_feedback_survey', 'showFeedbackSurvey'],
     true,
   );
+  normalized.show_pre_vote_sponsors = resolveFlag(
+    ['show_pre_vote_sponsors', 'showPreVoteSponsors', 'show_sponsors', 'showSponsors'],
+    true,
+  );
+  normalized.show_vote_counter = resolveFlag(
+    ['show_vote_counter', 'showVoteCounter', 'show_pre_vote_vote_counter'],
+    true,
+  );
   if (Array.isArray(event.prizes)) {
     const mapped = event.prizes
       .map((prize, index) => normalizePrizeResponse(prize, index))
@@ -2564,6 +2614,8 @@ async function savePrizesForEvent(event) {
     team2_id: event.team2_id,
     start_datetime: event.start_datetime,
     location: event.location,
+    show_pre_vote_sponsors: Boolean(event.show_pre_vote_sponsors),
+    show_vote_counter: Boolean(event.show_vote_counter),
     show_reaction_test: Boolean(event.show_reaction_test),
     show_selfie: Boolean(event.show_selfie),
     show_vote_trend: Boolean(event.show_vote_trend),
@@ -3516,6 +3568,8 @@ async function createEvent() {
     team2_id: newEvent.team2_id,
     start_datetime: newEvent.start_datetime,
     location: newEvent.location,
+    show_pre_vote_sponsors: Boolean(newEvent.show_pre_vote_sponsors),
+    show_vote_counter: Boolean(newEvent.show_vote_counter),
     show_reaction_test: Boolean(newEvent.show_reaction_test),
     show_selfie: Boolean(newEvent.show_selfie),
     show_vote_trend: Boolean(newEvent.show_vote_trend),
@@ -4030,6 +4084,7 @@ onBeforeUnmount(() => {
   grid-column: 1 / -1;
 }
 
+.postvote-options.new-event-prevote,
 .postvote-options.new-event-postvote {
   margin-top: 0.5rem;
 }

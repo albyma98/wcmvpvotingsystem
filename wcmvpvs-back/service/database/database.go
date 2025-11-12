@@ -56,21 +56,23 @@ type Player struct {
 }
 
 type Event struct {
-	ID                 int          `json:"id"`
-	Team1ID            int          `json:"team1_id"`
-	Team2ID            int          `json:"team2_id"`
-	StartDateTime      string       `json:"start_datetime"`
-	Location           string       `json:"location"`
-	IsActive           bool         `json:"is_active"`
-	VotesClosed        bool         `json:"votes_closed"`
-	IsConcluded        bool         `json:"is_concluded"`
-	ShowReactionTest   bool         `json:"show_reaction_test"`
-	ShowSelfie         bool         `json:"show_selfie"`
-	ShowVoteTrend      bool         `json:"show_vote_trend"`
-	ShowFeedbackSurvey bool         `json:"show_feedback_survey"`
-	Team1Name          string       `json:"team1_name,omitempty"`
-	Team2Name          string       `json:"team2_name,omitempty"`
-	Prizes             []EventPrize `json:"prizes,omitempty"`
+	ID                  int          `json:"id"`
+	Team1ID             int          `json:"team1_id"`
+	Team2ID             int          `json:"team2_id"`
+	StartDateTime       string       `json:"start_datetime"`
+	Location            string       `json:"location"`
+	IsActive            bool         `json:"is_active"`
+	VotesClosed         bool         `json:"votes_closed"`
+	IsConcluded         bool         `json:"is_concluded"`
+	ShowReactionTest    bool         `json:"show_reaction_test"`
+	ShowSelfie          bool         `json:"show_selfie"`
+	ShowVoteTrend       bool         `json:"show_vote_trend"`
+	ShowFeedbackSurvey  bool         `json:"show_feedback_survey"`
+	ShowPreVoteSponsors bool         `json:"show_pre_vote_sponsors"`
+	ShowVoteCounter     bool         `json:"show_vote_counter"`
+	Team1Name           string       `json:"team1_name,omitempty"`
+	Team2Name           string       `json:"team2_name,omitempty"`
+	Prizes              []EventPrize `json:"prizes,omitempty"`
 }
 
 type EventFeedback struct {
@@ -492,6 +494,18 @@ func New(db *sql.DB) (AppDatabase, error) {
 	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN show_feedback_survey INTEGER NOT NULL DEFAULT 1`); err != nil {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring events feedback survey column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN show_pre_vote_sponsors INTEGER NOT NULL DEFAULT 1`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events pre vote sponsors column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN show_vote_counter INTEGER NOT NULL DEFAULT 1`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events vote counter column: %w", err)
 		}
 	}
 
@@ -1366,7 +1380,7 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 	}
 	defer tx.Rollback()
 
-	res, err := tx.Exec(`INSERT INTO events (team1_id, team2_id, start_datetime, location, show_reaction_test, show_selfie, show_vote_trend, show_feedback_survey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey))
+	res, err := tx.Exec(`INSERT INTO events (team1_id, team2_id, start_datetime, location, show_reaction_test, show_selfie, show_vote_trend, show_feedback_survey, show_pre_vote_sponsors, show_vote_counter) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowVoteCounter))
 	if err != nil {
 		return 0, err
 	}
@@ -1398,6 +1412,8 @@ SELECT e.id,
        e.show_selfie,
        e.show_vote_trend,
        e.show_feedback_survey,
+       e.show_pre_vote_sponsors,
+       e.show_vote_counter,
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -1417,7 +1433,9 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 		var showSelfie int
 		var showVoteTrend int
 		var showFeedback int
-		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &e.Team1Name, &e.Team2Name); err != nil {
+		var showPreVoteSponsors int
+		var showVoteCounter int
+		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showVoteCounter, &e.Team1Name, &e.Team2Name); err != nil {
 			return nil, err
 		}
 		e.IsActive = isActive == 1
@@ -1427,6 +1445,8 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 		e.ShowSelfie = showSelfie == 1
 		e.ShowVoteTrend = showVoteTrend == 1
 		e.ShowFeedbackSurvey = showFeedback == 1
+		e.ShowPreVoteSponsors = showPreVoteSponsors == 1
+		e.ShowVoteCounter = showVoteCounter == 1
 		es = append(es, e)
 	}
 	for i := range es {
@@ -1447,7 +1467,7 @@ func (db *appdbimpl) UpdateEvent(e Event) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=?, show_reaction_test=?, show_selfie=?, show_vote_trend=?, show_feedback_survey=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), e.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=?, show_reaction_test=?, show_selfie=?, show_vote_trend=?, show_feedback_survey=?, show_pre_vote_sponsors=?, show_vote_counter=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowVoteCounter), e.ID); err != nil {
 		return err
 	}
 
@@ -1612,6 +1632,8 @@ func (db *appdbimpl) GetActiveEvent() (Event, error) {
 	var showSelfie int
 	var showVoteTrend int
 	var showFeedback int
+	var showPreVoteSponsors int
+	var showVoteCounter int
 	err := db.c.QueryRow(`
 SELECT e.id,
        e.team1_id,
@@ -1625,6 +1647,8 @@ SELECT e.id,
        e.show_selfie,
        e.show_vote_trend,
        e.show_feedback_survey,
+       e.show_pre_vote_sponsors,
+       e.show_vote_counter,
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -1632,7 +1656,7 @@ LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
 WHERE e.is_active = 1
 LIMIT 1
-`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &e.Team1Name, &e.Team2Name)
+`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showVoteCounter, &e.Team1Name, &e.Team2Name)
 	if err != nil {
 		return Event{}, err
 	}
@@ -1643,6 +1667,8 @@ LIMIT 1
 	e.ShowSelfie = showSelfie == 1
 	e.ShowVoteTrend = showVoteTrend == 1
 	e.ShowFeedbackSurvey = showFeedback == 1
+	e.ShowPreVoteSponsors = showPreVoteSponsors == 1
+	e.ShowVoteCounter = showVoteCounter == 1
 	return e, nil
 }
 

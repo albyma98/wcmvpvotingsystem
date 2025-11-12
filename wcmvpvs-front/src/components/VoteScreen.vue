@@ -101,6 +101,9 @@ const stopVoteTotalPolling = () => {
 };
 
 const startVoteTotalPolling = () => {
+  if (!preVoteSettings.value.showVoteCounter) {
+    return;
+  }
   stopVoteTotalPolling();
   voteTotalTimer = window.setInterval(() => {
     refreshVoteTotal({ silent: true });
@@ -108,6 +111,14 @@ const startVoteTotalPolling = () => {
 };
 
 const refreshVoteTotal = async ({ silent = false } = {}) => {
+  if (!preVoteSettings.value.showVoteCounter) {
+    totalVotes.value = 0;
+    voteTotalError.value = '';
+    if (!silent) {
+      isVoteTotalLoading.value = false;
+    }
+    return;
+  }
   const eventId = currentEventId.value;
   if (!eventId) {
     totalVotes.value = 0;
@@ -245,6 +256,9 @@ function startSponsorVisibilityInterval() {
 }
 
 function ensureSponsorSession(eventId) {
+  if (!preVoteSettings.value.showSponsors) {
+    return;
+  }
   if (!eventId || recordedSponsorSessions.has(eventId)) {
     return;
   }
@@ -256,6 +270,9 @@ function ensureSponsorSession(eventId) {
 }
 
 function sendSponsorExposureEvent(eventId, type, durationMs = 0) {
+  if (!preVoteSettings.value.showSponsors) {
+    return;
+  }
   if (!eventId) {
     return;
   }
@@ -719,6 +736,22 @@ const resolveEventFlag = (event, keys, fallback = true) => {
   return fallback;
 };
 
+const preVoteSettings = computed(() => {
+  const event = props.activeEvent || null;
+  return {
+    showSponsors: resolveEventFlag(
+      event,
+      ['show_pre_vote_sponsors', 'showPreVoteSponsors', 'show_sponsors', 'showSponsors'],
+      true,
+    ),
+    showVoteCounter: resolveEventFlag(
+      event,
+      ['show_vote_counter', 'showVoteCounter', 'show_pre_vote_vote_counter'],
+      true,
+    ),
+  };
+});
+
 const postVoteSettings = computed(() => {
   const event = props.activeEvent || null;
   return {
@@ -728,6 +761,18 @@ const postVoteSettings = computed(() => {
     showFeedbackSurvey: resolveEventFlag(event, ['show_feedback_survey', 'showFeedbackSurvey'], true),
   };
 });
+
+const visibleCourtSponsors = computed(() =>
+  preVoteSettings.value.showSponsors ? courtSponsors.value : [],
+);
+
+const showSponsorSection = computed(
+  () => preVoteSettings.value.showSponsors && sponsors.value.length > 0,
+);
+
+const showVoteCounterSection = computed(
+  () => preVoteSettings.value.showVoteCounter && Boolean(currentEventId.value),
+);
 
 const showInactiveNotice = computed(() => props.activeEventChecked && !props.activeEvent);
 const isCheckingActiveEvent = computed(() => props.loadingActiveEvent && !props.activeEventChecked);
@@ -906,25 +951,26 @@ watch(currentEventId, (eventId) => {
   totalVotes.value = 0;
   voteTotalError.value = '';
   stopVoteTotalPolling();
-  if (eventId) {
+  if (eventId && preVoteSettings.value.showVoteCounter) {
     refreshVoteTotal();
     startVoteTotalPolling();
-    hasVoted.value = false;
+  } else {
+    isVoteTotalLoading.value = false;
+  }
+  hasVoted.value = false;
+  if (eventId) {
     refreshVoteStatus(eventId);
+  }
+  resetSponsorVisibility();
+  stopSponsorVisibilityInterval();
+  teardownSponsorObserver();
+  if (eventId && preVoteSettings.value.showSponsors) {
     ensureSponsorSession(eventId);
-    resetSponsorVisibility();
-    stopSponsorVisibilityInterval();
-    teardownSponsorObserver();
     nextTick(() => {
-      if (sponsors.value.length) {
+      if (showSponsorSection.value) {
         setupSponsorObserver();
       }
     });
-  } else {
-    hasVoted.value = false;
-    resetSponsorVisibility();
-    stopSponsorVisibilityInterval();
-    teardownSponsorObserver();
   }
   resetFeedbackFlow();
   if (eventId) {
@@ -940,7 +986,7 @@ watch(currentEventId, (eventId) => {
 watch(
   sponsors,
   (list) => {
-    if (!list.length) {
+    if (!list.length || !preVoteSettings.value.showSponsors) {
       resetSponsorVisibility();
       stopSponsorVisibilityInterval();
       teardownSponsorObserver();
@@ -950,7 +996,9 @@ watch(
       return;
     }
     nextTick(() => {
-      setupSponsorObserver();
+      if (showSponsorSection.value) {
+        setupSponsorObserver();
+      }
     });
   },
   { deep: true },
@@ -974,6 +1022,43 @@ watch(
   (enabled) => {
     if (!enabled) {
       showFeedbackModal.value = false;
+    }
+  },
+);
+
+watch(
+  () => preVoteSettings.value.showVoteCounter,
+  (enabled) => {
+    stopVoteTotalPolling();
+    if (!enabled) {
+      totalVotes.value = 0;
+      voteTotalError.value = '';
+      isVoteTotalLoading.value = false;
+      return;
+    }
+    if (currentEventId.value) {
+      refreshVoteTotal();
+      startVoteTotalPolling();
+    }
+  },
+);
+
+watch(
+  () => preVoteSettings.value.showSponsors,
+  (enabled) => {
+    if (!enabled) {
+      resetSponsorVisibility();
+      stopSponsorVisibilityInterval();
+      teardownSponsorObserver();
+      return;
+    }
+    if (currentEventId.value) {
+      ensureSponsorSession(currentEventId.value);
+      nextTick(() => {
+        if (showSponsorSection.value) {
+          setupSponsorObserver();
+        }
+      });
     }
   },
 );
@@ -1033,13 +1118,17 @@ onMounted(() => {
   loadSponsors();
   loadPlayers();
   if (currentEventId.value) {
-    refreshVoteTotal();
-    startVoteTotalPolling();
+    if (preVoteSettings.value.showVoteCounter) {
+      refreshVoteTotal();
+      startVoteTotalPolling();
+    }
     refreshVoteStatus(currentEventId.value);
-    ensureSponsorSession(currentEventId.value);
+    if (preVoteSettings.value.showSponsors) {
+      ensureSponsorSession(currentEventId.value);
+    }
   }
   nextTick(() => {
-    if (currentEventId.value && sponsors.value.length) {
+    if (showSponsorSection.value) {
       setupSponsorObserver();
     }
   });
@@ -1261,7 +1350,7 @@ const handleQrError = () => {
               :selected-player-id="votedPlayerId"
               :disable-votes="disableVotes"
               :is-voting="isVoting"
-              :court-sponsors="courtSponsors"
+              :court-sponsors="visibleCourtSponsors"
               @select="openPlayerModal"
               @sponsor-click="handleSponsorClick"
             />
@@ -1332,7 +1421,7 @@ const handleQrError = () => {
           :enabled="hasVoted && postVoteSettings.showReactionTest"
         />
 
-        <section v-if="sponsors.length" ref="sponsorSectionRef" class="px-4">
+        <section v-if="showSponsorSection" ref="sponsorSectionRef" class="px-4">
           <div
             class="relative overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
             aria-labelledby="sponsor-title"
@@ -1398,7 +1487,7 @@ const handleQrError = () => {
           </div>
         </section>
 
-        <section v-if="currentEventId" class="px-4">
+        <section v-if="showVoteCounterSection" class="px-4">
           <div class="vote-counter" role="status" aria-live="polite">
             <div class="vote-counter__header">
               <p class="vote-counter__title">Totale voti registrati</p>
