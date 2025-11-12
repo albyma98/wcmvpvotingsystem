@@ -35,8 +35,8 @@ const emits = defineEmits(['select', 'sponsor-click']);
 const sponsorDimensions = computed(() => {
   const cardBaseWidth = Number.isFinite(props.cardSize) ? props.cardSize : 90;
   return {
-    width: `${cardBaseWidth * 3}px`,
-    height: `${cardBaseWidth * 1.5}px`,
+    width: `${cardBaseWidth * 1.75}px`,
+    height: `${cardBaseWidth * 1.1}px`,
   };
 });
 
@@ -149,9 +149,6 @@ const rightSponsorStyle = computed(() => ({
     <div class="absolute inset-0">
       <div v-if="leftSponsor" class="absolute z-10" :style="leftSponsorStyle">
         <div class="flex flex-col items-center gap-2 text-center">
-          <p class="text-[0.625rem] font-semibold uppercase tracking-[0.4em] text-white/70">
-            Sponsor
-          </p>
           <a
             v-if="leftSponsor.link"
             :class="sponsorCardBaseClass"
@@ -191,9 +188,6 @@ const rightSponsorStyle = computed(() => ({
 
       <div v-if="rightSponsor" class="absolute z-10" :style="rightSponsorStyle">
         <div class="flex flex-col items-center gap-2 text-center">
-          <p class="text-[0.625rem] font-semibold uppercase tracking-[0.4em] text-white/70">
-            Sponsor
-          </p>
           <a
             v-if="rightSponsor.link"
             :class="sponsorCardBaseClass"
