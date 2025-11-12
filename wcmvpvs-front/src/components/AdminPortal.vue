@@ -1198,7 +1198,7 @@
                       :key="`${entry.id}-sponsor-${sponsor.id}`"
                     >
                       <span class="history-sponsor-name">{{
-                        sponsor.name
+                        sponsor.reportName || sponsor.name
                       }}</span>
                       <span class="history-sponsor-clicks"
                         >{{
@@ -1625,6 +1625,14 @@
               />
             </label>
             <label>
+              Nome report
+              <input
+                v-model.trim="newSponsor.reportName"
+                type="text"
+                placeholder="Etichetta per i report (es. Sponsor A)"
+              />
+            </label>
+            <label>
               Link (opzionale)
               <input
                 v-model.trim="newSponsor.linkUrl"
@@ -1679,6 +1687,14 @@
                     <label>
                       Nome sponsor
                       <input v-model.trim="sponsor.name" type="text" />
+                    </label>
+                    <label>
+                      Nome report
+                      <input
+                        v-model.trim="sponsor.reportName"
+                        type="text"
+                        placeholder="Etichetta interna"
+                      />
                     </label>
                     <label>
                       Link (opzionale)
@@ -2181,6 +2197,7 @@ const newAdmin = reactive({
 const maxSponsors = 4;
 const newSponsor = reactive({
   name: "",
+  reportName: "",
   linkUrl: "",
   logoData: "",
   isActive: true,
@@ -2765,7 +2782,10 @@ const sponsorAnalyticsDisplay = computed(() => {
     totalClicksLabel: data.totalClicks.toLocaleString("it-IT"),
     uniqueClickersLabel: data.uniqueClickers.toLocaleString("it-IT"),
     clickRateLabel: `${formatPercent(data.clickRate)}%`,
-    topSponsorName: data.topSponsor?.name || "Nessuno",
+    topSponsorName:
+      data.topSponsor?.reportName?.trim() ||
+      data.topSponsor?.name?.trim() ||
+      "Nessuno",
     topSponsorViewsLabel: data.topSponsor
       ? data.topSponsor.views.toLocaleString("it-IT")
       : "0",
@@ -3109,8 +3129,20 @@ function normalizeSponsorAnalyticsResponse(raw) {
     );
     const name =
       typeof topSponsorRaw.name === "string" ? topSponsorRaw.name : "";
+    const reportName =
+      typeof topSponsorRaw.report_name === "string"
+        ? topSponsorRaw.report_name
+        : typeof topSponsorRaw.reportName === "string"
+          ? topSponsorRaw.reportName
+          : "";
     const views = resolveNumber(topSponsorRaw.views);
-    topSponsor = { id, name, views };
+    topSponsor = {
+      id,
+      name: typeof name === "string" ? name.trim() : "",
+      reportName:
+        typeof reportName === "string" ? reportName.trim() : "",
+      views,
+    };
   }
 
   const timeline = Array.isArray(raw.timeline)
@@ -3296,11 +3328,18 @@ function normalizeSponsorResponse(item) {
     return null;
   }
   const normalizedName = typeof item.name === "string" ? item.name.trim() : "";
+  const normalizedReportName =
+    typeof item.report_name === "string"
+      ? item.report_name.trim()
+      : typeof item.reportName === "string"
+        ? item.reportName.trim()
+        : "";
   const normalizedLink =
     typeof item.link_url === "string" ? item.link_url.trim() : "";
   return {
     id: Number(item.id) || 0,
     name: normalizedName,
+    reportName: normalizedReportName,
     linkUrl: normalizedLink,
     position: Number(item.position) || 0,
     logoData: typeof item.logo_data === "string" ? item.logo_data : "",
@@ -3416,6 +3455,7 @@ function normalizeFeedbackSummary(raw, surveyConfig) {
 function serializeSponsorPayload(sponsor) {
   return {
     name: sponsor.name.trim(),
+    report_name: (sponsor.reportName || "").trim(),
     link_url: sponsor.linkUrl.trim(),
     position: sponsor.position,
     logo_data: sponsor.logoData,
@@ -3447,6 +3487,7 @@ function recomputeActiveSponsorSlider() {
 function resetNewSponsorForm() {
   Object.assign(newSponsor, {
     name: "",
+    reportName: "",
     linkUrl: "",
     logoData: "",
     isActive: true,
@@ -4206,6 +4247,12 @@ function normalizeHistoryEntry(item) {
             typeof entry?.name === "string" && entry.name.trim()
               ? entry.name.trim()
               : "Sponsor",
+          reportName:
+            typeof entry?.report_name === "string" && entry.report_name.trim()
+              ? entry.report_name.trim()
+              : typeof entry?.reportName === "string" && entry.reportName.trim()
+                ? entry.reportName.trim()
+                : "",
           link:
             typeof entry?.link_url === "string" ? entry.link_url.trim() : "",
           clicks: Number(entry?.clicks ?? 0) || 0,
@@ -4214,7 +4261,9 @@ function normalizeHistoryEntry(item) {
           if (b.clicks !== a.clicks) {
             return b.clicks - a.clicks;
           }
-          return a.name.localeCompare(b.name, "it");
+          const labelA = a.reportName || a.name;
+          const labelB = b.reportName || b.name;
+          return labelA.localeCompare(labelB, "it");
         })
     : [];
 
@@ -4255,7 +4304,10 @@ function normalizeHistoryEntry(item) {
     clickRateLabel: `${formatPercent(sponsorAnalyticsData.clickRate)}%`,
     uniqueClickersLabel:
       sponsorAnalyticsData.uniqueClickers.toLocaleString("it-IT"),
-    topSponsorName: sponsorAnalyticsData.topSponsor?.name || "Nessuno",
+    topSponsorName:
+      sponsorAnalyticsData.topSponsor?.reportName?.trim() ||
+      sponsorAnalyticsData.topSponsor?.name?.trim() ||
+      "Nessuno",
     topSponsorViewsLabel: sponsorAnalyticsData.topSponsor
       ? sponsorAnalyticsData.topSponsor.views.toLocaleString("it-IT")
       : "0",
@@ -4918,6 +4970,7 @@ async function createSponsor() {
   }
   const payload = serializeSponsorPayload({
     name: trimmedName,
+    reportName: newSponsor.reportName,
     linkUrl: newSponsor.linkUrl,
     logoData: newSponsor.logoData,
     position: nextSponsorPosition(),
@@ -4954,6 +5007,7 @@ async function updateSponsorEntry(sponsor) {
   try {
     const payload = serializeSponsorPayload({
       name: trimmedName,
+      reportName: sponsor.reportName,
       linkUrl: sponsor.linkUrl,
       logoData: sponsor.logoData,
       position: sponsor.position,
@@ -5019,6 +5073,7 @@ async function applyActiveSponsorCount() {
       if (sponsor.isActive !== shouldBeActive) {
         const payload = serializeSponsorPayload({
           name: sponsor.name.trim(),
+          reportName: sponsor.reportName,
           linkUrl: sponsor.linkUrl,
           logoData: sponsor.logoData,
           position: sponsor.position,

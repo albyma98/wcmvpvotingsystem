@@ -43,9 +43,10 @@ type sponsorAnalyticsResponse struct {
 }
 
 type sponsorAnalyticsTopSponsor struct {
-	SponsorID int    `json:"sponsor_id"`
-	Name      string `json:"name"`
-	Views     int    `json:"views"`
+        SponsorID int    `json:"sponsor_id"`
+        Name      string `json:"name"`
+        ReportName string `json:"report_name,omitempty"`
+        Views     int    `json:"views"`
 }
 
 type sponsorAnalyticsTimelinePoint struct {
@@ -73,9 +74,10 @@ func buildSponsorAnalyticsResponse(summary database.SponsorAnalytics) sponsorAna
 
         if summary.TopSponsor != nil {
                 response.TopSponsor = &sponsorAnalyticsTopSponsor{
-                        SponsorID: summary.TopSponsor.SponsorID,
-                        Name:      summary.TopSponsor.Name,
-                        Views:     summary.TopSponsor.Views,
+                        SponsorID:  summary.TopSponsor.SponsorID,
+                        Name:       summary.TopSponsor.Name,
+                        ReportName: summary.TopSponsor.ReportName,
+                        Views:      summary.TopSponsor.Views,
                 }
         }
 
