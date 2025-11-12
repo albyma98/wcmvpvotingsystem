@@ -44,21 +44,22 @@ type eventFeedbackSummaryResponse struct {
 }
 
 type eventHistoryEntry struct {
-	ID                 int                           `json:"id"`
-	Title              string                        `json:"title"`
-	StartDateTime      string                        `json:"start_datetime"`
-	Location           string                        `json:"location"`
-	TotalVotes         int                           `json:"total_votes"`
-	SponsorClicksTotal int                           `json:"sponsor_clicks_total"`
-	MVP                *database.EventMVP            `json:"mvp,omitempty"`
-	SponsorClicks      []database.SponsorClickStat   `json:"sponsor_clicks"`
-	SponsorAnalytics   sponsorAnalyticsResponse      `json:"sponsor_analytics"`
-	Timeline           []historyTimelineBucket       `json:"timeline"`
-	HomeTeam           string                        `json:"home_team"`
-	AwayTeam           string                        `json:"away_team"`
-	Prizes             []eventHistoryPrize           `json:"prizes"`
-	HasPrizeDraw       bool                          `json:"has_prize_draw"`
-	FeedbackSummary    *eventFeedbackSummaryResponse `json:"feedback_summary,omitempty"`
+	ID                 int                                `json:"id"`
+	Title              string                             `json:"title"`
+	StartDateTime      string                             `json:"start_datetime"`
+	Location           string                             `json:"location"`
+	TotalVotes         int                                `json:"total_votes"`
+	SponsorClicksTotal int                                `json:"sponsor_clicks_total"`
+	MVP                *database.EventMVP                 `json:"mvp,omitempty"`
+	SponsorClicks      []database.SponsorClickStat        `json:"sponsor_clicks"`
+	SponsorAnalytics   sponsorAnalyticsResponse           `json:"sponsor_analytics"`
+	Timeline           []historyTimelineBucket            `json:"timeline"`
+	HomeTeam           string                             `json:"home_team"`
+	AwayTeam           string                             `json:"away_team"`
+	Prizes             []eventHistoryPrize                `json:"prizes"`
+	HasPrizeDraw       bool                               `json:"has_prize_draw"`
+	FeedbackSummary    *eventFeedbackSummaryResponse      `json:"feedback_summary,omitempty"`
+	FeedbackSurvey     database.EventFeedbackSurveyConfig `json:"feedback_survey"`
 }
 
 type historyEntryWrapper struct {
@@ -192,6 +193,8 @@ func (rt *_router) buildEventHistoryEntry(ctx reqcontext.RequestContext, event d
 		feedbackSummaryPtr = &summaryResponse
 	}
 
+	surveyConfig := database.NormalizeEventFeedbackSurveyConfig(event.FeedbackSurvey)
+
 	entry := eventHistoryEntry{
 		ID:                 event.ID,
 		Title:              buildEventTitle(event),
@@ -208,6 +211,7 @@ func (rt *_router) buildEventHistoryEntry(ctx reqcontext.RequestContext, event d
 		Prizes:             prizes,
 		HasPrizeDraw:       hasPrizeDraw,
 		FeedbackSummary:    feedbackSummaryPtr,
+		FeedbackSurvey:     surveyConfig,
 	}
 
 	return &historyEntryWrapper{entry: entry, startTime: startTime}, nil
@@ -514,49 +518,43 @@ type feedbackQuestionDefinition struct {
 	Answers map[string]string
 }
 
-var feedbackQuestionDefinitions = []feedbackQuestionDefinition{
-	{
-		ID:    "experience",
-		Title: "Com’è stata la tua esperienza di voto oggi?",
-		Answers: map[string]string{
-			"very_easy": "Facilissima",
-			"easy":      "Abbastanza semplice",
-			"complex":   "Un po’ macchinosa",
-			"hard":      "Difficile",
-		},
-	},
-	{
-		ID:    "team_spirit",
-		Title: "Ti sei sentito parte della squadra mentre sceglievi l’MVP del pubblico?",
-		Answers: map[string]string{
-			"very_much":  "Moltissimo",
-			"quite":      "Abbastanza",
-			"a_bit":      "Poco",
-			"not_at_all": "Per niente",
-		},
-	},
-	{
-		ID:    "perks_interest",
-		Title: "Quanto ti interessano i contenuti esclusivi dedicati ai tifosi?",
-		Answers: map[string]string{
-			"very_much":  "Molto",
-			"some":       "Abbastanza",
-			"little":     "Poco",
-			"not_at_all": "Per nulla",
-		},
-	},
-	{
-		ID:    "mini_games_interest",
-		Title: "Vorresti altri mini-giochi e attivazioni durante le partite?",
-		Answers: map[string]string{
-			"yes":   "Sì, assolutamente",
-			"maybe": "Forse, a seconda della partita",
-			"no":    "Non mi interessano",
-		},
-	},
+func buildFeedbackQuestionDefinitions(cfg database.EventFeedbackSurveyConfig) []feedbackQuestionDefinition {
+	definitions := make([]feedbackQuestionDefinition, 0, len(cfg.Questions))
+	for _, question := range cfg.Questions {
+		answers := make(map[string]string, len(question.Answers))
+		for _, answer := range question.Answers {
+			value := strings.TrimSpace(answer.Value)
+			if value == "" {
+				continue
+			}
+			label := strings.TrimSpace(answer.Label)
+			if label == "" {
+				label = value
+			}
+			answers[value] = label
+		}
+		title := strings.TrimSpace(question.Title)
+		if title == "" {
+			title = question.ID
+		}
+		definitions = append(definitions, feedbackQuestionDefinition{
+			ID:      question.ID,
+			Title:   title,
+			Answers: answers,
+		})
+	}
+	return definitions
 }
 
-const feedbackSuggestionTitle = "Suggerimenti lasciati dai tifosi"
+const defaultFeedbackSuggestionTitle = "Suggerimenti lasciati dai tifosi"
+
+func feedbackSuggestionHeading(cfg database.EventFeedbackSurveyConfig) string {
+	prompt := strings.TrimSpace(cfg.SuggestionPrompt)
+	if prompt == "" {
+		return defaultFeedbackSuggestionTitle
+	}
+	return prompt
+}
 
 var italianMonthNames = []string{
 	"gennaio",
@@ -843,7 +841,8 @@ func assembleHistoryReportLines(entry eventHistoryEntry) []pdfLine {
 	} else {
 		addParagraphLine(&lines, fmt.Sprintf("Risposte totali: %s", formatItalianNumber(entry.FeedbackSummary.TotalResponses)), "regular", 11, 0, 4)
 
-		for _, question := range feedbackQuestionDefinitions {
+		questionDefinitions := buildFeedbackQuestionDefinitions(entry.FeedbackSurvey)
+		for _, question := range questionDefinitions {
 			addParagraphLine(&lines, question.Title, "bold", 12, 0, 3)
 			counts := feedbackCounts(entry.FeedbackSummary, question.ID)
 			for key, label := range question.Answers {
@@ -860,7 +859,7 @@ func assembleHistoryReportLines(entry eventHistoryEntry) []pdfLine {
 			}
 		}
 
-		addParagraphLine(&lines, feedbackSuggestionTitle, "bold", 12, 0, 3)
+		addParagraphLine(&lines, feedbackSuggestionHeading(entry.FeedbackSurvey), "bold", 12, 0, 3)
 		if len(entry.FeedbackSummary.Suggestions) == 0 {
 			addParagraphLine(&lines, "Nessun suggerimento inserito dai tifosi.", "regular", 10, 0, 4)
 		} else {

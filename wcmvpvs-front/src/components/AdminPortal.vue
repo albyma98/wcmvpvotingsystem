@@ -10,14 +10,24 @@
       <form @submit.prevent="login" class="form-grid">
         <label>
           Username
-          <input v-model.trim="loginForm.username" type="text" autocomplete="username" required />
+          <input
+            v-model.trim="loginForm.username"
+            type="text"
+            autocomplete="username"
+            required
+          />
         </label>
         <label>
           Password
-          <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
+          <input
+            v-model="loginForm.password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
         </label>
         <button class="btn primary" type="submit" :disabled="isLoggingIn">
-          {{ isLoggingIn ? 'Accesso in corso…' : 'Entra' }}
+          {{ isLoggingIn ? "Accesso in corso…" : "Entra" }}
         </button>
       </form>
       <p v-if="loginError" class="error">{{ loginError }}</p>
@@ -26,8 +36,12 @@
     <section v-else class="portal" ref="portalRef">
       <div class="toolbar" ref="toolbarRef">
         <div class="user-info">
-          <span>Connesso come <strong>{{ activeUsername }}</strong></span>
-          <button class="btn outline" type="button" @click="goToLottery">Lotteria</button>
+          <span
+            >Connesso come <strong>{{ activeUsername }}</strong></span
+          >
+          <button class="btn outline" type="button" @click="goToLottery">
+            Lotteria
+          </button>
           <button
             v-for="tab in availableTabs"
             :key="tab.id"
@@ -38,298 +52,252 @@
           >
             {{ tab.label }}
           </button>
-          <button class="btn secondary" type="button" @click="logout">Esci</button>
+          <button class="btn secondary" type="button" @click="logout">
+            Esci
+          </button>
         </div>
-
-
-
       </div>
       <div class="portal-content">
         <p v-if="globalError" class="error">{{ globalError }}</p>
 
         <section v-if="section === 'events'" class="card">
-        <header class="section-header">
-          <h2>Eventi</h2>
-          <p>Crea una nuova partita per abilitare il voto pubblico.</p>
-        </header>
-        <div class="actions-row">
-          <button
-            class="btn outline"
-            type="button"
-            @click="deactivateEvents"
-            :disabled="!activeEventId || isDisablingEvents"
-          >
-            {{ isDisablingEvents ? 'Disattivazione…' : 'Disattiva eventi' }}
-          </button>
-        </div>
-        <p v-if="!hasEnoughTeams" class="info-banner">
-          Aggiungi almeno due squadre dalla sezione "Squadre" per abilitare la creazione di un evento.
-        </p>
-        <form @submit.prevent="createEvent" class="form-grid">
-          <label>
-            Squadra di casa
-            <input
-              v-model="teamInputs.home"
-              type="text"
-              list="admin-team-options"
-              :disabled="!hasEnoughTeams"
-              placeholder="Digita il nome della squadra"
-              required
-              @change="handleTeamInput('home')"
-              @blur="handleTeamInput('home')"
-            />
-            <small class="field-hint" v-if="hasEnoughTeams">
-              Scegli dalla lista oppure digita per filtrare le squadre disponibili.
-            </small>
-          </label>
-          <label>
-            Squadra ospite
-            <input
-              v-model="teamInputs.away"
-              type="text"
-              list="admin-team-options"
-              :disabled="!hasEnoughTeams"
-              placeholder="Digita il nome della squadra"
-              required
-              @change="handleTeamInput('away')"
-              @blur="handleTeamInput('away')"
-            />
-            <small class="field-hint" v-if="hasEnoughTeams">
-              Seleziona una squadra diversa da quella di casa.
-            </small>
-          </label>
-          <datalist id="admin-team-options">
-            <option v-for="team in teams" :key="team.id" :value="teamOptionValue(team)"></option>
-          </datalist>
-          <label>
-            Data e ora
-            <input
-              v-model="newEvent.start_datetime"
-              type="datetime-local"
-              :disabled="!hasEnoughTeams"
-              required
-            />
-          </label>
-          <label>
-            Location
-            <input
-              v-model.trim="newEvent.location"
-              type="text"
-              placeholder="Es. Palazzetto dello Sport"
-              :disabled="!hasEnoughTeams"
-            />
-          </label>
-          <div class="postvote-options new-event-prevote">
-            <div class="postvote-options__header">
-              <span>Esperienze pre voto</span>
-              <p class="field-hint">Decidi quali contenuti mostrare prima della votazione.</p>
-            </div>
-            <div class="postvote-options__grid">
-              <label class="postvote-toggle">
-                <input type="checkbox" v-model="newEvent.show_pre_vote_sponsors" :disabled="!hasEnoughTeams" />
-                <span class="postvote-toggle__label">Sponsor a bordo campo</span>
-              </label>
-              <label class="postvote-toggle">
-                <input type="checkbox" v-model="newEvent.show_vote_counter" :disabled="!hasEnoughTeams" />
-                <span class="postvote-toggle__label">Totale voti in tempo reale</span>
-              </label>
-            </div>
+          <header class="section-header">
+            <h2>Eventi</h2>
+            <p>Crea una nuova partita per abilitare il voto pubblico.</p>
+          </header>
+          <div class="actions-row">
+            <button
+              class="btn outline"
+              type="button"
+              @click="deactivateEvents"
+              :disabled="!activeEventId || isDisablingEvents"
+            >
+              {{ isDisablingEvents ? "Disattivazione…" : "Disattiva eventi" }}
+            </button>
           </div>
-          <div class="postvote-options new-event-postvote">
-            <div class="postvote-options__header">
-              <span>Esperienze post voto</span>
-              <p class="field-hint">Scegli quali contenuti mostrare ai tifosi dopo aver votato.</p>
-            </div>
-            <div class="postvote-options__grid">
-              <label class="postvote-toggle">
-                <input type="checkbox" v-model="newEvent.show_vote_trend" :disabled="!hasEnoughTeams" />
-                <span class="postvote-toggle__label">Andamento dei voti</span>
-              </label>
-              <label class="postvote-toggle">
-                <input type="checkbox" v-model="newEvent.show_selfie" :disabled="!hasEnoughTeams" />
-                <span class="postvote-toggle__label">Selfie MVP</span>
-              </label>
-              <label class="postvote-toggle">
-                <input type="checkbox" v-model="newEvent.show_reaction_test" :disabled="!hasEnoughTeams" />
-                <span class="postvote-toggle__label">Mini-gioco riflessi</span>
-              </label>
-              <label class="postvote-toggle">
-                <input type="checkbox" v-model="newEvent.show_feedback_survey" :disabled="!hasEnoughTeams" />
-                <span class="postvote-toggle__label">Sondaggio feedback</span>
-              </label>
-            </div>
-          </div>
-          <div class="prize-editor new-event-prizes">
-            <div class="prize-editor__header">
-              <span>Premi in palio</span>
-              <p class="field-hint">Aggiungi i premi disponibili per la lotteria dell'evento.</p>
-            </div>
-            <div class="prize-editor__list">
-              <div
-                v-for="(prize, index) in newEventPrizes"
-                :key="`new-event-prize-${index}`"
-                class="prize-editor__row"
-              >
-                <input
-                  v-model.trim="prize.name"
-                  type="text"
-                  :placeholder="`Premio ${index + 1}`"
-                  :disabled="!hasEnoughTeams"
-                />
-                <button
-                  class="btn outline"
-                  type="button"
-                  @click="removeNewEventPrize(index)"
-                  :disabled="newEventPrizes.length <= 1"
-                >
-                  Rimuovi
-                </button>
-              </div>
-            </div>
-            <div class="prize-editor__actions">
-              <button class="btn secondary" type="button" @click="addNewEventPrize" :disabled="!hasEnoughTeams">
-                Aggiungi premio
-              </button>
-            </div>
-          </div>
-          <button class="btn primary" type="submit" :disabled="!hasEnoughTeams">Crea evento</button>
-        </form>
-
-        <div v-if="lastCreatedEventLink" class="hint">
-          Nuovo evento creato! Link pubblico:
-          <a :href="lastCreatedEventLink" target="_blank" rel="noopener">{{ lastCreatedEventLink }}</a>
-          <button class="btn link" type="button" @click="copyLink(lastCreatedEventLink)">Copia</button>
-        </div>
-
-        <ul class="item-list">
-          <li v-for="event in visibleEvents" :key="event.id" :class="['item', { active: event.is_active }]">
-            <div class="item-body">
-              <h3>
-                {{ eventLabel(event) }}
-                <span v-if="event.is_active" class="badge">Attivo</span>
-                <span
-                  v-if="event.is_active && event.votes_closed"
-                  class="badge badge-closed"
-                >
-                  Votazioni chiuse
-                </span>
-              </h3>
-              <p class="muted">{{ formatEventDate(event.start_datetime) }} • {{ event.location || 'Location da definire' }}</p>
-              <p class="muted">
-                Link voto:
-                <a :href="buildEventLink(event.id)" target="_blank" rel="noopener">{{ buildEventLink(event.id) }}</a>
-              </p>
-            </div>
-            <div class="item-actions">
-              <button
-                class="btn success"
-                type="button"
-                @click="activateEvent(event.id)"
-                :disabled="event.is_active || updatingEventId === event.id"
-              >
-                <span v-if="event.is_active">Evento attivo</span>
-                <span v-else-if="updatingEventId === event.id">Attivazione…</span>
-                <span v-else>Attiva</span>
-              </button>
-              <button class="btn secondary" type="button" @click="openVote(event.id)">Apri pagina voto</button>
-              <button
-                class="btn warning"
-                type="button"
-                @click="concludeEvent(event.id)"
-                :disabled="concludingEventId === event.id"
-              >
-                <span v-if="concludingEventId === event.id">Conclusione…</span>
-                <span v-else>Evento terminato</span>
-              </button>
-              <button class="btn danger" type="button" @click="deleteEvent(event.id)">Elimina</button>
-            </div>
-            <div class="postvote-options">
+          <p v-if="!hasEnoughTeams" class="info-banner">
+            Aggiungi almeno due squadre dalla sezione "Squadre" per abilitare la
+            creazione di un evento.
+          </p>
+          <form @submit.prevent="createEvent" class="form-grid">
+            <label>
+              Squadra di casa
+              <input
+                v-model="teamInputs.home"
+                type="text"
+                list="admin-team-options"
+                :disabled="!hasEnoughTeams"
+                placeholder="Digita il nome della squadra"
+                required
+                @change="handleTeamInput('home')"
+                @blur="handleTeamInput('home')"
+              />
+              <small class="field-hint" v-if="hasEnoughTeams">
+                Scegli dalla lista oppure digita per filtrare le squadre
+                disponibili.
+              </small>
+            </label>
+            <label>
+              Squadra ospite
+              <input
+                v-model="teamInputs.away"
+                type="text"
+                list="admin-team-options"
+                :disabled="!hasEnoughTeams"
+                placeholder="Digita il nome della squadra"
+                required
+                @change="handleTeamInput('away')"
+                @blur="handleTeamInput('away')"
+              />
+              <small class="field-hint" v-if="hasEnoughTeams">
+                Seleziona una squadra diversa da quella di casa.
+              </small>
+            </label>
+            <datalist id="admin-team-options">
+              <option
+                v-for="team in teams"
+                :key="team.id"
+                :value="teamOptionValue(team)"
+              ></option>
+            </datalist>
+            <label>
+              Data e ora
+              <input
+                v-model="newEvent.start_datetime"
+                type="datetime-local"
+                :disabled="!hasEnoughTeams"
+                required
+              />
+            </label>
+            <label>
+              Location
+              <input
+                v-model.trim="newEvent.location"
+                type="text"
+                placeholder="Es. Palazzetto dello Sport"
+                :disabled="!hasEnoughTeams"
+              />
+            </label>
+            <div class="postvote-options new-event-prevote">
               <div class="postvote-options__header">
-                <strong>Esperienze pre voto</strong>
-                <p class="field-hint">Controlla le sezioni visibili prima della votazione.</p>
+                <span>Esperienze pre voto</span>
+                <p class="field-hint">
+                  Decidi quali contenuti mostrare prima della votazione.
+                </p>
               </div>
               <div class="postvote-options__grid">
                 <label class="postvote-toggle">
                   <input
                     type="checkbox"
-                    v-model="event.show_pre_vote_sponsors"
-                    :disabled="isSavingPrizesFor(event.id)"
+                    v-model="newEvent.show_pre_vote_sponsors"
+                    :disabled="!hasEnoughTeams"
                   />
-                  <span class="postvote-toggle__label">Sponsor a bordo campo</span>
+                  <span class="postvote-toggle__label"
+                    >Sponsor a bordo campo</span
+                  >
                 </label>
                 <label class="postvote-toggle">
                   <input
                     type="checkbox"
-                    v-model="event.show_vote_counter"
-                    :disabled="isSavingPrizesFor(event.id)"
+                    v-model="newEvent.show_vote_counter"
+                    :disabled="!hasEnoughTeams"
                   />
-                  <span class="postvote-toggle__label">Totale voti in tempo reale</span>
+                  <span class="postvote-toggle__label"
+                    >Totale voti in tempo reale</span
+                  >
                 </label>
               </div>
             </div>
-            <div class="postvote-options">
+            <div class="postvote-options new-event-postvote">
               <div class="postvote-options__header">
-                <strong>Esperienze post voto</strong>
-                <p class="field-hint">Attiva i contenuti che vuoi offrire dopo la votazione.</p>
+                <span>Esperienze post voto</span>
+                <p class="field-hint">
+                  Scegli quali contenuti mostrare ai tifosi dopo aver votato.
+                </p>
               </div>
               <div class="postvote-options__grid">
                 <label class="postvote-toggle">
                   <input
                     type="checkbox"
-                    v-model="event.show_vote_trend"
-                    :disabled="isSavingPrizesFor(event.id)"
+                    v-model="newEvent.show_vote_trend"
+                    :disabled="!hasEnoughTeams"
                   />
                   <span class="postvote-toggle__label">Andamento dei voti</span>
                 </label>
                 <label class="postvote-toggle">
                   <input
                     type="checkbox"
-                    v-model="event.show_selfie"
-                    :disabled="isSavingPrizesFor(event.id)"
+                    v-model="newEvent.show_selfie"
+                    :disabled="!hasEnoughTeams"
                   />
                   <span class="postvote-toggle__label">Selfie MVP</span>
                 </label>
                 <label class="postvote-toggle">
                   <input
                     type="checkbox"
-                    v-model="event.show_reaction_test"
-                    :disabled="isSavingPrizesFor(event.id)"
+                    v-model="newEvent.show_reaction_test"
+                    :disabled="!hasEnoughTeams"
                   />
-                  <span class="postvote-toggle__label">Mini-gioco riflessi</span>
+                  <span class="postvote-toggle__label"
+                    >Mini-gioco riflessi</span
+                  >
                 </label>
                 <label class="postvote-toggle">
                   <input
                     type="checkbox"
-                    v-model="event.show_feedback_survey"
-                    :disabled="isSavingPrizesFor(event.id)"
+                    v-model="newEvent.show_feedback_survey"
+                    :disabled="!hasEnoughTeams"
                   />
                   <span class="postvote-toggle__label">Sondaggio feedback</span>
                 </label>
               </div>
             </div>
-            <div class="prize-editor existing-prizes">
+            <div class="feedback-editor new-event-feedback">
+              <div class="feedback-editor__header">
+                <span>Sondaggio feedback</span>
+                <p class="field-hint">
+                  Personalizza le domande e le risposte mostrate nel sondaggio
+                  post voto.
+                </p>
+              </div>
+              <div class="feedback-editor__content">
+                <div
+                  v-for="question in newEventSurvey.questions"
+                  :key="`new-event-feedback-${question.id}`"
+                  class="feedback-editor__question"
+                >
+                  <label class="feedback-editor__question-title">
+                    Testo domanda
+                    <input
+                      v-model="question.title"
+                      type="text"
+                      :placeholder="`Domanda: ${question.id}`"
+                      :disabled="!hasEnoughTeams"
+                    />
+                  </label>
+                  <div class="feedback-editor__answers">
+                    <label
+                      v-for="answer in question.answers"
+                      :key="`new-event-feedback-${question.id}-${answer.value}`"
+                      class="feedback-editor__answer"
+                    >
+                      <span class="feedback-editor__answer-meta">
+                        <span
+                          v-if="answer.icon"
+                          class="feedback-editor__answer-icon"
+                          aria-hidden="true"
+                        >
+                          {{ answer.icon }}
+                        </span>
+                        <code class="feedback-editor__answer-code">{{
+                          answer.value
+                        }}</code>
+                      </span>
+                      <input
+                        v-model="answer.label"
+                        type="text"
+                        :placeholder="`Risposta per ${question.id}`"
+                        :disabled="!hasEnoughTeams"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <label class="feedback-editor__suggestion">
+                Domanda suggerimenti (opzionale)
+                <textarea
+                  v-model="newEventSurvey.suggestionPrompt"
+                  rows="2"
+                  maxlength="120"
+                  :disabled="!hasEnoughTeams"
+                  placeholder="Testo mostrato per la domanda aperta"
+                ></textarea>
+              </label>
+            </div>
+            <div class="prize-editor new-event-prizes">
               <div class="prize-editor__header">
-                <strong>Premi in palio</strong>
-                <p class="field-hint">Modifica l'elenco dei premi. I premi già assegnati non possono essere rimossi.</p>
+                <span>Premi in palio</span>
+                <p class="field-hint">
+                  Aggiungi i premi disponibili per la lotteria dell'evento.
+                </p>
               </div>
               <div class="prize-editor__list">
                 <div
-                  v-for="(prize, index) in prizeDraftsFor(event.id)"
-                  :key="`event-${event.id}-prize-${prize.id || index}`"
+                  v-for="(prize, index) in newEventPrizes"
+                  :key="`new-event-prize-${index}`"
                   class="prize-editor__row"
                 >
                   <input
-                    v-model="prize.name"
+                    v-model.trim="prize.name"
                     type="text"
                     :placeholder="`Premio ${index + 1}`"
-                    :disabled="isSavingPrizesFor(event.id)"
+                    :disabled="!hasEnoughTeams"
                   />
-                  <span v-if="prize.winner" class="prize-editor__winner">Assegnato a {{ prizeWinnerLabel(prize) }}</span>
                   <button
                     class="btn outline"
                     type="button"
-                    @click="removePrizeDraft(event.id, index)"
-                    :disabled="prize.winner || prizeDraftsFor(event.id).length <= 1 || isSavingPrizesFor(event.id)"
+                    @click="removeNewEventPrize(index)"
+                    :disabled="newEventPrizes.length <= 1"
                   >
                     Rimuovi
                   </button>
@@ -339,741 +307,1413 @@
                 <button
                   class="btn secondary"
                   type="button"
-                  @click="addPrizeDraft(event.id)"
-                  :disabled="isSavingPrizesFor(event.id)"
+                  @click="addNewEventPrize"
+                  :disabled="!hasEnoughTeams"
                 >
                   Aggiungi premio
                 </button>
+              </div>
+            </div>
+            <button
+              class="btn primary"
+              type="submit"
+              :disabled="!hasEnoughTeams"
+            >
+              Crea evento
+            </button>
+          </form>
+
+          <div v-if="lastCreatedEventLink" class="hint">
+            Nuovo evento creato! Link pubblico:
+            <a :href="lastCreatedEventLink" target="_blank" rel="noopener">{{
+              lastCreatedEventLink
+            }}</a>
+            <button
+              class="btn link"
+              type="button"
+              @click="copyLink(lastCreatedEventLink)"
+            >
+              Copia
+            </button>
+          </div>
+
+          <ul class="item-list">
+            <li
+              v-for="event in visibleEvents"
+              :key="event.id"
+              :class="['item', { active: event.is_active }]"
+            >
+              <div class="item-body">
+                <h3>
+                  {{ eventLabel(event) }}
+                  <span v-if="event.is_active" class="badge">Attivo</span>
+                  <span
+                    v-if="event.is_active && event.votes_closed"
+                    class="badge badge-closed"
+                  >
+                    Votazioni chiuse
+                  </span>
+                </h3>
+                <p class="muted">
+                  {{ formatEventDate(event.start_datetime) }} •
+                  {{ event.location || "Location da definire" }}
+                </p>
+                <p class="muted">
+                  Link voto:
+                  <a
+                    :href="buildEventLink(event.id)"
+                    target="_blank"
+                    rel="noopener"
+                    >{{ buildEventLink(event.id) }}</a
+                  >
+                </p>
+              </div>
+              <div class="item-actions">
                 <button
-                  class="btn primary"
+                  class="btn success"
                   type="button"
-                  @click="savePrizesForEvent(event)"
-                  :disabled="isSavingPrizesFor(event.id)"
+                  @click="activateEvent(event.id)"
+                  :disabled="event.is_active || updatingEventId === event.id"
                 >
-                  {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva impostazioni' }}
+                  <span v-if="event.is_active">Evento attivo</span>
+                  <span v-else-if="updatingEventId === event.id"
+                    >Attivazione…</span
+                  >
+                  <span v-else>Attiva</span>
                 </button>
-              </div>
-              <p v-if="eventPrizeErrors[event.id]" class="error">{{ eventPrizeErrors[event.id] }}</p>
-            </div>
-          </li>
-        </ul>
-      </section>
-
-      <section v-else-if="section === 'closing'" class="card closing-card">
-        <header class="section-header">
-          <h2>Chiusura votazioni</h2>
-          <p>Gestisci lo stato delle votazioni per la partita attualmente attiva.</p>
-        </header>
-
-        <div v-if="activeEventEntry" class="active-event-summary">
-          <div class="summary-header">
-            <h3>{{ activeEventLabel }}</h3>
-            <span :class="['badge', activeEventVotesClosed ? 'badge-closed' : 'badge-open']">
-              {{ activeEventVotesClosed ? 'Votazioni chiuse' : 'Votazioni aperte' }}
-            </span>
-          </div>
-          <p class="muted">{{ activeEventDateLabel }} • {{ activeEventLocation }}</p>
-
-          <div class="actions-row">
-            <button
-              class="btn warning"
-              type="button"
-              @click="closeActiveEventVoting"
-              :disabled="isClosingVotes || activeEventVotesClosed"
-            >
-              {{ isClosingVotes ? 'Chiusura…' : 'Chiudi votazioni' }}
-            </button>
-            <button
-              class="btn success"
-              type="button"
-              @click="activateEvent(activeEventEntry.id)"
-              :disabled="
-                !activeEventEntry || updatingEventId === activeEventEntry.id || !activeEventVotesClosed
-              "
-            >
-              <span v-if="updatingEventId === activeEventEntry.id">Riattivazione…</span>
-              <span v-else>Attiva</span>
-            </button>
-            <button
-              class="btn outline"
-              type="button"
-              @click="deactivateEvents"
-              :disabled="isDisablingEvents"
-            >
-              {{ isDisablingEvents ? 'Disattivazione…' : 'Disattiva' }}
-            </button>
-          </div>
-        </div>
-        <div v-else class="info-banner">
-          Nessun evento attivo al momento. Attiva una partita dalla sezione "Eventi" per gestire le votazioni.
-        </div>
-
-        <p v-if="closeVotesMessage" class="success-message">{{ closeVotesMessage }}</p>
-      </section>
-
-      <section v-else-if="section === 'results'" class="card results-card">
-        <header class="section-header">
-          <h2>Risultati votazioni</h2>
-          <p>Seleziona un evento per vedere la classifica MVP aggiornata in tempo reale.</p>
-        </header>
-
-        <div class="results-controls">
-          <label>
-            Evento
-            <select v-model.number="selectedResultsEventId" :disabled="!availableEvents.length">
-              <option disabled value="0">Seleziona un evento</option>
-              <option v-for="event in availableEvents" :key="event.id" :value="event.id">
-                {{ eventLabel(event) }}
-              </option>
-            </select>
-          </label>
-          <button
-            class="btn secondary"
-            type="button"
-            @click="fetchEventResults({ showLoader: true })"
-            :disabled="isLoadingResults || !selectedResultsEventId"
-          >
-            {{ isLoadingResults ? 'Aggiornamento…' : 'Aggiorna ora' }}
-          </button>
-        </div>
-
-        <div v-if="selectedResultsEvent" class="results-summary">
-          <h3>{{ selectedResultsEventLabel }}</h3>
-          <p class="muted">{{ selectedResultsEventDate || 'Data da definire' }}</p>
-        </div>
-
-        <p v-if="resultsError" class="error">{{ resultsError }}</p>
-        <div v-else-if="!availableEvents.length" class="info-banner">
-          Crea un evento per visualizzare i risultati delle votazioni MVP.
-        </div>
-        <div v-else class="results-leaderboard">
-          <div class="results-meta">
-            <span><strong>Voti totali:</strong> {{ totalVotes }}</span>
-            <span v-if="lastResultsUpdateLabel"><strong>Ultimo aggiornamento:</strong> {{ lastResultsUpdateLabel }}</span>
-            <span class="auto-refresh">Aggiornamento automatico ogni 5 secondi</span>
-          </div>
-          <p v-if="isLoadingResults" class="muted">Caricamento risultati…</p>
-          <p v-else-if="!hasResultsVotes" class="muted">Non ci sono ancora voti per questo evento.</p>
-          <ul class="leaderboard-list" aria-live="polite">
-            <li v-for="(entry, index) in resultsLeaderboard" :key="entry.id" class="leaderboard-item">
-              <div class="rank">#{{ index + 1 }}</div>
-              <div class="player-name">
-                <span class="lastname">{{ entry.lastNameUpper }}</span>
-                <span class="firstname">{{ entry.firstName }}</span>
-              </div>
-              <div class="votes">
-                <strong>{{ entry.votes }}</strong>
-                <span class="muted">{{ entry.votes === 1 ? 'voto' : 'voti' }}</span>
-              </div>
-              <div class="progress" role="presentation">
-                <div class="progress-bar" :style="{ width: `${entry.percentage}%` }"></div>
-              </div>
-            </li>
-          </ul>
-          <div v-if="selectedResultsEventId" class="sponsor-analytics">
-            <h3>Analisi sponsor</h3>
-            <p v-if="sponsorAnalyticsError" class="error">{{ sponsorAnalyticsError }}</p>
-            <p v-else-if="isLoadingSponsorAnalytics" class="muted">Caricamento dati sponsor…</p>
-            <div v-else-if="!hasSponsorAnalyticsData" class="muted">Nessun dato sponsor disponibile al momento.</div>
-            <div v-else class="sponsor-analytics__content">
-              <div v-if="sponsorAnalyticsDisplay" class="sponsor-analytics__grid">
-                <div class="sponsor-analytics__card">
-                  <span class="sponsor-analytics__label">Utenti totali</span>
-                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.totalUsersLabel }}</strong>
-                </div>
-                <div class="sponsor-analytics__card">
-                  <span class="sponsor-analytics__label">Sezione vista</span>
-                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.seenRateLabel }}</strong>
-                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.seenUsersLabel }} utenti</span>
-                </div>
-                <div class="sponsor-analytics__card">
-                  <span class="sponsor-analytics__label">Tempo medio visione</span>
-                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.averageWatchTimeLabel }}</strong>
-                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.watchedUsersLabel }} utenti</span>
-                </div>
-                <div class="sponsor-analytics__card">
-                  <span class="sponsor-analytics__label">Click totali</span>
-                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.totalClicksLabel }}</strong>
-                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.clickRateLabel }} • {{ sponsorAnalyticsDisplay.uniqueClickersLabel }} utenti</span>
-                </div>
-                <div class="sponsor-analytics__card sponsor-analytics__card--wide">
-                  <span class="sponsor-analytics__label">Sponsor più visualizzato</span>
-                  <strong class="sponsor-analytics__value">{{ sponsorAnalyticsDisplay.topSponsorName }}</strong>
-                  <span class="sponsor-analytics__hint">{{ sponsorAnalyticsDisplay.topSponsorViewsLabel }} visualizzazioni</span>
-                </div>
-              </div>
-              <div v-if="sponsorChartRows.length" class="sponsor-analytics__chart">
-                <h4>Andamento visualizzazioni e click</h4>
-                <ul class="sponsor-chart">
-                  <li v-for="point in sponsorChartRows" :key="point.timestamp || point.label" class="sponsor-chart__row">
-                    <div class="sponsor-chart__label">{{ point.label }}</div>
-                    <div class="sponsor-chart__bars" aria-hidden="true">
-                      <div class="sponsor-chart__bar sponsor-chart__bar--seen" :style="{ width: `${point.seenPercent}%` }"></div>
-                      <div class="sponsor-chart__bar sponsor-chart__bar--clicks" :style="{ width: `${point.clicksPercent}%` }"></div>
-                    </div>
-                    <div class="sponsor-chart__values">
-                      <span>{{ point.seen.toLocaleString('it-IT') }} viste</span>
-                      <span>{{ point.clicks.toLocaleString('it-IT') }} click</span>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section v-else-if="section === 'selfies'" class="card">
-        <header class="section-header">
-          <h2>Selfie MVP</h2>
-          <p>Gestisci i selfie inviati dai tifosi per l'evento selezionato.</p>
-        </header>
-
-        <div class="form-grid">
-          <label>
-            Evento
-            <select v-model.number="selectedSelfieEventId">
-              <option v-if="!availableEvents.length" value="0" disabled>Nessun evento disponibile</option>
-              <option v-for="event in availableEvents" :key="event.id" :value="event.id">
-                {{ eventLabel(event) }} • {{ formatEventDate(event.start_datetime) }}
-              </option>
-            </select>
-          </label>
-        </div>
-
-        <p v-if="selfieModerationMessage" class="success">{{ selfieModerationMessage }}</p>
-        <p v-if="selfieLoadError" class="error">{{ selfieLoadError }}</p>
-
-        <div v-if="isLoadingSelfies" class="selfie-admin-loader" role="status" aria-live="polite">
-          <span class="spinner" aria-hidden="true"></span>
-          <p>Caricamento selfie…</p>
-        </div>
-        <p v-else-if="!availableEvents.length" class="muted">Crea un evento per raccogliere selfie dal pubblico.</p>
-        <p v-else-if="!eventSelfies.length" class="muted">Nessun selfie ricevuto per questo evento al momento.</p>
-        <div v-else class="selfie-admin-grid">
-          <article v-for="selfie in eventSelfies" :key="selfie.id" class="selfie-admin-card">
-            <a
-              v-if="selfie.image_src"
-              :href="selfie.image_src"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="selfie-admin-thumb"
-            >
-              <img :src="selfie.image_src" :alt="`Selfie ${selfie.id}`" />
-            </a>
-            <div v-else class="selfie-admin-thumb selfie-admin-thumb--empty">
-              <span>Immagine non disponibile</span>
-            </div>
-            <div class="selfie-admin-body">
-              <h3 class="selfie-admin-caption">{{ selfie.caption || 'Senza didascalia' }}</h3>
-              <p class="selfie-admin-meta">Inviato: {{ formatSelfieDate(selfie.submitted_at) || 'N/D' }}</p>
-              <p class="selfie-admin-meta">Device: {{ selfie.device_token || 'Non disponibile' }}</p>
-              <p class="selfie-admin-meta">
-                Dimensione:
-                {{ formatSelfieFileSize(selfie.file_size_bytes) || 'N/D' }}
-              </p>
-              <p class="selfie-admin-status">
-                Stato: <strong>{{ selfieStatusLabel(selfie) }}</strong>
-              </p>
-              <div class="selfie-admin-actions">
+                <button
+                  class="btn secondary"
+                  type="button"
+                  @click="openVote(event.id)"
+                >
+                  Apri pagina voto
+                </button>
+                <button
+                  class="btn warning"
+                  type="button"
+                  @click="concludeEvent(event.id)"
+                  :disabled="concludingEventId === event.id"
+                >
+                  <span v-if="concludingEventId === event.id"
+                    >Conclusione…</span
+                  >
+                  <span v-else>Evento terminato</span>
+                </button>
                 <button
                   class="btn danger"
                   type="button"
-                  :disabled="isSelfieBusy(selfie.id)"
-                  @click="deleteSelfie(selfie)"
+                  @click="deleteEvent(event.id)"
                 >
-                  Elimina foto
+                  Elimina
                 </button>
               </div>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section v-else-if="section === 'history'" class="card history-card">
-        <header class="section-header">
-          <h2>Storico eventi</h2>
-          <p>Consulta i dati degli eventi passati con riepilogo voti, MVP e interazioni sponsor.</p>
-        </header>
-
-        <div class="history-toolbar">
-          <button
-            class="btn secondary"
-            type="button"
-            @click="refreshEventHistory"
-            :disabled="isLoadingEventHistory"
-          >
-            {{ isLoadingEventHistory ? 'Aggiornamento…' : 'Aggiorna' }}
-          </button>
-        </div>
-
-        <p v-if="eventHistorySuccess" class="success-message">{{ eventHistorySuccess }}</p>
-        <p v-if="eventHistoryError" class="error">{{ eventHistoryError }}</p>
-        <p v-else-if="isLoadingEventHistory" class="muted text-center">Caricamento storico in corso…</p>
-        <p v-else-if="!eventHistory.length" class="muted text-center">Non sono presenti eventi conclusi al momento.</p>
-
-        <ul v-else class="history-list">
-          <li v-for="entry in eventHistory" :key="entry.id" class="history-item">
-            <div class="history-item__header">
-              <div>
-                <h3>{{ entry.title }}</h3>
-                <p class="muted">
-                  {{ formatHistoryDate(entry.startDatetime) }}
-                  <span v-if="entry.location">• {{ entry.location }}</span>
-                </p>
-              </div>
-              <div class="history-item__meta">
-                <div class="history-item__totals">
-                  <span class="history-item__total">
-                    <strong>{{ entry.totalVotesLabel }}</strong> voti totali
-                  </span>
-                  <span class="history-item__total">
-                    <strong>{{ entry.totalVisitorsLabel }}</strong> visitatori totali
-                  </span>
-                  <span class="history-item__unique-visitors">
-                    <strong>{{ entry.uniqueVisitorsLabel }}</strong> visitatori unici
-                  </span>
-                  <span class="history-item__sponsor-total">
-                    <strong>{{ entry.sponsorClicksTotalLabel }}</strong> click sponsor
-                  </span>
+              <div class="postvote-options">
+                <div class="postvote-options__header">
+                  <strong>Esperienze pre voto</strong>
+                  <p class="field-hint">
+                    Controlla le sezioni visibili prima della votazione.
+                  </p>
                 </div>
-                <div class="history-item__actions">
-                  <button
-                    class="btn outline"
-                    type="button"
-                    :disabled="isDownloadingHistoryReport(entry.id)"
-                    @click="downloadEventHistoryReport(entry)"
-                  >
-                    {{
-                      isDownloadingHistoryReport(entry.id)
-                        ? 'Generazione report…'
-                        : 'Scarica report'
-                    }}
-                  </button>
-                  <button
-                    v-if="isSuperAdmin"
-                    class="btn danger"
-                    type="button"
-                    @click="openPurgeDialog(entry)"
-                  >
-                    Elimina evento
-                  </button>
+                <div class="postvote-options__grid">
+                  <label class="postvote-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="event.show_pre_vote_sponsors"
+                      :disabled="isSavingPrizesFor(event.id)"
+                    />
+                    <span class="postvote-toggle__label"
+                      >Sponsor a bordo campo</span
+                    >
+                  </label>
+                  <label class="postvote-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="event.show_vote_counter"
+                      :disabled="isSavingPrizesFor(event.id)"
+                    />
+                    <span class="postvote-toggle__label"
+                      >Totale voti in tempo reale</span
+                    >
+                  </label>
                 </div>
               </div>
-            </div>
-
-            <div class="history-details">
-              <div class="history-details__column">
-                <h4>MVP</h4>
-                <p v-if="entry.mvp">
-                  {{ entry.mvp.name }} • {{ entry.mvp.votes.toLocaleString('it-IT') }} voti
-                </p>
-                <p v-else class="muted">Nessun MVP assegnato.</p>
+              <div class="postvote-options">
+                <div class="postvote-options__header">
+                  <strong>Esperienze post voto</strong>
+                  <p class="field-hint">
+                    Attiva i contenuti che vuoi offrire dopo la votazione.
+                  </p>
+                </div>
+                <div class="postvote-options__grid">
+                  <label class="postvote-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="event.show_vote_trend"
+                      :disabled="isSavingPrizesFor(event.id)"
+                    />
+                    <span class="postvote-toggle__label"
+                      >Andamento dei voti</span
+                    >
+                  </label>
+                  <label class="postvote-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="event.show_selfie"
+                      :disabled="isSavingPrizesFor(event.id)"
+                    />
+                    <span class="postvote-toggle__label">Selfie MVP</span>
+                  </label>
+                  <label class="postvote-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="event.show_reaction_test"
+                      :disabled="isSavingPrizesFor(event.id)"
+                    />
+                    <span class="postvote-toggle__label"
+                      >Mini-gioco riflessi</span
+                    >
+                  </label>
+                  <label class="postvote-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="event.show_feedback_survey"
+                      :disabled="isSavingPrizesFor(event.id)"
+                    />
+                    <span class="postvote-toggle__label"
+                      >Sondaggio feedback</span
+                    >
+                  </label>
+                </div>
               </div>
-              <div class="history-details__column">
-                <h4>Interazioni sponsor</h4>
-                <div v-if="entry.sponsorAnalyticsHasData" class="history-sponsor-summary">
-                  <div class="history-sponsor-summary__grid">
-                    <div class="history-sponsor-summary__card">
-                      <span class="history-sponsor-summary__label">Utenti totali</span>
-                      <strong class="history-sponsor-summary__value">
-                        {{ entry.sponsorAnalyticsDisplay.totalUsersLabel }}
-                      </strong>
-                    </div>
-                    <div class="history-sponsor-summary__card">
-                      <span class="history-sponsor-summary__label">Sezione vista</span>
-                      <strong class="history-sponsor-summary__value">
-                        {{ entry.sponsorAnalyticsDisplay.seenRateLabel }}
-                      </strong>
-                      <span class="history-sponsor-summary__hint">
-                        {{ entry.sponsorAnalyticsDisplay.seenUsersLabel }} utenti
-                      </span>
-                    </div>
-                    <div class="history-sponsor-summary__card">
-                      <span class="history-sponsor-summary__label">Tempo medio visione</span>
-                      <strong class="history-sponsor-summary__value">
-                        {{ entry.sponsorAnalyticsDisplay.averageWatchTimeLabel }}
-                      </strong>
-                      <span class="history-sponsor-summary__hint">
-                        {{ entry.sponsorAnalyticsDisplay.watchedUsersLabel }} utenti •
-                        {{ entry.sponsorAnalyticsDisplay.totalWatchTimeLabel }} totali
-                      </span>
-                    </div>
-                    <div class="history-sponsor-summary__card">
-                      <span class="history-sponsor-summary__label">Click totali</span>
-                      <strong class="history-sponsor-summary__value">
-                        {{ entry.sponsorAnalyticsDisplay.totalClicksLabel }}
-                      </strong>
-                      <span class="history-sponsor-summary__hint">
-                        {{ entry.sponsorAnalyticsDisplay.clickRateLabel }} •
-                        {{ entry.sponsorAnalyticsDisplay.uniqueClickersLabel }} utenti
-                      </span>
-                    </div>
-                    <div class="history-sponsor-summary__card history-sponsor-summary__card--wide">
-                      <span class="history-sponsor-summary__label">Sponsor più visualizzato</span>
-                      <strong class="history-sponsor-summary__value">
-                        {{ entry.sponsorAnalyticsDisplay.topSponsorName }}
-                      </strong>
-                      <span class="history-sponsor-summary__hint">
-                        {{ entry.sponsorAnalyticsDisplay.topSponsorViewsLabel }} visualizzazioni
-                      </span>
+              <div class="feedback-editor existing-feedback">
+                <div class="feedback-editor__header">
+                  <strong>Sondaggio feedback</strong>
+                  <p class="field-hint">
+                    Modifica le domande e le risposte mostrate nel sondaggio di
+                    questo evento.
+                  </p>
+                </div>
+                <div class="feedback-editor__content">
+                  <div
+                    v-for="question in feedbackDraftFor(event.id).questions"
+                    :key="`event-${event.id}-feedback-${question.id}`"
+                    class="feedback-editor__question"
+                  >
+                    <label class="feedback-editor__question-title">
+                      Testo domanda
+                      <input
+                        v-model="question.title"
+                        type="text"
+                        :placeholder="`Domanda: ${question.id}`"
+                        :disabled="isSavingPrizesFor(event.id)"
+                      />
+                    </label>
+                    <div class="feedback-editor__answers">
+                      <label
+                        v-for="answer in question.answers"
+                        :key="`event-${event.id}-feedback-${question.id}-${answer.value}`"
+                        class="feedback-editor__answer"
+                      >
+                        <span class="feedback-editor__answer-meta">
+                          <span
+                            v-if="answer.icon"
+                            class="feedback-editor__answer-icon"
+                            aria-hidden="true"
+                          >
+                            {{ answer.icon }}
+                          </span>
+                          <code class="feedback-editor__answer-code">{{
+                            answer.value
+                          }}</code>
+                        </span>
+                        <input
+                          v-model="answer.label"
+                          type="text"
+                          :placeholder="`Risposta per ${question.id}`"
+                          :disabled="isSavingPrizesFor(event.id)"
+                        />
+                      </label>
                     </div>
                   </div>
                 </div>
-                <ul v-if="entry.sponsorClicks.length" class="history-sponsor-list">
-                  <li
-                    v-for="sponsor in entry.sponsorClicks"
-                    :key="`${entry.id}-sponsor-${sponsor.id}`"
+                <label class="feedback-editor__suggestion">
+                  Domanda suggerimenti (opzionale)
+                  <textarea
+                    v-model="feedbackDraftFor(event.id).suggestionPrompt"
+                    rows="2"
+                    maxlength="120"
+                    :disabled="isSavingPrizesFor(event.id)"
+                    placeholder="Testo mostrato per la domanda aperta"
+                  ></textarea>
+                </label>
+              </div>
+              <div class="prize-editor existing-prizes">
+                <div class="prize-editor__header">
+                  <strong>Premi in palio</strong>
+                  <p class="field-hint">
+                    Modifica l'elenco dei premi. I premi già assegnati non
+                    possono essere rimossi.
+                  </p>
+                </div>
+                <div class="prize-editor__list">
+                  <div
+                    v-for="(prize, index) in prizeDraftsFor(event.id)"
+                    :key="`event-${event.id}-prize-${prize.id || index}`"
+                    class="prize-editor__row"
                   >
-                    <span class="history-sponsor-name">{{ sponsor.name }}</span>
-                    <span class="history-sponsor-clicks">{{ sponsor.clicks.toLocaleString('it-IT') }} click</span>
-                  </li>
-                </ul>
-                <p v-else class="muted">Nessun click registrato.</p>
-                <div v-if="entry.sponsorAnalyticsTimeline.length" class="history-sponsor-timeline">
-                  <h5>Andamento interazioni</h5>
-                  <ul class="history-sponsor-timeline__list">
-                    <li
-                      v-for="point in entry.sponsorAnalyticsTimeline"
-                      :key="`${entry.id}-analytics-${point.timestamp || point.label}`"
-                      class="history-sponsor-timeline__item"
+                    <input
+                      v-model="prize.name"
+                      type="text"
+                      :placeholder="`Premio ${index + 1}`"
+                      :disabled="isSavingPrizesFor(event.id)"
+                    />
+                    <span v-if="prize.winner" class="prize-editor__winner"
+                      >Assegnato a {{ prizeWinnerLabel(prize) }}</span
                     >
-                      <span class="history-sponsor-timeline__time">{{ point.label }}</span>
-                      <div class="history-sponsor-timeline__values">
-                        <span class="history-sponsor-timeline__value history-sponsor-timeline__value--seen">
-                          {{ point.seen.toLocaleString('it-IT') }} viste
-                        </span>
-                        <span class="history-sponsor-timeline__value history-sponsor-timeline__value--watched">
-                          {{ point.watched.toLocaleString('it-IT') }} guardate
-                        </span>
-                        <span class="history-sponsor-timeline__value history-sponsor-timeline__value--clicks">
-                          {{ point.clicks.toLocaleString('it-IT') }} click
-                        </span>
+                    <button
+                      class="btn outline"
+                      type="button"
+                      @click="removePrizeDraft(event.id, index)"
+                      :disabled="
+                        prize.winner ||
+                        prizeDraftsFor(event.id).length <= 1 ||
+                        isSavingPrizesFor(event.id)
+                      "
+                    >
+                      Rimuovi
+                    </button>
+                  </div>
+                </div>
+                <div class="prize-editor__actions">
+                  <button
+                    class="btn secondary"
+                    type="button"
+                    @click="addPrizeDraft(event.id)"
+                    :disabled="isSavingPrizesFor(event.id)"
+                  >
+                    Aggiungi premio
+                  </button>
+                  <button
+                    class="btn primary"
+                    type="button"
+                    @click="savePrizesForEvent(event)"
+                    :disabled="isSavingPrizesFor(event.id)"
+                  >
+                    {{
+                      isSavingPrizesFor(event.id)
+                        ? "Salvataggio…"
+                        : "Salva impostazioni"
+                    }}
+                  </button>
+                </div>
+                <p v-if="eventPrizeErrors[event.id]" class="error">
+                  {{ eventPrizeErrors[event.id] }}
+                </p>
+                <p v-if="eventFeedbackErrors[event.id]" class="error">
+                  {{ eventFeedbackErrors[event.id] }}
+                </p>
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <section v-else-if="section === 'closing'" class="card closing-card">
+          <header class="section-header">
+            <h2>Chiusura votazioni</h2>
+            <p>
+              Gestisci lo stato delle votazioni per la partita attualmente
+              attiva.
+            </p>
+          </header>
+
+          <div v-if="activeEventEntry" class="active-event-summary">
+            <div class="summary-header">
+              <h3>{{ activeEventLabel }}</h3>
+              <span
+                :class="[
+                  'badge',
+                  activeEventVotesClosed ? 'badge-closed' : 'badge-open',
+                ]"
+              >
+                {{
+                  activeEventVotesClosed
+                    ? "Votazioni chiuse"
+                    : "Votazioni aperte"
+                }}
+              </span>
+            </div>
+            <p class="muted">
+              {{ activeEventDateLabel }} • {{ activeEventLocation }}
+            </p>
+
+            <div class="actions-row">
+              <button
+                class="btn warning"
+                type="button"
+                @click="closeActiveEventVoting"
+                :disabled="isClosingVotes || activeEventVotesClosed"
+              >
+                {{ isClosingVotes ? "Chiusura…" : "Chiudi votazioni" }}
+              </button>
+              <button
+                class="btn success"
+                type="button"
+                @click="activateEvent(activeEventEntry.id)"
+                :disabled="
+                  !activeEventEntry ||
+                  updatingEventId === activeEventEntry.id ||
+                  !activeEventVotesClosed
+                "
+              >
+                <span v-if="updatingEventId === activeEventEntry.id"
+                  >Riattivazione…</span
+                >
+                <span v-else>Attiva</span>
+              </button>
+              <button
+                class="btn outline"
+                type="button"
+                @click="deactivateEvents"
+                :disabled="isDisablingEvents"
+              >
+                {{ isDisablingEvents ? "Disattivazione…" : "Disattiva" }}
+              </button>
+            </div>
+          </div>
+          <div v-else class="info-banner">
+            Nessun evento attivo al momento. Attiva una partita dalla sezione
+            "Eventi" per gestire le votazioni.
+          </div>
+
+          <p v-if="closeVotesMessage" class="success-message">
+            {{ closeVotesMessage }}
+          </p>
+        </section>
+
+        <section v-else-if="section === 'results'" class="card results-card">
+          <header class="section-header">
+            <h2>Risultati votazioni</h2>
+            <p>
+              Seleziona un evento per vedere la classifica MVP aggiornata in
+              tempo reale.
+            </p>
+          </header>
+
+          <div class="results-controls">
+            <label>
+              Evento
+              <select
+                v-model.number="selectedResultsEventId"
+                :disabled="!availableEvents.length"
+              >
+                <option disabled value="0">Seleziona un evento</option>
+                <option
+                  v-for="event in availableEvents"
+                  :key="event.id"
+                  :value="event.id"
+                >
+                  {{ eventLabel(event) }}
+                </option>
+              </select>
+            </label>
+            <button
+              class="btn secondary"
+              type="button"
+              @click="fetchEventResults({ showLoader: true })"
+              :disabled="isLoadingResults || !selectedResultsEventId"
+            >
+              {{ isLoadingResults ? "Aggiornamento…" : "Aggiorna ora" }}
+            </button>
+          </div>
+
+          <div v-if="selectedResultsEvent" class="results-summary">
+            <h3>{{ selectedResultsEventLabel }}</h3>
+            <p class="muted">
+              {{ selectedResultsEventDate || "Data da definire" }}
+            </p>
+          </div>
+
+          <p v-if="resultsError" class="error">{{ resultsError }}</p>
+          <div v-else-if="!availableEvents.length" class="info-banner">
+            Crea un evento per visualizzare i risultati delle votazioni MVP.
+          </div>
+          <div v-else class="results-leaderboard">
+            <div class="results-meta">
+              <span><strong>Voti totali:</strong> {{ totalVotes }}</span>
+              <span v-if="lastResultsUpdateLabel"
+                ><strong>Ultimo aggiornamento:</strong>
+                {{ lastResultsUpdateLabel }}</span
+              >
+              <span class="auto-refresh"
+                >Aggiornamento automatico ogni 5 secondi</span
+              >
+            </div>
+            <p v-if="isLoadingResults" class="muted">Caricamento risultati…</p>
+            <p v-else-if="!hasResultsVotes" class="muted">
+              Non ci sono ancora voti per questo evento.
+            </p>
+            <ul class="leaderboard-list" aria-live="polite">
+              <li
+                v-for="(entry, index) in resultsLeaderboard"
+                :key="entry.id"
+                class="leaderboard-item"
+              >
+                <div class="rank">#{{ index + 1 }}</div>
+                <div class="player-name">
+                  <span class="lastname">{{ entry.lastNameUpper }}</span>
+                  <span class="firstname">{{ entry.firstName }}</span>
+                </div>
+                <div class="votes">
+                  <strong>{{ entry.votes }}</strong>
+                  <span class="muted">{{
+                    entry.votes === 1 ? "voto" : "voti"
+                  }}</span>
+                </div>
+                <div class="progress" role="presentation">
+                  <div
+                    class="progress-bar"
+                    :style="{ width: `${entry.percentage}%` }"
+                  ></div>
+                </div>
+              </li>
+            </ul>
+            <div v-if="selectedResultsEventId" class="sponsor-analytics">
+              <h3>Analisi sponsor</h3>
+              <p v-if="sponsorAnalyticsError" class="error">
+                {{ sponsorAnalyticsError }}
+              </p>
+              <p v-else-if="isLoadingSponsorAnalytics" class="muted">
+                Caricamento dati sponsor…
+              </p>
+              <div v-else-if="!hasSponsorAnalyticsData" class="muted">
+                Nessun dato sponsor disponibile al momento.
+              </div>
+              <div v-else class="sponsor-analytics__content">
+                <div
+                  v-if="sponsorAnalyticsDisplay"
+                  class="sponsor-analytics__grid"
+                >
+                  <div class="sponsor-analytics__card">
+                    <span class="sponsor-analytics__label">Utenti totali</span>
+                    <strong class="sponsor-analytics__value">{{
+                      sponsorAnalyticsDisplay.totalUsersLabel
+                    }}</strong>
+                  </div>
+                  <div class="sponsor-analytics__card">
+                    <span class="sponsor-analytics__label">Sezione vista</span>
+                    <strong class="sponsor-analytics__value">{{
+                      sponsorAnalyticsDisplay.seenRateLabel
+                    }}</strong>
+                    <span class="sponsor-analytics__hint"
+                      >{{ sponsorAnalyticsDisplay.seenUsersLabel }} utenti</span
+                    >
+                  </div>
+                  <div class="sponsor-analytics__card">
+                    <span class="sponsor-analytics__label"
+                      >Tempo medio visione</span
+                    >
+                    <strong class="sponsor-analytics__value">{{
+                      sponsorAnalyticsDisplay.averageWatchTimeLabel
+                    }}</strong>
+                    <span class="sponsor-analytics__hint"
+                      >{{
+                        sponsorAnalyticsDisplay.watchedUsersLabel
+                      }}
+                      utenti</span
+                    >
+                  </div>
+                  <div class="sponsor-analytics__card">
+                    <span class="sponsor-analytics__label">Click totali</span>
+                    <strong class="sponsor-analytics__value">{{
+                      sponsorAnalyticsDisplay.totalClicksLabel
+                    }}</strong>
+                    <span class="sponsor-analytics__hint"
+                      >{{ sponsorAnalyticsDisplay.clickRateLabel }} •
+                      {{
+                        sponsorAnalyticsDisplay.uniqueClickersLabel
+                      }}
+                      utenti</span
+                    >
+                  </div>
+                  <div
+                    class="sponsor-analytics__card sponsor-analytics__card--wide"
+                  >
+                    <span class="sponsor-analytics__label"
+                      >Sponsor più visualizzato</span
+                    >
+                    <strong class="sponsor-analytics__value">{{
+                      sponsorAnalyticsDisplay.topSponsorName
+                    }}</strong>
+                    <span class="sponsor-analytics__hint"
+                      >{{
+                        sponsorAnalyticsDisplay.topSponsorViewsLabel
+                      }}
+                      visualizzazioni</span
+                    >
+                  </div>
+                </div>
+                <div
+                  v-if="sponsorChartRows.length"
+                  class="sponsor-analytics__chart"
+                >
+                  <h4>Andamento visualizzazioni e click</h4>
+                  <ul class="sponsor-chart">
+                    <li
+                      v-for="point in sponsorChartRows"
+                      :key="point.timestamp || point.label"
+                      class="sponsor-chart__row"
+                    >
+                      <div class="sponsor-chart__label">{{ point.label }}</div>
+                      <div class="sponsor-chart__bars" aria-hidden="true">
+                        <div
+                          class="sponsor-chart__bar sponsor-chart__bar--seen"
+                          :style="{ width: `${point.seenPercent}%` }"
+                        ></div>
+                        <div
+                          class="sponsor-chart__bar sponsor-chart__bar--clicks"
+                          :style="{ width: `${point.clicksPercent}%` }"
+                        ></div>
+                      </div>
+                      <div class="sponsor-chart__values">
+                        <span
+                          >{{ point.seen.toLocaleString("it-IT") }} viste</span
+                        >
+                        <span
+                          >{{
+                            point.clicks.toLocaleString("it-IT")
+                          }}
+                          click</span
+                        >
                       </div>
                     </li>
                   </ul>
                 </div>
               </div>
-              <div class="history-details__column history-details__column--feedback">
-                <h4>Sondaggio feedback</h4>
-                <div v-if="entry.feedbackSummary" class="history-feedback-summary">
-                  <p class="history-feedback-summary__total">{{ entry.feedbackSummary.totalResponsesLabel }}</p>
-                  <div
-                    v-for="question in entry.feedbackSummary.questions"
-                    :key="`${entry.id}-feedback-${question.id}`"
-                    class="history-feedback-summary__question"
+            </div>
+          </div>
+        </section>
+
+        <section v-else-if="section === 'selfies'" class="card">
+          <header class="section-header">
+            <h2>Selfie MVP</h2>
+            <p>
+              Gestisci i selfie inviati dai tifosi per l'evento selezionato.
+            </p>
+          </header>
+
+          <div class="form-grid">
+            <label>
+              Evento
+              <select v-model.number="selectedSelfieEventId">
+                <option v-if="!availableEvents.length" value="0" disabled>
+                  Nessun evento disponibile
+                </option>
+                <option
+                  v-for="event in availableEvents"
+                  :key="event.id"
+                  :value="event.id"
+                >
+                  {{ eventLabel(event) }} •
+                  {{ formatEventDate(event.start_datetime) }}
+                </option>
+              </select>
+            </label>
+          </div>
+
+          <p v-if="selfieModerationMessage" class="success">
+            {{ selfieModerationMessage }}
+          </p>
+          <p v-if="selfieLoadError" class="error">{{ selfieLoadError }}</p>
+
+          <div
+            v-if="isLoadingSelfies"
+            class="selfie-admin-loader"
+            role="status"
+            aria-live="polite"
+          >
+            <span class="spinner" aria-hidden="true"></span>
+            <p>Caricamento selfie…</p>
+          </div>
+          <p v-else-if="!availableEvents.length" class="muted">
+            Crea un evento per raccogliere selfie dal pubblico.
+          </p>
+          <p v-else-if="!eventSelfies.length" class="muted">
+            Nessun selfie ricevuto per questo evento al momento.
+          </p>
+          <div v-else class="selfie-admin-grid">
+            <article
+              v-for="selfie in eventSelfies"
+              :key="selfie.id"
+              class="selfie-admin-card"
+            >
+              <a
+                v-if="selfie.image_src"
+                :href="selfie.image_src"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="selfie-admin-thumb"
+              >
+                <img :src="selfie.image_src" :alt="`Selfie ${selfie.id}`" />
+              </a>
+              <div v-else class="selfie-admin-thumb selfie-admin-thumb--empty">
+                <span>Immagine non disponibile</span>
+              </div>
+              <div class="selfie-admin-body">
+                <h3 class="selfie-admin-caption">
+                  {{ selfie.caption || "Senza didascalia" }}
+                </h3>
+                <p class="selfie-admin-meta">
+                  Inviato: {{ formatSelfieDate(selfie.submitted_at) || "N/D" }}
+                </p>
+                <p class="selfie-admin-meta">
+                  Device: {{ selfie.device_token || "Non disponibile" }}
+                </p>
+                <p class="selfie-admin-meta">
+                  Dimensione:
+                  {{ formatSelfieFileSize(selfie.file_size_bytes) || "N/D" }}
+                </p>
+                <p class="selfie-admin-status">
+                  Stato: <strong>{{ selfieStatusLabel(selfie) }}</strong>
+                </p>
+                <div class="selfie-admin-actions">
+                  <button
+                    class="btn danger"
+                    type="button"
+                    :disabled="isSelfieBusy(selfie.id)"
+                    @click="deleteSelfie(selfie)"
                   >
-                    <h5>{{ question.title }}</h5>
-                    <ul class="history-feedback-summary__answers">
-                      <li
-                        v-for="answer in question.answers"
-                        :key="`${entry.id}-feedback-${question.id}-${answer.value}`"
-                        class="history-feedback-summary__answer"
-                      >
-                        <div class="history-feedback-summary__answer-header">
-                          <span class="history-feedback-summary__answer-label">{{ answer.label }}</span>
-                          <span class="history-feedback-summary__answer-count">
-                            {{ answer.countLabel }}
-                            <span v-if="entry.feedbackSummary.hasResponses">({{ answer.percentLabel }})</span>
-                          </span>
-                        </div>
-                        <div class="history-feedback-summary__answer-bar" role="presentation">
-                          <span
-                            class="history-feedback-summary__answer-bar-fill"
-                            :style="{ width: answer.barWidth }"
-                            aria-hidden="true"
-                          ></span>
-                        </div>
-                      </li>
-                    </ul>
-                    <p v-if="!question.hasAnswers" class="muted small">Nessuna risposta registrata.</p>
+                    Elimina foto
+                  </button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section v-else-if="section === 'history'" class="card history-card">
+          <header class="section-header">
+            <h2>Storico eventi</h2>
+            <p>
+              Consulta i dati degli eventi passati con riepilogo voti, MVP e
+              interazioni sponsor.
+            </p>
+          </header>
+
+          <div class="history-toolbar">
+            <button
+              class="btn secondary"
+              type="button"
+              @click="refreshEventHistory"
+              :disabled="isLoadingEventHistory"
+            >
+              {{ isLoadingEventHistory ? "Aggiornamento…" : "Aggiorna" }}
+            </button>
+          </div>
+
+          <p v-if="eventHistorySuccess" class="success-message">
+            {{ eventHistorySuccess }}
+          </p>
+          <p v-if="eventHistoryError" class="error">{{ eventHistoryError }}</p>
+          <p v-else-if="isLoadingEventHistory" class="muted text-center">
+            Caricamento storico in corso…
+          </p>
+          <p v-else-if="!eventHistory.length" class="muted text-center">
+            Non sono presenti eventi conclusi al momento.
+          </p>
+
+          <ul v-else class="history-list">
+            <li
+              v-for="entry in eventHistory"
+              :key="entry.id"
+              class="history-item"
+            >
+              <div class="history-item__header">
+                <div>
+                  <h3>{{ entry.title }}</h3>
+                  <p class="muted">
+                    {{ formatHistoryDate(entry.startDatetime) }}
+                    <span v-if="entry.location">• {{ entry.location }}</span>
+                  </p>
+                </div>
+                <div class="history-item__meta">
+                  <div class="history-item__totals">
+                    <span class="history-item__total">
+                      <strong>{{ entry.totalVotesLabel }}</strong> voti totali
+                    </span>
+                    <span class="history-item__total">
+                      <strong>{{ entry.totalVisitorsLabel }}</strong> visitatori
+                      totali
+                    </span>
+                    <span class="history-item__unique-visitors">
+                      <strong>{{ entry.uniqueVisitorsLabel }}</strong>
+                      visitatori unici
+                    </span>
+                    <span class="history-item__sponsor-total">
+                      <strong>{{ entry.sponsorClicksTotalLabel }}</strong> click
+                      sponsor
+                    </span>
                   </div>
-                  <div class="history-feedback-summary__question">
-                    <h5>{{ entry.feedbackSummary.suggestionQuestion.title }}</h5>
-                    <ul
-                      v-if="entry.feedbackSummary.suggestionQuestion.hasSuggestions"
-                      class="history-feedback-summary__suggestions"
+                  <div class="history-item__actions">
+                    <button
+                      class="btn outline"
+                      type="button"
+                      :disabled="isDownloadingHistoryReport(entry.id)"
+                      @click="downloadEventHistoryReport(entry)"
                     >
-                      <li
-                        v-for="(suggestion, suggestionIndex) in entry.feedbackSummary.suggestionQuestion.suggestions"
-                        :key="`${entry.id}-feedback-suggestion-${suggestionIndex}`"
-                      >
-                        {{ suggestion }}
-                      </li>
-                    </ul>
-                    <p v-else class="muted small">Nessun suggerimento inviato.</p>
+                      {{
+                        isDownloadingHistoryReport(entry.id)
+                          ? "Generazione report…"
+                          : "Scarica report"
+                      }}
+                    </button>
+                    <button
+                      v-if="isSuperAdmin"
+                      class="btn danger"
+                      type="button"
+                      @click="openPurgeDialog(entry)"
+                    >
+                      Elimina evento
+                    </button>
                   </div>
                 </div>
-                <p v-else class="muted">Nessun feedback raccolto.</p>
               </div>
-              <div class="history-details__column history-details__column--prizes">
-                <h4>Estrazione premi</h4>
-                <p
-                  class="history-prize-status"
-                  :class="entry.hasPrizeDraw ? 'history-prize-status--success' : 'history-prize-status--pending'"
-                >
-                  {{ entry.hasPrizeDraw ? 'Estrazione eseguita' : 'Estrazione non eseguita' }}
-                </p>
-                <p v-if="!entry.prizes.length" class="muted">Nessun premio configurato per l'evento.</p>
-                <ul v-else class="history-prize-list">
-                  <li
-                    v-for="prize in entry.prizes"
-                    :key="`${entry.id}-prize-${prize.id}`"
-                    class="history-prize-item"
+
+              <div class="history-details">
+                <div class="history-details__column">
+                  <h4>MVP</h4>
+                  <p v-if="entry.mvp">
+                    {{ entry.mvp.name }} •
+                    {{ entry.mvp.votes.toLocaleString("it-IT") }} voti
+                  </p>
+                  <p v-else class="muted">Nessun MVP assegnato.</p>
+                </div>
+                <div class="history-details__column">
+                  <h4>Interazioni sponsor</h4>
+                  <div
+                    v-if="entry.sponsorAnalyticsHasData"
+                    class="history-sponsor-summary"
                   >
-                    <span class="history-prize-name">{{ prize.name }}</span>
-                    <span v-if="prize.hasWinner" class="history-prize-code">
-                      Codice vincente: <strong>{{ prize.winnerTicketCode }}</strong>
-                    </span>
-                    <span v-else class="history-prize-code muted">Nessun codice vincente assegnato.</span>
+                    <div class="history-sponsor-summary__grid">
+                      <div class="history-sponsor-summary__card">
+                        <span class="history-sponsor-summary__label"
+                          >Utenti totali</span
+                        >
+                        <strong class="history-sponsor-summary__value">
+                          {{ entry.sponsorAnalyticsDisplay.totalUsersLabel }}
+                        </strong>
+                      </div>
+                      <div class="history-sponsor-summary__card">
+                        <span class="history-sponsor-summary__label"
+                          >Sezione vista</span
+                        >
+                        <strong class="history-sponsor-summary__value">
+                          {{ entry.sponsorAnalyticsDisplay.seenRateLabel }}
+                        </strong>
+                        <span class="history-sponsor-summary__hint">
+                          {{
+                            entry.sponsorAnalyticsDisplay.seenUsersLabel
+                          }}
+                          utenti
+                        </span>
+                      </div>
+                      <div class="history-sponsor-summary__card">
+                        <span class="history-sponsor-summary__label"
+                          >Tempo medio visione</span
+                        >
+                        <strong class="history-sponsor-summary__value">
+                          {{
+                            entry.sponsorAnalyticsDisplay.averageWatchTimeLabel
+                          }}
+                        </strong>
+                        <span class="history-sponsor-summary__hint">
+                          {{
+                            entry.sponsorAnalyticsDisplay.watchedUsersLabel
+                          }}
+                          utenti •
+                          {{
+                            entry.sponsorAnalyticsDisplay.totalWatchTimeLabel
+                          }}
+                          totali
+                        </span>
+                      </div>
+                      <div class="history-sponsor-summary__card">
+                        <span class="history-sponsor-summary__label"
+                          >Click totali</span
+                        >
+                        <strong class="history-sponsor-summary__value">
+                          {{ entry.sponsorAnalyticsDisplay.totalClicksLabel }}
+                        </strong>
+                        <span class="history-sponsor-summary__hint">
+                          {{ entry.sponsorAnalyticsDisplay.clickRateLabel }} •
+                          {{
+                            entry.sponsorAnalyticsDisplay.uniqueClickersLabel
+                          }}
+                          utenti
+                        </span>
+                      </div>
+                      <div
+                        class="history-sponsor-summary__card history-sponsor-summary__card--wide"
+                      >
+                        <span class="history-sponsor-summary__label"
+                          >Sponsor più visualizzato</span
+                        >
+                        <strong class="history-sponsor-summary__value">
+                          {{ entry.sponsorAnalyticsDisplay.topSponsorName }}
+                        </strong>
+                        <span class="history-sponsor-summary__hint">
+                          {{
+                            entry.sponsorAnalyticsDisplay.topSponsorViewsLabel
+                          }}
+                          visualizzazioni
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <ul
+                    v-if="entry.sponsorClicks.length"
+                    class="history-sponsor-list"
+                  >
+                    <li
+                      v-for="sponsor in entry.sponsorClicks"
+                      :key="`${entry.id}-sponsor-${sponsor.id}`"
+                    >
+                      <span class="history-sponsor-name">{{
+                        sponsor.name
+                      }}</span>
+                      <span class="history-sponsor-clicks"
+                        >{{
+                          sponsor.clicks.toLocaleString("it-IT")
+                        }}
+                        click</span
+                      >
+                    </li>
+                  </ul>
+                  <p v-else class="muted">Nessun click registrato.</p>
+                  <div
+                    v-if="entry.sponsorAnalyticsTimeline.length"
+                    class="history-sponsor-timeline"
+                  >
+                    <h5>Andamento interazioni</h5>
+                    <ul class="history-sponsor-timeline__list">
+                      <li
+                        v-for="point in entry.sponsorAnalyticsTimeline"
+                        :key="`${entry.id}-analytics-${point.timestamp || point.label}`"
+                        class="history-sponsor-timeline__item"
+                      >
+                        <span class="history-sponsor-timeline__time">{{
+                          point.label
+                        }}</span>
+                        <div class="history-sponsor-timeline__values">
+                          <span
+                            class="history-sponsor-timeline__value history-sponsor-timeline__value--seen"
+                          >
+                            {{ point.seen.toLocaleString("it-IT") }} viste
+                          </span>
+                          <span
+                            class="history-sponsor-timeline__value history-sponsor-timeline__value--watched"
+                          >
+                            {{ point.watched.toLocaleString("it-IT") }} guardate
+                          </span>
+                          <span
+                            class="history-sponsor-timeline__value history-sponsor-timeline__value--clicks"
+                          >
+                            {{ point.clicks.toLocaleString("it-IT") }} click
+                          </span>
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div
+                  class="history-details__column history-details__column--feedback"
+                >
+                  <h4>Sondaggio feedback</h4>
+                  <div
+                    v-if="entry.feedbackSummary"
+                    class="history-feedback-summary"
+                  >
+                    <p class="history-feedback-summary__total">
+                      {{ entry.feedbackSummary.totalResponsesLabel }}
+                    </p>
+                    <div
+                      v-for="question in entry.feedbackSummary.questions"
+                      :key="`${entry.id}-feedback-${question.id}`"
+                      class="history-feedback-summary__question"
+                    >
+                      <h5>{{ question.title }}</h5>
+                      <ul class="history-feedback-summary__answers">
+                        <li
+                          v-for="answer in question.answers"
+                          :key="`${entry.id}-feedback-${question.id}-${answer.value}`"
+                          class="history-feedback-summary__answer"
+                        >
+                          <div class="history-feedback-summary__answer-header">
+                            <span
+                              class="history-feedback-summary__answer-label"
+                              >{{ answer.label }}</span
+                            >
+                            <span
+                              class="history-feedback-summary__answer-count"
+                            >
+                              {{ answer.countLabel }}
+                              <span v-if="entry.feedbackSummary.hasResponses"
+                                >({{ answer.percentLabel }})</span
+                              >
+                            </span>
+                          </div>
+                          <div
+                            class="history-feedback-summary__answer-bar"
+                            role="presentation"
+                          >
+                            <span
+                              class="history-feedback-summary__answer-bar-fill"
+                              :style="{ width: answer.barWidth }"
+                              aria-hidden="true"
+                            ></span>
+                          </div>
+                        </li>
+                      </ul>
+                      <p v-if="!question.hasAnswers" class="muted small">
+                        Nessuna risposta registrata.
+                      </p>
+                    </div>
+                    <div class="history-feedback-summary__question">
+                      <h5>
+                        {{ entry.feedbackSummary.suggestionQuestion.title }}
+                      </h5>
+                      <ul
+                        v-if="
+                          entry.feedbackSummary.suggestionQuestion
+                            .hasSuggestions
+                        "
+                        class="history-feedback-summary__suggestions"
+                      >
+                        <li
+                          v-for="(suggestion, suggestionIndex) in entry
+                            .feedbackSummary.suggestionQuestion.suggestions"
+                          :key="`${entry.id}-feedback-suggestion-${suggestionIndex}`"
+                        >
+                          {{ suggestion }}
+                        </li>
+                      </ul>
+                      <p v-else class="muted small">
+                        Nessun suggerimento inviato.
+                      </p>
+                    </div>
+                  </div>
+                  <p v-else class="muted">Nessun feedback raccolto.</p>
+                </div>
+                <div
+                  class="history-details__column history-details__column--prizes"
+                >
+                  <h4>Estrazione premi</h4>
+                  <p
+                    class="history-prize-status"
+                    :class="
+                      entry.hasPrizeDraw
+                        ? 'history-prize-status--success'
+                        : 'history-prize-status--pending'
+                    "
+                  >
+                    {{
+                      entry.hasPrizeDraw
+                        ? "Estrazione eseguita"
+                        : "Estrazione non eseguita"
+                    }}
+                  </p>
+                  <p v-if="!entry.prizes.length" class="muted">
+                    Nessun premio configurato per l'evento.
+                  </p>
+                  <ul v-else class="history-prize-list">
+                    <li
+                      v-for="prize in entry.prizes"
+                      :key="`${entry.id}-prize-${prize.id}`"
+                      class="history-prize-item"
+                    >
+                      <span class="history-prize-name">{{ prize.name }}</span>
+                      <span v-if="prize.hasWinner" class="history-prize-code">
+                        Codice vincente:
+                        <strong>{{ prize.winnerTicketCode }}</strong>
+                      </span>
+                      <span v-else class="history-prize-code muted"
+                        >Nessun codice vincente assegnato.</span
+                      >
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="history-votes" v-if="entry.timeline.length">
+                <div class="history-votes__header">
+                  <h4>Votazioni</h4>
+                  <p v-if="entry.timelineRange" class="history-votes__range">
+                    Dal {{ entry.timelineRange.start }} al
+                    {{ entry.timelineRange.end }}
+                  </p>
+                </div>
+                <VoteTrendChart
+                  v-if="entry.timelineChart.points.length"
+                  class="history-votes__chart"
+                  :points="entry.timelineChart.points"
+                  :start-label="entry.timelineChart.startLabel"
+                  :end-label="entry.timelineChart.endLabel"
+                  accessible-label="Andamento dei voti ogni 15 minuti"
+                />
+                <div
+                  class="history-votes__actions"
+                  v-if="entry.timeline.length"
+                >
+                  <button
+                    class="btn link"
+                    type="button"
+                    @click="toggleHistoryTimeline(entry)"
+                    :aria-expanded="entry.isTimelineExpanded ? 'true' : 'false'"
+                    :aria-controls="`history-votes-list-${entry.id}`"
+                  >
+                    {{
+                      entry.isTimelineExpanded
+                        ? "Nascondi dettagli"
+                        : "Visualizza altro"
+                    }}
+                  </button>
+                </div>
+                <ul
+                  v-if="entry.isTimelineExpanded"
+                  class="history-votes-list"
+                  :id="`history-votes-list-${entry.id}`"
+                >
+                  <li
+                    v-for="bucket in entry.timeline"
+                    :key="`${entry.id}-bucket-${bucket.start || bucket.rangeLabel}`"
+                    class="history-votes-list__item"
+                  >
+                    <span class="history-votes-list__range">{{
+                      bucket.rangeLabel
+                    }}</span>
+                    <span class="history-votes-list__votes">{{
+                      bucket.votesLabel
+                    }}</span>
                   </li>
                 </ul>
               </div>
-            </div>
+            </li>
+          </ul>
+        </section>
 
-            <div class="history-votes" v-if="entry.timeline.length">
-              <div class="history-votes__header">
-                <h4>Votazioni</h4>
-                <p v-if="entry.timelineRange" class="history-votes__range">
-                  Dal {{ entry.timelineRange.start }} al {{ entry.timelineRange.end }}
-                </p>
-              </div>
-              <VoteTrendChart
-                v-if="entry.timelineChart.points.length"
-                class="history-votes__chart"
-                :points="entry.timelineChart.points"
-                :start-label="entry.timelineChart.startLabel"
-                :end-label="entry.timelineChart.endLabel"
-                accessible-label="Andamento dei voti ogni 15 minuti"
-              />
-              <div class="history-votes__actions" v-if="entry.timeline.length">
-                <button
-                  class="btn link"
-                  type="button"
-                  @click="toggleHistoryTimeline(entry)"
-                  :aria-expanded="entry.isTimelineExpanded ? 'true' : 'false'"
-                  :aria-controls="`history-votes-list-${entry.id}`"
-                >
-                  {{ entry.isTimelineExpanded ? 'Nascondi dettagli' : 'Visualizza altro' }}
-                </button>
-              </div>
-              <ul
-                v-if="entry.isTimelineExpanded"
-                class="history-votes-list"
-                :id="`history-votes-list-${entry.id}`"
-              >
-                <li
-                  v-for="bucket in entry.timeline"
-                  :key="`${entry.id}-bucket-${bucket.start || bucket.rangeLabel}`"
-                  class="history-votes-list__item"
-                >
-                  <span class="history-votes-list__range">{{ bucket.rangeLabel }}</span>
-                  <span class="history-votes-list__votes">{{ bucket.votesLabel }}</span>
-                </li>
-              </ul>
-            </div>
-          </li>
-        </ul>
-      </section>
-
-      <section v-else-if="section === 'teams'" class="card">
-        <header class="section-header">
-          <h2>Squadre</h2>
-        </header>
-        <form @submit.prevent="createTeam" class="form-inline">
-          <input v-model.trim="newTeamName" type="text" placeholder="Nome squadra" required />
-          <button class="btn primary" type="submit">Aggiungi</button>
-        </form>
-        <ul class="item-list compact">
-          <li v-for="team in teams" :key="team.id" class="item">
-            <span>{{ team.name }}</span>
-            <button class="btn danger" type="button" @click="deleteTeam(team.id)">Elimina</button>
-          </li>
-        </ul>
-      </section>
-
-      <section v-else-if="section === 'players'" class="card">
-        <header class="section-header">
-          <h2>Giocatori</h2>
-          <p>Gestisci fino a {{ playerSlotCount }} giocatori da mostrare nella pagina di voto.</p>
-        </header>
-
-        <p v-if="!teams.length" class="info-banner">
-          Aggiungi almeno una squadra per assegnare correttamente i giocatori salvati nel database.
-        </p>
-
-        <p v-if="playerOverflow.length" class="info-banner warning">
-          Sono presenti {{ playerOverflow.length }} giocatori aggiuntivi nel database. Verranno rimossi al prossimo
-          salvataggio.
-        </p>
-
-        <div class="player-slots">
-          <fieldset
-            v-for="(slot, index) in playerSlots"
-            :key="`player-slot-${index}`"
-            class="player-slot"
-          >
-            <legend>Giocatore {{ index + 1 }}</legend>
-            <div class="player-slot__grid">
-              <label>
-                Nome
-                <input v-model.trim="slot.first_name" type="text" placeholder="Es. Mario" />
-              </label>
-              <label>
-                Cognome
-                <input v-model.trim="slot.last_name" type="text" placeholder="Es. Rossi" />
-              </label>
-              <label>
-                Ruolo
-                <input v-model.trim="slot.role" type="text" placeholder="Es. Schiacciatore" />
-              </label>
-              <label>
-                Numero di maglia
-                <input
-                  v-model="slot.jersey_number"
-                  type="number"
-                  min="0"
-                  inputmode="numeric"
-                  placeholder="Es. 7"
-                />
-              </label>
-              <label>
-                Squadra
-                <select v-model.number="slot.team_id">
-                  <option :value="0">Seleziona squadra</option>
-                  <option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option>
-                </select>
-              </label>
-              <label>
-                URL immagine (opzionale)
-                <input
-                  v-model.trim="slot.image_url"
-                  type="url"
-                  placeholder="https://..."
-                  @input="handlePlayerUrlChange(index)"
-                />
-              </label>
-              <label class="file-input">
-                Oppure carica immagine
-                <input type="file" accept="image/*" @change="handlePlayerImageChange(index, $event)" />
-              </label>
-              <div v-if="slot.image_preview" class="player-slot__preview" aria-label="Anteprima immagine giocatore">
-                <img :src="slot.image_preview" alt="Anteprima giocatore" />
-                <button class="btn link" type="button" @click="removePlayerImage(index)">Rimuovi</button>
-              </div>
-            </div>
-          </fieldset>
-        </div>
-
-        <div class="actions-row">
-          <button class="btn outline" type="button" @click="restorePlayerSlots" :disabled="isSavingPlayers">
-            Ripristina dati salvati
-          </button>
-          <button class="btn primary" type="button" @click="savePlayers" :disabled="isSavingPlayers">
-            {{ isSavingPlayers ? 'Salvataggio…' : 'Salva giocatori' }}
-          </button>
-        </div>
-
-        <p v-if="playerSaveError" class="error">{{ playerSaveError }}</p>
-        <p v-if="playerSaveMessage" class="success-message">{{ playerSaveMessage }}</p>
-      </section>
-
-      <section v-else-if="section === 'sponsors'" class="card">
-        <header class="section-header">
-          <h2>Sponsor</h2>
-          <p>Gestisci fino a {{ maxSponsors }} sponsor da mostrare nella schermata pubblica.</p>
-        </header>
-
-        <div class="sponsor-controls" role="group" aria-label="Visibilità sponsor">
-          <label class="sponsor-range">
-            <span>Numero di sponsor visibili: {{ desiredActiveSponsorCount }} / {{ maxSponsors }}</span>
+        <section v-else-if="section === 'teams'" class="card">
+          <header class="section-header">
+            <h2>Squadre</h2>
+          </header>
+          <form @submit.prevent="createTeam" class="form-inline">
             <input
-              type="range"
-              min="0"
-              :max="sponsorSliderMax"
-              v-model.number="desiredActiveSponsorCount"
-              @change="applyActiveSponsorCount"
-              :disabled="!sponsors.length || isApplyingSponsorCount"
+              v-model.trim="newTeamName"
+              type="text"
+              placeholder="Nome squadra"
+              required
             />
-          </label>
-          <p class="muted small">Gli sponsor attivi vengono mostrati nell'ordine indicato qui sotto.</p>
-        </div>
-
-        <form @submit.prevent="createSponsor" class="form-grid sponsor-form">
-          <label>
-            Nome sponsor
-            <input v-model.trim="newSponsor.name" type="text" placeholder="Es. Partner ufficiale" />
-          </label>
-          <label>
-            Link (opzionale)
-            <input v-model.trim="newSponsor.linkUrl" type="url" placeholder="https://example.com" />
-          </label>
-          <label class="file-input">
-            Logo sponsor
-            <input type="file" accept="image/*" @change="handleNewSponsorLogoChange" />
-          </label>
-          <div v-if="newSponsor.logoData" class="sponsor-preview new" aria-label="Anteprima logo nuovo sponsor">
-            <img :src="newSponsor.logoData" alt="Anteprima logo sponsor" />
-          </div>
-          <button class="btn primary" type="submit" :disabled="isCreatingSponsor">
-            {{ isCreatingSponsor ? 'Salvataggio…' : 'Aggiungi sponsor' }}
-          </button>
-        </form>
-
-        <ul v-if="sponsors.length" class="item-list sponsors-list">
-          <li v-for="sponsor in sponsors" :key="sponsor.id" class="item sponsor-item">
-            <div class="item-body sponsor-body">
-              <div class="sponsor-preview" :aria-label="`Logo sponsor ${sponsor.name || sponsor.position}`">
-                <img
-                  v-if="sponsor.logoData"
-                  :src="sponsor.logoData"
-                  :alt="`Logo ${sponsor.name || 'sponsor'}`"
-                />
-                <span v-else class="empty-logo">Logo non disponibile</span>
-              </div>
-              <div class="sponsor-fields">
-                <div class="form-grid compact">
-                  <label>
-                    Nome sponsor
-                    <input v-model.trim="sponsor.name" type="text" />
-                  </label>
-                  <label>
-                    Link (opzionale)
-                    <input v-model.trim="sponsor.linkUrl" type="url" placeholder="https://example.com" />
-                  </label>
-                  <label class="file-input">
-                    Aggiorna logo
-                    <input type="file" accept="image/*" @change="(event) => handleSponsorLogoChange(event, sponsor)" />
-                  </label>
-                </div>
-                <p class="muted sponsor-meta">
-                  Posizione {{ sponsor.position }} • {{ sponsor.isActive ? 'Visibile' : 'Nascosto' }}
-                </p>
-              </div>
-            </div>
-            <div class="item-actions vertical">
-              <button
-                class="btn secondary"
-                type="button"
-                @click="updateSponsorEntry(sponsor)"
-                :disabled="sponsorBeingUpdated === sponsor.id"
-              >
-                <span v-if="sponsorBeingUpdated === sponsor.id">Salvataggio…</span>
-                <span v-else>Salva</span>
-              </button>
+            <button class="btn primary" type="submit">Aggiungi</button>
+          </form>
+          <ul class="item-list compact">
+            <li v-for="team in teams" :key="team.id" class="item">
+              <span>{{ team.name }}</span>
               <button
                 class="btn danger"
                 type="button"
-                @click="deleteSponsorEntry(sponsor.id)"
-                :disabled="sponsorBeingDeleted === sponsor.id"
+                @click="deleteTeam(team.id)"
               >
-                <span v-if="sponsorBeingDeleted === sponsor.id">Eliminazione…</span>
-                <span v-else>Elimina</span>
+                Elimina
               </button>
+            </li>
+          </ul>
+        </section>
+
+        <section v-else-if="section === 'players'" class="card">
+          <header class="section-header">
+            <h2>Giocatori</h2>
+            <p>
+              Gestisci fino a {{ playerSlotCount }} giocatori da mostrare nella
+              pagina di voto.
+            </p>
+          </header>
+
+          <p v-if="!teams.length" class="info-banner">
+            Aggiungi almeno una squadra per assegnare correttamente i giocatori
+            salvati nel database.
+          </p>
+
+          <p v-if="playerOverflow.length" class="info-banner warning">
+            Sono presenti {{ playerOverflow.length }} giocatori aggiuntivi nel
+            database. Verranno rimossi al prossimo salvataggio.
+          </p>
+
+          <div class="player-slots">
+            <fieldset
+              v-for="(slot, index) in playerSlots"
+              :key="`player-slot-${index}`"
+              class="player-slot"
+            >
+              <legend>Giocatore {{ index + 1 }}</legend>
+              <div class="player-slot__grid">
+                <label>
+                  Nome
+                  <input
+                    v-model.trim="slot.first_name"
+                    type="text"
+                    placeholder="Es. Mario"
+                  />
+                </label>
+                <label>
+                  Cognome
+                  <input
+                    v-model.trim="slot.last_name"
+                    type="text"
+                    placeholder="Es. Rossi"
+                  />
+                </label>
+                <label>
+                  Ruolo
+                  <input
+                    v-model.trim="slot.role"
+                    type="text"
+                    placeholder="Es. Schiacciatore"
+                  />
+                </label>
+                <label>
+                  Numero di maglia
+                  <input
+                    v-model="slot.jersey_number"
+                    type="number"
+                    min="0"
+                    inputmode="numeric"
+                    placeholder="Es. 7"
+                  />
+                </label>
+                <label>
+                  Squadra
+                  <select v-model.number="slot.team_id">
+                    <option :value="0">Seleziona squadra</option>
+                    <option
+                      v-for="team in teams"
+                      :key="team.id"
+                      :value="team.id"
+                    >
+                      {{ team.name }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  URL immagine (opzionale)
+                  <input
+                    v-model.trim="slot.image_url"
+                    type="url"
+                    placeholder="https://..."
+                    @input="handlePlayerUrlChange(index)"
+                  />
+                </label>
+                <label class="file-input">
+                  Oppure carica immagine
+                  <input
+                    type="file"
+                    accept="image/*"
+                    @change="handlePlayerImageChange(index, $event)"
+                  />
+                </label>
+                <div
+                  v-if="slot.image_preview"
+                  class="player-slot__preview"
+                  aria-label="Anteprima immagine giocatore"
+                >
+                  <img :src="slot.image_preview" alt="Anteprima giocatore" />
+                  <button
+                    class="btn link"
+                    type="button"
+                    @click="removePlayerImage(index)"
+                  >
+                    Rimuovi
+                  </button>
+                </div>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="actions-row">
+            <button
+              class="btn outline"
+              type="button"
+              @click="restorePlayerSlots"
+              :disabled="isSavingPlayers"
+            >
+              Ripristina dati salvati
+            </button>
+            <button
+              class="btn primary"
+              type="button"
+              @click="savePlayers"
+              :disabled="isSavingPlayers"
+            >
+              {{ isSavingPlayers ? "Salvataggio…" : "Salva giocatori" }}
+            </button>
+          </div>
+
+          <p v-if="playerSaveError" class="error">{{ playerSaveError }}</p>
+          <p v-if="playerSaveMessage" class="success-message">
+            {{ playerSaveMessage }}
+          </p>
+        </section>
+
+        <section v-else-if="section === 'sponsors'" class="card">
+          <header class="section-header">
+            <h2>Sponsor</h2>
+            <p>
+              Gestisci fino a {{ maxSponsors }} sponsor da mostrare nella
+              schermata pubblica.
+            </p>
+          </header>
+
+          <div
+            class="sponsor-controls"
+            role="group"
+            aria-label="Visibilità sponsor"
+          >
+            <label class="sponsor-range">
+              <span
+                >Numero di sponsor visibili: {{ desiredActiveSponsorCount }} /
+                {{ maxSponsors }}</span
+              >
+              <input
+                type="range"
+                min="0"
+                :max="sponsorSliderMax"
+                v-model.number="desiredActiveSponsorCount"
+                @change="applyActiveSponsorCount"
+                :disabled="!sponsors.length || isApplyingSponsorCount"
+              />
+            </label>
+            <p class="muted small">
+              Gli sponsor attivi vengono mostrati nell'ordine indicato qui
+              sotto.
+            </p>
+          </div>
+
+          <form @submit.prevent="createSponsor" class="form-grid sponsor-form">
+            <label>
+              Nome sponsor
+              <input
+                v-model.trim="newSponsor.name"
+                type="text"
+                placeholder="Es. Partner ufficiale"
+              />
+            </label>
+            <label>
+              Link (opzionale)
+              <input
+                v-model.trim="newSponsor.linkUrl"
+                type="url"
+                placeholder="https://example.com"
+              />
+            </label>
+            <label class="file-input">
+              Logo sponsor
+              <input
+                type="file"
+                accept="image/*"
+                @change="handleNewSponsorLogoChange"
+              />
+            </label>
+            <div
+              v-if="newSponsor.logoData"
+              class="sponsor-preview new"
+              aria-label="Anteprima logo nuovo sponsor"
+            >
+              <img :src="newSponsor.logoData" alt="Anteprima logo sponsor" />
             </div>
-          </li>
-        </ul>
-        <p v-else class="muted text-center">Nessuno sponsor configurato al momento.</p>
+            <button
+              class="btn primary"
+              type="submit"
+              :disabled="isCreatingSponsor"
+            >
+              {{ isCreatingSponsor ? "Salvataggio…" : "Aggiungi sponsor" }}
+            </button>
+          </form>
+
+          <ul v-if="sponsors.length" class="item-list sponsors-list">
+            <li
+              v-for="sponsor in sponsors"
+              :key="sponsor.id"
+              class="item sponsor-item"
+            >
+              <div class="item-body sponsor-body">
+                <div
+                  class="sponsor-preview"
+                  :aria-label="`Logo sponsor ${sponsor.name || sponsor.position}`"
+                >
+                  <img
+                    v-if="sponsor.logoData"
+                    :src="sponsor.logoData"
+                    :alt="`Logo ${sponsor.name || 'sponsor'}`"
+                  />
+                  <span v-else class="empty-logo">Logo non disponibile</span>
+                </div>
+                <div class="sponsor-fields">
+                  <div class="form-grid compact">
+                    <label>
+                      Nome sponsor
+                      <input v-model.trim="sponsor.name" type="text" />
+                    </label>
+                    <label>
+                      Link (opzionale)
+                      <input
+                        v-model.trim="sponsor.linkUrl"
+                        type="url"
+                        placeholder="https://example.com"
+                      />
+                    </label>
+                    <label class="file-input">
+                      Aggiorna logo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        @change="
+                          (event) => handleSponsorLogoChange(event, sponsor)
+                        "
+                      />
+                    </label>
+                  </div>
+                  <p class="muted sponsor-meta">
+                    Posizione {{ sponsor.position }} •
+                    {{ sponsor.isActive ? "Visibile" : "Nascosto" }}
+                  </p>
+                </div>
+              </div>
+              <div class="item-actions vertical">
+                <button
+                  class="btn secondary"
+                  type="button"
+                  @click="updateSponsorEntry(sponsor)"
+                  :disabled="sponsorBeingUpdated === sponsor.id"
+                >
+                  <span v-if="sponsorBeingUpdated === sponsor.id"
+                    >Salvataggio…</span
+                  >
+                  <span v-else>Salva</span>
+                </button>
+                <button
+                  class="btn danger"
+                  type="button"
+                  @click="deleteSponsorEntry(sponsor.id)"
+                  :disabled="sponsorBeingDeleted === sponsor.id"
+                >
+                  <span v-if="sponsorBeingDeleted === sponsor.id"
+                    >Eliminazione…</span
+                  >
+                  <span v-else>Elimina</span>
+                </button>
+              </div>
+            </li>
+          </ul>
+          <p v-else class="muted text-center">
+            Nessuno sponsor configurato al momento.
+          </p>
         </section>
 
         <section v-else-if="section === 'admins'" class="card">
@@ -1081,18 +1721,38 @@
             <h2>Utenti amministratori</h2>
           </header>
           <form @submit.prevent="createAdmin" class="form-grid">
-            <input v-model.trim="newAdmin.username" type="text" placeholder="Username" required />
-            <input v-model="newAdmin.password" type="password" placeholder="Password" required />
-            <input v-model.trim="newAdmin.role" type="text" placeholder="Ruolo (es. staff)" />
+            <input
+              v-model.trim="newAdmin.username"
+              type="text"
+              placeholder="Username"
+              required
+            />
+            <input
+              v-model="newAdmin.password"
+              type="password"
+              placeholder="Password"
+              required
+            />
+            <input
+              v-model.trim="newAdmin.role"
+              type="text"
+              placeholder="Ruolo (es. staff)"
+            />
             <button class="btn primary" type="submit">Aggiungi</button>
           </form>
           <ul class="item-list compact">
             <li v-for="admin in admins" :key="admin.id" class="item">
               <div>
                 <strong>{{ admin.username }}</strong>
-                <span class="muted"> • {{ admin.role || 'staff' }}</span>
+                <span class="muted"> • {{ admin.role || "staff" }}</span>
               </div>
-              <button class="btn danger" type="button" @click="deleteAdmin(admin.id)">Elimina</button>
+              <button
+                class="btn danger"
+                type="button"
+                @click="deleteAdmin(admin.id)"
+              >
+                Elimina
+              </button>
             </li>
           </ul>
         </section>
@@ -1101,13 +1761,22 @@
           class="modal-backdrop"
           role="dialog"
           aria-modal="true"
-          :aria-label="purgeDialog.event ? `Conferma eliminazione per ${purgeDialog.event.title}` : 'Conferma eliminazione evento'"
+          :aria-label="
+            purgeDialog.event
+              ? `Conferma eliminazione per ${purgeDialog.event.title}`
+              : 'Conferma eliminazione evento'
+          "
         >
           <div class="modal-card">
             <h3>Elimina evento</h3>
-            <p>Questa operazione è permanente e rimuoverà tutti i dati collegati all'evento.</p>
+            <p>
+              Questa operazione è permanente e rimuoverà tutti i dati collegati
+              all'evento.
+            </p>
             <p class="muted">Conferma inserendo la password del super admin.</p>
-            <p v-if="purgeDialog.error" class="error">{{ purgeDialog.error }}</p>
+            <p v-if="purgeDialog.error" class="error">
+              {{ purgeDialog.error }}
+            </p>
             <label>
               Password super admin
               <input
@@ -1118,7 +1787,12 @@
               />
             </label>
             <div class="modal-actions">
-              <button class="btn outline" type="button" @click="closePurgeDialog" :disabled="purgeDialog.isSubmitting">
+              <button
+                class="btn outline"
+                type="button"
+                @click="closePurgeDialog"
+                :disabled="purgeDialog.isSubmitting"
+              >
                 Annulla
               </button>
               <button
@@ -1127,7 +1801,11 @@
                 @click="confirmPurge"
                 :disabled="purgeDialog.isSubmitting || !purgeDialog.password"
               >
-                {{ purgeDialog.isSubmitting ? 'Eliminazione…' : 'Elimina definitivamente' }}
+                {{
+                  purgeDialog.isSubmitting
+                    ? "Eliminazione…"
+                    : "Elimina definitivamente"
+                }}
               </button>
             </div>
           </div>
@@ -1138,93 +1816,258 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { apiClient, resolveApiUrl } from '../api';
-import { PLAYER_LAYOUT } from '../roster';
-import VoteTrendChart from './VoteTrendChart.vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
+import { apiClient, resolveApiUrl } from "../api";
+import { PLAYER_LAYOUT } from "../roster";
+import VoteTrendChart from "./VoteTrendChart.vue";
 
-const basePath = import.meta.env.BASE_URL ?? '/';
+const basePath = import.meta.env.BASE_URL ?? "/";
 const baseVoteUrl = new URL(basePath, window.location.origin);
 const RESULTS_POLL_INTERVAL = 5000;
-const historyDateFormatter = new Intl.DateTimeFormat('it-IT', {
-  dateStyle: 'full',
-  timeStyle: 'short',
+const historyDateFormatter = new Intl.DateTimeFormat("it-IT", {
+  dateStyle: "full",
+  timeStyle: "short",
 });
-const historyTimeFormatter = new Intl.DateTimeFormat('it-IT', {
-  hour: '2-digit',
-  minute: '2-digit',
+const historyTimeFormatter = new Intl.DateTimeFormat("it-IT", {
+  hour: "2-digit",
+  minute: "2-digit",
 });
-const analyticsTimeFormatter = new Intl.DateTimeFormat('it-IT', {
-  dateStyle: 'short',
-  timeStyle: 'short',
+const analyticsTimeFormatter = new Intl.DateTimeFormat("it-IT", {
+  dateStyle: "short",
+  timeStyle: "short",
 });
-const selfieDateFormatter = new Intl.DateTimeFormat('it-IT', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
+const selfieDateFormatter = new Intl.DateTimeFormat("it-IT", {
+  dateStyle: "medium",
+  timeStyle: "short",
 });
 
-const feedbackSummaryQuestions = [
-  {
-    id: 'experience',
-    title: "Com’è stata la tua esperienza di voto oggi?",
-    answers: [
-      { value: 'very_easy', label: 'Facilissima' },
-      { value: 'easy', label: 'Abbastanza semplice' },
-      { value: 'complex', label: 'Un po’ macchinosa' },
-      { value: 'hard', label: 'Difficile' },
-    ],
-  },
-  {
-    id: 'team_spirit',
-    title: 'Ti sei sentito parte della squadra mentre sceglievi l’MVP del pubblico?',
-    answers: [
-      { value: 'high', label: 'Sì, tantissimo!' },
-      { value: 'medium', label: 'In parte' },
-      { value: 'low', label: 'Non proprio' },
-    ],
-  },
-  {
-    id: 'perks_interest',
-    title:
-      'Immagina che la tua partecipazione ti permetta di vivere esperienze speciali o vantaggi come vero tifoso… ti piacerebbe?',
-    answers: [
-      { value: 'yes', label: 'Sì, assolutamente' },
-      { value: 'maybe', label: 'Forse' },
-      { value: 'no', label: 'No' },
-    ],
-  },
-  {
-    id: 'mini_games_interest',
-    title:
-      'Ti piacerebbe divertirti ancora di più con mini-giochi o sfide tra un set e l’altro per mettere alla prova i tuoi riflessi?',
-    answers: [
-      { value: 'super_excited', label: 'Sì, carichissimo!' },
-      { value: 'maybe', label: 'Forse più avanti' },
-      { value: 'no', label: 'No grazie' },
-    ],
-  },
-];
+const DEFAULT_FEEDBACK_SURVEY = Object.freeze({
+  questions: [
+    {
+      id: "experience",
+      title: "Com’è stata la tua esperienza di voto oggi?",
+      answers: [
+        { value: "very_easy", label: "Facilissima", icon: "🤩" },
+        { value: "easy", label: "Abbastanza semplice", icon: "🙂" },
+        { value: "complex", label: "Un po’ macchinosa", icon: "😐" },
+        { value: "hard", label: "Difficile", icon: "😣" },
+      ],
+    },
+    {
+      id: "team_spirit",
+      title:
+        "Ti sei sentito parte della squadra mentre sceglievi l’MVP del pubblico?",
+      answers: [
+        { value: "high", label: "Sì, tantissimo!", icon: "🔥" },
+        { value: "medium", label: "In parte", icon: "🙂" },
+        { value: "low", label: "Non proprio", icon: "🙄" },
+      ],
+    },
+    {
+      id: "perks_interest",
+      title:
+        "Immagina che la tua partecipazione ti permetta di vivere esperienze speciali o vantaggi come vero tifoso… ti piacerebbe?",
+      answers: [
+        { value: "yes", label: "Sì, assolutamente", icon: "💙" },
+        { value: "maybe", label: "Forse", icon: "🙂" },
+        { value: "no", label: "No", icon: "🙄" },
+      ],
+    },
+    {
+      id: "mini_games_interest",
+      title:
+        "Ti piacerebbe divertirti ancora di più con mini-giochi o sfide tra un set e l’altro per mettere alla prova i tuoi riflessi?",
+      answers: [
+        { value: "super_excited", label: "Sì, carichissimo!", icon: "🔥" },
+        { value: "maybe", label: "Forse più avanti", icon: "🙂" },
+        { value: "no", label: "No grazie", icon: "🙄" },
+      ],
+    },
+  ],
+  suggestionPrompt:
+    "Se potessi migliorare qualcosa, cosa ti piacerebbe aggiungere o cambiare?",
+});
 
-const feedbackSummarySuggestion = {
-  id: 'suggestions',
-  title: 'Se potessi migliorare qualcosa, cosa ti piacerebbe aggiungere o cambiare?',
-};
+function normalizeFeedbackSurveyInput(raw) {
+  const normalized = {
+    questions: DEFAULT_FEEDBACK_SURVEY.questions.map((question) => ({
+      id: question.id,
+      title: question.title,
+      answers: question.answers.map((answer) => ({
+        value: answer.value,
+        label: answer.label,
+        icon: answer.icon || "",
+      })),
+    })),
+    suggestionPrompt: DEFAULT_FEEDBACK_SURVEY.suggestionPrompt,
+  };
+
+  if (!raw || typeof raw !== "object") {
+    return normalized;
+  }
+
+  const questionOverrides = new Map();
+  const rawQuestions = Array.isArray(raw.questions)
+    ? raw.questions
+    : raw.Questions;
+  if (Array.isArray(rawQuestions)) {
+    rawQuestions.forEach((question) => {
+      if (!question || typeof question !== "object") {
+        return;
+      }
+      const id = typeof question.id === "string" ? question.id.trim() : "";
+      if (!id) {
+        return;
+      }
+      questionOverrides.set(id, question);
+    });
+  }
+
+  normalized.questions = normalized.questions.map((question) => {
+    const override = questionOverrides.get(question.id);
+    if (!override || typeof override !== "object") {
+      return question;
+    }
+
+    const overrideTitle =
+      typeof override.title === "string"
+        ? override.title.trim()
+        : typeof override.Title === "string"
+          ? override.Title.trim()
+          : "";
+    if (overrideTitle) {
+      question.title = overrideTitle;
+    }
+
+    const answerOverrides = new Map();
+    const rawAnswers = Array.isArray(override.answers)
+      ? override.answers
+      : override.Answers;
+    if (Array.isArray(rawAnswers)) {
+      rawAnswers.forEach((answer) => {
+        if (!answer || typeof answer !== "object") {
+          return;
+        }
+        const value =
+          typeof answer.value === "string" ? answer.value.trim() : "";
+        if (!value) {
+          return;
+        }
+        answerOverrides.set(value, answer);
+      });
+    }
+
+    question.answers = question.answers.map((answer) => {
+      const overrideAnswer = answerOverrides.get(answer.value);
+      if (!overrideAnswer || typeof overrideAnswer !== "object") {
+        return { ...answer };
+      }
+      const label =
+        typeof overrideAnswer.label === "string"
+          ? overrideAnswer.label.trim()
+          : typeof overrideAnswer.Label === "string"
+            ? overrideAnswer.Label.trim()
+            : "";
+      const icon =
+        typeof overrideAnswer.icon === "string"
+          ? overrideAnswer.icon.trim()
+          : typeof overrideAnswer.Icon === "string"
+            ? overrideAnswer.Icon.trim()
+            : "";
+      return {
+        value: answer.value,
+        label: label || answer.label,
+        icon: icon || answer.icon || "",
+      };
+    });
+
+    return question;
+  });
+
+  const rawSuggestion =
+    typeof raw.suggestion_prompt === "string"
+      ? raw.suggestion_prompt
+      : typeof raw.suggestionPrompt === "string"
+        ? raw.suggestionPrompt
+        : "";
+  if (rawSuggestion && rawSuggestion.trim()) {
+    normalized.suggestionPrompt = rawSuggestion.trim();
+  }
+
+  return normalized;
+}
+
+function assignSurveyDraft(target, source) {
+  const normalized = normalizeFeedbackSurveyInput(source);
+  if (!Array.isArray(target.questions)) {
+    target.questions = [];
+  }
+  target.questions.splice(
+    0,
+    target.questions.length,
+    ...normalized.questions.map((question) => ({
+      id: question.id,
+      title: question.title,
+      answers: question.answers.map((answer) => ({ ...answer })),
+    })),
+  );
+  target.suggestionPrompt = normalized.suggestionPrompt;
+}
+
+function toApiSurveyPayload(survey) {
+  if (!survey || typeof survey !== "object") {
+    return {
+      questions: DEFAULT_FEEDBACK_SURVEY.questions.map((question) => ({
+        id: question.id,
+        title: question.title,
+        answers: question.answers.map((answer) => ({
+          value: answer.value,
+          label: answer.label,
+          icon: answer.icon || "",
+        })),
+      })),
+      suggestion_prompt: DEFAULT_FEEDBACK_SURVEY.suggestionPrompt,
+    };
+  }
+
+  const normalized = normalizeFeedbackSurveyInput(survey);
+  return {
+    questions: normalized.questions.map((question) => ({
+      id: question.id,
+      title: question.title,
+      answers: question.answers.map((answer) => ({
+        value: answer.value,
+        label: answer.label,
+        icon: answer.icon || "",
+      })),
+    })),
+    suggestion_prompt: normalized.suggestionPrompt,
+  };
+}
 
 let resultsPollHandle = 0;
 
-const section = ref('events');
+const section = ref("events");
 const tabs = [
-  { id: 'events', label: 'Eventi' },
-  { id: 'closing', label: 'Chiusura votazioni' },
-  { id: 'results', label: 'Risultati' },
-  { id: 'selfies', label: 'Selfie MVP' },
-  { id: 'history', label: 'Storico eventi' },
-  { id: 'teams', label: 'Squadre' },
-  { id: 'players', label: 'Giocatori' },
-  { id: 'sponsors', label: 'Sponsor' },
-  { id: 'admins', label: 'Admin' },
+  { id: "events", label: "Eventi" },
+  { id: "closing", label: "Chiusura votazioni" },
+  { id: "results", label: "Risultati" },
+  { id: "selfies", label: "Selfie MVP" },
+  { id: "history", label: "Storico eventi" },
+  { id: "teams", label: "Squadre" },
+  { id: "players", label: "Giocatori" },
+  { id: "sponsors", label: "Sponsor" },
+  { id: "admins", label: "Admin" },
 ];
-const STAFF_TAB_IDS = new Set(['closing', 'results', 'history', 'selfies']);
+const STAFF_TAB_IDS = new Set(["closing", "results", "history", "selfies"]);
 
 const teams = ref([]);
 const players = ref([]);
@@ -1234,20 +2077,20 @@ const sponsors = ref([]);
 const eventHistory = ref([]);
 const eventSelfies = ref([]);
 const isLoadingEventHistory = ref(false);
-const eventHistoryError = ref('');
-const eventHistorySuccess = ref('');
+const eventHistoryError = ref("");
+const eventHistorySuccess = ref("");
 const hasLoadedEventHistory = ref(false);
 const isLoadingSelfies = ref(false);
-const selfieLoadError = ref('');
-const selfieModerationMessage = ref('');
+const selfieLoadError = ref("");
+const selfieModerationMessage = ref("");
 const selectedSelfieEventId = ref(0);
 const selfieBusyState = reactive({});
 const historyReportDownloadState = reactive({});
 const purgeDialog = reactive({
   visible: false,
   event: null,
-  password: '',
-  error: '',
+  password: "",
+  error: "",
   isSubmitting: false,
 });
 const updatingEventId = ref(0);
@@ -1256,12 +2099,12 @@ const isDisablingEvents = ref(false);
 const selectedResultsEventId = ref(0);
 const eventResults = ref([]);
 const isLoadingResults = ref(false);
-const resultsError = ref('');
+const resultsError = ref("");
 const lastResultsUpdate = ref(null);
 const sponsorAnalytics = ref(null);
-const sponsorAnalyticsError = ref('');
+const sponsorAnalyticsError = ref("");
 const isLoadingSponsorAnalytics = ref(false);
-const newTeamName = ref('');
+const newTeamName = ref("");
 const playerSlotCount = PLAYER_LAYOUT.length;
 
 const PLAYER_IMAGE_MAX_WIDTH = 600;
@@ -1270,13 +2113,13 @@ const PLAYER_IMAGE_QUALITY = 0.75;
 
 const createEmptyPlayerSlot = (teamId = 0) => ({
   id: 0,
-  first_name: '',
-  last_name: '',
-  role: '',
-  jersey_number: '',
+  first_name: "",
+  last_name: "",
+  role: "",
+  jersey_number: "",
   team_id: teamId,
-  image_url: '',
-  image_preview: '',
+  image_url: "",
+  image_preview: "",
   _imageChangeToken: null,
 });
 
@@ -1285,14 +2128,14 @@ const playerSlots = reactive(
 );
 const playerOverflow = ref([]);
 const isSavingPlayers = ref(false);
-const playerSaveError = ref('');
-const playerSaveMessage = ref('');
+const playerSaveError = ref("");
+const playerSaveMessage = ref("");
 function createDefaultNewEventState() {
   return {
     team1_id: 0,
     team2_id: 0,
-    start_datetime: '',
-    location: '',
+    start_datetime: "",
+    location: "",
     show_reaction_test: true,
     show_selfie: true,
     show_vote_trend: true,
@@ -1303,21 +2146,22 @@ function createDefaultNewEventState() {
 }
 
 const newEvent = reactive(createDefaultNewEventState());
-const newEventPrizes = ref([{ name: '' }]);
+const newEventSurvey = reactive(normalizeFeedbackSurveyInput());
+const newEventPrizes = ref([{ name: "" }]);
 const teamInputs = reactive({
-  home: '',
-  away: '',
+  home: "",
+  away: "",
 });
 const newAdmin = reactive({
-  username: '',
-  password: '',
-  role: '',
+  username: "",
+  password: "",
+  role: "",
 });
 const maxSponsors = 4;
 const newSponsor = reactive({
-  name: '',
-  linkUrl: '',
-  logoData: '',
+  name: "",
+  linkUrl: "",
+  logoData: "",
   isActive: true,
 });
 const desiredActiveSponsorCount = ref(0);
@@ -1325,11 +2169,13 @@ const isCreatingSponsor = ref(false);
 const sponsorBeingUpdated = ref(0);
 const sponsorBeingDeleted = ref(0);
 const isApplyingSponsorCount = ref(false);
-const lastCreatedEventLink = ref('');
+const lastCreatedEventLink = ref("");
 const isClosingVotes = ref(false);
-const closeVotesMessage = ref('');
+const closeVotesMessage = ref("");
 const eventPrizeDrafts = reactive({});
 const eventPrizeErrors = reactive({});
+const eventFeedbackDrafts = reactive({});
+const eventFeedbackErrors = reactive({});
 const savingEventPrizes = ref(0);
 const portalRef = ref(null);
 const toolbarRef = ref(null);
@@ -1360,7 +2206,10 @@ const slotHasContent = (slot) => {
   if (!slot) {
     return false;
   }
-  const jersey = typeof slot.jersey_number === 'number' ? slot.jersey_number.toString() : `${slot.jersey_number || ''}`;
+  const jersey =
+    typeof slot.jersey_number === "number"
+      ? slot.jersey_number.toString()
+      : `${slot.jersey_number || ""}`;
   return (
     slot.first_name.trim() ||
     slot.last_name.trim() ||
@@ -1386,36 +2235,40 @@ const normalizePlayerPayload = (slot, fallbackTeam) => {
 const loadImageFromDataUrl = (dataUrl) =>
   new Promise((resolve, reject) => {
     const image = new Image();
-    image.decoding = 'async';
+    image.decoding = "async";
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Impossibile caricare l\'immagine selezionata.'));
+    image.onerror = () =>
+      reject(new Error("Impossibile caricare l'immagine selezionata."));
     image.src = dataUrl;
   });
 
 const toDataUrlSafely = (canvas, type, quality) => {
   try {
-    if (typeof quality === 'number') {
+    if (typeof quality === "number") {
       return canvas.toDataURL(type, quality);
     }
     return canvas.toDataURL(type);
   } catch (error) {
-    console.warn('Impossibile convertire l\'immagine nel formato richiesto:', error);
-    return '';
+    console.warn(
+      "Impossibile convertire l'immagine nel formato richiesto:",
+      error,
+    );
+    return "";
   }
 };
 
 const extractMimeType = (dataUrl) => {
-  if (typeof dataUrl !== 'string') {
-    return '';
+  if (typeof dataUrl !== "string") {
+    return "";
   }
   const match = /^data:([^;]+);/i.exec(dataUrl);
-  return match ? match[1] : '';
+  return match ? match[1] : "";
 };
 
 const optimizePlayerImage = async (file) => {
   const originalDataUrl = await readFileAsDataUrl(file);
   if (!originalDataUrl) {
-    return '';
+    return "";
   }
 
   try {
@@ -1425,15 +2278,19 @@ const optimizePlayerImage = async (file) => {
       return originalDataUrl;
     }
 
-    const scale = Math.min(1, PLAYER_IMAGE_MAX_WIDTH / width, PLAYER_IMAGE_MAX_HEIGHT / height);
+    const scale = Math.min(
+      1,
+      PLAYER_IMAGE_MAX_WIDTH / width,
+      PLAYER_IMAGE_MAX_HEIGHT / height,
+    );
     const targetWidth = Math.max(1, Math.round(width * scale));
     const targetHeight = Math.max(1, Math.round(height * scale));
 
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     canvas.width = targetWidth;
     canvas.height = targetHeight;
 
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext("2d");
     if (!context) {
       return originalDataUrl;
     }
@@ -1442,14 +2299,14 @@ const optimizePlayerImage = async (file) => {
 
     const originalType = extractMimeType(originalDataUrl);
     const candidateTypes = Array.from(
-      new Set(['image/webp', 'image/jpeg', originalType].filter(Boolean)),
+      new Set(["image/webp", "image/jpeg", originalType].filter(Boolean)),
     );
 
     let bestDataUrl = originalDataUrl;
     let bestSize = originalDataUrl.length;
 
     candidateTypes.forEach((type) => {
-      const quality = type === 'image/png' ? undefined : PLAYER_IMAGE_QUALITY;
+      const quality = type === "image/png" ? undefined : PLAYER_IMAGE_QUALITY;
       const candidate = toDataUrlSafely(canvas, type, quality);
       if (candidate && candidate.length < bestSize) {
         bestDataUrl = candidate;
@@ -1459,7 +2316,7 @@ const optimizePlayerImage = async (file) => {
 
     return bestDataUrl;
   } catch (error) {
-    console.warn('Impossibile ottimizzare l\'immagine del giocatore:', error);
+    console.warn("Impossibile ottimizzare l'immagine del giocatore:", error);
     return originalDataUrl;
   }
 };
@@ -1469,15 +2326,15 @@ const handlePlayerImageChange = async (index, event) => {
   if (!slot) {
     return;
   }
-  playerSaveMessage.value = '';
-  playerSaveError.value = '';
+  playerSaveMessage.value = "";
+  playerSaveError.value = "";
   const input = event?.target;
   const file = input?.files?.[0];
   if (!file) {
-    slot.image_preview = slot.image_url || '';
+    slot.image_preview = slot.image_url || "";
     return;
   }
-  const changeToken = Symbol('player-image-change');
+  const changeToken = Symbol("player-image-change");
   slot._imageChangeToken = changeToken;
 
   try {
@@ -1487,13 +2344,13 @@ const handlePlayerImageChange = async (index, event) => {
       slot.image_preview = optimizedDataUrl;
     }
   } catch (error) {
-    console.warn('Caricamento immagine giocatore non riuscito:', error);
+    console.warn("Caricamento immagine giocatore non riuscito:", error);
   } finally {
     if (slot._imageChangeToken === changeToken) {
       slot._imageChangeToken = null;
     }
     if (input) {
-      input.value = '';
+      input.value = "";
     }
   }
 };
@@ -1503,9 +2360,9 @@ const handlePlayerUrlChange = (index) => {
   if (!slot) {
     return;
   }
-  playerSaveMessage.value = '';
-  playerSaveError.value = '';
-  slot.image_preview = slot.image_url || '';
+  playerSaveMessage.value = "";
+  playerSaveError.value = "";
+  slot.image_preview = slot.image_url || "";
 };
 
 const removePlayerImage = (index) => {
@@ -1513,20 +2370,25 @@ const removePlayerImage = (index) => {
   if (!slot) {
     return;
   }
-  playerSaveMessage.value = '';
-  playerSaveError.value = '';
-  slot.image_url = '';
-  slot.image_preview = '';
+  playerSaveMessage.value = "";
+  playerSaveError.value = "";
+  slot.image_url = "";
+  slot.image_preview = "";
 };
 
 const normalizePlayerResponse = (item) => {
-  const firstName = typeof item?.first_name === 'string' ? item.first_name.trim() : '';
-  const lastName = typeof item?.last_name === 'string' ? item.last_name.trim() : '';
-  const role = typeof item?.role === 'string' ? item.role.trim() : '';
+  const firstName =
+    typeof item?.first_name === "string" ? item.first_name.trim() : "";
+  const lastName =
+    typeof item?.last_name === "string" ? item.last_name.trim() : "";
+  const role = typeof item?.role === "string" ? item.role.trim() : "";
   const jerseyRaw =
-    typeof item?.jersey_number === 'number' ? item.jersey_number : Number(item?.jersey_number);
+    typeof item?.jersey_number === "number"
+      ? item.jersey_number
+      : Number(item?.jersey_number);
   const jerseyNumber = Number.isFinite(jerseyRaw) ? jerseyRaw : 0;
-  const image = typeof item?.image_url === 'string' ? item.image_url.trim() : '';
+  const image =
+    typeof item?.image_url === "string" ? item.image_url.trim() : "";
   const team = Number(item?.team_id) || 0;
   return {
     id: Number(item?.id) || 0,
@@ -1548,26 +2410,30 @@ const normalizeSelfieResponse = (item) => {
     return null;
   }
   const eventId = Number(item?.event_id) || 0;
-  const caption = typeof item?.caption === 'string' ? item.caption.trim() : '';
-  const imageUrl = typeof item?.image_url === 'string' ? item.image_url.trim() : '';
+  const caption = typeof item?.caption === "string" ? item.caption.trim() : "";
+  const imageUrl =
+    typeof item?.image_url === "string" ? item.image_url.trim() : "";
   const approved = Boolean(item?.approved);
   const showOnScreen = Boolean(item?.show_on_screen);
-  const deviceToken = typeof item?.device_token === 'string' ? item.device_token : '';
+  const deviceToken =
+    typeof item?.device_token === "string" ? item.device_token : "";
   const fileSize = Number(item?.file_size_bytes);
-  const fileSizeBytes = Number.isFinite(fileSize) && fileSize >= 0 ? fileSize : 0;
+  const fileSizeBytes =
+    Number.isFinite(fileSize) && fileSize >= 0 ? fileSize : 0;
   const submittedAt =
-    typeof item?.submitted_at === 'string'
+    typeof item?.submitted_at === "string"
       ? item.submitted_at
-      : typeof item?.created_at === 'string'
-      ? item.created_at
-      : '';
+      : typeof item?.created_at === "string"
+        ? item.created_at
+        : "";
   return {
     id,
     event_id: eventId,
     caption,
     image_url: imageUrl,
-    image_src: imageUrl ? resolveApiUrl(imageUrl) : '',
-    content_type: typeof item?.content_type === 'string' ? item.content_type : '',
+    image_src: imageUrl ? resolveApiUrl(imageUrl) : "",
+    content_type:
+      typeof item?.content_type === "string" ? item.content_type : "",
     approved,
     show_on_screen: showOnScreen,
     device_token: deviceToken,
@@ -1599,7 +2465,8 @@ const applyPlayersToSlots = () => {
   const sorted = [...players.value];
   sorted.sort(sortPlayersForDisplay);
   players.value = sorted;
-  playerOverflow.value = sorted.length > playerSlotCount ? sorted.slice(playerSlotCount) : [];
+  playerOverflow.value =
+    sorted.length > playerSlotCount ? sorted.slice(playerSlotCount) : [];
   const fallback = fallbackTeamId();
   for (let index = 0; index < playerSlotCount; index += 1) {
     const slot = playerSlots[index];
@@ -1610,10 +2477,12 @@ const applyPlayersToSlots = () => {
         first_name: player.first_name,
         last_name: player.last_name,
         role: player.role,
-        jersey_number: player.jersey_number ? player.jersey_number.toString() : '',
+        jersey_number: player.jersey_number
+          ? player.jersey_number.toString()
+          : "",
         team_id: player.team_id || fallback,
         image_url: player.image_url,
-        image_preview: player.image_url || '',
+        image_preview: player.image_url || "",
       });
     } else if (slot) {
       resetPlayerSlot(slot);
@@ -1624,21 +2493,22 @@ const applyPlayersToSlots = () => {
 
 const restorePlayerSlots = () => {
   applyPlayersToSlots();
-  playerSaveError.value = '';
-  playerSaveMessage.value = '';
+  playerSaveError.value = "";
+  playerSaveMessage.value = "";
 };
 
 const savePlayers = async () => {
   if (isSavingPlayers.value) {
     return;
   }
-  playerSaveError.value = '';
-  playerSaveMessage.value = '';
+  playerSaveError.value = "";
+  playerSaveMessage.value = "";
 
   const fallback = fallbackTeamId();
   const hasAnyContent = playerSlots.some((slot) => slotHasContent(slot));
   if (!fallback && hasAnyContent) {
-    playerSaveError.value = 'Crea almeno una squadra e assegnala ai giocatori prima di salvare.';
+    playerSaveError.value =
+      "Crea almeno una squadra e assegnala ai giocatori prima di salvare.";
     return;
   }
 
@@ -1651,21 +2521,27 @@ const savePlayers = async () => {
       if (hasContent) {
         const payload = normalizePlayerPayload(slot, fallback);
         if (!payload.first_name || !payload.last_name || !payload.role) {
-          playerSaveError.value = 'Nome, cognome e ruolo sono obbligatori per ogni giocatore salvato.';
+          playerSaveError.value =
+            "Nome, cognome e ruolo sono obbligatori per ogni giocatore salvato.";
           isSavingPlayers.value = false;
           return;
         }
         if (!payload.team_id) {
-          playerSaveError.value = 'Seleziona una squadra per ogni giocatore salvato.';
+          playerSaveError.value =
+            "Seleziona una squadra per ogni giocatore salvato.";
           isSavingPlayers.value = false;
           return;
         }
 
         if (slot.id) {
-          await secureRequest(() => apiClient.put(`/players/${slot.id}`, payload, authHeaders.value));
+          await secureRequest(() =>
+            apiClient.put(`/players/${slot.id}`, payload, authHeaders.value),
+          );
           handledIds.add(slot.id);
         } else {
-          const { data } = await secureRequest(() => apiClient.post('/players', payload, authHeaders.value));
+          const { data } = await secureRequest(() =>
+            apiClient.post("/players", payload, authHeaders.value),
+          );
           const createdId = Number(data?.id) || 0;
           if (createdId) {
             slot.id = createdId;
@@ -1673,7 +2549,9 @@ const savePlayers = async () => {
           }
         }
       } else if (slot.id) {
-        await secureRequest(() => apiClient.delete(`/players/${slot.id}`, authHeaders.value));
+        await secureRequest(() =>
+          apiClient.delete(`/players/${slot.id}`, authHeaders.value),
+        );
         handledIds.add(slot.id);
         resetPlayerSlot(slot);
       } else {
@@ -1683,16 +2561,19 @@ const savePlayers = async () => {
 
     for (const player of players.value) {
       if (!handledIds.has(player.id)) {
-        await secureRequest(() => apiClient.delete(`/players/${player.id}`, authHeaders.value));
+        await secureRequest(() =>
+          apiClient.delete(`/players/${player.id}`, authHeaders.value),
+        );
         handledIds.add(player.id);
       }
     }
 
     await loadPlayers();
-    playerSaveMessage.value = 'Giocatori salvati con successo.';
+    playerSaveMessage.value = "Giocatori salvati con successo.";
   } catch (error) {
     if (!playerSaveError.value) {
-      playerSaveError.value = 'Si è verificato un errore durante il salvataggio dei giocatori. Riprova.';
+      playerSaveError.value =
+        "Si è verificato un errore durante il salvataggio dei giocatori. Riprova.";
     }
   } finally {
     isSavingPlayers.value = false;
@@ -1700,44 +2581,66 @@ const savePlayers = async () => {
 };
 
 const hasEnoughTeams = computed(() => teams.value.length >= 2);
-const availableEvents = computed(() => events.value.filter((event) => !event.is_concluded));
+const availableEvents = computed(() =>
+  events.value.filter((event) => !event.is_concluded),
+);
 const visibleEvents = computed(() => availableEvents.value);
 
 const activeEventId = computed(() => {
   const activeEvent = events.value.find((event) => event.is_active);
   return activeEvent ? activeEvent.id : 0;
 });
-const activeSponsorCount = computed(() => sponsors.value.filter((item) => item.isActive).length);
+const activeSponsorCount = computed(
+  () => sponsors.value.filter((item) => item.isActive).length,
+);
 const sponsorSliderMax = computed(() =>
-  sponsors.value.length ? Math.min(maxSponsors, sponsors.value.length) : maxSponsors,
+  sponsors.value.length
+    ? Math.min(maxSponsors, sponsors.value.length)
+    : maxSponsors,
 );
-const selectedResultsEvent = computed(() =>
-  availableEvents.value.find((event) => event.id === selectedResultsEventId.value) || null,
+const selectedResultsEvent = computed(
+  () =>
+    availableEvents.value.find(
+      (event) => event.id === selectedResultsEventId.value,
+    ) || null,
 );
-const activeEventEntry = computed(() =>
-  events.value.find((event) => event.id === activeEventId.value) || null,
+const activeEventEntry = computed(
+  () => events.value.find((event) => event.id === activeEventId.value) || null,
 );
-const selectedSelfieEvent = computed(() =>
-  availableEvents.value.find((event) => event.id === selectedSelfieEventId.value) || null,
+const selectedSelfieEvent = computed(
+  () =>
+    availableEvents.value.find(
+      (event) => event.id === selectedSelfieEventId.value,
+    ) || null,
 );
 const selectedSelfieEventLabel = computed(() =>
-  selectedSelfieEvent.value ? eventLabel(selectedSelfieEvent.value) : '',
+  selectedSelfieEvent.value ? eventLabel(selectedSelfieEvent.value) : "",
 );
-const activeEventVotesClosed = computed(() => Boolean(activeEventEntry.value?.votes_closed));
+const activeEventVotesClosed = computed(() =>
+  Boolean(activeEventEntry.value?.votes_closed),
+);
 const activeEventLabel = computed(() =>
-  activeEventEntry.value ? eventLabel(activeEventEntry.value) : 'Nessun evento attivo',
+  activeEventEntry.value
+    ? eventLabel(activeEventEntry.value)
+    : "Nessun evento attivo",
 );
 const activeEventDateLabel = computed(() =>
-  activeEventEntry.value ? formatEventDate(activeEventEntry.value.start_datetime) : '',
+  activeEventEntry.value
+    ? formatEventDate(activeEventEntry.value.start_datetime)
+    : "",
 );
 const activeEventLocation = computed(() =>
-  activeEventEntry.value?.location?.trim() ? activeEventEntry.value.location.trim() : 'Location da definire',
+  activeEventEntry.value?.location?.trim()
+    ? activeEventEntry.value.location.trim()
+    : "Location da definire",
 );
 const selectedResultsEventLabel = computed(() =>
-  selectedResultsEvent.value ? eventLabel(selectedResultsEvent.value) : '',
+  selectedResultsEvent.value ? eventLabel(selectedResultsEvent.value) : "",
 );
 const selectedResultsEventDate = computed(() =>
-  selectedResultsEvent.value ? formatEventDate(selectedResultsEvent.value.start_datetime) : '',
+  selectedResultsEvent.value
+    ? formatEventDate(selectedResultsEvent.value.start_datetime)
+    : "",
 );
 const resultsLeaderboard = computed(() => {
   const aggregated = new Map(
@@ -1745,16 +2648,18 @@ const resultsLeaderboard = computed(() => {
       Number(item.player_id) || 0,
       {
         votes: Number(item.votes) || 0,
-        lastVoteAt: typeof item.last_vote_at === 'string' ? item.last_vote_at : '',
+        lastVoteAt:
+          typeof item.last_vote_at === "string" ? item.last_vote_at : "",
       },
     ]),
   );
 
   const entries = players.value.map((player) => {
-    const stats = aggregated.get(player.id) || { votes: 0, lastVoteAt: '' };
-    const firstName = player.first_name || '';
-    const lastName = player.last_name || '';
-    const fullName = `${firstName} ${lastName}`.trim() || `Giocatore ${player.id}`;
+    const stats = aggregated.get(player.id) || { votes: 0, lastVoteAt: "" };
+    const firstName = player.first_name || "";
+    const lastName = player.last_name || "";
+    const fullName =
+      `${firstName} ${lastName}`.trim() || `Giocatore ${player.id}`;
     const lastNameUpper = (lastName || firstName || fullName).toUpperCase();
     return {
       id: player.id,
@@ -1773,7 +2678,7 @@ const resultsLeaderboard = computed(() => {
       entries.push({
         id: playerId,
         firstName: fallbackName,
-        lastName: '',
+        lastName: "",
         lastNameUpper: fallbackName.toUpperCase(),
         fullName: fallbackName,
         votes: stats.votes,
@@ -1815,7 +2720,8 @@ const resultsLeaderboard = computed(() => {
 
   return entries.map((entry) => ({
     ...entry,
-    percentage: highestVotes > 0 ? Math.round((entry.votes / highestVotes) * 100) : 0,
+    percentage:
+      highestVotes > 0 ? Math.round((entry.votes / highestVotes) * 100) : 0,
   }));
 });
 
@@ -1827,29 +2733,34 @@ const sponsorAnalyticsDisplay = computed(() => {
 
   return {
     totalUsers: data.totalUsers,
-    totalUsersLabel: data.totalUsers.toLocaleString('it-IT'),
+    totalUsersLabel: data.totalUsers.toLocaleString("it-IT"),
     seenUsers: data.seenUsers,
-    seenUsersLabel: data.seenUsers.toLocaleString('it-IT'),
+    seenUsersLabel: data.seenUsers.toLocaleString("it-IT"),
     seenRateLabel: `${formatPercent(data.seenRate)}%`,
     watchedUsers: data.watchedUsers,
-    watchedUsersLabel: data.watchedUsers.toLocaleString('it-IT'),
+    watchedUsersLabel: data.watchedUsers.toLocaleString("it-IT"),
     averageWatchTimeLabel: formatWatchDuration(data.averageWatchTimeMs),
     totalClicks: data.totalClicks,
-    totalClicksLabel: data.totalClicks.toLocaleString('it-IT'),
-    uniqueClickersLabel: data.uniqueClickers.toLocaleString('it-IT'),
+    totalClicksLabel: data.totalClicks.toLocaleString("it-IT"),
+    uniqueClickersLabel: data.uniqueClickers.toLocaleString("it-IT"),
     clickRateLabel: `${formatPercent(data.clickRate)}%`,
-    topSponsorName: data.topSponsor?.name || 'Nessuno',
-    topSponsorViewsLabel: data.topSponsor ? data.topSponsor.views.toLocaleString('it-IT') : '0',
+    topSponsorName: data.topSponsor?.name || "Nessuno",
+    topSponsorViewsLabel: data.topSponsor
+      ? data.topSponsor.views.toLocaleString("it-IT")
+      : "0",
   };
 });
 
 const sponsorTimelinePoints = computed(() => {
-  if (!sponsorAnalytics.value || !Array.isArray(sponsorAnalytics.value.timeline)) {
+  if (
+    !sponsorAnalytics.value ||
+    !Array.isArray(sponsorAnalytics.value.timeline)
+  ) {
     return [];
   }
 
   return sponsorAnalytics.value.timeline.map((item) => {
-    const timestamp = typeof item.timestamp === 'string' ? item.timestamp : '';
+    const timestamp = typeof item.timestamp === "string" ? item.timestamp : "";
     let label = timestamp;
     if (timestamp) {
       const date = new Date(timestamp);
@@ -1869,7 +2780,10 @@ const sponsorTimelineMaxValue = computed(() => {
   if (!points.length) {
     return 1;
   }
-  return points.reduce((max, point) => Math.max(max, point.seen, point.clicks), 1);
+  return points.reduce(
+    (max, point) => Math.max(max, point.seen, point.clicks),
+    1,
+  );
 });
 
 const sponsorChartRows = computed(() => {
@@ -1886,7 +2800,9 @@ const hasSponsorAnalyticsData = computed(() => {
   if (!data) {
     return false;
   }
-  const timelineLength = Array.isArray(data.timeline) ? data.timeline.length : 0;
+  const timelineLength = Array.isArray(data.timeline)
+    ? data.timeline.length
+    : 0;
   return Boolean(data.totalUsers || data.totalClicks || timelineLength);
 });
 const totalVotes = computed(() =>
@@ -1894,14 +2810,16 @@ const totalVotes = computed(() =>
 );
 const hasResultsVotes = computed(() => totalVotes.value > 0);
 const lastResultsUpdateLabel = computed(() =>
-  lastResultsUpdate.value ? lastResultsUpdate.value.toLocaleString('it-IT') : '',
+  lastResultsUpdate.value
+    ? lastResultsUpdate.value.toLocaleString("it-IT")
+    : "",
 );
 
-const token = ref(localStorage.getItem('adminToken') || '');
-const activeUsername = ref(localStorage.getItem('adminUsername') || '');
-const activeRole = ref(localStorage.getItem('adminRole') || '');
+const token = ref(localStorage.getItem("adminToken") || "");
+const activeUsername = ref(localStorage.getItem("adminUsername") || "");
+const activeRole = ref(localStorage.getItem("adminRole") || "");
 const isAuthenticated = computed(() => Boolean(token.value));
-const isSuperAdmin = computed(() => activeRole.value === 'superadmin');
+const isSuperAdmin = computed(() => activeRole.value === "superadmin");
 const availableTabs = computed(() => {
   if (isSuperAdmin.value) {
     return tabs;
@@ -1910,43 +2828,47 @@ const availableTabs = computed(() => {
 });
 
 const loginForm = reactive({
-  username: '',
-  password: '',
+  username: "",
+  password: "",
 });
 const isLoggingIn = ref(false);
-const loginError = ref('');
-const globalError = ref('');
+const loginError = ref("");
+const globalError = ref("");
 
 const authHeaders = computed(() => ({
   headers: {
-    Authorization: token.value ? `Bearer ${token.value}` : '',
+    Authorization: token.value ? `Bearer ${token.value}` : "",
   },
 }));
 
 function resetNewEventPrizes() {
-  newEventPrizes.value = [{ name: '' }];
+  newEventPrizes.value = [{ name: "" }];
 }
 
 function resetForms() {
-  newTeamName.value = '';
+  newTeamName.value = "";
   Object.assign(newEvent, createDefaultNewEventState());
+  assignSurveyDraft(newEventSurvey, null);
   resetNewEventPrizes();
-  teamInputs.home = '';
-  teamInputs.away = '';
-  Object.assign(newAdmin, { username: '', password: '', role: '' });
+  teamInputs.home = "";
+  teamInputs.away = "";
+  Object.assign(newAdmin, { username: "", password: "", role: "" });
   resetNewSponsorForm();
-  desiredActiveSponsorCount.value = Math.min(sponsorSliderMax.value, activeSponsorCount.value);
+  desiredActiveSponsorCount.value = Math.min(
+    sponsorSliderMax.value,
+    activeSponsorCount.value,
+  );
   restorePlayerSlots();
-  playerSaveError.value = '';
-  playerSaveMessage.value = '';
+  playerSaveError.value = "";
+  playerSaveMessage.value = "";
 }
 
 function ensureValidTeamSelection() {
   if (!hasEnoughTeams.value) {
     newEvent.team1_id = 0;
     newEvent.team2_id = 0;
-    teamInputs.home = '';
-    teamInputs.away = '';
+    teamInputs.home = "";
+    teamInputs.away = "";
     return;
   }
 
@@ -1954,7 +2876,7 @@ function ensureValidTeamSelection() {
 
   if (!availableIds.has(newEvent.team1_id)) {
     newEvent.team1_id = 0;
-    teamInputs.home = '';
+    teamInputs.home = "";
   }
 
   if (
@@ -1962,7 +2884,7 @@ function ensureValidTeamSelection() {
     (newEvent.team1_id !== 0 && newEvent.team1_id === newEvent.team2_id)
   ) {
     newEvent.team2_id = 0;
-    teamInputs.away = '';
+    teamInputs.away = "";
   }
 
   syncTeamInputsFromIds();
@@ -1976,8 +2898,8 @@ watch(hasEnoughTeams, (enough) => {
   if (!enough) {
     newEvent.team1_id = 0;
     newEvent.team2_id = 0;
-    teamInputs.home = '';
-    teamInputs.away = '';
+    teamInputs.home = "";
+    teamInputs.away = "";
   }
 });
 
@@ -1988,18 +2910,19 @@ watch(events, (value) => {
     ? value.filter((event) => !event.is_concluded)
     : [];
   syncEventPrizeDrafts(editableEvents);
-  if (section.value === 'results' && selectedResultsEventId.value) {
+  syncEventFeedbackDrafts(editableEvents);
+  if (section.value === "results" && selectedResultsEventId.value) {
     fetchEventResults();
   }
 });
 
 watch(activeEventId, () => {
-  closeVotesMessage.value = '';
+  closeVotesMessage.value = "";
 });
 
 watch(activeEventVotesClosed, (closed) => {
   if (!closed) {
-    closeVotesMessage.value = '';
+    closeVotesMessage.value = "";
   }
 });
 
@@ -2012,16 +2935,16 @@ function clearCollections() {
   eventHistory.value = [];
   eventSelfies.value = [];
   hasLoadedEventHistory.value = false;
-  eventHistoryError.value = '';
-  eventHistorySuccess.value = '';
+  eventHistoryError.value = "";
+  eventHistorySuccess.value = "";
   isLoadingSelfies.value = false;
-  selfieLoadError.value = '';
-  selfieModerationMessage.value = '';
+  selfieLoadError.value = "";
+  selfieModerationMessage.value = "";
   selectedSelfieEventId.value = 0;
   resetAllPlayerSlots();
   playerOverflow.value = [];
-  playerSaveError.value = '';
-  playerSaveMessage.value = '';
+  playerSaveError.value = "";
+  playerSaveMessage.value = "";
   Object.keys(eventPrizeDrafts).forEach((key) => {
     delete eventPrizeDrafts[key];
   });
@@ -2034,11 +2957,11 @@ function clearCollections() {
   Object.keys(historyReportDownloadState).forEach((key) => {
     delete historyReportDownloadState[key];
   });
-  lastCreatedEventLink.value = '';
+  lastCreatedEventLink.value = "";
   resetNewEventPrizes();
   resetResultsState();
   sponsorAnalytics.value = null;
-  sponsorAnalyticsError.value = '';
+  sponsorAnalyticsError.value = "";
   isLoadingSponsorAnalytics.value = false;
 }
 
@@ -2065,11 +2988,11 @@ function resetResultsState() {
   stopResultsPolling();
   selectedResultsEventId.value = 0;
   eventResults.value = [];
-  resultsError.value = '';
+  resultsError.value = "";
   lastResultsUpdate.value = null;
   isLoadingResults.value = false;
   sponsorAnalytics.value = null;
-  sponsorAnalyticsError.value = '';
+  sponsorAnalyticsError.value = "";
   isLoadingSponsorAnalytics.value = false;
 }
 
@@ -2079,7 +3002,9 @@ function ensureResultsSelection() {
     selectedResultsEventId.value = 0;
     return;
   }
-  const exists = available.some((event) => event.id === selectedResultsEventId.value);
+  const exists = available.some(
+    (event) => event.id === selectedResultsEventId.value,
+  );
   if (!exists) {
     const active = available.find((event) => event.is_active);
     selectedResultsEventId.value = active ? active.id : available[0].id;
@@ -2089,23 +3014,27 @@ function ensureResultsSelection() {
 async function fetchEventResults({ showLoader = false } = {}) {
   if (!selectedResultsEventId.value) {
     eventResults.value = [];
-    resultsError.value = '';
+    resultsError.value = "";
     lastResultsUpdate.value = null;
     return;
   }
   if (showLoader) {
     isLoadingResults.value = true;
   }
-  resultsError.value = '';
+  resultsError.value = "";
   try {
     const { data } = await secureRequest(() =>
-      apiClient.get(`/events/${selectedResultsEventId.value}/results`, authHeaders.value),
+      apiClient.get(
+        `/events/${selectedResultsEventId.value}/results`,
+        authHeaders.value,
+      ),
     );
     if (Array.isArray(data)) {
       eventResults.value = data.map((item) => ({
         player_id: Number(item.player_id) || 0,
         votes: Number(item.votes) || 0,
-        last_vote_at: typeof item.last_vote_at === 'string' ? item.last_vote_at : '',
+        last_vote_at:
+          typeof item.last_vote_at === "string" ? item.last_vote_at : "",
       }));
     } else {
       eventResults.value = [];
@@ -2113,11 +3042,12 @@ async function fetchEventResults({ showLoader = false } = {}) {
     lastResultsUpdate.value = new Date();
   } catch (error) {
     if (error?.response?.status === 404) {
-      resultsError.value = 'Evento non trovato.';
+      resultsError.value = "Evento non trovato.";
     } else if (error?.response?.status === 400) {
-      resultsError.value = 'Richiesta non valida per i risultati.';
+      resultsError.value = "Richiesta non valida per i risultati.";
     } else if (error?.response?.status !== 401) {
-      resultsError.value = 'Impossibile caricare i risultati. Riprova più tardi.';
+      resultsError.value =
+        "Impossibile caricare i risultati. Riprova più tardi.";
     }
   } finally {
     if (showLoader) {
@@ -2129,7 +3059,7 @@ async function fetchEventResults({ showLoader = false } = {}) {
 }
 
 function normalizeSponsorAnalyticsResponse(raw) {
-  if (!raw || typeof raw !== 'object') {
+  if (!raw || typeof raw !== "object") {
     return {
       totalUsers: 0,
       seenUsers: 0,
@@ -2152,16 +3082,19 @@ function normalizeSponsorAnalyticsResponse(raw) {
 
   const topSponsorRaw = raw.top_sponsor ?? raw.topSponsor ?? null;
   let topSponsor = null;
-  if (topSponsorRaw && typeof topSponsorRaw === 'object') {
-    const id = resolveNumber(topSponsorRaw.sponsor_id ?? topSponsorRaw.sponsorId);
-    const name = typeof topSponsorRaw.name === 'string' ? topSponsorRaw.name : '';
+  if (topSponsorRaw && typeof topSponsorRaw === "object") {
+    const id = resolveNumber(
+      topSponsorRaw.sponsor_id ?? topSponsorRaw.sponsorId,
+    );
+    const name =
+      typeof topSponsorRaw.name === "string" ? topSponsorRaw.name : "";
     const views = resolveNumber(topSponsorRaw.views);
     topSponsor = { id, name, views };
   }
 
   const timeline = Array.isArray(raw.timeline)
     ? raw.timeline.map((item) => ({
-        timestamp: typeof item?.timestamp === 'string' ? item.timestamp : '',
+        timestamp: typeof item?.timestamp === "string" ? item.timestamp : "",
         seen: resolveNumber(item?.seen),
         watched: resolveNumber(item?.watched),
         clicks: resolveNumber(item?.clicks),
@@ -2172,8 +3105,12 @@ function normalizeSponsorAnalyticsResponse(raw) {
     totalUsers: resolveNumber(raw.total_users ?? raw.totalUsers),
     seenUsers: resolveNumber(raw.seen_users ?? raw.seenUsers),
     watchedUsers: resolveNumber(raw.watched_users ?? raw.watchedUsers),
-    averageWatchTimeMs: resolveNumber(raw.average_watch_time_ms ?? raw.averageWatchTimeMs),
-    totalWatchTimeMs: resolveNumber(raw.total_watch_time_ms ?? raw.totalWatchTimeMs),
+    averageWatchTimeMs: resolveNumber(
+      raw.average_watch_time_ms ?? raw.averageWatchTimeMs,
+    ),
+    totalWatchTimeMs: resolveNumber(
+      raw.total_watch_time_ms ?? raw.totalWatchTimeMs,
+    ),
     totalClicks: resolveNumber(raw.total_clicks ?? raw.totalClicks),
     uniqueClickers: resolveNumber(raw.unique_clickers ?? raw.uniqueClickers),
     seenRate: resolveNumber(raw.seen_rate ?? raw.seenRate),
@@ -2186,26 +3123,31 @@ function normalizeSponsorAnalyticsResponse(raw) {
 async function fetchSponsorAnalytics({ showLoader = false } = {}) {
   if (!selectedResultsEventId.value) {
     sponsorAnalytics.value = null;
-    sponsorAnalyticsError.value = '';
+    sponsorAnalyticsError.value = "";
     return;
   }
 
   if (showLoader) {
     isLoadingSponsorAnalytics.value = true;
   }
-  sponsorAnalyticsError.value = '';
+  sponsorAnalyticsError.value = "";
 
   try {
     const { data } = await secureRequest(() =>
-      apiClient.get(`/admin/events/${selectedResultsEventId.value}/sponsors/analytics`, authHeaders.value),
+      apiClient.get(
+        `/admin/events/${selectedResultsEventId.value}/sponsors/analytics`,
+        authHeaders.value,
+      ),
     );
     sponsorAnalytics.value = normalizeSponsorAnalyticsResponse(data);
   } catch (error) {
     if (error?.response?.status === 404) {
       sponsorAnalytics.value = null;
-      sponsorAnalyticsError.value = 'Nessun dato sponsor disponibile per questo evento.';
+      sponsorAnalyticsError.value =
+        "Nessun dato sponsor disponibile per questo evento.";
     } else if (error?.response?.status !== 401) {
-      sponsorAnalyticsError.value = 'Impossibile caricare le statistiche sponsor.';
+      sponsorAnalyticsError.value =
+        "Impossibile caricare le statistiche sponsor.";
     }
     throw error;
   } finally {
@@ -2216,29 +3158,32 @@ async function fetchSponsorAnalytics({ showLoader = false } = {}) {
 }
 
 function normalizePrizeResponse(prize, index = 0) {
-  if (!prize || typeof prize !== 'object') {
+  if (!prize || typeof prize !== "object") {
     return null;
   }
-  const winner = prize.winner && typeof prize.winner === 'object' ? prize.winner : null;
+  const winner =
+    prize.winner && typeof prize.winner === "object" ? prize.winner : null;
   const normalizedWinner = winner
     ? {
         voteId: Number(winner.vote_id ?? winner.voteId) || 0,
-        ticketCode: typeof (winner.ticket_code ?? winner.ticketCode) === 'string'
-          ? (winner.ticket_code ?? winner.ticketCode)
-          : '',
+        ticketCode:
+          typeof (winner.ticket_code ?? winner.ticketCode) === "string"
+            ? (winner.ticket_code ?? winner.ticketCode)
+            : "",
         playerId: Number(winner.player_id ?? winner.playerId) || 0,
         playerFirstName:
-          typeof (winner.player_first_name ?? winner.playerFirstName) === 'string'
+          typeof (winner.player_first_name ?? winner.playerFirstName) ===
+          "string"
             ? (winner.player_first_name ?? winner.playerFirstName)
-            : '',
+            : "",
         playerLastName:
-          typeof (winner.player_last_name ?? winner.playerLastName) === 'string'
+          typeof (winner.player_last_name ?? winner.playerLastName) === "string"
             ? (winner.player_last_name ?? winner.playerLastName)
-            : '',
+            : "",
         assignedAt:
-          typeof (winner.assigned_at ?? winner.assignedAt) === 'string'
+          typeof (winner.assigned_at ?? winner.assignedAt) === "string"
             ? (winner.assigned_at ?? winner.assignedAt)
-            : '',
+            : "",
       }
     : null;
 
@@ -2246,7 +3191,7 @@ function normalizePrizeResponse(prize, index = 0) {
   return {
     id: Number(prize.id) || 0,
     eventId: Number(prize.event_id ?? prize.eventId) || 0,
-    name: typeof prize.name === 'string' ? prize.name : '',
+    name: typeof prize.name === "string" ? prize.name : "",
     position,
     winner: normalizedWinner,
   };
@@ -2258,7 +3203,7 @@ function normalizeEventResponse(event) {
   normalized.votes_closed = Boolean(event?.votes_closed);
   normalized.is_concluded = Boolean(event?.is_concluded);
   const resolveFlag = (keys, fallback = true) => {
-    if (!event || typeof event !== 'object') {
+    if (!event || typeof event !== "object") {
       return fallback;
     }
     for (const key of keys) {
@@ -2268,22 +3213,30 @@ function normalizeEventResponse(event) {
     }
     return fallback;
   };
-  normalized.show_reaction_test = resolveFlag(['show_reaction_test', 'showReactionTest'], true);
-  normalized.show_selfie = resolveFlag(['show_selfie', 'showSelfie'], true);
+  normalized.show_reaction_test = resolveFlag(
+    ["show_reaction_test", "showReactionTest"],
+    true,
+  );
+  normalized.show_selfie = resolveFlag(["show_selfie", "showSelfie"], true);
   normalized.show_vote_trend = resolveFlag(
-    ['show_vote_trend', 'showVoteTrend', 'show_live_results'],
+    ["show_vote_trend", "showVoteTrend", "show_live_results"],
     true,
   );
   normalized.show_feedback_survey = resolveFlag(
-    ['show_feedback_survey', 'showFeedbackSurvey'],
+    ["show_feedback_survey", "showFeedbackSurvey"],
     true,
   );
   normalized.show_pre_vote_sponsors = resolveFlag(
-    ['show_pre_vote_sponsors', 'showPreVoteSponsors', 'show_sponsors', 'showSponsors'],
+    [
+      "show_pre_vote_sponsors",
+      "showPreVoteSponsors",
+      "show_sponsors",
+      "showSponsors",
+    ],
     true,
   );
   normalized.show_vote_counter = resolveFlag(
-    ['show_vote_counter', 'showVoteCounter', 'show_pre_vote_vote_counter'],
+    ["show_vote_counter", "showVoteCounter", "show_pre_vote_vote_counter"],
     true,
   );
   if (Array.isArray(event.prizes)) {
@@ -2300,63 +3253,81 @@ function normalizeEventResponse(event) {
   } else {
     normalized.prizes = [];
   }
+  const survey = normalizeFeedbackSurveyInput(
+    event?.feedback_survey ?? event?.feedbackSurvey,
+  );
+  normalized.feedback_survey = survey;
+  normalized.feedbackSurvey = survey;
   return normalized;
 }
 
 function normalizeSponsorResponse(item) {
-  if (!item || typeof item !== 'object') {
+  if (!item || typeof item !== "object") {
     return null;
   }
-  const normalizedName = typeof item.name === 'string' ? item.name.trim() : '';
-  const normalizedLink = typeof item.link_url === 'string' ? item.link_url.trim() : '';
+  const normalizedName = typeof item.name === "string" ? item.name.trim() : "";
+  const normalizedLink =
+    typeof item.link_url === "string" ? item.link_url.trim() : "";
   return {
     id: Number(item.id) || 0,
     name: normalizedName,
     linkUrl: normalizedLink,
     position: Number(item.position) || 0,
-    logoData: typeof item.logo_data === 'string' ? item.logo_data : '',
+    logoData: typeof item.logo_data === "string" ? item.logo_data : "",
     isActive: Boolean(item.is_active),
   };
 }
 
 const toCamelCaseKey = (key) => {
-  if (typeof key !== 'string' || !key.includes('_')) {
+  if (typeof key !== "string" || !key.includes("_")) {
     return key;
   }
   return key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 };
 
-function normalizeFeedbackSummary(raw) {
-  if (!raw || typeof raw !== 'object') {
+function normalizeFeedbackSummary(raw, surveyConfig) {
+  if (!raw || typeof raw !== "object") {
     return null;
   }
 
+  const config = normalizeFeedbackSurveyInput(surveyConfig);
   const totalRaw = Number(raw.total_responses ?? raw.totalResponses ?? 0);
   const totalResponses = Number.isFinite(totalRaw) ? totalRaw : 0;
   const hasResponses = totalResponses > 0;
   const totalResponsesLabel =
     totalResponses === 1
-      ? '1 risposta'
-      : `${totalResponses.toLocaleString('it-IT')} risposte`;
+      ? "1 risposta"
+      : `${totalResponses.toLocaleString("it-IT")} risposte`;
 
-  const questions = feedbackSummaryQuestions.map((question) => {
+  const questions = config.questions.map((question) => {
     const camelKey = toCamelCaseKey(question.id);
     const countsSource =
-      (raw[question.id] && typeof raw[question.id] === 'object' ? raw[question.id] : null) ??
-      (raw[camelKey] && typeof raw[camelKey] === 'object' ? raw[camelKey] : null);
-    const counts = countsSource && typeof countsSource === 'object' ? countsSource : {};
+      (raw[question.id] && typeof raw[question.id] === "object"
+        ? raw[question.id]
+        : null) ??
+      (raw[camelKey] && typeof raw[camelKey] === "object"
+        ? raw[camelKey]
+        : null);
+    const counts =
+      countsSource && typeof countsSource === "object" ? countsSource : {};
 
     const answers = question.answers.map((option) => {
       const resolved = Number(counts?.[option.value] ?? 0);
       const count = Number.isFinite(resolved) ? resolved : 0;
-      const percent = hasResponses && totalResponses > 0 ? Math.round((count / totalResponses) * 100) : 0;
+      const percent =
+        hasResponses && totalResponses > 0
+          ? Math.round((count / totalResponses) * 100)
+          : 0;
       const clampedPercent = Math.min(100, Math.max(0, percent));
-      const barPercent = hasResponses ? Math.max(clampedPercent, count > 0 ? 6 : 0) : 0;
+      const barPercent = hasResponses
+        ? Math.max(clampedPercent, count > 0 ? 6 : 0)
+        : 0;
       return {
         value: option.value,
         label: option.label,
+        icon: option.icon || "",
         count,
-        countLabel: count.toLocaleString('it-IT'),
+        countLabel: count.toLocaleString("it-IT"),
         percent: clampedPercent,
         percentLabel: `${clampedPercent}%`,
         barWidth: `${barPercent}%`,
@@ -2364,7 +3335,10 @@ function normalizeFeedbackSummary(raw) {
       };
     });
 
-    const questionTotal = answers.reduce((sum, answer) => sum + answer.count, 0);
+    const questionTotal = answers.reduce(
+      (sum, answer) => sum + answer.count,
+      0,
+    );
     return {
       id: question.id,
       title: question.title,
@@ -2372,8 +3346,8 @@ function normalizeFeedbackSummary(raw) {
       totalCount: questionTotal,
       totalCountLabel:
         questionTotal === 1
-          ? '1 risposta'
-          : `${questionTotal.toLocaleString('it-IT')} risposte`,
+          ? "1 risposta"
+          : `${questionTotal.toLocaleString("it-IT")} risposte`,
       hasAnswers: answers.some((answer) => answer.count > 0),
     };
   });
@@ -2381,20 +3355,23 @@ function normalizeFeedbackSummary(raw) {
   const suggestionsSource = Array.isArray(raw.suggestions)
     ? raw.suggestions
     : Array.isArray(raw.suggestion)
-    ? raw.suggestion
-    : [];
+      ? raw.suggestion
+      : [];
   const suggestions = suggestionsSource
-    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter(Boolean);
 
   const suggestionQuestion = {
-    id: feedbackSummarySuggestion.id,
-    title: feedbackSummarySuggestion.title,
+    id: "suggestions",
+    title: config.suggestionPrompt || DEFAULT_FEEDBACK_SURVEY.suggestionPrompt,
     suggestions,
     hasSuggestions: suggestions.length > 0,
   };
 
-  const hasAnyData = hasResponses || questions.some((question) => question.hasAnswers) || suggestionQuestion.hasSuggestions;
+  const hasAnyData =
+    hasResponses ||
+    questions.some((question) => question.hasAnswers) ||
+    suggestionQuestion.hasSuggestions;
 
   return {
     totalResponses,
@@ -2431,21 +3408,29 @@ function sortedSponsors() {
 }
 
 function recomputeActiveSponsorSlider() {
-  desiredActiveSponsorCount.value = Math.min(sponsorSliderMax.value, activeSponsorCount.value);
+  desiredActiveSponsorCount.value = Math.min(
+    sponsorSliderMax.value,
+    activeSponsorCount.value,
+  );
 }
 
 function resetNewSponsorForm() {
-  Object.assign(newSponsor, { name: '', linkUrl: '', logoData: '', isActive: true });
+  Object.assign(newSponsor, {
+    name: "",
+    linkUrl: "",
+    logoData: "",
+    isActive: true,
+  });
 }
 
 async function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      resolve(typeof reader.result === 'string' ? reader.result : '');
+      resolve(typeof reader.result === "string" ? reader.result : "");
     };
     reader.onerror = () => {
-      reject(reader.error || new Error('Impossibile leggere il file'));
+      reject(reader.error || new Error("Impossibile leggere il file"));
     };
     reader.readAsDataURL(file);
   });
@@ -2456,18 +3441,18 @@ async function handleSponsorLogoChange(event, targetSponsor) {
   if (!file) {
     return;
   }
-  globalError.value = '';
+  globalError.value = "";
   try {
     const dataUrl = await readFileAsDataUrl(file);
     if (dataUrl) {
       targetSponsor.logoData = dataUrl;
     }
   } catch (error) {
-    console.error('Errore caricamento logo sponsor', error);
-    globalError.value = 'Impossibile caricare il logo selezionato.';
+    console.error("Errore caricamento logo sponsor", error);
+    globalError.value = "Impossibile caricare il logo selezionato.";
   } finally {
     if (event?.target) {
-      event.target.value = '';
+      event.target.value = "";
     }
   }
 }
@@ -2479,19 +3464,19 @@ async function handleNewSponsorLogoChange(event) {
 function buildEventLink(eventId) {
   const url = new URL(baseVoteUrl.toString());
   if (eventId) {
-    url.searchParams.set('eventId', String(eventId));
+    url.searchParams.set("eventId", String(eventId));
   } else {
-    url.searchParams.delete('eventId');
+    url.searchParams.delete("eventId");
   }
   return url.toString();
 }
 
 function goToLottery() {
-  const target = new URL(basePath || '/', window.location.origin);
-  if (!target.pathname.endsWith('/')) {
+  const target = new URL(basePath || "/", window.location.origin);
+  if (!target.pathname.endsWith("/")) {
     target.pathname = `${target.pathname}/`;
   }
-  target.pathname = `${target.pathname.replace(/\/+$/, '')}/admin/lottery`;
+  target.pathname = `${target.pathname.replace(/\/+$/, "")}/admin/lottery`;
   window.location.href = target.toString();
 }
 
@@ -2502,8 +3487,8 @@ function teamOptionValue(team) {
 function syncTeamInputsFromIds() {
   const homeTeam = teams.value.find((team) => team.id === newEvent.team1_id);
   const awayTeam = teams.value.find((team) => team.id === newEvent.team2_id);
-  teamInputs.home = homeTeam ? teamOptionValue(homeTeam) : '';
-  teamInputs.away = awayTeam ? teamOptionValue(awayTeam) : '';
+  teamInputs.home = homeTeam ? teamOptionValue(homeTeam) : "";
+  teamInputs.away = awayTeam ? teamOptionValue(awayTeam) : "";
 }
 
 function findTeamFromInput(value) {
@@ -2512,33 +3497,35 @@ function findTeamFromInput(value) {
     return undefined;
   }
   return (
-    teams.value.find((team) => teamOptionValue(team).toLowerCase() === normalized) ||
+    teams.value.find(
+      (team) => teamOptionValue(team).toLowerCase() === normalized,
+    ) ||
     teams.value.find((team) => team.name.trim().toLowerCase() === normalized)
   );
 }
 
 function handleTeamInput(position) {
-  const key = position === 'home' ? 'team1_id' : 'team2_id';
-  const otherKey = position === 'home' ? 'team2_id' : 'team1_id';
-  const otherInputKey = position === 'home' ? 'away' : 'home';
-  const rawValue = teamInputs[position] || '';
+  const key = position === "home" ? "team1_id" : "team2_id";
+  const otherKey = position === "home" ? "team2_id" : "team1_id";
+  const otherInputKey = position === "home" ? "away" : "home";
+  const rawValue = teamInputs[position] || "";
   const matchedTeam = findTeamFromInput(rawValue);
 
   if (matchedTeam) {
     if (newEvent[otherKey] === matchedTeam.id) {
       newEvent[otherKey] = 0;
-      teamInputs[otherInputKey] = '';
+      teamInputs[otherInputKey] = "";
     }
     newEvent[key] = matchedTeam.id;
     teamInputs[position] = teamOptionValue(matchedTeam);
   } else {
     newEvent[key] = 0;
-    teamInputs[position] = '';
+    teamInputs[position] = "";
   }
 }
 
 function addNewEventPrize() {
-  newEventPrizes.value = [...newEventPrizes.value, { name: '' }];
+  newEventPrizes.value = [...newEventPrizes.value, { name: "" }];
 }
 
 function removeNewEventPrize(index) {
@@ -2546,23 +3533,40 @@ function removeNewEventPrize(index) {
     return;
   }
   const updated = newEventPrizes.value.filter((_, idx) => idx !== index);
-  newEventPrizes.value = updated.length ? updated : [{ name: '' }];
+  newEventPrizes.value = updated.length ? updated : [{ name: "" }];
 }
 
 function prizeDraftsFor(eventId) {
   const drafts = eventPrizeDrafts[eventId];
   if (!Array.isArray(drafts) || drafts.length === 0) {
-    eventPrizeDrafts[eventId] = [{ id: 0, name: '', position: 1, winner: null }];
+    eventPrizeDrafts[eventId] = [
+      { id: 0, name: "", position: 1, winner: null },
+    ];
   }
   return eventPrizeDrafts[eventId];
+}
+
+function feedbackDraftFor(eventId) {
+  if (!eventId) {
+    return normalizeFeedbackSurveyInput();
+  }
+  const existing = eventFeedbackDrafts[eventId];
+  if (existing && typeof existing === "object") {
+    return existing;
+  }
+  const event = events.value.find((item) => item.id === eventId);
+  const draftSource = event?.feedbackSurvey ?? event?.feedback_survey;
+  const draft = normalizeFeedbackSurveyInput(draftSource);
+  eventFeedbackDrafts[eventId] = draft;
+  return draft;
 }
 
 function addPrizeDraft(eventId) {
   const drafts = prizeDraftsFor(eventId);
   const updated = drafts.slice();
-  updated.push({ id: 0, name: '', position: updated.length + 1, winner: null });
+  updated.push({ id: 0, name: "", position: updated.length + 1, winner: null });
   eventPrizeDrafts[eventId] = updated;
-  eventPrizeErrors[eventId] = '';
+  eventPrizeErrors[eventId] = "";
 }
 
 function removePrizeDraft(eventId, index) {
@@ -2578,8 +3582,11 @@ function removePrizeDraft(eventId, index) {
   }
   const updated = drafts.filter((_, idx) => idx !== index);
   eventPrizeDrafts[eventId] = updated.length
-    ? updated.map((item, positionIndex) => ({ ...item, position: positionIndex + 1 }))
-    : [{ id: 0, name: '', position: 1, winner: null }];
+    ? updated.map((item, positionIndex) => ({
+        ...item,
+        position: positionIndex + 1,
+      }))
+    : [{ id: 0, name: "", position: 1, winner: null }];
 }
 
 function isSavingPrizesFor(eventId) {
@@ -2588,9 +3595,9 @@ function isSavingPrizesFor(eventId) {
 
 function prizeWinnerLabel(prize) {
   if (!prize || !prize.winner) {
-    return '';
+    return "";
   }
-  return prize.winner.ticketCode || '';
+  return prize.winner.ticketCode || "";
 }
 
 async function savePrizesForEvent(event) {
@@ -2602,12 +3609,14 @@ async function savePrizesForEvent(event) {
   const sanitized = drafts
     .map((prize, index) => ({
       id: Number(prize.id) || 0,
-      name: (prize.name || '').trim(),
+      name: (prize.name || "").trim(),
       position: index + 1,
     }))
     .filter((prize) => prize.name);
 
-  eventPrizeErrors[event.id] = '';
+  eventPrizeErrors[event.id] = "";
+  eventFeedbackErrors[event.id] = "";
+  const surveyDraft = feedbackDraftFor(event.id);
 
   const payload = {
     team1_id: event.team1_id,
@@ -2620,21 +3629,29 @@ async function savePrizesForEvent(event) {
     show_selfie: Boolean(event.show_selfie),
     show_vote_trend: Boolean(event.show_vote_trend),
     show_feedback_survey: Boolean(event.show_feedback_survey),
+    feedback_survey: toApiSurveyPayload(surveyDraft),
     prizes: sanitized,
   };
 
   savingEventPrizes.value = event.id;
   try {
-    await secureRequest(() => apiClient.put(`/events/${event.id}`, payload, authHeaders.value));
+    await secureRequest(() =>
+      apiClient.put(`/events/${event.id}`, payload, authHeaders.value),
+    );
     await loadEvents();
   } catch (error) {
     if (error?.response?.status === 409) {
       eventPrizeErrors[event.id] =
         "Non puoi rimuovere un premio già assegnato. Annulla l'assegnazione dalla lotteria prima di modificarlo.";
     } else if (error?.response?.status === 400) {
-      eventPrizeErrors[event.id] = 'Controlla i nomi dei premi e riprova.';
+      const message =
+        "Controlla i nomi dei premi e le domande del sondaggio e riprova.";
+      eventPrizeErrors[event.id] = message;
+      eventFeedbackErrors[event.id] = message;
     } else if (error?.response?.status !== 401) {
-      eventPrizeErrors[event.id] = 'Impossibile salvare i premi. Riprova più tardi.';
+      const message = "Impossibile salvare le impostazioni. Riprova più tardi.";
+      eventPrizeErrors[event.id] = message;
+      eventFeedbackErrors[event.id] = message;
     }
   } finally {
     savingEventPrizes.value = 0;
@@ -2654,67 +3671,88 @@ function syncEventPrizeDrafts(eventList) {
     }
   });
   eventList.forEach((event) => {
-    const drafts = Array.isArray(event.prizes) && event.prizes.length
-      ? event.prizes.map((prize, index) => ({
-          id: prize.id,
-          name: prize.name || '',
-          position: prize.position || index + 1,
-          winner: prize.winner
-            ? {
-                voteId: prize.winner.voteId,
-                ticketCode: prize.winner.ticketCode,
-                playerFirstName: prize.winner.playerFirstName,
-                playerLastName: prize.winner.playerLastName,
-              }
-            : null,
-        }))
-      : [{ id: 0, name: '', position: 1, winner: null }];
+    const drafts =
+      Array.isArray(event.prizes) && event.prizes.length
+        ? event.prizes.map((prize, index) => ({
+            id: prize.id,
+            name: prize.name || "",
+            position: prize.position || index + 1,
+            winner: prize.winner
+              ? {
+                  voteId: prize.winner.voteId,
+                  ticketCode: prize.winner.ticketCode,
+                  playerFirstName: prize.winner.playerFirstName,
+                  playerLastName: prize.winner.playerLastName,
+                }
+              : null,
+          }))
+        : [{ id: 0, name: "", position: 1, winner: null }];
     eventPrizeDrafts[event.id] = drafts;
   });
 }
 
+function syncEventFeedbackDrafts(eventList) {
+  const ids = new Set(eventList.map((event) => event.id));
+  Object.keys(eventFeedbackDrafts).forEach((key) => {
+    if (!ids.has(Number(key))) {
+      delete eventFeedbackDrafts[key];
+      delete eventFeedbackErrors[key];
+    }
+  });
+  eventList.forEach((event) => {
+    if (!event || !event.id) {
+      return;
+    }
+    if (!eventFeedbackDrafts[event.id]) {
+      eventFeedbackDrafts[event.id] = normalizeFeedbackSurveyInput(
+        event.feedbackSurvey ?? event.feedback_survey,
+      );
+    }
+  });
+}
+
 function eventLabel(event) {
-  return `${resolveEventTeamName(event, 'team1')} vs ${resolveEventTeamName(event, 'team2')}`;
+  return `${resolveEventTeamName(event, "team1")} vs ${resolveEventTeamName(event, "team2")}`;
 }
 
 function resolveEventTeamName(event, teamKey) {
   const idKey = `${teamKey}_id`;
   const nameFromTeams = teamName(event?.[idKey]);
-  if (nameFromTeams && nameFromTeams !== '—') {
+  if (nameFromTeams && nameFromTeams !== "—") {
     return nameFromTeams;
   }
 
   const fallbackKeys = [`${teamKey}_name`, `${teamKey}Name`];
   for (const key of fallbackKeys) {
     const value = event?.[key];
-    if (typeof value === 'string' && value.trim()) {
+    if (typeof value === "string" && value.trim()) {
       return value.trim();
     }
   }
 
-  return '—';
+  return "—";
 }
 
 function teamName(id) {
   const team = teams.value.find((teamItem) => teamItem.id === id);
-  return team ? team.name : '—';
+  return team ? team.name : "—";
 }
 
 function formatEventDate(value) {
   if (!value) {
-    return 'Data da definire';
+    return "Data da definire";
   }
   const date = new Date(value);
   if (!Number.isNaN(date.valueOf())) {
-    return date.toLocaleString('it-IT');
+    return date.toLocaleString("it-IT");
   }
-  return value.replace('T', ' ');
+  return value.replace("T", " ");
 }
 
 function formatWatchDuration(ms) {
   const value = Number(ms);
   if (!Number.isFinite(value) || value <= 0) {
-    return '0 s';
+    return "0 s";
   }
   if (value >= 60000) {
     const minutes = Math.floor(value / 60000);
@@ -2730,11 +3768,15 @@ function formatWatchDuration(ms) {
   return `${Math.round(value)} ms`;
 }
 
-function formatPercent(value, minimumFractionDigits = 1, maximumFractionDigits = 1) {
+function formatPercent(
+  value,
+  minimumFractionDigits = 1,
+  maximumFractionDigits = 1,
+) {
   if (!Number.isFinite(value)) {
-    return '0,0';
+    return "0,0";
   }
-  return value.toLocaleString('it-IT', {
+  return value.toLocaleString("it-IT", {
     minimumFractionDigits,
     maximumFractionDigits,
   });
@@ -2744,28 +3786,28 @@ async function login() {
   if (isLoggingIn.value) {
     return;
   }
-  loginError.value = '';
-  globalError.value = '';
+  loginError.value = "";
+  globalError.value = "";
   isLoggingIn.value = true;
   try {
-    const { data } = await apiClient.post('/admin/login', {
+    const { data } = await apiClient.post("/admin/login", {
       username: loginForm.username,
       password: loginForm.password,
     });
     token.value = data.token;
     activeUsername.value = data.username;
-    activeRole.value = data.role || '';
-    localStorage.setItem('adminToken', token.value);
-    localStorage.setItem('adminUsername', activeUsername.value);
-    localStorage.setItem('adminRole', activeRole.value);
-    loginForm.username = '';
-    loginForm.password = '';
+    activeRole.value = data.role || "";
+    localStorage.setItem("adminToken", token.value);
+    localStorage.setItem("adminUsername", activeUsername.value);
+    localStorage.setItem("adminRole", activeRole.value);
+    loginForm.username = "";
+    loginForm.password = "";
     await loadAll();
   } catch (error) {
     if (error?.response?.status === 401) {
-      loginError.value = 'Credenziali non valide.';
+      loginError.value = "Credenziali non valide.";
     } else {
-      loginError.value = 'Impossibile completare l\'accesso. Riprova.';
+      loginError.value = "Impossibile completare l'accesso. Riprova.";
     }
   } finally {
     isLoggingIn.value = false;
@@ -2773,19 +3815,19 @@ async function login() {
 }
 
 function logout() {
-  token.value = '';
-  activeUsername.value = '';
-  activeRole.value = '';
-  localStorage.removeItem('adminToken');
-  localStorage.removeItem('adminUsername');
-  localStorage.removeItem('adminRole');
-  section.value = 'events';
+  token.value = "";
+  activeUsername.value = "";
+  activeRole.value = "";
+  localStorage.removeItem("adminToken");
+  localStorage.removeItem("adminUsername");
+  localStorage.removeItem("adminRole");
+  section.value = "events";
   clearCollections();
 }
 
 function handleUnauthorized() {
   logout();
-  loginError.value = 'Sessione scaduta. Effettua di nuovo il login.';
+  loginError.value = "Sessione scaduta. Effettua di nuovo il login.";
 }
 
 async function secureRequest(executor) {
@@ -2795,20 +3837,25 @@ async function secureRequest(executor) {
     if (error?.response?.status === 401) {
       handleUnauthorized();
     } else {
-      globalError.value = 'Si è verificato un errore imprevisto. Riprova più tardi.';
+      globalError.value =
+        "Si è verificato un errore imprevisto. Riprova più tardi.";
     }
     throw error;
   }
 }
 
 async function loadTeams() {
-  const { data } = await secureRequest(() => apiClient.get('/teams', authHeaders.value));
+  const { data } = await secureRequest(() =>
+    apiClient.get("/teams", authHeaders.value),
+  );
   teams.value = data;
   ensureValidTeamSelection();
 }
 
 async function loadPlayers() {
-  const { data } = await secureRequest(() => apiClient.get('/players', authHeaders.value));
+  const { data } = await secureRequest(() =>
+    apiClient.get("/players", authHeaders.value),
+  );
   const normalized = Array.isArray(data)
     ? data.map((item) => normalizePlayerResponse(item))
     : [];
@@ -2817,7 +3864,9 @@ async function loadPlayers() {
 }
 
 async function loadEvents() {
-  const { data } = await secureRequest(() => apiClient.get('/events', authHeaders.value));
+  const { data } = await secureRequest(() =>
+    apiClient.get("/events", authHeaders.value),
+  );
   const normalized = Array.isArray(data)
     ? data.map((event) => normalizeEventResponse(event)).filter(Boolean)
     : [];
@@ -2826,12 +3875,16 @@ async function loadEvents() {
 }
 
 async function loadAdmins() {
-  const { data } = await secureRequest(() => apiClient.get('/admins', authHeaders.value));
+  const { data } = await secureRequest(() =>
+    apiClient.get("/admins", authHeaders.value),
+  );
   admins.value = data;
 }
 
 async function loadSponsors() {
-  const { data } = await secureRequest(() => apiClient.get('/admin/sponsors', authHeaders.value));
+  const { data } = await secureRequest(() =>
+    apiClient.get("/admin/sponsors", authHeaders.value),
+  );
   const normalized = Array.isArray(data)
     ? data
         .map((item) => normalizeSponsorResponse(item))
@@ -2848,8 +3901,8 @@ async function loadEventSelfies(eventId) {
     return;
   }
   isLoadingSelfies.value = true;
-  selfieLoadError.value = '';
-  selfieModerationMessage.value = '';
+  selfieLoadError.value = "";
+  selfieModerationMessage.value = "";
   try {
     const { data } = await secureRequest(() =>
       apiClient.get(`/admin/events/${eventId}/selfies`, authHeaders.value),
@@ -2862,7 +3915,8 @@ async function loadEventSelfies(eventId) {
     eventSelfies.value = normalized;
   } catch (error) {
     if (error?.response?.status !== 401) {
-      selfieLoadError.value = 'Impossibile caricare i selfie per questo evento.';
+      selfieLoadError.value =
+        "Impossibile caricare i selfie per questo evento.";
     }
     eventSelfies.value = [];
   } finally {
@@ -2902,20 +3956,20 @@ function isDownloadingHistoryReport(id) {
 
 function selfieStatusLabel(selfie) {
   if (!selfie) {
-    return '';
+    return "";
   }
   if (!selfie.approved) {
-    return 'In attesa di approvazione';
+    return "In attesa di approvazione";
   }
   if (selfie.show_on_screen) {
-    return 'Approvato per il maxischermo';
+    return "Approvato per il maxischermo";
   }
-  return 'Approvato';
+  return "Approvato";
 }
 
 function formatSelfieDate(value) {
   if (!value) {
-    return '';
+    return "";
   }
   try {
     return selfieDateFormatter.format(new Date(value));
@@ -2927,16 +3981,16 @@ function formatSelfieDate(value) {
 function formatSelfieFileSize(value) {
   const size = Number(value);
   if (!Number.isFinite(size) || size <= 0) {
-    return '';
+    return "";
   }
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const units = ["B", "KB", "MB", "GB", "TB"];
   let unitIndex = 0;
   let display = size;
   while (display >= 1024 && unitIndex < units.length - 1) {
     display /= 1024;
     unitIndex += 1;
   }
-  const formatter = new Intl.NumberFormat('it-IT', {
+  const formatter = new Intl.NumberFormat("it-IT", {
     minimumFractionDigits: display < 10 && unitIndex > 0 ? 1 : 0,
     maximumFractionDigits: 1,
   });
@@ -2962,21 +4016,26 @@ async function deleteSelfie(selfie) {
   if (!selfie?.id) {
     return;
   }
-  selfieLoadError.value = '';
-  selfieModerationMessage.value = '';
+  selfieLoadError.value = "";
+  selfieModerationMessage.value = "";
   setSelfieBusy(selfie.id, true);
   try {
     await secureRequest(() =>
       apiClient.delete(`/admin/selfies/${selfie.id}`, authHeaders.value),
     );
-    eventSelfies.value = eventSelfies.value.filter((item) => item.id !== selfie.id);
-    selfieModerationMessage.value = 'Selfie eliminato.';
+    eventSelfies.value = eventSelfies.value.filter(
+      (item) => item.id !== selfie.id,
+    );
+    selfieModerationMessage.value = "Selfie eliminato.";
   } catch (error) {
     if (error?.response?.status === 404) {
-      eventSelfies.value = eventSelfies.value.filter((item) => item.id !== selfie.id);
-      selfieLoadError.value = 'Il selfie selezionato non è più disponibile.';
+      eventSelfies.value = eventSelfies.value.filter(
+        (item) => item.id !== selfie.id,
+      );
+      selfieLoadError.value = "Il selfie selezionato non è più disponibile.";
     } else if (error?.response?.status !== 401) {
-      selfieLoadError.value = 'Impossibile eliminare il selfie. Riprova più tardi.';
+      selfieLoadError.value =
+        "Impossibile eliminare il selfie. Riprova più tardi.";
     }
   } finally {
     setSelfieBusy(selfie.id, false);
@@ -2984,7 +4043,7 @@ async function deleteSelfie(selfie) {
 }
 
 function parseHistoryDate(value) {
-  if (typeof value !== 'string' || !value.trim()) {
+  if (typeof value !== "string" || !value.trim()) {
     return null;
   }
   const parsed = new Date(value);
@@ -2994,13 +4053,13 @@ function parseHistoryDate(value) {
 function formatHistoryDate(value) {
   const parsed = parseHistoryDate(value);
   if (!parsed) {
-    return 'Data non disponibile';
+    return "Data non disponibile";
   }
   try {
     return historyDateFormatter.format(parsed);
   } catch (error) {
     try {
-      return parsed.toLocaleString('it-IT');
+      return parsed.toLocaleString("it-IT");
     } catch (innerError) {
       return parsed.toString();
     }
@@ -3009,15 +4068,18 @@ function formatHistoryDate(value) {
 
 function formatHistoryTime(date) {
   if (!(date instanceof Date) || Number.isNaN(date.valueOf())) {
-    return '';
+    return "";
   }
   try {
     return historyTimeFormatter.format(date);
   } catch (error) {
     try {
-      return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString("it-IT", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     } catch (innerError) {
-      return '';
+      return "";
     }
   }
 }
@@ -3026,36 +4088,37 @@ function buildHistoryTimelineChart(buckets, windowLabels = null) {
   if (!Array.isArray(buckets) || !buckets.length) {
     return {
       points: [],
-      startLabel: windowLabels?.start || '',
-      endLabel: windowLabels?.end || '',
+      startLabel: windowLabels?.start || "",
+      endLabel: windowLabels?.end || "",
     };
   }
 
   let cumulative = 0;
   const points = [];
-  let computedStart = '';
-  let computedEnd = '';
+  let computedStart = "";
+  let computedEnd = "";
 
   buckets.forEach((bucket) => {
     const votes = Number(bucket?.votes ?? 0) || 0;
     cumulative += votes;
 
-    const reference = bucket?.end || bucket?.start || '';
+    const reference = bucket?.end || bucket?.start || "";
     const date = reference ? parseHistoryDate(reference) : null;
     if (!date) {
       return;
     }
 
-    const label = bucket?.rangeLabel || bucket?.endLabel || bucket?.startLabel || '';
+    const label =
+      bucket?.rangeLabel || bucket?.endLabel || bucket?.startLabel || "";
     if (!computedStart) {
-      computedStart = bucket?.startLabel || label || '';
+      computedStart = bucket?.startLabel || label || "";
     }
     if (bucket?.endLabel || label) {
       computedEnd = bucket?.endLabel || label || computedEnd;
     }
 
-    const votesLabel = votes.toLocaleString('it-IT');
-    const cumulativeLabel = cumulative.toLocaleString('it-IT');
+    const votesLabel = votes.toLocaleString("it-IT");
+    const cumulativeLabel = cumulative.toLocaleString("it-IT");
     const tooltipParts = [];
     if (label) {
       tooltipParts.push(label);
@@ -3067,12 +4130,17 @@ function buildHistoryTimelineChart(buckets, windowLabels = null) {
       date,
       value: cumulative,
       label: label || formatHistoryTime(date),
-      tooltip: tooltipParts.join(' · '),
+      tooltip: tooltipParts.join(" · "),
     });
   });
 
-  const startLabel = windowLabels?.start || computedStart || buckets[0]?.rangeLabel || '';
-  const endLabel = windowLabels?.end || computedEnd || buckets[buckets.length - 1]?.rangeLabel || '';
+  const startLabel =
+    windowLabels?.start || computedStart || buckets[0]?.rangeLabel || "";
+  const endLabel =
+    windowLabels?.end ||
+    computedEnd ||
+    buckets[buckets.length - 1]?.rangeLabel ||
+    "";
 
   return {
     points,
@@ -3083,12 +4151,18 @@ function buildHistoryTimelineChart(buckets, windowLabels = null) {
 
 function normalizeHistoryEntry(item) {
   const id = Number(item?.id) || 0;
-  const homeTeam = typeof item?.home_team === 'string' ? item.home_team.trim() : '';
-  const awayTeam = typeof item?.away_team === 'string' ? item.away_team.trim() : '';
-  const rawTitle = typeof item?.title === 'string' ? item.title.trim() : '';
-  const fallbackTitle = [homeTeam, awayTeam].filter(Boolean).join(' - ') || (id ? `Evento #${id}` : 'Evento');
-  const startDatetime = typeof item?.start_datetime === 'string' ? item.start_datetime : '';
-  const location = typeof item?.location === 'string' ? item.location.trim() : '';
+  const homeTeam =
+    typeof item?.home_team === "string" ? item.home_team.trim() : "";
+  const awayTeam =
+    typeof item?.away_team === "string" ? item.away_team.trim() : "";
+  const rawTitle = typeof item?.title === "string" ? item.title.trim() : "";
+  const fallbackTitle =
+    [homeTeam, awayTeam].filter(Boolean).join(" - ") ||
+    (id ? `Evento #${id}` : "Evento");
+  const startDatetime =
+    typeof item?.start_datetime === "string" ? item.start_datetime : "";
+  const location =
+    typeof item?.location === "string" ? item.location.trim() : "";
   const totalVotes = Number(item?.total_votes ?? item?.totalVotes ?? 0) || 0;
 
   const sponsorClicks = Array.isArray(item?.sponsor_clicks)
@@ -3096,62 +4170,81 @@ function normalizeHistoryEntry(item) {
         .map((entry) => ({
           id: Number(entry?.sponsor_id) || 0,
           name:
-            typeof entry?.name === 'string' && entry.name.trim() ? entry.name.trim() : 'Sponsor',
-          link: typeof entry?.link_url === 'string' ? entry.link_url.trim() : '',
+            typeof entry?.name === "string" && entry.name.trim()
+              ? entry.name.trim()
+              : "Sponsor",
+          link:
+            typeof entry?.link_url === "string" ? entry.link_url.trim() : "",
           clicks: Number(entry?.clicks ?? 0) || 0,
         }))
         .sort((a, b) => {
           if (b.clicks !== a.clicks) {
             return b.clicks - a.clicks;
           }
-          return a.name.localeCompare(b.name, 'it');
+          return a.name.localeCompare(b.name, "it");
         })
     : [];
 
-  const sponsorClicksTotalRaw = Number(item?.sponsor_clicks_total ?? item?.sponsorClicksTotal ?? 0);
+  const sponsorClicksTotalRaw = Number(
+    item?.sponsor_clicks_total ?? item?.sponsorClicksTotal ?? 0,
+  );
   const sponsorClicksTotal = Number.isFinite(sponsorClicksTotalRaw)
     ? sponsorClicksTotalRaw
-    : sponsorClicks.reduce((sum, sponsor) => sum + (Number(sponsor.clicks) || 0), 0);
+    : sponsorClicks.reduce(
+        (sum, sponsor) => sum + (Number(sponsor.clicks) || 0),
+        0,
+      );
   const sponsorClicksTotalLabel = Number.isFinite(sponsorClicksTotal)
-    ? sponsorClicksTotal.toLocaleString('it-IT')
-    : '0';
+    ? sponsorClicksTotal.toLocaleString("it-IT")
+    : "0";
 
-  const sponsorAnalyticsRaw = item?.sponsor_analytics ?? item?.sponsorAnalytics ?? null;
-  const sponsorAnalyticsData = normalizeSponsorAnalyticsResponse(sponsorAnalyticsRaw);
+  const sponsorAnalyticsRaw =
+    item?.sponsor_analytics ?? item?.sponsorAnalytics ?? null;
+  const sponsorAnalyticsData =
+    normalizeSponsorAnalyticsResponse(sponsorAnalyticsRaw);
   const sponsorAnalyticsDisplay = {
     totalUsers: sponsorAnalyticsData.totalUsers,
-    totalUsersLabel: sponsorAnalyticsData.totalUsers.toLocaleString('it-IT'),
+    totalUsersLabel: sponsorAnalyticsData.totalUsers.toLocaleString("it-IT"),
     seenUsers: sponsorAnalyticsData.seenUsers,
-    seenUsersLabel: sponsorAnalyticsData.seenUsers.toLocaleString('it-IT'),
+    seenUsersLabel: sponsorAnalyticsData.seenUsers.toLocaleString("it-IT"),
     seenRateLabel: `${formatPercent(sponsorAnalyticsData.seenRate)}%`,
     watchedUsers: sponsorAnalyticsData.watchedUsers,
-    watchedUsersLabel: sponsorAnalyticsData.watchedUsers.toLocaleString('it-IT'),
-    averageWatchTimeLabel: formatWatchDuration(sponsorAnalyticsData.averageWatchTimeMs),
-    totalWatchTimeLabel: formatWatchDuration(sponsorAnalyticsData.totalWatchTimeMs),
+    watchedUsersLabel:
+      sponsorAnalyticsData.watchedUsers.toLocaleString("it-IT"),
+    averageWatchTimeLabel: formatWatchDuration(
+      sponsorAnalyticsData.averageWatchTimeMs,
+    ),
+    totalWatchTimeLabel: formatWatchDuration(
+      sponsorAnalyticsData.totalWatchTimeMs,
+    ),
     totalClicks: sponsorAnalyticsData.totalClicks,
-    totalClicksLabel: sponsorAnalyticsData.totalClicks.toLocaleString('it-IT'),
+    totalClicksLabel: sponsorAnalyticsData.totalClicks.toLocaleString("it-IT"),
     clickRateLabel: `${formatPercent(sponsorAnalyticsData.clickRate)}%`,
-    uniqueClickersLabel: sponsorAnalyticsData.uniqueClickers.toLocaleString('it-IT'),
-    topSponsorName: sponsorAnalyticsData.topSponsor?.name || 'Nessuno',
+    uniqueClickersLabel:
+      sponsorAnalyticsData.uniqueClickers.toLocaleString("it-IT"),
+    topSponsorName: sponsorAnalyticsData.topSponsor?.name || "Nessuno",
     topSponsorViewsLabel: sponsorAnalyticsData.topSponsor
-      ? sponsorAnalyticsData.topSponsor.views.toLocaleString('it-IT')
-      : '0',
+      ? sponsorAnalyticsData.topSponsor.views.toLocaleString("it-IT")
+      : "0",
   };
 
   const totalVisitors = Number(sponsorAnalyticsData.totalUsers) || 0;
   const uniqueVisitors = Number(sponsorAnalyticsData.seenUsers) || 0;
-  const totalVisitorsLabel = totalVisitors.toLocaleString('it-IT');
-  const uniqueVisitorsLabel = uniqueVisitors.toLocaleString('it-IT');
+  const totalVisitorsLabel = totalVisitors.toLocaleString("it-IT");
+  const uniqueVisitorsLabel = uniqueVisitors.toLocaleString("it-IT");
 
-  const sponsorAnalyticsTimelineRaw = Array.isArray(sponsorAnalyticsData.timeline)
+  const sponsorAnalyticsTimelineRaw = Array.isArray(
+    sponsorAnalyticsData.timeline,
+  )
     ? sponsorAnalyticsData.timeline
     : [];
   const sponsorAnalyticsTimeline = sponsorAnalyticsTimelineRaw.map((point) => {
-    const timestamp = typeof point?.timestamp === 'string' ? point.timestamp : '';
+    const timestamp =
+      typeof point?.timestamp === "string" ? point.timestamp : "";
     const seen = Number(point?.seen ?? 0) || 0;
     const watched = Number(point?.watched ?? 0) || 0;
     const clicks = Number(point?.clicks ?? 0) || 0;
-    let label = timestamp || '';
+    let label = timestamp || "";
     if (timestamp) {
       const parsed = new Date(timestamp);
       if (!Number.isNaN(parsed.valueOf())) {
@@ -3160,7 +4253,7 @@ function normalizeHistoryEntry(item) {
     }
     return {
       timestamp,
-      label: label || '—',
+      label: label || "—",
       seen,
       watched,
       clicks,
@@ -3171,24 +4264,28 @@ function normalizeHistoryEntry(item) {
     sponsorAnalyticsData.totalUsers ||
       sponsorAnalyticsData.totalClicks ||
       sponsorAnalyticsTimeline.length ||
-      (sponsorAnalyticsData.topSponsor && sponsorAnalyticsData.topSponsor.views),
+      (sponsorAnalyticsData.topSponsor &&
+        sponsorAnalyticsData.topSponsor.views),
   );
 
   const prizesRaw = Array.isArray(item?.prizes) ? item.prizes : [];
   const normalizedPrizes = prizesRaw
     .map((prize, index) => {
-      if (!prize || typeof prize !== 'object') {
+      if (!prize || typeof prize !== "object") {
         return null;
       }
       const id = Number(prize?.id ?? prize?.ID) || 0;
       const position = Number(prize?.position ?? prize?.Position) || index + 1;
       const rawName =
-        typeof (prize?.name ?? prize?.Name) === 'string' ? (prize?.name ?? prize?.Name).trim() : '';
+        typeof (prize?.name ?? prize?.Name) === "string"
+          ? (prize?.name ?? prize?.Name).trim()
+          : "";
       const name = rawName || `Premio ${position || index + 1}`;
       const winnerCodeRaw =
-        typeof (prize?.winner_ticket_code ?? prize?.winnerTicketCode) === 'string'
+        typeof (prize?.winner_ticket_code ?? prize?.winnerTicketCode) ===
+        "string"
           ? (prize?.winner_ticket_code ?? prize?.winnerTicketCode)
-          : '';
+          : "";
       const winnerTicketCode = winnerCodeRaw.trim().toUpperCase();
       return {
         id,
@@ -3214,21 +4311,24 @@ function normalizeHistoryEntry(item) {
   const timelineRaw = Array.isArray(item?.timeline) ? item.timeline : [];
   const timelineBuckets = timelineRaw
     .map((bucket) => {
-      const start = typeof bucket?.start === 'string' ? bucket.start : '';
-      const end = typeof bucket?.end === 'string' ? bucket.end : '';
+      const start = typeof bucket?.start === "string" ? bucket.start : "";
+      const end = typeof bucket?.end === "string" ? bucket.end : "";
       const votes = Number(bucket?.votes ?? 0) || 0;
-      const explicitLabel = typeof bucket?.label === 'string' ? bucket.label.trim() : '';
+      const explicitLabel =
+        typeof bucket?.label === "string" ? bucket.label.trim() : "";
       const startDate = start ? parseHistoryDate(start) : null;
       const endDate = end ? parseHistoryDate(end) : null;
       const startTimestamp = startDate ? startDate.getTime() : Number.NaN;
       const endTimestamp = endDate ? endDate.getTime() : Number.NaN;
-      const startLabel = startDate ? historyTimeFormatter.format(startDate) : '';
-      const endLabel = endDate ? historyTimeFormatter.format(endDate) : '';
+      const startLabel = startDate
+        ? historyTimeFormatter.format(startDate)
+        : "";
+      const endLabel = endDate ? historyTimeFormatter.format(endDate) : "";
       const rangeLabel = explicitLabel
         ? explicitLabel
         : startLabel && endLabel
-        ? `${startLabel} - ${endLabel}`
-        : startLabel || endLabel || '';
+          ? `${startLabel} - ${endLabel}`
+          : startLabel || endLabel || "";
       return {
         start,
         end,
@@ -3245,48 +4345,67 @@ function normalizeHistoryEntry(item) {
       const aTime = Number.isFinite(a.startTimestamp)
         ? a.startTimestamp
         : Number.isFinite(a.endTimestamp)
-        ? a.endTimestamp
-        : Number.POSITIVE_INFINITY;
+          ? a.endTimestamp
+          : Number.POSITIVE_INFINITY;
       const bTime = Number.isFinite(b.startTimestamp)
         ? b.startTimestamp
         : Number.isFinite(b.endTimestamp)
-        ? b.endTimestamp
-        : Number.POSITIVE_INFINITY;
+          ? b.endTimestamp
+          : Number.POSITIVE_INFINITY;
       if (aTime !== bTime) {
         return aTime - bTime;
       }
-      return a.rangeLabel.localeCompare(b.rangeLabel, 'it');
+      return a.rangeLabel.localeCompare(b.rangeLabel, "it");
     })
     .map((bucket) => ({
       start: bucket.start,
       end: bucket.end,
-      rangeLabel: bucket.rangeLabel || 'Intervallo',
+      rangeLabel: bucket.rangeLabel || "Intervallo",
       votes: bucket.votes,
-      votesLabel: Number.isFinite(bucket.votes) ? `${bucket.votes.toLocaleString('it-IT')} voti` : '0 voti',
+      votesLabel: Number.isFinite(bucket.votes)
+        ? `${bucket.votes.toLocaleString("it-IT")} voti`
+        : "0 voti",
       startLabel: bucket.startLabel,
       endLabel: bucket.endLabel,
     }));
 
-  const firstBucketWithStart = timelineBuckets.find((bucket) => bucket.startLabel);
-  const lastBucketWithEnd = [...timelineBuckets].reverse().find((bucket) => bucket.endLabel);
-  const timelineRangeStart = firstBucketWithStart?.startLabel || timelineBuckets[0]?.rangeLabel || '';
-  const timelineRangeEnd = lastBucketWithEnd?.endLabel || timelineBuckets[timelineBuckets.length - 1]?.rangeLabel || '';
-  const timelineRange = timelineRangeStart || timelineRangeEnd
-    ? {
-        start: timelineRangeStart || timelineRangeEnd,
-        end: timelineRangeEnd || timelineRangeStart,
-      }
-    : null;
+  const firstBucketWithStart = timelineBuckets.find(
+    (bucket) => bucket.startLabel,
+  );
+  const lastBucketWithEnd = [...timelineBuckets]
+    .reverse()
+    .find((bucket) => bucket.endLabel);
+  const timelineRangeStart =
+    firstBucketWithStart?.startLabel || timelineBuckets[0]?.rangeLabel || "";
+  const timelineRangeEnd =
+    lastBucketWithEnd?.endLabel ||
+    timelineBuckets[timelineBuckets.length - 1]?.rangeLabel ||
+    "";
+  const timelineRange =
+    timelineRangeStart || timelineRangeEnd
+      ? {
+          start: timelineRangeStart || timelineRangeEnd,
+          end: timelineRangeEnd || timelineRangeStart,
+        }
+      : null;
 
-  const timelineChart = buildHistoryTimelineChart(timelineBuckets, timelineRange);
+  const timelineChart = buildHistoryTimelineChart(
+    timelineBuckets,
+    timelineRange,
+  );
 
   const mvpRaw = item?.mvp;
   let mvp = null;
   if (mvpRaw && Number(mvpRaw?.votes ?? 0) > 0) {
-    const firstName = typeof mvpRaw?.first_name === 'string' ? mvpRaw.first_name.trim() : '';
-    const lastName = typeof mvpRaw?.last_name === 'string' ? mvpRaw.last_name.trim() : '';
-    const fallbackName = mvpRaw?.player_id ? `Giocatore ${mvpRaw.player_id}` : 'Giocatore';
-    const name = [firstName, lastName].filter(Boolean).join(' ') || fallbackName;
+    const firstName =
+      typeof mvpRaw?.first_name === "string" ? mvpRaw.first_name.trim() : "";
+    const lastName =
+      typeof mvpRaw?.last_name === "string" ? mvpRaw.last_name.trim() : "";
+    const fallbackName = mvpRaw?.player_id
+      ? `Giocatore ${mvpRaw.player_id}`
+      : "Giocatore";
+    const name =
+      [firstName, lastName].filter(Boolean).join(" ") || fallbackName;
     mvp = {
       id: Number(mvpRaw?.player_id) || 0,
       votes: Number(mvpRaw?.votes) || 0,
@@ -3294,7 +4413,13 @@ function normalizeHistoryEntry(item) {
     };
   }
 
-  const feedbackSummary = normalizeFeedbackSummary(item?.feedback_summary ?? item?.feedbackSummary);
+  const feedbackSurvey = normalizeFeedbackSurveyInput(
+    item?.feedback_survey ?? item?.feedbackSurvey,
+  );
+  const feedbackSummary = normalizeFeedbackSummary(
+    item?.feedback_summary ?? item?.feedbackSummary,
+    feedbackSurvey,
+  );
 
   return {
     id,
@@ -3306,7 +4431,9 @@ function normalizeHistoryEntry(item) {
     totalVisitorsLabel,
     uniqueVisitors,
     uniqueVisitorsLabel,
-    totalVotesLabel: Number.isFinite(totalVotes) ? totalVotes.toLocaleString('it-IT') : '0',
+    totalVotesLabel: Number.isFinite(totalVotes)
+      ? totalVotes.toLocaleString("it-IT")
+      : "0",
     sponsorClicks,
     sponsorClicksTotal,
     sponsorClicksTotalLabel,
@@ -3324,6 +4451,7 @@ function normalizeHistoryEntry(item) {
     hasPrizeDraw,
     isTimelineExpanded: false,
     feedbackSummary,
+    feedbackSurvey,
   };
 }
 
@@ -3331,17 +4459,17 @@ function buildHistoryReportFilename(entry) {
   const eventId = Number(entry?.id) || 0;
   const parsedDate = parseHistoryDate(entry?.startDatetime);
   const datePart = parsedDate
-    ? `${parsedDate.getFullYear()}${String(parsedDate.getMonth() + 1).padStart(2, '0')}${String(
+    ? `${parsedDate.getFullYear()}${String(parsedDate.getMonth() + 1).padStart(2, "0")}${String(
         parsedDate.getDate(),
-      ).padStart(2, '0')}`
-    : '';
-  const rawTitle = typeof entry?.title === 'string' ? entry.title : '';
+      ).padStart(2, "0")}`
+    : "";
+  const rawTitle = typeof entry?.title === "string" ? entry.title : "";
   const normalizedTitle = rawTitle
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   const parts = [];
   if (datePart) {
     parts.push(datePart);
@@ -3352,49 +4480,55 @@ function buildHistoryReportFilename(entry) {
   if (eventId) {
     parts.push(`evento-${eventId}`);
   } else {
-    parts.push('evento-storico');
+    parts.push("evento-storico");
   }
-  return `${parts.join('_')}.pdf`;
+  return `${parts.join("_")}.pdf`;
 }
 
 async function downloadEventHistoryReport(entry) {
-  if (!entry || typeof entry !== 'object' || !entry.id) {
+  if (!entry || typeof entry !== "object" || !entry.id) {
     return;
   }
 
   const eventId = entry.id;
   setHistoryReportBusy(eventId, true);
-  eventHistoryError.value = '';
+  eventHistoryError.value = "";
 
   try {
     await nextTick();
     const config = {
       ...authHeaders.value,
-      responseType: 'blob',
+      responseType: "blob",
     };
-    const response = await apiClient.get(`/admin/events/history/${eventId}/report`, config);
-    const blob = new Blob([response?.data], { type: 'application/pdf' });
-    const filename = buildHistoryReportFilename(entry) || `evento-${eventId}.pdf`;
+    const response = await apiClient.get(
+      `/admin/events/history/${eventId}/report`,
+      config,
+    );
+    const blob = new Blob([response?.data], { type: "application/pdf" });
+    const filename =
+      buildHistoryReportFilename(entry) || `evento-${eventId}.pdf`;
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    const safeTitle = typeof entry.title === 'string' ? entry.title : `Evento #${entry.id}`;
+    const safeTitle =
+      typeof entry.title === "string" ? entry.title : `Evento #${entry.id}`;
     eventHistorySuccess.value = `Report per "${safeTitle}" scaricato correttamente.`;
   } catch (error) {
     if (error?.response?.status === 401) {
       handleUnauthorized();
     } else if (error?.response?.status === 404) {
-      eventHistoryError.value = 'Il report richiesto non è disponibile.';
+      eventHistoryError.value = "Il report richiesto non è disponibile.";
     } else {
-      console.error('history report download error', error);
-      eventHistoryError.value = 'Impossibile generare il report PDF. Riprova più tardi.';
+      console.error("history report download error", error);
+      eventHistoryError.value =
+        "Impossibile generare il report PDF. Riprova più tardi.";
     }
-    eventHistorySuccess.value = '';
+    eventHistorySuccess.value = "";
   } finally {
     setHistoryReportBusy(eventId, false);
   }
@@ -3413,14 +4547,19 @@ async function loadEventHistory({ force = false } = {}) {
   }
 
   isLoadingEventHistory.value = true;
-  eventHistoryError.value = '';
+  eventHistoryError.value = "";
   if (force) {
-    eventHistorySuccess.value = '';
+    eventHistorySuccess.value = "";
   }
 
   try {
-    const { data } = await apiClient.get('/admin/events/history', authHeaders.value);
-    const normalized = Array.isArray(data) ? data.map((entry) => normalizeHistoryEntry(entry)) : [];
+    const { data } = await apiClient.get(
+      "/admin/events/history",
+      authHeaders.value,
+    );
+    const normalized = Array.isArray(data)
+      ? data.map((entry) => normalizeHistoryEntry(entry))
+      : [];
     eventHistory.value = normalized;
     hasLoadedEventHistory.value = true;
   } catch (error) {
@@ -3428,8 +4567,9 @@ async function loadEventHistory({ force = false } = {}) {
     if (status === 401) {
       handleUnauthorized();
     } else {
-      eventHistorySuccess.value = '';
-      eventHistoryError.value = 'Impossibile caricare lo storico eventi. Riprova più tardi.';
+      eventHistorySuccess.value = "";
+      eventHistoryError.value =
+        "Impossibile caricare lo storico eventi. Riprova più tardi.";
     }
   } finally {
     isLoadingEventHistory.value = false;
@@ -3437,7 +4577,7 @@ async function loadEventHistory({ force = false } = {}) {
 }
 
 function toggleHistoryTimeline(entry) {
-  if (!entry || typeof entry !== 'object') {
+  if (!entry || typeof entry !== "object") {
     return;
   }
   entry.isTimelineExpanded = !entry.isTimelineExpanded;
@@ -3450,16 +4590,16 @@ async function refreshEventHistory() {
 function openPurgeDialog(entry) {
   purgeDialog.visible = true;
   purgeDialog.event = entry;
-  purgeDialog.password = '';
-  purgeDialog.error = '';
+  purgeDialog.password = "";
+  purgeDialog.error = "";
   purgeDialog.isSubmitting = false;
 }
 
 function closePurgeDialog() {
   purgeDialog.visible = false;
   purgeDialog.event = null;
-  purgeDialog.password = '';
-  purgeDialog.error = '';
+  purgeDialog.password = "";
+  purgeDialog.error = "";
   purgeDialog.isSubmitting = false;
 }
 
@@ -3468,7 +4608,7 @@ async function confirmPurge() {
     return;
   }
   purgeDialog.isSubmitting = true;
-  purgeDialog.error = '';
+  purgeDialog.error = "";
 
   try {
     await apiClient.post(
@@ -3488,12 +4628,14 @@ async function confirmPurge() {
       return;
     }
     if (status === 403) {
-      purgeDialog.error = 'Password non valida o privilegi insufficienti.';
+      purgeDialog.error = "Password non valida o privilegi insufficienti.";
     } else if (status === 404) {
-      purgeDialog.error = 'Evento già rimosso.';
-      eventHistory.value = eventHistory.value.filter((entry) => entry.id !== purgeDialog.event.id);
+      purgeDialog.error = "Evento già rimosso.";
+      eventHistory.value = eventHistory.value.filter(
+        (entry) => entry.id !== purgeDialog.event.id,
+      );
     } else {
-      purgeDialog.error = 'Impossibile eliminare l\'evento. Riprova.';
+      purgeDialog.error = "Impossibile eliminare l'evento. Riprova.";
     }
   } finally {
     purgeDialog.isSubmitting = false;
@@ -3510,11 +4652,11 @@ async function loadAll() {
     await Promise.all([loadAdmins(), loadSponsors()]);
   }
   ensureSelfieSelection();
-  if (section.value === 'selfies' && selectedSelfieEventId.value) {
+  if (section.value === "selfies" && selectedSelfieEventId.value) {
     await loadEventSelfies(selectedSelfieEventId.value);
   }
   hasLoadedEventHistory.value = false;
-  if (section.value === 'history') {
+  if (section.value === "history") {
     await loadEventHistory({ force: true });
   }
   resetForms();
@@ -3524,41 +4666,45 @@ async function createTeam() {
   if (!newTeamName.value) {
     return;
   }
-  globalError.value = '';
-  await secureRequest(() => apiClient.post('/teams', { name: newTeamName.value }, authHeaders.value));
-  newTeamName.value = '';
+  globalError.value = "";
+  await secureRequest(() =>
+    apiClient.post("/teams", { name: newTeamName.value }, authHeaders.value),
+  );
+  newTeamName.value = "";
   await loadTeams();
 }
 
 async function deleteTeam(id) {
-  globalError.value = '';
-  await secureRequest(() => apiClient.delete(`/teams/${id}`, authHeaders.value));
+  globalError.value = "";
+  await secureRequest(() =>
+    apiClient.delete(`/teams/${id}`, authHeaders.value),
+  );
   await loadTeams();
 }
 
 async function createEvent() {
-  globalError.value = '';
+  globalError.value = "";
   if (!hasEnoughTeams.value) {
-    globalError.value = 'Aggiungi almeno due squadre per creare un evento.';
+    globalError.value = "Aggiungi almeno due squadre per creare un evento.";
     return;
   }
   if (!newEvent.team1_id || !newEvent.team2_id) {
-    globalError.value = 'Seleziona entrambe le squadre.';
+    globalError.value = "Seleziona entrambe le squadre.";
     return;
   }
   if (newEvent.team1_id === newEvent.team2_id) {
-    globalError.value = 'Le due squadre devono essere diverse.';
+    globalError.value = "Le due squadre devono essere diverse.";
     return;
   }
   if (!newEvent.start_datetime) {
-    globalError.value = 'Imposta data e ora della partita.';
+    globalError.value = "Imposta data e ora della partita.";
     return;
   }
 
   const prizesPayload = newEventPrizes.value
     .map((prize, index) => ({
       id: Number(prize.id) || 0,
-      name: (prize.name || '').trim(),
+      name: (prize.name || "").trim(),
       position: index + 1,
     }))
     .filter((prize) => prize.name);
@@ -3574,23 +4720,29 @@ async function createEvent() {
     show_selfie: Boolean(newEvent.show_selfie),
     show_vote_trend: Boolean(newEvent.show_vote_trend),
     show_feedback_survey: Boolean(newEvent.show_feedback_survey),
+    feedback_survey: toApiSurveyPayload(newEventSurvey),
     prizes: prizesPayload,
   };
 
-  const { data } = await secureRequest(() => apiClient.post('/events', payload, authHeaders.value));
+  const { data } = await secureRequest(() =>
+    apiClient.post("/events", payload, authHeaders.value),
+  );
   await loadEvents();
   if (data?.id) {
     lastCreatedEventLink.value = buildEventLink(data.id);
   }
   Object.assign(newEvent, createDefaultNewEventState());
-  teamInputs.home = '';
-  teamInputs.away = '';
+  assignSurveyDraft(newEventSurvey, null);
+  teamInputs.home = "";
+  teamInputs.away = "";
   resetNewEventPrizes();
 }
 
 async function deleteEvent(id) {
-  globalError.value = '';
-  await secureRequest(() => apiClient.delete(`/events/${id}`, authHeaders.value));
+  globalError.value = "";
+  await secureRequest(() =>
+    apiClient.delete(`/events/${id}`, authHeaders.value),
+  );
   await loadEvents();
 }
 
@@ -3598,11 +4750,13 @@ async function activateEvent(id) {
   if (updatingEventId.value === id) {
     return;
   }
-  globalError.value = '';
-  closeVotesMessage.value = '';
+  globalError.value = "";
+  closeVotesMessage.value = "";
   updatingEventId.value = id;
   try {
-    await secureRequest(() => apiClient.post(`/events/${id}/activate`, {}, authHeaders.value));
+    await secureRequest(() =>
+      apiClient.post(`/events/${id}/activate`, {}, authHeaders.value),
+    );
     await loadEvents();
   } finally {
     updatingEventId.value = 0;
@@ -3613,11 +4767,13 @@ async function deactivateEvents() {
   if (isDisablingEvents.value) {
     return;
   }
-  globalError.value = '';
-  closeVotesMessage.value = '';
+  globalError.value = "";
+  closeVotesMessage.value = "";
   isDisablingEvents.value = true;
   try {
-    await secureRequest(() => apiClient.post('/events/deactivate', {}, authHeaders.value));
+    await secureRequest(() =>
+      apiClient.post("/events/deactivate", {}, authHeaders.value),
+    );
     await loadEvents();
   } finally {
     isDisablingEvents.value = false;
@@ -3628,19 +4784,21 @@ async function concludeEvent(id) {
   if (concludingEventId.value === id) {
     return;
   }
-  globalError.value = '';
-  closeVotesMessage.value = '';
+  globalError.value = "";
+  closeVotesMessage.value = "";
   const eventInfo = events.value.find((event) => event.id === id);
-  const concludedLabel = eventInfo ? eventLabel(eventInfo) : '';
+  const concludedLabel = eventInfo ? eventLabel(eventInfo) : "";
   concludingEventId.value = id;
   try {
-    await secureRequest(() => apiClient.post(`/events/${id}/conclude`, {}, authHeaders.value));
+    await secureRequest(() =>
+      apiClient.post(`/events/${id}/conclude`, {}, authHeaders.value),
+    );
     await loadEvents();
     await loadEventHistory({ force: true });
     if (!eventHistoryError.value) {
       eventHistorySuccess.value = concludedLabel
         ? `Evento "${concludedLabel}" spostato nello storico.`
-        : 'Evento spostato nello storico.';
+        : "Evento spostato nello storico.";
     }
   } catch (error) {
     const status = error?.response?.status;
@@ -3648,7 +4806,7 @@ async function concludeEvent(id) {
       return;
     }
     if (status === 404) {
-      globalError.value = 'Evento non trovato o già rimosso.';
+      globalError.value = "Evento non trovato o già rimosso.";
     } else if (status === 409) {
       globalError.value = "L'evento è già stato segnato come concluso.";
     }
@@ -3659,22 +4817,32 @@ async function concludeEvent(id) {
 }
 
 async function closeActiveEventVoting() {
-  if (!activeEventId.value || isClosingVotes.value || activeEventVotesClosed.value) {
+  if (
+    !activeEventId.value ||
+    isClosingVotes.value ||
+    activeEventVotesClosed.value
+  ) {
     return;
   }
-  closeVotesMessage.value = '';
-  globalError.value = '';
+  closeVotesMessage.value = "";
+  globalError.value = "";
   isClosingVotes.value = true;
   try {
     await secureRequest(() =>
-      apiClient.post(`/events/${activeEventId.value}/close-votes`, {}, authHeaders.value),
+      apiClient.post(
+        `/events/${activeEventId.value}/close-votes`,
+        {},
+        authHeaders.value,
+      ),
     );
     await loadEvents();
-    closeVotesMessage.value = 'Le votazioni per l\'evento attivo sono state chiuse.';
+    closeVotesMessage.value =
+      "Le votazioni per l'evento attivo sono state chiuse.";
   } catch (error) {
-    closeVotesMessage.value = '';
+    closeVotesMessage.value = "";
     if (error?.response?.status === 404) {
-      globalError.value = 'Impossibile chiudere le votazioni: nessun evento attivo trovato.';
+      globalError.value =
+        "Impossibile chiudere le votazioni: nessun evento attivo trovato.";
     }
   } finally {
     isClosingVotes.value = false;
@@ -3682,15 +4850,19 @@ async function closeActiveEventVoting() {
 }
 
 async function createAdmin() {
-  globalError.value = '';
-  await secureRequest(() => apiClient.post('/admins', newAdmin, authHeaders.value));
-  Object.assign(newAdmin, { username: '', password: '', role: '' });
+  globalError.value = "";
+  await secureRequest(() =>
+    apiClient.post("/admins", newAdmin, authHeaders.value),
+  );
+  Object.assign(newAdmin, { username: "", password: "", role: "" });
   await loadAdmins();
 }
 
 async function deleteAdmin(id) {
-  globalError.value = '';
-  await secureRequest(() => apiClient.delete(`/admins/${id}`, authHeaders.value));
+  globalError.value = "";
+  await secureRequest(() =>
+    apiClient.delete(`/admins/${id}`, authHeaders.value),
+  );
   await loadAdmins();
 }
 
@@ -3698,14 +4870,14 @@ async function createSponsor() {
   if (isCreatingSponsor.value) {
     return;
   }
-  globalError.value = '';
+  globalError.value = "";
   if (sponsors.value.length >= maxSponsors) {
     globalError.value = `Puoi configurare al massimo ${maxSponsors} sponsor.`;
     return;
   }
   const trimmedName = newSponsor.name.trim();
   if (!newSponsor.logoData) {
-    globalError.value = 'Carica un logo per lo sponsor.';
+    globalError.value = "Carica un logo per lo sponsor.";
     return;
   }
   const payload = serializeSponsorPayload({
@@ -3717,12 +4889,15 @@ async function createSponsor() {
   });
   isCreatingSponsor.value = true;
   try {
-    await secureRequest(() => apiClient.post('/admin/sponsors', payload, authHeaders.value));
+    await secureRequest(() =>
+      apiClient.post("/admin/sponsors", payload, authHeaders.value),
+    );
     resetNewSponsorForm();
     await loadSponsors();
   } catch (error) {
     if (error?.response?.status === 400) {
-      globalError.value = 'Controlla i dati inseriti: sono disponibili massimo 4 sponsor.';
+      globalError.value =
+        "Controlla i dati inseriti: sono disponibili massimo 4 sponsor.";
     }
   } finally {
     isCreatingSponsor.value = false;
@@ -3733,10 +4908,10 @@ async function updateSponsorEntry(sponsor) {
   if (sponsorBeingUpdated.value === sponsor.id) {
     return;
   }
-  globalError.value = '';
+  globalError.value = "";
   const trimmedName = sponsor.name.trim();
   if (!sponsor.logoData) {
-    globalError.value = 'Carica un logo per lo sponsor.';
+    globalError.value = "Carica un logo per lo sponsor.";
     return;
   }
   sponsorBeingUpdated.value = sponsor.id;
@@ -3748,13 +4923,19 @@ async function updateSponsorEntry(sponsor) {
       position: sponsor.position,
       isActive: sponsor.isActive,
     });
-    await secureRequest(() => apiClient.put(`/admin/sponsors/${sponsor.id}`, payload, authHeaders.value));
+    await secureRequest(() =>
+      apiClient.put(
+        `/admin/sponsors/${sponsor.id}`,
+        payload,
+        authHeaders.value,
+      ),
+    );
     await loadSponsors();
   } catch (error) {
     if (error?.response?.status === 400) {
-      globalError.value = 'Controlla i dati dello sponsor e riprova.';
+      globalError.value = "Controlla i dati dello sponsor e riprova.";
     } else if (error?.response?.status === 404) {
-      globalError.value = 'Sponsor non trovato. Aggiorna la pagina.';
+      globalError.value = "Sponsor non trovato. Aggiorna la pagina.";
     }
   } finally {
     sponsorBeingUpdated.value = 0;
@@ -3765,14 +4946,16 @@ async function deleteSponsorEntry(id) {
   if (sponsorBeingDeleted.value === id) {
     return;
   }
-  globalError.value = '';
+  globalError.value = "";
   sponsorBeingDeleted.value = id;
   try {
-    await secureRequest(() => apiClient.delete(`/admin/sponsors/${id}`, authHeaders.value));
+    await secureRequest(() =>
+      apiClient.delete(`/admin/sponsors/${id}`, authHeaders.value),
+    );
     await loadSponsors();
   } catch (error) {
     if (error?.response?.status === 404) {
-      globalError.value = 'Sponsor già rimosso.';
+      globalError.value = "Sponsor già rimosso.";
     }
   } finally {
     sponsorBeingDeleted.value = 0;
@@ -3787,8 +4970,11 @@ async function applyActiveSponsorCount() {
     desiredActiveSponsorCount.value = 0;
     return;
   }
-  globalError.value = '';
-  const target = Math.max(0, Math.min(maxSponsors, desiredActiveSponsorCount.value));
+  globalError.value = "";
+  const target = Math.max(
+    0,
+    Math.min(maxSponsors, desiredActiveSponsorCount.value),
+  );
   isApplyingSponsorCount.value = true;
   try {
     const updates = [];
@@ -3804,7 +4990,11 @@ async function applyActiveSponsorCount() {
         });
         updates.push(
           secureRequest(() =>
-            apiClient.put(`/admin/sponsors/${sponsor.id}`, payload, authHeaders.value),
+            apiClient.put(
+              `/admin/sponsors/${sponsor.id}`,
+              payload,
+              authHeaders.value,
+            ),
           ),
         );
       }
@@ -3815,7 +5005,8 @@ async function applyActiveSponsorCount() {
     await loadSponsors();
   } catch (error) {
     if (error?.response?.status === 400) {
-      globalError.value = 'Impossibile aggiornare il numero di sponsor visibili. Verifica i dati e riprova.';
+      globalError.value =
+        "Impossibile aggiornare il numero di sponsor visibili. Verifica i dati e riprova.";
     }
   } finally {
     isApplyingSponsorCount.value = false;
@@ -3824,15 +5015,15 @@ async function applyActiveSponsorCount() {
 
 function openVote(eventId) {
   const url = buildEventLink(eventId);
-  window.open(url, '_blank', 'noopener');
+  window.open(url, "_blank", "noopener");
 }
 
 async function copyLink(link) {
   try {
     await navigator.clipboard.writeText(link);
-    globalError.value = '';
+    globalError.value = "";
   } catch (error) {
-    globalError.value = 'Impossibile copiare il link automaticamente.';
+    globalError.value = "Impossibile copiare il link automaticamente.";
   }
 }
 
@@ -3841,7 +5032,7 @@ function updateToolbarOffset() {
     return;
   }
   const height = toolbarRef.value?.offsetHeight ?? 0;
-  portalRef.value.style.setProperty('--toolbar-height', `${height}px`);
+  portalRef.value.style.setProperty("--toolbar-height", `${height}px`);
 }
 
 function ensureSectionIsAllowed(tabList) {
@@ -3849,12 +5040,12 @@ function ensureSectionIsAllowed(tabList) {
     return;
   }
   if (!tabList.some((tab) => tab.id === section.value)) {
-    section.value = tabList.length ? tabList[0].id : '';
+    section.value = tabList.length ? tabList[0].id : "";
   }
 }
 
 onMounted(() => {
-  window.addEventListener('resize', updateToolbarOffset, { passive: true });
+  window.addEventListener("resize", updateToolbarOffset, { passive: true });
   nextTick(updateToolbarOffset);
 });
 
@@ -3872,30 +5063,30 @@ watch(
 );
 
 watch(section, (value, oldValue) => {
-  if (value === 'results') {
+  if (value === "results") {
     ensureResultsSelection();
     fetchEventResults({ showLoader: true });
     startResultsPolling();
-  } else if (oldValue === 'results') {
+  } else if (oldValue === "results") {
     stopResultsPolling();
   }
-  if (value === 'selfies') {
+  if (value === "selfies") {
     ensureSelfieSelection();
     if (selectedSelfieEventId.value) {
       loadEventSelfies(selectedSelfieEventId.value);
     }
-  } else if (oldValue === 'selfies') {
-    selfieModerationMessage.value = '';
-    selfieLoadError.value = '';
+  } else if (oldValue === "selfies") {
+    selfieModerationMessage.value = "";
+    selfieLoadError.value = "";
   }
-  if (value === 'history') {
+  if (value === "history") {
     loadEventHistory();
   }
   nextTick(updateToolbarOffset);
 });
 
 watch(selectedResultsEventId, (eventId) => {
-  if (section.value === 'results' && eventId) {
+  if (section.value === "results" && eventId) {
     fetchEventResults({ showLoader: true });
     startResultsPolling();
   } else if (!eventId) {
@@ -3904,11 +5095,11 @@ watch(selectedResultsEventId, (eventId) => {
 });
 
 watch(selectedSelfieEventId, (eventId) => {
-  if (section.value !== 'selfies') {
+  if (section.value !== "selfies") {
     return;
   }
-  selfieModerationMessage.value = '';
-  selfieLoadError.value = '';
+  selfieModerationMessage.value = "";
+  selfieLoadError.value = "";
   if (eventId) {
     loadEventSelfies(eventId);
   } else {
@@ -3921,7 +5112,7 @@ if (isAuthenticated.value) {
 }
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateToolbarOffset);
+  window.removeEventListener("resize", updateToolbarOffset);
   stopResultsPolling();
 });
 </script>
@@ -4122,7 +5313,7 @@ onBeforeUnmount(() => {
   color: #0f172a;
 }
 
-.postvote-toggle input[type='checkbox'] {
+.postvote-toggle input[type="checkbox"] {
   width: 1.25rem;
   height: 1.25rem;
   accent-color: #2563eb;
@@ -4134,11 +5325,11 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.postvote-toggle input[type='checkbox']:disabled {
+.postvote-toggle input[type="checkbox"]:disabled {
   cursor: not-allowed;
 }
 
-.postvote-toggle input[type='checkbox']:disabled + .postvote-toggle__label {
+.postvote-toggle input[type="checkbox"]:disabled + .postvote-toggle__label {
   opacity: 0.55;
 }
 
@@ -4255,8 +5446,101 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
 }
 
+.feedback-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.feedback-editor__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.feedback-editor__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.feedback-editor__question {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.feedback-editor__question-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.feedback-editor__answers {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.feedback-editor__answer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.feedback-editor__answer-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.feedback-editor__answer-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.feedback-editor__answer-code {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.75rem;
+  color: #1e293b;
+}
+
+.feedback-editor__suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.feedback-editor__suggestion textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.feedback-editor.existing-feedback {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.5);
+}
+
 input,
-select {
+select,
+textarea {
   border-radius: 0.75rem;
   border: 1px solid #cbd5f5;
   padding: 0.65rem 0.85rem;
@@ -4271,7 +5555,8 @@ select {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: #6366f1;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
@@ -4287,7 +5572,9 @@ select:focus {
   padding: 0.6rem 1.4rem;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .btn.primary {
@@ -4357,8 +5644,12 @@ select:focus {
   border: 1px solid rgba(148, 163, 184, 0.45);
   background: rgba(15, 23, 42, 0.75);
   color: #f8fafc;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease,
-    box-shadow 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 .section-nav__button:not(.active):hover,
@@ -4987,7 +6278,7 @@ select:focus {
   color: #1e293b;
 }
 
-.sponsor-range input[type='range'] {
+.sponsor-range input[type="range"] {
   accent-color: #2563eb;
 }
 
@@ -5151,7 +6442,11 @@ select:focus {
   align-items: center;
   padding: 0.85rem 1rem;
   border-radius: 1rem;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 64, 175, 0.9));
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.85),
+    rgba(30, 64, 175, 0.9)
+  );
   color: #f8fafc;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.3);
 }
@@ -5210,7 +6505,11 @@ select:focus {
   margin-top: 1.5rem;
   padding: 1.5rem;
   border-radius: 1.5rem;
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 64, 175, 0.75));
+  background: linear-gradient(
+    145deg,
+    rgba(15, 23, 42, 0.9),
+    rgba(30, 64, 175, 0.75)
+  );
   border: 1px solid rgba(148, 163, 184, 0.25);
   color: #e2e8f0;
   box-shadow: 0 18px 36px rgba(15, 23, 42, 0.35);
