@@ -939,17 +939,29 @@ const resolveEventFlag = (event, keys, fallback = true) => {
 
 const preVoteSettings = computed(() => {
   const event = props.activeEvent || null;
+  const showCourtSponsors = resolveEventFlag(
+    event,
+    [
+      "show_pre_vote_sponsors",
+      "showPreVoteSponsors",
+      "show_sponsors",
+      "showSponsors",
+    ],
+    true,
+  );
+  const showBottomSponsors = resolveEventFlag(
+    event,
+    [
+      "show_pre_vote_bottom_sponsors",
+      "showPreVoteBottomSponsors",
+      "show_pre_vote_sponsor_wall",
+    ],
+    showCourtSponsors,
+  );
   return {
-    showSponsors: resolveEventFlag(
-      event,
-      [
-        "show_pre_vote_sponsors",
-        "showPreVoteSponsors",
-        "show_sponsors",
-        "showSponsors",
-      ],
-      true,
-    ),
+    showSponsors: showCourtSponsors || showBottomSponsors,
+    showCourtSponsors,
+    showBottomSponsors,
     showVoteCounter: resolveEventFlag(
       event,
       ["show_vote_counter", "showVoteCounter", "show_pre_vote_vote_counter"],
@@ -981,11 +993,11 @@ const postVoteSettings = computed(() => {
 });
 
 const visibleCourtSponsors = computed(() =>
-  preVoteSettings.value.showSponsors ? courtSponsors.value : [],
+  preVoteSettings.value.showCourtSponsors ? courtSponsors.value : [],
 );
 
 const showSponsorSection = computed(
-  () => preVoteSettings.value.showSponsors && sponsors.value.length > 0,
+  () => preVoteSettings.value.showBottomSponsors && sponsors.value.length > 0,
 );
 
 const showVoteCounterSection = computed(
@@ -1214,7 +1226,7 @@ watch(currentEventId, (eventId) => {
 watch(
   sponsors,
   (list) => {
-    if (!list.length || !preVoteSettings.value.showSponsors) {
+    if (!list.length || !preVoteSettings.value.showBottomSponsors) {
       resetSponsorVisibility();
       stopSponsorVisibilityInterval();
       teardownSponsorObserver();
@@ -1282,6 +1294,25 @@ watch(
     }
     if (currentEventId.value) {
       ensureSponsorSession(currentEventId.value);
+      nextTick(() => {
+        if (showSponsorSection.value) {
+          setupSponsorObserver();
+        }
+      });
+    }
+  },
+);
+
+watch(
+  () => preVoteSettings.value.showBottomSponsors,
+  (enabled) => {
+    if (!enabled) {
+      resetSponsorVisibility();
+      stopSponsorVisibilityInterval();
+      teardownSponsorObserver();
+      return;
+    }
+    if (currentEventId.value) {
       nextTick(() => {
         if (showSponsorSection.value) {
           setupSponsorObserver();
