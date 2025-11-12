@@ -5,6 +5,15 @@
         <span class="validation-icon">{{ leadingEmoji }}</span>
         <h1 class="validation-title">{{ titleMessage }}</h1>
       </div>
+      <div v-if="status === 'success'" class="ticket-summary">
+        <div v-if="formattedTicketCode" class="ticket-code-block">
+          <span class="ticket-label">Codice biglietto</span>
+          <span class="ticket-code-value">{{ formattedTicketCode }}</span>
+        </div>
+        <p class="ticket-prize" :class="prizeInfo ? 'is-winner' : 'is-loser'">
+          {{ prizeStatusMessage }}
+        </p>
+      </div>
       <p v-if="detailMessage" class="validation-detail">{{ detailMessage }}</p>
       <p v-if="secondaryDetail" class="validation-secondary">{{ secondaryDetail }}</p>
       <button v-if="showRetry" class="retry-button" type="button" @click="validate()">
@@ -23,6 +32,8 @@ const message = ref('Verifica del ticket in corso…');
 const detailMessage = ref('');
 const secondaryDetail = ref('');
 const alreadyRedeemed = ref(false);
+const ticketCode = ref('');
+const prizeInfo = ref(null);
 const currentSearch = ref(typeof window !== 'undefined' ? window.location.search : '');
 
 const showRetry = computed(() => status.value === 'error');
@@ -124,6 +135,8 @@ async function validate() {
   detailMessage.value = '';
   secondaryDetail.value = '';
   alreadyRedeemed.value = false;
+  ticketCode.value = '';
+  prizeInfo.value = null;
 
   const { eventId, code, signature } = parseTicketParams(currentSearch.value);
   if (!eventId || !code || !signature) {
@@ -137,7 +150,21 @@ async function validate() {
   const response = await validateTicketStatus({ eventId, code, signature });
   if (response.ok) {
     status.value = 'success';
-    detailMessage.value = 'Il ticket è valido e può essere utilizzato per il ritiro del premio.';
+    ticketCode.value = (response.data?.code || code || '').trim();
+    const assignedPrize = response.data?.prize || null;
+    prizeInfo.value = assignedPrize;
+
+    if (assignedPrize) {
+      const prizeName = assignedPrize.name?.trim();
+      const prizePosition = assignedPrize.position;
+      const positionLabel = Number.isFinite(prizePosition) && prizePosition > 0 ? ` (Premio n°${prizePosition})` : '';
+      detailMessage.value = prizeName
+        ? `Il ticket è valido! Ha vinto "${prizeName}"${positionLabel}.`
+        : 'Il ticket è valido! Questo codice risulta vincente.';
+      secondaryDetail.value = 'Mostra questo ticket allo staff per il ritiro del premio.';
+    } else {
+      detailMessage.value = 'Il ticket è valido ma non risulta tra i biglietti vincenti.';
+    }
     if (response.data?.already_redeemed) {
       alreadyRedeemed.value = true;
       secondaryDetail.value = 'Attenzione: questo ticket risulta già riscattato.';
@@ -171,6 +198,24 @@ onBeforeUnmount(() => {
 watch(currentSearch, () => {
   validate();
 });
+
+const formattedTicketCode = computed(() => (ticketCode.value || '').toUpperCase());
+
+const prizeStatusMessage = computed(() => {
+  if (status.value !== 'success') {
+    return '';
+  }
+  if (prizeInfo.value) {
+    const name = prizeInfo.value.name?.trim();
+    const position = prizeInfo.value.position;
+    const positionLabel = Number.isFinite(position) && position > 0 ? ` (Premio n°${position})` : '';
+    if (name) {
+      return `Questo ticket ha vinto${positionLabel}: "${name}".`;
+    }
+    return 'Questo ticket risulta vincente!';
+  }
+  return 'Questo ticket è valido ma non risulta vincente.';
+});
 </script>
 
 <style scoped>
@@ -196,6 +241,61 @@ watch(currentSearch, () => {
   box-shadow: 0 30px 60px rgba(2, 6, 23, 0.45), inset 0 0 0 1px rgba(148, 163, 184, 0.2);
   backdrop-filter: blur(18px);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.ticket-summary {
+  margin-bottom: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.ticket-code-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ticket-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.ticket-code-value {
+  font-family: 'Fira Code', 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: 1.35rem;
+  letter-spacing: 0.08em;
+  color: #38bdf8;
+  background: rgba(148, 163, 184, 0.12);
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+}
+
+.ticket-prize {
+  font-size: 1rem;
+  font-weight: 500;
+  text-align: center;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  width: 100%;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.ticket-prize.is-winner {
+  background: rgba(34, 197, 94, 0.18);
+  color: #bbf7d0;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.45);
+}
+
+.ticket-prize.is-loser {
+  background: rgba(148, 163, 184, 0.18);
+  color: rgba(226, 232, 240, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.35);
 }
 
 .validation-card.is-loading {
