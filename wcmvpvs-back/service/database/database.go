@@ -2546,17 +2546,30 @@ ORDER BY bucket ASC
 
 func (db *appdbimpl) GetSponsorClickStats(eventID int) ([]SponsorClickStat, error) {
 	rows, err := db.c.Query(`
+WITH relevant_sponsors AS (
+        SELECT DISTINCT sponsor_id
+        FROM sponsor_clicks
+        WHERE event_id = ?
+        UNION
+        SELECT DISTINCT sponsor_id
+        FROM sponsor_exposures
+        WHERE event_id = ?
+), click_totals AS (
+        SELECT sponsor_id, COUNT(id) AS clicks
+        FROM sponsor_clicks
+        WHERE event_id = ?
+        GROUP BY sponsor_id
+)
 SELECT s.id,
        IFNULL(s.name, ''),
-       IFNULL(s.link_url, ''),
-       COUNT(c.id) AS clicks,
-       IFNULL(s.position, 0)
-FROM sponsor_clicks c
-INNER JOIN sponsors s ON s.id = c.sponsor_id
-WHERE c.event_id = ?
-GROUP BY s.id, s.name, s.link_url, s.position
+        IFNULL(s.link_url, ''),
+        COALESCE(ct.clicks, 0) AS clicks,
+        IFNULL(s.position, 0)
+FROM relevant_sponsors rs
+INNER JOIN sponsors s ON s.id = rs.sponsor_id
+LEFT JOIN click_totals ct ON ct.sponsor_id = s.id
 ORDER BY s.position ASC, s.id ASC
-`, eventID)
+`, eventID, eventID, eventID)
 	if err != nil {
 		return nil, err
 	}
