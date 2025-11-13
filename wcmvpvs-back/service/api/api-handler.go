@@ -83,6 +83,11 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admins", rt.wrapAdmin(rt.createAdmin))
 	rt.router.Put("/admins/{id}", rt.wrapAdmin(rt.updateAdmin))
 	rt.router.Delete("/admins/{id}", rt.wrapAdmin(rt.deleteAdmin))
+	rt.router.Get("/admin/master/summary", rt.wrapAdmin(rt.getMasterSummary))
+	rt.router.Get("/admin/master/organizations", rt.wrapAdmin(rt.listMasterOrganizations))
+	rt.router.Post("/admin/master/organizations", rt.wrapAdmin(rt.createMasterOrganization))
+	rt.router.Get("/admin/master/organizations/{id}", rt.wrapAdmin(rt.getMasterOrganizationDetail))
+	rt.router.Put("/admin/master/organizations/{id}", rt.wrapAdmin(rt.updateMasterOrganization))
 
 	rt.router.Get("/admin/sponsors", rt.wrapAdmin(rt.listAllSponsors))
 	rt.router.Post("/admin/sponsors", rt.wrapAdmin(rt.createSponsor))
