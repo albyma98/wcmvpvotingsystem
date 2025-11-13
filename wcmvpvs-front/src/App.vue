@@ -1,6 +1,7 @@
 <template>
   <div class="app-shell">
     <AdminLottery v-if="appView === 'lottery'" />
+    <MasterPortal v-else-if="appView === 'master'" />
     <AdminPortal v-else-if="appView === 'portal'" />
     <TicketValidationView v-else-if="appView === 'ticket-validation'" />
     <CashLanding v-else-if="appView === 'landing'" />
@@ -29,6 +30,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AdminPortal from './components/AdminPortal.vue';
+import MasterPortal from './components/MasterPortal.vue';
 import AdminLottery from './components/AdminLottery.vue';
 import TicketValidationView from './components/TicketValidationView.vue';
 import CashLanding from './components/CashLanding.vue';
@@ -52,6 +54,9 @@ const isFetchingActiveEvent = ref(false);
 const hasCheckedActiveEvent = ref(false);
 
 const appView = computed(() => {
+  if (currentPath.value.startsWith('/admin/master')) {
+    return 'master';
+  }
   if (currentPath.value.startsWith('/admin/lottery')) {
     return 'lottery';
   }
