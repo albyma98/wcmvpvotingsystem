@@ -79,6 +79,11 @@
             <p class="value">{{ summary.votes_last_7_days ?? 0 }}</p>
             <small>Monitoraggio attività recente</small>
           </article>
+          <article class="stat-card">
+            <p class="label">Totale partite</p>
+            <p class="value">{{ summary.total_events ?? 0 }}</p>
+            <small>Eventi registrati nel sistema</small>
+          </article>
         </div>
 
         <div v-else-if="activeSection === 'organizations'" class="organizations-view">
@@ -108,6 +113,16 @@
                 <input v-model.trim="organizationForm.name" type="text" required />
               </label>
               <label>
+                Slug / URL pubblico
+                <input
+                  v-model.trim="organizationForm.slug"
+                  type="text"
+                  required
+                  placeholder="es. volley-milano o https://mia-societa.it"
+                />
+                <small class="help-text">Puoi inserire uno slug (verrà normalizzato) oppure un URL completo.</small>
+              </label>
+              <label>
                 Città / Descrizione
                 <input v-model.trim="organizationForm.city" type="text" placeholder="Es. Milano" />
               </label>
@@ -134,8 +149,10 @@
               <thead>
                 <tr>
                   <th>Società</th>
+                  <th>Slug / URL</th>
                   <th>Città</th>
                   <th>Stato</th>
+                  <th>Creata il</th>
                   <th></th>
                 </tr>
               </thead>
@@ -150,12 +167,27 @@
                       </div>
                     </div>
                   </td>
+                  <td>
+                    <div class="slug-cell">
+                      <a
+                        v-if="org.slug"
+                        :href="resolvePublicLink(org.slug)"
+                        class="slug-link"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {{ org.slug }}
+                      </a>
+                      <span v-else class="muted">—</span>
+                    </div>
+                  </td>
                   <td>{{ org.city || '—' }}</td>
                   <td>
                     <span :class="['status-pill', org.is_active ? 'active' : 'inactive']">
                       {{ org.is_active ? 'Attiva' : 'Disattiva' }}
                     </span>
                   </td>
+                  <td>{{ formatDate(org.created_at) }}</td>
                   <td class="actions">
                     <button class="btn ghost" type="button" @click="viewOrganization(org.id)">
                       Dettagli
@@ -184,6 +216,15 @@
                 <p>{{ organizationDetail.organization.city || 'Nessuna descrizione disponibile' }}</p>
               </div>
               <div class="section-actions">
+                <a
+                  v-if="organizationDetail.organization.slug"
+                  :href="resolvePublicLink(organizationDetail.organization.slug)"
+                  class="btn outline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Pagina pubblica
+                </a>
                 <a :href="resolveSocietyLink(organizationDetail.organization.id)" class="btn ghost" target="_blank">
                   Apri pannello società
                 </a>
@@ -200,6 +241,21 @@
                   <div>
                     <dt>ID</dt>
                     <dd>{{ organizationDetail.organization.id }}</dd>
+                  </div>
+                  <div>
+                    <dt>Slug / URL pubblico</dt>
+                    <dd>
+                      <a
+                        v-if="organizationDetail.organization.slug"
+                        :href="resolvePublicLink(organizationDetail.organization.slug)"
+                        class="slug-link"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {{ organizationDetail.organization.slug }}
+                      </a>
+                      <span v-else class="muted">—</span>
+                    </dd>
                   </div>
                   <div>
                     <dt>Stato</dt>
@@ -221,6 +277,10 @@
                 <div class="stat-line">
                   <span>Totale voti</span>
                   <strong>{{ organizationDetail.stats.total_votes }}</strong>
+                </div>
+                <div class="stat-line">
+                  <span>Partite totali</span>
+                  <strong>{{ organizationDetail.stats.total_matches }}</strong>
                 </div>
                 <div class="stat-line">
                   <span>Ultima partita</span>
@@ -261,7 +321,7 @@ const loginForm = reactive({ username: '', password: '' });
 const isLoggingIn = ref(false);
 const loginError = ref('');
 
-const summary = reactive({ total_organizations: 0, total_votes: 0, votes_last_7_days: 0 });
+const summary = reactive({ total_organizations: 0, total_votes: 0, votes_last_7_days: 0, total_events: 0 });
 const isLoadingSummary = ref(false);
 const summaryLoaded = ref(false);
 
@@ -273,7 +333,7 @@ const selectedOrganizationId = ref(0);
 const organizationDetail = ref(null);
 const isLoadingDetail = ref(false);
 
-const organizationForm = reactive({ id: 0, name: '', city: '', logo_url: '', is_active: true });
+const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', logo_url: '', is_active: true });
 const organizationFormVisible = ref(false);
 const organizationFormMode = ref('create');
 const isSavingOrganization = ref(false);
@@ -286,6 +346,7 @@ const authHeaders = computed(() => ({
 function resetOrganizationForm() {
   organizationForm.id = 0;
   organizationForm.name = '';
+  organizationForm.slug = '';
   organizationForm.city = '';
   organizationForm.logo_url = '';
   organizationForm.is_active = true;
@@ -302,6 +363,7 @@ function openEditOrganization(org) {
   organizationFormMode.value = 'edit';
   organizationForm.id = org.id;
   organizationForm.name = org.name;
+  organizationForm.slug = org.slug || '';
   organizationForm.city = org.city || '';
   organizationForm.logo_url = org.logo_url || '';
   organizationForm.is_active = Boolean(org.is_active);
@@ -319,6 +381,17 @@ function switchSection(section) {
 
 function resolveSocietyLink(id) {
   return `/admin?society=${id}`;
+}
+
+function resolvePublicLink(slug) {
+  if (!slug) return '';
+  if (/^https?:\/\//i.test(slug)) {
+    return slug;
+  }
+  if (typeof window === 'undefined' || !window.location?.origin) {
+    return `/${slug}`;
+  }
+  return `${window.location.origin}/${slug}`;
 }
 
 function formatDate(value) {
@@ -389,6 +462,7 @@ async function fetchSummary() {
     summary.total_organizations = data?.total_organizations ?? 0;
     summary.total_votes = data?.total_votes ?? 0;
     summary.votes_last_7_days = data?.votes_last_7_days ?? 0;
+    summary.total_events = data?.total_events ?? 0;
     summaryLoaded.value = true;
   } catch (error) {
     console.error('Impossibile caricare la dashboard master', error);
@@ -435,6 +509,7 @@ async function submitOrganizationForm() {
   try {
     const payload = {
       name: organizationForm.name,
+      slug: organizationForm.slug,
       city: organizationForm.city,
       logo_url: organizationForm.logo_url,
       is_active: organizationForm.is_active,
@@ -688,6 +763,27 @@ onMounted(() => {
   color: #b91c1c;
 }
 
+.slug-cell {
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
+}
+
+.slug-link {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.slug-link:hover,
+.slug-link:focus {
+  text-decoration: underline;
+}
+
+.muted {
+  color: #94a3b8;
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;
@@ -722,6 +818,11 @@ onMounted(() => {
   padding: 0.65rem 0.8rem;
   border-radius: 0.65rem;
   border: 1px solid rgba(15, 23, 42, 0.2);
+}
+
+.help-text {
+  font-size: 0.75rem;
+  color: #64748b;
 }
 
 .switch-field {

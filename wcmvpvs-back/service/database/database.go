@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -98,6 +99,7 @@ type EventFeedbackAnswerConfig struct {
 type Organization struct {
 	ID        int    `json:"id"`
 	Name      string `json:"name"`
+	Slug      string `json:"slug"`
 	City      string `json:"city,omitempty"`
 	LogoURL   string `json:"logo_url,omitempty"`
 	IsActive  bool   `json:"is_active"`
@@ -111,13 +113,17 @@ type OrganizationStats struct {
 	TotalVotes     int    `json:"total_votes"`
 	LastMatchVotes int    `json:"last_match_votes"`
 	LastMatchDate  string `json:"last_match_date,omitempty"`
+	TotalMatches   int    `json:"total_matches"`
 }
 
 type MasterDashboardSummary struct {
 	TotalOrganizations int `json:"total_organizations"`
 	TotalVotes         int `json:"total_votes"`
 	VotesLast7Days     int `json:"votes_last_7_days"`
+	TotalEvents        int `json:"total_events"`
 }
+
+var slugSanitizer = regexp.MustCompile(`[^a-z0-9]+`)
 
 func DefaultEventFeedbackSurveyConfig() EventFeedbackSurveyConfig {
 	return EventFeedbackSurveyConfig{
@@ -741,6 +747,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 		sqlStmt := `CREATE TABLE organizations (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 name TEXT NOT NULL,
+slug TEXT NOT NULL DEFAULT '',
 city TEXT,
 logo_url TEXT,
 is_active INTEGER NOT NULL DEFAULT 1,
@@ -755,8 +762,16 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 		}
 	}
 
+	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN slug TEXT NOT NULL DEFAULT ''`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring organizations slug column: %w", err)
+		}
+	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_organizations_team ON organizations(team_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring organizations team index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug) WHERE slug <> ''`); err != nil {
+		return nil, fmt.Errorf("error ensuring organizations slug index: %w", err)
 	}
 
 	if _, err = db.Exec(`CREATE TRIGGER IF NOT EXISTS trg_organizations_updated_at AFTER UPDATE ON organizations BEGIN UPDATE organizations SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;`); err != nil {
@@ -2325,7 +2340,7 @@ func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) 
 	var org Organization
 	var isActive int
 	var teamID sql.NullInt64
-	if err := scanner.Scan(&org.ID, &org.Name, &org.City, &org.LogoURL, &isActive, &teamID, &org.CreatedAt, &org.UpdatedAt); err != nil {
+	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &org.City, &org.LogoURL, &isActive, &teamID, &org.CreatedAt, &org.UpdatedAt); err != nil {
 		return Organization{}, err
 	}
 	org.IsActive = isActive != 0
@@ -2336,7 +2351,7 @@ func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) 
 }
 
 func (db *appdbimpl) ListOrganizations() ([]Organization, error) {
-	rows, err := db.c.Query(`SELECT id, name, city, logo_url, is_active, IFNULL(team_id, 0), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
+	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, IFNULL(team_id, 0), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -2357,7 +2372,7 @@ func (db *appdbimpl) GetOrganization(id int) (Organization, error) {
 	if id <= 0 {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, city, logo_url, is_active, IFNULL(team_id, 0), created_at, updated_at FROM organizations WHERE id = ?`, id)
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, IFNULL(team_id, 0), created_at, updated_at FROM organizations WHERE id = ?`, id)
 	return db.scanOrganization(row)
 }
 
@@ -2368,6 +2383,13 @@ func (db *appdbimpl) CreateOrganization(org Organization) (Organization, error) 
 	}
 	sanitizedCity := strings.TrimSpace(org.City)
 	sanitizedLogo := strings.TrimSpace(org.LogoURL)
+	sanitizedSlug := normalizeSlug(org.Slug)
+	if sanitizedSlug == "" {
+		sanitizedSlug = normalizeSlug(sanitizedName)
+	}
+	if err := db.ensureOrganizationSlugAvailable(sanitizedSlug, 0); err != nil {
+		return Organization{}, err
+	}
 
 	tx, err := db.c.Begin()
 	if err != nil {
@@ -2385,7 +2407,7 @@ func (db *appdbimpl) CreateOrganization(org Organization) (Organization, error) 
 		teamID = int(newTeamID)
 	}
 
-	res, err := tx.Exec(`INSERT INTO organizations (name, city, logo_url, is_active, team_id) VALUES (?, ?, ?, ?, ?)`, sanitizedName, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), teamID)
+	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, team_id) VALUES (?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), teamID)
 	if err != nil {
 		return Organization{}, err
 	}
@@ -2422,6 +2444,13 @@ func (db *appdbimpl) UpdateOrganization(org Organization) (Organization, error) 
 	if teamID == 0 {
 		teamID = existing.TeamID
 	}
+	sanitizedSlug := normalizeSlug(org.Slug)
+	if sanitizedSlug == "" {
+		sanitizedSlug = normalizeSlug(sanitizedName)
+	}
+	if err := db.ensureOrganizationSlugAvailable(sanitizedSlug, org.ID); err != nil {
+		return Organization{}, err
+	}
 
 	tx, err := db.c.Begin()
 	if err != nil {
@@ -2429,7 +2458,7 @@ func (db *appdbimpl) UpdateOrganization(org Organization) (Organization, error) 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(`UPDATE organizations SET name=?, city=?, logo_url=?, is_active=?, team_id=? WHERE id=?`, sanitizedName, sanitizedCity, sanitizedLogo, boolToInt(isActive), teamID, org.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, team_id=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), teamID, org.ID); err != nil {
 		return Organization{}, err
 	}
 
@@ -2464,6 +2493,9 @@ func (db *appdbimpl) GetOrganizationStats(id int) (OrganizationStats, error) {
 	if err := db.c.QueryRow(`SELECT COUNT(v.id) FROM votes v JOIN events e ON e.id = v.event_id WHERE e.team1_id = ? OR e.team2_id = ?`, org.TeamID, org.TeamID).Scan(&stats.TotalVotes); err != nil {
 		return stats, err
 	}
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM events WHERE team1_id = ? OR team2_id = ?`, org.TeamID, org.TeamID).Scan(&stats.TotalMatches); err != nil {
+		return stats, err
+	}
 
 	var lastEventID sql.NullInt64
 	var lastEventDate sql.NullString
@@ -2494,6 +2526,9 @@ func (db *appdbimpl) GetMasterDashboardSummary() (MasterDashboardSummary, error)
 		return summary, err
 	}
 	if err := db.c.QueryRow(`SELECT COUNT(*) FROM votes WHERE datetime(created_at) >= datetime('now', '-7 days')`).Scan(&summary.VotesLast7Days); err != nil {
+		return summary, err
+	}
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&summary.TotalEvents); err != nil {
 		return summary, err
 	}
 	return summary, nil
@@ -2954,6 +2989,35 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func normalizeSlug(value string) string {
+	sanitized := strings.TrimSpace(value)
+	if sanitized == "" {
+		return ""
+	}
+	lowerValue := strings.ToLower(sanitized)
+	if strings.HasPrefix(lowerValue, "http://") || strings.HasPrefix(lowerValue, "https://") {
+		return sanitized
+	}
+	slug := slugSanitizer.ReplaceAllString(lowerValue, "-")
+	slug = strings.Trim(slug, "-")
+	return slug
+}
+
+func (db *appdbimpl) ensureOrganizationSlugAvailable(slug string, excludeID int) error {
+	if slug == "" {
+		return ErrInvalidOrganizationData
+	}
+	var existingID int
+	err := db.c.QueryRow(`SELECT id FROM organizations WHERE slug = ? AND id != ? LIMIT 1`, slug, excludeID).Scan(&existingID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return ErrInvalidOrganizationData
 }
 
 func (db *appdbimpl) RecordEventFeedback(feedback EventFeedback) error {
