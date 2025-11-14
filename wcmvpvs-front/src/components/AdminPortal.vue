@@ -52,7 +52,7 @@
       :breadcrumbs="sectionBreadcrumbs"
       :user-name="activeUsername"
       variant="club"
-      @select="section = $event"
+      @select="handleSectionChange"
     >
       <template #top-actions>
         <button class="btn outline" type="button" @click="goToLottery">
@@ -2098,6 +2098,12 @@ function toApiSurveyPayload(survey) {
 let resultsPollHandle = 0;
 
 const section = ref("events");
+
+function handleSectionChange(nextSection) {
+  if (typeof nextSection === "string" && nextSection) {
+    section.value = nextSection;
+  }
+}
 const SECTION_CONFIG = {
   events: {
     label: "Eventi",
