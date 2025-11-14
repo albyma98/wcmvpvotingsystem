@@ -2,17 +2,17 @@
   <div class="lottery-shell">
     <header class="lottery-header">
       <div>
-        <h1>Lotteria evento</h1>
-        <p class="subtitle">Estrai casualmente un vincitore tra i ticket validi</p>
+        <p class="eyebrow">Portale lotteria</p>
+        <h1>Estrazione premi</h1>
+        <p class="subtitle">Gestisci codici, premi e vincitori in un'unica interfaccia.</p>
       </div>
       <div class="header-actions" v-if="isAuthenticated">
         <span class="muted">Connesso come <strong>{{ activeUsername }}</strong></span>
         <button class="btn ghost" type="button" @click="goToPortal">Torna al pannello</button>
-        <button class="btn secondary" type="button" @click="logout">Esci</button>
       </div>
     </header>
 
-    <section v-if="!isAuthenticated" class="card login-card">
+    <section v-if="!isAuthenticated" class="card login-card modern-card">
       <h2>Accedi</h2>
       <form @submit.prevent="login" class="form-grid">
         <label>
@@ -30,10 +30,29 @@
       <p v-if="loginError" class="error">{{ loginError }}</p>
     </section>
 
-    <section v-else class="card lottery-card">
-      <div class="filters">
-        <label>
-          Seleziona evento
+    <DashboardShell
+      v-else
+      class="lottery-dashboard__shell"
+      :menu-items="lotteryTabs"
+      :active-section="lotterySection"
+      :title="lotterySectionMeta.title"
+      :subtitle="lotterySectionMeta.subtitle"
+      :breadcrumbs="lotteryBreadcrumbs"
+      :user-name="activeUsername"
+      variant="lottery"
+      @select="lotterySection = $event"
+    >
+      <template #top-actions>
+        <button class="btn outline" type="button" @click="refreshTickets" :disabled="!selectedEventId || isLoadingTickets">
+          {{ isLoadingTickets ? 'Aggiornamento…' : 'Aggiorna ticket' }}
+        </button>
+        <button class="btn secondary" type="button" @click="logout">Esci</button>
+      </template>
+
+      <section class="card lottery-card">
+        <div class="filters">
+          <label>
+            Seleziona evento
           <input
             v-model="eventInput"
             type="text"
@@ -47,10 +66,7 @@
             <option v-for="event in events" :key="event.id" :value="eventLabel(event)"></option>
           </datalist>
         </label>
-        <button class="btn secondary" type="button" @click="refreshTickets" :disabled="!selectedEventId || isLoadingTickets">
-          Aggiorna ticket
-        </button>
-      </div>
+        </div>
 
       <p v-if="globalError" class="error">{{ globalError }}</p>
       <p v-if="drawError" class="error">{{ drawError }}</p>
@@ -117,13 +133,15 @@
         </div>
         <p v-if="!currentPrizeId" class="muted">Seleziona un premio per iniziare.</p>
       </div>
-    </section>
+      </section>
+    </DashboardShell>
   </div>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
+import DashboardShell from './admin/DashboardShell.vue';
 
 const basePath = import.meta.env.BASE_URL ?? '/';
 
@@ -163,6 +181,38 @@ const authHeaders = computed(() => ({
   },
 }));
 
+const lotteryTabs = [
+  { id: 'overview', label: 'Panoramica', icon: 'dashboard' },
+  { id: 'prizes', label: 'Premi', icon: 'sparkles' },
+  { id: 'draw', label: 'Estrazione', icon: 'ticket' },
+];
+
+const LOTTERY_SECTION_META = {
+  overview: {
+    title: 'Panoramica evento',
+    subtitle: 'Scegli l\'evento da cui estrarre i codici vincitori.',
+  },
+  prizes: {
+    title: 'Premi configurati',
+    subtitle: 'Controlla e assegna i premi disponibili per la lotteria.',
+  },
+  draw: {
+    title: 'Estrazione in tempo reale',
+    subtitle: 'Avvia il sorteggio e comunica subito i vincitori.',
+  },
+};
+
+const lotterySection = ref('overview');
+
+const lotterySectionMeta = computed(
+  () => LOTTERY_SECTION_META[lotterySection.value] || LOTTERY_SECTION_META.overview,
+);
+
+const lotteryBreadcrumbs = computed(() => [
+  { label: 'Portale lotteria' },
+  { label: lotterySectionMeta.value.title },
+]);
+
 const selectedEvent = computed(
   () => events.value.find((event) => event.id === selectedEventId.value) || null,
 );
@@ -194,6 +244,20 @@ const currentPrizeLabel = computed(() => {
   }
   return currentPrize.value.name || `Premio ${currentPrize.value.position}`;
 });
+
+watch(
+  [selectedEventId, currentPrizeId],
+  () => {
+    if (!selectedEventId.value) {
+      lotterySection.value = 'overview';
+    } else if (currentPrizeId.value) {
+      lotterySection.value = 'draw';
+    } else {
+      lotterySection.value = 'prizes';
+    }
+  },
+  { immediate: true },
+);
 
 const lastWinnerDisplay = computed(() => {
   if (!lastWinner.value) {
@@ -698,6 +762,10 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 1.5rem;
   color: #0f172a;
+}
+
+.lottery-dashboard__shell {
+  margin-top: 0.5rem;
 }
 
 .lottery-header {
