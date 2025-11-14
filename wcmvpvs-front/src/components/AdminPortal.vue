@@ -1,11 +1,20 @@
 <template>
-  <div class="admin-portal">
-    <header class="admin-header">
-      <h1>Area amministratore</h1>
-      <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
-    </header>
+  <div class="admin-portal admin-dashboard">
+    <div class="admin-hero">
+      <div>
+        <p class="eyebrow">Portale club</p>
+        <h1>Area amministratore</h1>
+        <p class="subtitle">
+          Gestisci eventi, squadre e votazioni MVP da un'unica dashboard coerente.
+        </p>
+      </div>
+      <div class="hero-highlight">
+        <p>Stato accesso</p>
+        <strong>{{ isAuthenticated ? activeUsername : 'Non autenticato' }}</strong>
+      </div>
+    </div>
 
-    <section v-if="!isAuthenticated" class="card login-card">
+    <section v-if="!isAuthenticated" class="card login-card modern-card">
       <h2>Accedi</h2>
       <form @submit.prevent="login" class="form-grid">
         <label>
@@ -33,30 +42,27 @@
       <p v-if="loginError" class="error">{{ loginError }}</p>
     </section>
 
-    <section v-else class="portal" ref="portalRef">
-      <div class="toolbar" ref="toolbarRef">
-        <div class="user-info">
-          <span
-            >Connesso come <strong>{{ activeUsername }}</strong></span
-          >
-          <button class="btn outline" type="button" @click="goToLottery">
-            Lotteria
-          </button>
-          <button
-            v-for="tab in availableTabs"
-            :key="tab.id"
-            :class="['btn outline', { active: section === tab.id }]"
-            type="button"
-            :aria-current="section === tab.id ? 'page' : undefined"
-            @click="section = tab.id"
-          >
-            {{ tab.label }}
-          </button>
-          <button class="btn secondary" type="button" @click="logout">
-            Esci
-          </button>
-        </div>
-      </div>
+    <DashboardShell
+      v-else
+      class="admin-dashboard__shell"
+      :menu-items="availableTabs"
+      :active-section="section"
+      :title="sectionMeta.title"
+      :subtitle="sectionMeta.subtitle"
+      :breadcrumbs="sectionBreadcrumbs"
+      :user-name="activeUsername"
+      variant="club"
+      @select="section = $event"
+    >
+      <template #top-actions>
+        <button class="btn outline" type="button" @click="goToLottery">
+          Lotteria
+        </button>
+        <button class="btn secondary" type="button" @click="logout">
+          Esci
+        </button>
+      </template>
+
       <div class="portal-content">
         <p v-if="globalError" class="error">{{ globalError }}</p>
 
@@ -1847,7 +1853,7 @@
           </div>
         </div>
       </div>
-    </section>
+    </DashboardShell>
   </div>
 </template>
 
@@ -1856,7 +1862,6 @@ import {
   computed,
   nextTick,
   onBeforeUnmount,
-  onMounted,
   reactive,
   ref,
   watch,
@@ -1864,6 +1869,7 @@ import {
 import { apiClient, resolveApiUrl } from "../api";
 import { PLAYER_LAYOUT } from "../roster";
 import VoteTrendChart from "./VoteTrendChart.vue";
+import DashboardShell from "./admin/DashboardShell.vue";
 
 const basePath = import.meta.env.BASE_URL ?? "/";
 const baseVoteUrl = new URL(basePath, window.location.origin);
@@ -2092,17 +2098,71 @@ function toApiSurveyPayload(survey) {
 let resultsPollHandle = 0;
 
 const section = ref("events");
-const tabs = [
-  { id: "events", label: "Eventi" },
-  { id: "closing", label: "Chiusura votazioni" },
-  { id: "results", label: "Risultati" },
-  { id: "selfies", label: "Selfie MVP" },
-  { id: "history", label: "Storico eventi" },
-  { id: "teams", label: "Squadre" },
-  { id: "players", label: "Giocatori" },
-  { id: "sponsors", label: "Sponsor" },
-  { id: "admins", label: "Admin" },
+const SECTION_CONFIG = {
+  events: {
+    label: "Eventi",
+    icon: "calendar",
+    subtitle: "Crea nuove partite e definisci l'esperienza di voto.",
+  },
+  closing: {
+    label: "Chiusura votazioni",
+    icon: "lock",
+    subtitle: "Controlla lo stato della partita attiva e chiudi le votazioni.",
+  },
+  results: {
+    label: "Risultati",
+    icon: "chart",
+    subtitle: "Monitora la classifica MVP in tempo reale.",
+  },
+  selfies: {
+    label: "Selfie MVP",
+    icon: "camera",
+    subtitle: "Modera e approva i contenuti inviati dai tifosi.",
+  },
+  history: {
+    label: "Storico eventi",
+    icon: "history",
+    subtitle: "Consulta report e archivi delle partite passate.",
+  },
+  teams: {
+    label: "Squadre",
+    icon: "users",
+    subtitle: "Gestisci i club disponibili per la creazione degli eventi.",
+  },
+  players: {
+    label: "Giocatori",
+    icon: "user",
+    subtitle: "Aggiorna i roster con immagini e ruoli.",
+  },
+  sponsors: {
+    label: "Sponsor",
+    icon: "sparkles",
+    subtitle: "Configura contenuti commerciali e promozioni.",
+  },
+  admins: {
+    label: "Admin",
+    icon: "shield",
+    subtitle: "Gestisci le credenziali dello staff.",
+  },
+};
+
+const TABS_ORDER = [
+  "events",
+  "closing",
+  "results",
+  "selfies",
+  "history",
+  "teams",
+  "players",
+  "sponsors",
+  "admins",
 ];
+
+const tabs = TABS_ORDER.map((id) => ({
+  id,
+  label: SECTION_CONFIG[id]?.label ?? id,
+  icon: SECTION_CONFIG[id]?.icon,
+}));
 const STAFF_TAB_IDS = new Set(["closing", "results", "history", "selfies"]);
 
 const teams = ref([]);
@@ -2215,8 +2275,6 @@ const eventPrizeErrors = reactive({});
 const eventFeedbackDrafts = reactive({});
 const eventFeedbackErrors = reactive({});
 const savingEventPrizes = ref(0);
-const portalRef = ref(null);
-const toolbarRef = ref(null);
 
 const fallbackTeamId = () => (teams.value.length ? teams.value[0].id : 0);
 
@@ -2867,6 +2925,24 @@ const availableTabs = computed(() => {
   }
   return tabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
 });
+
+const defaultSectionMeta = {
+  title: "Dashboard amministratore",
+  subtitle: "Seleziona una sezione per iniziare.",
+};
+
+const sectionMeta = computed(() => {
+  const config = SECTION_CONFIG[section.value];
+  if (config) {
+    return { title: config.label, subtitle: config.subtitle };
+  }
+  return defaultSectionMeta;
+});
+
+const sectionBreadcrumbs = computed(() => [
+  { label: "Portale admin" },
+  { label: sectionMeta.value.title },
+]);
 
 const loginForm = reactive({
   username: "",
@@ -5118,14 +5194,6 @@ async function copyLink(link) {
   }
 }
 
-function updateToolbarOffset() {
-  if (!portalRef.value) {
-    return;
-  }
-  const height = toolbarRef.value?.offsetHeight ?? 0;
-  portalRef.value.style.setProperty("--toolbar-height", `${height}px`);
-}
-
 function ensureSectionIsAllowed(tabList) {
   if (!isAuthenticated.value) {
     return;
@@ -5135,20 +5203,10 @@ function ensureSectionIsAllowed(tabList) {
   }
 }
 
-onMounted(() => {
-  window.addEventListener("resize", updateToolbarOffset, { passive: true });
-  nextTick(updateToolbarOffset);
-});
-
-watch(isAuthenticated, () => {
-  nextTick(updateToolbarOffset);
-});
-
 watch(
   availableTabs,
   (currentTabs) => {
     ensureSectionIsAllowed(currentTabs);
-    nextTick(updateToolbarOffset);
   },
   { immediate: true },
 );
@@ -5203,87 +5261,82 @@ if (isAuthenticated.value) {
 }
 
 onBeforeUnmount(() => {
-  window.removeEventListener("resize", updateToolbarOffset);
   stopResultsPolling();
 });
 </script>
 
 <style scoped>
-.admin-portal {
+.admin-dashboard {
   margin: 0 auto;
-  max-width: 960px;
-  padding: 2rem 1.5rem 3rem;
+  max-width: 1280px;
+  padding: 2.5rem 1.25rem 4rem;
   color: #0f172a;
 }
 
-.admin-header {
-  text-align: center;
-  margin-bottom: 2rem;
+.admin-hero {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 2rem;
+  border-radius: 1.5rem;
+  background: linear-gradient(120deg, #0f172a, #312e81);
   color: #f8fafc;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.45);
 }
 
-.admin-header h1 {
-  font-size: 2rem;
+.admin-hero h1 {
   margin: 0;
-  color: #f8fafc;
+  font-size: 2.25rem;
 }
 
-.subtitle {
-  margin: 0.5rem 0 0;
-  color: #cbd5f5;
+.admin-hero .subtitle {
+  color: rgba(248, 250, 252, 0.85);
 }
 
-.portal {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  position: relative;
-  --toolbar-height: 0px;
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.5rem;
+  color: rgba(248, 250, 252, 0.8);
 }
 
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  color: #f1f5f9;
-  top: 0;
-  z-index: 10;
-  background: rgba(15, 23, 42, 0.92);
+.hero-highlight {
+  min-width: 220px;
+  padding: 1.25rem;
   border-radius: 1rem;
-  padding: 0.75rem 1rem;
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  backdrop-filter: blur(12px);
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(248, 250, 252, 0.2);
 }
 
-@media (min-width: 768px) {
-  .toolbar {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1.25rem;
-  }
+.hero-highlight p {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.75);
+}
+
+.hero-highlight strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.2rem;
+}
+
+.modern-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 25px 45px rgba(15, 23, 42, 0.1);
+}
+
+.admin-dashboard__shell {
+  margin-top: 2rem;
 }
 
 .portal-content {
   display: flex;
   flex-direction: column;
   padding-top: 1px;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.section-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0;
-  position: relative;
 }
 
 .card {

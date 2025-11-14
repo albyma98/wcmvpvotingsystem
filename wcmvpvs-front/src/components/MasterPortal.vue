@@ -6,13 +6,9 @@
         <h1>Controllo centrale</h1>
         <p class="subtitle">Monitora le società e lo stato dei voti in tutta la piattaforma.</p>
       </div>
-      <div class="header-actions" v-if="isSuperAdmin">
-        <a class="btn ghost" href="/admin" title="Vai al pannello società">Portale società</a>
-        <button class="btn outline" type="button" @click="logout">Esci</button>
-      </div>
     </header>
 
-    <section v-if="!isAuthenticated" class="card login-card">
+    <section v-if="!isAuthenticated" class="card login-card modern-card">
       <h2>Accedi come super admin</h2>
       <form class="form-grid" @submit.prevent="login">
         <label>
@@ -30,7 +26,7 @@
       <p v-if="loginError" class="error">{{ loginError }}</p>
     </section>
 
-    <section v-else-if="!isSuperAdmin" class="card warning-card">
+    <section v-else-if="!isSuperAdmin" class="card warning-card modern-card">
       <h2>Accesso limitato</h2>
       <p>Solo gli utenti con ruolo <strong>superadmin</strong> possono accedere al portale master.</p>
       <div class="warning-actions">
@@ -39,26 +35,22 @@
       </div>
     </section>
 
-    <section v-else class="master-shell">
-      <nav class="master-nav">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          :class="['nav-btn', { active: activeSection === tab.id }]"
-          type="button"
-          @click="switchSection(tab.id)"
-        >
-          {{ tab.label }}
-        </button>
-        <button
-          v-if="selectedOrganizationId && activeSection === 'organization-detail'"
-          class="nav-btn"
-          type="button"
-          @click="switchSection('organizations')"
-        >
-          Torna alla lista
-        </button>
-      </nav>
+    <DashboardShell
+      v-else
+      class="master-dashboard__shell"
+      :menu-items="tabs"
+      :active-section="activeSection"
+      :title="sectionMeta.title"
+      :subtitle="sectionMeta.subtitle"
+      :breadcrumbs="sectionBreadcrumbs"
+      :user-name="activeUsername"
+      variant="master"
+      @select="switchSection"
+    >
+      <template #top-actions>
+        <a class="btn ghost" href="/admin" title="Vai al pannello società">Portale società</a>
+        <button class="btn outline" type="button" @click="logout">Esci</button>
+      </template>
 
       <div class="master-content">
         <div v-if="activeSection === 'dashboard'" class="grid-cards">
@@ -297,13 +289,14 @@
           </p>
         </div>
       </div>
-    </section>
+    </DashboardShell>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
+import DashboardShell from './admin/DashboardShell.vue';
 
 const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
@@ -311,10 +304,29 @@ const activeRole = ref(localStorage.getItem('adminRole') || '');
 const isAuthenticated = computed(() => Boolean(token.value));
 const isSuperAdmin = computed(() => activeRole.value === 'superadmin');
 
-const tabs = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'organizations', label: 'Società' },
-];
+const SECTION_CONFIG = {
+  dashboard: {
+    label: 'Dashboard',
+    icon: 'dashboard',
+    subtitle: 'Visione globale di società, eventi e voti.',
+  },
+  organizations: {
+    label: 'Società',
+    icon: 'users',
+    subtitle: 'Gestisci anagrafiche e accessi delle società.',
+  },
+  'organization-detail': {
+    label: 'Dettaglio società',
+    icon: 'user',
+    subtitle: 'Approfondisci i dati della società selezionata.',
+  },
+};
+
+const tabs = ['dashboard', 'organizations'].map((id) => ({
+  id,
+  label: SECTION_CONFIG[id].label,
+  icon: SECTION_CONFIG[id].icon,
+}));
 const activeSection = ref('dashboard');
 
 const loginForm = reactive({ username: '', password: '' });
@@ -332,6 +344,22 @@ const organizationsLoaded = ref(false);
 const selectedOrganizationId = ref(0);
 const organizationDetail = ref(null);
 const isLoadingDetail = ref(false);
+
+const sectionMeta = computed(() => {
+  const config = SECTION_CONFIG[activeSection.value] || SECTION_CONFIG.dashboard;
+  return { title: config.label, subtitle: config.subtitle };
+});
+
+const sectionBreadcrumbs = computed(() => {
+  const crumbs = [{ label: 'Portale master' }];
+  if (activeSection.value === 'organization-detail') {
+    crumbs.push({ label: SECTION_CONFIG.organizations.label });
+    crumbs.push({ label: organizationDetail.value?.organization?.name || SECTION_CONFIG['organization-detail'].label });
+    return crumbs;
+  }
+  crumbs.push({ label: sectionMeta.value.title });
+  return crumbs;
+});
 
 const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', logo_url: '', is_active: true });
 const organizationFormVisible = ref(false);
@@ -585,6 +613,10 @@ onMounted(() => {
   color: #0f172a;
 }
 
+.master-dashboard__shell {
+  margin-top: 0.5rem;
+}
+
 .master-header {
   background: linear-gradient(135deg, #0f172a, #1e293b);
   color: #fff;
@@ -617,37 +649,6 @@ onMounted(() => {
 .header-actions {
   display: flex;
   gap: 0.75rem;
-}
-
-.master-shell {
-  background: #fff;
-  border-radius: 1.5rem;
-  padding: 1.5rem;
-  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
-}
-
-.master-nav {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 1.25rem;
-}
-
-.nav-btn {
-  border: 1px solid rgba(15, 23, 42, 0.15);
-  background: #f8fafc;
-  color: #0f172a;
-  padding: 0.6rem 1.4rem;
-  border-radius: 999px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-.nav-btn.active,
-.nav-btn:hover {
-  background: #0f172a;
-  color: #fff;
 }
 
 .master-content {
