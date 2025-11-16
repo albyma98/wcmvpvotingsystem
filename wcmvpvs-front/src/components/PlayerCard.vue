@@ -113,7 +113,9 @@ const handleSelect = () => {
           <div class="relative w-full max-w-100%]" style="aspect-ratio: 1 / 1">
             <div class="absolute overflow-hidden rounded-[1.55rem]">
               <img :src="avatarUrl" :alt="player.name" class="h-full w-full object-fill" />
-              <div class="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/65"></div>
+              <div
+                class="absolute inset-0 bg-gradient-to-b from-[rgba(0,0,0,0.05)] via-[rgba(0,0,0,0.1)] to-[rgba(0,0,0,0.325)]"
+              ></div>
             </div>
           </div>
         </div>
