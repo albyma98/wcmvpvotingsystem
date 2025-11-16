@@ -797,7 +797,10 @@
                 </div>
               </li>
             </ul>
-            <div v-if="selectedResultsEventId" class="sponsor-analytics">
+            <div
+              v-if="selectedResultsEventId && !isStaff"
+              class="sponsor-analytics"
+            >
               <h3>Analisi sponsor</h3>
               <p v-if="sponsorAnalyticsError" class="error">
                 {{ sponsorAnalyticsError }}
@@ -2861,6 +2864,7 @@ const activeUsername = ref(localStorage.getItem("adminUsername") || "");
 const activeRole = ref(localStorage.getItem("adminRole") || "");
 const isAuthenticated = computed(() => Boolean(token.value));
 const isSuperAdmin = computed(() => activeRole.value === "superadmin");
+const isStaff = computed(() => activeRole.value === "staff");
 const availableTabs = computed(() => {
   if (isSuperAdmin.value) {
     return tabs;
@@ -3098,6 +3102,13 @@ async function fetchEventResults({ showLoader = false } = {}) {
     if (showLoader) {
       isLoadingResults.value = false;
     }
+  }
+
+  if (isStaff.value) {
+    sponsorAnalytics.value = null;
+    sponsorAnalyticsError.value = "";
+    isLoadingSponsorAnalytics.value = false;
+    return;
   }
 
   fetchSponsorAnalytics({ showLoader }).catch(() => {});
