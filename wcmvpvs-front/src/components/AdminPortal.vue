@@ -2103,7 +2103,7 @@ const tabs = [
   { id: "sponsors", label: "Sponsor" },
   { id: "admins", label: "Admin" },
 ];
-const STAFF_TAB_IDS = new Set(["closing", "results", "history", "selfies"]);
+const STAFF_TAB_IDS = new Set(["closing", "results"]);
 
 const teams = ref([]);
 const players = ref([]);
@@ -2902,6 +2902,10 @@ function resetForms() {
   restorePlayerSlots();
   playerSaveError.value = "";
   playerSaveMessage.value = "";
+}
+
+function selectDefaultSection() {
+  section.value = isSuperAdmin.value ? "events" : "closing";
 }
 
 function ensureValidTeamSelection() {
@@ -3874,6 +3878,7 @@ async function login() {
     localStorage.setItem("adminToken", token.value);
     localStorage.setItem("adminUsername", activeUsername.value);
     localStorage.setItem("adminRole", activeRole.value);
+    selectDefaultSection();
     loginForm.username = "";
     loginForm.password = "";
     await loadAll();
@@ -5199,6 +5204,7 @@ watch(selectedSelfieEventId, (eventId) => {
 });
 
 if (isAuthenticated.value) {
+  selectDefaultSection();
   loadAll();
 }
 
