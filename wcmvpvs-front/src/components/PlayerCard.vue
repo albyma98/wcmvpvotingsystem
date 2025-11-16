@@ -26,16 +26,9 @@ const props = defineProps({
 
 const emits = defineEmits(['select']);
 
-const tierRingClass = computed(() => {
-  switch (props.player.tier) {
-    case 'silver':
-      return 'ring-slate-200/70 shadow-[0_0_28px_rgba(148,163,184,0.35)]';
-    case 'bronze':
-      return 'ring-amber-300/70 shadow-[0_0_28px_rgba(234,179,8,0.35)]';
-    default:
-      return 'ring-yellow-300/80 shadow-[0_0_32px_rgba(250,204,21,0.4)]';
-  }
-});
+const tierRingClass = computed(
+  () => 'ring-yellow-300/80 shadow-[0_0_32px_rgba(250,204,21,0.4)]',
+);
 
 const fallbackAvatar = computed(
   () => `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(props.player.name ?? props.player.number)}`,
