@@ -289,6 +289,42 @@ function normalizeTeam(team) {
   };
 }
 
+function parseEventDate(event) {
+  const date = event?.start_datetime ? new Date(event.start_datetime) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+function findLatestCompletedEvent(eventList) {
+  if (!Array.isArray(eventList) || eventList.length === 0) {
+    return null;
+  }
+
+  const now = new Date();
+  let latestPastEvent = null;
+  let latestPastDate = null;
+  let latestOverallEvent = null;
+  let latestOverallDate = null;
+
+  eventList.forEach((event) => {
+    const eventDate = parseEventDate(event);
+    if (!eventDate) {
+      return;
+    }
+
+    if (!latestOverallDate || eventDate > latestOverallDate) {
+      latestOverallEvent = event;
+      latestOverallDate = eventDate;
+    }
+
+    if (eventDate <= now && (!latestPastDate || eventDate > latestPastDate)) {
+      latestPastEvent = event;
+      latestPastDate = eventDate;
+    }
+  });
+
+  return latestPastEvent || latestOverallEvent;
+}
+
 function normalizeTicket(ticket) {
   return {
     voteId: ticket.vote_id,
@@ -308,9 +344,11 @@ function ensureValidSelection() {
     currentPrizeId.value = 0;
     return;
   }
-  const selectedEvent = events.value.find((event) => event.id === selectedEventId.value) || events.value[0];
-  selectedEventId.value = selectedEvent.id;
-  eventInput.value = eventLabel(selectedEvent);
+  const existingSelection = events.value.find((event) => event.id === selectedEventId.value);
+  const preferredEvent = existingSelection || findLatestCompletedEvent(events.value) || events.value[0];
+
+  selectedEventId.value = preferredEvent.id;
+  eventInput.value = eventLabel(preferredEvent);
   ensureCurrentPrize();
 }
 
