@@ -266,6 +266,7 @@ function normalizeEvent(event) {
     team2_id: event.team2_id,
     start_datetime: event.start_datetime,
     location: event.location,
+    isConcluded: Boolean(event.is_concluded ?? event.isConcluded),
   };
   const prizes = Array.isArray(event.prizes)
     ? event.prizes
@@ -483,7 +484,10 @@ async function loadEvents() {
   globalError.value = '';
   try {
     const { data } = await secureRequest(() => apiClient.get('/events', authHeaders.value));
-    events.value = Array.isArray(data) ? data.map(normalizeEvent) : [];
+    const normalizedEvents = Array.isArray(data)
+      ? data.map(normalizeEvent).filter((event) => !event.isConcluded)
+      : [];
+    events.value = normalizedEvents;
     ensureValidSelection();
     ensureCurrentPrize();
   } finally {
