@@ -1966,7 +1966,7 @@ const handleQrError = () => {
                 <h2 id="feedback-modal-title" class="feedback-modal__title">
                   {{
                     isOptionalFeedbackStep
-                      ? optionalFeedbackQuestion.value.title
+                      ? optionalFeedbackQuestion.title
                       : activeFeedbackQuestion?.title
                   }}
                 </h2>
