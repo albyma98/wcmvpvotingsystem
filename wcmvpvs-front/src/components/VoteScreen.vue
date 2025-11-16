@@ -1754,8 +1754,8 @@ const handleQrError = () => {
               class="feedback-cta"
               @click="openFeedbackModal"
             >
-              <span class="feedback-cta__label">Aiutaci a migliorare</span>
-              <span class="feedback-cta__time">(15 secondi)</span>
+              <span class="feedback-cta__label">Migliora la tua esperienza!💙</span>
+              <span class="feedback-cta__time">(in solo 15 secondi)</span>
             </button>
             <p
               v-else-if="showFeedbackThankYouMessage"
