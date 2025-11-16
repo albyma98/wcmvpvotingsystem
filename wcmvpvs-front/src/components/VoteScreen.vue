@@ -670,6 +670,10 @@ const feedbackQuestions = computed(() =>
   })),
 );
 
+const hasOptionalFeedbackQuestion = computed(
+  () => Boolean(feedbackSurvey.value.suggestionPrompt?.trim()),
+);
+
 const optionalFeedbackQuestion = computed(() => ({
   id: "suggestion",
   answerKey: "suggestion",
@@ -706,7 +710,15 @@ const activeFeedbackQuestion = computed(() =>
 );
 
 const isOptionalFeedbackStep = computed(
-  () => feedbackStep.value >= feedbackQuestions.value.length,
+  () =>
+    hasOptionalFeedbackQuestion.value &&
+    feedbackStep.value >= feedbackQuestions.value.length,
+);
+
+const showFeedbackActions = computed(
+  () =>
+    isOptionalFeedbackStep.value ||
+    feedbackStep.value >= feedbackQuestions.value.length - 1,
 );
 
 const feedbackStepLabel = computed(() => {
@@ -802,7 +814,9 @@ function openFeedbackModal() {
   feedbackStep.value =
     firstIncompleteIndex >= 0
       ? firstIncompleteIndex
-      : feedbackQuestions.value.length;
+      : hasOptionalFeedbackQuestion.value
+        ? feedbackQuestions.value.length
+        : Math.max(feedbackQuestions.value.length - 1, 0);
   feedbackError.value = "";
   showFeedbackModal.value = true;
 }
@@ -832,9 +846,12 @@ function handleFeedbackOptionSelect(option) {
   }
   feedbackAnswers[question.answerKey] = option.value;
   feedbackError.value = "";
+  const maxStep = hasOptionalFeedbackQuestion.value
+    ? feedbackQuestions.value.length
+    : Math.max(feedbackQuestions.value.length - 1, 0);
   const nextStep = Math.min(
     feedbackStep.value + 1,
-    feedbackQuestions.value.length,
+    maxStep,
   );
   feedbackStep.value = nextStep;
 }
@@ -852,6 +869,24 @@ function skipOptionalFeedback() {
     return;
   }
   feedbackAnswers.suggestion = "";
+  submitFeedback();
+}
+
+function handleFeedbackContinue() {
+  if (isFeedbackSubmitting.value) {
+    return;
+  }
+  const question = activeFeedbackQuestion.value;
+  const answer = question ? feedbackAnswers[question.answerKey] : null;
+  if (!answer) {
+    feedbackError.value = "Rispondi a tutte le domande per continuare.";
+    return;
+  }
+  if (hasOptionalFeedbackQuestion.value) {
+    feedbackStep.value = feedbackQuestions.value.length;
+    feedbackError.value = "";
+    return;
+  }
   submitFeedback();
 }
 
@@ -1966,7 +2001,7 @@ const handleQrError = () => {
                     }}</span>
                   </button>
                 </div>
-                <div v-else class="feedback-modal__optional">
+                <div v-else-if="isOptionalFeedbackStep" class="feedback-modal__optional">
                   <input
                     v-model="feedbackAnswers.suggestion"
                     :maxlength="optionalFeedbackMaxLength"
@@ -2000,7 +2035,7 @@ const handleQrError = () => {
                 </button>
                 <div
                   class="feedback-modal__footer-actions"
-                  :class="{ 'is-hidden': !isOptionalFeedbackStep }"
+                  :class="{ 'is-hidden': !showFeedbackActions }"
                 >
                   <button
                     v-if="isOptionalFeedbackStep"
@@ -2019,6 +2054,21 @@ const handleQrError = () => {
                     :disabled="isFeedbackSubmitting"
                   >
                     {{ isFeedbackSubmitting ? "Invio…" : "Invia" }}
+                  </button>
+                  <button
+                    v-else
+                    type="button"
+                    class="feedback-modal__submit"
+                    @click="handleFeedbackContinue"
+                    :disabled="isFeedbackSubmitting"
+                  >
+                    {{
+                      hasOptionalFeedbackQuestion
+                        ? "Continua"
+                        : isFeedbackSubmitting
+                          ? "Invio…"
+                          : "Invia"
+                    }}
                   </button>
                 </div>
               </footer>
