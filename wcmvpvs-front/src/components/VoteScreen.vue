@@ -441,6 +441,60 @@ const showVoteSummary = computed(
   () => hasVoted.value && Boolean(ticketCode.value || ticketQrUrl.value),
 );
 
+const buildQrUrl = (qrData) =>
+  qrData
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+        qrData,
+      )}`
+    : "";
+
+const TICKET_STORAGE_PREFIX = "wcmvp-ticket:";
+
+const getTicketStorageKey = (eventId) =>
+  `${TICKET_STORAGE_PREFIX}${eventId}`;
+
+function persistTicketData(eventId, data) {
+  if (typeof window === "undefined" || !eventId) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      getTicketStorageKey(eventId),
+      JSON.stringify(data),
+    );
+  } catch (error) {
+    console.warn("Impossibile salvare il ticket in locale", error);
+  }
+}
+
+function loadStoredTicketData(eventId) {
+  if (typeof window === "undefined" || !eventId) {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(getTicketStorageKey(eventId));
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const code = typeof parsed.code === "string" ? parsed.code.trim() : "";
+    const qrData =
+      typeof parsed.qrData === "string" && parsed.qrData.trim()
+        ? parsed.qrData.trim()
+        : "";
+    return {
+      code,
+      qrData,
+    };
+  } catch (error) {
+    console.warn("Impossibile caricare il ticket salvato", error);
+    return null;
+  }
+}
+
 const DEFAULT_FEEDBACK_SURVEY = Object.freeze({
   questions: [
     {
@@ -854,13 +908,22 @@ async function refreshVoteStatus(eventId) {
     return;
   }
   isCheckingVoteStatus.value = true;
+  const storedTicket = loadStoredTicketData(eventId);
+  if (storedTicket) {
+    ticketCode.value = storedTicket.code;
+    ticketQrUrl.value = buildQrUrl(storedTicket.qrData);
+    isTicketLoading.value = false;
+  }
   try {
     const { ok, hasVoted: status } = await fetchVoteStatus(eventId);
     if (ok) {
-      hasVoted.value = Boolean(status);
+      hasVoted.value = Boolean(status) || Boolean(storedTicket?.code);
     }
   } catch (error) {
     console.warn("Impossibile verificare lo stato del voto", error);
+    if (storedTicket?.code) {
+      hasVoted.value = true;
+    }
   } finally {
     isCheckingVoteStatus.value = false;
   }
@@ -999,6 +1062,20 @@ const visibleCourtSponsors = computed(() =>
 const showSponsorSection = computed(
   () => preVoteSettings.value.showBottomSponsors && sponsors.value.length > 0,
 );
+
+const sponsorGridClass = computed(() => {
+  const count = sponsors.value.length;
+  if (count <= 1) {
+    return ["grid-cols-1"];
+  }
+  if (count === 2) {
+    return ["grid-cols-2", "grid-rows-1"];
+  }
+  if (count === 3) {
+    return ["grid-cols-2", "md:grid-cols-3"];
+  }
+  return ["grid-cols-2", "md:grid-cols-3"];
+});
 
 const showVoteCounterSection = computed(
   () => preVoteSettings.value.showVoteCounter && Boolean(currentEventId.value),
@@ -1178,50 +1255,60 @@ const isCountdownMoreThanTwoHoursAway = computed(
 
 const isEventUpcoming = computed(() => timeUntilEventStartMs.value > 0);
 
-watch(currentEventId, (eventId) => {
-  votedPlayerId.value = null;
-  pendingPlayer.value = null;
-  errorMessage.value = "";
-  showTicketModal.value = false;
-  ticketCode.value = "";
-  ticketQrUrl.value = "";
-  ticketLoadError.value = "";
-  isTicketLoading.value = false;
-  showAlreadyVotedModal.value = false;
-  totalVotes.value = 0;
-  voteTotalError.value = "";
-  stopVoteTotalPolling();
-  if (eventId && preVoteSettings.value.showVoteCounter) {
-    refreshVoteTotal();
-    startVoteTotalPolling();
-  } else {
-    isVoteTotalLoading.value = false;
-  }
-  hasVoted.value = false;
-  if (eventId) {
-    refreshVoteStatus(eventId);
-  }
-  resetSponsorVisibility();
-  stopSponsorVisibilityInterval();
-  teardownSponsorObserver();
-  if (eventId && preVoteSettings.value.showSponsors) {
-    ensureSponsorSession(eventId);
-    nextTick(() => {
-      if (showSponsorSection.value) {
-        setupSponsorObserver();
-      }
-    });
-  }
-  resetFeedbackFlow();
-  if (eventId) {
-    const completed = readFeedbackCompletion(eventId);
-    hasCompletedFeedback.value = completed;
-    showFeedbackThankYou.value = completed && hasVoted.value;
-  } else {
-    hasCompletedFeedback.value = false;
-    showFeedbackThankYou.value = false;
-  }
-});
+watch(
+  currentEventId,
+  (eventId) => {
+    votedPlayerId.value = null;
+    pendingPlayer.value = null;
+    errorMessage.value = "";
+    showTicketModal.value = false;
+    ticketCode.value = "";
+    ticketQrUrl.value = "";
+    ticketLoadError.value = "";
+    isTicketLoading.value = false;
+    showAlreadyVotedModal.value = false;
+    totalVotes.value = 0;
+    voteTotalError.value = "";
+    stopVoteTotalPolling();
+    if (eventId && preVoteSettings.value.showVoteCounter) {
+      refreshVoteTotal();
+      startVoteTotalPolling();
+    } else {
+      isVoteTotalLoading.value = false;
+    }
+    hasVoted.value = false;
+    const storedTicket = loadStoredTicketData(eventId);
+    if (storedTicket) {
+      ticketCode.value = storedTicket.code;
+      ticketQrUrl.value = buildQrUrl(storedTicket.qrData);
+      hasVoted.value = Boolean(storedTicket.code);
+    }
+    if (eventId) {
+      refreshVoteStatus(eventId);
+    }
+    resetSponsorVisibility();
+    stopSponsorVisibilityInterval();
+    teardownSponsorObserver();
+    if (eventId && preVoteSettings.value.showSponsors) {
+      ensureSponsorSession(eventId);
+      nextTick(() => {
+        if (showSponsorSection.value) {
+          setupSponsorObserver();
+        }
+      });
+    }
+    resetFeedbackFlow();
+    if (eventId) {
+      const completed = readFeedbackCompletion(eventId);
+      hasCompletedFeedback.value = completed;
+      showFeedbackThankYou.value = completed && hasVoted.value;
+    } else {
+      hasCompletedFeedback.value = false;
+      showFeedbackThankYou.value = false;
+    }
+  },
+  { immediate: true },
+);
 
 watch(
   sponsors,
@@ -1484,12 +1571,14 @@ const voteForPlayer = async (player) => {
         ticketCode.value = codeSource;
         ticketLoadError.value = "";
         isTicketLoading.value = Boolean(qrSource);
-        ticketQrUrl.value = qrSource
-          ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrSource)}`
-          : "";
+        ticketQrUrl.value = buildQrUrl(qrSource);
         if (!qrSource) {
           isTicketLoading.value = false;
         }
+        persistTicketData(eventId, {
+          code: codeSource,
+          qrData: qrSource,
+        });
         showTicketModal.value = true;
         refreshVoteTotal({ silent: true });
       } else {
@@ -1644,6 +1733,14 @@ const handleQrError = () => {
           </p>
         </section>
         <section v-else class="px-4 after-vote-section">
+          <div class="after-vote-panel">
+            <h3>{{ eventTitle }}</h3>
+            <p>
+              Hai già espresso il tuo voto per questa partita. Conserva il
+              codice mostrato in alto e attendi l'estrazione dei premi.
+            </p>
+          </div>
+
           <div class="after-vote-success">
             <p class="after-vote-success__eyebrow">
               Voto registrato <span aria-hidden="true">✅</span>
@@ -1665,14 +1762,6 @@ const handleQrError = () => {
               class="after-vote-success__thanks"
             >
               Grazie 💙 Hai aiutato a migliorare l’esperienza dei tifosi 🙌
-            </p>
-          </div>
-
-          <div class="after-vote-panel">
-            <h3>{{ eventTitle }}</h3>
-            <p>
-              Hai già espresso il tuo voto per questa partita. Conserva il
-              codice mostrato in alto e attendi l'estrazione dei premi.
             </p>
           </div>
 
@@ -1724,7 +1813,7 @@ const handleQrError = () => {
               </header>
 
               <div class="flex-1 px-6 pb-6">
-                <div class="grid h-full grid-cols-2 grid-rows-2 gap-4">
+                <div class="grid auto-rows-fr gap-4" :class="sponsorGridClass">
                   <template v-for="sponsor in sponsors" :key="sponsor.id">
                     <a
                       v-if="sponsor.link"
