@@ -477,19 +477,25 @@ type AppDatabase interface {
 	UpdateTeam(id int, name string) error
 	DeleteTeam(id int) error
 	CreatePlayer(p Player) (int, error)
+	GetPlayerByID(id int) (Player, error)
 	ListPlayers() ([]Player, error)
+	ListPlayersByTeam(teamID int) ([]Player, error)
 	UpdatePlayer(p Player) error
 	DeletePlayer(id int) error
 	CreateEvent(e Event) (int, error)
 	ListEvents() ([]Event, error)
+	ListEventsByTeam(teamID int) ([]Event, error)
 	UpdateEvent(e Event) error
 	DeleteEvent(id int) error
-	SetActiveEvent(eventID int) error
-	ClearActiveEvent() error
+	SetActiveEvent(eventID int, teamID int) error
+	ClearActiveEvent(teamID int) error
 	CloseEventVoting(eventID int) error
 	ConcludeEvent(eventID int) error
-	GetActiveEvent() (Event, error)
+	GetActiveEvent(teamID int) (Event, error)
+	GetEventTeamIDs(eventID int) (int, int, error)
 	ListVotes() ([]Vote, error)
+	GetVoteEventID(voteID int) (int, error)
+	ListVotesByTeam(teamID int) ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
 	ValidateTicket(eventID int, code string) (TicketValidationResult, error)
 	RedeemTicket(eventID int, code, signature string) (bool, error)
@@ -1501,8 +1507,34 @@ func (db *appdbimpl) CreatePlayer(p Player) (int, error) {
 	return int(id), nil
 }
 
+func (db *appdbimpl) GetPlayerByID(id int) (Player, error) {
+	var p Player
+	row := db.c.QueryRow(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id FROM players WHERE id = ?`, id)
+	if err := row.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID); err != nil {
+		return Player{}, err
+	}
+	return p, nil
+}
+
 func (db *appdbimpl) ListPlayers() ([]Player, error) {
 	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id FROM players`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ps []Player
+	for rows.Next() {
+		var p Player
+		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID); err != nil {
+			return nil, err
+		}
+		ps = append(ps, p)
+	}
+	return ps, nil
+}
+
+func (db *appdbimpl) ListPlayersByTeam(teamID int) ([]Player, error) {
+	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id FROM players WHERE team_id = ?`, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -1725,6 +1757,76 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 	return es, nil
 }
 
+func (db *appdbimpl) ListEventsByTeam(teamID int) ([]Event, error) {
+	rows, err := db.c.Query(`
+SELECT e.id,
+       e.team1_id,
+       e.team2_id,
+       e.start_datetime,
+       e.location,
+       e.is_active,
+       e.votes_closed,
+       e.is_concluded,
+       e.show_reaction_test,
+       e.show_selfie,
+       e.show_vote_trend,
+       e.show_feedback_survey,
+       e.show_pre_vote_sponsors,
+       e.show_pre_vote_bottom_sponsors,
+       e.show_vote_counter,
+       e.feedback_survey_config,
+       IFNULL(t1.name, ''),
+       IFNULL(t2.name, '')
+FROM events e
+LEFT JOIN teams t1 ON t1.id = e.team1_id
+LEFT JOIN teams t2 ON t2.id = e.team2_id
+WHERE e.team1_id = ? OR e.team2_id = ?`, teamID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var es []Event
+	for rows.Next() {
+		var e Event
+		var isActive int
+		var votesClosed int
+		var isConcluded int
+		var showReaction int
+		var showSelfie int
+		var showVoteTrend int
+		var showFeedback int
+		var showPreVoteSponsors int
+		var showPreVoteBottomSponsors int
+		var showVoteCounter int
+		var surveyConfig sql.NullString
+		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name); err != nil {
+			return nil, err
+		}
+		e.IsActive = isActive == 1
+		e.VotesClosed = votesClosed == 1
+		e.IsConcluded = isConcluded == 1
+		e.ShowReactionTest = showReaction == 1
+		e.ShowSelfie = showSelfie == 1
+		e.ShowVoteTrend = showVoteTrend == 1
+		e.ShowFeedbackSurvey = showFeedback == 1
+		e.ShowPreVoteSponsors = showPreVoteSponsors == 1
+		e.ShowPreVoteBottomSponsors = showPreVoteBottomSponsors == 1
+		e.ShowVoteCounter = showVoteCounter == 1
+		cfg := decodeEventFeedbackSurveyConfig(surveyConfig)
+		e.FeedbackSurvey = &cfg
+		es = append(es, e)
+	}
+	for i := range es {
+		prizes, err := db.ListEventPrizes(es[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		es[i].Prizes = prizes
+	}
+
+	return es, nil
+}
+
 func (db *appdbimpl) UpdateEvent(e Event) error {
 	tx, err := db.c.Begin()
 	if err != nil {
@@ -1745,6 +1847,14 @@ func (db *appdbimpl) UpdateEvent(e Event) error {
 	}
 
 	return tx.Commit()
+}
+
+func (db *appdbimpl) GetEventTeamIDs(eventID int) (int, int, error) {
+	var team1, team2 int
+	if err := db.c.QueryRow(`SELECT team1_id, team2_id FROM events WHERE id = ?`, eventID).Scan(&team1, &team2); err != nil {
+		return 0, 0, err
+	}
+	return team1, team2, nil
 }
 
 func (db *appdbimpl) DeleteEvent(id int) error {
@@ -1810,18 +1920,18 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	return tx.Commit()
 }
 
-func (db *appdbimpl) SetActiveEvent(eventID int) error {
+func (db *appdbimpl) SetActiveEvent(eventID int, teamID int) error {
 	tx, err := db.c.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`UPDATE events SET is_active = 0`); err != nil {
+	if _, err := tx.Exec(`UPDATE events SET is_active = 0 WHERE team1_id = ? OR team2_id = ?`, teamID, teamID); err != nil {
 		return err
 	}
 
-	res, err := tx.Exec(`UPDATE events SET is_active = 1, votes_closed = 0 WHERE id = ? AND is_concluded = 0`, eventID)
+	res, err := tx.Exec(`UPDATE events SET is_active = 1, votes_closed = 0 WHERE id = ? AND is_concluded = 0 AND (team1_id = ? OR team2_id = ?)`, eventID, teamID, teamID)
 	if err != nil {
 		return err
 	}
@@ -1847,8 +1957,8 @@ func (db *appdbimpl) SetActiveEvent(eventID int) error {
 	return tx.Commit()
 }
 
-func (db *appdbimpl) ClearActiveEvent() error {
-	_, err := db.c.Exec(`UPDATE events SET is_active = 0`)
+func (db *appdbimpl) ClearActiveEvent(teamID int) error {
+	_, err := db.c.Exec(`UPDATE events SET is_active = 0 WHERE team1_id = ? OR team2_id = ?`, teamID, teamID)
 	return err
 }
 
@@ -1892,7 +2002,7 @@ func (db *appdbimpl) ConcludeEvent(eventID int) error {
 	return tx.Commit()
 }
 
-func (db *appdbimpl) GetActiveEvent() (Event, error) {
+func (db *appdbimpl) GetActiveEvent(teamID int) (Event, error) {
 	var e Event
 	var isActive int
 	var votesClosed int
@@ -1927,9 +2037,9 @@ SELECT e.id,
 FROM events e
 LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
-WHERE e.is_active = 1
+WHERE e.is_active = 1 AND (e.team1_id = ? OR e.team2_id = ?)
 LIMIT 1
-`).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name)
+`, teamID, teamID).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name)
 	if err != nil {
 		return Event{}, err
 	}
@@ -1951,6 +2061,35 @@ LIMIT 1
 // Votes listing and deletion
 func (db *appdbimpl) ListVotes() ([]Vote, error) {
 	rows, err := db.c.Query(`SELECT id, event_id, player_id, ticket_code, ticket_signature, device_id, created_at FROM votes`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var vs []Vote
+	for rows.Next() {
+		var v Vote
+		if err := rows.Scan(&v.ID, &v.EventID, &v.PlayerID, &v.TicketCode, &v.TicketSignature, &v.DeviceID, &v.CreatedAt); err != nil {
+			return nil, err
+		}
+		vs = append(vs, v)
+	}
+	return vs, nil
+}
+
+func (db *appdbimpl) GetVoteEventID(voteID int) (int, error) {
+	var eventID int
+	if err := db.c.QueryRow(`SELECT event_id FROM votes WHERE id = ?`, voteID).Scan(&eventID); err != nil {
+		return 0, err
+	}
+	return eventID, nil
+}
+
+func (db *appdbimpl) ListVotesByTeam(teamID int) ([]Vote, error) {
+	rows, err := db.c.Query(`
+SELECT v.id, v.event_id, v.player_id, v.ticket_code, v.ticket_signature, v.device_id, v.created_at
+FROM votes v
+INNER JOIN events e ON e.id = v.event_id
+WHERE e.team1_id = ? OR e.team2_id = ?`, teamID, teamID)
 	if err != nil {
 		return nil, err
 	}
