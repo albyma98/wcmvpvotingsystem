@@ -3,6 +3,7 @@
     <header class="admin-header">
       <h1>Area amministratore</h1>
       <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
+      <p v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</p>
     </header>
 
     <section v-if="!isAuthenticated" class="card login-card">
@@ -1857,6 +1858,7 @@
 <script setup>
 import {
   computed,
+  defineProps,
   nextTick,
   onBeforeUnmount,
   onMounted,
@@ -1868,8 +1870,24 @@ import { apiClient, resolveApiUrl } from "../api";
 import { PLAYER_LAYOUT } from "../roster";
 import VoteTrendChart from "./VoteTrendChart.vue";
 
-const basePath = import.meta.env.BASE_URL ?? "/";
-const baseVoteUrl = new URL(basePath, window.location.origin);
+const props = defineProps({
+  organizationSlug: {
+    type: String,
+    default: "",
+  },
+});
+
+const basePath = computed(() => {
+  if (props.organizationSlug) {
+    const normalized = props.organizationSlug.startsWith("/")
+      ? props.organizationSlug
+      : `/${props.organizationSlug}`;
+    return normalized.replace(/\/+$/, "");
+  }
+  return (import.meta.env.BASE_URL ?? "/").replace(/\/+$/, "");
+});
+
+const baseVoteUrl = computed(() => new URL(basePath.value || "/", window.location.origin));
 const RESULTS_POLL_INTERVAL = 5000;
 const historyDateFormatter = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "full",
@@ -3548,7 +3566,7 @@ async function handleNewSponsorLogoChange(event) {
 }
 
 function buildEventLink(eventId) {
-  const url = new URL(baseVoteUrl.toString());
+  const url = new URL(baseVoteUrl.value.toString());
   if (eventId) {
     url.searchParams.set("eventId", String(eventId));
   } else {
@@ -3558,7 +3576,7 @@ function buildEventLink(eventId) {
 }
 
 function goToLottery() {
-  const target = new URL(basePath || "/", window.location.origin);
+  const target = new URL(basePath.value || "/", window.location.origin);
   if (!target.pathname.endsWith("/")) {
     target.pathname = `${target.pathname}/`;
   }
@@ -5248,6 +5266,17 @@ onBeforeUnmount(() => {
 .subtitle {
   margin: 0.5rem 0 0;
   color: #cbd5f5;
+}
+
+.context-badge {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #bfdbfe;
+  font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .portal {
