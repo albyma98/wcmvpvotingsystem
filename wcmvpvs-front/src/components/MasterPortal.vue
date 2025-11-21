@@ -169,15 +169,24 @@
                   </td>
                   <td>
                     <div class="slug-cell">
-                      <a
-                        v-if="org.slug"
-                        :href="resolvePublicLink(org.slug)"
-                        class="slug-link"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {{ org.slug }}
-                      </a>
+                      <div v-if="org.slug" class="slug-links">
+                        <a
+                          :href="resolvePublicLink(org.slug)"
+                          class="slug-link"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {{ org.slug }}
+                        </a>
+                        <a
+                          :href="resolveAdminLink(org.slug)"
+                          class="slug-link admin"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Admin
+                        </a>
+                      </div>
                       <span v-else class="muted">—</span>
                     </div>
                   </td>
@@ -225,7 +234,7 @@
                 >
                   Pagina pubblica
                 </a>
-                <a :href="resolveSocietyLink(organizationDetail.organization.id)" class="btn ghost" target="_blank">
+                <a :href="resolveSocietyLink(organizationDetail.organization)" class="btn ghost" target="_blank">
                   Apri pannello società
                 </a>
                 <button class="btn outline" type="button" @click="switchSection('organizations')">Torna alla lista</button>
@@ -245,15 +254,24 @@
                   <div>
                     <dt>Slug / URL pubblico</dt>
                     <dd>
-                      <a
-                        v-if="organizationDetail.organization.slug"
-                        :href="resolvePublicLink(organizationDetail.organization.slug)"
-                        class="slug-link"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {{ organizationDetail.organization.slug }}
-                      </a>
+                      <div v-if="organizationDetail.organization.slug" class="slug-links">
+                        <a
+                          :href="resolvePublicLink(organizationDetail.organization.slug)"
+                          class="slug-link"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {{ organizationDetail.organization.slug }}
+                        </a>
+                        <a
+                          :href="resolveAdminLink(organizationDetail.organization.slug)"
+                          class="slug-link admin"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Admin
+                        </a>
+                      </div>
                       <span v-else class="muted">—</span>
                     </dd>
                   </div>
@@ -379,8 +397,26 @@ function switchSection(section) {
   activeSection.value = section;
 }
 
-function resolveSocietyLink(id) {
-  return `/admin?society=${id}`;
+function resolveAdminLink(slug) {
+  const baseLink = resolvePublicLink(slug);
+  if (!baseLink) return '';
+
+  try {
+    const url = new URL(baseLink, typeof window !== 'undefined' ? window.location.origin : undefined);
+    url.pathname = `${url.pathname.replace(/\/+$/, '')}/admin`;
+    return url.toString();
+  } catch (error) {
+    const sanitized = baseLink.replace(/\/+$/, '');
+    return `${sanitized}/admin`;
+  }
+}
+
+function resolveSocietyLink(org) {
+  if (org?.slug) {
+    return resolveAdminLink(org.slug);
+  }
+  const id = typeof org === 'object' ? org?.id : org;
+  return `/admin?society=${id ?? ''}`;
 }
 
 function resolvePublicLink(slug) {
@@ -769,10 +805,26 @@ onMounted(() => {
   min-height: 2rem;
 }
 
+.slug-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .slug-link {
   color: #2563eb;
   font-weight: 600;
   text-decoration: none;
+}
+
+.slug-link.admin {
+  color: #0f172a;
+  background: rgba(59, 130, 246, 0.12);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 700;
+  border: 1px solid rgba(59, 130, 246, 0.35);
 }
 
 .slug-link:hover,

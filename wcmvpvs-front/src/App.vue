@@ -2,7 +2,7 @@
   <div class="app-shell">
     <AdminLottery v-if="appView === 'lottery'" />
     <MasterPortal v-else-if="appView === 'master'" />
-    <AdminPortal v-else-if="appView === 'portal'" />
+    <AdminPortal v-else-if="appView === 'portal'" :organization-slug="organizationSlug" />
     <TicketValidationView v-else-if="appView === 'ticket-validation'" />
     <CashLanding v-else-if="appView === 'landing'" />
     <ShopAdminPortal
@@ -53,12 +53,34 @@ const activeEvent = ref(null);
 const isFetchingActiveEvent = ref(false);
 const hasCheckedActiveEvent = ref(false);
 
+const pathSegments = computed(() =>
+  currentPath.value
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean),
+);
+
+const organizationSlug = computed(() => {
+  if (!pathSegments.value.length) {
+    return '';
+  }
+
+  if (pathSegments.value[0] === 'admin' || pathSegments.value[0] === 'shop') {
+    return '';
+  }
+
+  return pathSegments.value[0];
+});
+
 const appView = computed(() => {
   if (currentPath.value.startsWith('/admin/master')) {
     return 'master';
   }
   if (currentPath.value.startsWith('/admin/lottery')) {
     return 'lottery';
+  }
+  if (pathSegments.value.length >= 2 && pathSegments.value[1] === 'admin') {
+    return 'portal';
   }
   if (currentPath.value.startsWith('/admin')) {
     return 'portal';
