@@ -563,28 +563,28 @@ func (rt *_router) listAllSponsors(w http.ResponseWriter, r *http.Request, ctx r
 }
 
 func (rt *_router) createSponsor(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-        var payload struct {
-                Name       string `json:"name"`
-                ReportName string `json:"report_name"`
-                LogoData   string `json:"logo_data"`
-                LinkURL    string `json:"link_url"`
-                Position   int    `json:"position"`
-                IsActive   bool   `json:"is_active"`
-        }
+	var payload struct {
+		Name       string `json:"name"`
+		ReportName string `json:"report_name"`
+		LogoData   string `json:"logo_data"`
+		LinkURL    string `json:"link_url"`
+		Position   int    `json:"position"`
+		IsActive   bool   `json:"is_active"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while creating sponsor")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-        sponsor := database.Sponsor{
-                Name:       strings.TrimSpace(payload.Name),
-                ReportName: strings.TrimSpace(payload.ReportName),
-                LogoData:   payload.LogoData,
-                LinkURL:    strings.TrimSpace(payload.LinkURL),
-                Position:   payload.Position,
-                IsActive:   payload.IsActive,
-        }
+	sponsor := database.Sponsor{
+		Name:       strings.TrimSpace(payload.Name),
+		ReportName: strings.TrimSpace(payload.ReportName),
+		LogoData:   payload.LogoData,
+		LinkURL:    strings.TrimSpace(payload.LinkURL),
+		Position:   payload.Position,
+		IsActive:   payload.IsActive,
+	}
 
 	id, err := rt.db.CreateSponsor(sponsor)
 	if err != nil {
@@ -613,29 +613,29 @@ func (rt *_router) updateSponsor(w http.ResponseWriter, r *http.Request, ctx req
 		return
 	}
 
-        var payload struct {
-                Name       string `json:"name"`
-                ReportName string `json:"report_name"`
-                LogoData   string `json:"logo_data"`
-                LinkURL    string `json:"link_url"`
-                Position   int    `json:"position"`
-                IsActive   bool   `json:"is_active"`
-        }
+	var payload struct {
+		Name       string `json:"name"`
+		ReportName string `json:"report_name"`
+		LogoData   string `json:"logo_data"`
+		LinkURL    string `json:"link_url"`
+		Position   int    `json:"position"`
+		IsActive   bool   `json:"is_active"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while updating sponsor")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-        sponsor := database.Sponsor{
-                ID:         id,
-                Name:       strings.TrimSpace(payload.Name),
-                ReportName: strings.TrimSpace(payload.ReportName),
-                LogoData:   payload.LogoData,
-                LinkURL:    strings.TrimSpace(payload.LinkURL),
-                Position:   payload.Position,
-                IsActive:   payload.IsActive,
-        }
+	sponsor := database.Sponsor{
+		ID:         id,
+		Name:       strings.TrimSpace(payload.Name),
+		ReportName: strings.TrimSpace(payload.ReportName),
+		LogoData:   payload.LogoData,
+		LinkURL:    strings.TrimSpace(payload.LinkURL),
+		Position:   payload.Position,
+		IsActive:   payload.IsActive,
+	}
 
 	if err := rt.db.UpdateSponsor(sponsor); err != nil {
 		switch {
@@ -710,7 +710,17 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 
-	token, err := rt.createAdminSession(admin.ID, admin.Username, admin.Role)
+	orgID := ctx.OrganizationID
+	orgSlug := ctx.OrganizationSlug
+	orgTeamID := ctx.OrganizationTeamID
+	if !strings.EqualFold(admin.Role, "superadmin") {
+		if orgID == 0 || orgSlug == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	}
+
+	token, err := rt.createAdminSession(admin.ID, admin.Username, admin.Role, orgID, orgTeamID, orgSlug)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot create admin session")
 		w.WriteHeader(http.StatusInternalServerError)

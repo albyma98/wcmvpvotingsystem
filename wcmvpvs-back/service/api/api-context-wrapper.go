@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/gofrs/uuid"
@@ -30,8 +31,34 @@ func (rt *_router) wrap(fn httpRouterHandler) http.HandlerFunc {
 			"reqid":     ctx.ReqUUID.String(),
 			"remote-ip": r.RemoteAddr,
 		})
+
+		if !rt.populateOrganizationFromRequest(w, r, &ctx) {
+			return
+		}
 		ctx.Logger.Infof("handling %s %s", r.Method, r.URL.Path)
 		// Call the next handler in chain (usually, the handler function for the path)
 		fn(w, r, ctx)
 	}
+}
+
+func (rt *_router) populateOrganizationFromRequest(w http.ResponseWriter, r *http.Request, ctx *reqcontext.RequestContext) bool {
+	slug := strings.TrimSpace(r.Header.Get("X-Organization-Slug"))
+	if slug == "" {
+		slug = strings.TrimSpace(r.URL.Query().Get("organization_slug"))
+	}
+	if slug == "" {
+		return true
+	}
+
+	org, err := rt.db.GetOrganizationBySlug(slug)
+	if err != nil {
+		ctx.Logger.WithError(err).Warn("organization not found for slug")
+		w.WriteHeader(http.StatusNotFound)
+		return false
+	}
+
+	ctx.OrganizationSlug = org.Slug
+	ctx.OrganizationID = org.ID
+	ctx.OrganizationTeamID = org.TeamID
+	return true
 }

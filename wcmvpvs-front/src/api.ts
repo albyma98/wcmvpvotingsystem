@@ -57,8 +57,46 @@ const resolveApiBaseUrl = () => {
   return ensureApiPath(`${protocol}//${hostname}${originPort}`);
 };
 
+function detectOrganizationSlug(pathname: string | undefined) {
+  if (!pathname) {
+    return '';
+  }
+
+  const segments = pathname
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (!segments.length) {
+    return '';
+  }
+
+  const first = segments[0].toLowerCase();
+  if (first === 'admin' || first === 'shop') {
+    return '';
+  }
+
+  return segments[0];
+}
+
+function getOrganizationSlugFromLocation() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  return detectOrganizationSlug(window.location?.pathname || '');
+}
+
 export const apiClient = axios.create({
   baseURL: resolveApiBaseUrl(),
+});
+
+apiClient.interceptors.request.use((config) => {
+  const orgSlug = getOrganizationSlugFromLocation();
+  if (orgSlug) {
+    config.headers = config.headers || {};
+    config.headers['X-Organization-Slug'] = orgSlug;
+  }
+  return config;
 });
 
 export function resolveApiUrl(path: string) {

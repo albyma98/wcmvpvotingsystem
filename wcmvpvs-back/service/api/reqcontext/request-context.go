@@ -27,4 +27,13 @@ type RequestContext struct {
 
 	// AdminUsername is the username associated with the authenticated admin. Empty if unauthenticated.
 	AdminUsername string
+
+	// OrganizationSlug is populated when the request is scoped to a specific organization.
+	OrganizationSlug string
+
+	// OrganizationID is the identifier of the organization resolved from the request slug.
+	OrganizationID int
+
+	// OrganizationTeamID is the team identifier linked to the resolved organization.
+	OrganizationTeamID int
 }
