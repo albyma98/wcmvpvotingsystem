@@ -30,10 +30,15 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Impossibile registrare il voto senza un identificativo dispositivo valido.")
 		return
 	}
+	if ctx.OrganizationTeamID == 0 {
+		ctx.Logger.Warn("missing organization while casting vote")
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Organizzazione non valida.")
+		return
+	}
 
 	ctx.Logger.Infof("vote received for player %d event %d", req.PlayerID, req.EventID)
 
-	activeEvent, err := rt.db.GetActiveEvent()
+	activeEvent, err := rt.db.GetActiveEvent(ctx.OrganizationTeamID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			ctx.Logger.Warn("vote attempted with no active event")
@@ -48,6 +53,9 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 	if activeEvent.ID != req.EventID || !activeEvent.IsActive {
 		ctx.Logger.Warn("vote attempted for inactive event")
 		_ = writeJSONMessage(w, http.StatusConflict, "Le votazioni per questa partita non sono disponibili.")
+		return
+	}
+	if !rt.ensureEventInOrganization(w, ctx, req.EventID) {
 		return
 	}
 

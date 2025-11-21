@@ -437,6 +437,9 @@ func (rt *_router) listAdminSelfies(w http.ResponseWriter, r *http.Request, ctx 
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	if !rt.ensureEventInOrganization(w, ctx, eventID) {
+		return
+	}
 	selfies, err := rt.db.ListEventSelfies(eventID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list selfies")
@@ -483,6 +486,9 @@ func (rt *_router) updateSelfieModeration(w http.ResponseWriter, r *http.Request
 		}
 		ctx.Logger.WithError(err).Error("cannot load selfie")
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !rt.ensureEventInOrganization(w, ctx, selfie.EventID) {
 		return
 	}
 
@@ -539,6 +545,10 @@ func (rt *_router) deleteSelfie(w http.ResponseWriter, r *http.Request, ctx reqc
 		}
 		ctx.Logger.WithError(err).Error("cannot load selfie")
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !rt.ensureEventInOrganization(w, ctx, selfie.EventID) {
 		return
 	}
 
@@ -618,6 +628,9 @@ func (rt *_router) getAdminSelfieImage(w http.ResponseWriter, r *http.Request, c
 		}
 		ctx.Logger.WithError(err).Error("cannot fetch selfie")
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !rt.ensureEventInOrganization(w, ctx, selfie.EventID) {
 		return
 	}
 	rt.serveSelfieFile(w, r, ctx, selfie, false)

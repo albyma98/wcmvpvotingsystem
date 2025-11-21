@@ -82,7 +82,16 @@ func (rt *_router) deleteTeam(w http.ResponseWriter, r *http.Request, ctx reqcon
 
 // Players
 func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	players, err := rt.db.ListPlayers()
+	var (
+		players []database.Player
+		err     error
+	)
+
+	if ctx.OrganizationTeamID > 0 {
+		players, err = rt.db.ListPlayersByTeam(ctx.OrganizationTeamID)
+	} else {
+		players, err = rt.db.ListPlayers()
+	}
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list players")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -93,7 +102,12 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqco
 }
 
 func (rt *_router) listPublicPlayers(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	players, err := rt.db.ListPlayers()
+	if ctx.OrganizationTeamID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	players, err := rt.db.ListPlayersByTeam(ctx.OrganizationTeamID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list public players")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -110,6 +124,12 @@ func (rt *_router) createPlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	p.TeamID = ctx.OrganizationTeamID
+	if p.TeamID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	id, err := rt.db.CreatePlayer(p)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot create player")
@@ -130,7 +150,23 @@ func (rt *_router) updatePlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	existing, err := rt.db.GetPlayerByID(id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot load player")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if ctx.OrganizationTeamID == 0 || existing.TeamID != ctx.OrganizationTeamID {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
 	p.ID = id
+	p.TeamID = ctx.OrganizationTeamID
 	if err := rt.db.UpdatePlayer(p); err != nil {
 		ctx.Logger.WithError(err).Error("cannot update player")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -142,6 +178,21 @@ func (rt *_router) updatePlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 
 func (rt *_router) deletePlayer(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	player, err := rt.db.GetPlayerByID(id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot load player before delete")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if ctx.OrganizationTeamID == 0 || player.TeamID != ctx.OrganizationTeamID {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
 	if err := rt.db.DeletePlayer(id); err != nil {
 		ctx.Logger.WithError(err).Error("cannot delete player")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -152,8 +203,33 @@ func (rt *_router) deletePlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 }
 
 // Events
+func (rt *_router) ensureEventInOrganization(w http.ResponseWriter, ctx reqcontext.RequestContext, eventID int) bool {
+	if ctx.OrganizationTeamID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return false
+	}
+
+	team1, team2, err := rt.db.GetEventTeamIDs(eventID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			return false
+		}
+		ctx.Logger.WithError(err).Error("cannot verify event organization")
+		w.WriteHeader(http.StatusInternalServerError)
+		return false
+	}
+
+	if team1 != ctx.OrganizationTeamID && team2 != ctx.OrganizationTeamID {
+		w.WriteHeader(http.StatusNotFound)
+		return false
+	}
+
+	return true
+}
+
 func (rt *_router) listEvents(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	events, err := rt.db.ListEvents()
+	events, err := rt.db.ListEventsByTeam(ctx.OrganizationTeamID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list events")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -187,6 +263,12 @@ func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 	} else {
 		applyEventPostVoteDefaults(&e, nil)
 	}
+
+	if ctx.OrganizationTeamID == 0 || (e.Team1ID != ctx.OrganizationTeamID && e.Team2ID != ctx.OrganizationTeamID) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	id, err := rt.db.CreateEvent(e)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot create event")
@@ -225,6 +307,14 @@ func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 		applyEventPostVoteDefaults(&e, nil)
 	}
 	e.ID = id
+	if ctx.OrganizationTeamID == 0 || (e.Team1ID != ctx.OrganizationTeamID && e.Team2ID != ctx.OrganizationTeamID) {
+		if !rt.ensureEventInOrganization(w, ctx, id) {
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	if err := rt.db.UpdateEvent(e); err != nil {
 		if errors.Is(err, database.ErrPrizeLockedByWinner) {
 			w.WriteHeader(http.StatusConflict)
@@ -240,6 +330,9 @@ func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 
 func (rt *_router) deleteEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	if !rt.ensureEventInOrganization(w, ctx, id) {
+		return
+	}
 	if err := rt.db.DeleteEvent(id); err != nil {
 		ctx.Logger.WithError(err).Error("cannot delete event")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -256,8 +349,11 @@ func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ctx req
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	if !rt.ensureEventInOrganization(w, ctx, id) {
+		return
+	}
 
-	if err := rt.db.SetActiveEvent(id); err != nil {
+	if err := rt.db.SetActiveEvent(id, ctx.OrganizationTeamID); err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			w.WriteHeader(http.StatusNotFound)
@@ -279,6 +375,9 @@ func (rt *_router) closeEventVoting(w http.ResponseWriter, r *http.Request, ctx 
 	if err != nil || id <= 0 {
 		ctx.Logger.Warn("invalid event id while closing votes")
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !rt.ensureEventInOrganization(w, ctx, id) {
 		return
 	}
 
@@ -303,6 +402,9 @@ func (rt *_router) concludeEvent(w http.ResponseWriter, r *http.Request, ctx req
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	if !rt.ensureEventInOrganization(w, ctx, id) {
+		return
+	}
 
 	if err := rt.db.ConcludeEvent(id); err != nil {
 		switch {
@@ -322,7 +424,11 @@ func (rt *_router) concludeEvent(w http.ResponseWriter, r *http.Request, ctx req
 }
 
 func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	if err := rt.db.ClearActiveEvent(); err != nil {
+	if ctx.OrganizationTeamID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err := rt.db.ClearActiveEvent(ctx.OrganizationTeamID); err != nil {
 		ctx.Logger.WithError(err).Error("cannot deactivate events")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -336,6 +442,9 @@ func (rt *_router) listEventTickets(w http.ResponseWriter, r *http.Request, ctx 
 	if err != nil || eventID <= 0 {
 		ctx.Logger.Warn("invalid event id while listing tickets")
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !rt.ensureEventInOrganization(w, ctx, eventID) {
 		return
 	}
 
@@ -355,6 +464,9 @@ func (rt *_router) assignPrizeWinner(w http.ResponseWriter, r *http.Request, ctx
 	if err != nil || eventID <= 0 {
 		ctx.Logger.Warn("invalid event id while assigning prize winner")
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !rt.ensureEventInOrganization(w, ctx, eventID) {
 		return
 	}
 	prizeID, err := strconv.Atoi(chi.URLParam(r, "prizeId"))
@@ -405,6 +517,9 @@ func (rt *_router) clearPrizeWinner(w http.ResponseWriter, r *http.Request, ctx 
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	if !rt.ensureEventInOrganization(w, ctx, eventID) {
+		return
+	}
 	prizeID, err := strconv.Atoi(chi.URLParam(r, "prizeId"))
 	if err != nil || prizeID <= 0 {
 		ctx.Logger.Warn("invalid prize id while clearing prize winner")
@@ -428,7 +543,15 @@ func (rt *_router) clearPrizeWinner(w http.ResponseWriter, r *http.Request, ctx 
 
 // Votes
 func (rt *_router) listVotes(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	votes, err := rt.db.ListVotes()
+	var (
+		votes []database.Vote
+		err   error
+	)
+	if ctx.OrganizationTeamID > 0 {
+		votes, err = rt.db.ListVotesByTeam(ctx.OrganizationTeamID)
+	} else {
+		votes, err = rt.db.ListVotes()
+	}
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list votes")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -440,6 +563,19 @@ func (rt *_router) listVotes(w http.ResponseWriter, r *http.Request, ctx reqcont
 
 func (rt *_router) deleteVote(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	eventID, err := rt.db.GetVoteEventID(id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot load vote event")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !rt.ensureEventInOrganization(w, ctx, eventID) {
+		return
+	}
 	if err := rt.db.DeleteVote(id); err != nil {
 		ctx.Logger.WithError(err).Error("cannot delete vote")
 		w.WriteHeader(http.StatusInternalServerError)

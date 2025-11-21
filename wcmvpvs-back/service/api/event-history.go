@@ -218,7 +218,7 @@ func (rt *_router) buildEventHistoryEntry(ctx reqcontext.RequestContext, event d
 }
 
 func (rt *_router) getEventHistory(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	events, err := rt.db.ListEvents()
+	events, err := rt.db.ListEventsByTeam(ctx.OrganizationTeamID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list events for history")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -261,7 +261,7 @@ func (rt *_router) downloadEventHistoryReport(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	events, err := rt.db.ListEvents()
+	events, err := rt.db.ListEventsByTeam(ctx.OrganizationTeamID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list events for history report")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -318,6 +318,9 @@ func (rt *_router) purgeEvent(w http.ResponseWriter, r *http.Request, ctx reqcon
 	if err != nil || eventID <= 0 {
 		ctx.Logger.WithField("event_id", chi.URLParam(r, "id")).Warn("invalid event id while purging")
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !rt.ensureEventInOrganization(w, ctx, eventID) {
 		return
 	}
 
@@ -777,15 +780,15 @@ func assembleHistoryReportLines(entry eventHistoryEntry) []pdfLine {
 		sponsorHighlights = append(sponsorHighlights, fmt.Sprintf("Tasso di visualizzazione: %s", formatPercentage(entry.SponsorAnalytics.SeenRate)))
 		sponsorHighlights = append(sponsorHighlights, fmt.Sprintf("Tasso di click: %s", formatPercentage(entry.SponsorAnalytics.ClickRate)))
 	}
-        if entry.SponsorAnalytics.TopSponsor != nil {
-                topLabel := strings.TrimSpace(entry.SponsorAnalytics.TopSponsor.ReportName)
-                if topLabel == "" {
-                        topLabel = strings.TrimSpace(entry.SponsorAnalytics.TopSponsor.Name)
-                }
-                if topLabel != "" {
-                        sponsorHighlights = append(sponsorHighlights, fmt.Sprintf("Sponsor più coinvolgente: %s (%s visualizzazioni)", topLabel, formatItalianNumber(entry.SponsorAnalytics.TopSponsor.Views)))
-                }
-        }
+	if entry.SponsorAnalytics.TopSponsor != nil {
+		topLabel := strings.TrimSpace(entry.SponsorAnalytics.TopSponsor.ReportName)
+		if topLabel == "" {
+			topLabel = strings.TrimSpace(entry.SponsorAnalytics.TopSponsor.Name)
+		}
+		if topLabel != "" {
+			sponsorHighlights = append(sponsorHighlights, fmt.Sprintf("Sponsor più coinvolgente: %s (%s visualizzazioni)", topLabel, formatItalianNumber(entry.SponsorAnalytics.TopSponsor.Views)))
+		}
+	}
 
 	for _, highlight := range sponsorHighlights {
 		addBulletLine(&lines, highlight, 10.5, 3)
@@ -793,16 +796,16 @@ func assembleHistoryReportLines(entry eventHistoryEntry) []pdfLine {
 
 	if len(entry.SponsorClicks) > 0 {
 		addParagraphLine(&lines, "Dettaglio click per sponsor:", "bold", 11, 0, 3)
-                for _, sponsor := range entry.SponsorClicks {
-                        label := strings.TrimSpace(sponsor.ReportName)
-                        if label == "" {
-                                label = strings.TrimSpace(sponsor.Name)
-                        }
-                        if label == "" {
-                                label = "Sponsor"
-                        }
-                        addBulletLine(&lines, fmt.Sprintf("%s – %s click", label, formatItalianNumber(sponsor.Clicks)), 10, 3)
-                }
+		for _, sponsor := range entry.SponsorClicks {
+			label := strings.TrimSpace(sponsor.ReportName)
+			if label == "" {
+				label = strings.TrimSpace(sponsor.Name)
+			}
+			if label == "" {
+				label = "Sponsor"
+			}
+			addBulletLine(&lines, fmt.Sprintf("%s – %s click", label, formatItalianNumber(sponsor.Clicks)), 10, 3)
+		}
 	} else {
 		addParagraphLine(&lines, "Nessun click registrato sugli sponsor durante l’evento.", "regular", 11, 0, 4)
 	}
