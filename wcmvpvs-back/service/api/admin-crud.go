@@ -31,14 +31,15 @@ func (rt *_router) listTeams(w http.ResponseWriter, r *http.Request, ctx reqcont
 
 func (rt *_router) createTeam(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var t struct {
-		Name string `json:"name"`
+		Name         string `json:"name"`
+		Championship string `json:"championship"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while creating team")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	id, err := rt.db.CreateTeam(t.Name)
+	id, err := rt.db.CreateTeam(t.Name, t.Championship)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot create team")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -53,14 +54,15 @@ func (rt *_router) createTeam(w http.ResponseWriter, r *http.Request, ctx reqcon
 func (rt *_router) updateTeam(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	var t struct {
-		Name string `json:"name"`
+		Name         string `json:"name"`
+		Championship string `json:"championship"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while updating team")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if err := rt.db.UpdateTeam(id, t.Name); err != nil {
+	if err := rt.db.UpdateTeam(id, t.Name, t.Championship); err != nil {
 		ctx.Logger.WithError(err).Error("cannot update team")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -87,8 +89,8 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqco
 		err     error
 	)
 
-	if ctx.OrganizationTeamID > 0 {
-		players, err = rt.db.ListPlayersByTeam(ctx.OrganizationTeamID)
+	if ctx.OrganizationID > 0 {
+		players, err = rt.db.ListPlayersByOrganization(ctx.OrganizationID)
 	} else {
 		players, err = rt.db.ListPlayers()
 	}
@@ -102,12 +104,12 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqco
 }
 
 func (rt *_router) listPublicPlayers(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	if ctx.OrganizationTeamID == 0 {
+	if ctx.OrganizationID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	players, err := rt.db.ListPlayersByTeam(ctx.OrganizationTeamID)
+	players, err := rt.db.ListPlayersByOrganization(ctx.OrganizationID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list public players")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -124,8 +126,8 @@ func (rt *_router) createPlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	p.TeamID = ctx.OrganizationTeamID
-	if p.TeamID == 0 {
+	p.OrganizationID = ctx.OrganizationID
+	if p.OrganizationID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -160,13 +162,13 @@ func (rt *_router) updatePlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if ctx.OrganizationTeamID == 0 || existing.TeamID != ctx.OrganizationTeamID {
+	if ctx.OrganizationID == 0 || existing.OrganizationID != ctx.OrganizationID {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	p.ID = id
-	p.TeamID = ctx.OrganizationTeamID
+	p.OrganizationID = ctx.OrganizationID
 	if err := rt.db.UpdatePlayer(p); err != nil {
 		ctx.Logger.WithError(err).Error("cannot update player")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -188,7 +190,7 @@ func (rt *_router) deletePlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if ctx.OrganizationTeamID == 0 || player.TeamID != ctx.OrganizationTeamID {
+	if ctx.OrganizationID == 0 || player.OrganizationID != ctx.OrganizationID {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -204,12 +206,12 @@ func (rt *_router) deletePlayer(w http.ResponseWriter, r *http.Request, ctx reqc
 
 // Events
 func (rt *_router) ensureEventInOrganization(w http.ResponseWriter, ctx reqcontext.RequestContext, eventID int) bool {
-	if ctx.OrganizationTeamID == 0 {
+	if ctx.OrganizationID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return false
 	}
 
-	team1, team2, err := rt.db.GetEventTeamIDs(eventID)
+	organizationID, err := rt.db.GetEventOrganizationID(eventID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNotFound)
@@ -220,7 +222,7 @@ func (rt *_router) ensureEventInOrganization(w http.ResponseWriter, ctx reqconte
 		return false
 	}
 
-	if team1 != ctx.OrganizationTeamID && team2 != ctx.OrganizationTeamID {
+	if organizationID != ctx.OrganizationID {
 		w.WriteHeader(http.StatusNotFound)
 		return false
 	}
@@ -229,7 +231,12 @@ func (rt *_router) ensureEventInOrganization(w http.ResponseWriter, ctx reqconte
 }
 
 func (rt *_router) listEvents(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	events, err := rt.db.ListEventsByTeam(ctx.OrganizationTeamID)
+	if ctx.OrganizationID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	events, err := rt.db.ListEventsByOrganization(ctx.OrganizationID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list events")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -264,10 +271,12 @@ func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 		applyEventPostVoteDefaults(&e, nil)
 	}
 
-	if ctx.OrganizationTeamID == 0 || (e.Team1ID != ctx.OrganizationTeamID && e.Team2ID != ctx.OrganizationTeamID) {
+	if ctx.OrganizationID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
+	e.OrganizationID = ctx.OrganizationID
 
 	id, err := rt.db.CreateEvent(e)
 	if err != nil {
@@ -307,11 +316,12 @@ func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 		applyEventPostVoteDefaults(&e, nil)
 	}
 	e.ID = id
-	if ctx.OrganizationTeamID == 0 || (e.Team1ID != ctx.OrganizationTeamID && e.Team2ID != ctx.OrganizationTeamID) {
-		if !rt.ensureEventInOrganization(w, ctx, id) {
-			return
-		}
+	e.OrganizationID = ctx.OrganizationID
+	if ctx.OrganizationID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !rt.ensureEventInOrganization(w, ctx, id) {
 		return
 	}
 
@@ -353,7 +363,7 @@ func (rt *_router) activateEvent(w http.ResponseWriter, r *http.Request, ctx req
 		return
 	}
 
-	if err := rt.db.SetActiveEvent(id, ctx.OrganizationTeamID); err != nil {
+	if err := rt.db.SetActiveEvent(id, ctx.OrganizationID); err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			w.WriteHeader(http.StatusNotFound)
@@ -424,11 +434,11 @@ func (rt *_router) concludeEvent(w http.ResponseWriter, r *http.Request, ctx req
 }
 
 func (rt *_router) deactivateEvents(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	if ctx.OrganizationTeamID == 0 {
+	if ctx.OrganizationID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if err := rt.db.ClearActiveEvent(ctx.OrganizationTeamID); err != nil {
+	if err := rt.db.ClearActiveEvent(ctx.OrganizationID); err != nil {
 		ctx.Logger.WithError(err).Error("cannot deactivate events")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -547,8 +557,8 @@ func (rt *_router) listVotes(w http.ResponseWriter, r *http.Request, ctx reqcont
 		votes []database.Vote
 		err   error
 	)
-	if ctx.OrganizationTeamID > 0 {
-		votes, err = rt.db.ListVotesByTeam(ctx.OrganizationTeamID)
+	if ctx.OrganizationID > 0 {
+		votes, err = rt.db.ListVotesByOrganization(ctx.OrganizationID)
 	} else {
 		votes, err = rt.db.ListVotes()
 	}
@@ -687,7 +697,7 @@ func (rt *_router) deleteAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 
 // Sponsors
 func (rt *_router) listAllSponsors(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	sponsors, err := rt.db.ListSponsors()
+	sponsors, err := rt.db.ListSponsors(ctx.OrganizationID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list sponsors")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -713,13 +723,19 @@ func (rt *_router) createSponsor(w http.ResponseWriter, r *http.Request, ctx req
 		return
 	}
 
+	if ctx.OrganizationID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	sponsor := database.Sponsor{
-		Name:       strings.TrimSpace(payload.Name),
-		ReportName: strings.TrimSpace(payload.ReportName),
-		LogoData:   payload.LogoData,
-		LinkURL:    strings.TrimSpace(payload.LinkURL),
-		Position:   payload.Position,
-		IsActive:   payload.IsActive,
+		OrganizationID: ctx.OrganizationID,
+		Name:           strings.TrimSpace(payload.Name),
+		ReportName:     strings.TrimSpace(payload.ReportName),
+		LogoData:       payload.LogoData,
+		LinkURL:        strings.TrimSpace(payload.LinkURL),
+		Position:       payload.Position,
+		IsActive:       payload.IsActive,
 	}
 
 	id, err := rt.db.CreateSponsor(sponsor)
@@ -764,13 +780,14 @@ func (rt *_router) updateSponsor(w http.ResponseWriter, r *http.Request, ctx req
 	}
 
 	sponsor := database.Sponsor{
-		ID:         id,
-		Name:       strings.TrimSpace(payload.Name),
-		ReportName: strings.TrimSpace(payload.ReportName),
-		LogoData:   payload.LogoData,
-		LinkURL:    strings.TrimSpace(payload.LinkURL),
-		Position:   payload.Position,
-		IsActive:   payload.IsActive,
+		ID:             id,
+		OrganizationID: ctx.OrganizationID,
+		Name:           strings.TrimSpace(payload.Name),
+		ReportName:     strings.TrimSpace(payload.ReportName),
+		LogoData:       payload.LogoData,
+		LinkURL:        strings.TrimSpace(payload.LinkURL),
+		Position:       payload.Position,
+		IsActive:       payload.IsActive,
 	}
 
 	if err := rt.db.UpdateSponsor(sponsor); err != nil {
@@ -798,7 +815,7 @@ func (rt *_router) deleteSponsor(w http.ResponseWriter, r *http.Request, ctx req
 		return
 	}
 
-	if err := rt.db.DeleteSponsor(id); err != nil {
+	if err := rt.db.DeleteSponsor(id, ctx.OrganizationID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNotFound)
 			return

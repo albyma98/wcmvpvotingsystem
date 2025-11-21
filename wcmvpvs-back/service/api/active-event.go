@@ -10,12 +10,12 @@ import (
 )
 
 func (rt *_router) getActiveEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	if ctx.OrganizationTeamID == 0 {
+	if ctx.OrganizationID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	event, err := rt.db.GetActiveEvent(ctx.OrganizationTeamID)
+	event, err := rt.db.GetActiveEvent(ctx.OrganizationID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			ctx.Logger.Info("no active event configured")

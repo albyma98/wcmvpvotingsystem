@@ -33,10 +33,6 @@ func (rt *_router) wrapAdmin(fn httpRouterHandler) http.HandlerFunc {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
-			if ctx.OrganizationTeamID == 0 {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
 		}
 
 		fn(w, r, ctx)
