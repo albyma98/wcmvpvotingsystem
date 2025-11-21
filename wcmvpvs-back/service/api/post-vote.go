@@ -30,7 +30,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Impossibile registrare il voto senza un identificativo dispositivo valido.")
 		return
 	}
-	if ctx.OrganizationTeamID == 0 {
+	if ctx.OrganizationID == 0 {
 		ctx.Logger.Warn("missing organization while casting vote")
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Organizzazione non valida.")
 		return
@@ -38,7 +38,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 
 	ctx.Logger.Infof("vote received for player %d event %d", req.PlayerID, req.EventID)
 
-	activeEvent, err := rt.db.GetActiveEvent(ctx.OrganizationTeamID)
+	activeEvent, err := rt.db.GetActiveEvent(ctx.OrganizationID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			ctx.Logger.Warn("vote attempted with no active event")

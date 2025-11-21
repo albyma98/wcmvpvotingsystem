@@ -218,7 +218,7 @@ func (rt *_router) buildEventHistoryEntry(ctx reqcontext.RequestContext, event d
 }
 
 func (rt *_router) getEventHistory(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	events, err := rt.db.ListEventsByTeam(ctx.OrganizationTeamID)
+	events, err := rt.db.ListEventsByOrganization(ctx.OrganizationID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list events for history")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -261,7 +261,7 @@ func (rt *_router) downloadEventHistoryReport(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	events, err := rt.db.ListEventsByTeam(ctx.OrganizationTeamID)
+	events, err := rt.db.ListEventsByOrganization(ctx.OrganizationID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list events for history report")
 		w.WriteHeader(http.StatusInternalServerError)

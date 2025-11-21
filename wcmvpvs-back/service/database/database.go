@@ -43,22 +43,25 @@ import (
 
 // AppDatabase is the high level interface for the DB
 type Team struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	Championship string `json:"championship"`
 }
 
 type Player struct {
-	ID           int    `json:"id"`
-	FirstName    string `json:"first_name"`
-	LastName     string `json:"last_name"`
-	Role         string `json:"role"`
-	JerseyNumber int    `json:"jersey_number"`
-	ImageURL     string `json:"image_url"`
-	TeamID       int    `json:"team_id"`
+	ID             int    `json:"id"`
+	FirstName      string `json:"first_name"`
+	LastName       string `json:"last_name"`
+	Role           string `json:"role"`
+	JerseyNumber   int    `json:"jersey_number"`
+	ImageURL       string `json:"image_url"`
+	TeamID         int    `json:"team_id"`
+	OrganizationID int    `json:"organization_id"`
 }
 
 type Event struct {
 	ID                        int                        `json:"id"`
+	OrganizationID            int                        `json:"organization_id"`
 	Team1ID                   int                        `json:"team1_id"`
 	Team2ID                   int                        `json:"team2_id"`
 	StartDateTime             string                     `json:"start_datetime"`
@@ -360,13 +363,14 @@ type Admin struct {
 }
 
 type Sponsor struct {
-	ID         int    `json:"id"`
-	Position   int    `json:"position"`
-	Name       string `json:"name"`
-	ReportName string `json:"report_name"`
-	LogoData   string `json:"logo_data"`
-	LinkURL    string `json:"link_url"`
-	IsActive   bool   `json:"is_active"`
+	ID             int    `json:"id"`
+	Position       int    `json:"position"`
+	Name           string `json:"name"`
+	ReportName     string `json:"report_name"`
+	LogoData       string `json:"logo_data"`
+	LinkURL        string `json:"link_url"`
+	IsActive       bool   `json:"is_active"`
+	OrganizationID int    `json:"organization_id"`
 }
 
 type SponsorClickStat struct {
@@ -472,30 +476,31 @@ type AppDatabase interface {
 	GetName() (string, error)
 	SetName(name string) error
 	AddVote(eventID, playerID int, code, signature, deviceID string) error
-	CreateTeam(name string) (int, error)
+	CreateTeam(name, championship string) (int, error)
 	ListTeams() ([]Team, error)
-	UpdateTeam(id int, name string) error
+	UpdateTeam(id int, name, championship string) error
 	DeleteTeam(id int) error
 	CreatePlayer(p Player) (int, error)
 	GetPlayerByID(id int) (Player, error)
 	ListPlayers() ([]Player, error)
-	ListPlayersByTeam(teamID int) ([]Player, error)
+	ListPlayersByOrganization(organizationID int) ([]Player, error)
 	UpdatePlayer(p Player) error
 	DeletePlayer(id int) error
 	CreateEvent(e Event) (int, error)
 	ListEvents() ([]Event, error)
-	ListEventsByTeam(teamID int) ([]Event, error)
+	ListEventsByOrganization(organizationID int) ([]Event, error)
 	UpdateEvent(e Event) error
 	DeleteEvent(id int) error
-	SetActiveEvent(eventID int, teamID int) error
-	ClearActiveEvent(teamID int) error
+	SetActiveEvent(eventID int, organizationID int) error
+	ClearActiveEvent(organizationID int) error
 	CloseEventVoting(eventID int) error
 	ConcludeEvent(eventID int) error
-	GetActiveEvent(teamID int) (Event, error)
+	GetActiveEvent(organizationID int) (Event, error)
 	GetEventTeamIDs(eventID int) (int, int, error)
+	GetEventOrganizationID(eventID int) (int, error)
 	ListVotes() ([]Vote, error)
 	GetVoteEventID(voteID int) (int, error)
-	ListVotesByTeam(teamID int) ([]Vote, error)
+	ListVotesByOrganization(organizationID int) ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
 	ValidateTicket(eventID int, code string) (TicketValidationResult, error)
 	RedeemTicket(eventID int, code, signature string) (bool, error)
@@ -535,9 +540,9 @@ type AppDatabase interface {
 	GetMasterDashboardSummary() (MasterDashboardSummary, error)
 	CreateSponsor(s Sponsor) (int, error)
 	UpdateSponsor(s Sponsor) error
-	DeleteSponsor(id int) error
-	ListSponsors() ([]Sponsor, error)
-	ListActiveSponsors() ([]Sponsor, error)
+	DeleteSponsor(id int, organizationID int) error
+	ListSponsors(organizationID int) ([]Sponsor, error)
+	ListActiveSponsors(organizationID int) ([]Sponsor, error)
 	RecordSponsorSession(eventID int, deviceID string) error
 	RecordSponsorExposure(eventID int, sponsorIDs []int, deviceID, exposureType string, durationMs int) error
 	RecordSponsorClick(eventID, sponsorID int, deviceID string) error
@@ -597,17 +602,23 @@ func New(db *sql.DB) (AppDatabase, error) {
 	// Create teams table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='teams';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE teams (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);`
+		sqlStmt := `CREATE TABLE teams (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, championship TEXT NOT NULL DEFAULT '');`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating teams table: %w", err)
+		}
+	} else {
+		if _, err = db.Exec(`ALTER TABLE teams ADD COLUMN championship TEXT NOT NULL DEFAULT ''`); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return nil, fmt.Errorf("error ensuring teams championship column: %w", err)
+			}
 		}
 	}
 
 	// Create players table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='players';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE players (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL, last_name TEXT NOT NULL, role TEXT NOT NULL, jersey_number INTEGER, image_url TEXT, team_id INTEGER NOT NULL, FOREIGN KEY (team_id) REFERENCES teams(id));`
+		sqlStmt := `CREATE TABLE players (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL, last_name TEXT NOT NULL, role TEXT NOT NULL, jersey_number INTEGER, image_url TEXT, team_id INTEGER NOT NULL, organization_id INTEGER NOT NULL DEFAULT 0, FOREIGN KEY (team_id) REFERENCES teams(id), FOREIGN KEY (organization_id) REFERENCES organizations(id));`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating players table: %w", err)
@@ -615,15 +626,27 @@ func New(db *sql.DB) (AppDatabase, error) {
 	} else {
 		// attempt schema update if column missing
 		_, _ = db.Exec(`ALTER TABLE players ADD COLUMN image_url TEXT`)
+		_, _ = db.Exec(`ALTER TABLE players ADD COLUMN organization_id INTEGER NOT NULL DEFAULT 0`)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_players_org ON players(organization_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring players organization index: %w", err)
 	}
 
 	// Create events table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='events';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, team1_id INTEGER NOT NULL, team2_id INTEGER NOT NULL, start_datetime TEXT NOT NULL, location TEXT, FOREIGN KEY (team1_id) REFERENCES teams(id), FOREIGN KEY (team2_id) REFERENCES teams(id));`
+		sqlStmt := `CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER NOT NULL DEFAULT 0, team1_id INTEGER NOT NULL, team2_id INTEGER NOT NULL, start_datetime TEXT NOT NULL, location TEXT, FOREIGN KEY (organization_id) REFERENCES organizations(id), FOREIGN KEY (team1_id) REFERENCES teams(id), FOREIGN KEY (team2_id) REFERENCES teams(id));`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating events table: %w", err)
+		}
+
+	} else {
+		if _, err = db.Exec(`ALTER TABLE events ADD COLUMN organization_id INTEGER NOT NULL DEFAULT 0`); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return nil, fmt.Errorf("error ensuring events organization column: %w", err)
+			}
 		}
 
 	}
@@ -722,6 +745,10 @@ func New(db *sql.DB) (AppDatabase, error) {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring events feedback survey config column: %w", err)
 		}
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_org ON events(organization_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring events organization index: %w", err)
 	}
 
 	// Create admins table if not exists
@@ -913,19 +940,28 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsors';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE sponsors (id INTEGER PRIMARY KEY AUTOINCREMENT, position INTEGER NOT NULL UNIQUE, name TEXT NOT NULL, report_name TEXT, logo_data TEXT NOT NULL, link_url TEXT, is_active INTEGER NOT NULL DEFAULT 1, CHECK(position BETWEEN 1 AND ` + fmt.Sprint(maxSponsorSlots) + `));`
+		sqlStmt := `CREATE TABLE sponsors (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL, name TEXT NOT NULL, report_name TEXT, logo_data TEXT NOT NULL, link_url TEXT, is_active INTEGER NOT NULL DEFAULT 1, CHECK(position BETWEEN 1 AND ` + fmt.Sprint(maxSponsorSlots) + `), FOREIGN KEY (organization_id) REFERENCES organizations(id), UNIQUE(organization_id, position));`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating sponsors table: %w", err)
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("error verifying sponsors table: %w", err)
+	} else {
+		_, _ = db.Exec(`ALTER TABLE sponsors ADD COLUMN organization_id INTEGER NOT NULL DEFAULT 0`)
+		if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sponsors_org_position ON sponsors(organization_id, position)`); err != nil {
+			return nil, fmt.Errorf("error ensuring sponsors organization position index: %w", err)
+		}
 	}
 
 	if _, err = db.Exec(`ALTER TABLE sponsors ADD COLUMN report_name TEXT`); err != nil {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring sponsors report_name column: %w", err)
 		}
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsors_org ON sponsors(organization_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring sponsors organization index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsor_clicks';`).Scan(&tableName)
@@ -1461,8 +1497,8 @@ func (db *appdbimpl) GetReactionTestStats(eventID int) (ReactionTestStats, error
 }
 
 // Team operations
-func (db *appdbimpl) CreateTeam(name string) (int, error) {
-	res, err := db.c.Exec(`INSERT INTO teams (name) VALUES (?)`, name)
+func (db *appdbimpl) CreateTeam(name, championship string) (int, error) {
+	res, err := db.c.Exec(`INSERT INTO teams (name, championship) VALUES (?, ?)`, name, championship)
 	if err != nil {
 		return 0, err
 	}
@@ -1471,7 +1507,7 @@ func (db *appdbimpl) CreateTeam(name string) (int, error) {
 }
 
 func (db *appdbimpl) ListTeams() ([]Team, error) {
-	rows, err := db.c.Query(`SELECT id, name FROM teams`)
+	rows, err := db.c.Query(`SELECT id, name, championship FROM teams`)
 	if err != nil {
 		return nil, err
 	}
@@ -1479,7 +1515,7 @@ func (db *appdbimpl) ListTeams() ([]Team, error) {
 	var ts []Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Championship); err != nil {
 			return nil, err
 		}
 		ts = append(ts, t)
@@ -1487,8 +1523,8 @@ func (db *appdbimpl) ListTeams() ([]Team, error) {
 	return ts, nil
 }
 
-func (db *appdbimpl) UpdateTeam(id int, name string) error {
-	_, err := db.c.Exec(`UPDATE teams SET name=? WHERE id=?`, name, id)
+func (db *appdbimpl) UpdateTeam(id int, name, championship string) error {
+	_, err := db.c.Exec(`UPDATE teams SET name=?, championship=? WHERE id=?`, name, championship, id)
 	return err
 }
 
@@ -1499,7 +1535,7 @@ func (db *appdbimpl) DeleteTeam(id int) error {
 
 // Player operations
 func (db *appdbimpl) CreatePlayer(p Player) (int, error) {
-	res, err := db.c.Exec(`INSERT INTO players (first_name, last_name, role, jersey_number, image_url, team_id) VALUES (?, ?, ?, ?, ?, ?)`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.ImageURL, p.TeamID)
+	res, err := db.c.Exec(`INSERT INTO players (first_name, last_name, role, jersey_number, image_url, team_id, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?)`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.ImageURL, p.TeamID, p.OrganizationID)
 	if err != nil {
 		return 0, err
 	}
@@ -1509,15 +1545,15 @@ func (db *appdbimpl) CreatePlayer(p Player) (int, error) {
 
 func (db *appdbimpl) GetPlayerByID(id int) (Player, error) {
 	var p Player
-	row := db.c.QueryRow(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id FROM players WHERE id = ?`, id)
-	if err := row.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID); err != nil {
+	row := db.c.QueryRow(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id, organization_id FROM players WHERE id = ?`, id)
+	if err := row.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID, &p.OrganizationID); err != nil {
 		return Player{}, err
 	}
 	return p, nil
 }
 
 func (db *appdbimpl) ListPlayers() ([]Player, error) {
-	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id FROM players`)
+	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id, organization_id FROM players`)
 	if err != nil {
 		return nil, err
 	}
@@ -1525,7 +1561,7 @@ func (db *appdbimpl) ListPlayers() ([]Player, error) {
 	var ps []Player
 	for rows.Next() {
 		var p Player
-		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID); err != nil {
+		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID, &p.OrganizationID); err != nil {
 			return nil, err
 		}
 		ps = append(ps, p)
@@ -1533,8 +1569,8 @@ func (db *appdbimpl) ListPlayers() ([]Player, error) {
 	return ps, nil
 }
 
-func (db *appdbimpl) ListPlayersByTeam(teamID int) ([]Player, error) {
-	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id FROM players WHERE team_id = ?`, teamID)
+func (db *appdbimpl) ListPlayersByOrganization(organizationID int) ([]Player, error) {
+	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id, organization_id FROM players WHERE organization_id = ?`, organizationID)
 	if err != nil {
 		return nil, err
 	}
@@ -1542,7 +1578,7 @@ func (db *appdbimpl) ListPlayersByTeam(teamID int) ([]Player, error) {
 	var ps []Player
 	for rows.Next() {
 		var p Player
-		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID); err != nil {
+		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID, &p.OrganizationID); err != nil {
 			return nil, err
 		}
 		ps = append(ps, p)
@@ -1551,7 +1587,7 @@ func (db *appdbimpl) ListPlayersByTeam(teamID int) ([]Player, error) {
 }
 
 func (db *appdbimpl) UpdatePlayer(p Player) error {
-	_, err := db.c.Exec(`UPDATE players SET first_name=?, last_name=?, role=?, jersey_number=?, image_url=?, team_id=? WHERE id=?`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.ImageURL, p.TeamID, p.ID)
+	_, err := db.c.Exec(`UPDATE players SET first_name=?, last_name=?, role=?, jersey_number=?, image_url=?, team_id=?, organization_id=? WHERE id=?`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.ImageURL, p.TeamID, p.OrganizationID, p.ID)
 	return err
 }
 
@@ -1670,7 +1706,7 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 	e.FeedbackSurvey = &survey
 	surveyJSON := encodeEventFeedbackSurveyConfig(survey)
 
-	res, err := tx.Exec(`INSERT INTO events (team1_id, team2_id, start_datetime, location, show_reaction_test, show_selfie, show_vote_trend, show_feedback_survey, show_pre_vote_sponsors, show_pre_vote_bottom_sponsors, show_vote_counter, feedback_survey_config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowPreVoteBottomSponsors), boolToInt(e.ShowVoteCounter), surveyJSON)
+	res, err := tx.Exec(`INSERT INTO events (organization_id, team1_id, team2_id, start_datetime, location, show_reaction_test, show_selfie, show_vote_trend, show_feedback_survey, show_pre_vote_sponsors, show_pre_vote_bottom_sponsors, show_vote_counter, feedback_survey_config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, e.OrganizationID, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowPreVoteBottomSponsors), boolToInt(e.ShowVoteCounter), surveyJSON)
 	if err != nil {
 		return 0, err
 	}
@@ -1691,6 +1727,7 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 func (db *appdbimpl) ListEvents() ([]Event, error) {
 	rows, err := db.c.Query(`
 SELECT e.id,
+       e.organization_id,
        e.team1_id,
        e.team2_id,
        e.start_datetime,
@@ -1729,7 +1766,7 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 		var showPreVoteBottomSponsors int
 		var showVoteCounter int
 		var surveyConfig sql.NullString
-		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name); err != nil {
+		if err := rows.Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name); err != nil {
 			return nil, err
 		}
 		e.IsActive = isActive == 1
@@ -1757,9 +1794,10 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 	return es, nil
 }
 
-func (db *appdbimpl) ListEventsByTeam(teamID int) ([]Event, error) {
+func (db *appdbimpl) ListEventsByOrganization(organizationID int) ([]Event, error) {
 	rows, err := db.c.Query(`
 SELECT e.id,
+       e.organization_id,
        e.team1_id,
        e.team2_id,
        e.start_datetime,
@@ -1780,7 +1818,8 @@ SELECT e.id,
 FROM events e
 LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
-WHERE e.team1_id = ? OR e.team2_id = ?`, teamID, teamID)
+WHERE e.organization_id = ?
+ORDER BY e.start_datetime DESC`, organizationID)
 	if err != nil {
 		return nil, err
 	}
@@ -1799,7 +1838,7 @@ WHERE e.team1_id = ? OR e.team2_id = ?`, teamID, teamID)
 		var showPreVoteBottomSponsors int
 		var showVoteCounter int
 		var surveyConfig sql.NullString
-		if err := rows.Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name); err != nil {
+		if err := rows.Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name); err != nil {
 			return nil, err
 		}
 		e.IsActive = isActive == 1
@@ -1855,6 +1894,14 @@ func (db *appdbimpl) GetEventTeamIDs(eventID int) (int, int, error) {
 		return 0, 0, err
 	}
 	return team1, team2, nil
+}
+
+func (db *appdbimpl) GetEventOrganizationID(eventID int) (int, error) {
+	var organizationID int
+	if err := db.c.QueryRow(`SELECT organization_id FROM events WHERE id = ?`, eventID).Scan(&organizationID); err != nil {
+		return 0, err
+	}
+	return organizationID, nil
 }
 
 func (db *appdbimpl) DeleteEvent(id int) error {
@@ -1920,18 +1967,18 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	return tx.Commit()
 }
 
-func (db *appdbimpl) SetActiveEvent(eventID int, teamID int) error {
+func (db *appdbimpl) SetActiveEvent(eventID int, organizationID int) error {
 	tx, err := db.c.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`UPDATE events SET is_active = 0 WHERE team1_id = ? OR team2_id = ?`, teamID, teamID); err != nil {
+	if _, err := tx.Exec(`UPDATE events SET is_active = 0 WHERE organization_id = ?`, organizationID); err != nil {
 		return err
 	}
 
-	res, err := tx.Exec(`UPDATE events SET is_active = 1, votes_closed = 0 WHERE id = ? AND is_concluded = 0 AND (team1_id = ? OR team2_id = ?)`, eventID, teamID, teamID)
+	res, err := tx.Exec(`UPDATE events SET is_active = 1, votes_closed = 0 WHERE id = ? AND organization_id = ? AND is_concluded = 0`, eventID, organizationID)
 	if err != nil {
 		return err
 	}
@@ -1957,8 +2004,8 @@ func (db *appdbimpl) SetActiveEvent(eventID int, teamID int) error {
 	return tx.Commit()
 }
 
-func (db *appdbimpl) ClearActiveEvent(teamID int) error {
-	_, err := db.c.Exec(`UPDATE events SET is_active = 0 WHERE team1_id = ? OR team2_id = ?`, teamID, teamID)
+func (db *appdbimpl) ClearActiveEvent(organizationID int) error {
+	_, err := db.c.Exec(`UPDATE events SET is_active = 0 WHERE organization_id = ?`, organizationID)
 	return err
 }
 
@@ -2002,7 +2049,7 @@ func (db *appdbimpl) ConcludeEvent(eventID int) error {
 	return tx.Commit()
 }
 
-func (db *appdbimpl) GetActiveEvent(teamID int) (Event, error) {
+func (db *appdbimpl) GetActiveEvent(organizationID int) (Event, error) {
 	var e Event
 	var isActive int
 	var votesClosed int
@@ -2017,6 +2064,7 @@ func (db *appdbimpl) GetActiveEvent(teamID int) (Event, error) {
 	var surveyConfig sql.NullString
 	err := db.c.QueryRow(`
 SELECT e.id,
+       e.organization_id,
        e.team1_id,
        e.team2_id,
        e.start_datetime,
@@ -2037,9 +2085,9 @@ SELECT e.id,
 FROM events e
 LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
-WHERE e.is_active = 1 AND (e.team1_id = ? OR e.team2_id = ?)
+WHERE e.is_active = 1 AND e.organization_id = ?
 LIMIT 1
-`, teamID, teamID).Scan(&e.ID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name)
+`, organizationID).Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name)
 	if err != nil {
 		return Event{}, err
 	}
@@ -2084,12 +2132,12 @@ func (db *appdbimpl) GetVoteEventID(voteID int) (int, error) {
 	return eventID, nil
 }
 
-func (db *appdbimpl) ListVotesByTeam(teamID int) ([]Vote, error) {
+func (db *appdbimpl) ListVotesByOrganization(organizationID int) ([]Vote, error) {
 	rows, err := db.c.Query(`
 SELECT v.id, v.event_id, v.player_id, v.ticket_code, v.ticket_signature, v.device_id, v.created_at
 FROM votes v
 INNER JOIN events e ON e.id = v.event_id
-WHERE e.team1_id = ? OR e.team2_id = ?`, teamID, teamID)
+WHERE e.organization_id = ?`, organizationID)
 	if err != nil {
 		return nil, err
 	}
@@ -2686,12 +2734,12 @@ func (db *appdbimpl) GetMasterDashboardSummary() (MasterDashboardSummary, error)
 func (db *appdbimpl) CreateSponsor(s Sponsor) (int, error) {
 	sanitizedName := strings.TrimSpace(s.Name)
 	sanitizedReportName := strings.TrimSpace(s.ReportName)
-	if strings.TrimSpace(s.LogoData) == "" {
+	if strings.TrimSpace(s.LogoData) == "" || s.OrganizationID == 0 {
 		return 0, ErrInvalidSponsorData
 	}
 
 	var total int
-	if err := db.c.QueryRow(`SELECT COUNT(*) FROM sponsors`).Scan(&total); err != nil {
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM sponsors WHERE organization_id = ?`, s.OrganizationID).Scan(&total); err != nil {
 		return 0, err
 	}
 	if total >= maxSponsorSlots {
@@ -2700,7 +2748,7 @@ func (db *appdbimpl) CreateSponsor(s Sponsor) (int, error) {
 
 	position := s.Position
 	if position <= 0 || position > maxSponsorSlots {
-		nextPos, err := db.nextSponsorPosition()
+		nextPos, err := db.nextSponsorPosition(s.OrganizationID)
 		if err != nil {
 			return 0, err
 		}
@@ -2713,7 +2761,7 @@ func (db *appdbimpl) CreateSponsor(s Sponsor) (int, error) {
 		position = total + 1
 	}
 
-	res, err := db.c.Exec(`INSERT INTO sponsors (position, name, report_name, logo_data, link_url, is_active) VALUES (?, ?, ?, ?, ?, ?)`, position, sanitizedName, sanitizedReportName, s.LogoData, sanitizedLink, boolToInt(isActive))
+	res, err := db.c.Exec(`INSERT INTO sponsors (organization_id, position, name, report_name, logo_data, link_url, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)`, s.OrganizationID, position, sanitizedName, sanitizedReportName, s.LogoData, sanitizedLink, boolToInt(isActive))
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: sponsors.position") {
 			return 0, ErrInvalidSponsorPos
@@ -2735,13 +2783,13 @@ func (db *appdbimpl) UpdateSponsor(s Sponsor) error {
 		return ErrInvalidSponsorData
 	}
 
-	if s.Position <= 0 || s.Position > maxSponsorSlots {
+	if s.Position <= 0 || s.Position > maxSponsorSlots || s.OrganizationID == 0 {
 		return ErrInvalidSponsorPos
 	}
 
 	sanitizedLink := strings.TrimSpace(s.LinkURL)
 
-	res, err := db.c.Exec(`UPDATE sponsors SET position=?, name=?, report_name=?, logo_data=?, link_url=?, is_active=? WHERE id=?`, s.Position, sanitizedName, sanitizedReportName, s.LogoData, sanitizedLink, boolToInt(s.IsActive), s.ID)
+	res, err := db.c.Exec(`UPDATE sponsors SET position=?, name=?, report_name=?, logo_data=?, link_url=?, is_active=? WHERE id=? AND organization_id = ?`, s.Position, sanitizedName, sanitizedReportName, s.LogoData, sanitizedLink, boolToInt(s.IsActive), s.ID, s.OrganizationID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: sponsors.position") {
 			return ErrInvalidSponsorPos
@@ -2758,8 +2806,8 @@ func (db *appdbimpl) UpdateSponsor(s Sponsor) error {
 	return nil
 }
 
-func (db *appdbimpl) DeleteSponsor(id int) error {
-	res, err := db.c.Exec(`DELETE FROM sponsors WHERE id=?`, id)
+func (db *appdbimpl) DeleteSponsor(id int, organizationID int) error {
+	res, err := db.c.Exec(`DELETE FROM sponsors WHERE id=? AND organization_id = ?`, id, organizationID)
 	if err != nil {
 		return err
 	}
@@ -2770,15 +2818,15 @@ func (db *appdbimpl) DeleteSponsor(id int) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
-	return db.normalizeSponsorPositions()
+	return db.normalizeSponsorPositions(organizationID)
 }
 
-func (db *appdbimpl) ListSponsors() ([]Sponsor, error) {
-	return db.querySponsors(false)
+func (db *appdbimpl) ListSponsors(organizationID int) ([]Sponsor, error) {
+	return db.querySponsors(false, organizationID)
 }
 
-func (db *appdbimpl) ListActiveSponsors() ([]Sponsor, error) {
-	return db.querySponsors(true)
+func (db *appdbimpl) ListActiveSponsors(organizationID int) ([]Sponsor, error) {
+	return db.querySponsors(true, organizationID)
 }
 
 func (db *appdbimpl) RecordSponsorSession(eventID int, deviceID string) error {
@@ -3027,14 +3075,18 @@ ORDER BY s.position ASC, s.id ASC
 	return stats, nil
 }
 
-func (db *appdbimpl) querySponsors(activeOnly bool) ([]Sponsor, error) {
-	baseQuery := `SELECT id, position, name, IFNULL(report_name, ''), logo_data, IFNULL(link_url, ''), is_active FROM sponsors`
+func (db *appdbimpl) querySponsors(activeOnly bool, organizationID int) ([]Sponsor, error) {
+	if organizationID == 0 {
+		return []Sponsor{}, nil
+	}
+
+	baseQuery := `SELECT id, position, name, IFNULL(report_name, ''), logo_data, IFNULL(link_url, ''), is_active FROM sponsors WHERE organization_id = ?`
 	if activeOnly {
-		baseQuery += ` WHERE is_active = 1`
+		baseQuery += ` AND is_active = 1`
 	}
 	baseQuery += ` ORDER BY position ASC, id ASC`
 
-	rows, err := db.c.Query(baseQuery)
+	rows, err := db.c.Query(baseQuery, organizationID)
 	if err != nil {
 		return nil, err
 	}
@@ -3053,8 +3105,8 @@ func (db *appdbimpl) querySponsors(activeOnly bool) ([]Sponsor, error) {
 	return sponsors, nil
 }
 
-func (db *appdbimpl) nextSponsorPosition() (int, error) {
-	rows, err := db.c.Query(`SELECT position FROM sponsors ORDER BY position ASC`)
+func (db *appdbimpl) nextSponsorPosition(organizationID int) (int, error) {
+	rows, err := db.c.Query(`SELECT position FROM sponsors WHERE organization_id = ? ORDER BY position ASC`, organizationID)
 	if err != nil {
 		return 0, err
 	}
@@ -3078,8 +3130,8 @@ func (db *appdbimpl) nextSponsorPosition() (int, error) {
 	return 0, ErrMaxSponsors
 }
 
-func (db *appdbimpl) normalizeSponsorPositions() error {
-	rows, err := db.c.Query(`SELECT id FROM sponsors ORDER BY position ASC, id ASC`)
+func (db *appdbimpl) normalizeSponsorPositions(organizationID int) error {
+	rows, err := db.c.Query(`SELECT id FROM sponsors WHERE organization_id = ? ORDER BY position ASC, id ASC`, organizationID)
 	if err != nil {
 		return err
 	}
