@@ -524,6 +524,7 @@ type AppDatabase interface {
 	UpdateOrganization(org Organization) (Organization, error)
 	ListOrganizations() ([]Organization, error)
 	GetOrganization(id int) (Organization, error)
+	GetOrganizationBySlug(slug string) (Organization, error)
 	GetOrganizationStats(id int) (OrganizationStats, error)
 	GetMasterDashboardSummary() (MasterDashboardSummary, error)
 	CreateSponsor(s Sponsor) (int, error)
@@ -2373,6 +2374,14 @@ func (db *appdbimpl) GetOrganization(id int) (Organization, error) {
 		return Organization{}, sql.ErrNoRows
 	}
 	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, IFNULL(team_id, 0), created_at, updated_at FROM organizations WHERE id = ?`, id)
+	return db.scanOrganization(row)
+}
+
+func (db *appdbimpl) GetOrganizationBySlug(slug string) (Organization, error) {
+	if slug == "" {
+		return Organization{}, sql.ErrNoRows
+	}
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, IFNULL(team_id, 0), created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
 	return db.scanOrganization(row)
 }
 

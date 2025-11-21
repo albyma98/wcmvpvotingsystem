@@ -24,6 +24,21 @@ func (rt *_router) wrapAdmin(fn httpRouterHandler) http.HandlerFunc {
 		ctx.AdminRole = session.Role
 		ctx.AdminUsername = session.Username
 
+		if !strings.HasPrefix(r.URL.Path, "/admin/master") {
+			if ctx.OrganizationID == 0 || ctx.OrganizationSlug == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if session.OrganizationID != 0 && session.OrganizationID != ctx.OrganizationID {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			if ctx.OrganizationTeamID == 0 {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+		}
+
 		fn(w, r, ctx)
 	})
 }
@@ -67,7 +82,7 @@ func (rt *_router) getAdminSession(token string) (adminSession, bool) {
 	return session, true
 }
 
-func (rt *_router) createAdminSession(adminID int, username, role string) (string, error) {
+func (rt *_router) createAdminSession(adminID int, username, role string, orgID, orgTeamID int, orgSlug string) (string, error) {
 	token, err := generateSessionToken()
 	if err != nil {
 		return "", err
@@ -75,10 +90,13 @@ func (rt *_router) createAdminSession(adminID int, username, role string) (strin
 
 	rt.adminSessionsMu.Lock()
 	rt.adminSessions[token] = adminSession{
-		AdminID:   adminID,
-		Username:  username,
-		Role:      role,
-		ExpiresAt: time.Now().Add(rt.sessionTimeout),
+		AdminID:            adminID,
+		Username:           username,
+		Role:               role,
+		OrganizationID:     orgID,
+		OrganizationSlug:   orgSlug,
+		OrganizationTeamID: orgTeamID,
+		ExpiresAt:          time.Now().Add(rt.sessionTimeout),
 	}
 	rt.adminSessionsMu.Unlock()
 
