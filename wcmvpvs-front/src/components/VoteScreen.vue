@@ -20,7 +20,7 @@ import {
   sendJsonBeacon,
   submitEventFeedback,
 } from "../api";
-import { mapPlayersToLayout } from "../roster";
+import { DEFAULT_ROSTER_SCHEMA, mapPlayersToLayout } from "../roster";
 import { getOrCreateDeviceId } from "../deviceId";
 
 const props = defineProps({
@@ -45,8 +45,19 @@ const props = defineProps({
 const rawPlayers = ref([]);
 const isLoadingPlayers = ref(false);
 const playersError = ref("");
+const rosterSchema = ref(DEFAULT_ROSTER_SCHEMA);
 
-const fieldPlayers = computed(() => mapPlayersToLayout(rawPlayers.value));
+const calledUpPlayers = computed(() =>
+  Array.isArray(rawPlayers.value)
+    ? rawPlayers.value.filter((player) => player?.is_called_up !== false)
+    : [],
+);
+
+const fieldPlayers = computed(() =>
+  mapPlayersToLayout(calledUpPlayers.value, {
+    layoutSchema: rosterSchema.value,
+  }),
+);
 const activeSponsorIds = computed(() =>
   sponsors.value
     .map((item) => {
@@ -57,7 +68,13 @@ const activeSponsorIds = computed(() =>
 );
 
 const sponsors = ref([]);
-const courtSponsors = computed(() => sponsors.value.slice(0, 2));
+const courtSponsors = computed(() => {
+  const schema = rosterSchema.value;
+  if (schema === 14) {
+    return sponsors.value.slice(0, 1);
+  }
+  return sponsors.value.slice(0, 2);
+});
 const sponsorSectionRef = ref(null);
 const sponsorObserverThresholds = [0, 0.25, 0.5, 0.75, 1];
 let sponsorIntersectionObserver = null;
@@ -399,19 +416,28 @@ async function loadPlayers() {
   playersError.value = "";
   try {
     const { data } = await apiClient.get("/public/players");
-    if (Array.isArray(data)) {
-      rawPlayers.value = data.map((item) => ({
+    const schemaCandidate = Number(data?.roster_schema);
+    rosterSchema.value =
+      schemaCandidate === 12 || schemaCandidate === 13 || schemaCandidate === 14
+        ? schemaCandidate
+        : DEFAULT_ROSTER_SCHEMA;
+
+    const payload = Array.isArray(data?.players) ? data.players : data;
+
+    if (Array.isArray(payload)) {
+      rawPlayers.value = payload.map((item) => ({
         id: Number(item?.id) || 0,
         first_name: typeof item?.first_name === "string" ? item.first_name : "",
         last_name: typeof item?.last_name === "string" ? item.last_name : "",
         role: typeof item?.role === "string" ? item.role : "",
         jersey_number:
           typeof item?.jersey_number === "number"
-            ? item.jersey_number
+            ? item?.jersey_number
             : Number.isFinite(Number(item?.jersey_number))
               ? Number(item?.jersey_number)
               : null,
         image_url: typeof item?.image_url === "string" ? item.image_url : "",
+        is_called_up: item?.is_called_up !== false,
       }));
     } else {
       rawPlayers.value = [];

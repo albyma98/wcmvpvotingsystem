@@ -1525,6 +1525,10 @@
                     </option>
                   </select>
                 </label>
+                <label class="checkbox-inline">
+                  <input type="checkbox" v-model="slot.is_called_up" />
+                  <span>Convocato</span>
+                </label>
                 <label>
                   URL immagine (opzionale)
                   <input
@@ -1558,6 +1562,21 @@
                 </div>
               </div>
             </fieldset>
+          </div>
+
+          <div class="player-schema">
+            <label>
+              Schema convocati
+              <select v-model.number="rosterSchema">
+                <option :value="12">12 giocatori</option>
+                <option :value="13">13 giocatori</option>
+                <option :value="14">14 giocatori</option>
+              </select>
+            </label>
+            <p class="muted small">
+              Il layout della pagina di voto si adatterà automaticamente in base al
+              numero di convocati selezionato.
+            </p>
           </div>
 
           <div class="actions-row">
@@ -1867,7 +1886,7 @@ import {
   watch,
 } from "vue";
 import { apiClient, resolveApiUrl } from "../api";
-import { PLAYER_LAYOUT } from "../roster";
+import { DEFAULT_ROSTER_SCHEMA, MAX_PLAYER_SLOTS } from "../roster";
 import VoteTrendChart from "./VoteTrendChart.vue";
 
 const props = defineProps({
@@ -2162,7 +2181,10 @@ const sponsorAnalytics = ref(null);
 const sponsorAnalyticsError = ref("");
 const isLoadingSponsorAnalytics = ref(false);
 const newTeamName = ref("");
-const playerSlotCount = PLAYER_LAYOUT.length;
+const playerSlotCount = MAX_PLAYER_SLOTS;
+const rosterSchema = ref(DEFAULT_ROSTER_SCHEMA);
+const validateRosterSchema = (value) =>
+  value === 12 || value === 13 || value === 14 ? value : DEFAULT_ROSTER_SCHEMA;
 
 const PLAYER_IMAGE_MAX_WIDTH = 600;
 const PLAYER_IMAGE_MAX_HEIGHT = 600;
@@ -2175,6 +2197,7 @@ const createEmptyPlayerSlot = (teamId = 0) => ({
   role: "",
   jersey_number: "",
   team_id: teamId,
+  is_called_up: true,
   image_url: "",
   image_preview: "",
   _imageChangeToken: null,
@@ -2288,6 +2311,7 @@ const normalizePlayerPayload = (slot, fallbackTeam) => {
     jersey_number: jerseyNumber,
     image_url: slot.image_url.trim(),
     team_id: slot.team_id || fallbackTeam || 0,
+    is_called_up: Boolean(slot.is_called_up),
   };
 };
 
@@ -2449,6 +2473,11 @@ const normalizePlayerResponse = (item) => {
   const image =
     typeof item?.image_url === "string" ? item.image_url.trim() : "";
   const team = Number(item?.team_id) || 0;
+  const isCalledUp = Boolean(
+    item && Object.prototype.hasOwnProperty.call(item, "is_called_up")
+      ? item.is_called_up
+      : true,
+  );
   return {
     id: Number(item?.id) || 0,
     first_name: firstName,
@@ -2457,6 +2486,7 @@ const normalizePlayerResponse = (item) => {
     jersey_number: jerseyNumber,
     image_url: image,
     team_id: team,
+    is_called_up: isCalledUp,
   };
 };
 
@@ -2540,6 +2570,7 @@ const applyPlayersToSlots = () => {
           ? player.jersey_number.toString()
           : "",
         team_id: player.team_id || fallback,
+        is_called_up: player.is_called_up,
         image_url: player.image_url,
         image_preview: player.image_url || "",
       });
@@ -2575,6 +2606,15 @@ const savePlayers = async () => {
   const handledIds = new Set();
 
   try {
+    const schemaToSave = validateRosterSchema(rosterSchema.value);
+    await secureRequest(() =>
+      apiClient.put(
+        "/players/settings",
+        { roster_schema: schemaToSave },
+        authHeaders.value,
+      ),
+    );
+
     for (const slot of playerSlots) {
       const hasContent = slotHasContent(slot);
       if (hasContent) {
@@ -3964,8 +4004,18 @@ async function loadPlayers() {
   const { data } = await secureRequest(() =>
     apiClient.get("/players", authHeaders.value),
   );
-  const normalized = Array.isArray(data)
-    ? data.map((item) => normalizePlayerResponse(item))
+
+  const schemaCandidate = Number(data?.roster_schema);
+  if (Number.isFinite(schemaCandidate)) {
+    rosterSchema.value = validateRosterSchema(schemaCandidate);
+  } else {
+    rosterSchema.value = validateRosterSchema(rosterSchema.value);
+  }
+
+  const payload = Array.isArray(data?.players) ? data.players : data;
+
+  const normalized = Array.isArray(payload)
+    ? payload.map((item) => normalizePlayerResponse(item))
     : [];
   players.value = normalized;
   applyPlayersToSlots();
@@ -5505,6 +5555,17 @@ onBeforeUnmount(() => {
   color: #1e293b;
 }
 
+.player-slot__grid .checkbox-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.player-slot__grid .checkbox-inline input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+}
+
 .player-slot__grid input,
 .player-slot__grid select {
   border-radius: 0.65rem;
@@ -5529,6 +5590,30 @@ onBeforeUnmount(() => {
   border-radius: 0.85rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+}
+
+.player-schema {
+  margin: 0.75rem 0 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.player-schema label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.player-schema select {
+  max-width: 240px;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.95rem;
+  background: #fff;
 }
 
 .prize-editor {

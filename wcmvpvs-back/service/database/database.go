@@ -57,6 +57,7 @@ type Player struct {
 	Role           string `json:"role"`
 	JerseyNumber   int    `json:"jersey_number"`
 	ImageURL       string `json:"image_url"`
+	IsCalledUp     bool   `json:"is_called_up"`
 	TeamID         int    `json:"team_id"`
 	OrganizationID int    `json:"organization_id"`
 }
@@ -102,15 +103,16 @@ type EventFeedbackAnswerConfig struct {
 }
 
 type Organization struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	City      string `json:"city,omitempty"`
-	LogoURL   string `json:"logo_url,omitempty"`
-	IsActive  bool   `json:"is_active"`
-	TeamID    int    `json:"team_id,omitempty"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	Slug         string `json:"slug"`
+	City         string `json:"city,omitempty"`
+	LogoURL      string `json:"logo_url,omitempty"`
+	IsActive     bool   `json:"is_active"`
+	RosterSchema int    `json:"roster_schema,omitempty"`
+	TeamID       int    `json:"team_id,omitempty"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 type OrganizationStats struct {
@@ -489,6 +491,8 @@ type AppDatabase interface {
 	ListPlayersByOrganization(organizationID int) ([]Player, error)
 	UpdatePlayer(p Player) error
 	DeletePlayer(id int) error
+	UpdateOrganizationRosterSchema(organizationID int, rosterSchema int) error
+	GetOrganizationRosterSchema(organizationID int) (int, error)
 	CreateEvent(e Event) (int, error)
 	ListEvents() ([]Event, error)
 	ListEventsByOrganization(organizationID int) ([]Event, error)
@@ -621,7 +625,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 	// Create players table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='players';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE players (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL, last_name TEXT NOT NULL, role TEXT NOT NULL, jersey_number INTEGER, image_url TEXT, team_id INTEGER NOT NULL, organization_id INTEGER NOT NULL DEFAULT 0, FOREIGN KEY (team_id) REFERENCES teams(id), FOREIGN KEY (organization_id) REFERENCES organizations(id));`
+		sqlStmt := `CREATE TABLE players (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL, last_name TEXT NOT NULL, role TEXT NOT NULL, jersey_number INTEGER, image_url TEXT, is_called_up INTEGER NOT NULL DEFAULT 1, team_id INTEGER NOT NULL, organization_id INTEGER NOT NULL DEFAULT 0, FOREIGN KEY (team_id) REFERENCES teams(id), FOREIGN KEY (organization_id) REFERENCES organizations(id));`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating players table: %w", err)
@@ -629,6 +633,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 	} else {
 		// attempt schema update if column missing
 		_, _ = db.Exec(`ALTER TABLE players ADD COLUMN image_url TEXT`)
+		_, _ = db.Exec(`ALTER TABLE players ADD COLUMN is_called_up INTEGER NOT NULL DEFAULT 1`)
 		_, _ = db.Exec(`ALTER TABLE players ADD COLUMN organization_id INTEGER NOT NULL DEFAULT 0`)
 	}
 
@@ -778,6 +783,7 @@ slug TEXT NOT NULL DEFAULT '',
 city TEXT,
 logo_url TEXT,
 is_active INTEGER NOT NULL DEFAULT 1,
+roster_schema INTEGER NOT NULL DEFAULT 13,
 team_id INTEGER,
 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -792,6 +798,11 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN slug TEXT NOT NULL DEFAULT ''`); err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring organizations slug column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN roster_schema INTEGER NOT NULL DEFAULT 13`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring organizations roster schema column: %w", err)
 		}
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_organizations_team ON organizations(team_id)`); err != nil {
@@ -1632,7 +1643,7 @@ func (db *appdbimpl) DeleteTeam(id int) error {
 
 // Player operations
 func (db *appdbimpl) CreatePlayer(p Player) (int, error) {
-	res, err := db.c.Exec(`INSERT INTO players (first_name, last_name, role, jersey_number, image_url, team_id, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?)`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.ImageURL, p.TeamID, p.OrganizationID)
+	res, err := db.c.Exec(`INSERT INTO players (first_name, last_name, role, jersey_number, image_url, is_called_up, team_id, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.ImageURL, boolToInt(p.IsCalledUp), p.TeamID, p.OrganizationID)
 	if err != nil {
 		return 0, err
 	}
@@ -1642,15 +1653,17 @@ func (db *appdbimpl) CreatePlayer(p Player) (int, error) {
 
 func (db *appdbimpl) GetPlayerByID(id int) (Player, error) {
 	var p Player
-	row := db.c.QueryRow(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id, organization_id FROM players WHERE id = ?`, id)
-	if err := row.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID, &p.OrganizationID); err != nil {
+	row := db.c.QueryRow(`SELECT id, first_name, last_name, role, jersey_number, image_url, is_called_up, team_id, organization_id FROM players WHERE id = ?`, id)
+	var isCalledUp int
+	if err := row.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &isCalledUp, &p.TeamID, &p.OrganizationID); err != nil {
 		return Player{}, err
 	}
+	p.IsCalledUp = isCalledUp != 0
 	return p, nil
 }
 
 func (db *appdbimpl) ListPlayers() ([]Player, error) {
-	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id, organization_id FROM players`)
+	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, is_called_up, team_id, organization_id FROM players`)
 	if err != nil {
 		return nil, err
 	}
@@ -1658,16 +1671,18 @@ func (db *appdbimpl) ListPlayers() ([]Player, error) {
 	var ps []Player
 	for rows.Next() {
 		var p Player
-		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID, &p.OrganizationID); err != nil {
+		var isCalledUp int
+		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &isCalledUp, &p.TeamID, &p.OrganizationID); err != nil {
 			return nil, err
 		}
+		p.IsCalledUp = isCalledUp != 0
 		ps = append(ps, p)
 	}
 	return ps, nil
 }
 
 func (db *appdbimpl) ListPlayersByOrganization(organizationID int) ([]Player, error) {
-	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, team_id, organization_id FROM players WHERE organization_id = ?`, organizationID)
+	rows, err := db.c.Query(`SELECT id, first_name, last_name, role, jersey_number, image_url, is_called_up, team_id, organization_id FROM players WHERE organization_id = ?`, organizationID)
 	if err != nil {
 		return nil, err
 	}
@@ -1675,16 +1690,18 @@ func (db *appdbimpl) ListPlayersByOrganization(organizationID int) ([]Player, er
 	var ps []Player
 	for rows.Next() {
 		var p Player
-		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &p.TeamID, &p.OrganizationID); err != nil {
+		var isCalledUp int
+		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Role, &p.JerseyNumber, &p.ImageURL, &isCalledUp, &p.TeamID, &p.OrganizationID); err != nil {
 			return nil, err
 		}
+		p.IsCalledUp = isCalledUp != 0
 		ps = append(ps, p)
 	}
 	return ps, nil
 }
 
 func (db *appdbimpl) UpdatePlayer(p Player) error {
-	_, err := db.c.Exec(`UPDATE players SET first_name=?, last_name=?, role=?, jersey_number=?, image_url=?, team_id=?, organization_id=? WHERE id=?`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.ImageURL, p.TeamID, p.OrganizationID, p.ID)
+	_, err := db.c.Exec(`UPDATE players SET first_name=?, last_name=?, role=?, jersey_number=?, image_url=?, is_called_up=?, team_id=?, organization_id=? WHERE id=?`, p.FirstName, p.LastName, p.Role, p.JerseyNumber, p.ImageURL, boolToInt(p.IsCalledUp), p.TeamID, p.OrganizationID, p.ID)
 	return err
 }
 
@@ -2640,11 +2657,13 @@ func (db *appdbimpl) GetAdminByID(id int) (Admin, error) {
 func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) {
 	var org Organization
 	var isActive int
+	var rosterSchema int
 	var teamID sql.NullInt64
-	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &org.City, &org.LogoURL, &isActive, &teamID, &org.CreatedAt, &org.UpdatedAt); err != nil {
+	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &org.City, &org.LogoURL, &isActive, &rosterSchema, &teamID, &org.CreatedAt, &org.UpdatedAt); err != nil {
 		return Organization{}, err
 	}
 	org.IsActive = isActive != 0
+	org.RosterSchema = normalizeRosterSchema(rosterSchema)
 	if teamID.Valid {
 		org.TeamID = int(teamID.Int64)
 	}
@@ -2652,7 +2671,7 @@ func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) 
 }
 
 func (db *appdbimpl) ListOrganizations() ([]Organization, error) {
-	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, IFNULL(team_id, 0), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
+	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -2673,7 +2692,7 @@ func (db *appdbimpl) GetOrganization(id int) (Organization, error) {
 	if id <= 0 {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, IFNULL(team_id, 0), created_at, updated_at FROM organizations WHERE id = ?`, id)
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), created_at, updated_at FROM organizations WHERE id = ?`, id)
 	return db.scanOrganization(row)
 }
 
@@ -2681,7 +2700,7 @@ func (db *appdbimpl) GetOrganizationBySlug(slug string) (Organization, error) {
 	if slug == "" {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, IFNULL(team_id, 0), created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
 	return db.scanOrganization(row)
 }
 
@@ -2696,6 +2715,7 @@ func (db *appdbimpl) CreateOrganization(org Organization) (Organization, error) 
 	if sanitizedSlug == "" {
 		sanitizedSlug = normalizeSlug(sanitizedName)
 	}
+	rosterSchema := normalizeRosterSchema(org.RosterSchema)
 	if err := db.ensureOrganizationSlugAvailable(sanitizedSlug, 0); err != nil {
 		return Organization{}, err
 	}
@@ -2716,7 +2736,7 @@ func (db *appdbimpl) CreateOrganization(org Organization) (Organization, error) 
 		teamID = int(newTeamID)
 	}
 
-	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, team_id) VALUES (?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), teamID)
+	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, roster_schema, team_id) VALUES (?, ?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), rosterSchema, teamID)
 	if err != nil {
 		return Organization{}, err
 	}
@@ -2764,6 +2784,10 @@ func (db *appdbimpl) UpdateOrganization(org Organization) (Organization, error) 
 	if err := db.ensureOrganizationSlugAvailable(sanitizedSlug, org.ID); err != nil {
 		return Organization{}, err
 	}
+	rosterSchema := normalizeRosterSchema(org.RosterSchema)
+	if org.RosterSchema == 0 {
+		rosterSchema = existing.RosterSchema
+	}
 
 	tx, err := db.c.Begin()
 	if err != nil {
@@ -2771,7 +2795,7 @@ func (db *appdbimpl) UpdateOrganization(org Organization) (Organization, error) 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, team_id=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), teamID, org.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, roster_schema=?, team_id=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), rosterSchema, teamID, org.ID); err != nil {
 		return Organization{}, err
 	}
 
@@ -2790,6 +2814,23 @@ func (db *appdbimpl) UpdateOrganization(org Organization) (Organization, error) 
 		return Organization{}, err
 	}
 	return updated, nil
+}
+
+func (db *appdbimpl) UpdateOrganizationRosterSchema(organizationID int, rosterSchema int) error {
+	if organizationID <= 0 {
+		return sql.ErrNoRows
+	}
+	validSchema := normalizeRosterSchema(rosterSchema)
+	_, err := db.c.Exec(`UPDATE organizations SET roster_schema = ? WHERE id = ?`, validSchema, organizationID)
+	return err
+}
+
+func (db *appdbimpl) GetOrganizationRosterSchema(organizationID int) (int, error) {
+	org, err := db.GetOrganization(organizationID)
+	if err != nil {
+		return 0, err
+	}
+	return normalizeRosterSchema(org.RosterSchema), nil
 }
 
 func (db *appdbimpl) GetOrganizationStats(id int) (OrganizationStats, error) {
@@ -3306,6 +3347,15 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func normalizeRosterSchema(value int) int {
+	switch value {
+	case 12, 13, 14:
+		return value
+	default:
+		return 13
+	}
 }
 
 func nullableOrgID(orgID int) interface{} {

@@ -12,6 +12,7 @@ export interface PublicPlayer {
   role?: string;
   jersey_number?: number | string | null;
   image_url?: string | null;
+  is_called_up?: boolean;
 }
 
 export interface LayoutPlayer {
@@ -27,21 +28,59 @@ export interface LayoutPlayer {
   raw: PublicPlayer;
 }
 
-export const PLAYER_LAYOUT: PlayerLayoutSlot[] = [
-  { tier: 'gold', position: { x: 20, y: 14 } },
-  { tier: 'gold', position: { x: 50, y: 14 } },
-  { tier: 'silver', position: { x: 80, y: 14 } },
-  { tier: 'gold', position: { x: 20, y: 32 } },
-  { tier: 'silver', position: { x: 50, y: 32 } },
-  { tier: 'gold', position: { x: 80, y: 32 } },
-  { tier: 'bronze', position: { x: 50, y: 50 } },
-  { tier: 'bronze', position: { x: 20, y: 68 } },
-  { tier: 'bronze', position: { x: 50, y: 68 } },
-  { tier: 'silver', position: { x: 80, y: 68 } },
-  { tier: 'bronze', position: { x: 20, y: 86 } },
-  { tier: 'silver', position: { x: 50, y: 86 } },
-  { tier: 'bronze', position: { x: 80, y: 86 } },
-];
+export const PLAYER_LAYOUTS: Record<number, PlayerLayoutSlot[]> = {
+  12: [
+    { tier: 'gold', position: { x: 12, y: 22 } },
+    { tier: 'gold', position: { x: 28, y: 22 } },
+    { tier: 'silver', position: { x: 44, y: 22 } },
+    { tier: 'silver', position: { x: 56, y: 22 } },
+    { tier: 'gold', position: { x: 72, y: 22 } },
+    { tier: 'gold', position: { x: 88, y: 22 } },
+    { tier: 'bronze', position: { x: 12, y: 78 } },
+    { tier: 'bronze', position: { x: 28, y: 78 } },
+    { tier: 'silver', position: { x: 44, y: 78 } },
+    { tier: 'silver', position: { x: 56, y: 78 } },
+    { tier: 'bronze', position: { x: 72, y: 78 } },
+    { tier: 'bronze', position: { x: 88, y: 78 } },
+  ],
+  13: [
+    { tier: 'gold', position: { x: 12, y: 22 } },
+    { tier: 'gold', position: { x: 28, y: 22 } },
+    { tier: 'silver', position: { x: 44, y: 22 } },
+    { tier: 'silver', position: { x: 56, y: 22 } },
+    { tier: 'gold', position: { x: 72, y: 22 } },
+    { tier: 'gold', position: { x: 88, y: 22 } },
+    { tier: 'bronze', position: { x: 50, y: 50 } },
+    { tier: 'bronze', position: { x: 12, y: 78 } },
+    { tier: 'bronze', position: { x: 28, y: 78 } },
+    { tier: 'silver', position: { x: 44, y: 78 } },
+    { tier: 'silver', position: { x: 56, y: 78 } },
+    { tier: 'bronze', position: { x: 72, y: 78 } },
+    { tier: 'bronze', position: { x: 88, y: 78 } },
+  ],
+  14: [
+    { tier: 'gold', position: { x: 12, y: 22 } },
+    { tier: 'gold', position: { x: 28, y: 22 } },
+    { tier: 'silver', position: { x: 44, y: 22 } },
+    { tier: 'silver', position: { x: 56, y: 22 } },
+    { tier: 'gold', position: { x: 72, y: 22 } },
+    { tier: 'gold', position: { x: 88, y: 22 } },
+    { tier: 'bronze', position: { x: 12, y: 78 } },
+    { tier: 'bronze', position: { x: 28, y: 78 } },
+    { tier: 'silver', position: { x: 44, y: 78 } },
+    { tier: 'silver', position: { x: 56, y: 78 } },
+    { tier: 'bronze', position: { x: 72, y: 78 } },
+    { tier: 'bronze', position: { x: 88, y: 78 } },
+    { tier: 'gold', position: { x: 6, y: 50 } },
+    { tier: 'gold', position: { x: 94, y: 50 } },
+  ],
+};
+
+export const DEFAULT_ROSTER_SCHEMA = 13;
+export const PLAYER_LAYOUT: PlayerLayoutSlot[] = PLAYER_LAYOUTS[DEFAULT_ROSTER_SCHEMA];
+export const MAX_PLAYER_SLOTS = Math.max(
+  ...Object.values(PLAYER_LAYOUTS).map((layout) => layout.length),
+);
 
 const FALLBACK_POSITIONS: PlayerLayoutSlot[] = Array.from({ length: 20 }, (_, index) => {
   const columns = 4;
@@ -65,12 +104,27 @@ const toNumberOrNull = (value: number | string | null | undefined) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-export function mapPlayersToLayout(players: PublicPlayer[]): LayoutPlayer[] {
+function resolveRosterSchema(schema?: number): number {
+  if (schema === 12 || schema === 13 || schema === 14) {
+    return schema;
+  }
+  return DEFAULT_ROSTER_SCHEMA;
+}
+
+export function mapPlayersToLayout(
+  players: PublicPlayer[],
+  options: { layoutSchema?: number } = {},
+): LayoutPlayer[] {
   if (!Array.isArray(players)) {
     return [];
   }
 
-  const sorted = [...players]
+  const allowedPlayers = players.filter((player) => player?.is_called_up !== false);
+
+  const layoutSchema = resolveRosterSchema(options.layoutSchema);
+  const layout = PLAYER_LAYOUTS[layoutSchema] ?? PLAYER_LAYOUTS[DEFAULT_ROSTER_SCHEMA];
+
+  const sorted = [...allowedPlayers]
     .map((player) => ({
       ...player,
       jersey_number: toNumberOrNull(player.jersey_number),
@@ -97,10 +151,10 @@ export function mapPlayersToLayout(players: PublicPlayer[]): LayoutPlayer[] {
 
       return a.id - b.id;
     })
-    .slice(0, PLAYER_LAYOUT.length);
+    .slice(0, layout.length);
 
   return sorted.map((player, index) => {
-    const slot = PLAYER_LAYOUT[index] ?? FALLBACK_POSITIONS[index] ?? FALLBACK_POSITIONS[0];
+    const slot = layout[index] ?? FALLBACK_POSITIONS[index] ?? FALLBACK_POSITIONS[0];
     const firstName = sanitizeText(player.first_name);
     const lastName = sanitizeText(player.last_name);
     const baseName = `${firstName} ${lastName}`.trim();
