@@ -76,7 +76,11 @@ const appView = computed(() => {
   if (currentPath.value.startsWith('/admin/master')) {
     return 'master';
   }
-  if (currentPath.value.startsWith('/admin/lottery')) {
+  const hasOrganizationLotteryRoute =
+    pathSegments.value.length >= 3 &&
+    pathSegments.value[1] === 'admin' &&
+    pathSegments.value[2] === 'lottery';
+  if (currentPath.value.startsWith('/admin/lottery') || hasOrganizationLotteryRoute) {
     return 'lottery';
   }
   if (pathSegments.value.length >= 2 && pathSegments.value[1] === 'admin') {
