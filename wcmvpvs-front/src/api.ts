@@ -424,3 +424,30 @@ export async function submitEventFeedback(eventId: number, feedback: EventFeedba
     return { ok: false, error, status };
   }
 }
+
+export function trackPageEngagement(eventId: number, durationSeconds: number) {
+  if (!eventId || durationSeconds <= 0) {
+    return Promise.resolve();
+  }
+
+  const headers = getDeviceHeaders();
+  const deviceId = headers['X-Device-ID'];
+
+  return sendJsonBeacon(`/events/${eventId}/engagement`, {
+    duration_seconds: durationSeconds,
+    device_id: deviceId,
+  });
+}
+
+export async function fetchEventEngagement(eventId: number) {
+  if (!eventId) {
+    return { ok: false, error: new Error('missing_event_id') };
+  }
+
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/engagement`);
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}

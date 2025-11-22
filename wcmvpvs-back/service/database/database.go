@@ -123,6 +123,29 @@ type OrganizationStats struct {
 	TotalMatches   int    `json:"total_matches"`
 }
 
+type EventEngagementStats struct {
+	EventID                int     `json:"event_id"`
+	TotalDurationSeconds   int64   `json:"total_duration_seconds"`
+	AverageDurationSeconds float64 `json:"average_duration_seconds"`
+	TotalUsers             int     `json:"total_users"`
+}
+
+type OrganizationEngagementStat struct {
+	OrganizationID          int     `json:"organization_id"`
+	Name                    string  `json:"name"`
+	Slug                    string  `json:"slug"`
+	TotalDurationSeconds    int64   `json:"total_duration_seconds"`
+	AverageDurationPerMatch float64 `json:"average_duration_per_match"`
+	AverageDurationPerUser  float64 `json:"average_duration_per_user"`
+}
+
+type MasterEngagementSummary struct {
+	TotalDurationSeconds    int64                        `json:"total_duration_seconds"`
+	AverageDurationPerMatch float64                      `json:"average_duration_per_match"`
+	AverageDurationPerUser  float64                      `json:"average_duration_per_user"`
+	Organizations           []OrganizationEngagementStat `json:"organizations"`
+}
+
 type MasterDashboardSummary struct {
 	TotalOrganizations int `json:"total_organizations"`
 	TotalVotes         int `json:"total_votes"`
@@ -216,6 +239,7 @@ type MasterAnalytics struct {
 	TopEvents               TopEventsAnalytics             `json:"top_events"`
 	SponsorStats            SponsorMasterStats             `json:"sponsor_stats"`
 	MonthlySummary          MonthlyComparison              `json:"monthly_summary"`
+	Engagement              MasterEngagementSummary        `json:"engagement"`
 }
 
 var slugSanitizer = regexp.MustCompile(`[^a-z0-9]+`)
@@ -644,6 +668,9 @@ type AppDatabase interface {
 	RecordSponsorClick(eventID, sponsorID int, deviceID string) error
 	GetSponsorAnalytics(eventID int) (SponsorAnalytics, error)
 	GetSponsorClickStats(eventID int) ([]SponsorClickStat, error)
+	RecordEngagementSession(eventID int, deviceID string, durationSeconds int) error
+	GetEventEngagement(eventID int) (EventEngagementStats, error)
+	GetMasterEngagement() (MasterEngagementSummary, error)
 	PurgeEventData(eventID int) error
 	RecordEventFeedback(feedback EventFeedback) error
 	GetEventFeedbackSummary(eventID int) (EventFeedbackSummary, error)
@@ -979,6 +1006,31 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_reaction_tests_device ON reaction_tests(event_id, device_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring reaction_tests device index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='page_engagements';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE page_engagements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL,
+        duration_seconds INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating page_engagements table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying page_engagements table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_page_engagements_event ON page_engagements(event_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring page_engagements event index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_page_engagements_device ON page_engagements(event_id, device_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring page_engagements device index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='event_feedback';`).Scan(&tableName)
@@ -3129,6 +3181,12 @@ func (db *appdbimpl) GetMasterAnalytics() (MasterAnalytics, error) {
 		return analytics, err
 	}
 
+	engagement, err := db.GetMasterEngagement()
+	if err != nil {
+		return analytics, err
+	}
+	analytics.Engagement = engagement
+
 	if err := db.c.QueryRow(`SELECT COUNT(*) FROM sponsor_exposures`).Scan(&analytics.SponsorStats.TotalImpressions); err != nil {
 		return analytics, err
 	}
@@ -3477,6 +3535,105 @@ func (db *appdbimpl) RecordSponsorClick(eventID, sponsorID int, deviceID string)
 	trimmed := strings.TrimSpace(deviceID)
 	_, err := db.c.Exec(`INSERT INTO sponsor_clicks (event_id, sponsor_id, device_id) VALUES (?, ?, ?)`, eventID, sponsorID, trimmed)
 	return err
+}
+
+func (db *appdbimpl) RecordEngagementSession(eventID int, deviceID string, durationSeconds int) error {
+	if eventID <= 0 || durationSeconds <= 0 {
+		return ErrInvalidSponsorData
+	}
+
+	normalizedDevice := strings.TrimSpace(deviceID)
+	if normalizedDevice == "" {
+		return ErrInvalidSponsorData
+	}
+
+	_, err := db.c.Exec(`INSERT INTO page_engagements (event_id, device_id, duration_seconds) VALUES (?, ?, ?)`, eventID, normalizedDevice, durationSeconds)
+	return err
+}
+
+func (db *appdbimpl) GetEventEngagement(eventID int) (EventEngagementStats, error) {
+	stats := EventEngagementStats{EventID: eventID}
+	if eventID <= 0 {
+		return stats, sql.ErrNoRows
+	}
+
+	var total int64
+	var avg sql.NullFloat64
+	var users int
+
+	if err := db.c.QueryRow(`SELECT IFNULL(SUM(duration_seconds), 0), IFNULL(AVG(duration_seconds), 0), COUNT(DISTINCT device_id) FROM page_engagements WHERE event_id = ?`, eventID).Scan(&total, &avg, &users); err != nil {
+		return stats, err
+	}
+
+	stats.TotalDurationSeconds = total
+	if avg.Valid {
+		stats.AverageDurationSeconds = avg.Float64
+	}
+	stats.TotalUsers = users
+	return stats, nil
+}
+
+func (db *appdbimpl) GetMasterEngagement() (MasterEngagementSummary, error) {
+	summary := MasterEngagementSummary{Organizations: []OrganizationEngagementStat{}}
+
+	rows, err := db.c.Query(`
+SELECT e.organization_id,
+       IFNULL(o.name, ''),
+       IFNULL(o.slug, ''),
+       COUNT(DISTINCT e.id) as events,
+       IFNULL(SUM(pe.duration_seconds), 0) as total_duration,
+       COUNT(DISTINCT pe.device_id) as total_users
+FROM events e
+LEFT JOIN organizations o ON o.id = e.organization_id
+LEFT JOIN page_engagements pe ON pe.event_id = e.id
+WHERE e.organization_id > 0
+GROUP BY e.organization_id
+        `)
+	if err != nil {
+		return summary, err
+	}
+	defer rows.Close()
+
+	var totalEvents int
+	var totalUsers int
+
+	for rows.Next() {
+		var orgID, events int
+		var name, slug string
+		var duration int64
+		var users int
+
+		if err := rows.Scan(&orgID, &name, &slug, &events, &duration, &users); err != nil {
+			return summary, err
+		}
+
+		stat := OrganizationEngagementStat{
+			OrganizationID:       orgID,
+			Name:                 name,
+			Slug:                 slug,
+			TotalDurationSeconds: duration,
+		}
+		if events > 0 {
+			stat.AverageDurationPerMatch = float64(duration) / float64(events)
+			totalEvents += events
+		}
+		if users > 0 {
+			stat.AverageDurationPerUser = float64(duration) / float64(users)
+			totalUsers += users
+		}
+
+		summary.TotalDurationSeconds += duration
+		summary.Organizations = append(summary.Organizations, stat)
+	}
+
+	if totalEvents > 0 {
+		summary.AverageDurationPerMatch = float64(summary.TotalDurationSeconds) / float64(totalEvents)
+	}
+	if totalUsers > 0 {
+		summary.AverageDurationPerUser = float64(summary.TotalDurationSeconds) / float64(totalUsers)
+	}
+
+	return summary, rows.Err()
 }
 
 func (db *appdbimpl) GetSponsorAnalytics(eventID int) (SponsorAnalytics, error) {
