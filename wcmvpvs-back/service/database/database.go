@@ -130,6 +130,94 @@ type MasterDashboardSummary struct {
 	TotalEvents        int `json:"total_events"`
 }
 
+type OrganizationLeaderboardEntry struct {
+	OrganizationID   int     `json:"organization_id"`
+	Name             string  `json:"name"`
+	Slug             string  `json:"slug"`
+	City             string  `json:"city"`
+	LogoURL          string  `json:"logo_url"`
+	TotalVotes       int     `json:"total_votes"`
+	VotesLast7Days   int     `json:"votes_last_7_days"`
+	TotalEvents      int     `json:"total_events"`
+	GrowthPercentage float64 `json:"growth_percentage"`
+}
+
+type VoteTrendPoint struct {
+	Date  string `json:"date"`
+	Votes int    `json:"votes"`
+}
+
+type OrganizationVoteTrend struct {
+	OrganizationID int              `json:"organization_id"`
+	Name           string           `json:"name"`
+	Slug           string           `json:"slug"`
+	Data           []VoteTrendPoint `json:"data"`
+}
+
+type VoteTrendAnalytics struct {
+	Global          []VoteTrendPoint        `json:"global"`
+	PerOrganization []OrganizationVoteTrend `json:"per_organization"`
+}
+
+type TopEventEntry struct {
+	EventID          int    `json:"event_id"`
+	OrganizationID   int    `json:"organization_id"`
+	OrganizationName string `json:"organization_name"`
+	OrganizationSlug string `json:"organization_slug"`
+	Label            string `json:"label"`
+	StartDate        string `json:"start_date"`
+	TotalVotes       int    `json:"total_votes"`
+}
+
+type TopEventsAnalytics struct {
+	AllTime   []TopEventEntry `json:"all_time"`
+	Last7Days []TopEventEntry `json:"last_7_days"`
+}
+
+type SponsorOrganizationStat struct {
+	OrganizationID int     `json:"organization_id"`
+	Name           string  `json:"name"`
+	Slug           string  `json:"slug"`
+	Impressions    int     `json:"impressions"`
+	Clicks         int     `json:"clicks"`
+	CTR            float64 `json:"ctr"`
+}
+
+type SponsorMasterStats struct {
+	TotalImpressions int                       `json:"total_impressions"`
+	TotalClicks      int                       `json:"total_clicks"`
+	AverageCTR       float64                   `json:"average_ctr"`
+	Organizations    []SponsorOrganizationStat `json:"organizations"`
+}
+
+type MonthlyMetrics struct {
+	Month       string `json:"month"`
+	Votes       int    `json:"votes"`
+	Events      int    `json:"events"`
+	UniqueUsers int    `json:"unique_users"`
+}
+
+type MetricDelta struct {
+	Absolute int     `json:"absolute"`
+	Percent  float64 `json:"percent"`
+}
+
+type MonthlyComparison struct {
+	Current           MonthlyMetrics `json:"current"`
+	Previous          MonthlyMetrics `json:"previous"`
+	VotesChange       MetricDelta    `json:"votes_change"`
+	EventsChange      MetricDelta    `json:"events_change"`
+	UniqueUsersChange MetricDelta    `json:"unique_users_change"`
+}
+
+type MasterAnalytics struct {
+	OrganizationLeaderboard []OrganizationLeaderboardEntry `json:"organization_leaderboard"`
+	VoteTrends              VoteTrendAnalytics             `json:"vote_trends"`
+	TopEvents               TopEventsAnalytics             `json:"top_events"`
+	SponsorStats            SponsorMasterStats             `json:"sponsor_stats"`
+	MonthlySummary          MonthlyComparison              `json:"monthly_summary"`
+}
+
 var slugSanitizer = regexp.MustCompile(`[^a-z0-9]+`)
 
 func DefaultEventFeedbackSurveyConfig() EventFeedbackSurveyConfig {
@@ -545,6 +633,7 @@ type AppDatabase interface {
 	GetOrganizationBySlug(slug string) (Organization, error)
 	GetOrganizationStats(id int) (OrganizationStats, error)
 	GetMasterDashboardSummary() (MasterDashboardSummary, error)
+	GetMasterAnalytics() (MasterAnalytics, error)
 	CreateSponsor(s Sponsor) (int, error)
 	UpdateSponsor(s Sponsor) error
 	DeleteSponsor(id int, organizationID int) error
@@ -2886,6 +2975,337 @@ func (db *appdbimpl) GetMasterDashboardSummary() (MasterDashboardSummary, error)
 		return summary, err
 	}
 	return summary, nil
+}
+
+func (db *appdbimpl) GetMasterAnalytics() (MasterAnalytics, error) {
+	analytics := MasterAnalytics{
+		VoteTrends:   VoteTrendAnalytics{Global: []VoteTrendPoint{}, PerOrganization: []OrganizationVoteTrend{}},
+		SponsorStats: SponsorMasterStats{Organizations: []SponsorOrganizationStat{}},
+		TopEvents:    TopEventsAnalytics{AllTime: []TopEventEntry{}, Last7Days: []TopEventEntry{}},
+	}
+
+	orgs, err := db.ListOrganizations()
+	if err != nil {
+		return analytics, err
+	}
+
+	orgInfo := make(map[int]Organization)
+	for _, org := range orgs {
+		orgInfo[org.ID] = org
+	}
+
+	totalVotesByOrg := make(map[int]int)
+	votesLastWeek := make(map[int]int)
+	votesPrevWeek := make(map[int]int)
+	eventsByOrg := make(map[int]int)
+
+	rows, err := db.c.Query(`SELECT e.organization_id, COUNT(v.id) FROM votes v INNER JOIN events e ON e.id = v.event_id WHERE e.organization_id > 0 GROUP BY e.organization_id`)
+	if err != nil {
+		return analytics, err
+	}
+	for rows.Next() {
+		var orgID, count int
+		if err := rows.Scan(&orgID, &count); err != nil {
+			rows.Close()
+			return analytics, err
+		}
+		totalVotesByOrg[orgID] = count
+	}
+	rows.Close()
+
+	rows, err = db.c.Query(`SELECT e.organization_id, COUNT(v.id) FROM votes v INNER JOIN events e ON e.id = v.event_id WHERE e.organization_id > 0 AND datetime(v.created_at) >= datetime('now', '-7 days') GROUP BY e.organization_id`)
+	if err != nil {
+		return analytics, err
+	}
+	for rows.Next() {
+		var orgID, count int
+		if err := rows.Scan(&orgID, &count); err != nil {
+			rows.Close()
+			return analytics, err
+		}
+		votesLastWeek[orgID] = count
+	}
+	rows.Close()
+
+	rows, err = db.c.Query(`SELECT e.organization_id, COUNT(v.id) FROM votes v INNER JOIN events e ON e.id = v.event_id WHERE e.organization_id > 0 AND datetime(v.created_at) >= datetime('now', '-14 days') AND datetime(v.created_at) < datetime('now', '-7 days') GROUP BY e.organization_id`)
+	if err != nil {
+		return analytics, err
+	}
+	for rows.Next() {
+		var orgID, count int
+		if err := rows.Scan(&orgID, &count); err != nil {
+			rows.Close()
+			return analytics, err
+		}
+		votesPrevWeek[orgID] = count
+	}
+	rows.Close()
+
+	rows, err = db.c.Query(`SELECT organization_id, COUNT(*) FROM events WHERE organization_id > 0 GROUP BY organization_id`)
+	if err != nil {
+		return analytics, err
+	}
+	for rows.Next() {
+		var orgID, count int
+		if err := rows.Scan(&orgID, &count); err != nil {
+			rows.Close()
+			return analytics, err
+		}
+		eventsByOrg[orgID] = count
+	}
+	rows.Close()
+
+	for orgID, org := range orgInfo {
+		if orgID <= 0 {
+			continue
+		}
+		current := votesLastWeek[orgID]
+		previous := votesPrevWeek[orgID]
+		growth := 0.0
+		if previous > 0 {
+			growth = (float64(current-previous) / float64(previous)) * 100
+		} else if current > 0 {
+			growth = 100
+		}
+		analytics.OrganizationLeaderboard = append(analytics.OrganizationLeaderboard, OrganizationLeaderboardEntry{
+			OrganizationID:   orgID,
+			Name:             org.Name,
+			Slug:             org.Slug,
+			City:             org.City,
+			LogoURL:          org.LogoURL,
+			TotalVotes:       totalVotesByOrg[orgID],
+			VotesLast7Days:   current,
+			TotalEvents:      eventsByOrg[orgID],
+			GrowthPercentage: growth,
+		})
+	}
+
+	globalTrendRows, err := db.c.Query(`SELECT date(created_at), COUNT(*) FROM votes WHERE date(created_at) >= date('now', '-29 days') GROUP BY date(created_at) ORDER BY date(created_at)`)
+	if err != nil {
+		return analytics, err
+	}
+	for globalTrendRows.Next() {
+		var date string
+		var count int
+		if err := globalTrendRows.Scan(&date, &count); err != nil {
+			globalTrendRows.Close()
+			return analytics, err
+		}
+		analytics.VoteTrends.Global = append(analytics.VoteTrends.Global, VoteTrendPoint{Date: date, Votes: count})
+	}
+	globalTrendRows.Close()
+
+	orgTrendRows, err := db.c.Query(`SELECT e.organization_id, IFNULL(o.name, ''), IFNULL(o.slug, ''), date(v.created_at), COUNT(*) FROM votes v INNER JOIN events e ON e.id = v.event_id LEFT JOIN organizations o ON o.id = e.organization_id WHERE e.organization_id > 0 AND date(v.created_at) >= date('now', '-29 days') GROUP BY e.organization_id, date(v.created_at) ORDER BY e.organization_id, date(v.created_at)`)
+	if err != nil {
+		return analytics, err
+	}
+	trendsByOrg := make(map[int]*OrganizationVoteTrend)
+	for orgTrendRows.Next() {
+		var orgID int
+		var name, slug, date string
+		var count int
+		if err := orgTrendRows.Scan(&orgID, &name, &slug, &date, &count); err != nil {
+			orgTrendRows.Close()
+			return analytics, err
+		}
+		trend := trendsByOrg[orgID]
+		if trend == nil {
+			trend = &OrganizationVoteTrend{OrganizationID: orgID, Name: name, Slug: slug, Data: []VoteTrendPoint{}}
+			trendsByOrg[orgID] = trend
+		}
+		trend.Data = append(trend.Data, VoteTrendPoint{Date: date, Votes: count})
+	}
+	orgTrendRows.Close()
+	for _, trend := range trendsByOrg {
+		analytics.VoteTrends.PerOrganization = append(analytics.VoteTrends.PerOrganization, *trend)
+	}
+
+	analytics.TopEvents.AllTime, err = db.loadTopEvents(0)
+	if err != nil {
+		return analytics, err
+	}
+	analytics.TopEvents.Last7Days, err = db.loadTopEvents(7)
+	if err != nil {
+		return analytics, err
+	}
+
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM sponsor_exposures`).Scan(&analytics.SponsorStats.TotalImpressions); err != nil {
+		return analytics, err
+	}
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM sponsor_clicks`).Scan(&analytics.SponsorStats.TotalClicks); err != nil {
+		return analytics, err
+	}
+	if analytics.SponsorStats.TotalImpressions > 0 && analytics.SponsorStats.TotalClicks > 0 {
+		analytics.SponsorStats.AverageCTR = (float64(analytics.SponsorStats.TotalClicks) / float64(analytics.SponsorStats.TotalImpressions)) * 100
+	}
+
+	orgImpressions := make(map[int]int)
+	orgClicks := make(map[int]int)
+
+	sponsorRows, err := db.c.Query(`SELECT e.organization_id, COUNT(*) FROM sponsor_exposures se INNER JOIN events e ON e.id = se.event_id WHERE e.organization_id > 0 GROUP BY e.organization_id`)
+	if err != nil {
+		return analytics, err
+	}
+	for sponsorRows.Next() {
+		var orgID, count int
+		if err := sponsorRows.Scan(&orgID, &count); err != nil {
+			sponsorRows.Close()
+			return analytics, err
+		}
+		orgImpressions[orgID] = count
+	}
+	sponsorRows.Close()
+
+	sponsorRows, err = db.c.Query(`SELECT e.organization_id, COUNT(*) FROM sponsor_clicks sc INNER JOIN events e ON e.id = sc.event_id WHERE e.organization_id > 0 GROUP BY e.organization_id`)
+	if err != nil {
+		return analytics, err
+	}
+	for sponsorRows.Next() {
+		var orgID, count int
+		if err := sponsorRows.Scan(&orgID, &count); err != nil {
+			sponsorRows.Close()
+			return analytics, err
+		}
+		orgClicks[orgID] = count
+	}
+	sponsorRows.Close()
+
+	for orgID, org := range orgInfo {
+		if orgID <= 0 {
+			continue
+		}
+		impressions := orgImpressions[orgID]
+		clicks := orgClicks[orgID]
+		ctr := 0.0
+		if impressions > 0 && clicks > 0 {
+			ctr = (float64(clicks) / float64(impressions)) * 100
+		}
+		analytics.SponsorStats.Organizations = append(analytics.SponsorStats.Organizations, SponsorOrganizationStat{
+			OrganizationID: orgID,
+			Name:           org.Name,
+			Slug:           org.Slug,
+			Impressions:    impressions,
+			Clicks:         clicks,
+			CTR:            ctr,
+		})
+	}
+
+	now := time.Now()
+	currentStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	nextStart := currentStart.AddDate(0, 1, 0)
+	previousStart := currentStart.AddDate(0, -1, 0)
+
+	analytics.MonthlySummary.Current = MonthlyMetrics{
+		Month:       currentStart.Format("2006-01"),
+		Votes:       db.countVotesBetween(currentStart, nextStart),
+		Events:      db.countEventsBetween(currentStart, nextStart),
+		UniqueUsers: db.countUniqueVotersBetween(currentStart, nextStart),
+	}
+	analytics.MonthlySummary.Previous = MonthlyMetrics{
+		Month:       previousStart.Format("2006-01"),
+		Votes:       db.countVotesBetween(previousStart, currentStart),
+		Events:      db.countEventsBetween(previousStart, currentStart),
+		UniqueUsers: db.countUniqueVotersBetween(previousStart, currentStart),
+	}
+
+	analytics.MonthlySummary.VotesChange = buildMetricDelta(analytics.MonthlySummary.Previous.Votes, analytics.MonthlySummary.Current.Votes)
+	analytics.MonthlySummary.EventsChange = buildMetricDelta(analytics.MonthlySummary.Previous.Events, analytics.MonthlySummary.Current.Events)
+	analytics.MonthlySummary.UniqueUsersChange = buildMetricDelta(analytics.MonthlySummary.Previous.UniqueUsers, analytics.MonthlySummary.Current.UniqueUsers)
+
+	return analytics, nil
+}
+
+func (db *appdbimpl) loadTopEvents(lastDays int) ([]TopEventEntry, error) {
+	var entries []TopEventEntry
+	baseQuery := `
+SELECT e.id,
+       e.organization_id,
+       IFNULL(o.name, ''),
+       IFNULL(o.slug, ''),
+       IFNULL(e.start_datetime, ''),
+       IFNULL(t1.name, ''),
+       IFNULL(t2.name, ''),
+       COUNT(v.id) as votes
+FROM events e
+LEFT JOIN votes v ON v.event_id = e.id
+LEFT JOIN organizations o ON o.id = e.organization_id
+LEFT JOIN teams t1 ON t1.id = e.team1_id
+LEFT JOIN teams t2 ON t2.id = e.team2_id
+`
+	var args []interface{}
+	if lastDays > 0 {
+		baseQuery += " WHERE datetime(v.created_at) >= datetime('now', ?)"
+		args = append(args, fmt.Sprintf("-%d days", lastDays))
+	}
+	baseQuery += " GROUP BY e.id ORDER BY votes DESC, e.id DESC LIMIT 5"
+
+	rows, err := db.c.Query(baseQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var entry TopEventEntry
+		var startDate, team1, team2 string
+		if err := rows.Scan(&entry.EventID, &entry.OrganizationID, &entry.OrganizationName, &entry.OrganizationSlug, &startDate, &team1, &team2, &entry.TotalVotes); err != nil {
+			return nil, err
+		}
+		entry.StartDate = startDate
+		labelParts := []string{strings.TrimSpace(team1), strings.TrimSpace(team2)}
+		if labelParts[0] != "" && labelParts[1] != "" {
+			entry.Label = fmt.Sprintf("%s vs %s", labelParts[0], labelParts[1])
+		} else if labelParts[0] != "" {
+			entry.Label = labelParts[0]
+		} else if labelParts[1] != "" {
+			entry.Label = labelParts[1]
+		} else if startDate != "" {
+			entry.Label = startDate
+		} else {
+			entry.Label = fmt.Sprintf("Evento %d", entry.EventID)
+		}
+		entries = append(entries, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return entries, nil
+}
+
+func (db *appdbimpl) countVotesBetween(start, end time.Time) int {
+	var count int
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM votes WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`, start.Format(time.RFC3339), end.Format(time.RFC3339)).Scan(&count); err != nil {
+		return 0
+	}
+	return count
+}
+
+func (db *appdbimpl) countEventsBetween(start, end time.Time) int {
+	var count int
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM events WHERE datetime(start_datetime) >= datetime(?) AND datetime(start_datetime) < datetime(?)`, start.Format(time.RFC3339), end.Format(time.RFC3339)).Scan(&count); err != nil {
+		return 0
+	}
+	return count
+}
+
+func (db *appdbimpl) countUniqueVotersBetween(start, end time.Time) int {
+	var count int
+	if err := db.c.QueryRow(`SELECT COUNT(DISTINCT device_id) FROM votes WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`, start.Format(time.RFC3339), end.Format(time.RFC3339)).Scan(&count); err != nil {
+		return 0
+	}
+	return count
+}
+
+func buildMetricDelta(previous, current int) MetricDelta {
+	delta := MetricDelta{Absolute: current - previous}
+	if previous > 0 {
+		delta.Percent = (float64(delta.Absolute) / float64(previous)) * 100
+	} else if current > 0 {
+		delta.Percent = 100
+	}
+	return delta
 }
 
 // Sponsor operations

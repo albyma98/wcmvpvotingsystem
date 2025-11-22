@@ -85,6 +85,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Put("/admins/{id}", rt.wrapAdmin(rt.updateAdmin))
 	rt.router.Delete("/admins/{id}", rt.wrapAdmin(rt.deleteAdmin))
 	rt.router.Get("/admin/master/summary", rt.wrapAdmin(rt.getMasterSummary))
+	rt.router.Get("/admin/master/analytics", rt.wrapAdmin(rt.getMasterAnalytics))
 	rt.router.Get("/admin/master/organizations", rt.wrapAdmin(rt.listMasterOrganizations))
 	rt.router.Post("/admin/master/organizations", rt.wrapAdmin(rt.createMasterOrganization))
 	rt.router.Get("/admin/master/organizations/{id}", rt.wrapAdmin(rt.getMasterOrganizationDetail))
