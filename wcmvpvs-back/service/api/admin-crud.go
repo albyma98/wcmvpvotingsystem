@@ -597,7 +597,7 @@ func (rt *_router) deleteVote(w http.ResponseWriter, r *http.Request, ctx reqcon
 
 // Admins
 func (rt *_router) listAdmins(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	admins, err := rt.db.ListAdmins()
+	admins, err := rt.db.ListAdmins(ctx.OrganizationID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot list admins")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -639,10 +639,22 @@ func (rt *_router) createAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 
+	orgID := ctx.OrganizationID
+	if orgID == 0 && !strings.EqualFold(payload.Role, "superadmin") {
+		ctx.Logger.Warn("organization context required for non-superadmin creation")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if strings.EqualFold(payload.Role, "superadmin") {
+		orgID = 0
+	}
+
 	admin := database.Admin{
-		Username:     payload.Username,
-		PasswordHash: hashAdminPassword(payload.Password),
-		Role:         payload.Role,
+		Username:       payload.Username,
+		PasswordHash:   hashAdminPassword(payload.Password),
+		Role:           payload.Role,
+		OrganizationID: orgID,
 	}
 
 	id, err := rt.db.CreateAdmin(admin)
@@ -670,7 +682,21 @@ func (rt *_router) updateAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 
-	admin := database.Admin{ID: id, Username: payload.Username, Role: payload.Role}
+	target, err := rt.db.GetAdminByID(id)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot retrieve admin for update")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !strings.EqualFold(ctx.AdminRole, "superadmin") {
+		if target.OrganizationID == 0 || target.OrganizationID != ctx.OrganizationID {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+	}
+
+	admin := database.Admin{ID: id, Username: payload.Username, Role: payload.Role, OrganizationID: target.OrganizationID}
 	if payload.Password != "" {
 		admin.PasswordHash = hashAdminPassword(payload.Password)
 	}
@@ -686,6 +712,20 @@ func (rt *_router) updateAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 
 func (rt *_router) deleteAdmin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	admin, err := rt.db.GetAdminByID(id)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot load admin for deletion")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !strings.EqualFold(ctx.AdminRole, "superadmin") {
+		if admin.OrganizationID == 0 || admin.OrganizationID != ctx.OrganizationID {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+	}
+
 	if err := rt.db.DeleteAdmin(id); err != nil {
 		ctx.Logger.WithError(err).Error("cannot delete admin")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -845,16 +885,22 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 
-	admin, err := rt.db.GetAdminByUsername(payload.Username)
+	orgID := ctx.OrganizationID
+	admin, err := rt.db.GetAdminByUsername(payload.Username, orgID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			ctx.Logger.WithField("username", payload.Username).Warn("admin login failed: user not found")
-			w.WriteHeader(http.StatusUnauthorized)
+		if errors.Is(err, sql.ErrNoRows) && orgID > 0 {
+			admin, err = rt.db.GetAdminByUsername(payload.Username, 0)
+		}
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				ctx.Logger.WithField("username", payload.Username).Warn("admin login failed: user not found")
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			ctx.Logger.WithError(err).Error("cannot retrieve admin by username")
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		ctx.Logger.WithError(err).Error("cannot retrieve admin by username")
-		w.WriteHeader(http.StatusInternalServerError)
-		return
 	}
 
 	if !adminPasswordMatches(admin.PasswordHash, payload.Password) {
@@ -863,14 +909,17 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 
-	orgID := ctx.OrganizationID
 	orgSlug := ctx.OrganizationSlug
 	orgTeamID := ctx.OrganizationTeamID
 	if !strings.EqualFold(admin.Role, "superadmin") {
-		if orgID == 0 || orgSlug == "" {
-			w.WriteHeader(http.StatusBadRequest)
+		if orgID == 0 || orgSlug == "" || admin.OrganizationID != orgID {
+			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
+	} else {
+		orgID = 0
+		orgSlug = ""
+		orgTeamID = 0
 	}
 
 	token, err := rt.createAdminSession(admin.ID, admin.Username, admin.Role, orgID, orgTeamID, orgSlug)
