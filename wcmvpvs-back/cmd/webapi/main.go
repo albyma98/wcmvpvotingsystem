@@ -62,7 +62,7 @@ func ensureBootstrapAdmin(db database.AppDatabase, logger *logrus.Logger, cfg We
 	}
 
 	// Se esiste già, non fare nulla
-	if _, err := db.GetAdminByUsername(username); err == nil {
+	if _, err := db.GetAdminByUsername(username, 0); err == nil {
 		logger.Infof("admin %q già presente, skip bootstrap", username)
 		return nil
 	}
