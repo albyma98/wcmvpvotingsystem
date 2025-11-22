@@ -28,59 +28,63 @@ export interface LayoutPlayer {
   raw: PublicPlayer;
 }
 
-const COLUMN_POSITIONS: Record<number, number[]> = {
-  1: [50],
-  2: [35, 65],
-  3: [20, 50, 80],
-};
+const COLUMN_POSITIONS = [20, 50, 80];
 
 const DEFAULT_GRID_TOP = 12.5;
 const DEFAULT_GRID_BOTTOM = 87.5;
-const MIN_GRID_ROWS = 4;
-const MAX_COLUMNS = 3;
+const GRID_ROWS = 5;
+export const DEFAULT_ROSTER_SCHEMA = 13;
 
-const distributePlayersAcrossRows = (totalPlayers: number, rows: number) => {
-  const basePerRow = Math.floor(totalPlayers / rows);
-  let remainder = totalPlayers % rows;
-
-  return Array.from({ length: rows }, (_, index) => {
-    const count = basePerRow + (remainder > 0 ? 1 : 0);
-    if (remainder > 0) {
-      remainder -= 1;
-    }
-    return count;
-  }).filter((count) => count > 0);
+const createRowPositions = (rows: number) => {
+  if (rows <= 1) {
+    return [DEFAULT_GRID_TOP];
+  }
+  const spacing = (DEFAULT_GRID_BOTTOM - DEFAULT_GRID_TOP) / (rows - 1);
+  return Array.from({ length: rows }, (_, index) => DEFAULT_GRID_TOP + spacing * index);
 };
 
-const createEquidistantLayout = (
-  tiers: PlayerTier[],
-  options: { rows?: number; top?: number; bottom?: number } = {},
-): PlayerLayoutSlot[] => {
-  const totalPlayers = tiers.length;
-  const baseRows = options.rows ?? Math.max(MIN_GRID_ROWS, Math.ceil(totalPlayers / MAX_COLUMNS));
-  const rows = totalPlayers >= 13 && baseRows % 2 !== 0 ? baseRows + 1 : baseRows;
-  const top = options.top ?? DEFAULT_GRID_TOP;
-  const bottom = options.bottom ?? DEFAULT_GRID_BOTTOM;
+const ROW_POSITIONS = createRowPositions(GRID_ROWS);
 
-  const rowDistribution = distributePlayersAcrossRows(totalPlayers, rows);
-  const verticalSpacing = rows > 1 ? (bottom - top) / (rows - 1) : 0;
+const BASE_COORDINATES = [
+  { row: 0, column: 0 },
+  { row: 0, column: 1 },
+  { row: 0, column: 2 },
+  { row: 1, column: 0 },
+  { row: 1, column: 1 },
+  { row: 1, column: 2 },
+  { row: 3, column: 0 },
+  { row: 3, column: 1 },
+  { row: 3, column: 2 },
+  { row: 4, column: 0 },
+  { row: 4, column: 1 },
+  { row: 4, column: 2 },
+];
 
-  let tierIndex = 0;
+const LAYOUT_COORDINATES: Record<number, { row: number; column: number }[]> = {
+  12: BASE_COORDINATES,
+  13: [
+    ...BASE_COORDINATES.slice(0, 6),
+    { row: 2, column: 1 },
+    ...BASE_COORDINATES.slice(6),
+  ],
+  14: [
+    ...BASE_COORDINATES.slice(0, 6),
+    { row: 2, column: 0 },
+    { row: 2, column: 2 },
+    ...BASE_COORDINATES.slice(6),
+  ],
+};
 
-  return rowDistribution.flatMap((playersInRow, rowIndex) => {
-    const y = top + rowIndex * verticalSpacing;
-    const xPositions = COLUMN_POSITIONS[playersInRow] ?? COLUMN_POSITIONS[MAX_COLUMNS];
+const createRosterLayout = (tiers: PlayerTier[], schema: number): PlayerLayoutSlot[] => {
+  const coordinates = LAYOUT_COORDINATES[schema] ?? LAYOUT_COORDINATES[DEFAULT_ROSTER_SCHEMA];
 
-    return Array.from({ length: playersInRow }, (_, columnIndex) => {
-      const x = xPositions[columnIndex] ?? xPositions[xPositions.length - 1];
-      const tier = tiers[tierIndex] ?? tiers[tiers.length - 1] ?? 'gold';
-      tierIndex += 1;
-      return {
-        tier,
-        position: { x, y },
-      };
-    });
-  });
+  return coordinates.map((slot, index) => ({
+    tier: tiers[index] ?? tiers[tiers.length - 1] ?? 'gold',
+    position: {
+      x: COLUMN_POSITIONS[slot.column] ?? COLUMN_POSITIONS[COLUMN_POSITIONS.length - 1],
+      y: ROW_POSITIONS[slot.row] ?? ROW_POSITIONS[ROW_POSITIONS.length - 1],
+    },
+  }));
 };
 
 const LAYOUT_12_TIERS: PlayerTier[] = [
@@ -132,12 +136,11 @@ const LAYOUT_14_TIERS: PlayerTier[] = [
 ];
 
 export const PLAYER_LAYOUTS: Record<number, PlayerLayoutSlot[]> = {
-  12: createEquidistantLayout(LAYOUT_12_TIERS),
-  13: createEquidistantLayout(LAYOUT_13_TIERS),
-  14: createEquidistantLayout(LAYOUT_14_TIERS),
+  12: createRosterLayout(LAYOUT_12_TIERS, 12),
+  13: createRosterLayout(LAYOUT_13_TIERS, 13),
+  14: createRosterLayout(LAYOUT_14_TIERS, 14),
 };
 
-export const DEFAULT_ROSTER_SCHEMA = 13;
 export const PLAYER_LAYOUT: PlayerLayoutSlot[] = PLAYER_LAYOUTS[DEFAULT_ROSTER_SCHEMA];
 export const MAX_PLAYER_SLOTS = Math.max(
   ...Object.values(PLAYER_LAYOUTS).map((layout) => layout.length),
