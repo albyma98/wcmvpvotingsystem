@@ -61,29 +61,272 @@
       </nav>
 
       <div class="master-content">
-        <div v-if="activeSection === 'dashboard'" class="grid-cards">
-          <article class="stat-card" aria-live="polite">
-            <p class="label">Società registrate</p>
-            <p class="value">{{ summary.total_organizations ?? 0 }}</p>
-            <button class="btn ghost" type="button" @click="fetchSummary" :disabled="isLoadingSummary">
-              {{ isLoadingSummary ? 'Aggiornamento…' : 'Aggiorna' }}
-            </button>
-          </article>
-          <article class="stat-card">
-            <p class="label">Totale voti</p>
-            <p class="value">{{ summary.total_votes ?? 0 }}</p>
-            <small>Storico complessivo</small>
-          </article>
-          <article class="stat-card">
-            <p class="label">Voti ultimi 7 giorni</p>
-            <p class="value">{{ summary.votes_last_7_days ?? 0 }}</p>
-            <small>Monitoraggio attività recente</small>
-          </article>
-          <article class="stat-card">
-            <p class="label">Totale partite</p>
-            <p class="value">{{ summary.total_events ?? 0 }}</p>
-            <small>Eventi registrati nel sistema</small>
-          </article>
+        <div v-if="activeSection === 'dashboard'" class="dashboard-view">
+          <div class="grid-cards">
+            <article class="stat-card" aria-live="polite">
+              <p class="label">Società registrate</p>
+              <p class="value">{{ summary.total_organizations ?? 0 }}</p>
+              <button class="btn ghost" type="button" @click="refreshDashboard" :disabled="isLoadingSummary || isLoadingAnalytics">
+                {{ isLoadingSummary || isLoadingAnalytics ? 'Aggiornamento…' : 'Aggiorna' }}
+              </button>
+            </article>
+            <article class="stat-card">
+              <p class="label">Totale voti</p>
+              <p class="value">{{ summary.total_votes ?? 0 }}</p>
+              <small>Storico complessivo</small>
+            </article>
+            <article class="stat-card">
+              <p class="label">Voti ultimi 7 giorni</p>
+              <p class="value">{{ summary.votes_last_7_days ?? 0 }}</p>
+              <small>Monitoraggio attività recente</small>
+            </article>
+            <article class="stat-card">
+              <p class="label">Totale partite</p>
+              <p class="value">{{ summary.total_events ?? 0 }}</p>
+              <small>Eventi registrati nel sistema</small>
+            </article>
+            <article class="stat-card">
+              <p class="label">Impression sponsor</p>
+              <p class="value">{{ masterAnalytics.sponsor_stats.total_impressions.toLocaleString('it-IT') }}</p>
+              <small>Totale esposizioni registrate</small>
+            </article>
+            <article class="stat-card">
+              <p class="label">CTR medio sponsor</p>
+              <p class="value">{{ formatPercent(masterAnalytics.sponsor_stats.average_ctr) }}</p>
+              <small>Click-through rate complessivo</small>
+            </article>
+            <article class="stat-card highlight">
+              <p class="label">Voti mese corrente</p>
+              <p class="value">{{ masterAnalytics.monthly_summary.current.votes.toLocaleString('it-IT') }}</p>
+              <small>
+                {{ masterAnalytics.monthly_summary.current.month || 'mese' }} ·
+                <span :class="['delta', resolveDeltaClass(masterAnalytics.monthly_summary.votes_change.absolute)]">
+                  {{ formatDelta(masterAnalytics.monthly_summary.votes_change) }}
+                </span>
+              </small>
+            </article>
+          </div>
+
+          <p v-if="analyticsError" class="error">{{ analyticsError }}</p>
+
+          <section class="card analytics-card">
+            <header class="section-header">
+              <div>
+                <h2>Classifica società</h2>
+                <p>Andamento voti e crescita negli ultimi 7 giorni.</p>
+              </div>
+              <button class="btn outline" type="button" @click="refreshDashboard" :disabled="isLoadingAnalytics">
+                {{ isLoadingAnalytics ? 'Aggiornamento…' : 'Aggiorna dati' }}
+              </button>
+            </header>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Società</th>
+                    <th>Voti totali</th>
+                    <th>Ultimi 7 giorni</th>
+                    <th>Eventi</th>
+                    <th>Crescita</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="entry in masterAnalytics.organization_leaderboard" :key="entry.organization_id">
+                    <td>
+                      <div class="org-cell">
+                        <img v-if="entry.logo_url" :src="entry.logo_url" :alt="`Logo ${entry.name}`" />
+                        <div>
+                          <p class="org-name">{{ entry.name }}</p>
+                          <small class="muted">{{ entry.city || '—' }}</small>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{{ entry.total_votes.toLocaleString('it-IT') }}</td>
+                    <td>{{ entry.votes_last_7_days.toLocaleString('it-IT') }}</td>
+                    <td>{{ entry.total_events.toLocaleString('it-IT') }}</td>
+                    <td>
+                      <span :class="['delta', resolveDeltaClass(entry.growth_percentage)]">
+                        {{ formatPercent(entry.growth_percentage) }}
+                      </span>
+                    </td>
+                  </tr>
+                  <tr v-if="!masterAnalytics.organization_leaderboard.length">
+                    <td colspan="5" class="muted">Nessuna società disponibile.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="card analytics-card">
+            <header class="section-header">
+              <div>
+                <h2>Andamento voti (ultimi 30 giorni)</h2>
+                <p>Trend giornaliero globale e per singola società.</p>
+              </div>
+            </header>
+            <div class="trend-grid">
+              <div class="trend-panel">
+                <h3>Totale piattaforma</h3>
+                <VoteTrendChart
+                  :points="buildChartPoints(masterAnalytics.vote_trends.global)"
+                  :width="520"
+                  :height="180"
+                  accessible-label="Andamento voti ultimi 30 giorni - globale"
+                />
+              </div>
+              <div class="trend-panel">
+                <h3>Per società</h3>
+                <div class="trend-list">
+                  <div
+                    v-for="orgTrend in masterAnalytics.vote_trends.per_organization"
+                    :key="orgTrend.organization_id"
+                    class="trend-list__item"
+                  >
+                    <div class="trend-list__header">
+                      <strong>{{ orgTrend.name || 'Società' }}</strong>
+                      <small class="muted">{{ orgTrend.slug || `ID ${orgTrend.organization_id}` }}</small>
+                    </div>
+                    <VoteTrendChart
+                      :points="buildChartPoints(orgTrend.data)"
+                      :width="360"
+                      :height="120"
+                      :accessible-label="`Andamento voti ultimi 30 giorni - ${orgTrend.name || 'società'}`"
+                    />
+                  </div>
+                  <p v-if="!masterAnalytics.vote_trends.per_organization.length" class="muted">
+                    Nessun dato disponibile.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="dual-grid">
+            <section class="card analytics-card">
+              <header class="section-header">
+                <div>
+                  <h2>Eventi più votati</h2>
+                  <p>Storico e ultimi 7 giorni.</p>
+                </div>
+              </header>
+              <div class="top-events">
+                <div class="top-events__column">
+                  <h3>Di sempre</h3>
+                  <ul>
+                    <li v-for="event in masterAnalytics.top_events.all_time" :key="event.event_id">
+                      <div>
+                        <strong>{{ event.label }}</strong>
+                        <p class="muted">{{ event.organization_name || '—' }}</p>
+                        <small class="muted">{{ formatDate(event.start_date) }}</small>
+                      </div>
+                      <span class="badge">{{ event.total_votes.toLocaleString('it-IT') }} voti</span>
+                    </li>
+                    <li v-if="!masterAnalytics.top_events.all_time.length" class="muted">Nessun dato.</li>
+                  </ul>
+                </div>
+                <div class="top-events__column">
+                  <h3>Ultimi 7 giorni</h3>
+                  <ul>
+                    <li v-for="event in masterAnalytics.top_events.last_7_days" :key="`${event.event_id}-recent`">
+                      <div>
+                        <strong>{{ event.label }}</strong>
+                        <p class="muted">{{ event.organization_name || '—' }}</p>
+                        <small class="muted">{{ formatDate(event.start_date) }}</small>
+                      </div>
+                      <span class="badge">{{ event.total_votes.toLocaleString('it-IT') }} voti</span>
+                    </li>
+                    <li v-if="!masterAnalytics.top_events.last_7_days.length" class="muted">Nessun dato.</li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+
+            <section class="card analytics-card">
+              <header class="section-header">
+                <div>
+                  <h2>Statistiche sponsor</h2>
+                  <p>Impression e click totali e per società.</p>
+                </div>
+              </header>
+              <div class="sponsor-stats">
+                <div class="sponsor-stats__summary">
+                  <p><strong>Totale impression:</strong> {{ masterAnalytics.sponsor_stats.total_impressions.toLocaleString('it-IT') }}</p>
+                  <p><strong>Totale click:</strong> {{ masterAnalytics.sponsor_stats.total_clicks.toLocaleString('it-IT') }}</p>
+                  <p><strong>CTR medio:</strong> {{ formatPercent(masterAnalytics.sponsor_stats.average_ctr) }}</p>
+                </div>
+                <div class="table-wrapper compact">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Società</th>
+                        <th>Impression</th>
+                        <th>Click</th>
+                        <th>CTR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="stat in masterAnalytics.sponsor_stats.organizations" :key="stat.organization_id">
+                        <td>{{ stat.name }}</td>
+                        <td>{{ stat.impressions.toLocaleString('it-IT') }}</td>
+                        <td>{{ stat.clicks.toLocaleString('it-IT') }}</td>
+                        <td>{{ formatPercent(stat.ctr) }}</td>
+                      </tr>
+                      <tr v-if="!masterAnalytics.sponsor_stats.organizations.length">
+                        <td colspan="4" class="muted">Nessun dato disponibile.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <section class="card analytics-card">
+            <header class="section-header">
+              <div>
+                <h2>Riepilogo mensile</h2>
+                <p>Voti, partite e utenti unici con confronto rispetto al mese precedente.</p>
+              </div>
+            </header>
+            <div class="monthly-summary">
+              <div class="monthly-summary__column">
+                <p class="label">Mese corrente</p>
+                <h3>{{ masterAnalytics.monthly_summary.current.month || '—' }}</h3>
+                <p><strong>Voti:</strong> {{ masterAnalytics.monthly_summary.current.votes.toLocaleString('it-IT') }}</p>
+                <p><strong>Partite:</strong> {{ masterAnalytics.monthly_summary.current.events.toLocaleString('it-IT') }}</p>
+                <p><strong>Utenti unici:</strong> {{ masterAnalytics.monthly_summary.current.unique_users.toLocaleString('it-IT') }}</p>
+              </div>
+              <div class="monthly-summary__column">
+                <p class="label">Mese precedente</p>
+                <h3>{{ masterAnalytics.monthly_summary.previous.month || '—' }}</h3>
+                <p><strong>Voti:</strong> {{ masterAnalytics.monthly_summary.previous.votes.toLocaleString('it-IT') }}</p>
+                <p><strong>Partite:</strong> {{ masterAnalytics.monthly_summary.previous.events.toLocaleString('it-IT') }}</p>
+                <p><strong>Utenti unici:</strong> {{ masterAnalytics.monthly_summary.previous.unique_users.toLocaleString('it-IT') }}</p>
+              </div>
+              <div class="monthly-summary__column deltas">
+                <p class="label">Variazioni</p>
+                <p>
+                  <strong>Voti:</strong>
+                  <span :class="['delta', resolveDeltaClass(masterAnalytics.monthly_summary.votes_change.absolute)]">
+                    {{ formatDelta(masterAnalytics.monthly_summary.votes_change) }}
+                  </span>
+                </p>
+                <p>
+                  <strong>Partite:</strong>
+                  <span :class="['delta', resolveDeltaClass(masterAnalytics.monthly_summary.events_change.absolute)]">
+                    {{ formatDelta(masterAnalytics.monthly_summary.events_change) }}
+                  </span>
+                </p>
+                <p>
+                  <strong>Utenti unici:</strong>
+                  <span :class="['delta', resolveDeltaClass(masterAnalytics.monthly_summary.unique_users_change.absolute)]">
+                    {{ formatDelta(masterAnalytics.monthly_summary.unique_users_change) }}
+                  </span>
+                </p>
+              </div>
+            </div>
+          </section>
         </div>
 
         <div v-else-if="activeSection === 'organizations'" class="organizations-view">
@@ -322,6 +565,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
+import VoteTrendChart from './VoteTrendChart.vue';
 
 const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
@@ -342,6 +586,25 @@ const loginError = ref('');
 const summary = reactive({ total_organizations: 0, total_votes: 0, votes_last_7_days: 0, total_events: 0 });
 const isLoadingSummary = ref(false);
 const summaryLoaded = ref(false);
+
+const createEmptyAnalytics = () => ({
+  organization_leaderboard: [],
+  vote_trends: { global: [], per_organization: [] },
+  top_events: { all_time: [], last_7_days: [] },
+  sponsor_stats: { total_impressions: 0, total_clicks: 0, average_ctr: 0, organizations: [] },
+  monthly_summary: {
+    current: { month: '', votes: 0, events: 0, unique_users: 0 },
+    previous: { month: '', votes: 0, events: 0, unique_users: 0 },
+    votes_change: { absolute: 0, percent: 0 },
+    events_change: { absolute: 0, percent: 0 },
+    unique_users_change: { absolute: 0, percent: 0 },
+  },
+});
+
+const masterAnalytics = ref(createEmptyAnalytics());
+const isLoadingAnalytics = ref(false);
+const analyticsLoaded = ref(false);
+const analyticsError = ref('');
 
 const organizations = ref([]);
 const isLoadingOrganizations = ref(false);
@@ -439,6 +702,52 @@ function formatDate(value) {
   return date.toLocaleString('it-IT');
 }
 
+function formatPercent(value) {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed)) {
+    return '0%';
+  }
+  return `${parsed.toFixed(1)}%`;
+}
+
+function resolveDeltaClass(value) {
+  if (value > 0) return 'positive';
+  if (value < 0) return 'negative';
+  return 'neutral';
+}
+
+function formatDelta(delta) {
+  const absolute = Number(delta?.absolute ?? 0);
+  const percent = Number(delta?.percent ?? 0);
+  const sign = absolute > 0 ? '+' : '';
+  const absoluteLabel = `${sign}${absolute.toLocaleString('it-IT')}`;
+  return `${absoluteLabel} (${formatPercent(percent)})`;
+}
+
+function buildChartPoints(points) {
+  if (!Array.isArray(points)) {
+    return [];
+  }
+  return points
+    .map((point) => {
+      const date = point?.date ? new Date(point.date) : null;
+      if (!(date instanceof Date) || Number.isNaN(date.valueOf())) {
+        return null;
+      }
+      const value = Number(point?.votes ?? 0);
+      if (!Number.isFinite(value)) {
+        return null;
+      }
+      return {
+        date,
+        value,
+        label: date.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
+        tooltip: `${value.toLocaleString('it-IT')} voti · ${date.toLocaleDateString('it-IT')}`,
+      };
+    })
+    .filter(Boolean);
+}
+
 async function login() {
   if (!loginForm.username || !loginForm.password) {
     loginError.value = 'Inserisci username e password';
@@ -485,6 +794,9 @@ function logout() {
   organizations.value = [];
   organizationDetail.value = null;
   summaryLoaded.value = false;
+  analyticsLoaded.value = false;
+  analyticsError.value = '';
+  masterAnalytics.value = createEmptyAnalytics();
   organizationsLoaded.value = false;
   selectedOrganizationId.value = 0;
   activeSection.value = 'dashboard';
@@ -505,6 +817,139 @@ async function fetchSummary() {
   } finally {
     isLoadingSummary.value = false;
   }
+}
+
+function normalizeMasterAnalytics(raw) {
+  const normalized = createEmptyAnalytics();
+  if (!raw || typeof raw !== 'object') {
+    return normalized;
+  }
+
+  const numberValue = (value) => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const parseLeaderboard = Array.isArray(raw.organization_leaderboard)
+    ? raw.organization_leaderboard.map((entry) => ({
+        organization_id: numberValue(entry.organization_id),
+        name: entry?.name || '',
+        slug: entry?.slug || '',
+        city: entry?.city || '',
+        logo_url: entry?.logo_url || '',
+        total_votes: numberValue(entry?.total_votes),
+        votes_last_7_days: numberValue(entry?.votes_last_7_days),
+        total_events: numberValue(entry?.total_events),
+        growth_percentage: Number(entry?.growth_percentage ?? 0) || 0,
+      }))
+    : [];
+
+  normalized.organization_leaderboard = parseLeaderboard;
+
+  const normalizePoints = (points) =>
+    Array.isArray(points)
+      ? points.map((point) => ({ date: point?.date || '', votes: numberValue(point?.votes) })).filter((p) => p.date)
+      : [];
+
+  normalized.vote_trends = {
+    global: normalizePoints(raw?.vote_trends?.global),
+    per_organization: Array.isArray(raw?.vote_trends?.per_organization)
+      ? raw.vote_trends.per_organization.map((org) => ({
+          organization_id: numberValue(org?.organization_id),
+          name: org?.name || '',
+          slug: org?.slug || '',
+          data: normalizePoints(org?.data),
+        }))
+      : [],
+  };
+
+  const normalizeTopEvents = (list) =>
+    Array.isArray(list)
+      ? list.map((event) => ({
+          event_id: numberValue(event?.event_id),
+          organization_id: numberValue(event?.organization_id),
+          organization_name: event?.organization_name || '',
+          organization_slug: event?.organization_slug || '',
+          label: event?.label || '',
+          start_date: event?.start_date || '',
+          total_votes: numberValue(event?.total_votes),
+        }))
+      : [];
+
+  normalized.top_events = {
+    all_time: normalizeTopEvents(raw?.top_events?.all_time),
+    last_7_days: normalizeTopEvents(raw?.top_events?.last_7_days),
+  };
+
+  normalized.sponsor_stats = {
+    total_impressions: numberValue(raw?.sponsor_stats?.total_impressions),
+    total_clicks: numberValue(raw?.sponsor_stats?.total_clicks),
+    average_ctr: Number(raw?.sponsor_stats?.average_ctr ?? 0) || 0,
+    organizations: Array.isArray(raw?.sponsor_stats?.organizations)
+      ? raw.sponsor_stats.organizations.map((org) => ({
+          organization_id: numberValue(org?.organization_id),
+          name: org?.name || '',
+          slug: org?.slug || '',
+          impressions: numberValue(org?.impressions),
+          clicks: numberValue(org?.clicks),
+          ctr: Number(org?.ctr ?? 0) || 0,
+        }))
+      : [],
+  };
+
+  const defaultMonthly = normalized.monthly_summary;
+  const monthly = raw?.monthly_summary || {};
+  normalized.monthly_summary = {
+    current: {
+      month: monthly?.current?.month || defaultMonthly.current.month,
+      votes: numberValue(monthly?.current?.votes ?? defaultMonthly.current.votes),
+      events: numberValue(monthly?.current?.events ?? defaultMonthly.current.events),
+      unique_users: numberValue(monthly?.current?.unique_users ?? defaultMonthly.current.unique_users),
+    },
+    previous: {
+      month: monthly?.previous?.month || defaultMonthly.previous.month,
+      votes: numberValue(monthly?.previous?.votes ?? defaultMonthly.previous.votes),
+      events: numberValue(monthly?.previous?.events ?? defaultMonthly.previous.events),
+      unique_users: numberValue(monthly?.previous?.unique_users ?? defaultMonthly.previous.unique_users),
+    },
+    votes_change: {
+      absolute: numberValue(monthly?.votes_change?.absolute ?? defaultMonthly.votes_change.absolute),
+      percent: Number(monthly?.votes_change?.percent ?? defaultMonthly.votes_change.percent) || 0,
+    },
+    events_change: {
+      absolute: numberValue(monthly?.events_change?.absolute ?? defaultMonthly.events_change.absolute),
+      percent: Number(monthly?.events_change?.percent ?? defaultMonthly.events_change.percent) || 0,
+    },
+    unique_users_change: {
+      absolute: numberValue(monthly?.unique_users_change?.absolute ?? defaultMonthly.unique_users_change.absolute),
+      percent: Number(monthly?.unique_users_change?.percent ?? defaultMonthly.unique_users_change.percent) || 0,
+    },
+  };
+
+  return normalized;
+}
+
+async function fetchAnalytics() {
+  if (!isSuperAdmin.value || !token.value) return;
+  isLoadingAnalytics.value = true;
+  analyticsError.value = '';
+  try {
+    const { data } = await apiClient.get('/admin/master/analytics', authHeaders.value);
+    masterAnalytics.value = normalizeMasterAnalytics(data);
+    analyticsLoaded.value = true;
+  } catch (error) {
+    if (error?.response?.status === 401) {
+      analyticsError.value = 'Sessione scaduta, effettua nuovamente il login.';
+    } else {
+      analyticsError.value = 'Impossibile caricare le analytics.';
+    }
+  } finally {
+    isLoadingAnalytics.value = false;
+  }
+}
+
+async function refreshDashboard() {
+  await Promise.all([fetchSummary(), fetchAnalytics()]);
 }
 
 async function fetchOrganizations() {
@@ -583,6 +1028,9 @@ function ensureSectionData(section) {
   if (!isSuperAdmin.value) return;
   if (section === 'dashboard' && !summaryLoaded.value) {
     fetchSummary();
+  }
+  if (section === 'dashboard' && !analyticsLoaded.value && !isLoadingAnalytics.value) {
+    fetchAnalytics();
   }
   if (section === 'organizations' && !organizationsLoaded.value) {
     fetchOrganizations();
@@ -692,6 +1140,12 @@ onMounted(() => {
   gap: 1.5rem;
 }
 
+.dashboard-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
 .grid-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -719,6 +1173,168 @@ onMounted(() => {
 .stat-card .value {
   font-size: clamp(2rem, 5vw, 2.8rem);
   margin: 0;
+}
+
+.stat-card.highlight {
+  background: linear-gradient(145deg, #0f172a, #0ea5e9);
+  box-shadow: 0 10px 40px rgba(14, 165, 233, 0.35);
+}
+
+.analytics-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.delta {
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+}
+
+.delta.positive {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+}
+
+.delta.negative {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.delta.neutral {
+  background: rgba(148, 163, 184, 0.2);
+  color: #475569;
+}
+
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.trend-panel {
+  background: #0f172a;
+  color: #fff;
+  padding: 1rem;
+  border-radius: 1rem;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.trend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.trend-list__item {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.trend-list__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.dual-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.top-events {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.top-events__column ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.top-events__column li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 0.9rem;
+}
+
+.badge {
+  background: #0ea5e9;
+  color: #fff;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.sponsor-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sponsor-stats__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.5rem;
+}
+
+.table-wrapper.compact table td,
+.table-wrapper.compact table th {
+  padding: 0.75rem;
+}
+
+.monthly-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.monthly-summary__column {
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.monthly-summary__column.deltas {
+  background: #0f172a;
+  color: #fff;
+  border: none;
+}
+
+.monthly-summary__column .label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.monthly-summary__column.deltas .label {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .organizations-view .section-header,

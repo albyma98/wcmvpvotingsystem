@@ -36,6 +36,21 @@ func (rt *_router) getMasterSummary(w http.ResponseWriter, r *http.Request, ctx 
 	_ = json.NewEncoder(w).Encode(summary)
 }
 
+func (rt *_router) getMasterAnalytics(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if !rt.ensureSuperAdmin(w, ctx) {
+		return
+	}
+
+	analytics, err := rt.db.GetMasterAnalytics()
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot load master analytics")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(analytics)
+}
+
 func (rt *_router) listMasterOrganizations(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	if !rt.ensureSuperAdmin(w, ctx) {
 		return
