@@ -49,8 +49,16 @@ const positionStyle = computed(() => (player) => ({
   transform: 'translate(-50%, -50%)',
 }));
 
-const leftSponsor = computed(() => (Array.isArray(props.courtSponsors) ? props.courtSponsors[0] ?? null : null));
-const rightSponsor = computed(() => (Array.isArray(props.courtSponsors) ? props.courtSponsors[1] ?? null : null));
+const sponsorList = computed(() =>
+  Array.isArray(props.courtSponsors)
+    ? props.courtSponsors.filter((sponsor) => Boolean(sponsor))
+    : [],
+);
+
+const hasTwoSponsors = computed(() => sponsorList.value.length >= 2);
+const centerSponsor = computed(() => (!hasTwoSponsors.value ? sponsorList.value[0] ?? null : null));
+const leftSponsor = computed(() => (hasTwoSponsors.value ? sponsorList.value[0] ?? null : null));
+const rightSponsor = computed(() => (hasTwoSponsors.value ? sponsorList.value[1] ?? null : null));
 
 const emitSponsorClick = (sponsor) => {
   if (!sponsor) {
@@ -82,7 +90,7 @@ const findCentralReferencePlayer = () => {
 
 const centralReferencePlayer = computed(() => findCentralReferencePlayer());
 
-const sponsorVerticalCenter = computed(() => centralReferencePlayer.value?.position.y ?? 50);
+const sponsorVerticalCenter = computed(() => 50);
 
 const resolveColumnReference = (direction = 'left') => {
   const center = centralReferencePlayer.value;
@@ -119,6 +127,12 @@ const rightSponsorStyle = computed(() => ({
   left: `${rightColumnReference.value}%`,
   transform: 'translate(-50%, -50%)',
 }));
+
+const centerSponsorStyle = computed(() => ({
+  top: `${sponsorVerticalCenter.value}%`,
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+}));
 </script>
 
 <template>
@@ -147,6 +161,49 @@ const rightSponsorStyle = computed(() => ({
     </div>
 
     <div class="absolute inset-0">
+      <div v-if="centerSponsor" class="absolute z-10" :style="centerSponsorStyle">
+        <div class="flex flex-col items-center gap-2 text-center">
+          <a
+            v-if="centerSponsor.link"
+            :class="sponsorCardBaseClass"
+            :style="sponsorDimensions"
+            :href="centerSponsor.link"
+            target="_blank"
+            rel="noopener noreferrer"
+            :aria-label="centerSponsor.name || 'Sponsor'"
+            @click="emitSponsorClick(centerSponsor)"
+          >
+            <div
+              class="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-white/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+            ></div>
+            <img
+              v-if="centerSponsor.image"
+              :src="centerSponsor.image"
+              :alt="centerSponsor.name || 'Sponsor'"
+              class="relative h-full w-full object-cover"
+            />
+          </a>
+          <div
+            v-else
+            :class="sponsorCardBaseClass"
+            :style="sponsorDimensions"
+            :aria-label="centerSponsor.name || 'Sponsor'"
+            role="group"
+            @click="emitSponsorClick(centerSponsor)"
+          >
+            <div
+              class="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-white/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+            ></div>
+            <img
+              v-if="centerSponsor.image"
+              :src="centerSponsor.image"
+              :alt="centerSponsor.name || 'Sponsor'"
+              class="relative h-full w-full object-cover"
+            />
+          </div>
+        </div>
+      </div>
+
       <div v-if="leftSponsor" class="absolute z-10" :style="leftSponsorStyle">
         <div class="flex flex-col items-center gap-2 text-center">
           <a

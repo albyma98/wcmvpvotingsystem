@@ -119,7 +119,7 @@ export function mapPlayersToLayout(
     return [];
   }
 
-  const allowedPlayers = players.filter((player) => player?.is_called_up !== false);
+  const allowedPlayers = players.filter((player) => player?.is_called_up === true);
 
   const layoutSchema = resolveRosterSchema(options.layoutSchema);
   const layout = PLAYER_LAYOUTS[layoutSchema] ?? PLAYER_LAYOUTS[DEFAULT_ROSTER_SCHEMA];

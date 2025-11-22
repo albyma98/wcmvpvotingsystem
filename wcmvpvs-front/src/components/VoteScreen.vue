@@ -49,13 +49,21 @@ const rosterSchema = ref(DEFAULT_ROSTER_SCHEMA);
 
 const calledUpPlayers = computed(() =>
   Array.isArray(rawPlayers.value)
-    ? rawPlayers.value.filter((player) => player?.is_called_up !== false)
+    ? rawPlayers.value.filter((player) => player?.is_called_up === true)
     : [],
 );
 
+const effectiveRosterSchema = computed(() => {
+  const totalCalledUp = calledUpPlayers.value.length;
+  if (totalCalledUp === 12 || totalCalledUp === 13 || totalCalledUp === 14) {
+    return totalCalledUp;
+  }
+  return rosterSchema.value;
+});
+
 const fieldPlayers = computed(() =>
   mapPlayersToLayout(calledUpPlayers.value, {
-    layoutSchema: rosterSchema.value,
+    layoutSchema: effectiveRosterSchema.value,
   }),
 );
 const activeSponsorIds = computed(() =>
@@ -69,7 +77,7 @@ const activeSponsorIds = computed(() =>
 
 const sponsors = ref([]);
 const courtSponsors = computed(() => {
-  const schema = rosterSchema.value;
+  const schema = effectiveRosterSchema.value;
   if (schema === 14) {
     return sponsors.value.slice(0, 1);
   }
@@ -437,7 +445,7 @@ async function loadPlayers() {
               ? Number(item?.jersey_number)
               : null,
         image_url: typeof item?.image_url === "string" ? item.image_url : "",
-        is_called_up: item?.is_called_up !== false,
+        is_called_up: item?.is_called_up === true,
       }));
     } else {
       rawPlayers.value = [];
