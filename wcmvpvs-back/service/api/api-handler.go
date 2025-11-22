@@ -34,6 +34,7 @@ func (rt *_router) Handler() chi.Router {
 
 	rt.router.Get("/players", rt.wrapAdmin(rt.listPlayers))
 	rt.router.Post("/players", rt.wrapAdmin(rt.createPlayer))
+	rt.router.Put("/players/settings", rt.wrapAdmin(rt.updatePlayerSettings))
 	rt.router.Put("/players/{id}", rt.wrapAdmin(rt.updatePlayer))
 	rt.router.Delete("/players/{id}", rt.wrapAdmin(rt.deletePlayer))
 

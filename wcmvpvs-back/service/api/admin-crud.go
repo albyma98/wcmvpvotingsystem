@@ -17,6 +17,15 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+func resolveRosterSchemaValue(value int) int {
+	switch value {
+	case 12, 13, 14:
+		return value
+	default:
+		return 13
+	}
+}
+
 // Teams
 func (rt *_router) listTeams(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	teams, err := rt.db.ListTeams()
@@ -99,8 +108,20 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqco
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(players)
-	ctx.Logger.WithField("players", len(players)).Info("listed players")
+	rosterSchema := resolveRosterSchemaValue(13)
+	if ctx.OrganizationID > 0 {
+		if schema, schemaErr := rt.db.GetOrganizationRosterSchema(ctx.OrganizationID); schemaErr == nil {
+			rosterSchema = resolveRosterSchemaValue(schema)
+		}
+	}
+
+	response := struct {
+		Players      []database.Player `json:"players"`
+		RosterSchema int               `json:"roster_schema"`
+	}{Players: players, RosterSchema: rosterSchema}
+
+	_ = json.NewEncoder(w).Encode(response)
+	ctx.Logger.WithFields(map[string]interface{}{"players": len(players), "roster_schema": rosterSchema}).Info("listed players")
 }
 
 func (rt *_router) listPublicPlayers(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -115,8 +136,52 @@ func (rt *_router) listPublicPlayers(w http.ResponseWriter, r *http.Request, ctx
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(players)
-	ctx.Logger.WithField("players", len(players)).Info("listed public players")
+	filtered := make([]database.Player, 0, len(players))
+	for _, player := range players {
+		if player.IsCalledUp {
+			filtered = append(filtered, player)
+		}
+	}
+
+	rosterSchema := resolveRosterSchemaValue(13)
+	if schema, schemaErr := rt.db.GetOrganizationRosterSchema(ctx.OrganizationID); schemaErr == nil {
+		rosterSchema = resolveRosterSchemaValue(schema)
+	}
+
+	response := struct {
+		Players      []database.Player `json:"players"`
+		RosterSchema int               `json:"roster_schema"`
+	}{Players: filtered, RosterSchema: rosterSchema}
+
+	_ = json.NewEncoder(w).Encode(response)
+	ctx.Logger.WithFields(map[string]interface{}{"players": len(filtered), "roster_schema": rosterSchema}).Info("listed public players")
+}
+
+func (rt *_router) updatePlayerSettings(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if ctx.OrganizationID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var payload struct {
+		RosterSchema int `json:"roster_schema"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while updating player settings")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	schema := resolveRosterSchemaValue(payload.RosterSchema)
+	if err := rt.db.UpdateOrganizationRosterSchema(ctx.OrganizationID, schema); err != nil {
+		ctx.Logger.WithError(err).Error("cannot update player settings")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	ctx.Logger.WithFields(map[string]interface{}{"roster_schema": schema}).Info("player settings updated")
 }
 
 func (rt *_router) createPlayer(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
