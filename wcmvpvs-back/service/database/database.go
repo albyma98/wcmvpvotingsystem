@@ -31,7 +31,9 @@ Then you can initialize the AppDatabase and pass it to the api package.
 package database
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -355,11 +357,12 @@ type TicketValidationResult struct {
 }
 
 type Admin struct {
-	ID           int    `json:"id"`
-	Username     string `json:"username"`
-	PasswordHash string `json:"password_hash"`
-	Role         string `json:"role"`
-	CreatedAt    string `json:"created_at"`
+	ID             int    `json:"id"`
+	Username       string `json:"username"`
+	PasswordHash   string `json:"password_hash"`
+	Role           string `json:"role"`
+	OrganizationID int    `json:"organization_id"`
+	CreatedAt      string `json:"created_at"`
 }
 
 type Sponsor struct {
@@ -526,10 +529,10 @@ type AppDatabase interface {
 	GetLatestReactionTestAttempt(eventID int, deviceID string) (ReactionTestAttempt, error)
 	GetReactionTestStats(eventID int) (ReactionTestStats, error)
 	CreateAdmin(a Admin) (int, error)
-	ListAdmins() ([]Admin, error)
+	ListAdmins(organizationID int) ([]Admin, error)
 	UpdateAdmin(a Admin) error
 	DeleteAdmin(id int) error
-	GetAdminByUsername(username string) (Admin, error)
+	GetAdminByUsername(username string, organizationID int) (Admin, error)
 	GetAdminByID(id int) (Admin, error)
 	CreateOrganization(org Organization) (Organization, error)
 	UpdateOrganization(org Organization) (Organization, error)
@@ -751,16 +754,6 @@ func New(db *sql.DB) (AppDatabase, error) {
 		return nil, fmt.Errorf("error ensuring events organization index: %w", err)
 	}
 
-	// Create admins table if not exists
-	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='admins';`).Scan(&tableName)
-	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT DEFAULT 'staff', created_at TEXT DEFAULT CURRENT_TIMESTAMP);`
-		_, err = db.Exec(sqlStmt)
-		if err != nil {
-			return nil, fmt.Errorf("error creating admins table: %w", err)
-		}
-	}
-
 	// Create votes table if not exists
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='votes';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -810,6 +803,10 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 
 	if _, err = db.Exec(`CREATE TRIGGER IF NOT EXISTS trg_organizations_updated_at AFTER UPDATE ON organizations BEGIN UPDATE organizations SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;`); err != nil {
 		return nil, fmt.Errorf("error ensuring organizations update trigger: %w", err)
+	}
+
+	if err = ensureAdminsTable(db); err != nil {
+		return nil, err
 	}
 	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_vote_per_event_device ON votes (event_id, device_id);`)
 	if err != nil {
@@ -1162,6 +1159,106 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	return &appdbimpl{
 		c: db,
 	}, nil
+}
+
+func ensureAdminsTable(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(admins)`)
+	if err != nil {
+		return fmt.Errorf("error inspecting admins table: %w", err)
+	}
+	defer rows.Close()
+
+	hasAdmins := false
+	hasOrgColumn := false
+	for rows.Next() {
+		hasAdmins = true
+		var (
+			cid      int
+			name     string
+			colType  string
+			notNull  int
+			defaultV sql.NullString
+			primary  int
+		)
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &defaultV, &primary); err != nil {
+			return fmt.Errorf("error parsing admins table info: %w", err)
+		}
+		if name == "organization_id" {
+			hasOrgColumn = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error reading admins table info: %w", err)
+	}
+
+	if !hasAdmins {
+		if err := createAdminsTable(db); err != nil {
+			return err
+		}
+	} else if !hasOrgColumn {
+		if err := recreateAdminsTable(db); err != nil {
+			return err
+		}
+	}
+
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_admins_org_username ON admins(organization_id, username);`); err != nil {
+		return fmt.Errorf("error ensuring admins organization index: %w", err)
+	}
+
+	return nil
+}
+
+func createAdminsTable(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE admins (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+username TEXT NOT NULL,
+password_hash TEXT NOT NULL,
+role TEXT NOT NULL DEFAULT 'staff',
+organization_id INTEGER,
+created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (organization_id) REFERENCES organizations(id)
+);`); err != nil {
+		return fmt.Errorf("error creating admins table: %w", err)
+	}
+	return nil
+}
+
+func recreateAdminsTable(db *sql.DB) error {
+	if _, err := db.Exec(`DROP TABLE IF EXISTS admins_old;`); err != nil {
+		return fmt.Errorf("error preparing legacy admins table: %w", err)
+	}
+
+	if _, err := db.Exec(`ALTER TABLE admins RENAME TO admins_old;`); err != nil {
+		return fmt.Errorf("error renaming admins table: %w", err)
+	}
+
+	if err := createAdminsTable(db); err != nil {
+		return err
+	}
+
+	if _, err := db.Exec(`INSERT INTO admins (id, username, password_hash, role, organization_id, created_at) SELECT id, username, password_hash, role, NULL, created_at FROM admins_old;`); err != nil {
+		return fmt.Errorf("error copying data into admins table: %w", err)
+	}
+
+	if _, err := db.Exec(`DROP TABLE admins_old;`); err != nil {
+		return fmt.Errorf("error dropping legacy admins table: %w", err)
+	}
+
+	return nil
+}
+
+func hashPasswordSHA256(password string) string {
+	sum := sha256.Sum256([]byte(password))
+	return hex.EncodeToString(sum[:])
+}
+
+func createDefaultStaffAdmin(tx *sql.Tx, organizationID int) error {
+	if organizationID <= 0 {
+		return fmt.Errorf("invalid organization id for default admin")
+	}
+
+	_, err := tx.Exec(`INSERT INTO admins (username, password_hash, role, organization_id) VALUES (?, ?, 'staff', ?)`, "staff", hashPasswordSHA256("staff"), organizationID)
+	return err
 }
 
 func (db *appdbimpl) Ping() error {
@@ -2471,7 +2568,7 @@ func (db *appdbimpl) DeleteVote(id int) error {
 
 // Admin operations
 func (db *appdbimpl) CreateAdmin(a Admin) (int, error) {
-	res, err := db.c.Exec(`INSERT INTO admins (username, password_hash, role) VALUES (?, ?, ?)`, a.Username, a.PasswordHash, a.Role)
+	res, err := db.c.Exec(`INSERT INTO admins (username, password_hash, role, organization_id) VALUES (?, ?, ?, ?)`, a.Username, a.PasswordHash, a.Role, nullableOrgID(a.OrganizationID))
 	if err != nil {
 		return 0, err
 	}
@@ -2479,8 +2576,15 @@ func (db *appdbimpl) CreateAdmin(a Admin) (int, error) {
 	return int(id), nil
 }
 
-func (db *appdbimpl) ListAdmins() ([]Admin, error) {
-	rows, err := db.c.Query(`SELECT id, username, password_hash, role, created_at FROM admins`)
+func (db *appdbimpl) ListAdmins(organizationID int) ([]Admin, error) {
+	query := `SELECT id, username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins`
+	var args []interface{}
+	if organizationID > 0 {
+		query += ` WHERE organization_id = ?`
+		args = append(args, organizationID)
+	}
+
+	rows, err := db.c.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -2488,7 +2592,7 @@ func (db *appdbimpl) ListAdmins() ([]Admin, error) {
 	var as []Admin
 	for rows.Next() {
 		var a Admin
-		if err := rows.Scan(&a.ID, &a.Username, &a.PasswordHash, &a.Role, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Username, &a.PasswordHash, &a.Role, &a.CreatedAt, &a.OrganizationID); err != nil {
 			return nil, err
 		}
 		as = append(as, a)
@@ -2497,7 +2601,7 @@ func (db *appdbimpl) ListAdmins() ([]Admin, error) {
 }
 
 func (db *appdbimpl) UpdateAdmin(a Admin) error {
-	_, err := db.c.Exec(`UPDATE admins SET username=?, password_hash=?, role=? WHERE id=?`, a.Username, a.PasswordHash, a.Role, a.ID)
+	_, err := db.c.Exec(`UPDATE admins SET username=?, password_hash=?, role=?, organization_id=? WHERE id=?`, a.Username, a.PasswordHash, a.Role, nullableOrgID(a.OrganizationID), a.ID)
 	return err
 }
 
@@ -2506,9 +2610,18 @@ func (db *appdbimpl) DeleteAdmin(id int) error {
 	return err
 }
 
-func (db *appdbimpl) GetAdminByUsername(username string) (Admin, error) {
+func (db *appdbimpl) GetAdminByUsername(username string, organizationID int) (Admin, error) {
 	var admin Admin
-	err := db.c.QueryRow(`SELECT id, username, password_hash, role, created_at FROM admins WHERE username = ?`, username).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.Role, &admin.CreatedAt)
+	query := `SELECT id, username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins WHERE username = ?`
+	args := []interface{}{username}
+	if organizationID > 0 {
+		query += ` AND organization_id = ?`
+		args = append(args, organizationID)
+	} else {
+		query += ` AND (organization_id IS NULL OR organization_id = 0)`
+	}
+
+	err := db.c.QueryRow(query, args...).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.Role, &admin.CreatedAt, &admin.OrganizationID)
 	if err != nil {
 		return Admin{}, err
 	}
@@ -2517,7 +2630,7 @@ func (db *appdbimpl) GetAdminByUsername(username string) (Admin, error) {
 
 func (db *appdbimpl) GetAdminByID(id int) (Admin, error) {
 	var admin Admin
-	err := db.c.QueryRow(`SELECT id, username, password_hash, role, created_at FROM admins WHERE id = ?`, id).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.Role, &admin.CreatedAt)
+	err := db.c.QueryRow(`SELECT id, username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins WHERE id = ?`, id).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.Role, &admin.CreatedAt, &admin.OrganizationID)
 	if err != nil {
 		return Admin{}, err
 	}
@@ -2608,6 +2721,10 @@ func (db *appdbimpl) CreateOrganization(org Organization) (Organization, error) 
 		return Organization{}, err
 	}
 	insertedID, _ := res.LastInsertId()
+
+	if err := createDefaultStaffAdmin(tx, int(insertedID)); err != nil {
+		return Organization{}, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return Organization{}, err
@@ -3189,6 +3306,13 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func nullableOrgID(orgID int) interface{} {
+	if orgID <= 0 {
+		return nil
+	}
+	return orgID
 }
 
 func normalizeSlug(value string) string {
