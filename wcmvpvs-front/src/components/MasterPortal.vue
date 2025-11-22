@@ -95,6 +95,27 @@
               <p class="value">{{ formatPercent(masterAnalytics.sponsor_stats.average_ctr) }}</p>
               <small>Click-through rate complessivo</small>
             </article>
+            <article class="stat-card">
+              <p class="label">Tempo totale utenti</p>
+              <p class="value">
+                {{ formatDurationSeconds(masterAnalytics.engagement.total_duration_seconds) }}
+              </p>
+              <small>Somma del tempo trascorso sulle pagine evento</small>
+            </article>
+            <article class="stat-card">
+              <p class="label">Tempo medio per utente</p>
+              <p class="value">
+                {{ formatDurationSeconds(masterAnalytics.engagement.average_duration_per_user) }}
+              </p>
+              <small>Sessione media per tifoso</small>
+            </article>
+            <article class="stat-card">
+              <p class="label">Tempo medio per partita</p>
+              <p class="value">
+                {{ formatDurationSeconds(masterAnalytics.engagement.average_duration_per_match) }}
+              </p>
+              <small>Tempo medio complessivo per match</small>
+            </article>
             <article class="stat-card highlight">
               <p class="label">Voti mese corrente</p>
               <p class="value">{{ masterAnalytics.monthly_summary.current.votes.toLocaleString('it-IT') }}</p>
@@ -278,6 +299,48 @@
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </section>
+
+            <section class="card analytics-card">
+              <header class="section-header">
+                <div>
+                  <h2>Tempo medio per società</h2>
+                  <p>Tempo totale sulle pagine evento, medio per partita e per tifoso.</p>
+                </div>
+              </header>
+              <div class="table-wrapper compact">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Società</th>
+                      <th>Tempo totale</th>
+                      <th>Tempo medio / partita</th>
+                      <th>Tempo medio / utente</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="stat in masterAnalytics.engagement.organizations"
+                      :key="stat.organization_id"
+                    >
+                      <td>
+                        <div class="org-cell">
+                          <div>
+                            <p class="org-name">{{ stat.name || 'Società' }}</p>
+                            <small class="muted">{{ stat.slug || `ID ${stat.organization_id}` }}</small>
+                          </div>
+                        </div>
+                      </td>
+                      <td>{{ formatDurationSeconds(stat.total_duration_seconds) }}</td>
+                      <td>{{ formatDurationSeconds(stat.average_duration_per_match) }}</td>
+                      <td>{{ formatDurationSeconds(stat.average_duration_per_user) }}</td>
+                    </tr>
+                    <tr v-if="!masterAnalytics.engagement.organizations.length">
+                      <td colspan="4" class="muted">Nessun dato disponibile.</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </section>
           </div>
@@ -599,6 +662,12 @@ const createEmptyAnalytics = () => ({
     events_change: { absolute: 0, percent: 0 },
     unique_users_change: { absolute: 0, percent: 0 },
   },
+  engagement: {
+    total_duration_seconds: 0,
+    average_duration_per_match: 0,
+    average_duration_per_user: 0,
+    organizations: [],
+  },
 });
 
 const masterAnalytics = ref(createEmptyAnalytics());
@@ -708,6 +777,19 @@ function formatPercent(value) {
     return '0%';
   }
   return `${parsed.toFixed(1)}%`;
+}
+
+function formatDurationSeconds(value) {
+  const total = Math.max(0, Math.floor(Number(value ?? 0)));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours > 0) {
+    return `${hours.toLocaleString('it-IT')}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+  return `${total}s`;
 }
 
 function resolveDeltaClass(value) {
@@ -893,6 +975,22 @@ function normalizeMasterAnalytics(raw) {
           impressions: numberValue(org?.impressions),
           clicks: numberValue(org?.clicks),
           ctr: Number(org?.ctr ?? 0) || 0,
+        }))
+      : [],
+  };
+
+  normalized.engagement = {
+    total_duration_seconds: numberValue(raw?.engagement?.total_duration_seconds),
+    average_duration_per_match: Number(raw?.engagement?.average_duration_per_match ?? 0) || 0,
+    average_duration_per_user: Number(raw?.engagement?.average_duration_per_user ?? 0) || 0,
+    organizations: Array.isArray(raw?.engagement?.organizations)
+      ? raw.engagement.organizations.map((org) => ({
+          organization_id: numberValue(org?.organization_id),
+          name: org?.name || '',
+          slug: org?.slug || '',
+          total_duration_seconds: numberValue(org?.total_duration_seconds),
+          average_duration_per_match: Number(org?.average_duration_per_match ?? 0) || 0,
+          average_duration_per_user: Number(org?.average_duration_per_user ?? 0) || 0,
         }))
       : [],
   };

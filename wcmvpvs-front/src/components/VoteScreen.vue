@@ -19,6 +19,8 @@ import {
   fetchVoteStatus,
   sendJsonBeacon,
   submitEventFeedback,
+  trackPageEngagement,
+  fetchEventEngagement,
 } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, mapPlayersToLayout } from "../roster";
 import { getOrCreateDeviceId } from "../deviceId";
@@ -106,6 +108,14 @@ let voteTotalTimer = null;
 let countdownTimer = null;
 const nowTimestamp = ref(Date.now());
 
+const engagementStats = ref(null);
+const userEngagementSeconds = ref(0);
+const engagementLoading = ref(false);
+const engagementState = reactive({
+  startedAt: 0,
+  accumulatedMs: 0,
+});
+
 const updateNowTimestamp = () => {
   nowTimestamp.value = Date.now();
 };
@@ -124,6 +134,89 @@ const startCountdownTimer = () => {
   stopCountdownTimer();
   updateNowTimestamp();
   countdownTimer = window.setInterval(updateNowTimestamp, 1000);
+};
+
+const resetEngagementState = () => {
+  engagementState.startedAt = 0;
+  engagementState.accumulatedMs = 0;
+  userEngagementSeconds.value = 0;
+};
+
+const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+const pauseEngagementTimer = () => {
+  if (!engagementState.startedAt) {
+    return;
+  }
+  engagementState.accumulatedMs += nowMs() - engagementState.startedAt;
+  engagementState.startedAt = 0;
+};
+
+const startEngagementTimer = () => {
+  if (typeof document === "undefined") {
+    return;
+  }
+  if (document.visibilityState === "hidden") {
+    return;
+  }
+  if (!currentEventId.value || engagementState.startedAt) {
+    return;
+  }
+  engagementState.startedAt = nowMs();
+};
+
+const sendEngagementIfNeeded = async (targetEventId = currentEventId.value) => {
+  pauseEngagementTimer();
+  if (!targetEventId) {
+    return;
+  }
+  const seconds = Math.floor(engagementState.accumulatedMs / 1000);
+  if (seconds <= 0) {
+    return;
+  }
+  engagementLoading.value = true;
+  try {
+    await trackPageEngagement(targetEventId, seconds);
+    userEngagementSeconds.value = seconds;
+  } catch (error) {
+    console.error("Impossibile registrare il tempo di permanenza", error);
+  } finally {
+    engagementLoading.value = false;
+    engagementState.accumulatedMs = 0;
+  }
+};
+
+const handleVisibilityChange = () => {
+  if (typeof document === "undefined") {
+    return;
+  }
+  if (document.visibilityState === "hidden") {
+    sendEngagementIfNeeded();
+  } else {
+    startEngagementTimer();
+  }
+};
+
+const handlePageHide = () => {
+  sendEngagementIfNeeded();
+};
+
+const loadEngagementStats = async (eventId) => {
+  if (!eventId) {
+    engagementStats.value = null;
+    return;
+  }
+  engagementLoading.value = true;
+  try {
+    const { ok, data } = await fetchEventEngagement(eventId);
+    if (ok) {
+      engagementStats.value = data ?? null;
+    }
+  } catch (error) {
+    console.error("Impossibile caricare le statistiche di permanenza", error);
+  } finally {
+    engagementLoading.value = false;
+  }
 };
 
 const formattedVoteTotal = computed(() =>
@@ -1326,7 +1419,12 @@ const isEventUpcoming = computed(() => timeUntilEventStartMs.value > 0);
 
 watch(
   currentEventId,
-  (eventId) => {
+  (eventId, previousEventId) => {
+    if (previousEventId) {
+      sendEngagementIfNeeded(previousEventId);
+    }
+    resetEngagementState();
+    engagementStats.value = null;
     votedPlayerId.value = null;
     pendingPlayer.value = null;
     errorMessage.value = "";
@@ -1355,6 +1453,10 @@ watch(
     if (eventId) {
       refreshVoteStatus(eventId);
     }
+    if (eventId && isVotingClosed.value) {
+      loadEngagementStats(eventId);
+    }
+    startEngagementTimer();
     resetSponsorVisibility();
     stopSponsorVisibilityInterval();
     teardownSponsorObserver();
@@ -1494,11 +1596,17 @@ watch(fieldPlayers, (players) => {
 
 watch(isVotingClosed, (closed) => {
   if (closed) {
+    pauseEngagementTimer();
+    sendEngagementIfNeeded();
+    loadEngagementStats(currentEventId.value);
     pendingPlayer.value = null;
     showTicketModal.value = false;
     showAlreadyVotedModal.value = false;
     ticketLoadError.value = "";
     isTicketLoading.value = false;
+  } else {
+    engagementStats.value = null;
+    startEngagementTimer();
   }
 });
 
@@ -1521,6 +1629,34 @@ watch(
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
+const formatSeconds = (seconds) => {
+  const total = Math.max(0, Math.floor(seconds || 0));
+  const minutes = Math.floor(total / 60);
+  const remainingSeconds = total % 60;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours > 0) {
+    return `${hours}h ${remainingMinutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+  return `${remainingSeconds}s`;
+};
+
+const engagementSummary = computed(() => {
+  if (!engagementStats.value) {
+    return null;
+  }
+  return {
+    total: formatSeconds(engagementStats.value.total_duration_seconds),
+    average: formatSeconds(engagementStats.value.average_duration_seconds),
+    users: engagementStats.value.total_users ?? 0,
+  };
+});
+
+const userEngagementLabel = computed(() => formatSeconds(userEngagementSeconds.value));
+
 const updateCardSize = () => {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -1532,6 +1668,14 @@ const updateCardSize = () => {
 onMounted(() => {
   updateCardSize();
   window.addEventListener("resize", updateCardSize, { passive: true });
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", handleVisibilityChange, { passive: true });
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("blur", pauseEngagementTimer);
+    window.addEventListener("focus", startEngagementTimer);
+  }
   loadSponsors();
   loadPlayers();
   if (currentEventId.value) {
@@ -1543,6 +1687,7 @@ onMounted(() => {
     if (preVoteSettings.value.showSponsors) {
       ensureSponsorSession(currentEventId.value);
     }
+    startEngagementTimer();
   }
   nextTick(() => {
     if (showSponsorSection.value) {
@@ -1553,6 +1698,15 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", updateCardSize);
+  if (typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }
+  if (typeof window !== "undefined") {
+    window.removeEventListener("pagehide", handlePageHide);
+    window.removeEventListener("blur", pauseEngagementTimer);
+    window.removeEventListener("focus", startEngagementTimer);
+  }
+  sendEngagementIfNeeded();
   stopVoteTotalPolling();
   stopCountdownTimer();
   stopSponsorVisibilityInterval();
@@ -1733,6 +1887,30 @@ const handleQrError = () => {
               Grazie per aver partecipato! Ti aspettiamo alla prossima partita
               al palazzetto.
             </p>
+          </div>
+        </section>
+        <section v-if="isVotingClosed && engagementSummary" class="px-4">
+          <div class="engagement-card" role="status" aria-live="polite">
+            <div class="engagement-card__header">
+              <p class="engagement-card__eyebrow">Tempo di permanenza</p>
+              <p v-if="engagementSummary.users" class="engagement-card__meta">
+                Basato su {{ engagementSummary.users.toLocaleString("it-IT") }} tifosi
+              </p>
+            </div>
+            <div class="engagement-card__grid">
+              <div>
+                <p class="engagement-card__label">Totale evento</p>
+                <p class="engagement-card__value">{{ engagementSummary.total }}</p>
+              </div>
+              <div>
+                <p class="engagement-card__label">Tempo medio</p>
+                <p class="engagement-card__value">{{ engagementSummary.average }}</p>
+              </div>
+              <div v-if="userEngagementSeconds > 0">
+                <p class="engagement-card__label">Il tuo tempo sulla pagina</p>
+                <p class="engagement-card__value">{{ userEngagementLabel }}</p>
+              </div>
+            </div>
           </div>
         </section>
         <section v-if="showVoteSummary" class="px-4">
@@ -2363,6 +2541,56 @@ const handleQrError = () => {
   margin: 0;
   font-size: 0.95rem;
   color: #e2e8f0;
+}
+
+.engagement-card {
+  margin-top: 1rem;
+  border-radius: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.75));
+  padding: 1.5rem;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.4);
+}
+
+.engagement-card__header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.engagement-card__eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: #38bdf8;
+}
+
+.engagement-card__meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.engagement-card__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.engagement-card__label {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.65);
+}
+
+.engagement-card__value {
+  margin: 0.25rem 0 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #f8fafc;
 }
 
 .vote-summary {
