@@ -38,11 +38,12 @@ const avatarUrl = computed(() => props.player.avatar || fallbackAvatar.value);
 
 const cardStyle = computed(() => ({
   width: `${props.cardSize}px`,
-  height: `${props.cardSize * 1.5}px`,
+  height: `${props.cardSize * 1.6}px`,
 }));
 
 const wrapperStyle = computed(() => ({
   width: `${props.cardSize}px`,
+  minHeight: `${props.cardSize * 1.8}px`,
 }));
 
 const playerNameParts = computed(() => {
@@ -83,10 +84,10 @@ const handleSelect = () => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center" :style="wrapperStyle">
+  <div class="player-card" :style="wrapperStyle">
     <div
       :style="cardStyle"
-      class="relative rounded-[1.75rem] border border-white/10 bg-slate-950/60 transition-transform duration-200 ease-out"
+      class="player-card__body"
       :class="[
         tierRingClass,
         isSelected ? 'scale-[1.05]' : 'hover:scale-[1.03]',
@@ -95,31 +96,88 @@ const handleSelect = () => {
       ]"
       @click="handleSelect"
     >
-      <div
-        class="pointer-events-none absolute left-1/2 top-[100%] z-20  -translate-x-1/2 -translate-y-full px-6 text-center font-bold uppercase text-white"
-      >
-        <span class="block text-[clamp(1rem,3vw,2.5rem)] leading-none tracking-[0.1em] drop-shadow-[0_0_12px_rgba(0,0,0,0.85)]">
-          {{ overlayLastName }}
-        </span>
-        <span
-          v-if="overlayNumber"
-          class="mt-1 block text-[clamp(1.1rem,2.8vw,2.25rem)] leading-none tracking-[0.2em] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]"
-        >
-          {{ overlayNumber }}
-        </span>
+      <div class="player-card__image">
+        <img :src="avatarUrl" :alt="player.name" class="player-card__photo" />
+        <div class="player-card__image-mask"></div>
       </div>
-      <div class="flex h-full w-full flex-col items-center">
-        <div class="flex w-full items-center justify-center">
-          <div class="relative w-full max-w-100%]" style="aspect-ratio: 1 / 1">
-            <div class="absolute overflow-hidden rounded-[1.55rem]">
-              <img :src="avatarUrl" :alt="player.name" class="h-full w-full object-fill" />
-              <div
-                class="absolute inset-0 bg-gradient-to-b from-[rgba(0,0,0,0.05)] via-[rgba(0,0,0,0.1)] to-[rgba(0,0,0,0.325)]"
-              ></div>
-            </div>
-          </div>
-        </div>
+      <div class="player-card__label" aria-hidden="true">
+        <span class="player-card__name">{{ overlayLastName }}</span>
+        <span v-if="overlayNumber" class="player-card__number">{{ overlayNumber }}</span>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.player-card {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.player-card__body {
+  position: relative;
+  border-radius: 1.75rem;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background-color: rgb(15 23 42 / 0.6);
+  transition: transform 200ms ease-out;
+  overflow: hidden;
+  box-shadow: 0 20px 45px rgba(8, 15, 28, 0.45);
+  display: grid;
+  place-items: center;
+}
+
+.player-card__image {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 1.55rem;
+}
+
+.player-card__photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.player-card__image-mask {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.05) 0%,
+    rgba(0, 0, 0, 0.15) 35%,
+    rgba(0, 0, 0, 0.38) 100%
+  );
+}
+
+.player-card__label {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0.75rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding-inline: 1.25rem;
+  pointer-events: none;
+  text-transform: uppercase;
+  color: white;
+  text-shadow: 0 0 12px rgba(0, 0, 0, 0.85);
+}
+
+.player-card__name {
+  font-size: clamp(1rem, 3vw, 1.75rem);
+  letter-spacing: 0.12em;
+  line-height: 1.05;
+  font-weight: 700;
+}
+
+.player-card__number {
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+  letter-spacing: 0.2em;
+  line-height: 1.05;
+  font-weight: 700;
+}
+</style>
