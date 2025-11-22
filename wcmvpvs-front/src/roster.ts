@@ -28,52 +28,113 @@ export interface LayoutPlayer {
   raw: PublicPlayer;
 }
 
+const COLUMN_POSITIONS: Record<number, number[]> = {
+  1: [50],
+  2: [35, 65],
+  3: [20, 50, 80],
+};
+
+const DEFAULT_GRID_TOP = 12.5;
+const DEFAULT_GRID_BOTTOM = 87.5;
+const MIN_GRID_ROWS = 4;
+const MAX_COLUMNS = 3;
+
+const distributePlayersAcrossRows = (totalPlayers: number, rows: number) => {
+  const basePerRow = Math.floor(totalPlayers / rows);
+  let remainder = totalPlayers % rows;
+
+  return Array.from({ length: rows }, (_, index) => {
+    const count = basePerRow + (remainder > 0 ? 1 : 0);
+    if (remainder > 0) {
+      remainder -= 1;
+    }
+    return count;
+  }).filter((count) => count > 0);
+};
+
+const createEquidistantLayout = (
+  tiers: PlayerTier[],
+  options: { rows?: number; top?: number; bottom?: number } = {},
+): PlayerLayoutSlot[] => {
+  const totalPlayers = tiers.length;
+  const baseRows = options.rows ?? Math.max(MIN_GRID_ROWS, Math.ceil(totalPlayers / MAX_COLUMNS));
+  const rows = totalPlayers >= 13 && baseRows % 2 !== 0 ? baseRows + 1 : baseRows;
+  const top = options.top ?? DEFAULT_GRID_TOP;
+  const bottom = options.bottom ?? DEFAULT_GRID_BOTTOM;
+
+  const rowDistribution = distributePlayersAcrossRows(totalPlayers, rows);
+  const verticalSpacing = rows > 1 ? (bottom - top) / (rows - 1) : 0;
+
+  let tierIndex = 0;
+
+  return rowDistribution.flatMap((playersInRow, rowIndex) => {
+    const y = top + rowIndex * verticalSpacing;
+    const xPositions = COLUMN_POSITIONS[playersInRow] ?? COLUMN_POSITIONS[MAX_COLUMNS];
+
+    return Array.from({ length: playersInRow }, (_, columnIndex) => {
+      const x = xPositions[columnIndex] ?? xPositions[xPositions.length - 1];
+      const tier = tiers[tierIndex] ?? tiers[tiers.length - 1] ?? 'gold';
+      tierIndex += 1;
+      return {
+        tier,
+        position: { x, y },
+      };
+    });
+  });
+};
+
+const LAYOUT_12_TIERS: PlayerTier[] = [
+  'gold',
+  'gold',
+  'silver',
+  'silver',
+  'gold',
+  'gold',
+  'bronze',
+  'bronze',
+  'silver',
+  'silver',
+  'bronze',
+  'bronze',
+];
+
+const LAYOUT_13_TIERS: PlayerTier[] = [
+  'gold',
+  'gold',
+  'silver',
+  'silver',
+  'gold',
+  'gold',
+  'bronze',
+  'bronze',
+  'silver',
+  'silver',
+  'bronze',
+  'bronze',
+  'bronze',
+];
+
+const LAYOUT_14_TIERS: PlayerTier[] = [
+  'gold',
+  'gold',
+  'silver',
+  'silver',
+  'gold',
+  'gold',
+  'bronze',
+  'bronze',
+  'silver',
+  'silver',
+  'bronze',
+  'bronze',
+  'gold',
+  'gold',
+];
+
 export const PLAYER_LAYOUTS: Record<number, PlayerLayoutSlot[]> = {
-  12: [
-    { tier: 'gold', position: { x: 20, y: 12.5 } },
-    { tier: 'gold', position: { x: 50, y: 12.5 } },
-    { tier: 'silver', position: { x: 80, y: 12.5 } },
-    { tier: 'silver', position: { x: 20, y: 37.5 } },
-    { tier: 'gold', position: { x: 50, y: 37.5 } },
-    { tier: 'gold', position: { x: 80, y: 37.5 } },
-    { tier: 'bronze', position: { x: 20, y: 62.5 } },
-    { tier: 'bronze', position: { x: 50, y: 62.5 } },
-    { tier: 'silver', position: { x: 80, y: 62.5 } },
-    { tier: 'silver', position: { x: 20, y: 87.5 } },
-    { tier: 'bronze', position: { x: 50, y: 87.5 } },
-    { tier: 'bronze', position: { x: 80, y: 87.5 } },
-  ],
-  13: [
-    { tier: 'gold', position: { x: 20, y: 12.5 } },
-    { tier: 'gold', position: { x: 50, y: 12.5 } },
-    { tier: 'silver', position: { x: 80, y: 12.5 } },
-    { tier: 'silver', position: { x: 20, y: 37.5 } },
-    { tier: 'gold', position: { x: 50, y: 37.5 } },
-    { tier: 'gold', position: { x: 80, y: 37.5 } },
-    { tier: 'bronze', position: { x: 20, y: 62.5 } },
-    { tier: 'bronze', position: { x: 50, y: 62.5 } },
-    { tier: 'silver', position: { x: 80, y: 62.5 } },
-    { tier: 'silver', position: { x: 20, y: 87.5 } },
-    { tier: 'bronze', position: { x: 50, y: 87.5 } },
-    { tier: 'bronze', position: { x: 80, y: 87.5 } },
-    { tier: 'bronze', position: { x: 50, y: 50 } },
-  ],
-  14: [
-    { tier: 'gold', position: { x: 20, y: 12.5 } },
-    { tier: 'gold', position: { x: 50, y: 12.5 } },
-    { tier: 'silver', position: { x: 80, y: 12.5 } },
-    { tier: 'silver', position: { x: 20, y: 37.5 } },
-    { tier: 'gold', position: { x: 50, y: 37.5 } },
-    { tier: 'gold', position: { x: 80, y: 37.5 } },
-    { tier: 'bronze', position: { x: 20, y: 62.5 } },
-    { tier: 'bronze', position: { x: 50, y: 62.5 } },
-    { tier: 'silver', position: { x: 80, y: 62.5 } },
-    { tier: 'silver', position: { x: 20, y: 87.5 } },
-    { tier: 'bronze', position: { x: 50, y: 87.5 } },
-    { tier: 'bronze', position: { x: 80, y: 87.5 } },
-    { tier: 'gold', position: { x: 20, y: 50 } },
-    { tier: 'gold', position: { x: 80, y: 50 } },
-  ],
+  12: createEquidistantLayout(LAYOUT_12_TIERS),
+  13: createEquidistantLayout(LAYOUT_13_TIERS),
+  14: createEquidistantLayout(LAYOUT_14_TIERS),
 };
 
 export const DEFAULT_ROSTER_SCHEMA = 13;
