@@ -125,7 +125,32 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
 
-const basePath = import.meta.env.BASE_URL ?? '/';
+const currentPath = ref(typeof window !== 'undefined' ? window.location.pathname : '/');
+const pathSegments = computed(() =>
+  currentPath.value
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean),
+);
+
+const organizationSlug = computed(() => {
+  if (!pathSegments.value.length) {
+    return '';
+  }
+
+  if (pathSegments.value[0] === 'admin' || pathSegments.value[0] === 'shop') {
+    return '';
+  }
+
+  return pathSegments.value[0];
+});
+
+const basePath = computed(() => {
+  if (organizationSlug.value) {
+    return `/${organizationSlug.value}`;
+  }
+  return (import.meta.env.BASE_URL ?? '/').replace(/\/+$/, '');
+});
 
 const teams = ref([]);
 const events = ref([]);
@@ -681,7 +706,7 @@ function goToPortal() {
   if (typeof window === 'undefined') {
     return;
   }
-  const target = new URL(basePath || '/', window.location.origin);
+  const target = new URL(basePath.value || '/', window.location.origin);
   if (!target.pathname.endsWith('/')) {
     target.pathname = `${target.pathname}/`;
   }
