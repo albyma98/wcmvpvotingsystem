@@ -140,6 +140,7 @@
                 {{ isLoadingAnalytics ? 'Aggiornamento…' : 'Aggiorna dati' }}
               </button>
             </header>
+
             <div class="table-wrapper">
               <table>
                 <thead>
@@ -450,6 +451,8 @@
             </form>
           </div>
 
+
+          <p v-if="organizationDeleteError" class="error">{{ organizationDeleteError }}</p>
           <div class="table-wrapper">
             <table>
               <thead>
@@ -510,6 +513,14 @@
                     <button class="btn outline" type="button" @click="openEditOrganization(org)">
                       Modifica
                     </button>
+                    <button
+                      class="btn danger"
+                      type="button"
+                      :disabled="deletingOrganizationId === org.id"
+                      @click="deleteOrganization(org)"
+                    >
+                      {{ deletingOrganizationId === org.id ? "Eliminazione..." : "Elimina" }}
+                    </button>
                   </td>
                 </tr>
                 <tr v-if="!organizations.length && !isLoadingOrganizations">
@@ -544,6 +555,14 @@
                   Apri pannello società
                 </a>
                 <button class="btn outline" type="button" @click="switchSection('organizations')">Torna alla lista</button>
+                <button
+                  class="btn danger"
+                  type="button"
+                  :disabled="deletingOrganizationId === organizationDetail.organization.id"
+                  @click="deleteOrganization(organizationDetail.organization)"
+                >
+                  {{ deletingOrganizationId === organizationDetail.organization.id ? "Eliminazione..." : "Elimina" }}
+                </button>
               </div>
             </header>
 
@@ -688,6 +707,8 @@ const organizationFormVisible = ref(false);
 const organizationFormMode = ref('create');
 const isSavingOrganization = ref(false);
 const organizationFormError = ref('');
+const organizationDeleteError = ref('');
+const deletingOrganizationId = ref(0);
 
 const authHeaders = computed(() => ({
   headers: { Authorization: token.value ? `Bearer ${token.value}` : '' },
@@ -1075,6 +1096,39 @@ async function fetchOrganizationDetail(id = selectedOrganizationId.value) {
     organizationDetail.value = null;
   } finally {
     isLoadingDetail.value = false;
+  }
+}
+
+async function deleteOrganization(org) {
+  const id = typeof org === 'object' ? org?.id : org;
+  if (!id || deletingOrganizationId.value) return;
+  if (!window.confirm("Confermi l'eliminazione definitiva della società e di tutti i dati collegati?")) {
+    return;
+  }
+  organizationDeleteError.value = '';
+  deletingOrganizationId.value = id;
+  try {
+    await apiClient.delete(`/admin/master/organizations/${id}`, authHeaders.value);
+    organizations.value = organizations.value.filter((item) => item.id !== id);
+    if (selectedOrganizationId.value === id) {
+      selectedOrganizationId.value = 0;
+      organizationDetail.value = null;
+      activeSection.value = 'organizations';
+    }
+    summaryLoaded.value = false;
+    analyticsLoaded.value = false;
+    fetchSummary();
+    fetchAnalytics();
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      organizationDeleteError.value = 'Società non trovata o già rimossa.';
+    } else if (error?.response?.status === 401) {
+      loginError.value = 'Sessione scaduta. Effettua di nuovo il login.';
+    } else {
+      organizationDeleteError.value = 'Impossibile eliminare la società. Riprova.';
+    }
+  } finally {
+    deletingOrganizationId.value = 0;
   }
 }
 

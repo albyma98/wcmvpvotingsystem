@@ -656,6 +656,7 @@ type AppDatabase interface {
 	GetOrganization(id int) (Organization, error)
 	GetOrganizationBySlug(slug string) (Organization, error)
 	GetOrganizationStats(id int) (OrganizationStats, error)
+	DeleteOrganization(id int) error
 	GetMasterDashboardSummary() (MasterDashboardSummary, error)
 	GetMasterAnalytics() (MasterAnalytics, error)
 	CreateSponsor(s Sponsor) (int, error)
@@ -3019,6 +3020,82 @@ func (db *appdbimpl) GetOrganizationStats(id int) (OrganizationStats, error) {
 		}
 	}
 	return stats, nil
+}
+
+func (db *appdbimpl) DeleteOrganization(id int) error {
+	if id <= 0 {
+		return sql.ErrNoRows
+	}
+
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var teamID sql.NullInt64
+	if err := tx.QueryRow(`SELECT team_id FROM organizations WHERE id = ?`, id).Scan(&teamID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return sql.ErrNoRows
+		}
+		return err
+	}
+
+	if _, err := tx.Exec(`UPDATE event_prizes SET winner_vote_id = NULL, winner_assigned_at = NULL WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM sponsor_clicks WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM sponsor_exposures WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM sponsor_sessions WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM page_engagements WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM reaction_tests WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM event_feedback WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM votes WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM selfies WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM tickets WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM event_prizes WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM events WHERE organization_id = ?`, id); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM sponsors WHERE organization_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM players WHERE organization_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM admins WHERE organization_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM organizations WHERE id = ?`, id); err != nil {
+		return err
+	}
+
+	if teamID.Valid && teamID.Int64 > 0 {
+		_, _ = tx.Exec(`DELETE FROM teams WHERE id = ?`, teamID.Int64)
+	}
+
+	return tx.Commit()
 }
 
 func (db *appdbimpl) GetMasterDashboardSummary() (MasterDashboardSummary, error) {
