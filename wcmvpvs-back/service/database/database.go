@@ -1101,6 +1101,15 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 		if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sponsors_org_position ON sponsors(organization_id, position)`); err != nil {
 			return nil, fmt.Errorf("error ensuring sponsors organization position index: %w", err)
 		}
+		// Some legacy databases were created with a UNIQUE(position) constraint only.
+		// This migration rebuilds the table to scope uniqueness per organization.
+		if needs, checkErr := needsSponsorUniqueMigration(db); checkErr != nil {
+			return nil, fmt.Errorf("error checking legacy sponsors constraint: %w", checkErr)
+		} else if needs {
+			if err := migrateSponsorTableToOrgScopedUnique(db); err != nil {
+				return nil, fmt.Errorf("error migrating sponsors table: %w", err)
+			}
+		}
 	}
 
 	if _, err = db.Exec(`ALTER TABLE sponsors ADD COLUMN report_name TEXT`); err != nil {
@@ -3924,6 +3933,81 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+// needsSponsorUniqueMigration detects the legacy UNIQUE(position) constraint used before
+// organizations were introduced. If the autoindex contains only the "position" column,
+// we need to rebuild the table with a composite unique key.
+func needsSponsorUniqueMigration(db *sql.DB) (bool, error) {
+	rows, err := db.Query(`PRAGMA index_info('sqlite_autoindex_sponsors_1')`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var seqno, cid int
+		var name string
+		if err := rows.Scan(&seqno, &cid, &name); err != nil {
+			return false, err
+		}
+		cols = append(cols, name)
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+
+	return len(cols) == 1 && cols[0] == "position", nil
+}
+
+// migrateSponsorTableToOrgScopedUnique rebuilds the sponsors table so the unique constraint
+// applies per-organization (organization_id, position) instead of globally on position.
+func migrateSponsorTableToOrgScopedUnique(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`ALTER TABLE sponsors RENAME TO sponsors_old`); err != nil {
+		return err
+	}
+
+	createStmt := `CREATE TABLE sponsors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organization_id INTEGER NOT NULL DEFAULT 0,
+  position INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  report_name TEXT,
+  logo_data TEXT NOT NULL,
+  link_url TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  CHECK(position BETWEEN 1 AND ` + fmt.Sprint(maxSponsorSlots) + `),
+  FOREIGN KEY (organization_id) REFERENCES organizations(id),
+  UNIQUE(organization_id, position)
+);`
+	if _, err := tx.Exec(createStmt); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`INSERT INTO sponsors (id, organization_id, position, name, report_name, logo_data, link_url, is_active)
+SELECT id, IFNULL(organization_id, 0), position, name, report_name, logo_data, link_url, is_active FROM sponsors_old`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsors_org ON sponsors(organization_id)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sponsors_org_position ON sponsors(organization_id, position)`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DROP TABLE sponsors_old`); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func normalizeRosterSchema(value int) int {
