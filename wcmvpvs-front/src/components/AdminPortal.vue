@@ -1906,6 +1906,10 @@ const basePath = computed(() => {
   return (import.meta.env.BASE_URL ?? "/").replace(/\/+$/, "");
 });
 
+const resolvedOrganizationSlug = computed(() =>
+  (props.organizationSlug || "").replace(/^\/+|\/+$/g, ""),
+);
+
 const baseVoteUrl = computed(() => new URL(basePath.value || "/", window.location.origin));
 const RESULTS_POLL_INTERVAL = 5000;
 const historyDateFormatter = new Intl.DateTimeFormat("it-IT", {
@@ -2938,11 +2942,17 @@ const isLoggingIn = ref(false);
 const loginError = ref("");
 const globalError = ref("");
 
-const authHeaders = computed(() => ({
-  headers: {
+const authHeaders = computed(() => {
+  const headers = {
     Authorization: token.value ? `Bearer ${token.value}` : "",
-  },
-}));
+  };
+
+  if (resolvedOrganizationSlug.value) {
+    headers["X-Organization-Slug"] = resolvedOrganizationSlug.value;
+  }
+
+  return { headers };
+});
 
 function resetNewEventPrizes() {
   newEventPrizes.value = [{ name: "" }];
