@@ -3378,7 +3378,7 @@ func (db *appdbimpl) CreateSponsor(s Sponsor) (int, error) {
 	if err := db.c.QueryRow(`SELECT COUNT(*) FROM sponsors WHERE organization_id = ? AND is_active = 1`, s.OrganizationID).Scan(&total); err != nil {
 		return 0, err
 	}
-	if total >= maxSponsorSlots {
+	if s.IsActive && total >= maxSponsorSlots {
 		return 0, ErrMaxSponsors
 	}
 
