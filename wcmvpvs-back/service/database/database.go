@@ -1087,6 +1087,13 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 			return nil, fmt.Errorf("error ensuring tickets signature column: %w", err)
 		}
 	}
+	if has, checkErr := hasColumn(db, "tickets", "event_id"); checkErr != nil {
+		return nil, fmt.Errorf("error checking tickets columns: %w", checkErr)
+	} else if !has {
+		if err := recreateTicketsTable(db); err != nil {
+			return nil, fmt.Errorf("error migrating tickets table: %w", err)
+		}
+	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsors';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1154,6 +1161,13 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_clicks_sponsor ON sponsor_clicks(sponsor_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring sponsor_clicks sponsor index: %w", err)
 	}
+	if legacy, checkErr := hasLegacySponsorForeignKey(db, "sponsor_clicks"); checkErr != nil {
+		return nil, fmt.Errorf("error checking sponsor_clicks foreign keys: %w", checkErr)
+	} else if legacy {
+		if err := recreateSponsorClicksTable(db); err != nil {
+			return nil, fmt.Errorf("error migrating sponsor_clicks table: %w", err)
+		}
+	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsor_sessions';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1205,6 +1219,13 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_device_event ON sponsor_exposures(event_id, device_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring sponsor_exposures device index: %w", err)
+	}
+	if legacy, checkErr := hasLegacySponsorForeignKey(db, "sponsor_exposures"); checkErr != nil {
+		return nil, fmt.Errorf("error checking sponsor_exposures foreign keys: %w", checkErr)
+	} else if legacy {
+		if err := recreateSponsorExposuresTable(db); err != nil {
+			return nil, fmt.Errorf("error migrating sponsor_exposures table: %w", err)
+		}
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_products';`).Scan(&tableName)
@@ -3068,8 +3089,17 @@ func (db *appdbimpl) DeleteOrganization(id int) error {
 	if _, err := tx.Exec(`DELETE FROM selfies WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM tickets WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
-		return err
+	if hasEventCol, checkErr := hasColumn(tx, "tickets", "event_id"); checkErr != nil {
+		return checkErr
+	} else if hasEventCol {
+		if _, err := tx.Exec(`DELETE FROM tickets WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+			return err
+		}
+	} else {
+		// Legacy schema without event_id column: remove all tickets to avoid FK errors.
+		if _, err := tx.Exec(`DELETE FROM tickets`); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.Exec(`DELETE FROM event_prizes WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
 		return err
@@ -4012,6 +4042,33 @@ func boolToInt(value bool) int {
 	return 0
 }
 
+type sqlColumnChecker interface {
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+}
+
+func hasColumn(db sqlColumnChecker, table, column string) (bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if strings.EqualFold(name, column) {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
 // needsSponsorUniqueMigration detects the legacy UNIQUE(position) constraint used before
 // organizations were introduced. If the autoindex contains only the "position" column,
 // we need to rebuild the table with a composite unique key.
@@ -4085,6 +4142,162 @@ SELECT id, IFNULL(organization_id, 0), position, name, report_name, logo_data, l
 	}
 
 	return tx.Commit()
+}
+
+func recreateTicketsTable(db *sql.DB) error {
+	if _, err := db.Exec(`PRAGMA foreign_keys=OFF;`); err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE tickets RENAME TO tickets_old;`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`CREATE TABLE tickets (
+        event_id INTEGER NOT NULL,
+        code TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        redeemed_at TEXT,
+        PRIMARY KEY (event_id, code)
+);`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`INSERT INTO tickets (event_id, code, signature, redeemed_at)
+SELECT 0, code, signature, redeemed_at FROM tickets_old;`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DROP TABLE tickets_old;`); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	_, _ = db.Exec(`PRAGMA foreign_keys=ON;`)
+	return nil
+}
+
+// hasLegacySponsorForeignKey checks if the given table still references the legacy sponsors_old table.
+func hasLegacySponsorForeignKey(db sqlColumnChecker, table string) (bool, error) {
+	rows, err := db.Query(`PRAGMA foreign_key_list(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			id, seq, onUpdate, onDelete, match sql.NullString
+			tableName, from, to                         string
+		)
+		if err := rows.Scan(&id, &seq, &tableName, &from, &to, &onUpdate, &onDelete, &match); err != nil {
+			return false, err
+		}
+		if tableName == "sponsors_old" {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func recreateSponsorClicksTable(db *sql.DB) error {
+	if _, err := db.Exec(`PRAGMA foreign_keys=OFF;`); err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE sponsor_clicks RENAME TO sponsor_clicks_old;`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE TABLE sponsor_clicks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        sponsor_id INTEGER NOT NULL,
+        device_id TEXT,
+        clicked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+        FOREIGN KEY (sponsor_id) REFERENCES sponsors(id) ON DELETE CASCADE
+);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO sponsor_clicks (id, event_id, sponsor_id, device_id, clicked_at)
+SELECT id, event_id, sponsor_id, device_id, clicked_at FROM sponsor_clicks_old;`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_clicks_event ON sponsor_clicks(event_id);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_clicks_sponsor ON sponsor_clicks(sponsor_id);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE sponsor_clicks_old;`); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	_, _ = db.Exec(`PRAGMA foreign_keys=ON;`)
+	return nil
+}
+
+func recreateSponsorExposuresTable(db *sql.DB) error {
+	if _, err := db.Exec(`PRAGMA foreign_keys=OFF;`); err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE sponsor_exposures RENAME TO sponsor_exposures_old;`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE TABLE sponsor_exposures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        sponsor_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL,
+        exposure_type TEXT NOT NULL,
+        duration_ms INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+        FOREIGN KEY (sponsor_id) REFERENCES sponsors(id) ON DELETE CASCADE
+);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO sponsor_exposures (id, event_id, sponsor_id, device_id, exposure_type, duration_ms, created_at)
+SELECT id, event_id, sponsor_id, device_id, exposure_type, duration_ms, created_at FROM sponsor_exposures_old;`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_event ON sponsor_exposures(event_id);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_sponsor ON sponsor_exposures(sponsor_id);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_device_event ON sponsor_exposures(event_id, device_id);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE sponsor_exposures_old;`); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	_, _ = db.Exec(`PRAGMA foreign_keys=ON;`)
+	return nil
 }
 
 func normalizeRosterSchema(value int) int {
