@@ -26,6 +26,12 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/admin/shop/products", rt.wrapAdmin(rt.listAdminShopProducts))
 	rt.router.Post("/admin/shop/products", rt.wrapAdmin(rt.createAdminShopProduct))
 	rt.router.Get("/admin/shop/orders", rt.wrapAdmin(rt.listAdminShopOrders))
+	rt.router.Get("/admin/marketing/overview", rt.wrapAdmin(rt.getMarketingOverview))
+	rt.router.Get("/admin/marketing/profiles", rt.wrapAdmin(rt.listMarketingProfiles))
+	rt.router.Get("/admin/marketing/badges", rt.wrapAdmin(rt.listMarketingBadges))
+	rt.router.Post("/admin/marketing/badges", rt.wrapAdmin(rt.createMarketingBadge))
+	rt.router.Get("/admin/marketing/consents", rt.wrapAdmin(rt.getMarketingConsents))
+	rt.router.Post("/admin/marketing/privacy", rt.wrapAdmin(rt.upsertPrivacyPolicy))
 
 	rt.router.Get("/teams", rt.wrapAdmin(rt.listTeams))
 	rt.router.Post("/teams", rt.wrapAdmin(rt.createTeam))
@@ -77,6 +83,9 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/admin/events/{eventId}/selfies", rt.wrapAdmin(rt.listAdminSelfies))
 	rt.router.Put("/admin/selfies/{selfieId}", rt.wrapAdmin(rt.updateSelfieModeration))
 	rt.router.Delete("/admin/selfies/{selfieId}", rt.wrapAdmin(rt.deleteSelfie))
+	rt.router.Post("/admin/marketing/profiles", rt.wrapAdmin(rt.recordFanProfile))
+	rt.router.Post("/admin/marketing/consents", rt.wrapAdmin(rt.logFanConsent))
+	rt.router.Post("/admin/marketing/gamification", rt.wrapAdmin(rt.recordGamificationEvent))
 	rt.router.Get("/admin/selfies/{selfieId}/image", rt.wrapAdmin(rt.getAdminSelfieImage))
 
 	rt.router.Get("/votes", rt.wrapAdmin(rt.listVotes))
