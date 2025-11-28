@@ -590,26 +590,31 @@ type ShopOrderItem struct {
 
 // FanProfile represents the optional marketing profile compiled by a voter.
 type FanProfile struct {
-	ID                  int    `json:"id"`
-	OrganizationID      int    `json:"organization_id"`
-	EventID             int    `json:"event_id,omitempty"`
-	VoteID              int    `json:"vote_id,omitempty"`
-	FirstName           string `json:"first_name,omitempty"`
-	LastName            string `json:"last_name,omitempty"`
-	Email               string `json:"email,omitempty"`
-	AgeRange            string `json:"age_range,omitempty"`
-	Location            string `json:"location,omitempty"`
-	AttendanceFrequency string `json:"attendance_frequency,omitempty"`
-	DiscoveryChannel    string `json:"discovery_channel,omitempty"`
-	SponsorPreference   string `json:"sponsor_preference,omitempty"`
-	PromoOptIn          bool   `json:"promo_opt_in"`
-	ContactChannel      string `json:"contact_channel,omitempty"`
-	Interests           string `json:"interests,omitempty"`
-	Points              int    `json:"points,omitempty"`
-	ConsentClub         bool   `json:"consent_club"`
-	ConsentSponsors     bool   `json:"consent_sponsors"`
-	ConsentAnalytics    bool   `json:"consent_analytics"`
-	CreatedAt           string `json:"created_at"`
+	ID                  int      `json:"id"`
+	OrganizationID      int      `json:"organization_id"`
+	EventID             int      `json:"event_id,omitempty"`
+	VoteID              int      `json:"vote_id,omitempty"`
+	FanID               string   `json:"fan_id,omitempty"`
+	DeviceID            string   `json:"device_id,omitempty"`
+	FirstName           string   `json:"first_name,omitempty"`
+	LastName            string   `json:"last_name,omitempty"`
+	Email               string   `json:"email,omitempty"`
+	AgeRange            string   `json:"age_range,omitempty"`
+	Location            string   `json:"location,omitempty"`
+	AttendanceFrequency string   `json:"attendance_frequency,omitempty"`
+	DiscoveryChannel    string   `json:"discovery_channel,omitempty"`
+	SponsorPreference   string   `json:"sponsor_preference,omitempty"`
+	PromoOptIn          bool     `json:"promo_opt_in"`
+	ContactChannel      string   `json:"contact_channel,omitempty"`
+	Interests           string   `json:"interests,omitempty"`
+	LastActivity        string   `json:"last_activity,omitempty"`
+	LastActivityAt      string   `json:"last_activity_at,omitempty"`
+	Badges              []string `json:"badges,omitempty"`
+	Points              int      `json:"points,omitempty"`
+	ConsentClub         bool     `json:"consent_club"`
+	ConsentSponsors     bool     `json:"consent_sponsors"`
+	ConsentAnalytics    bool     `json:"consent_analytics"`
+	CreatedAt           string   `json:"created_at"`
 }
 
 // FanConsent tracks the granular GDPR consents associated to a marketing profile.
@@ -780,8 +785,11 @@ type AppDatabase interface {
 	ListShopOrders() ([]ShopOrder, error)
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
 	SaveFanProfile(profile FanProfile) (FanProfile, error)
+	UpsertFanProfile(profile FanProfile) (FanProfile, error)
+	GetFanProfileWithStats(organizationID int, fanID, deviceID, email string) (FanProfile, error)
 	ListFanProfilesWithStats(organizationID int) ([]FanProfile, error)
 	RecordGamificationEvent(event GamificationEvent) error
+	HasGamificationEvent(profileID int, source string, eventID int) (bool, error)
 	ListGamificationEvents(organizationID int) ([]GamificationEvent, error)
 	SavePrivacyPolicy(policy PrivacyPolicy) (PrivacyPolicy, error)
 	ListPrivacyPolicies(organizationID int) ([]PrivacyPolicy, error)
@@ -1454,6 +1462,8 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
         organization_id INTEGER NOT NULL,
         event_id INTEGER,
         vote_id INTEGER,
+        fan_id TEXT,
+        device_id TEXT,
         first_name TEXT,
         last_name TEXT,
         email TEXT,
@@ -1473,6 +1483,13 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_fan_profiles_org ON fan_profiles(organization_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring fan_profiles org index: %w", err)
+	}
+
+	// Ensure newer profiling columns exist for legacy databases
+	_, _ = db.Exec(`ALTER TABLE fan_profiles ADD COLUMN IF NOT EXISTS fan_id TEXT`)
+	_, _ = db.Exec(`ALTER TABLE fan_profiles ADD COLUMN IF NOT EXISTS device_id TEXT`)
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_fan_profiles_identifiers ON fan_profiles(organization_id, fan_id, device_id, email)`); err != nil {
+		return nil, fmt.Errorf("error ensuring fan_profiles identifier index: %w", err)
 	}
 
 	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS fan_gamification_events (

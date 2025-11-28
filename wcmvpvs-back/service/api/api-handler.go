@@ -7,10 +7,10 @@ import (
 // Handler returns an instance of chi.Router that handles APIs registered here
 func (rt *_router) Handler() chi.Router {
 	// Register routes
-	rt.router.Get("/", rt.getHelloWorld)
-	rt.router.Get("/context", rt.wrap(rt.getContextReply))
-	rt.router.Get("/t", rt.ticketValidationPage)
-	rt.router.Get("/tickets/validate", rt.wrap(rt.ticketValidationStatus))
+        rt.router.Get("/", rt.getHelloWorld)
+        rt.router.Get("/context", rt.wrap(rt.getContextReply))
+        rt.router.Get("/t", rt.ticketValidationPage)
+        rt.router.Get("/tickets/validate", rt.wrap(rt.ticketValidationStatus))
 
 	// Special routes
 	rt.router.Get("/liveness", rt.liveness)
@@ -19,8 +19,10 @@ func (rt *_router) Handler() chi.Router {
 	// Admin CRUD routes
 	rt.router.Post("/admin/login", rt.wrap(rt.adminLogin))
 
-	rt.router.Get("/public/players", rt.wrap(rt.listPublicPlayers))
-	rt.router.Get("/shop/products", rt.wrap(rt.listShopProducts))
+        rt.router.Get("/public/players", rt.wrap(rt.listPublicPlayers))
+        rt.router.Get("/fan/profile", rt.wrap(rt.getFanRewardsProfile))
+        rt.router.Post("/fan/profile", rt.wrap(rt.upsertFanRewardsProfile))
+        rt.router.Get("/shop/products", rt.wrap(rt.listShopProducts))
 	rt.router.Get("/shop/products/{id}", rt.wrap(rt.getShopProduct))
 	rt.router.Post("/shop/checkout", rt.wrap(rt.checkoutShopOrder))
 	rt.router.Get("/admin/shop/products", rt.wrapAdmin(rt.listAdminShopProducts))
