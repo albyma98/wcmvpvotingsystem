@@ -7,6 +7,20 @@
         <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
         <p v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</p>
       </div>
+      <div v-if="isAuthenticated" class="hero-actions">
+        <div class="hero-pill">
+          <i class="pi pi-sparkles"></i>
+          <div>
+            <strong>Nuova esperienza PrimeView</strong>
+            <small>Dashboard, eventi e sponsor in un look rinnovato.</small>
+          </div>
+        </div>
+        <div class="hero-buttons">
+          <Button label="Eventi" icon="pi pi-calendar" severity="primary" @click="section = 'events'" />
+          <Button label="Squadre" icon="pi pi-users" outlined @click="section = 'teams'" />
+          <Button label="Sponsor" icon="pi pi-megaphone" severity="help" outlined @click="section = 'sponsors'" />
+        </div>
+      </div>
     </div>
 
     <div v-if="!isAuthenticated" class="auth-wrapper">
@@ -5494,6 +5508,9 @@ onBeforeUnmount(() => {
   border-radius: 18px;
   padding: 1.5rem 1.75rem;
   box-shadow: 0 20px 60px rgba(8, 15, 41, 0.35);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
 }
 
 .branding .eyebrow {
@@ -5507,6 +5524,43 @@ onBeforeUnmount(() => {
 .branding h1 {
   margin: 0.35rem 0;
   font-size: 1.8rem;
+}
+
+.hero-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-self: center;
+}
+
+.hero-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.hero-pill i {
+  font-size: 1.25rem;
+  color: #a5b4fc;
+}
+
+.hero-pill strong {
+  display: block;
+}
+
+.hero-pill small {
+  color: #cbd5f5;
+}
+
+.hero-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .auth-wrapper {
@@ -5580,6 +5634,35 @@ onBeforeUnmount(() => {
   color: #bfdbfe;
   font-weight: 600;
   font-size: 0.95rem;
+}
+
+@media (max-width: 960px) {
+  .prime-admin {
+    padding: 1rem 0.75rem 1.5rem;
+  }
+
+  .dashboard-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .actions-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 640px) {
+  .card {
+    padding: 1.25rem;
+  }
+
+  .postvote-options {
+    padding: 1rem 1.1rem;
+  }
+
+  .hero-buttons {
+    flex-direction: column;
+  }
 }
 
 .portal {
