@@ -103,4 +103,39 @@ const props = defineProps({
 .avatar-meta small {
   color: #64748b;
 }
+
+@media (max-width: 1024px) {
+  .topbar-shell {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .avatar-chip {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .topbar-actions :deep(button),
+  .topbar-actions :deep(.p-button) {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .avatar-chip {
+    width: 100%;
+    justify-content: center;
+  }
+}
 </style>
