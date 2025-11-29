@@ -1857,6 +1857,22 @@
                   Min punti
                   <input v-model.number="marketingFilters.minPoints" type="number" min="0" step="5" />
                 </label>
+                <label>
+                  Badge posseduto
+                  <input
+                    v-model.trim="marketingFilters.badge"
+                    type="text"
+                    placeholder="Rookie, Super Tifoso"
+                  />
+                </label>
+                <label>
+                  Interessi
+                  <input
+                    v-model.trim="marketingFilters.interest"
+                    type="text"
+                    placeholder="Statistiche, news"
+                  />
+                </label>
               </div>
               <div class="actions-row">
                 <button class="btn primary" type="button" :disabled="isLoadingMarketing" @click="loadMarketingProfiles">
@@ -1880,6 +1896,8 @@
                       <th>Età</th>
                       <th>Città</th>
                       <th>Frequenza</th>
+                      <th>Badge</th>
+                      <th>Ultima attività</th>
                       <th>Punti</th>
                       <th>Consensi</th>
                     </tr>
@@ -1897,6 +1915,11 @@
                       <td>{{ profile.age_range || 'N/D' }}</td>
                       <td>{{ profile.location || 'N/D' }}</td>
                       <td>{{ profile.attendance_frequency || 'N/D' }}</td>
+                      <td>{{ (profile.badges || []).join(', ') || 'N/D' }}</td>
+                      <td>
+                        <div>{{ profile.last_activity || 'N/D' }}</div>
+                        <small class="field-hint">{{ profile.last_activity_at || '' }}</small>
+                      </td>
                       <td><strong>{{ profile.points || 0 }}</strong></td>
                       <td>
                         <small>
@@ -2382,6 +2405,8 @@ const marketingFilters = reactive({
   sponsorPreference: "",
   contactChannel: "",
   minPoints: 0,
+  badge: "",
+  interest: "",
 });
 const marketingBadgeForm = reactive({
   name: "Super Tifoso",
@@ -5445,6 +5470,8 @@ function buildMarketingParams() {
     params.sponsor_preference = marketingFilters.sponsorPreference;
   if (marketingFilters.contactChannel) params.contact_channel = marketingFilters.contactChannel;
   if (marketingFilters.minPoints > 0) params.min_points = marketingFilters.minPoints;
+  if (marketingFilters.badge) params.badge = marketingFilters.badge;
+  if (marketingFilters.interest) params.interest = marketingFilters.interest;
   return params;
 }
 

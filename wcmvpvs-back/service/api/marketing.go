@@ -32,6 +32,8 @@ type marketingSegmentFilter struct {
 	SponsorPreference string
 	ContactChannel    string
 	MinPoints         int
+	Badge             string
+	Interest          string
 }
 
 func (rt *_router) getMarketingOverview(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -125,6 +127,8 @@ func (rt *_router) listMarketingProfiles(w http.ResponseWriter, r *http.Request,
 		Location:          strings.TrimSpace(r.URL.Query().Get("location")),
 		SponsorPreference: strings.TrimSpace(r.URL.Query().Get("sponsor_preference")),
 		ContactChannel:    strings.TrimSpace(r.URL.Query().Get("contact_channel")),
+		Badge:             strings.TrimSpace(r.URL.Query().Get("badge")),
+		Interest:          strings.TrimSpace(r.URL.Query().Get("interest")),
 	}
 	if minPoints, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("min_points"))); err == nil && minPoints > 0 {
 		filter.MinPoints = minPoints
@@ -145,6 +149,21 @@ func (rt *_router) listMarketingProfiles(w http.ResponseWriter, r *http.Request,
 			continue
 		}
 		if filter.MinPoints > 0 && profile.Points < filter.MinPoints {
+			continue
+		}
+		if filter.Badge != "" {
+			matched := false
+			for _, badge := range profile.Badges {
+				if strings.Contains(strings.ToLower(badge), strings.ToLower(filter.Badge)) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		if filter.Interest != "" && !strings.Contains(strings.ToLower(profile.Interests), strings.ToLower(filter.Interest)) {
 			continue
 		}
 		filtered = append(filtered, profile)
