@@ -1,67 +1,119 @@
 <template>
-  <div class="admin-portal">
-    <header class="admin-header">
-      <h1>Area amministratore</h1>
-      <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
-      <p v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</p>
-    </header>
-
-    <section v-if="!isAuthenticated" class="card login-card">
-      <h2>Accedi</h2>
-      <form @submit.prevent="login" class="form-grid">
-        <label>
-          Username
-          <input
-            v-model.trim="loginForm.username"
-            type="text"
-            autocomplete="username"
-            required
-          />
-        </label>
-        <label>
-          Password
-          <input
-            v-model="loginForm.password"
-            type="password"
-            autocomplete="current-password"
-            required
-          />
-        </label>
-        <button class="btn primary" type="submit" :disabled="isLoggingIn">
-          {{ isLoggingIn ? "Accesso in corso…" : "Entra" }}
-        </button>
-      </form>
-      <p v-if="loginError" class="error">{{ loginError }}</p>
-    </section>
-
-    <section v-else class="portal" ref="portalRef">
-      <div class="toolbar" ref="toolbarRef">
-        <div class="user-info">
-          <span
-            >Connesso come <strong>{{ activeUsername }}</strong></span
-          >
-          <button class="btn outline" type="button" @click="goToLottery">
-            Lotteria
-          </button>
-          <button
-            v-for="tab in availableTabs"
-            :key="tab.id"
-            :class="['btn outline', { active: section === tab.id }]"
-            type="button"
-            :aria-current="section === tab.id ? 'page' : undefined"
-            @click="section = tab.id"
-          >
-            {{ tab.label }}
-          </button>
-          <button class="btn secondary" type="button" @click="logout">
-            Esci
-          </button>
-        </div>
+  <div class="admin-portal prime-admin">
+    <div class="admin-hero">
+      <div class="branding">
+        <span class="eyebrow">MVP System</span>
+        <h1>Area amministratore</h1>
+        <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
+        <p v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</p>
       </div>
-      <div class="portal-content">
+    </div>
+
+    <div v-if="!isAuthenticated" class="auth-wrapper">
+      <AppCard class="auth-card">
+        <template #title>Accesso amministratore</template>
+        <template #subtitle>Entra per gestire eventi, squadre e sponsor.</template>
+        <template #content>
+          <form @submit.prevent="login" class="auth-form">
+            <div class="field">
+              <label for="username">Username</label>
+              <InputText
+                id="username"
+                v-model.trim="loginForm.username"
+                autocomplete="username"
+                required
+                placeholder="Inserisci username"
+              />
+            </div>
+            <div class="field">
+              <label for="password">Password</label>
+              <Password
+                id="password"
+                v-model="loginForm.password"
+                toggleMask
+                feedback="false"
+                :input-props="{ autocomplete: 'current-password', required: true }"
+                placeholder="Inserisci password"
+              />
+            </div>
+            <Button
+              label="Entra"
+              icon="pi pi-sign-in"
+              type="submit"
+              :loading="isLoggingIn"
+              class="w-full"
+            />
+          </form>
+          <p v-if="loginError" class="error">{{ loginError }}</p>
+        </template>
+      </AppCard>
+    </div>
+
+    <AppLayout
+      v-else
+      class="admin-shell"
+      :menu-items="sidebarNavigation"
+      :active-key="section"
+      @select="section = $event"
+    >
+      <template #topbar>
+        <AppTopbar
+          :title="activeTabLabel"
+          :subtitle="topbarSubtitle"
+          :breadcrumb="topbarBreadcrumb"
+          :username="activeUsername"
+        >
+          <template #actions>
+            <Button label="Lotteria" icon="pi pi-gift" outlined @click="goToLottery" />
+            <Button
+              label="Crea evento"
+              icon="pi pi-calendar-plus"
+              severity="primary"
+              @click="section = 'events'"
+            />
+            <Button label="Esci" icon="pi pi-sign-out" severity="danger" outlined @click="logout" />
+          </template>
+        </AppTopbar>
+      </template>
+
+      <template #content>
         <p v-if="globalError" class="error">{{ globalError }}</p>
 
-        <section v-if="section === 'events'" class="card">
+        <section v-if="section === 'dashboard'" class="card dashboard-card">
+          <header class="section-header">
+            <h2>Dashboard</h2>
+            <p>Panoramica delle attività recenti del portale amministratore.</p>
+          </header>
+          <div class="dashboard-grid">
+            <AppCard
+              v-for="summary in dashboardSummaries"
+              :key="summary.label"
+              class="stat-card"
+              :icon="summary.icon"
+              :title="summary.label"
+              :value="summary.value"
+              :tone="summary.tone"
+            />
+          </div>
+          <div class="dashboard-panel">
+            <AppCard>
+              <template #title>Trend votazioni</template>
+              <template #subtitle>Andamento dei voti sugli ultimi eventi</template>
+              <template #content>
+                <Chart type="line" :data="dashboardChart.data" :options="dashboardChart.options" />
+              </template>
+            </AppCard>
+            <AppCard>
+              <template #title>Attività sponsor</template>
+              <template #subtitle>Click e visualizzazioni recenti</template>
+              <template #content>
+                <Chart type="bar" :data="sponsorChartDataset.data" :options="sponsorChartDataset.options" />
+              </template>
+            </AppCard>
+          </div>
+        </section>
+
+        <section v-else-if="section === 'events'" class="card">
           <header class="section-header">
             <h2>Eventi</h2>
             <p>Crea una nuova partita per abilitare il voto pubblico.</p>
@@ -1871,6 +1923,8 @@
         </div>
       </div>
     </section>
+      </template>
+    </AppLayout>
   </div>
 </template>
 
@@ -1880,7 +1934,6 @@ import {
   defineProps,
   nextTick,
   onBeforeUnmount,
-  onMounted,
   reactive,
   ref,
   watch,
@@ -1888,6 +1941,10 @@ import {
 import { apiClient, resolveApiUrl } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, MAX_PLAYER_SLOTS } from "../roster";
 import VoteTrendChart from "./VoteTrendChart.vue";
+import AppLayout from "./AppLayout.vue";
+import AppTopbar from "./AppTopbar.vue";
+import AppCard from "./AppCard.vue";
+import AppTable from "./AppTable.vue";
 
 const props = defineProps({
   organizationSlug: {
@@ -2135,8 +2192,9 @@ function toApiSurveyPayload(survey) {
 
 let resultsPollHandle = 0;
 
-const section = ref("events");
+const section = ref("dashboard");
 const tabs = [
+  { id: "dashboard", label: "Dashboard" },
   { id: "events", label: "Eventi" },
   { id: "closing", label: "Chiusura votazioni" },
   { id: "results", label: "Risultati" },
@@ -2147,7 +2205,7 @@ const tabs = [
   { id: "sponsors", label: "Sponsor" },
   { id: "admins", label: "Admin" },
 ];
-const STAFF_TAB_IDS = new Set(["closing", "results"]);
+const STAFF_TAB_IDS = new Set(["dashboard", "closing", "results"]);
 
 const teams = ref([]);
 const players = ref([]);
@@ -2263,8 +2321,6 @@ const eventPrizeErrors = reactive({});
 const eventFeedbackDrafts = reactive({});
 const eventFeedbackErrors = reactive({});
 const savingEventPrizes = ref(0);
-const portalRef = ref(null);
-const toolbarRef = ref(null);
 
 const fallbackTeamId = () => (teams.value.length ? teams.value[0].id : 0);
 
@@ -2934,6 +2990,145 @@ const availableTabs = computed(() => {
   return tabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
 });
 
+const sidebarNavigation = computed(() =>
+  availableTabs.value.map((tab) => ({
+    ...tab,
+    icon:
+      tab.id === "dashboard"
+        ? "pi-home"
+        : tab.id === "events"
+          ? "pi-calendar"
+          : tab.id === "closing"
+            ? "pi-lock"
+            : tab.id === "results"
+              ? "pi-chart-bar"
+              : tab.id === "selfies"
+                ? "pi-camera"
+                : tab.id === "history"
+                  ? "pi-history"
+                  : tab.id === "teams"
+                    ? "pi-sitemap"
+                    : tab.id === "players"
+                      ? "pi-users"
+                      : tab.id === "sponsors"
+                        ? "pi-megaphone"
+                        : "pi-cog",
+  })),
+);
+
+const activeTabLabel = computed(
+  () => availableTabs.value.find((tab) => tab.id === section.value)?.label || "Portale",
+);
+
+const topbarSubtitle = computed(() => {
+  if (section.value === "dashboard") return "Panoramica generale";
+  if (section.value === "events") return "Gestione eventi e match";
+  if (section.value === "results") return "Report votazioni";
+  if (section.value === "selfies") return "Moderazione Selfie MVP";
+  return "Amministrazione MVP System";
+});
+
+const topbarBreadcrumb = computed(() => ["Admin", activeTabLabel.value]);
+
+const dashboardSummaries = computed(() => [
+  {
+    label: "Eventi attivi",
+    value: activeEventId.value ? "1" : "0",
+    icon: "pi-bolt",
+    tone: "success",
+  },
+  {
+    label: "Eventi pianificati",
+    value: events.value.length.toLocaleString("it-IT"),
+    icon: "pi-calendar",
+  },
+  {
+    label: "Voti totali",
+    value: totalVotes.value.toLocaleString("it-IT"),
+    icon: "pi-star-fill",
+    tone: "warning",
+  },
+  {
+    label: "Selfie caricati",
+    value: eventSelfies.value.length.toLocaleString("it-IT"),
+    icon: "pi-camera",
+  },
+  {
+    label: "Sponsor attivi",
+    value: sponsors.value.length.toLocaleString("it-IT"),
+    icon: "pi-megaphone",
+  },
+  {
+    label: "Amministratori",
+    value: admins.value.length.toLocaleString("it-IT"),
+    icon: "pi-users",
+  },
+]);
+
+const dashboardChart = computed(() => {
+  const recentHistory = eventHistory.value.slice(0, 6);
+  const labels = recentHistory.map(
+    (entry, index) => entry.name || entry.title || entry.event_name || `Evento ${index + 1}`,
+  );
+  const votes = recentHistory.map(
+    (entry) => Number(entry.totalVotes || entry.total_votes || entry.mvp?.votes || 0) || 0,
+  );
+  return {
+    data: {
+      labels: labels.length ? labels : ["In attesa di dati"],
+      datasets: [
+        {
+          label: "Voti",
+          data: labels.length ? votes : [0],
+          borderColor: "#6366f1",
+          tension: 0.4,
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+        },
+      },
+    },
+  };
+});
+
+const sponsorChartDataset = computed(() => {
+  const labels = sponsorChartRows.value.map((row) => row.label || row.timestamp || "-");
+  const seen = sponsorChartRows.value.map((row) => row.seen || 0);
+  const clicks = sponsorChartRows.value.map((row) => row.clicks || 0);
+  return {
+    data: {
+      labels: labels.length ? labels : ["Nessun dato"],
+      datasets: [
+        {
+          label: "Visualizzazioni",
+          backgroundColor: "#22c55e",
+          data: labels.length ? seen : [0],
+        },
+        {
+          label: "Click",
+          backgroundColor: "#0ea5e9",
+          data: labels.length ? clicks : [0],
+        },
+      ],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "bottom" },
+      },
+      scales: {
+        y: { beginAtZero: true },
+      },
+    },
+  };
+});
+
 const loginForm = reactive({
   username: "",
   password: "",
@@ -2977,7 +3172,7 @@ function resetForms() {
 }
 
 function selectDefaultSection() {
-  section.value = isSuperAdmin.value ? "events" : "closing";
+  section.value = availableTabs.value[0]?.id || "dashboard";
 }
 
 function ensureValidTeamSelection() {
@@ -5212,14 +5407,6 @@ async function copyLink(link) {
   }
 }
 
-function updateToolbarOffset() {
-  if (!portalRef.value) {
-    return;
-  }
-  const height = toolbarRef.value?.offsetHeight ?? 0;
-  portalRef.value.style.setProperty("--toolbar-height", `${height}px`);
-}
-
 function ensureSectionIsAllowed(tabList) {
   if (!isAuthenticated.value) {
     return;
@@ -5229,20 +5416,10 @@ function ensureSectionIsAllowed(tabList) {
   }
 }
 
-onMounted(() => {
-  window.addEventListener("resize", updateToolbarOffset, { passive: true });
-  nextTick(updateToolbarOffset);
-});
-
-watch(isAuthenticated, () => {
-  nextTick(updateToolbarOffset);
-});
-
 watch(
   availableTabs,
   (currentTabs) => {
     ensureSectionIsAllowed(currentTabs);
-    nextTick(updateToolbarOffset);
   },
   { immediate: true },
 );
@@ -5267,7 +5444,6 @@ watch(section, (value, oldValue) => {
   if (value === "history") {
     loadEventHistory();
   }
-  nextTick(updateToolbarOffset);
 });
 
 watch(selectedResultsEventId, (eventId) => {
@@ -5298,12 +5474,81 @@ if (isAuthenticated.value) {
 }
 
 onBeforeUnmount(() => {
-  window.removeEventListener("resize", updateToolbarOffset);
   stopResultsPolling();
 });
 </script>
 
 <style scoped>
+.prime-admin {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.admin-hero {
+  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.12), transparent 25%),
+    radial-gradient(circle at 80% 0%, rgba(6, 182, 212, 0.12), transparent 25%),
+    linear-gradient(135deg, #0f172a, #111827);
+  color: #e2e8f0;
+  border-radius: 18px;
+  padding: 1.5rem 1.75rem;
+  box-shadow: 0 20px 60px rgba(8, 15, 41, 0.35);
+}
+
+.branding .eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: #a5b4fc;
+  font-size: 0.8rem;
+}
+
+.branding h1 {
+  margin: 0.35rem 0;
+  font-size: 1.8rem;
+}
+
+.auth-wrapper {
+  display: flex;
+  justify-content: center;
+}
+
+.auth-card {
+  width: min(480px, 100%);
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.dashboard-card .dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.dashboard-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.stat-card :deep(.p-card-body) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 .admin-portal {
   margin: 0 auto;
   max-width: 960px;
