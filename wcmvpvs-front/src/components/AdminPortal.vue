@@ -1923,8 +1923,7 @@
             </div>
           </div>
         </div>
-      </div>
-    </section>
+
       </template>
     </AppLayout>
   </div>
