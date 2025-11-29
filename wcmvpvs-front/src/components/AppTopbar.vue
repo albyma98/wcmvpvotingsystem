@@ -1,11 +1,16 @@
 <template>
   <div class="topbar-shell">
-    <div class="topbar-titles">
-      <div class="breadcrumb" v-if="breadcrumb && breadcrumb.length">
-        <span v-for="(crumb, index) in breadcrumb" :key="crumb">{{ crumb }}</span>
+    <div class="topbar-branding">
+      <div class="brand-mark">
+        <i class="pi pi-shield"></i>
       </div>
-      <h2>{{ title }}</h2>
-      <p v-if="subtitle">{{ subtitle }}</p>
+      <div class="topbar-titles">
+        <div class="breadcrumb" v-if="breadcrumb && breadcrumb.length">
+          <span v-for="(crumb, index) in breadcrumb" :key="crumb">{{ crumb }}</span>
+        </div>
+        <h2>{{ title }}</h2>
+        <p v-if="subtitle">{{ subtitle }}</p>
+      </div>
     </div>
     <div class="topbar-actions">
       <slot name="actions" />
@@ -48,18 +53,36 @@ const props = defineProps({
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1.5rem;
+  color: #e2e8f0;
+}
+
+.topbar-branding {
+  display: flex;
+  align-items: center;
   gap: 1rem;
+}
+
+.brand-mark {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #6366f1, #06b6d4);
+  color: #0b1224;
+  box-shadow: 0 10px 30px rgba(6, 182, 212, 0.35);
 }
 
 .topbar-titles h2 {
   margin: 0;
   font-size: 1.5rem;
-  color: #0f172a;
+  color: #f8fafc;
 }
 
 .topbar-titles p {
-  margin: 0.2rem 0 0;
-  color: #475569;
+  margin: 0.15rem 0 0;
+  color: #cbd5e1;
 }
 
 .breadcrumb {
@@ -67,8 +90,10 @@ const props = defineProps({
   gap: 0.35rem;
   align-items: center;
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: #a5b4fc;
   margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .breadcrumb span + span::before {
@@ -87,20 +112,21 @@ const props = defineProps({
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.35rem 0.75rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  padding: 0.4rem 0.75rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .avatar-meta {
   display: flex;
   flex-direction: column;
   line-height: 1.2;
-  color: #0f172a;
+  color: #f8fafc;
 }
 
 .avatar-meta small {
-  color: #64748b;
+  color: #cbd5e1;
 }
 </style>

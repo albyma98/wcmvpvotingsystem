@@ -4,27 +4,31 @@
       <span class="sidebar-logo">MVP</span>
       <div class="sidebar-title">Admin</div>
     </div>
-    <nav class="sidebar-menu" aria-label="Navigazione amministratore">
-      <button
-        v-for="item in items"
-        :key="item.id"
-        type="button"
-        class="sidebar-link"
-        :class="{ active: activeKey === item.id }"
-        @click="$emit('select', item.id)"
-      >
-        <i :class="['pi', item.icon]"></i>
+    <PanelMenu
+      class="sidebar-menu"
+      :model="menuModel"
+      :pt="{
+        headerAction: ({ context }) => ({
+          class: ['sidebar-link', { active: activeKey === context.item.id }],
+        }),
+      }"
+    >
+      <template #itemicon="slotProps">
+        <i :class="slotProps.item.icon"></i>
+      </template>
+      <template #itemlabel="slotProps">
         <div class="sidebar-link__text">
-          <span class="sidebar-link__label">{{ item.label }}</span>
-          <small v-if="item.description">{{ item.description }}</small>
+          <span class="sidebar-link__label">{{ slotProps.item.label }}</span>
+          <small v-if="slotProps.item.description">{{ slotProps.item.description }}</small>
         </div>
-      </button>
-    </nav>
+      </template>
+    </PanelMenu>
   </div>
 </template>
 
 <script setup>
-import { defineProps } from 'vue';
+import { computed, defineEmits, defineProps } from 'vue';
+import PanelMenu from 'primevue/panelmenu';
 
 const props = defineProps({
   items: {
@@ -36,6 +40,18 @@ const props = defineProps({
     default: '',
   },
 });
+
+const emit = defineEmits(['select']);
+
+const menuModel = computed(() =>
+  props.items.map((item) => ({
+    id: item.id,
+    label: item.label,
+    icon: item.icon ? `pi ${item.icon}` : undefined,
+    description: item.description,
+    command: () => emit('select', item.id),
+  })),
+);
 </script>
 
 <style scoped>
@@ -44,7 +60,7 @@ const props = defineProps({
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  padding: 1.25rem;
+  padding: 1.5rem 1.25rem;
 }
 
 .sidebar-header {
@@ -76,9 +92,11 @@ const props = defineProps({
 }
 
 .sidebar-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  margin-top: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .sidebar-link {
@@ -89,7 +107,7 @@ const props = defineProps({
   border: 1px solid transparent;
   background: transparent;
   color: inherit;
-  padding: 0.9rem 0.9rem;
+  padding: 0.95rem 0.85rem;
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -120,8 +138,29 @@ const props = defineProps({
 }
 
 .sidebar-link.active {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(6, 182, 212, 0.15));
-  border-color: rgba(99, 102, 241, 0.3);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(6, 182, 212, 0.18));
+  border-color: rgba(99, 102, 241, 0.35);
   color: #ffffff;
 }
+
+:deep(.p-panelmenu-panel) {
+  border: none;
+  background: transparent;
+  color: inherit;
+}
+
+:deep(.p-panelmenu-panel + .p-panelmenu-panel) {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+:deep(.p-panelmenu-content) {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+:deep(.p-panelmenu-icon) {
+  display: none;
+}
+
 </style>
