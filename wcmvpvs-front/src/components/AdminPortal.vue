@@ -84,6 +84,7 @@
             <h2>Dashboard</h2>
             <p>Panoramica delle attività recenti del portale amministratore.</p>
           </header>
+          <!-- Cards riepilogo dashboard -->
           <div class="dashboard-grid">
             <AppCard
               v-for="summary in dashboardSummaries"
@@ -95,6 +96,7 @@
               :tone="summary.tone"
             />
           </div>
+          <!-- Grafici riepilogo -->
           <div class="dashboard-panel">
             <AppCard>
               <template #title>Trend votazioni</template>
@@ -5480,22 +5482,25 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .prime-admin {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 2rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 0;
+  background: linear-gradient(135deg, #0b1224 0%, #0f172a 35%, #0b1120 100%);
+  min-height: 100vh;
 }
 
 .admin-hero {
-  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.12), transparent 25%),
-    radial-gradient(circle at 80% 0%, rgba(6, 182, 212, 0.12), transparent 25%),
-    linear-gradient(135deg, #0f172a, #111827);
+  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.2), transparent 25%),
+    radial-gradient(circle at 80% 0%, rgba(6, 182, 212, 0.18), transparent 25%),
+    linear-gradient(135deg, #0b1224, #0f172a);
   color: #e2e8f0;
-  border-radius: 18px;
-  padding: 1.5rem 1.75rem;
+  border-radius: 0 0 22px 22px;
+  padding: 1.75rem 2rem;
   box-shadow: 0 20px 60px rgba(8, 15, 41, 0.35);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 .branding .eyebrow {
@@ -5550,9 +5555,9 @@ onBeforeUnmount(() => {
 }
 
 .admin-portal {
+  width: 100%;
   margin: 0 auto;
-  max-width: 960px;
-  padding: 2rem 1.5rem 3rem;
+  padding: 0 1.25rem 2.5rem;
   color: #0f172a;
 }
 
