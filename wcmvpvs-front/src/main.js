@@ -25,9 +25,11 @@ import 'primeicons/primeicons.css';
 import 'primeflex/primeflex.css';
 import 'primevue/resources/themes/lara-light-blue/theme.css';
 import 'primevue/resources/primevue.min.css';
+import '@/assets/layout/styles/layout.scss';
 import './style.css';
 
 import App from './App.vue';
+import router from './router';
 import { QrcodeStream, QrcodeDropZone, QrcodeCapture } from 'vue-qrcode-reader'
 
 const app = createApp(App);
@@ -35,6 +37,7 @@ const app = createApp(App);
 app.use(PrimeVue, { ripple: true });
 app.use(ConfirmationService);
 app.use(ToastService);
+app.use(router);
 
 app.component('Button', Button);
 app.component('InputText', InputText);

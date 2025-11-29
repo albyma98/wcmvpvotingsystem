@@ -1946,6 +1946,7 @@ import AppLayout from "./AppLayout.vue";
 import AppTopbar from "./AppTopbar.vue";
 import AppCard from "./AppCard.vue";
 import AppTable from "./AppTable.vue";
+import { useRoute } from "vue-router";
 
 const props = defineProps({
   organizationSlug: {
@@ -1953,6 +1954,8 @@ const props = defineProps({
     default: "",
   },
 });
+
+const route = useRoute();
 
 const basePath = computed(() => {
   if (props.organizationSlug) {
@@ -2194,6 +2197,16 @@ function toApiSurveyPayload(survey) {
 let resultsPollHandle = 0;
 
 const section = ref("dashboard");
+
+watch(
+  () => route.meta.section,
+  (targetSection) => {
+    if (typeof targetSection === "string" && targetSection.length) {
+      section.value = targetSection;
+    }
+  },
+  { immediate: true },
+);
 const tabs = [
   { id: "dashboard", label: "Dashboard" },
   { id: "events", label: "Eventi" },
