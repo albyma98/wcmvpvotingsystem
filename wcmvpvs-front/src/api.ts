@@ -72,7 +72,8 @@ function detectOrganizationSlug(pathname: string | undefined) {
   }
 
   const first = segments[0].toLowerCase();
-  if (first === 'admin' || first === 'shop') {
+  const reservedPrefixes = new Set(['admin', 'shop', 'lottery', 'welcome']);
+  if (reservedPrefixes.has(first)) {
     return '';
   }
 
