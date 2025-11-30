@@ -72,7 +72,7 @@ function detectOrganizationSlug(pathname: string | undefined) {
   }
 
   const first = segments[0].toLowerCase();
-  if (first === 'admin' || first === 'shop') {
+  if (['admin', 'shop', 'lottery'].includes(first)) {
     return '';
   }
 
