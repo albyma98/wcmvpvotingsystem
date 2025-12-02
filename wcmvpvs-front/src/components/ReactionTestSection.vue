@@ -105,6 +105,8 @@ const props = defineProps({
   },
 });
 
+const emit = defineEmits(['reaction-completed']);
+
 const loadingStatus = ref(false);
 const isSubmitting = ref(false);
 const gameState = ref('idle');
@@ -361,6 +363,12 @@ async function finalizeReaction() {
       const next = new Date(data.next_allowed_at);
       ensureCooldown(next);
     }
+
+    emit('reaction-completed', {
+      reactionTimeMs: lastResultMs.value,
+      fasterThanAverage: Boolean(data?.faster_than_average),
+      attempts: attemptsCount.value,
+    });
   } catch (error) {
     console.error('reaction test submit error', error);
     errorMessage.value = 'Non siamo riusciti a salvare il risultato. Riprova tra un attimo!';

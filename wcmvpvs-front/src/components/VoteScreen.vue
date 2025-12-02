@@ -13,6 +13,8 @@ import PlayerCard from "./PlayerCard.vue";
 import SelfieMvpSection from "./SelfieMvpSection.vue";
 import ReactionTestSection from "./ReactionTestSection.vue";
 import LiveResultsSection from "./LiveResultsSection.vue";
+import GamificationFlow from "./GamificationFlow.vue";
+import SponsorGamification from "./SponsorGamification.vue";
 import {
   apiClient,
   vote,
@@ -100,6 +102,152 @@ const recordedSponsorWatched = new Set();
 const hasVoted = ref(false);
 const isCheckingVoteStatus = ref(false);
 
+const gamificationStorageKey = "wcmvp_gamification_config";
+const defaultGamificationConfig = {
+  actions: {
+    preMatch: 2,
+    vote: 5,
+    reaction: 6,
+    selfie: 4,
+    trivia: 5,
+    sponsor: 3,
+    miniGame: 7,
+    leaderboard: 2,
+    prizeDraw: 10,
+    engagement: 1,
+  },
+  levels: [
+    { id: "bronze", label: "Bronze", min: 0, badge: "🥉" },
+    { id: "silver", label: "Silver", min: 40, badge: "🥈" },
+    { id: "gold", label: "Gold", min: 90, badge: "🥇" },
+    { id: "platinum", label: "Platinum", min: 160, badge: "💎" },
+    { id: "hall", label: "Hall of Fame", min: 250, badge: "🏟️" },
+  ],
+};
+
+const gamificationConfig = ref({ ...defaultGamificationConfig });
+const gamificationState = reactive({
+  points: 0,
+  level: defaultGamificationConfig.levels[0],
+  nextLevel: defaultGamificationConfig.levels[1],
+  missions: [],
+  rewards: [],
+  leaderboardPeriod: "daily",
+  leaderboards: {
+    daily: [],
+    monthly: [],
+    season: [],
+  },
+});
+
+const missionSequence = [
+  {
+    id: "pre-match",
+    order: 1,
+    label: "Pre-partita",
+    title: "Benvenuto! Inizia la Missione della Partita",
+    description: "Leggi il programma e sblocca i primi punti di fedeltà",
+    points: () => gamificationConfig.value.actions.preMatch,
+    feedback: "Hai guadagnato punti di ingresso!",
+    action: "preMatch",
+  },
+  {
+    id: "vote-mvp",
+    order: 2,
+    label: "Voto MVP",
+    title: "Vota l'MVP",
+    description: "Scegli il tuo giocatore preferito",
+    points: () => gamificationConfig.value.actions.vote,
+    feedback: "Hai guadagnato +5 punti!",
+    action: "vote",
+  },
+  {
+    id: "reaction-test",
+    order: 3,
+    label: "Reaction Test",
+    title: "Countdown e tap",
+    description: "Testa i tuoi riflessi e confronta il risultato",
+    points: () => gamificationConfig.value.actions.reaction,
+    feedback: "Risultato registrato",
+    action: "reaction",
+  },
+  {
+    id: "selfie",
+    order: 4,
+    label: "Selfie MVP",
+    title: "Scatta la foto",
+    description: "Scegli la cornice e condividi",
+    points: () => gamificationConfig.value.actions.selfie,
+    feedback: "+4 punti",
+    action: "selfie",
+  },
+  {
+    id: "trivia",
+    order: 5,
+    label: "Trivia",
+    title: "Domanda lampo",
+    description: "Rispondi subito e scopri se hai indovinato",
+    points: () => gamificationConfig.value.actions.trivia,
+    feedback: "Risultato immediato",
+    action: "trivia",
+  },
+  {
+    id: "sponsor-challenge",
+    order: 6,
+    label: "Sponsor Challenge",
+    title: "Scopri l'offerta",
+    description: "Tap reveal e coupon dedicato",
+    points: () => gamificationConfig.value.actions.sponsor,
+    feedback: "Coupon attivato",
+    action: "sponsor",
+  },
+  {
+    id: "mini-game",
+    order: 7,
+    label: "Mini-gioco",
+    title: "Volley Smash",
+    description: "Completa il mini-gioco brandizzato",
+    points: () => gamificationConfig.value.actions.miniGame,
+    feedback: "Combo registrata",
+    action: "miniGame",
+  },
+  {
+    id: "leaderboard",
+    order: 8,
+    label: "Classifica Live",
+    title: "Guarda la posizione",
+    description: "Scopri i punti mancanti al prossimo livello",
+    points: () => gamificationConfig.value.actions.leaderboard,
+    feedback: "Classifica aggiornata",
+    action: "leaderboard",
+  },
+  {
+    id: "prize-draw",
+    order: 9,
+    label: "Estrazione Finale",
+    title: "Lista vincitori",
+    description: "Controlla i punti totali della giornata",
+    points: () => gamificationConfig.value.actions.prizeDraw,
+    feedback: "Estratto!",
+    action: "prizeDraw",
+  },
+];
+
+const demoLeaderboards = {
+  daily: [
+    { rank: 1, name: "Giulia", points: 220, delta: "+12 oggi", hint: "Combo missioni" },
+    { rank: 2, name: "Luca", points: 200, delta: "+9 oggi", hint: "Quiz perfetto" },
+  ],
+  monthly: [
+    { rank: 1, name: "Serena", points: 1800, delta: "Top 1" },
+    { rank: 2, name: "Carlo", points: 1720, delta: "+24" },
+  ],
+  season: [
+    { rank: 1, name: "Marta", points: 6200, delta: "Streak attiva" },
+    { rank: 2, name: "Davide", points: 6100, delta: "+34" },
+  ],
+};
+
 const totalVotes = ref(0);
 const isVoteTotalLoading = ref(false);
 const voteTotalError = ref("");
@@ -115,6 +263,184 @@ const engagementState = reactive({
   startedAt: 0,
   accumulatedMs: 0,
 });
+
+const missionStatusLabels = {
+  pending: "In attesa",
+  active: "In corso",
+  done: "Completata",
+};
+
+const currentLeaderboard = computed(
+  () =>
+    gamificationState.leaderboards[gamificationState.leaderboardPeriod] ?? [],
+);
+
+const levelProgress = computed(() => {
+  const next = gamificationState.nextLevel;
+  if (!next || gamificationState.level.id === next.id) {
+    return 100;
+  }
+  const prevMin = gamificationState.level?.min ?? 0;
+  const distance = Math.max(1, next.min - prevMin);
+  return Math.min(100, Math.round(((gamificationState.points - prevMin) / distance) * 100));
+});
+
+const levelProgressLabel = computed(() => {
+  const next = gamificationState.nextLevel;
+  if (!next) {
+    return "Hai raggiunto il massimo";
+  }
+  const diff = Math.max(0, next.min - gamificationState.points);
+  return diff === 0
+    ? "Pronto al salto di livello!"
+    : `Ti mancano ${diff} pt per ${next.label}`;
+});
+
+function loadGamificationConfigFromStorage() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    const raw = window.localStorage.getItem(gamificationStorageKey);
+    if (!raw) {
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      gamificationConfig.value = {
+        actions: { ...defaultGamificationConfig.actions, ...(parsed.actions || {}) },
+        levels: Array.isArray(parsed.levels) && parsed.levels.length
+          ? parsed.levels
+          : defaultGamificationConfig.levels,
+      };
+    }
+  } catch (error) {
+    console.warn("Impossibile leggere la configurazione gamification", error);
+  }
+}
+
+function computeLevel(points) {
+  const levels = [...(gamificationConfig.value.levels || [])].sort(
+    (a, b) => (a.min || 0) - (b.min || 0),
+  );
+  let current = levels[0];
+  let next = levels[1] ?? null;
+  levels.forEach((level, index) => {
+    if (points >= level.min) {
+      current = level;
+      next = levels[index + 1] ?? null;
+    }
+  });
+  return { current, next };
+}
+
+function refreshRewards() {
+  gamificationState.rewards = (gamificationConfig.value.levels || []).map(
+    (level) => ({
+      id: level.id,
+      level: level.label,
+      required: level.min,
+      title:
+        level.id === "hall"
+          ? "Hall of Fame"
+          : `${level.label} perks`,
+      description:
+        level.id === "hall"
+          ? "Accesso a premi top e badge esclusivi"
+          : "Coupon sponsor, esperienze e priorità estrazioni",
+      unlocked: gamificationState.points >= level.min,
+    }),
+  );
+}
+
+function refreshMissions() {
+  gamificationState.missions = missionSequence.map((mission, index) => ({
+    ...mission,
+    points: mission.points(),
+    status: index === 0 ? "active" : "pending",
+    statusLabel: missionStatusLabels[index === 0 ? "active" : "pending"],
+  }));
+}
+
+function seedLeaderboards() {
+  gamificationState.leaderboards = {
+    daily: [...demoLeaderboards.daily],
+    monthly: [...demoLeaderboards.monthly],
+    season: [...demoLeaderboards.season],
+  };
+}
+
+function refreshLeaderboardSelfEntry() {
+  const nextLabel = levelProgressLabel.value;
+  const selfEntry = {
+    rank: 3,
+    name: "Tu",
+    points: gamificationState.points,
+    delta: "+punti live",
+    hint: nextLabel,
+    isMe: true,
+  };
+  ["daily", "monthly", "season"].forEach((period) => {
+    const list = gamificationState.leaderboards[period] || [];
+    const others = list.filter((item) => !item.isMe);
+    gamificationState.leaderboards[period] = [...others, selfEntry];
+  });
+}
+
+function initializeGamification() {
+  loadGamificationConfigFromStorage();
+  refreshMissions();
+  seedLeaderboards();
+  refreshRewards();
+  refreshLeaderboardSelfEntry();
+  const { current, next } = computeLevel(gamificationState.points);
+  gamificationState.level = current;
+  gamificationState.nextLevel = next;
+}
+
+function setMissionDone(action) {
+  const missionIndex = gamificationState.missions.findIndex(
+    (mission) => mission.action === action,
+  );
+  if (missionIndex === -1) {
+    return;
+  }
+  const target = gamificationState.missions[missionIndex];
+  if (target.status === "done") {
+    return;
+  }
+  target.status = "done";
+  target.statusLabel = missionStatusLabels.done;
+  const next = gamificationState.missions[missionIndex + 1];
+  if (next) {
+    next.status = "active";
+    next.statusLabel = missionStatusLabels.active;
+  }
+}
+
+function awardPoints(action, extra = {}) {
+  const gained = extra.points ?? gamificationConfig.value.actions[action] ?? 0;
+  if (gained > 0) {
+    gamificationState.points += gained;
+  }
+  const { current, next } = computeLevel(gamificationState.points);
+  gamificationState.level = current;
+  gamificationState.nextLevel = next;
+  refreshRewards();
+  refreshLeaderboardSelfEntry();
+  setMissionDone(action);
+}
+
+function handleMissionAction(action) {
+  awardPoints(action);
+  if (action === "leaderboard") {
+    refreshLeaderboardSelfEntry();
+  }
+}
+
+function changeLeaderboardPeriod(period) {
+  gamificationState.leaderboardPeriod = period;
+}
 
 const updateNowTimestamp = () => {
   nowTimestamp.value = Date.now();
@@ -178,6 +504,7 @@ const sendEngagementIfNeeded = async (targetEventId = currentEventId.value) => {
   try {
     await trackPageEngagement(targetEventId, seconds);
     userEngagementSeconds.value = seconds;
+    awardPoints("engagement", { points: Math.max(1, Math.round(seconds / 60)) });
   } catch (error) {
     console.error("Impossibile registrare il tempo di permanenza", error);
   } finally {
@@ -344,6 +671,7 @@ function recordSponsorClick(sponsor) {
 
 const handleSponsorClick = (sponsor) => {
   recordSponsorClick(sponsor);
+  awardPoints("sponsor");
 };
 
 const getNow = () =>
@@ -884,6 +1212,26 @@ const showFeedbackThankYouMessage = computed(
 
 const handleSelfieSubmitted = () => {
   hasVoted.value = true;
+  awardPoints("selfie");
+};
+
+const handleReactionCompleted = (payload) => {
+  const bonus = payload?.fasterThanAverage ? 2 : 0;
+  awardPoints("reaction", {
+    points: (gamificationConfig.value.actions.reaction || 0) + bonus,
+  });
+};
+
+const handleSponsorPlay = (action) => {
+  if (action === "minigame") {
+    awardPoints("miniGame");
+    return;
+  }
+  if (action === "partner-badge") {
+    awardPoints("leaderboard", { points: 3 });
+    return;
+  }
+  awardPoints("sponsor");
 };
 
 const feedbackStorageKey = (eventId) => {
@@ -1666,6 +2014,7 @@ const updateCardSize = () => {
 };
 
 onMounted(() => {
+  initializeGamification();
   updateCardSize();
   window.addEventListener("resize", updateCardSize, { passive: true });
   if (typeof document !== "undefined") {
@@ -1786,6 +2135,7 @@ const voteForPlayer = async (player) => {
       votedPlayerId.value = player.id;
       pendingPlayer.value = null;
       hasVoted.value = true;
+      awardPoints("vote");
 
       const codeSource = voteResult.code || "";
       const qrSource = voteResult.qr_data || "";
@@ -1880,6 +2230,21 @@ const handleQrError = () => {
       class="flex-1 overflow-y-auto"
     >
       <div class="flex flex-col" :class="hasVoted ? 'gap-6' : 'gap-10'">
+        <GamificationFlow
+          :points="gamificationState.points"
+          :level="gamificationState.level"
+          :progress-to-next="levelProgress"
+          :progress-label="levelProgressLabel"
+          :missions="gamificationState.missions"
+          :leaderboard="currentLeaderboard"
+          :leaderboard-period="gamificationState.leaderboardPeriod"
+          :rewards="gamificationState.rewards"
+          @action="handleMissionAction"
+          @change-period="changeLeaderboardPeriod"
+        />
+
+        <SponsorGamification class="px-4" @play="handleSponsorPlay" />
+
         <section v-if="isVotingClosed" class="px-4">
           <div class="closed-banner" role="status" aria-live="polite">
             <h3>Votazioni chiuse</h3>
@@ -2035,6 +2400,7 @@ const handleQrError = () => {
           class="mt-8"
           :event-id="currentEventId"
           :enabled="hasVoted && postVoteSettings.showReactionTest"
+          @reaction-completed="handleReactionCompleted"
         />
 
         <section v-if="showSponsorSection" ref="sponsorSectionRef" class="px-4">

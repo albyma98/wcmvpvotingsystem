@@ -1775,6 +1775,51 @@
           </p>
         </section>
 
+        <section v-else-if="section === 'gamification'" class="card">
+          <header class="section-header">
+            <h2>Gamification e loyalty</h2>
+            <p>Configura punteggi, livelli e premi direttamente dal pannello admin.</p>
+          </header>
+
+          <div class="form-grid">
+            <div class="gamification-box">
+              <p class="field-title">Tabella punti azioni</p>
+              <div class="form-grid compact two-cols">
+                <label v-for="(value, key) in gamificationForm.actions" :key="key">
+                  {{ key }}
+                  <input v-model.number="gamificationForm.actions[key]" type="number" min="0" />
+                </label>
+              </div>
+            </div>
+
+            <div class="gamification-box">
+              <p class="field-title">Soglie livelli</p>
+              <div class="form-grid compact two-cols">
+                <label v-for="level in gamificationForm.levels" :key="level.id">
+                  {{ level.label }} (min pt)
+                  <input v-model.number="level.min" type="number" min="0" />
+                </label>
+              </div>
+              <p class="field-hint">Aggiorna le soglie per Bronze, Silver, Gold, Platinum e Hall of Fame.</p>
+            </div>
+          </div>
+
+          <div class="actions-row">
+            <button class="btn primary" type="button" @click="saveGamificationConfig">
+              Salva configurazione
+            </button>
+            <button
+              class="btn outline"
+              type="button"
+              @click="loadGamificationConfig"
+            >
+              Reimposta valori
+            </button>
+          </div>
+          <p v-if="gamificationSaveStatus" class="success">{{ gamificationSaveStatus }}</p>
+          <p v-if="gamificationSaveError" class="error">{{ gamificationSaveError }}</p>
+        </section>
+
         <section v-else-if="section === 'admins'" class="card">
           <header class="section-header">
             <h2>Utenti amministratori</h2>
@@ -2145,9 +2190,33 @@ const tabs = [
   { id: "teams", label: "Squadre" },
   { id: "players", label: "Giocatori" },
   { id: "sponsors", label: "Sponsor" },
+  { id: "gamification", label: "Gamification" },
   { id: "admins", label: "Admin" },
 ];
 const STAFF_TAB_IDS = new Set(["closing", "results"]);
+
+const GAMIFICATION_STORAGE_KEY = "wcmvp_gamification_config";
+const gamificationDefaults = {
+  actions: {
+    preMatch: 2,
+    vote: 5,
+    reaction: 6,
+    selfie: 4,
+    trivia: 5,
+    sponsor: 3,
+    miniGame: 7,
+    leaderboard: 2,
+    prizeDraw: 10,
+    engagement: 1,
+  },
+  levels: [
+    { id: "bronze", label: "Bronze", min: 0, badge: "🥉" },
+    { id: "silver", label: "Silver", min: 40, badge: "🥈" },
+    { id: "gold", label: "Gold", min: 90, badge: "🥇" },
+    { id: "platinum", label: "Platinum", min: 160, badge: "💎" },
+    { id: "hall", label: "Hall of Fame", min: 250, badge: "🏟️" },
+  ],
+};
 
 const teams = ref([]);
 const players = ref([]);
@@ -2941,6 +3010,13 @@ const loginForm = reactive({
 const isLoggingIn = ref(false);
 const loginError = ref("");
 const globalError = ref("");
+
+const gamificationForm = reactive({
+  actions: { ...gamificationDefaults.actions },
+  levels: [...gamificationDefaults.levels],
+});
+const gamificationSaveStatus = ref("");
+const gamificationSaveError = ref("");
 
 const authHeaders = computed(() => {
   const headers = {
@@ -3981,6 +4057,44 @@ function logout() {
   localStorage.removeItem("adminRole");
   section.value = "events";
   clearCollections();
+}
+
+function loadGamificationConfig() {
+  try {
+    const raw = localStorage.getItem(GAMIFICATION_STORAGE_KEY);
+    if (!raw) {
+      gamificationForm.actions = { ...gamificationDefaults.actions };
+      gamificationForm.levels = [...gamificationDefaults.levels];
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    gamificationForm.actions = {
+      ...gamificationDefaults.actions,
+      ...(parsed.actions || {}),
+    };
+    gamificationForm.levels = Array.isArray(parsed.levels) && parsed.levels.length
+      ? parsed.levels
+      : [...gamificationDefaults.levels];
+  } catch (error) {
+    gamificationSaveError.value = "Impossibile caricare la configurazione";
+  }
+}
+
+function saveGamificationConfig() {
+  try {
+    localStorage.setItem(
+      GAMIFICATION_STORAGE_KEY,
+      JSON.stringify({
+        actions: gamificationForm.actions,
+        levels: gamificationForm.levels,
+      }),
+    );
+    gamificationSaveStatus.value = "Configurazione salvata e applicata";
+    gamificationSaveError.value = "";
+  } catch (error) {
+    gamificationSaveError.value = "Salvataggio non riuscito";
+    gamificationSaveStatus.value = "";
+  }
 }
 
 function handleUnauthorized() {
@@ -5232,6 +5346,7 @@ function ensureSectionIsAllowed(tabList) {
 onMounted(() => {
   window.addEventListener("resize", updateToolbarOffset, { passive: true });
   nextTick(updateToolbarOffset);
+  loadGamificationConfig();
 });
 
 watch(isAuthenticated, () => {
@@ -5460,6 +5575,17 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
   font-weight: 600;
   color: #1e293b;
+}
+
+.form-grid.two-cols {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.gamification-box {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: #f8fafc;
 }
 
 .postvote-options {
