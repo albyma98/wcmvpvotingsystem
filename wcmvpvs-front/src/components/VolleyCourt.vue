@@ -57,6 +57,20 @@ const positionStyle = computed(() => (player) => ({
   transform: 'translate(-50%, -50%)',
 }));
 
+const preMatchCardStyle = (index) => {
+  if (!props.isPreMatch) {
+    return {};
+  }
+
+  const baseDelayMs = 90;
+
+  return {
+    '--prematch-delay': `${index * baseDelayMs}ms`,
+    '--prematch-duration': '260ms',
+    '--prematch-ease': 'cubic-bezier(0.19, 1, 0.22, 1)',
+  };
+};
+
 const sponsorList = computed(() =>
   Array.isArray(props.courtSponsors)
     ? props.courtSponsors.filter((sponsor) => Boolean(sponsor))
@@ -297,10 +311,10 @@ const centerSponsorStyle = computed(() => ({
         :class="{ 'is-pre-match': isPreMatch }"
       >
         <div
-          v-for="player in players"
+          v-for="(player, index) in players"
           :key="player.id"
           class="absolute prematch-card-item"
-          :style="positionStyle(player)"
+          :style="[positionStyle(player), preMatchCardStyle(index)]"
         >
           <PlayerCard
             :player="player"
@@ -321,12 +335,19 @@ const centerSponsorStyle = computed(() => ({
 <style scoped>
 .prematch-card-enter-active,
 .prematch-card-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition-property: opacity, transform;
+  transition-duration: var(--prematch-duration, 240ms);
+  transition-timing-function: var(--prematch-ease, ease-out);
+  transition-delay: var(--prematch-delay, 0s);
+}
+
+.prematch-card-leave-active {
+  transition-delay: 0s;
 }
 
 .prematch-card-enter-from {
   opacity: 0;
-  transform: translateY(12px) scale(0.98);
+  transform: translateY(10px) scale(0.98);
 }
 
 .prematch-card-enter-to {
