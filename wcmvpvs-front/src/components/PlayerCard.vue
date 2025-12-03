@@ -150,13 +150,13 @@ const handleSelect = () => {
 
 @keyframes prematch-breath {
   0% {
-    transform: scale(0.985);
+    transform: scale(0.95);
   }
   50% {
-    transform: scale(1);
+    transform: scale(1.04);
   }
   100% {
-    transform: scale(0.98);
+    transform: scale(0.95);
   }
 }
 </style>
