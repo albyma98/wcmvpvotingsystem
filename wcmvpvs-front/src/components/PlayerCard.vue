@@ -30,6 +30,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  hasSpotlight: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emits = defineEmits(['select']);
@@ -102,6 +106,7 @@ const handleSelect = () => {
         isSelected ? 'ring-4' : 'ring-2',
         isPrematch ? 'player-card--prematch' : 'player-card--live',
         activationCue && !isPrematch ? 'player-card--activation' : '',
+        hasSpotlight ? 'player-card--spotlight-focus' : '',
       ]"
       @click="handleSelect"
     >
@@ -185,6 +190,17 @@ const handleSelect = () => {
 .player-card--live:focus-visible .player-card__spotlight {
   opacity: 0.9;
   mix-blend-mode: screen;
+}
+
+.player-card--spotlight-focus {
+  box-shadow: inset 0 0 0 1px rgba(255, 214, 102, 0.4), 0 22px 48px rgba(251, 191, 36, 0.25),
+    0 0 85px rgba(255, 214, 102, 0.25);
+  filter: brightness(1.02) saturate(1.05);
+}
+
+.player-card--spotlight-focus .player-card__spotlight {
+  opacity: 0.9;
+  background: radial-gradient(circle at 50% 35%, rgba(255, 225, 130, 0.45), transparent 50%);
 }
 
 .player-card--live:hover,

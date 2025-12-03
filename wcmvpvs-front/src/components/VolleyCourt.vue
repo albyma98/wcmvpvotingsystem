@@ -36,6 +36,14 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  lightShowActive: {
+    type: Boolean,
+    default: false,
+  },
+  spotlightedPlayerId: {
+    type: Number,
+    default: null,
+  },
 });
 
 const emits = defineEmits(['select', 'sponsor-click']);
@@ -149,6 +157,18 @@ const centerSponsorStyle = computed(() => ({
     <div
       class="absolute inset-0 overflow-hidden rounded-[2.75rem] border-4 border-[rgba(64,34,10,0.35)] bg-gradient-to-b from-court-light via-court-base to-court-dark shadow-court"
     >
+      <div
+        class="court-lights"
+        :class="{
+          'court-lights--active': lightShowActive,
+          'court-lights--calm': !lightShowActive,
+        }"
+        aria-hidden="true"
+      >
+        <span class="court-lights__beam court-lights__beam--left"></span>
+        <span class="court-lights__beam court-lights__beam--right"></span>
+        <span class="court-lights__halo"></span>
+      </div>
       <div class="absolute inset-0 opacity-50 mix-blend-soft-light bg-court-wood-planks"></div>
       <div class="absolute inset-0 opacity-70 mix-blend-overlay bg-court-wood-grain"></div>
       <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -305,9 +325,99 @@ const centerSponsorStyle = computed(() => ({
           :is-voting="isVoting"
           :is-prematch="isPrematch"
           :activation-cue="activationCue"
+          :has-spotlight="spotlightedPlayerId === player.id"
           @select="() => emits('select', player)"
         />
       </div>
     </div>
   </section>
 </template>
+
+<style scoped>
+.court-lights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.75;
+  transition: opacity 0.4s ease, filter 0.4s ease;
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+.court-lights--calm {
+  opacity: 0.35;
+  filter: saturate(0.85);
+}
+
+.court-lights__beam {
+  position: absolute;
+  width: 120%;
+  height: 80%;
+  top: -10%;
+  background: radial-gradient(circle at 50% 0%, rgba(255, 233, 186, 0.35), transparent 60%),
+    linear-gradient(120deg, rgba(255, 223, 155, 0.28), rgba(255, 255, 255, 0));
+  filter: blur(22px);
+  opacity: 0.6;
+}
+
+.court-lights__beam--left {
+  left: -40%;
+  transform: rotate(-12deg);
+  animation: sweep-left 9s ease-in-out infinite;
+}
+
+.court-lights__beam--right {
+  right: -40%;
+  transform: rotate(12deg);
+  animation: sweep-right 10s ease-in-out infinite;
+}
+
+.court-lights__halo {
+  position: absolute;
+  inset: 10% 18%;
+  background: radial-gradient(circle at 50% 60%, rgba(255, 226, 170, 0.16), transparent 70%);
+  filter: blur(20px);
+  opacity: 0.65;
+}
+
+.court-lights--calm .court-lights__beam,
+.court-lights--calm .court-lights__halo {
+  animation-play-state: paused;
+  opacity: 0.35;
+}
+
+.court-lights--active .court-lights__beam,
+.court-lights--active .court-lights__halo {
+  animation-play-state: running;
+}
+
+@keyframes sweep-left {
+  0% {
+    transform: translateX(-20%) rotate(-18deg);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateX(35%) rotate(-10deg);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateX(10%) rotate(-14deg);
+    opacity: 0.5;
+  }
+}
+
+@keyframes sweep-right {
+  0% {
+    transform: translateX(20%) rotate(18deg);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateX(-25%) rotate(8deg);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateX(0%) rotate(14deg);
+    opacity: 0.5;
+  }
+}
+</style>

@@ -1808,6 +1808,18 @@ const disableVotes = computed(
     isOpeningGuardActive.value,
 );
 
+const isLightShowActive = computed(
+  () => !hasVoted.value && !isVotingClosed.value && !isEventUpcoming.value,
+);
+
+const spotlightedPlayerId = computed(() => {
+  const playerId = Number(votedPlayerId.value);
+  if (hasVoted.value && Number.isFinite(playerId) && playerId > 0) {
+    return playerId;
+  }
+  return null;
+});
+
 const openPlayerModal = (player) => {
   if (isVotingClosed.value || isEventUpcoming.value) {
     return;
@@ -2050,9 +2062,30 @@ const handleQrError = () => {
           </div>
           <div
             v-if="fieldPlayers.length"
-            class="relative h-[95svh]"
+            class="relative h-[95svh] court-stage"
             :class="isPrematch ? 'prematch-mode' : ''"
           >
+            <div
+              class="court-stage__lights"
+              :class="{
+                'court-stage__lights--active': isLightShowActive,
+                'court-stage__lights--calm': !isLightShowActive,
+              }"
+              aria-hidden="true"
+            >
+              <span class="court-stage__beam court-stage__beam--one"></span>
+              <span class="court-stage__beam court-stage__beam--two"></span>
+              <span class="court-stage__wash"></span>
+            </div>
+            <div
+              v-if="isLightShowActive"
+              class="court-stage__copy"
+              role="status"
+              aria-live="polite"
+            >
+              <p class="court-stage__eyebrow">Gioco di luci in attesa del tuo MVP…</p>
+              <p class="court-stage__title">Scegli chi merita il titolo 🏆</p>
+            </div>
             <VolleyCourt
               class="block h-full w-full"
               :players="fieldPlayers"
@@ -2063,6 +2096,8 @@ const handleQrError = () => {
               :court-sponsors="visibleCourtSponsors"
               :is-prematch="isPrematch"
               :activation-cue="cardActivationCue"
+              :light-show-active="isLightShowActive"
+              :spotlighted-player-id="spotlightedPlayerId"
               @select="openPlayerModal"
               @sponsor-click="handleSponsorClick"
             />
@@ -2078,6 +2113,35 @@ const handleQrError = () => {
           </p>
         </section>
         <section v-else class="px-4 after-vote-section">
+          <div
+            v-if="spotlightedPlayerId && fieldPlayers.length"
+            class="after-vote-spotlight"
+          >
+            <div class="after-vote-spotlight__copy">
+              <p class="after-vote-spotlight__eyebrow">Hai acceso i riflettori</p>
+              <h3 class="after-vote-spotlight__title">
+                Hai acceso i riflettori sul tuo MVP 🔥
+              </h3>
+              <p class="after-vote-spotlight__hint">
+                Scena stabile e focus sul giocatore che hai scelto.
+              </p>
+            </div>
+            <div class="after-vote-spotlight__stage">
+              <VolleyCourt
+                class="block h-full w-full"
+                :players="fieldPlayers"
+                :card-size="cardSize"
+                :selected-player-id="spotlightedPlayerId"
+                :disable-votes="true"
+                :is-voting="false"
+                :court-sponsors="visibleCourtSponsors"
+                :is-prematch="false"
+                :activation-cue="false"
+                :light-show-active="false"
+                :spotlighted-player-id="spotlightedPlayerId"
+              />
+            </div>
+          </div>
           <div class="after-vote-panel">
             <h3>{{ eventTitle }}</h3>
             <p>
@@ -2667,6 +2731,91 @@ const handleQrError = () => {
   opacity: 0;
 }
 
+.court-stage {
+  isolation: isolate;
+}
+
+.court-stage__lights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 2.5rem;
+  z-index: 4;
+}
+
+.court-stage__wash {
+  position: absolute;
+  inset: -10% -15% 0;
+  background: radial-gradient(circle at 50% 20%, rgba(255, 229, 180, 0.2), transparent 55%),
+    linear-gradient(180deg, rgba(12, 18, 32, 0.35), rgba(12, 18, 32, 0.85));
+  mix-blend-mode: screen;
+  opacity: 0.7;
+  filter: blur(16px);
+  transition: opacity 0.35s ease;
+}
+
+.court-stage__beam {
+  position: absolute;
+  width: 120%;
+  height: 90%;
+  top: -8%;
+  background: linear-gradient(105deg, rgba(255, 232, 191, 0.4), rgba(255, 255, 255, 0));
+  filter: blur(18px);
+  opacity: 0.65;
+}
+
+.court-stage__beam--one {
+  left: -45%;
+  transform: rotate(-18deg);
+  animation: arena-beam-left 12s ease-in-out infinite;
+}
+
+.court-stage__beam--two {
+  right: -45%;
+  transform: rotate(18deg);
+  animation: arena-beam-right 11s ease-in-out infinite;
+}
+
+.court-stage__lights--calm .court-stage__beam,
+.court-stage__lights--calm .court-stage__wash {
+  animation-play-state: paused;
+  opacity: 0.3;
+}
+
+.court-stage__copy {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.35rem;
+  padding-top: 1.75rem;
+  text-align: center;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 0%, rgba(15, 23, 42, 0.35), transparent 55%);
+}
+
+.court-stage__eyebrow {
+  margin: 0;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  color: rgba(241, 245, 249, 0.85);
+  text-shadow: 0 8px 26px rgba(0, 0, 0, 0.3);
+}
+
+.court-stage__title {
+  margin: 0;
+  font-size: clamp(1.05rem, 3vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #fbbf24;
+  text-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
 .flash-enter-active,
 .flash-leave-active {
   transition: opacity 0.35s ease;
@@ -2693,6 +2842,36 @@ const handleQrError = () => {
   mix-blend-mode: soft-light;
   pointer-events: none;
   z-index: 5;
+}
+
+@keyframes arena-beam-left {
+  0% {
+    transform: translateX(-12%) rotate(-20deg);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateX(36%) rotate(-10deg);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateX(8%) rotate(-16deg);
+    opacity: 0.6;
+  }
+}
+
+@keyframes arena-beam-right {
+  0% {
+    transform: translateX(12%) rotate(20deg);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateX(-32%) rotate(8deg);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateX(-6%) rotate(16deg);
+    opacity: 0.6;
+  }
 }
 
 .prematch-banner__title {
@@ -2808,6 +2987,61 @@ const handleQrError = () => {
   padding: 1.75rem 1.5rem;
   text-align: center;
   box-shadow: 0 24px 48px rgba(15, 23, 42, 0.45);
+}
+
+.after-vote-spotlight {
+  position: relative;
+  overflow: hidden;
+  border-radius: 2.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: radial-gradient(circle at 20% 20%, rgba(148, 163, 184, 0.08), transparent 50%),
+    radial-gradient(circle at 80% 0%, rgba(250, 204, 21, 0.12), transparent 45%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.78));
+  padding: clamp(1.5rem, 3vw, 2rem);
+  display: grid;
+  gap: 1.2rem;
+  box-shadow: 0 26px 48px rgba(15, 23, 42, 0.55);
+}
+
+.after-vote-spotlight__copy {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.after-vote-spotlight__eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.after-vote-spotlight__title {
+  margin: 0;
+  font-size: clamp(1.25rem, 3.2vw, 1.75rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #fbbf24;
+}
+
+.after-vote-spotlight__hint {
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.after-vote-spotlight__stage {
+  position: relative;
+  min-height: min(62vh, 540px);
+  border-radius: 2rem;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: radial-gradient(circle at 50% 60%, rgba(255, 225, 130, 0.07), transparent 70%),
+    linear-gradient(160deg, rgba(8, 12, 24, 0.75), rgba(15, 23, 42, 0.85));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .closed-banner h3 {
