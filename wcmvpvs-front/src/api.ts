@@ -249,7 +249,11 @@ export async function fetchVoteStatus(eventId: number) {
     const { data } = await apiClient.get(`/events/${eventId}/vote-status`, {
       headers,
     });
-    return { ok: true, hasVoted: Boolean(data?.has_voted) };
+    return {
+      ok: true,
+      hasVoted: Boolean(data?.has_voted),
+      playerId: typeof data?.player_id === 'number' ? data.player_id : undefined,
+    };
   } catch (error) {
     return { ok: false, error };
   }

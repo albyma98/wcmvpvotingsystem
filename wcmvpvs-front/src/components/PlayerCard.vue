@@ -113,6 +113,10 @@ const handleSelect = () => {
       ]"
       @click="handleSelect"
     >
+      <div v-if="isSelected" class="selection-badge" aria-label="Il tuo MVP">
+        <span class="selection-badge__dot" aria-hidden="true"></span>
+        <span class="selection-badge__label">Il tuo MVP</span>
+      </div>
       <div
         class="pointer-events-none absolute left-1/2 top-[100%] z-20  -translate-x-1/2 -translate-y-full px-6 text-center font-bold uppercase text-white"
       >
@@ -146,6 +150,36 @@ const handleSelect = () => {
 .prematch-breathing {
   animation: prematch-breath 5.2s ease-in-out infinite;
   will-change: transform;
+}
+
+.selection-badge {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 9999px;
+  background: rgba(250, 204, 21, 0.14);
+  color: #facc15;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.55rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(250, 204, 21, 0.35);
+}
+
+.selection-badge__dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #fde68a, #facc15);
+  box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.2);
+}
+
+.selection-badge__label {
+  white-space: nowrap;
 }
 
 @keyframes prematch-breath {

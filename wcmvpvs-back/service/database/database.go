@@ -634,6 +634,7 @@ type AppDatabase interface {
 	GetEventMVP(eventID int) (EventMVP, error)
 	DeleteVote(id int) error
 	HasDeviceVoted(eventID int, deviceID string) (bool, error)
+	GetDeviceVote(eventID int, deviceID string) (Vote, error)
 	SaveSelfie(eventID int, deviceID, caption, imagePath, contentType string, acceptedImageTerms bool) (Selfie, error)
 	UpdateSelfieURL(id int, imageURL string) error
 	GetSelfieForDevice(eventID int, deviceID string) (Selfie, error)
@@ -1425,9 +1426,16 @@ func (db *appdbimpl) Ping() error {
 	return db.c.Ping()
 }
 
-// AddVote stores a vote in the database
+// AddVote stores a vote in the database. If the device already voted for the event,
+// the latest choice replaces the previous one (including the ticket data).
 func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string) error {
-	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id) VALUES (?, ?, ?, ?, ?)`, eventID, playerID, code, signature, deviceID)
+	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(event_id, device_id) DO UPDATE SET
+player_id = excluded.player_id,
+ticket_code = excluded.ticket_code,
+ticket_signature = excluded.ticket_signature,
+created_at = CURRENT_TIMESTAMP`, eventID, playerID, code, signature, deviceID)
 	return err
 }
 
@@ -1566,6 +1574,28 @@ func (db *appdbimpl) HasDeviceVoted(eventID int, deviceID string) (bool, error) 
 		return false, err
 	}
 	return exists == 1, nil
+}
+
+// GetDeviceVote returns the vote cast by a device for a specific event, if any.
+func (db *appdbimpl) GetDeviceVote(eventID int, deviceID string) (Vote, error) {
+	if eventID <= 0 || strings.TrimSpace(deviceID) == "" {
+		return Vote{}, sql.ErrNoRows
+	}
+
+	var vote Vote
+	var createdRaw string
+	err := db.c.QueryRow(`SELECT id, event_id, player_id, ticket_code, ticket_signature, device_id, created_at FROM votes WHERE event_id = ? AND device_id = ? LIMIT 1`, eventID, deviceID).Scan(&vote.ID, &vote.EventID, &vote.PlayerID, &vote.TicketCode, &vote.TicketSignature, &vote.DeviceID, &createdRaw)
+	if err != nil {
+		return Vote{}, err
+	}
+
+	if ts, parseErr := parseSQLiteTimestamp(createdRaw); parseErr == nil && !ts.IsZero() {
+		vote.CreatedAt = ts.UTC().Format(time.RFC3339)
+	} else {
+		vote.CreatedAt = strings.TrimSpace(createdRaw)
+	}
+
+	return vote, nil
 }
 
 func scanSelfieRow(scanner rowScanner) (Selfie, error) {

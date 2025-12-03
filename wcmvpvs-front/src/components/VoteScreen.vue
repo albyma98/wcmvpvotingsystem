@@ -55,6 +55,42 @@ const calledUpPlayers = computed(() =>
     : [],
 );
 
+const formatPlayerName = (player) => {
+  if (!player) {
+    return "";
+  }
+
+  const firstName =
+    typeof player.first_name === "string"
+      ? player.first_name.trim()
+      : typeof player.firstName === "string"
+        ? player.firstName.trim()
+        : "";
+  const lastName =
+    typeof player.last_name === "string"
+      ? player.last_name.trim()
+      : typeof player.lastName === "string"
+        ? player.lastName.trim()
+        : "";
+  const composed = `${firstName} ${lastName}`.trim();
+  if (composed) {
+    return composed;
+  }
+  if (typeof player.name === "string") {
+    const fallbackName = player.name.trim();
+    if (fallbackName) {
+      return fallbackName;
+    }
+  }
+  if (typeof player.raw === "object" && player.raw) {
+    const rawName = formatPlayerName(player.raw);
+    if (rawName) {
+      return rawName;
+    }
+  }
+  return "";
+};
+
 const effectiveRosterSchema = computed(() => {
   const totalCalledUp = calledUpPlayers.value.length;
   if (totalCalledUp === 12 || totalCalledUp === 13 || totalCalledUp === 14) {
@@ -68,6 +104,17 @@ const fieldPlayers = computed(() =>
     layoutSchema: effectiveRosterSchema.value,
   }),
 );
+const selectedPlayer = computed(() => {
+  if (!votedPlayerId.value || votedPlayerId.value <= 0) {
+    return null;
+  }
+  return (
+    fieldPlayers.value.find((player) => player.id === votedPlayerId.value) ||
+    calledUpPlayers.value.find((player) => player.id === votedPlayerId.value) ||
+    null
+  );
+});
+const selectedPlayerName = computed(() => formatPlayerName(selectedPlayer.value));
 const activeSponsorIds = computed(() =>
   sponsors.value
     .map((item) => {
@@ -601,6 +648,8 @@ const isVoting = ref(false);
 const cardSize = ref(88);
 const errorMessage = ref("");
 const pendingPlayer = ref(null);
+const isEditingVote = ref(false);
+const voteUpdateMessage = ref("");
 const showTicketModal = ref(false);
 const showAlreadyVotedModal = ref(false);
 const ticketCode = ref("");
@@ -1120,9 +1169,14 @@ async function refreshVoteStatus(eventId) {
     isTicketLoading.value = false;
   }
   try {
-    const { ok, hasVoted: status } = await fetchVoteStatus(eventId);
+    const { ok, hasVoted: status, playerId } = await fetchVoteStatus(eventId);
     if (ok) {
+      const resolvedPlayerId = Number.isFinite(playerId) ? Number(playerId) : null;
+      votedPlayerId.value = resolvedPlayerId;
       hasVoted.value = Boolean(status) || Boolean(storedTicket?.code);
+      if (!hasVoted.value) {
+        voteUpdateMessage.value = "";
+      }
     }
   } catch (error) {
     console.warn("Impossibile verificare lo stato del voto", error);
@@ -1472,6 +1526,8 @@ watch(
       isVoteTotalLoading.value = false;
     }
     hasVoted.value = false;
+    isEditingVote.value = false;
+    voteUpdateMessage.value = "";
     const storedTicket = loadStoredTicketData(eventId);
     if (storedTicket) {
       ticketCode.value = storedTicket.code;
@@ -1536,6 +1592,8 @@ watch(hasVoted, (voted) => {
       showFeedbackThankYou.value = false;
     }
     showFeedbackModal.value = false;
+    isEditingVote.value = false;
+    voteUpdateMessage.value = "";
     return;
   }
   if (hasCompletedFeedback.value && postVoteSettings.value.showFeedbackSurvey) {
@@ -1632,6 +1690,8 @@ watch(isVotingClosed, (closed) => {
     showAlreadyVotedModal.value = false;
     ticketLoadError.value = "";
     isTicketLoading.value = false;
+    isEditingVote.value = false;
+    voteUpdateMessage.value = "";
   } else {
     engagementStats.value = null;
     startEngagementTimer();
@@ -1671,7 +1731,9 @@ watch(
 watch(votingOpen, (open) => {
   if (open) {
     stopWaitingMessageTimer();
+    return;
   }
+  isEditingVote.value = false;
 });
 
 watch(isCountdownCritical, (critical) => {
@@ -1771,28 +1833,30 @@ onBeforeUnmount(() => {
   stopWaitingMessageTimer();
 });
 
+const canEditVote = computed(() => hasVoted.value && votingOpen.value);
+const canSelectPlayers = computed(
+  () =>
+    votingOpen.value &&
+    !showInactiveNotice.value &&
+    !isCheckingActiveEvent.value &&
+    !isVotingClosed.value &&
+    !isEventUpcoming.value &&
+    (!hasVoted.value || isEditingVote.value),
+);
 const disableVotes = computed(
   () =>
-    Boolean(votedPlayerId.value) ||
-    showInactiveNotice.value ||
-    isCheckingActiveEvent.value ||
-    isVotingClosed.value ||
-    isEventUpcoming.value,
+    !canSelectPlayers.value ||
+    isVoting.value,
 );
 
 const openPlayerModal = (player) => {
-  if (isVotingClosed.value || isEventUpcoming.value) {
+  if (!canSelectPlayers.value || isVoting.value) {
     return;
   }
 
-  if (
-    (disableVotes.value && votedPlayerId.value !== player.id) ||
-    isVoting.value
-  ) {
-    return;
-  }
   pendingPlayer.value = player;
   errorMessage.value = "";
+  voteUpdateMessage.value = "";
 };
 
 const closeModal = () => {
@@ -1811,15 +1875,20 @@ const closeAlreadyVotedModal = () => {
   showAlreadyVotedModal.value = false;
 };
 
+const startVoteEdit = () => {
+  if (!canEditVote.value) {
+    return;
+  }
+  isEditingVote.value = true;
+  voteUpdateMessage.value = "";
+};
+
 const voteForPlayer = async (player) => {
-  if (isVotingClosed.value || isEventUpcoming.value) {
+  if (isVotingClosed.value || isEventUpcoming.value || !votingOpen.value) {
     return;
   }
 
-  if (
-    isVoting.value ||
-    (votedPlayerId.value && votedPlayerId.value !== player.id)
-  ) {
+  if (isVoting.value || !player?.id) {
     return;
   }
 
@@ -1828,6 +1897,7 @@ const voteForPlayer = async (player) => {
   }
 
   errorMessage.value = "";
+  const previousPlayerId = votedPlayerId.value;
   isVoting.value = true;
 
   const eventId = currentEventId.value;
@@ -1844,6 +1914,13 @@ const voteForPlayer = async (player) => {
       votedPlayerId.value = player.id;
       pendingPlayer.value = null;
       hasVoted.value = true;
+      isEditingVote.value = false;
+
+      const resolvedPlayerName =
+        formatPlayerName(player) || formatPlayerName(player?.raw) || "il tuo giocatore";
+      voteUpdateMessage.value = previousPlayerId && previousPlayerId !== player.id
+        ? `Voto aggiornato! Ora il tuo MVP è ${resolvedPlayerName}.`
+        : `Voto registrato! Ora il tuo MVP è ${resolvedPlayerName}.`;
 
       const codeSource = voteResult.code || "";
       const qrSource = voteResult.qr_data || "";
@@ -1868,6 +1945,7 @@ const voteForPlayer = async (player) => {
           "Non siamo riusciti a generare il QR del ticket. Riprova.";
       }
     } else {
+      voteUpdateMessage.value = "";
       if (response?.status === 409) {
         pendingPlayer.value = null;
         showAlreadyVotedModal.value = true;
@@ -1888,6 +1966,7 @@ const voteForPlayer = async (player) => {
     }
   } catch (error) {
     console.error("vote error", error);
+    voteUpdateMessage.value = "";
     errorMessage.value =
       "Si è verificato un errore. Riprova tra qualche istante.";
   } finally {
@@ -2097,6 +2176,64 @@ const handleQrError = () => {
               class="after-vote-success__thanks"
             >
               Grazie 💙 Hai aiutato a migliorare l’esperienza dei tifosi 🙌
+            </p>
+          </div>
+
+          <div class="after-vote-selection">
+            <div class="after-vote-selection__header">
+              <p class="after-vote-selection__eyebrow">Hai votato:</p>
+              <h4 class="after-vote-selection__player">
+                {{ selectedPlayerName || "Il tuo giocatore" }}
+              </h4>
+              <p v-if="votingOpen" class="after-vote-selection__hint">
+                Puoi cambiare il tuo voto finché le votazioni sono aperte.
+              </p>
+              <p v-else class="after-vote-selection__hint">
+                Le votazioni sono chiuse. Il tuo voto finale è salvato.
+              </p>
+              <button
+                v-if="canEditVote && !isEditingVote"
+                type="button"
+                class="after-vote-selection__action"
+                @click="startVoteEdit"
+              >
+                Modifica il mio voto
+              </button>
+              <p v-else-if="isEditingVote" class="after-vote-selection__hint emphasize">
+                Puoi cambiare il tuo voto finché le votazioni sono aperte.
+              </p>
+              <p v-if="voteUpdateMessage" class="after-vote-selection__confirmation">
+                {{ voteUpdateMessage }}
+              </p>
+            </div>
+
+            <div
+              v-if="fieldPlayers.length"
+              class="after-vote-selection__court"
+              :class="{ 'is-locked': !canSelectPlayers }"
+            >
+              <VolleyCourt
+                class="block h-full w-full"
+                :players="fieldPlayers"
+                :card-size="cardSize"
+                :selected-player-id="votedPlayerId"
+                :disable-votes="disableVotes"
+                :is-voting="isVoting"
+                :court-sponsors="visibleCourtSponsors"
+                :is-pre-match="isPreMatch"
+                :voting-open="votingOpen"
+                @select="openPlayerModal"
+                @sponsor-click="handleSponsorClick"
+              />
+            </div>
+            <p v-else-if="isLoadingPlayers" class="players-message">
+              Caricamento dei giocatori in corso…
+            </p>
+            <p v-else-if="playersError" class="players-message error">
+              {{ playersError }}
+            </p>
+            <p v-else class="players-message">
+              I giocatori non sono ancora stati configurati. Torna più tardi!
             </p>
           </div>
 
@@ -2942,6 +3079,96 @@ const handleQrError = () => {
   font-size: 0.95rem;
   font-weight: 600;
   color: rgba(191, 219, 254, 0.95);
+}
+
+.after-vote-selection {
+  padding: 1.25rem 1.5rem;
+  border-radius: 1.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.78), rgba(30, 41, 59, 0.65));
+  box-shadow: 0 22px 42px rgba(8, 15, 28, 0.6);
+}
+
+.after-vote-selection__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  align-items: flex-start;
+}
+
+.after-vote-selection__eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.after-vote-selection__player {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #f8fafc;
+}
+
+.after-vote-selection__hint {
+  margin: 0.15rem 0 0;
+  color: rgba(203, 213, 225, 0.95);
+  font-size: 0.95rem;
+}
+
+.after-vote-selection__hint.emphasize {
+  color: #facc15;
+  font-weight: 700;
+}
+
+.after-vote-selection__action {
+  margin-top: 0.5rem;
+  padding: 0.85rem 1.2rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #facc15, #fbbf24);
+  color: #0f172a;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 18px 32px rgba(250, 191, 36, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.after-vote-selection__action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 38px rgba(250, 191, 36, 0.32);
+}
+
+.after-vote-selection__action:active {
+  transform: translateY(1px);
+  filter: brightness(0.96);
+}
+
+.after-vote-selection__confirmation {
+  margin: 0.35rem 0 0;
+  color: #facc15;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.after-vote-selection__court {
+  margin-top: 1rem;
+  padding: 0.5rem;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: radial-gradient(circle at 20% 20%, rgba(148, 163, 184, 0.08), transparent 55%),
+    radial-gradient(circle at 80% 0%, rgba(251, 191, 36, 0.08), transparent 45%),
+    rgba(15, 23, 42, 0.65);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 16px 32px rgba(8, 15, 28, 0.4);
+  min-height: 300px;
+}
+
+.after-vote-selection__court.is-locked {
+  opacity: 0.92;
 }
 
 .feedback-cta {
