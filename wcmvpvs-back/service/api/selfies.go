@@ -302,15 +302,24 @@ func (rt *_router) getVoteStatus(w http.ResponseWriter, r *http.Request, ctx req
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Identificativo dispositivo mancante.")
 		return
 	}
-	hasVoted, err := rt.db.HasDeviceVoted(eventID, deviceID)
+	vote, err := rt.db.GetDeviceVote(eventID, deviceID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			resp := struct {
+				HasVoted bool `json:"has_voted"`
+			}{HasVoted: false}
+			_ = writeJSON(w, http.StatusOK, resp)
+			return
+		}
 		ctx.Logger.WithError(err).Error("cannot check vote status")
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Impossibile verificare lo stato del voto.")
 		return
 	}
+
 	resp := struct {
 		HasVoted bool `json:"has_voted"`
-	}{HasVoted: hasVoted}
+		PlayerID int  `json:"player_id"`
+	}{HasVoted: true, PlayerID: vote.PlayerID}
 	if err := writeJSON(w, http.StatusOK, resp); err != nil {
 		ctx.Logger.WithError(err).Error("cannot write vote status response")
 	}
