@@ -46,6 +46,34 @@
             </div>
           </div>
 
+          <div class="selfie-consent-block">
+            <label class="selfie-consent">
+              <input
+                v-model="acceptedImageTerms"
+                type="checkbox"
+                required
+                :disabled="interactionDisabled"
+              />
+              <span>
+                Inviando questa foto, dichiaro di avere almeno 18 anni e/o di avere ottenuto
+                il consenso esplicito da tutte le persone riconoscibili presenti nella foto,
+                inclusi i genitori/tutori legali in caso di minorenni. Autorizzo [NOME
+                SQUADRA] a utilizzare gratuitamente la fotografia inviata, senza limiti
+                territoriali e temporali, per finalità informative e promozionali sui propri
+                canali social e materiali di comunicazione. Acconsento inoltre al trattamento
+                dei dati personali secondo la relativa informativa privacy.
+              </span>
+            </label>
+            <button
+              type="button"
+              class="selfie-link"
+              :disabled="interactionDisabled"
+              @click="showInformativaModal = true"
+            >
+              Leggi l’informativa completa
+            </button>
+          </div>
+
           <div class="selfie-actions">
             <button
               type="button"
@@ -82,6 +110,64 @@
       </div>
     </div>
   </section>
+
+  <div
+    v-if="showInformativaModal"
+    class="selfie-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="selfie-privacy-title"
+    @click.self="showInformativaModal = false"
+  >
+    <div class="selfie-modal__content">
+      <header class="selfie-modal__header">
+        <h3 id="selfie-privacy-title">Informativa Selfie MVP – Uso dell’immagine e Privacy</h3>
+        <button
+          type="button"
+          class="selfie-modal__close"
+          aria-label="Chiudi"
+          @click="showInformativaModal = false"
+        >
+          ✕
+        </button>
+      </header>
+      <div class="selfie-modal__body">
+        <section class="selfie-modal__section">
+          <h4>Liberatoria sull’uso dell’immagine</h4>
+          <p>
+            Inviando questa foto, dichiaro di avere almeno 18 anni e/o di avere ottenuto il
+            consenso esplicito da tutte le persone riconoscibili presenti nella foto, inclusi
+            i genitori/tutori legali in caso di minorenni. Autorizzo [NOME SQUADRA] a
+            utilizzare gratuitamente la fotografia inviata, senza limiti territoriali e
+            temporali, per finalità informative e promozionali sui propri canali social e
+            materiali di comunicazione. Acconsento inoltre al trattamento dei dati personali
+            secondo la relativa informativa privacy.
+          </p>
+        </section>
+        <section class="selfie-modal__section">
+          <h4>Informativa Privacy</h4>
+          <p>
+            [Contenuto placeholder: inserire l’informativa privacy completa con indicazione
+            delle finalità, base giuridica, tempi di conservazione e modalità di trattamento
+            dei dati personali raccolti tramite il selfie.]
+          </p>
+        </section>
+        <section class="selfie-modal__section">
+          <h4>Contatti per esercizio dei diritti privacy</h4>
+          <p>[Contenuto placeholder: indicare indirizzo email o recapito del DPO/responsabile.]</p>
+        </section>
+        <section class="selfie-modal__section">
+          <h4>Riferimento GDPR</h4>
+          <p>[Contenuto placeholder: richiamo agli artt. 13-14 del GDPR e ai diritti dell’interessato.]</p>
+        </section>
+      </div>
+      <footer class="selfie-modal__footer">
+        <button type="button" class="selfie-button primary" @click="showInformativaModal = false">
+          Chiudi
+        </button>
+      </footer>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -121,6 +207,8 @@ const errorMessage = ref('');
 const successMessage = ref('');
 const isSubmitting = ref(false);
 const fileInputRef = ref(null);
+const acceptedImageTerms = ref(false);
+const showInformativaModal = ref(false);
 
 const showLoader = computed(() => props.loadingStatus || isLoadingSelfie.value);
 const interactionDisabled = computed(() => !props.enabled || isSubmitting.value || props.loadingStatus);
@@ -146,7 +234,9 @@ const previewStyle = computed(() => {
   return { aspectRatio: DEFAULT_ASPECT_RATIO };
 });
 
-const canSubmit = computed(() => Boolean(selectedFile.value) && !isSubmitting.value && props.enabled);
+const canSubmit = computed(
+  () => Boolean(selectedFile.value) && acceptedImageTerms.value && !isSubmitting.value && props.enabled,
+);
 
 function revokePreview() {
   if (previewUrl.value) {
@@ -244,6 +334,10 @@ async function submitSelfie() {
   if (!props.eventId || !selectedFile.value || isSubmitting.value) {
     return;
   }
+  if (!acceptedImageTerms.value) {
+    errorMessage.value = 'Devi accettare il consenso per inviare il selfie.';
+    return;
+  }
   isSubmitting.value = true;
   errorMessage.value = '';
   successMessage.value = '';
@@ -251,6 +345,7 @@ async function submitSelfie() {
     const { ok, selfie: data } = await uploadSelfie(props.eventId, {
       file: selectedFile.value,
       caption: '',
+      acceptedImageTerms: acceptedImageTerms.value,
     });
     if (ok) {
       selfie.value = data || null;
@@ -437,6 +532,52 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
+.selfie-consent-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.selfie-consent {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.selfie-consent input[type='checkbox'] {
+  margin-top: 0.2rem;
+  accent-color: #facc15;
+}
+
+.selfie-consent span {
+  display: block;
+}
+
+.selfie-link {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: #facc15;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.selfie-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .selfie-button {
   flex: 1 1 auto;
   min-width: 140px;
@@ -518,6 +659,87 @@ onBeforeUnmount(() => {
 
 .selfie-section--compact .selfie-card__title {
   font-size: 1.05rem;
+}
+
+.selfie-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 30;
+}
+
+.selfie-modal__content {
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.9));
+  color: #e2e8f0;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  width: min(900px, 95vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.selfie-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.5rem 1.5rem 0.5rem;
+}
+
+.selfie-modal__header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+}
+
+.selfie-modal__close {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  border-radius: 999px;
+  width: 2.5rem;
+  height: 2.5rem;
+  cursor: pointer;
+}
+
+.selfie-modal__body {
+  padding: 0 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+}
+
+.selfie-modal__section {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 1rem;
+  padding: 1rem;
+}
+
+.selfie-modal__section h4 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.selfie-modal__section p {
+  margin: 0;
+  line-height: 1.6;
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 0.95rem;
+}
+
+.selfie-modal__footer {
+  padding: 0 1.5rem 1.5rem;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .selfie-section--compact .selfie-card__subtitle {

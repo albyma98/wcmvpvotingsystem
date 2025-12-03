@@ -533,16 +533,17 @@ type EventMVP struct {
 }
 
 type Selfie struct {
-	ID           int    `json:"id"`
-	EventID      int    `json:"event_id"`
-	DeviceID     string `json:"device_id"`
-	Caption      string `json:"caption"`
-	ImagePath    string `json:"image_path"`
-	ImageURL     string `json:"image_url"`
-	ContentType  string `json:"content_type"`
-	Approved     bool   `json:"approved"`
-	ShowOnScreen bool   `json:"show_on_screen"`
-	CreatedAt    string `json:"created_at"`
+	ID                 int    `json:"id"`
+	EventID            int    `json:"event_id"`
+	DeviceID           string `json:"device_id"`
+	Caption            string `json:"caption"`
+	ImagePath          string `json:"image_path"`
+	ImageURL           string `json:"image_url"`
+	ContentType        string `json:"content_type"`
+	Approved           bool   `json:"approved"`
+	ShowOnScreen       bool   `json:"show_on_screen"`
+	AcceptedImageTerms bool   `json:"accepted_image_terms"`
+	CreatedAt          string `json:"created_at"`
 }
 
 type ReactionTestAttempt struct {
@@ -633,7 +634,7 @@ type AppDatabase interface {
 	GetEventMVP(eventID int) (EventMVP, error)
 	DeleteVote(id int) error
 	HasDeviceVoted(eventID int, deviceID string) (bool, error)
-	SaveSelfie(eventID int, deviceID, caption, imagePath, contentType string) (Selfie, error)
+	SaveSelfie(eventID int, deviceID, caption, imagePath, contentType string, acceptedImageTerms bool) (Selfie, error)
 	UpdateSelfieURL(id int, imageURL string) error
 	GetSelfieForDevice(eventID int, deviceID string) (Selfie, error)
 	GetSelfieByID(id int) (Selfie, error)
@@ -959,6 +960,7 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
         content_type TEXT,
         approved INTEGER NOT NULL DEFAULT 0,
         show_on_screen INTEGER NOT NULL DEFAULT 0,
+        accepted_image_terms INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
         UNIQUE(event_id, device_id)
@@ -969,6 +971,12 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("error verifying selfies table: %w", err)
+	}
+
+	if _, err = db.Exec(`ALTER TABLE selfies ADD COLUMN accepted_image_terms INTEGER NOT NULL DEFAULT 0`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring selfies accepted terms column: %w", err)
+		}
 	}
 
 	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_selfies_event_device ON selfies(event_id, device_id);`); err != nil {
@@ -1562,13 +1570,14 @@ func (db *appdbimpl) HasDeviceVoted(eventID int, deviceID string) (bool, error) 
 
 func scanSelfieRow(scanner rowScanner) (Selfie, error) {
 	var s Selfie
-	var approved, showOnScreen int
+	var approved, showOnScreen, acceptedImageTerms int
 	var createdRaw string
-	if err := scanner.Scan(&s.ID, &s.EventID, &s.DeviceID, &s.Caption, &s.ImagePath, &s.ImageURL, &s.ContentType, &approved, &showOnScreen, &createdRaw); err != nil {
+	if err := scanner.Scan(&s.ID, &s.EventID, &s.DeviceID, &s.Caption, &s.ImagePath, &s.ImageURL, &s.ContentType, &approved, &showOnScreen, &acceptedImageTerms, &createdRaw); err != nil {
 		return Selfie{}, err
 	}
 	s.Approved = approved == 1
 	s.ShowOnScreen = showOnScreen == 1
+	s.AcceptedImageTerms = acceptedImageTerms == 1
 	if ts, err := parseSQLiteTimestamp(createdRaw); err == nil && !ts.IsZero() {
 		s.CreatedAt = ts.UTC().Format(time.RFC3339)
 	} else {
@@ -1577,7 +1586,7 @@ func scanSelfieRow(scanner rowScanner) (Selfie, error) {
 	return s, nil
 }
 
-func (db *appdbimpl) SaveSelfie(eventID int, deviceID, caption, imagePath, contentType string) (Selfie, error) {
+func (db *appdbimpl) SaveSelfie(eventID int, deviceID, caption, imagePath, contentType string, acceptedImageTerms bool) (Selfie, error) {
 	deviceID = strings.TrimSpace(deviceID)
 	if eventID <= 0 || deviceID == "" || strings.TrimSpace(imagePath) == "" {
 		return Selfie{}, fmt.Errorf("invalid selfie payload")
@@ -1594,17 +1603,18 @@ func (db *appdbimpl) SaveSelfie(eventID int, deviceID, caption, imagePath, conte
 	defer tx.Rollback()
 
 	result, err := tx.Exec(`
-INSERT INTO selfies (event_id, device_id, caption, image_path, image_url, content_type, approved, show_on_screen, created_at)
-VALUES (?, ?, ?, ?, '', ?, 0, 0, CURRENT_TIMESTAMP)
+INSERT INTO selfies (event_id, device_id, caption, image_path, image_url, content_type, approved, show_on_screen, accepted_image_terms, created_at)
+VALUES (?, ?, ?, ?, '', ?, 0, 0, ?, CURRENT_TIMESTAMP)
 ON CONFLICT(event_id, device_id) DO UPDATE SET
-        caption=excluded.caption,
-        image_path=excluded.image_path,
-        image_url=excluded.image_url,
-        content_type=excluded.content_type,
-        approved=0,
-        show_on_screen=0,
-        created_at=CURRENT_TIMESTAMP
-`, eventID, deviceID, strings.TrimSpace(caption), strings.TrimSpace(imagePath), strings.TrimSpace(contentType))
+caption=excluded.caption,
+image_path=excluded.image_path,
+image_url=excluded.image_url,
+content_type=excluded.content_type,
+approved=0,
+show_on_screen=0,
+accepted_image_terms=excluded.accepted_image_terms,
+created_at=CURRENT_TIMESTAMP
+`, eventID, deviceID, strings.TrimSpace(caption), strings.TrimSpace(imagePath), strings.TrimSpace(contentType), boolToInt(acceptedImageTerms))
 	if err != nil {
 		return Selfie{}, err
 	}
@@ -1632,17 +1642,17 @@ func (db *appdbimpl) UpdateSelfieURL(id int, imageURL string) error {
 }
 
 func (db *appdbimpl) GetSelfieForDevice(eventID int, deviceID string) (Selfie, error) {
-	row := db.c.QueryRow(`SELECT id, event_id, device_id, caption, image_path, image_url, content_type, approved, show_on_screen, created_at FROM selfies WHERE event_id = ? AND device_id = ?`, eventID, deviceID)
+	row := db.c.QueryRow(`SELECT id, event_id, device_id, caption, image_path, image_url, content_type, approved, show_on_screen, accepted_image_terms, created_at FROM selfies WHERE event_id = ? AND device_id = ?`, eventID, deviceID)
 	return scanSelfieRow(row)
 }
 
 func (db *appdbimpl) GetSelfieByID(id int) (Selfie, error) {
-	row := db.c.QueryRow(`SELECT id, event_id, device_id, caption, image_path, image_url, content_type, approved, show_on_screen, created_at FROM selfies WHERE id = ?`, id)
+	row := db.c.QueryRow(`SELECT id, event_id, device_id, caption, image_path, image_url, content_type, approved, show_on_screen, accepted_image_terms, created_at FROM selfies WHERE id = ?`, id)
 	return scanSelfieRow(row)
 }
 
 func (db *appdbimpl) ListEventSelfies(eventID int) ([]Selfie, error) {
-	rows, err := db.c.Query(`SELECT id, event_id, device_id, caption, image_path, image_url, content_type, approved, show_on_screen, created_at FROM selfies WHERE event_id = ? ORDER BY created_at DESC, id DESC`, eventID)
+	rows, err := db.c.Query(`SELECT id, event_id, device_id, caption, image_path, image_url, content_type, approved, show_on_screen, accepted_image_terms, created_at FROM selfies WHERE event_id = ? ORDER BY created_at DESC, id DESC`, eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -1665,7 +1675,7 @@ func (db *appdbimpl) ListEventSelfies(eventID int) ([]Selfie, error) {
 }
 
 func (db *appdbimpl) ListApprovedSelfies(eventID int) ([]Selfie, error) {
-	rows, err := db.c.Query(`SELECT id, event_id, device_id, caption, image_path, image_url, content_type, approved, show_on_screen, created_at FROM selfies WHERE event_id = ? AND approved = 1 ORDER BY created_at DESC, id DESC`, eventID)
+	rows, err := db.c.Query(`SELECT id, event_id, device_id, caption, image_path, image_url, content_type, approved, show_on_screen, accepted_image_terms, created_at FROM selfies WHERE event_id = ? AND approved = 1 ORDER BY created_at DESC, id DESC`, eventID)
 	if err != nil {
 		return nil, err
 	}
