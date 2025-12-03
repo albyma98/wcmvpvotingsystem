@@ -116,6 +116,15 @@ const engagementState = reactive({
   accumulatedMs: 0,
 });
 
+const showOpeningModal = ref(false);
+const isScreenDimmed = ref(false);
+const isOpeningFlashActive = ref(false);
+const cardActivationCue = ref(false);
+const prematchVibrationTimer = ref(null);
+const isTouchDevice =
+  typeof window !== "undefined" &&
+  ("ontouchstart" in window || (navigator?.maxTouchPoints ?? 0) > 0);
+
 const updateNowTimestamp = () => {
   nowTimestamp.value = Date.now();
 };
@@ -199,6 +208,60 @@ const handleVisibilityChange = () => {
 
 const handlePageHide = () => {
   sendEngagementIfNeeded();
+};
+
+const triggerSoftVibration = (pattern = [14]) => {
+  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") {
+    return;
+  }
+  try {
+    navigator.vibrate(pattern);
+  } catch (error) {
+    console.warn("Impossibile attivare la vibrazione", error);
+  }
+};
+
+const startPrematchEffects = () => {
+  cardActivationCue.value = false;
+  if (prematchVibrationTimer.value || !isTouchDevice) {
+    return;
+  }
+  triggerSoftVibration([10]);
+  prematchVibrationTimer.value = window.setInterval(() => {
+    triggerSoftVibration([12]);
+  }, 6500);
+};
+
+const stopPrematchEffects = () => {
+  if (prematchVibrationTimer.value) {
+    window.clearInterval(prematchVibrationTimer.value);
+    prematchVibrationTimer.value = null;
+  }
+};
+
+const triggerVotingOpeningSequence = () => {
+  if (showInactiveNotice.value || showOpeningModal.value) {
+    return;
+  }
+  isScreenDimmed.value = true;
+  stopPrematchEffects();
+  window.setTimeout(() => {
+    isScreenDimmed.value = false;
+    isOpeningFlashActive.value = true;
+    triggerSoftVibration([60, 40, 50]);
+    cardActivationCue.value = true;
+    window.setTimeout(() => {
+      isOpeningFlashActive.value = false;
+    }, 800);
+    window.setTimeout(() => {
+      cardActivationCue.value = false;
+    }, 1600);
+    showOpeningModal.value = true;
+  }, 500);
+};
+
+const closeOpeningModal = () => {
+  showOpeningModal.value = false;
 };
 
 const loadEngagementStats = async (eventId) => {
@@ -1416,6 +1479,12 @@ const isCountdownMoreThanTwoHoursAway = computed(
 );
 
 const isEventUpcoming = computed(() => timeUntilEventStartMs.value > 0);
+const isPrematch = computed(
+  () => !showInactiveNotice.value && isEventUpcoming.value,
+);
+const isOpeningGuardActive = computed(
+  () => isScreenDimmed.value || isOpeningFlashActive.value || showOpeningModal.value,
+);
 
 watch(
   currentEventId,
@@ -1594,6 +1663,21 @@ watch(fieldPlayers, (players) => {
   }
 });
 
+watch(
+  isPrematch,
+  (prematch, previous) => {
+    if (prematch) {
+      startPrematchEffects();
+      return;
+    }
+    stopPrematchEffects();
+    if (previous) {
+      triggerVotingOpeningSequence();
+    }
+  },
+  { immediate: true },
+);
+
 watch(isVotingClosed, (closed) => {
   if (closed) {
     pauseEngagementTimer();
@@ -1711,6 +1795,7 @@ onBeforeUnmount(() => {
   stopCountdownTimer();
   stopSponsorVisibilityInterval();
   teardownSponsorObserver();
+  stopPrematchEffects();
 });
 
 const disableVotes = computed(
@@ -1719,7 +1804,8 @@ const disableVotes = computed(
     showInactiveNotice.value ||
     isCheckingActiveEvent.value ||
     isVotingClosed.value ||
-    isEventUpcoming.value,
+    isEventUpcoming.value ||
+    isOpeningGuardActive.value,
 );
 
 const openPlayerModal = (player) => {
@@ -1949,6 +2035,12 @@ const handleQrError = () => {
             >
               {{ eventTitle }}
             </h2>
+            <p
+              v-if="isPrematch"
+              class="prematch-banner__title"
+            >
+              Luci sulla partita… Ci siamo!
+            </p>
             <p v-if="!isEventUpcoming" class="mt-2 text-sm text-slate-300">
               Tocca la card del tuo giocatore preferito per assegnarli il voto
             </p>
@@ -1956,7 +2048,11 @@ const handleQrError = () => {
               La votazione sarà disponibile all'inizio della partita.
             </p>
           </div>
-          <div v-if="fieldPlayers.length" class="relative h-[95svh]">
+          <div
+            v-if="fieldPlayers.length"
+            class="relative h-[95svh]"
+            :class="isPrematch ? 'prematch-mode' : ''"
+          >
             <VolleyCourt
               class="block h-full w-full"
               :players="fieldPlayers"
@@ -1965,6 +2061,8 @@ const handleQrError = () => {
               :disable-votes="disableVotes"
               :is-voting="isVoting"
               :court-sponsors="visibleCourtSponsors"
+              :is-prematch="isPrematch"
+              :activation-cue="cardActivationCue"
               @select="openPlayerModal"
               @sponsor-click="handleSponsorClick"
             />
@@ -2319,10 +2417,49 @@ const handleQrError = () => {
       </div>
     </div>
 
+    <transition name="fade-fast">
+      <div
+        v-if="isScreenDimmed"
+        class="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-[2px]"
+        aria-hidden="true"
+      ></div>
+    </transition>
+
+    <transition name="flash">
+      <div
+        v-if="isOpeningFlashActive"
+        class="fixed inset-0 z-[65] opening-flash"
+        aria-hidden="true"
+      ></div>
+    </transition>
+
+    <transition name="rise">
+      <div
+        v-if="showOpeningModal"
+        class="fixed inset-0 z-[70] flex items-center justify-center px-6 py-10 opening-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="opening-title"
+      >
+        <div class="opening-modal__panel">
+          <p class="opening-modal__eyebrow">Live broadcast mode</p>
+          <h3 id="opening-title" class="opening-modal__title">
+            LE VOTAZIONI SONO APERTE
+          </h3>
+          <p class="opening-modal__subtitle">
+            Scegli il campione della partita 🏆
+          </p>
+          <button type="button" class="opening-modal__cta" @click="closeOpeningModal">
+            VOTA ORA
+          </button>
+        </div>
+      </div>
+    </transition>
+
     <transition name="fade">
       <div
         v-if="!showInactiveNotice && isEventUpcoming"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 px-6 py-10"
+        class="fixed inset-0 z-50 flex items-center justify-center prematch-countdown px-6 py-10"
         role="dialog"
         aria-modal="true"
         aria-labelledby="countdown-title"
@@ -2518,6 +2655,150 @@ const handleQrError = () => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.fade-fast-enter-active,
+.fade-fast-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.fade-fast-enter-from,
+.fade-fast-leave-to {
+  opacity: 0;
+}
+
+.flash-enter-active,
+.flash-leave-active {
+  transition: opacity 0.35s ease;
+}
+
+.flash-enter-from,
+.flash-leave-to {
+  opacity: 0;
+}
+
+.rise-enter-active {
+  animation: rise-in 0.45s ease;
+}
+
+.rise-leave-active {
+  animation: rise-out 0.35s ease forwards;
+}
+
+.prematch-mode::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(12, 18, 32, 0.4), rgba(12, 18, 32, 0.85));
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.prematch-banner__title {
+  margin-top: 0.75rem;
+  font-size: clamp(1rem, 2.8vw, 1.5rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fbbf24;
+  text-shadow: 0 4px 24px rgba(251, 191, 36, 0.25);
+  animation: fade-up 0.8s ease;
+}
+
+.prematch-countdown {
+  background: radial-gradient(circle at 50% 25%, rgba(15, 23, 42, 0.8), rgba(10, 12, 24, 0.92));
+  backdrop-filter: blur(3px) brightness(0.85);
+  pointer-events: none;
+}
+
+.opening-flash {
+  background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.22), transparent 40%),
+    radial-gradient(circle at 20% 20%, rgba(255, 215, 128, 0.35), transparent 35%),
+    radial-gradient(circle at 80% 25%, rgba(255, 215, 128, 0.35), transparent 35%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.08), rgba(255, 215, 128, 0.15), transparent);
+  filter: saturate(1.2);
+}
+
+.opening-modal {
+  background: radial-gradient(circle at 50% 30%, rgba(8, 12, 24, 0.86), rgba(4, 6, 14, 0.92));
+  backdrop-filter: blur(6px);
+}
+
+.opening-modal__panel {
+  width: min(520px, 100%);
+  padding: clamp(1.5rem, 4vw, 2.75rem);
+  border-radius: 32px;
+  background: linear-gradient(145deg, rgba(26, 37, 59, 0.9), rgba(12, 18, 32, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 28px 68px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.opening-modal__panel::before {
+  content: "";
+  position: absolute;
+  inset: 12% -18%;
+  background: linear-gradient(120deg, rgba(255, 214, 102, 0.14), transparent 45%);
+  filter: blur(18px);
+  opacity: 0.8;
+}
+
+.opening-modal__panel::after {
+  content: "";
+  position: absolute;
+  inset: -40% -25% 50%;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.12), transparent 60%);
+  opacity: 0.35;
+}
+
+.opening-modal__eyebrow {
+  position: relative;
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  font-weight: 700;
+  color: rgba(226, 232, 240, 0.75);
+  font-size: 0.7rem;
+  margin-bottom: 0.85rem;
+}
+
+.opening-modal__title {
+  position: relative;
+  font-size: clamp(1.5rem, 3.5vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: #f8fafc;
+  text-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
+}
+
+.opening-modal__subtitle {
+  position: relative;
+  margin-top: 1rem;
+  font-size: clamp(1rem, 2.8vw, 1.35rem);
+  color: rgba(241, 245, 249, 0.9);
+}
+
+.opening-modal__cta {
+  position: relative;
+  margin-top: 1.8rem;
+  width: 100%;
+  padding: 0.95rem 1.5rem;
+  border-radius: 9999px;
+  background: linear-gradient(120deg, #fbbf24, #f59e0b);
+  color: #0f172a;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  border: none;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 16px 36px rgba(251, 191, 36, 0.25);
+  animation: glow-pulse 2.6s ease-in-out infinite;
+}
+
+.opening-modal__cta:focus-visible {
+  outline: 2px solid #fbbf24;
+  outline-offset: 3px;
 }
 
 .closed-banner {
@@ -3272,6 +3553,51 @@ const handleQrError = () => {
 
 .vote-counter__message.error {
   color: #fecaca;
+}
+
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rise-in {
+  0% {
+    opacity: 0;
+    transform: translateY(22px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes rise-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 10px 30px rgba(251, 191, 36, 0.15),
+      0 0 30px rgba(251, 191, 36, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 12px 40px rgba(251, 191, 36, 0.35),
+      0 0 48px rgba(251, 191, 36, 0.55);
+  }
 }
 
 @keyframes qr-spin {
