@@ -1443,29 +1443,6 @@ const isCountdownCritical = computed(
   () => isPreMatch.value && countdownSeconds.value > 0 && countdownSeconds.value <= 5,
 );
 
-const countdownStartTimeLabel = computed(() => {
-  const start = eventStartTimestamp.value;
-  if (!start) {
-    return "";
-  }
-  try {
-    return new Intl.DateTimeFormat("it-IT", {
-      dateStyle: "full",
-      timeStyle: "short",
-    }).format(new Date(start));
-  } catch (error) {
-    const date = new Date(start);
-    if (typeof date.toLocaleString === "function") {
-      return date.toLocaleString("it-IT");
-    }
-    return date.toString();
-  }
-});
-
-const isCountdownMoreThanTwoHoursAway = computed(
-  () => timeUntilEventStartMs.value > 2 * 60 * 60 * 1000,
-);
-
 const isEventUpcoming = computed(() => timeUntilEventStartMs.value > 0);
 
 watch(
@@ -2432,44 +2409,6 @@ const handleQrError = () => {
 
     <transition name="fade">
       <div
-        v-if="!showInactiveNotice && isEventUpcoming"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 px-6 py-10"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="countdown-title"
-      >
-        <div class="countdown-dialog">
-          <p id="countdown-title" class="countdown-dialog__title">
-            La votazione inizierà a breve
-          </p>
-          <template v-if="isCountdownMoreThanTwoHoursAway">
-            <p v-if="countdownStartTimeLabel" class="countdown-dialog__details">
-              Inizio previsto: {{ countdownStartTimeLabel }}
-            </p>
-          </template>
-          <template v-else>
-            <p class="countdown-dialog__subtitle">
-              Il voto sarà disponibile tra
-            </p>
-            <p
-              class="countdown-timer"
-              :class="{ 'countdown-critical': isCountdownCritical }"
-            >
-              {{ countdownLabel }}
-            </p>
-            <p v-if="countdownDaysLabel" class="countdown-dialog__details">
-              {{ countdownDaysLabel }}
-            </p>
-            <p v-if="countdownStartTimeLabel" class="countdown-dialog__details">
-              Inizio previsto: {{ countdownStartTimeLabel }}
-            </p>
-          </template>
-        </div>
-      </div>
-    </transition>
-
-    <transition name="fade">
-      <div
         v-if="!showInactiveNotice && isModalOpen"
         class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-6 py-10"
       >
@@ -2717,11 +2656,6 @@ const handleQrError = () => {
   opacity: 0.6;
   will-change: transform, opacity;
   z-index: 2;
-}
-
-.countdown-critical {
-  animation: countdown-pulse 0.8s ease-in-out infinite, countdown-flash 2.2s ease-in-out;
-  transform-origin: center;
 }
 
 @keyframes prematch-shine {
@@ -3416,49 +3350,6 @@ const handleQrError = () => {
   border: 4px solid rgba(148, 163, 184, 0.25);
   border-top-color: #fbbf24;
   animation: qr-spin 0.9s linear infinite;
-}
-
-.countdown-dialog {
-  width: 100%;
-  max-width: 480px;
-  padding: 2.75rem 2.25rem;
-  border-radius: 2.5rem;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: rgba(15, 23, 42, 0.9);
-  box-shadow: 0 35px 60px rgba(15, 23, 42, 0.6);
-  text-align: center;
-}
-
-.countdown-dialog__title {
-  margin: 0;
-  font-size: 1.1rem;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: #fbbf24;
-}
-
-.countdown-dialog__subtitle {
-  margin: 1rem 0 0;
-  font-size: 0.9rem;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: #cbd5f5;
-}
-
-.countdown-timer {
-  margin: 1.75rem 0 1rem;
-  font-size: clamp(2.75rem, 8vw, 3.75rem);
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: #38bdf8;
-  text-shadow: 0 18px 36px rgba(56, 189, 248, 0.45);
-}
-
-.countdown-dialog__details {
-  margin: 0.5rem 0 0;
-  font-size: 0.95rem;
-  letter-spacing: 0.08em;
-  color: #e2e8f0;
 }
 
 .vote-counter {
