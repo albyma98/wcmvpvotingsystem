@@ -214,6 +214,38 @@ export async function vote({ eventId, playerId }) {
   }
 }
 
+export async function fetchFanRewardsProfile({ fanId, email, deviceId }: { fanId?: string; email?: string; deviceId?: string }) {
+  try {
+    const headers = { ...getDeviceHeaders() };
+    const params: Record<string, string> = {};
+    if (fanId) params.fan_id = fanId;
+    if (email) params.email = email;
+    if (deviceId) headers["X-Device-ID"] = deviceId;
+
+    const { data } = await apiClient.get("/fan/profile", { params, headers });
+    return { ok: true, data };
+  } catch (error: any) {
+    if (error?.response?.status === 404) {
+      return { ok: false, status: 404 };
+    }
+    return { ok: false, error };
+  }
+}
+
+export async function upsertFanRewardsProfile(payload: any) {
+  try {
+    const headers = { ...getDeviceHeaders() };
+    const body = {
+      ...payload,
+      device_id: payload?.device_id || headers["X-Device-ID"],
+    };
+    const { data } = await apiClient.post("/fan/profile", body, { headers });
+    return { ok: true, data };
+  } catch (error: any) {
+    return { ok: false, error, status: error?.response?.status };
+  }
+}
+
 export async function validateTicketStatus({ eventId, code, signature }) {
   try {
     const params = new URLSearchParams();

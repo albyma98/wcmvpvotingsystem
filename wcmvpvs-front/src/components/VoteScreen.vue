@@ -21,6 +21,8 @@ import {
   submitEventFeedback,
   trackPageEngagement,
   fetchEventEngagement,
+  fetchFanRewardsProfile,
+  upsertFanRewardsProfile,
 } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, mapPlayersToLayout } from "../roster";
 import { getOrCreateDeviceId } from "../deviceId";
@@ -873,6 +875,24 @@ const mandatoryFeedbackKeys = [
   "mini_games_interest",
 ];
 
+const showRewardsFlow = ref(false);
+const rewardsStep = ref(0);
+const rewardsSubmitting = ref(false);
+const rewardsError = ref("");
+const rewardsProgress = reactive({ points: 0, badges: [], next_badge: null, points_to_next: 0 });
+const rewardsForm = reactive({
+  fanId: getOrCreateDeviceId(),
+  name: "",
+  ageRange: "",
+  location: "",
+  attendanceFrequency: "",
+  favoritePlayer: "",
+  contentPreferences: [],
+  consentClub: false,
+  consentSponsors: false,
+  consentAnalytics: false,
+});
+
 const activeFeedbackQuestion = computed(() =>
   feedbackStep.value < feedbackQuestions.value.length
     ? feedbackQuestions.value[feedbackStep.value]
@@ -1157,6 +1177,98 @@ const resolveTeamName = (event, keys) => {
 
   return "";
 };
+
+const rewardsProgressRatio = computed(() => {
+  const nextThreshold = rewardsProgress.next_badge?.threshold || Math.max(rewardsProgress.points, 50);
+  if (!nextThreshold) return 0;
+  return Math.min(100, Math.round((rewardsProgress.points / nextThreshold) * 100));
+});
+
+function openRewardsFlow() {
+  if (!hasVoted.value) {
+    return;
+  }
+  rewardsError.value = "";
+  rewardsStep.value = 0;
+  showRewardsFlow.value = true;
+  loadRewardsProfile();
+}
+
+function skipRewardsFlow() {
+  showRewardsFlow.value = false;
+  rewardsError.value = "";
+}
+
+async function loadRewardsProfile() {
+  const deviceId = getOrCreateDeviceId();
+  try {
+    const { ok, data } = await fetchFanRewardsProfile({ deviceId });
+    if (!ok || !data?.profile) {
+      return;
+    }
+    rewardsProgress.points = data.points ?? data.profile?.points ?? 0;
+    rewardsProgress.badges = data.profile?.badges ?? [];
+    rewardsProgress.next_badge = data.next_badge ?? null;
+    rewardsProgress.points_to_next = data.points_to_next ?? 0;
+    rewardsForm.fanId = data.profile?.fan_id || deviceId;
+    rewardsForm.name = data.profile?.first_name || data.profile?.last_name || "";
+    rewardsForm.ageRange = data.profile?.age_range || "";
+    rewardsForm.location = data.profile?.location || "";
+    rewardsForm.attendanceFrequency = data.profile?.attendance_frequency || "";
+    rewardsForm.favoritePlayer = data.profile?.sponsor_preference || "";
+    rewardsForm.consentClub = Boolean(data.profile?.consent_club);
+    rewardsForm.consentSponsors = Boolean(data.profile?.consent_sponsors);
+    rewardsForm.consentAnalytics = Boolean(data.profile?.consent_analytics);
+  } catch (error) {
+    console.warn("Impossibile caricare il profilo fan", error);
+  }
+}
+
+async function submitRewardsStep() {
+  if (rewardsSubmitting.value) {
+    return;
+  }
+  rewardsSubmitting.value = true;
+  rewardsError.value = "";
+  try {
+    const payload = {
+      fan_id: rewardsForm.fanId || getOrCreateDeviceId(),
+      device_id: getOrCreateDeviceId(),
+      name: rewardsForm.name,
+      age_range: rewardsForm.ageRange,
+      location: rewardsForm.location,
+      attendance_frequency: rewardsForm.attendanceFrequency,
+      favorite_player: rewardsForm.favoritePlayer,
+      content_preferences: rewardsForm.contentPreferences,
+      consent_club: rewardsForm.consentClub,
+      consent_sponsors: rewardsForm.consentSponsors,
+      consent_analytics: rewardsForm.consentAnalytics,
+      event_id: currentEventId.value,
+      actions: {
+        voted: true,
+        survey_completed: hasCompletedFeedback.value,
+      },
+    };
+
+    const { ok, data, status } = await upsertFanRewardsProfile(payload);
+    if (!ok || !data) {
+      rewardsError.value = status === 400 ? "Completa i campi richiesti." : "Servizio non disponibile, riprova.";
+      return;
+    }
+    rewardsProgress.points = data.points ?? data.profile?.points ?? rewardsProgress.points;
+    rewardsProgress.badges = data.profile?.badges ?? rewardsProgress.badges;
+    rewardsProgress.next_badge = data.next_badge ?? rewardsProgress.next_badge;
+    rewardsProgress.points_to_next = data.points_to_next ?? rewardsProgress.points_to_next;
+    rewardsStep.value = Math.min(rewardsStep.value + 1, 2);
+    if (rewardsStep.value >= 2) {
+      showRewardsFlow.value = false;
+    }
+  } catch (error) {
+    rewardsError.value = "Non siamo riusciti a salvare il profilo. Riprova.";
+  } finally {
+    rewardsSubmitting.value = false;
+  }
+}
 
 const homeTeamName = computed(() =>
   resolveTeamName(props.activeEvent, [
@@ -1844,6 +1956,7 @@ const voteForPlayer = async (player) => {
       votedPlayerId.value = player.id;
       pendingPlayer.value = null;
       hasVoted.value = true;
+      openRewardsFlow();
 
       const codeSource = voteResult.code || "";
       const qrSource = voteResult.qr_data || "";
@@ -1933,6 +2046,162 @@ const handleQrError = () => {
   <div
     class="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col"
   >
+    <div
+      v-if="showRewardsFlow"
+      class="rewards-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Profilo & Rewards"
+    >
+      <div class="rewards-panel">
+        <header class="rewards-header">
+          <div>
+            <p class="rewards-eyebrow">Profilo &amp; Rewards</p>
+            <h3>Costruisci il tuo profilo fan</h3>
+            <p class="rewards-subtitle">
+              Compila 3 step rapidi per guadagnare punti e sbloccare badge esclusivi.
+              Puoi saltare in qualsiasi momento.
+            </p>
+          </div>
+          <div class="rewards-counter">
+            <p class="rewards-points">{{ rewardsProgress.points }} pts</p>
+            <p class="rewards-level">
+              Prossimo livello:
+              <span v-if="rewardsProgress.next_badge">{{ rewardsProgress.next_badge.name }} ({{ rewardsProgress.next_badge.threshold }} pts)</span>
+              <span v-else>Nessuna soglia</span>
+            </p>
+            <div class="rewards-bar">
+              <div class="rewards-bar__fill" :style="{ width: `${rewardsProgressRatio}%` }"></div>
+            </div>
+            <p v-if="rewardsProgress.points_to_next" class="rewards-hint">
+              Ti mancano {{ rewardsProgress.points_to_next }} punti al prossimo badge.
+            </p>
+          </div>
+        </header>
+
+        <form class="rewards-body" @submit.prevent="submitRewardsStep">
+          <div v-if="rewardsStep === 0" class="rewards-step">
+            <p class="rewards-step__title">Step 1 · Dati base</p>
+            <div class="form-grid">
+              <label>
+                Nome o nickname
+                <input v-model.trim="rewardsForm.name" type="text" placeholder="Come vuoi comparire" />
+              </label>
+              <label>
+                Fascia d'età
+                <select v-model="rewardsForm.ageRange">
+                  <option value="">Seleziona</option>
+                  <option value="<18">&lt;18</option>
+                  <option value="18-24">18-24</option>
+                  <option value="25-34">25-34</option>
+                  <option value="35-44">35-44</option>
+                  <option value="45+">45+</option>
+                </select>
+              </label>
+              <label>
+                Città / Provincia
+                <input v-model.trim="rewardsForm.location" type="text" placeholder="Es. Trento (TN)" />
+              </label>
+              <label>
+                Frequenza con cui segui la squadra
+                <select v-model="rewardsForm.attendanceFrequency">
+                  <option value="">Seleziona</option>
+                  <option value="ogni partita">Ogni partita</option>
+                  <option value="spesso">Spesso</option>
+                  <option value="qualche volta">Qualche volta</option>
+                  <option value="prima volta">Prima volta</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div v-else-if="rewardsStep === 1" class="rewards-step">
+            <p class="rewards-step__title">Step 2 · Preferenze</p>
+            <div class="form-grid">
+              <label>
+                Giocatore preferito
+                <input v-model.trim="rewardsForm.favoritePlayer" type="text" placeholder="Chi ti esalta di più" />
+              </label>
+              <fieldset class="rewards-options">
+                <legend>Contenuti che preferisci</legend>
+                <label class="checkbox">
+                  <input
+                    v-model="rewardsForm.contentPreferences"
+                    type="checkbox"
+                    value="statistiche"
+                  />
+                  Statistiche live
+                </label>
+                <label class="checkbox">
+                  <input
+                    v-model="rewardsForm.contentPreferences"
+                    type="checkbox"
+                    value="sconti"
+                  />
+                  Sconti sponsor
+                </label>
+                <label class="checkbox">
+                  <input v-model="rewardsForm.contentPreferences" type="checkbox" value="mini-giochi" />
+                  Mini-giochi
+                </label>
+                <label class="checkbox">
+                  <input v-model="rewardsForm.contentPreferences" type="checkbox" value="news" />
+                  News e backstage
+                </label>
+              </fieldset>
+            </div>
+          </div>
+
+          <div v-else class="rewards-step">
+            <p class="rewards-step__title">Step 3 · Consensi GDPR</p>
+            <p class="rewards-privacy">
+              Attiva le comunicazioni per newsletter del club, promozioni sponsor e iniziative speciali. Puoi cambiare idea in qualsiasi momento.
+            </p>
+            <div class="rewards-consents">
+              <label class="checkbox">
+                <input v-model="rewardsForm.consentClub" type="checkbox" />
+                Newsletter società
+              </label>
+              <label class="checkbox">
+                <input v-model="rewardsForm.consentSponsors" type="checkbox" />
+                Promozioni sponsor
+              </label>
+              <label class="checkbox">
+                <input v-model="rewardsForm.consentAnalytics" type="checkbox" />
+                Comunicazioni su iniziative speciali
+              </label>
+            </div>
+            <p class="rewards-hint">I dati vengono trattati secondo l'informativa privacy già disponibile.</p>
+          </div>
+
+          <p v-if="rewardsError" class="error mt-2">{{ rewardsError }}</p>
+
+          <div class="rewards-actions">
+            <button type="button" class="btn outline" @click="skipRewardsFlow">Salta</button>
+            <div class="flex items-center gap-3">
+              <button
+                v-if="rewardsStep > 0"
+                type="button"
+                class="btn secondary"
+                @click="rewardsStep = rewardsStep - 1"
+                :disabled="rewardsSubmitting"
+              >
+                Indietro
+              </button>
+              <button class="btn primary" type="submit" :disabled="rewardsSubmitting">
+                {{ rewardsStep < 2 ? "Continua" : "Completa" }}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <div v-if="rewardsProgress.badges?.length" class="rewards-badges">
+          <p class="rewards-step__title">Badge sbloccati</p>
+          <div class="badge-chip" v-for="badge in rewardsProgress.badges" :key="badge">{{ badge }}</div>
+        </div>
+      </div>
+    </div>
+
     <main
       v-if="!isCheckingActiveEvent && !showInactiveNotice"
       class="flex-1 overflow-y-auto"
@@ -3409,6 +3678,143 @@ const handleQrError = () => {
 
 .vote-counter__message.error {
   color: #fecaca;
+}
+
+.rewards-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 40;
+}
+
+.rewards-panel {
+  width: min(980px, 100%);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  box-shadow: 0 30px 120px rgba(0, 0, 0, 0.45);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.rewards-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.rewards-eyebrow {
+  font-size: 0.85rem;
+  color: #38bdf8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rewards-subtitle {
+  color: #cbd5e1;
+}
+
+.rewards-counter {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 16px;
+  padding: 0.75rem 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.rewards-points {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.rewards-level {
+  color: #cbd5e1;
+}
+
+.rewards-bar {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.rewards-bar__fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #38bdf8, #10b981);
+  transition: width 0.25s ease;
+}
+
+.rewards-hint {
+  color: #cbd5e1;
+  font-size: 0.9rem;
+}
+
+.rewards-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.rewards-step {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.rewards-step__title {
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.rewards-options {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 0.75rem;
+}
+
+.rewards-consents {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.rewards-privacy {
+  color: #cbd5e1;
+}
+
+.rewards-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rewards-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.badge-chip {
+  background: rgba(16, 185, 129, 0.12);
+  color: #bbf7d0;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-weight: 600;
 }
 
 @keyframes qr-spin {

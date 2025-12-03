@@ -153,6 +153,30 @@ func (rt *_router) updateMasterOrganization(w http.ResponseWriter, r *http.Reque
 	_ = json.NewEncoder(w).Encode(org)
 }
 
+func (rt *_router) deleteMasterOrganization(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if !rt.ensureSuperAdmin(w, ctx) {
+		return
+	}
+
+	orgID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil || orgID <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := rt.db.DeleteOrganization(orgID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).WithField("organization_id", orgID).Error("cannot delete organization")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (rt *_router) getMasterOrganizationDetail(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	if !rt.ensureSuperAdmin(w, ctx) {
 		return

@@ -589,6 +589,110 @@ type ShopOrderItem struct {
 	ProductImageURL string `json:"product_image_url,omitempty"`
 }
 
+// FanProfile represents the optional marketing profile compiled by a voter.
+type FanProfile struct {
+	ID                  int      `json:"id"`
+	OrganizationID      int      `json:"organization_id"`
+	EventID             int      `json:"event_id,omitempty"`
+	VoteID              int      `json:"vote_id,omitempty"`
+	FanID               string   `json:"fan_id,omitempty"`
+	DeviceID            string   `json:"device_id,omitempty"`
+	FirstName           string   `json:"first_name,omitempty"`
+	LastName            string   `json:"last_name,omitempty"`
+	Email               string   `json:"email,omitempty"`
+	AgeRange            string   `json:"age_range,omitempty"`
+	Location            string   `json:"location,omitempty"`
+	AttendanceFrequency string   `json:"attendance_frequency,omitempty"`
+	DiscoveryChannel    string   `json:"discovery_channel,omitempty"`
+	SponsorPreference   string   `json:"sponsor_preference,omitempty"`
+	PromoOptIn          bool     `json:"promo_opt_in"`
+	ContactChannel      string   `json:"contact_channel,omitempty"`
+	Interests           string   `json:"interests,omitempty"`
+	LastActivity        string   `json:"last_activity,omitempty"`
+	LastActivityAt      string   `json:"last_activity_at,omitempty"`
+	Badges              []string `json:"badges,omitempty"`
+	Points              int      `json:"points,omitempty"`
+	ConsentClub         bool     `json:"consent_club"`
+	ConsentSponsors     bool     `json:"consent_sponsors"`
+	ConsentAnalytics    bool     `json:"consent_analytics"`
+	CreatedAt           string   `json:"created_at"`
+}
+
+// FanConsent tracks the granular GDPR consents associated to a marketing profile.
+type FanConsent struct {
+	ID               int    `json:"id"`
+	OrganizationID   int    `json:"organization_id"`
+	FanProfileID     int    `json:"fan_profile_id"`
+	PolicyVersion    string `json:"policy_version"`
+	ConsentClub      bool   `json:"consent_club"`
+	ConsentSponsors  bool   `json:"consent_sponsors"`
+	ConsentAnalytics bool   `json:"consent_analytics"`
+	IP               string `json:"ip"`
+	CreatedAt        string `json:"created_at"`
+}
+
+// PrivacyPolicy represents the customizable privacy disclosure of a club.
+type PrivacyPolicy struct {
+	ID             int    `json:"id"`
+	OrganizationID int    `json:"organization_id"`
+	Version        string `json:"version"`
+	Title          string `json:"title"`
+	Summary        string `json:"summary"`
+	Link           string `json:"link"`
+	CreatedAt      string `json:"created_at"`
+}
+
+// GamificationEvent stores points assigned to a fan profile for a specific action.
+type GamificationEvent struct {
+	ID             int    `json:"id"`
+	OrganizationID int    `json:"organization_id"`
+	FanProfileID   int    `json:"fan_profile_id"`
+	EventID        int    `json:"event_id,omitempty"`
+	Source         string `json:"source"`
+	Points         int    `json:"points"`
+	SeasonLabel    string `json:"season_label,omitempty"`
+	CreatedAt      string `json:"created_at"`
+}
+
+// GamificationSummary aggregates gamification performance for a club.
+type GamificationSummary struct {
+	AveragePoints float64             `json:"average_points"`
+	TotalFans     int                 `json:"total_fans"`
+	TotalEvents   int                 `json:"total_events"`
+	Distribution  map[string]int      `json:"distribution"`
+	TopFans       []TopFanScore       `json:"top_fans"`
+	TopEvents     map[int]TopFanScore `json:"top_events"`
+}
+
+// TopFanScore represents a ranked fan profile based on points.
+type TopFanScore struct {
+	FanProfileID int    `json:"fan_profile_id"`
+	Points       int    `json:"points"`
+	EventID      int    `json:"event_id,omitempty"`
+	Label        string `json:"label,omitempty"`
+}
+
+// ConsentBreakdown aggregates yes/no metrics for each GDPR consent type.
+type ConsentBreakdown struct {
+	Total               int `json:"total"`
+	ConsentClubYes      int `json:"consent_club_yes"`
+	ConsentClubNo       int `json:"consent_club_no"`
+	ConsentSponsorsYes  int `json:"consent_sponsors_yes"`
+	ConsentSponsorsNo   int `json:"consent_sponsors_no"`
+	ConsentAnalyticsYes int `json:"consent_analytics_yes"`
+	ConsentAnalyticsNo  int `json:"consent_analytics_no"`
+}
+
+// MarketingBadge represents a points threshold badge configured by the club.
+type MarketingBadge struct {
+	ID             int    `json:"id"`
+	OrganizationID int    `json:"organization_id"`
+	Name           string `json:"name"`
+	Threshold      int    `json:"threshold"`
+	Description    string `json:"description"`
+	CreatedAt      string `json:"created_at"`
+}
+
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
 	GetName() (string, error)
@@ -657,6 +761,7 @@ type AppDatabase interface {
 	GetOrganization(id int) (Organization, error)
 	GetOrganizationBySlug(slug string) (Organization, error)
 	GetOrganizationStats(id int) (OrganizationStats, error)
+	DeleteOrganization(id int) error
 	GetMasterDashboardSummary() (MasterDashboardSummary, error)
 	GetMasterAnalytics() (MasterAnalytics, error)
 	CreateSponsor(s Sponsor) (int, error)
@@ -680,6 +785,19 @@ type AppDatabase interface {
 	CreateShopProduct(product ShopProduct) (ShopProduct, error)
 	ListShopOrders() ([]ShopOrder, error)
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
+	SaveFanProfile(profile FanProfile) (FanProfile, error)
+	UpsertFanProfile(profile FanProfile) (FanProfile, error)
+	GetFanProfileWithStats(organizationID int, fanID, deviceID, email string) (FanProfile, error)
+	ListFanProfilesWithStats(organizationID int) ([]FanProfile, error)
+	RecordGamificationEvent(event GamificationEvent) error
+	HasGamificationEvent(profileID int, source string, eventID int) (bool, error)
+	ListGamificationEvents(organizationID int) ([]GamificationEvent, error)
+	SavePrivacyPolicy(policy PrivacyPolicy) (PrivacyPolicy, error)
+	ListPrivacyPolicies(organizationID int) ([]PrivacyPolicy, error)
+	LogFanConsent(consent FanConsent) (FanConsent, error)
+	GetConsentBreakdown(organizationID int) (ConsentBreakdown, error)
+	SaveMarketingBadge(badge MarketingBadge) (MarketingBadge, error)
+	ListMarketingBadges(organizationID int) ([]MarketingBadge, error)
 	Ping() error
 }
 
@@ -1094,6 +1212,13 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 			return nil, fmt.Errorf("error ensuring tickets signature column: %w", err)
 		}
 	}
+	if has, checkErr := hasColumn(db, "tickets", "event_id"); checkErr != nil {
+		return nil, fmt.Errorf("error checking tickets columns: %w", checkErr)
+	} else if !has {
+		if err := recreateTicketsTable(db); err != nil {
+			return nil, fmt.Errorf("error migrating tickets table: %w", err)
+		}
+	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsors';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1108,6 +1233,15 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 		_, _ = db.Exec(`ALTER TABLE sponsors ADD COLUMN organization_id INTEGER NOT NULL DEFAULT 0`)
 		if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sponsors_org_position ON sponsors(organization_id, position)`); err != nil {
 			return nil, fmt.Errorf("error ensuring sponsors organization position index: %w", err)
+		}
+		// Some legacy databases were created with a UNIQUE(position) constraint only.
+		// This migration rebuilds the table to scope uniqueness per organization.
+		if needs, checkErr := needsSponsorUniqueMigration(db); checkErr != nil {
+			return nil, fmt.Errorf("error checking legacy sponsors constraint: %w", checkErr)
+		} else if needs {
+			if err := migrateSponsorTableToOrgScopedUnique(db); err != nil {
+				return nil, fmt.Errorf("error migrating sponsors table: %w", err)
+			}
 		}
 	}
 
@@ -1151,6 +1285,13 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_clicks_sponsor ON sponsor_clicks(sponsor_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring sponsor_clicks sponsor index: %w", err)
+	}
+	if legacy, checkErr := hasLegacySponsorForeignKey(db, "sponsor_clicks"); checkErr != nil {
+		return nil, fmt.Errorf("error checking sponsor_clicks foreign keys: %w", checkErr)
+	} else if legacy {
+		if err := recreateSponsorClicksTable(db); err != nil {
+			return nil, fmt.Errorf("error migrating sponsor_clicks table: %w", err)
+		}
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsor_sessions';`).Scan(&tableName)
@@ -1203,6 +1344,13 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_device_event ON sponsor_exposures(event_id, device_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring sponsor_exposures device index: %w", err)
+	}
+	if legacy, checkErr := hasLegacySponsorForeignKey(db, "sponsor_exposures"); checkErr != nil {
+		return nil, fmt.Errorf("error checking sponsor_exposures foreign keys: %w", checkErr)
+	} else if legacy {
+		if err := recreateSponsorExposuresTable(db); err != nil {
+			return nil, fmt.Errorf("error migrating sponsor_exposures table: %w", err)
+		}
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_products';`).Scan(&tableName)
@@ -1314,6 +1462,114 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 				return nil, fmt.Errorf("error seeding shop_products: %w", err)
 			}
 		}
+	}
+
+	// Marketing & fan CRM tables
+	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS fan_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id INTEGER NOT NULL,
+        event_id INTEGER,
+        vote_id INTEGER,
+        fan_id TEXT,
+        device_id TEXT,
+        first_name TEXT,
+        last_name TEXT,
+        email TEXT,
+        age_range TEXT,
+        location TEXT,
+        attendance_frequency TEXT,
+        discovery_channel TEXT,
+        sponsor_preference TEXT,
+        promo_opt_in INTEGER NOT NULL DEFAULT 0,
+        contact_channel TEXT,
+        interests TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+);`); err != nil {
+		return nil, fmt.Errorf("error ensuring fan_profiles table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_fan_profiles_org ON fan_profiles(organization_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring fan_profiles org index: %w", err)
+	}
+
+	// Ensure newer profiling columns exist for legacy databases
+	_, _ = db.Exec(`ALTER TABLE fan_profiles ADD COLUMN IF NOT EXISTS fan_id TEXT`)
+	_, _ = db.Exec(`ALTER TABLE fan_profiles ADD COLUMN IF NOT EXISTS device_id TEXT`)
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_fan_profiles_identifiers ON fan_profiles(organization_id, fan_id, device_id, email)`); err != nil {
+		return nil, fmt.Errorf("error ensuring fan_profiles identifier index: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS fan_gamification_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id INTEGER NOT NULL,
+        fan_profile_id INTEGER NOT NULL,
+        event_id INTEGER,
+        source TEXT NOT NULL,
+        points INTEGER NOT NULL,
+        season_label TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+        FOREIGN KEY (fan_profile_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
+);`); err != nil {
+		return nil, fmt.Errorf("error ensuring fan_gamification_events table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_gamification_org ON fan_gamification_events(organization_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring gamification org index: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS privacy_policies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id INTEGER NOT NULL,
+        version TEXT NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT,
+        link TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+);`); err != nil {
+		return nil, fmt.Errorf("error ensuring privacy_policies table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_privacy_policies_org_version ON privacy_policies(organization_id, version)`); err != nil {
+		return nil, fmt.Errorf("error ensuring privacy_policies version index: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS fan_consents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id INTEGER NOT NULL,
+        fan_profile_id INTEGER NOT NULL,
+        policy_version TEXT,
+        consent_club INTEGER NOT NULL DEFAULT 0,
+        consent_sponsors INTEGER NOT NULL DEFAULT 0,
+        consent_analytics INTEGER NOT NULL DEFAULT 0,
+        ip TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+        FOREIGN KEY (fan_profile_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
+);`); err != nil {
+		return nil, fmt.Errorf("error ensuring fan_consents table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_fan_consents_org ON fan_consents(organization_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring fan_consents org index: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS marketing_badges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        threshold INTEGER NOT NULL,
+        description TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+);`); err != nil {
+		return nil, fmt.Errorf("error ensuring marketing_badges table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_marketing_badges_org ON marketing_badges(organization_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring marketing_badges org index: %w", err)
 	}
 
 	return &appdbimpl{
@@ -3022,6 +3278,91 @@ func (db *appdbimpl) GetOrganizationStats(id int) (OrganizationStats, error) {
 	return stats, nil
 }
 
+func (db *appdbimpl) DeleteOrganization(id int) error {
+	if id <= 0 {
+		return sql.ErrNoRows
+	}
+
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var teamID sql.NullInt64
+	if err := tx.QueryRow(`SELECT team_id FROM organizations WHERE id = ?`, id).Scan(&teamID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return sql.ErrNoRows
+		}
+		return err
+	}
+
+	if _, err := tx.Exec(`UPDATE event_prizes SET winner_vote_id = NULL, winner_assigned_at = NULL WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM sponsor_clicks WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM sponsor_exposures WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM sponsor_sessions WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM page_engagements WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM reaction_tests WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM event_feedback WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM votes WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM selfies WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if hasEventCol, checkErr := hasColumn(tx, "tickets", "event_id"); checkErr != nil {
+		return checkErr
+	} else if hasEventCol {
+		if _, err := tx.Exec(`DELETE FROM tickets WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+			return err
+		}
+	} else {
+		// Legacy schema without event_id column: remove all tickets to avoid FK errors.
+		if _, err := tx.Exec(`DELETE FROM tickets`); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM event_prizes WHERE event_id IN (SELECT id FROM events WHERE organization_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM events WHERE organization_id = ?`, id); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM sponsors WHERE organization_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM players WHERE organization_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM admins WHERE organization_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM organizations WHERE id = ?`, id); err != nil {
+		return err
+	}
+
+	if teamID.Valid && teamID.Int64 > 0 {
+		_, _ = tx.Exec(`DELETE FROM teams WHERE id = ?`, teamID.Int64)
+	}
+
+	return tx.Commit()
+}
+
 func (db *appdbimpl) GetMasterDashboardSummary() (MasterDashboardSummary, error) {
 	var summary MasterDashboardSummary
 	if err := db.c.QueryRow(`SELECT COUNT(*) FROM organizations`).Scan(&summary.TotalOrganizations); err != nil {
@@ -3934,6 +4275,264 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+type sqlColumnChecker interface {
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+}
+
+func hasColumn(db sqlColumnChecker, table, column string) (bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if strings.EqualFold(name, column) {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+// needsSponsorUniqueMigration detects the legacy UNIQUE(position) constraint used before
+// organizations were introduced. If the autoindex contains only the "position" column,
+// we need to rebuild the table with a composite unique key.
+func needsSponsorUniqueMigration(db *sql.DB) (bool, error) {
+	rows, err := db.Query(`PRAGMA index_info('sqlite_autoindex_sponsors_1')`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var seqno, cid int
+		var name string
+		if err := rows.Scan(&seqno, &cid, &name); err != nil {
+			return false, err
+		}
+		cols = append(cols, name)
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+
+	return len(cols) == 1 && cols[0] == "position", nil
+}
+
+// migrateSponsorTableToOrgScopedUnique rebuilds the sponsors table so the unique constraint
+// applies per-organization (organization_id, position) instead of globally on position.
+func migrateSponsorTableToOrgScopedUnique(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`ALTER TABLE sponsors RENAME TO sponsors_old`); err != nil {
+		return err
+	}
+
+	createStmt := `CREATE TABLE sponsors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organization_id INTEGER NOT NULL DEFAULT 0,
+  position INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  report_name TEXT,
+  logo_data TEXT NOT NULL,
+  link_url TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  CHECK(position BETWEEN 1 AND ` + fmt.Sprint(maxSponsorSlots) + `),
+  FOREIGN KEY (organization_id) REFERENCES organizations(id),
+  UNIQUE(organization_id, position)
+);`
+	if _, err := tx.Exec(createStmt); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`INSERT INTO sponsors (id, organization_id, position, name, report_name, logo_data, link_url, is_active)
+SELECT id, IFNULL(organization_id, 0), position, name, report_name, logo_data, link_url, is_active FROM sponsors_old`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsors_org ON sponsors(organization_id)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sponsors_org_position ON sponsors(organization_id, position)`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DROP TABLE sponsors_old`); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func recreateTicketsTable(db *sql.DB) error {
+	if _, err := db.Exec(`PRAGMA foreign_keys=OFF;`); err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE tickets RENAME TO tickets_old;`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`CREATE TABLE tickets (
+        event_id INTEGER NOT NULL,
+        code TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        redeemed_at TEXT,
+        PRIMARY KEY (event_id, code)
+);`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`INSERT INTO tickets (event_id, code, signature, redeemed_at)
+SELECT 0, code, signature, redeemed_at FROM tickets_old;`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DROP TABLE tickets_old;`); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	_, _ = db.Exec(`PRAGMA foreign_keys=ON;`)
+	return nil
+}
+
+// hasLegacySponsorForeignKey checks if the given table still references the legacy sponsors_old table.
+func hasLegacySponsorForeignKey(db sqlColumnChecker, table string) (bool, error) {
+	rows, err := db.Query(`PRAGMA foreign_key_list(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			id, seq, onUpdate, onDelete, match sql.NullString
+			tableName, from, to                string
+		)
+		if err := rows.Scan(&id, &seq, &tableName, &from, &to, &onUpdate, &onDelete, &match); err != nil {
+			return false, err
+		}
+		if tableName == "sponsors_old" {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func recreateSponsorClicksTable(db *sql.DB) error {
+	if _, err := db.Exec(`PRAGMA foreign_keys=OFF;`); err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE sponsor_clicks RENAME TO sponsor_clicks_old;`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE TABLE sponsor_clicks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        sponsor_id INTEGER NOT NULL,
+        device_id TEXT,
+        clicked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+        FOREIGN KEY (sponsor_id) REFERENCES sponsors(id) ON DELETE CASCADE
+);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO sponsor_clicks (id, event_id, sponsor_id, device_id, clicked_at)
+SELECT id, event_id, sponsor_id, device_id, clicked_at FROM sponsor_clicks_old;`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_clicks_event ON sponsor_clicks(event_id);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_clicks_sponsor ON sponsor_clicks(sponsor_id);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE sponsor_clicks_old;`); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	_, _ = db.Exec(`PRAGMA foreign_keys=ON;`)
+	return nil
+}
+
+func recreateSponsorExposuresTable(db *sql.DB) error {
+	if _, err := db.Exec(`PRAGMA foreign_keys=OFF;`); err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE sponsor_exposures RENAME TO sponsor_exposures_old;`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE TABLE sponsor_exposures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        sponsor_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL,
+        exposure_type TEXT NOT NULL,
+        duration_ms INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+        FOREIGN KEY (sponsor_id) REFERENCES sponsors(id) ON DELETE CASCADE
+);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO sponsor_exposures (id, event_id, sponsor_id, device_id, exposure_type, duration_ms, created_at)
+SELECT id, event_id, sponsor_id, device_id, exposure_type, duration_ms, created_at FROM sponsor_exposures_old;`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_event ON sponsor_exposures(event_id);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_sponsor ON sponsor_exposures(sponsor_id);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_device_event ON sponsor_exposures(event_id, device_id);`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE sponsor_exposures_old;`); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	_, _ = db.Exec(`PRAGMA foreign_keys=ON;`)
+	return nil
 }
 
 func normalizeRosterSchema(value int) int {

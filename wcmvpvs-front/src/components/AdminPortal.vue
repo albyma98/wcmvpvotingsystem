@@ -1779,6 +1779,216 @@
           </p>
         </section>
 
+        <section v-else-if="section === 'marketing'" class="card marketing-card">
+          <header class="section-header">
+            <div>
+              <h2>Marketing &amp; Fan CRM (PRO)</h2>
+              <p>
+                Profilazione tifosi, segmentazione e KPI marketing collegati al club corrente.
+                Le funzionalità di esportazione sono disponibili solo con consensi validi.
+              </p>
+            </div>
+            <button class="btn outline" type="button" @click="refreshMarketingArea" :disabled="isLoadingMarketing">
+              {{ isLoadingMarketing ? "Aggiornamento…" : "Aggiorna dati" }}
+            </button>
+          </header>
+
+          <p v-if="marketingError" class="error">{{ marketingError }}</p>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-label">Tifosi profilati</span>
+              <strong class="stat-value">{{ marketingOverview?.profiled_fans ?? 0 }}</strong>
+              <small v-if="marketingOverview" class="stat-helper">
+                {{ marketingOverview.profiled_fans }} su {{ marketingOverview.total_voters || 0 }} votanti totali
+              </small>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Opt-in marketing</span>
+              <strong class="stat-value">{{ marketingOverview?.segment_participation?.opt_in ?? 0 }}</strong>
+              <small class="stat-helper">Consensi attivi per comunicazioni</small>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Punteggio medio</span>
+              <strong class="stat-value">
+                {{ marketingOverview?.gamification?.average_points?.toFixed?.(1) ?? '0.0' }}
+              </strong>
+              <small class="stat-helper">Top fan: {{ marketingTopFanLabel }}</small>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Badge configurati</span>
+              <strong class="stat-value">{{ marketingBadges.length }}</strong>
+              <small class="stat-helper">Soglie personalizzate</small>
+            </div>
+          </div>
+
+          <div class="grid two-columns marketing-panels">
+            <div class="panel">
+              <h3>Segmentazione rapida</h3>
+              <div class="form-grid">
+                <label>
+                  Fascia d'età
+                  <select v-model="marketingFilters.ageRange">
+                    <option value="">Tutte</option>
+                    <option value="18-24">18–24</option>
+                    <option value="25-34">25–34</option>
+                    <option value="35-44">35–44</option>
+                    <option value="45+">45+</option>
+                  </select>
+                </label>
+                <label>
+                  Città / CAP
+                  <input v-model.trim="marketingFilters.location" type="text" placeholder="Es. Trento" />
+                </label>
+                <label>
+                  Sponsor preferito
+                  <input
+                    v-model.trim="marketingFilters.sponsorPreference"
+                    type="text"
+                    placeholder="Es. food & beverage"
+                  />
+                </label>
+                <label>
+                  Canale contatto preferito
+                  <select v-model="marketingFilters.contactChannel">
+                    <option value="">Tutti</option>
+                    <option value="email">Email</option>
+                    <option value="app">App</option>
+                    <option value="nessuno">Nessuno</option>
+                  </select>
+                </label>
+                <label>
+                  Min punti
+                  <input v-model.number="marketingFilters.minPoints" type="number" min="0" step="5" />
+                </label>
+                <label>
+                  Badge posseduto
+                  <input
+                    v-model.trim="marketingFilters.badge"
+                    type="text"
+                    placeholder="Rookie, Super Tifoso"
+                  />
+                </label>
+                <label>
+                  Interessi
+                  <input
+                    v-model.trim="marketingFilters.interest"
+                    type="text"
+                    placeholder="Statistiche, news"
+                  />
+                </label>
+              </div>
+              <div class="actions-row">
+                <button class="btn primary" type="button" :disabled="isLoadingMarketing" @click="loadMarketingProfiles">
+                  Applica filtri
+                </button>
+                <button
+                  class="btn outline"
+                  type="button"
+                  :disabled="isLoadingMarketing"
+                  @click="exportMarketingSegment"
+                >
+                  Esporta CSV (PRO)
+                </button>
+              </div>
+              <div class="table-wrapper">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Tifoso</th>
+                      <th>Contatto</th>
+                      <th>Età</th>
+                      <th>Città</th>
+                      <th>Frequenza</th>
+                      <th>Badge</th>
+                      <th>Ultima attività</th>
+                      <th>Punti</th>
+                      <th>Consensi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="profile in marketingProfiles" :key="profile.id">
+                      <td>
+                        <strong>{{ profile.first_name || 'Profilo' }} {{ profile.last_name }}</strong>
+                        <div class="field-hint">{{ profile.sponsor_preference || 'N/D' }}</div>
+                      </td>
+                      <td>
+                        <div>{{ profile.email }}</div>
+                        <small class="field-hint">{{ profile.contact_channel || 'N/D' }}</small>
+                      </td>
+                      <td>{{ profile.age_range || 'N/D' }}</td>
+                      <td>{{ profile.location || 'N/D' }}</td>
+                      <td>{{ profile.attendance_frequency || 'N/D' }}</td>
+                      <td>{{ (profile.badges || []).join(', ') || 'N/D' }}</td>
+                      <td>
+                        <div>{{ profile.last_activity || 'N/D' }}</div>
+                        <small class="field-hint">{{ profile.last_activity_at || '' }}</small>
+                      </td>
+                      <td><strong>{{ profile.points || 0 }}</strong></td>
+                      <td>
+                        <small>
+                          Club: {{ profile.consent_club ? '✅' : '❌' }} · Sponsor:
+                          {{ profile.consent_sponsors ? '✅' : '❌' }} · Analytics:
+                          {{ profile.consent_analytics ? '✅' : '❌' }}
+                        </small>
+                      </td>
+                    </tr>
+                    <tr v-if="!marketingProfiles.length">
+                      <td colspan="7" class="empty">Nessun profilo corrisponde ai filtri attivi.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h3>Badge &amp; consensi</h3>
+              <div class="badge-list">
+                <div v-for="badge in marketingBadges" :key="badge.id" class="badge-item">
+                  <strong>{{ badge.name }}</strong>
+                  <p class="field-hint">{{ badge.description || 'Soglia personalizzata' }}</p>
+                  <span class="tag">{{ badge.threshold }} punti</span>
+                </div>
+                <p v-if="!marketingBadges.length" class="field-hint">Nessun badge configurato.</p>
+              </div>
+              <form class="form-grid badge-form" @submit.prevent="saveMarketingBadge">
+                <label>
+                  Nome badge
+                  <input v-model.trim="marketingBadgeForm.name" type="text" placeholder="Super Tifoso" required />
+                </label>
+                <label>
+                  Soglia punti
+                  <input v-model.number="marketingBadgeForm.threshold" type="number" min="1" step="5" required />
+                </label>
+                <label>
+                  Descrizione
+                  <textarea v-model.trim="marketingBadgeForm.description" rows="2" placeholder="Descrizione visibile al club" />
+                </label>
+                <button class="btn secondary" type="submit" :disabled="isLoadingMarketing">Salva badge</button>
+              </form>
+
+              <div class="consent-box" v-if="marketingConsents">
+                <h4>Consensi GDPR</h4>
+                <p class="field-hint">Totale log: {{ marketingConsents.breakdown.total }}</p>
+                <ul class="consent-list">
+                  <li>
+                    Club: {{ marketingConsents.breakdown.consent_club_yes }} sì /
+                    {{ marketingConsents.breakdown.consent_club_no }} no
+                  </li>
+                  <li>
+                    Sponsor: {{ marketingConsents.breakdown.consent_sponsors_yes }} sì /
+                    {{ marketingConsents.breakdown.consent_sponsors_no }} no
+                  </li>
+                  <li>
+                    Analytics: {{ marketingConsents.breakdown.consent_analytics_yes }} sì /
+                    {{ marketingConsents.breakdown.consent_analytics_no }} no
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section v-else-if="section === 'admins'" class="card">
           <header class="section-header">
             <h2>Utenti amministratori</h2>
@@ -2149,9 +2359,10 @@ const tabs = [
   { id: "teams", label: "Squadre" },
   { id: "players", label: "Giocatori" },
   { id: "sponsors", label: "Sponsor" },
+  { id: "marketing", label: "Marketing & Fan CRM" },
   { id: "admins", label: "Admin" },
 ];
-const STAFF_TAB_IDS = new Set(["closing", "results"]);
+const STAFF_TAB_IDS = new Set(["closing", "results", "marketing"]);
 
 const teams = ref([]);
 const players = ref([]);
@@ -2188,6 +2399,37 @@ const lastResultsUpdate = ref(null);
 const sponsorAnalytics = ref(null);
 const sponsorAnalyticsError = ref("");
 const isLoadingSponsorAnalytics = ref(false);
+const marketingOverview = ref(null);
+const marketingProfiles = ref([]);
+const marketingConsents = ref(null);
+const marketingBadges = ref([]);
+const marketingFilters = reactive({
+  ageRange: "",
+  location: "",
+  sponsorPreference: "",
+  contactChannel: "",
+  minPoints: 0,
+  badge: "",
+  interest: "",
+});
+const marketingBadgeForm = reactive({
+  name: "Super Tifoso",
+  threshold: 50,
+  description: "Profilazione completa e interazione continuativa",
+});
+const isLoadingMarketing = ref(false);
+const marketingError = ref("");
+const marketingTopFanLabel = computed(() => {
+  const top = marketingOverview.value?.gamification?.top_fans?.[0];
+  if (!top) {
+    return "N/D";
+  }
+  const profile = marketingProfiles.value.find((entry) => entry.id === top.fan_profile_id);
+  if (profile) {
+    return `${profile.first_name || "Fan"} (${top.points} pt)`;
+  }
+  return `Profilo #${top.fan_profile_id} (${top.points} pt)`;
+});
 const newTeamName = ref("");
 const playerSlotCount = MAX_PLAYER_SLOTS;
 const rosterSchema = ref(DEFAULT_ROSTER_SCHEMA);
@@ -5230,6 +5472,115 @@ function updateToolbarOffset() {
   portalRef.value.style.setProperty("--toolbar-height", `${height}px`);
 }
 
+function buildMarketingParams() {
+  const params = {};
+  if (marketingFilters.ageRange) params.age_range = marketingFilters.ageRange;
+  if (marketingFilters.location) params.location = marketingFilters.location;
+  if (marketingFilters.sponsorPreference)
+    params.sponsor_preference = marketingFilters.sponsorPreference;
+  if (marketingFilters.contactChannel) params.contact_channel = marketingFilters.contactChannel;
+  if (marketingFilters.minPoints > 0) params.min_points = marketingFilters.minPoints;
+  if (marketingFilters.badge) params.badge = marketingFilters.badge;
+  if (marketingFilters.interest) params.interest = marketingFilters.interest;
+  return params;
+}
+
+async function loadMarketingOverview() {
+  marketingError.value = "";
+  try {
+    const { data } = await secureRequest(() =>
+      apiClient.get("/admin/marketing/overview", authHeaders.value),
+    );
+    marketingOverview.value = data;
+    marketingBadges.value = data?.badges ?? [];
+  } catch (error) {
+    marketingError.value = "Impossibile recuperare la dashboard marketing.";
+  }
+}
+
+async function loadMarketingProfiles() {
+  marketingError.value = "";
+  try {
+    const params = buildMarketingParams();
+    const { data } = await secureRequest(() =>
+      apiClient.get("/admin/marketing/profiles", {
+        ...authHeaders.value,
+        params,
+      }),
+    );
+    marketingProfiles.value = data?.profiles ?? [];
+  } catch (error) {
+    marketingError.value = "Impossibile filtrare i profili tifosi.";
+  }
+}
+
+async function loadMarketingConsents() {
+  marketingError.value = "";
+  try {
+    const { data } = await secureRequest(() =>
+      apiClient.get("/admin/marketing/consents", authHeaders.value),
+    );
+    marketingConsents.value = data;
+  } catch (error) {
+    marketingError.value = "Impossibile leggere i consensi GDPR.";
+  }
+}
+
+async function refreshMarketingArea() {
+  if (isLoadingMarketing.value) {
+    return;
+  }
+  isLoadingMarketing.value = true;
+  try {
+    await loadMarketingOverview();
+    await loadMarketingProfiles();
+    await loadMarketingConsents();
+  } finally {
+    isLoadingMarketing.value = false;
+  }
+}
+
+async function saveMarketingBadge() {
+  marketingError.value = "";
+  if (!marketingBadgeForm.name.trim()) {
+    marketingError.value = "Inserisci un nome per il badge";
+    return;
+  }
+  try {
+    await secureRequest(() =>
+      apiClient.post("/admin/marketing/badges", marketingBadgeForm, authHeaders.value),
+    );
+    await refreshMarketingArea();
+  } catch (error) {
+    marketingError.value = "Impossibile salvare il badge";
+  }
+}
+
+async function exportMarketingSegment() {
+  marketingError.value = "";
+  try {
+    const params = { ...buildMarketingParams(), format: "csv" };
+    const response = await secureRequest(() =>
+      apiClient.get("/admin/marketing/profiles", {
+        ...authHeaders.value,
+        params,
+        responseType: "blob",
+      }),
+    );
+    const blob = new Blob([response.data], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "segmento-marketing.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    marketingError.value = "Esportazione non riuscita o non disponibile.";
+  }
+}
+
 function ensureSectionIsAllowed(tabList) {
   if (!isAuthenticated.value) {
     return;
@@ -5276,6 +5627,11 @@ watch(section, (value, oldValue) => {
   }
   if (value === "history") {
     loadEventHistory();
+  }
+  if (value === "marketing") {
+    refreshMarketingArea();
+  } else if (oldValue === "marketing") {
+    marketingError.value = "";
   }
   nextTick(updateToolbarOffset);
 });
