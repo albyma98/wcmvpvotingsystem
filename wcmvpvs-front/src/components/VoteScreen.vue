@@ -107,6 +107,17 @@ const isRefreshingVoteTotal = ref(false);
 let voteTotalTimer = null;
 let countdownTimer = null;
 const nowTimestamp = ref(Date.now());
+const waitingMessages = [
+  "Prepartita: preparati a scegliere il tuo MVP 🏆",
+  "Chi merita i riflettori oggi?",
+  "Il tuo voto può cambiare tutto",
+];
+const waitingMessageIndex = ref(0);
+let waitingMessageTimer = null;
+const activeWaitingMessage = computed(
+  () => waitingMessages[waitingMessageIndex.value] ?? waitingMessages[0],
+);
+const hasTriggeredFinalCountdownEffect = ref(false);
 
 const engagementStats = ref(null);
 const userEngagementSeconds = ref(0);
@@ -134,6 +145,38 @@ const startCountdownTimer = () => {
   stopCountdownTimer();
   updateNowTimestamp();
   countdownTimer = window.setInterval(updateNowTimestamp, 1000);
+};
+
+const stopWaitingMessageTimer = () => {
+  if (typeof window !== "undefined" && waitingMessageTimer) {
+    window.clearInterval(waitingMessageTimer);
+    waitingMessageTimer = null;
+  }
+};
+
+const startWaitingMessageTimer = () => {
+  if (typeof window === "undefined" || waitingMessageTimer || !isPreMatch.value) {
+    return;
+  }
+  waitingMessageTimer = window.setInterval(() => {
+    waitingMessageIndex.value = (waitingMessageIndex.value + 1) % waitingMessages.length;
+  }, 9000);
+};
+
+const isMobileDevice = () => {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return /Mobi|Android|iP(ad|hone|od)/i.test(navigator.userAgent || "");
+};
+
+const triggerCountdownVibration = () => {
+  if (!isMobileDevice()) {
+    return;
+  }
+  if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+    navigator.vibrate(60);
+  }
 };
 
 const resetEngagementState = () => {
@@ -1259,6 +1302,10 @@ const isVotingClosed = computed(() => {
     props.activeEvent.is_voting_closed;
   return Boolean(raw);
 });
+const isPreMatch = computed(() => !isVotingClosed.value && isEventUpcoming.value);
+const votingOpen = computed(
+  () => !isVotingClosed.value && !isEventUpcoming.value,
+);
 
 const showLiveResultsSection = computed(() => {
   if (!postVoteSettings.value.showVoteTrend) {
@@ -1391,6 +1438,10 @@ const countdownDaysLabel = computed(() => {
   const hourLabel = hours === 1 ? "ora" : "ore";
   return `${days} ${dayLabel} e ${hours} ${hourLabel} rimanenti`;
 });
+
+const isCountdownCritical = computed(
+  () => isPreMatch.value && countdownSeconds.value > 0 && countdownSeconds.value <= 5,
+);
 
 const countdownStartTimeLabel = computed(() => {
   const start = eventStartTimestamp.value;
@@ -1627,6 +1678,35 @@ watch(
   { immediate: true },
 );
 
+watch(
+  isPreMatch,
+  (active) => {
+    if (active) {
+      waitingMessageIndex.value = 0;
+      startWaitingMessageTimer();
+    } else {
+      stopWaitingMessageTimer();
+    }
+  },
+  { immediate: true },
+);
+
+watch(votingOpen, (open) => {
+  if (open) {
+    stopWaitingMessageTimer();
+  }
+});
+
+watch(isCountdownCritical, (critical) => {
+  if (critical && !hasTriggeredFinalCountdownEffect.value) {
+    triggerCountdownVibration();
+    hasTriggeredFinalCountdownEffect.value = true;
+  }
+  if (!critical) {
+    hasTriggeredFinalCountdownEffect.value = false;
+  }
+});
+
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const formatSeconds = (seconds) => {
@@ -1711,6 +1791,7 @@ onBeforeUnmount(() => {
   stopCountdownTimer();
   stopSponsorVisibilityInterval();
   teardownSponsorObserver();
+  stopWaitingMessageTimer();
 });
 
 const disableVotes = computed(
@@ -1943,7 +2024,16 @@ const handleQrError = () => {
           </div>
         </section>
         <section v-if="!hasVoted" class="px-4">
-          <div class="mb-6 text-center">
+          <div class="mb-6 text-center prematch-intro">
+            <Transition name="waiting-message-fade" mode="out-in">
+              <p
+                v-if="isPreMatch"
+                :key="activeWaitingMessage"
+                class="prematch-intro__message"
+              >
+                {{ activeWaitingMessage }}
+              </p>
+            </Transition>
             <h2
               class="text-lg font-semibold uppercase tracking-[0.1em] text-slate-200"
             >
@@ -1955,8 +2045,27 @@ const handleQrError = () => {
             <p v-else class="mt-2 text-sm text-slate-300">
               La votazione sarà disponibile all'inizio della partita.
             </p>
+            <div
+              v-if="isPreMatch && countdownLabel"
+              class="prematch-countdown"
+              :class="{ 'is-critical': isCountdownCritical }"
+            >
+              <span class="prematch-countdown__eyebrow">Countdown pre-match</span>
+              <span class="prematch-countdown__value">{{ countdownLabel }}</span>
+              <span v-if="countdownDaysLabel" class="prematch-countdown__meta">
+                {{ countdownDaysLabel }}
+              </span>
+            </div>
           </div>
-          <div v-if="fieldPlayers.length" class="relative h-[95svh]">
+          <div
+            v-if="fieldPlayers.length"
+            :class="['relative h-[95svh]', isPreMatch ? 'prematch-stage' : '']"
+          >
+            <div
+              v-if="isPreMatch"
+              class="prematch-shine"
+              aria-hidden="true"
+            ></div>
             <VolleyCourt
               class="block h-full w-full"
               :players="fieldPlayers"
@@ -1965,6 +2074,8 @@ const handleQrError = () => {
               :disable-votes="disableVotes"
               :is-voting="isVoting"
               :court-sponsors="visibleCourtSponsors"
+              :is-pre-match="isPreMatch"
+              :voting-open="votingOpen"
               @select="openPlayerModal"
               @sponsor-click="handleSponsorClick"
             />
@@ -2340,7 +2451,12 @@ const handleQrError = () => {
             <p class="countdown-dialog__subtitle">
               Il voto sarà disponibile tra
             </p>
-            <p class="countdown-timer">{{ countdownLabel }}</p>
+            <p
+              class="countdown-timer"
+              :class="{ 'countdown-critical': isCountdownCritical }"
+            >
+              {{ countdownLabel }}
+            </p>
             <p v-if="countdownDaysLabel" class="countdown-dialog__details">
               {{ countdownDaysLabel }}
             </p>
@@ -2518,6 +2634,136 @@ const handleQrError = () => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.waiting-message-fade-enter-active,
+.waiting-message-fade-leave-active {
+  transition: opacity 0.4s ease;
+}
+
+.waiting-message-fade-enter-from,
+.waiting-message-fade-leave-to {
+  opacity: 0;
+}
+
+.prematch-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.prematch-intro__message {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+}
+
+.prematch-countdown {
+  margin-top: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 1.25rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.14), rgba(59, 130, 246, 0.1));
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 18px 38px rgba(8, 15, 28, 0.35);
+}
+
+.prematch-countdown__eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #67e8f9;
+}
+
+.prematch-countdown__value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.08em;
+}
+
+.prematch-countdown__meta {
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.prematch-countdown.is-critical {
+  animation: countdown-pulse 0.9s ease-in-out infinite;
+  box-shadow: 0 20px 48px rgba(59, 130, 246, 0.4);
+}
+
+.prematch-stage {
+  isolation: isolate;
+}
+
+.prematch-shine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0) 20%,
+    rgba(148, 163, 184, 0.2) 40%,
+    rgba(255, 255, 255, 0) 60%
+  );
+  transform: translateX(-100%);
+  animation: prematch-shine 11s ease-in-out infinite;
+  mix-blend-mode: screen;
+  opacity: 0.6;
+  will-change: transform, opacity;
+  z-index: 2;
+}
+
+.countdown-critical {
+  animation: countdown-pulse 0.8s ease-in-out infinite, countdown-flash 2.2s ease-in-out;
+  transform-origin: center;
+}
+
+@keyframes prematch-shine {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.55;
+  }
+  18% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+}
+
+@keyframes countdown-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes countdown-flash {
+  0% {
+    opacity: 0.95;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.95;
+  }
 }
 
 .closed-banner {

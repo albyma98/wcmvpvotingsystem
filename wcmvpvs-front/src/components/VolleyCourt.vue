@@ -28,6 +28,14 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  isPreMatch: {
+    type: Boolean,
+    default: false,
+  },
+  votingOpen: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emits = defineEmits(['select', 'sponsor-click']);
@@ -282,21 +290,61 @@ const centerSponsorStyle = computed(() => ({
         </div>
       </div>
 
-      <div
-        v-for="player in players"
-        :key="player.id"
-        class="absolute"
-        :style="positionStyle(player)"
+      <TransitionGroup
+        name="prematch-card"
+        tag="div"
+        class="absolute inset-0"
+        :class="{ 'is-pre-match': isPreMatch }"
       >
-        <PlayerCard
-          :player="player"
-          :card-size="cardSize"
-          :is-selected="selectedPlayerId === player.id"
-          :disabled="disableVotes && selectedPlayerId !== player.id"
-          :is-voting="isVoting"
-          @select="() => emits('select', player)"
-        />
-      </div>
+        <div
+          v-for="player in players"
+          :key="player.id"
+          class="absolute prematch-card-item"
+          :style="positionStyle(player)"
+        >
+          <PlayerCard
+            :player="player"
+            :card-size="cardSize"
+            :is-selected="selectedPlayerId === player.id"
+            :disabled="disableVotes && selectedPlayerId !== player.id"
+            :is-voting="isVoting"
+            :is-pre-match="isPreMatch"
+            :voting-open="votingOpen"
+            @select="() => emits('select', player)"
+          />
+        </div>
+      </TransitionGroup>
     </div>
   </section>
 </template>
+
+<style scoped>
+.prematch-card-enter-active,
+.prematch-card-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.prematch-card-enter-from {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+}
+
+.prematch-card-enter-to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.prematch-card-leave-from {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.prematch-card-leave-to {
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+}
+
+.prematch-card-item {
+  will-change: transform, opacity;
+}
+</style>

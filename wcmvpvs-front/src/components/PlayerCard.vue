@@ -14,6 +14,14 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  isPreMatch: {
+    type: Boolean,
+    default: false,
+  },
+  votingOpen: {
+    type: Boolean,
+    default: false,
+  },
   disabled: {
     type: Boolean,
     default: false,
@@ -74,6 +82,16 @@ const overlayNumber = computed(() =>
     : '',
 );
 
+const interactionClass = computed(() => {
+  if (props.isPreMatch && !props.votingOpen) {
+    return 'pointer-events-none prematch-breathing';
+  }
+  if (props.disabled && !props.isSelected) {
+    return 'cursor-not-allowed opacity-60';
+  }
+  return 'cursor-pointer hover:scale-[1.03]';
+});
+
 const handleSelect = () => {
   if ((props.disabled && !props.isSelected) || props.isVoting) {
     return;
@@ -86,11 +104,11 @@ const handleSelect = () => {
   <div class="flex flex-col items-center" :style="wrapperStyle">
     <div
       :style="cardStyle"
-      class="relative rounded-[1.75rem] border border-white/10 bg-slate-950/60 transition-transform duration-200 ease-out"
+      class="relative rounded-[1.75rem] border border-white/10 bg-slate-950/60 transition-transform duration-300 ease-out"
       :class="[
         tierRingClass,
-        isSelected ? 'scale-[1.05]' : 'hover:scale-[1.03]',
-        disabled && !isSelected ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+        isSelected ? 'scale-[1.05]' : '',
+        interactionClass,
         isSelected ? 'ring-4' : 'ring-2',
       ]"
       @click="handleSelect"
@@ -123,3 +141,22 @@ const handleSelect = () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.prematch-breathing {
+  animation: prematch-breath 5.2s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes prematch-breath {
+  0% {
+    transform: scale(0.985);
+  }
+  50% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(0.98);
+  }
+}
+</style>
