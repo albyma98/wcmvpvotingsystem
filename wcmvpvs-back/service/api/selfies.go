@@ -32,15 +32,23 @@ var allowedSelfieTypes = map[string]string{
 	"image/webp": ".webp",
 }
 
+type selfiePayload struct {
+	Caption            string
+	Data               []byte
+	ContentType        string
+	AcceptedImageTerms bool
+}
+
 type selfieResponse struct {
-	ID           int    `json:"id"`
-	EventID      int    `json:"event_id"`
-	Caption      string `json:"caption"`
-	ImageURL     string `json:"image_url"`
-	ContentType  string `json:"content_type"`
-	Approved     bool   `json:"approved"`
-	ShowOnScreen bool   `json:"show_on_screen"`
-	SubmittedAt  string `json:"submitted_at"`
+	ID                 int    `json:"id"`
+	EventID            int    `json:"event_id"`
+	Caption            string `json:"caption"`
+	ImageURL           string `json:"image_url"`
+	ContentType        string `json:"content_type"`
+	Approved           bool   `json:"approved"`
+	ShowOnScreen       bool   `json:"show_on_screen"`
+	AcceptedImageTerms bool   `json:"accepted_image_terms"`
+	SubmittedAt        string `json:"submitted_at"`
 }
 
 type adminSelfieResponse struct {
@@ -64,6 +72,17 @@ func sanitizeCaption(value string) string {
 		return string(runes[:selfieMaxCaptionLength])
 	}
 	return trimmed
+}
+
+func parseAcceptedImageTerms(values ...string) bool {
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		switch normalized {
+		case "1", "true", "on", "yes", "y":
+			return true
+		}
+	}
+	return false
 }
 
 func (rt *_router) ensureSelfieDir(eventID int) (string, error) {
@@ -178,11 +197,12 @@ func validateSelfieContentType(contentType string) (string, error) {
 	return "", errors.New("unsupported file type")
 }
 
-func (rt *_router) readMultipartSelfie(r *http.Request) (string, []byte, string, error) {
+func (rt *_router) readMultipartSelfie(r *http.Request) (selfiePayload, error) {
 	if err := r.ParseMultipartForm(selfieMaxUploadSize); err != nil {
-		return "", nil, "", err
+		return selfiePayload{}, err
 	}
 	caption := sanitizeCaption(r.FormValue("caption"))
+	accepted := parseAcceptedImageTerms(r.FormValue("accepted_image_terms"), r.FormValue("acceptedImageTerms"))
 	fieldNames := []string{"image", "photo", "file"}
 	var file io.ReadCloser
 	var header *multipart.FileHeader
@@ -194,36 +214,39 @@ func (rt *_router) readMultipartSelfie(r *http.Request) (string, []byte, string,
 		}
 	}
 	if err != nil {
-		return "", nil, "", errors.New("missing file")
+		return selfiePayload{}, errors.New("missing file")
 	}
 	defer file.Close()
 
 	limited := io.LimitReader(file, selfieMaxUploadSize+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
-		return "", nil, "", err
+		return selfiePayload{}, err
 	}
 	if len(data) == 0 {
-		return "", nil, "", errors.New("empty image data")
+		return selfiePayload{}, errors.New("empty image data")
 	}
 	if len(data) > selfieMaxUploadSize {
-		return "", nil, "", errors.New("file too large")
+		return selfiePayload{}, errors.New("file too large")
 	}
 
 	contentType := header.Header.Get("Content-Type")
 	contentType = detectContentType(data, contentType)
-	return caption, data, contentType, nil
+
+	return selfiePayload{Caption: caption, Data: data, ContentType: contentType, AcceptedImageTerms: accepted}, nil
 }
 
-func (rt *_router) readJSONSelfie(r *http.Request) (string, []byte, string, error) {
+func (rt *_router) readJSONSelfie(r *http.Request) (selfiePayload, error) {
 	var payload struct {
-		Caption     string `json:"caption"`
-		ImageBase64 string `json:"image_base64"`
-		Image       string `json:"image"`
+		Caption               string `json:"caption"`
+		ImageBase64           string `json:"image_base64"`
+		Image                 string `json:"image"`
+		AcceptedImageTerms    bool   `json:"accepted_image_terms"`
+		AcceptedImageTermsAlt bool   `json:"acceptedImageTerms"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(r.Body, selfieMaxUploadSize*2))
 	if err := decoder.Decode(&payload); err != nil {
-		return "", nil, "", err
+		return selfiePayload{}, err
 	}
 	data, contentType, err := decodeBase64Image(payload.ImageBase64)
 	if err != nil {
@@ -232,15 +255,17 @@ func (rt *_router) readJSONSelfie(r *http.Request) (string, []byte, string, erro
 		}
 	}
 	if err != nil {
-		return "", nil, "", err
+		return selfiePayload{}, err
 	}
 	if len(data) > selfieMaxUploadSize {
-		return "", nil, "", errors.New("file too large")
+		return selfiePayload{}, errors.New("file too large")
 	}
-	return sanitizeCaption(payload.Caption), data, contentType, nil
+
+	accepted := payload.AcceptedImageTerms || payload.AcceptedImageTermsAlt
+	return selfiePayload{Caption: sanitizeCaption(payload.Caption), Data: data, ContentType: contentType, AcceptedImageTerms: accepted}, nil
 }
 
-func (rt *_router) extractSelfiePayload(r *http.Request) (string, []byte, string, error) {
+func (rt *_router) extractSelfiePayload(r *http.Request) (selfiePayload, error) {
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
 	switch {
 	case strings.HasPrefix(contentType, "multipart/form-data"):
@@ -254,14 +279,15 @@ func (rt *_router) extractSelfiePayload(r *http.Request) (string, []byte, string
 
 func buildSelfieResponsePayload(selfie database.Selfie) selfieResponse {
 	return selfieResponse{
-		ID:           selfie.ID,
-		EventID:      selfie.EventID,
-		Caption:      selfie.Caption,
-		ImageURL:     selfie.ImageURL,
-		ContentType:  selfie.ContentType,
-		Approved:     selfie.Approved,
-		ShowOnScreen: selfie.ShowOnScreen,
-		SubmittedAt:  selfie.CreatedAt,
+		ID:                 selfie.ID,
+		EventID:            selfie.EventID,
+		Caption:            selfie.Caption,
+		ImageURL:           selfie.ImageURL,
+		ContentType:        selfie.ContentType,
+		Approved:           selfie.Approved,
+		ShowOnScreen:       selfie.ShowOnScreen,
+		AcceptedImageTerms: selfie.AcceptedImageTerms,
+		SubmittedAt:        selfie.CreatedAt,
 	}
 }
 
@@ -313,19 +339,24 @@ func (rt *_router) postSelfie(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 
-	caption, data, contentType, err := rt.extractSelfiePayload(r)
+	selfiePayload, err := rt.extractSelfiePayload(r)
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("invalid selfie payload")
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Immagine non valida o troppo pesante.")
 		return
 	}
-	ext, err := validateSelfieContentType(contentType)
+	if !selfiePayload.AcceptedImageTerms {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Per inviare il selfie devi accettare il consenso sull'uso dell'immagine.")
+		return
+	}
+
+	ext, err := validateSelfieContentType(selfiePayload.ContentType)
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("unsupported selfie content type")
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Formato immagine non supportato.")
 		return
 	}
-	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	contentType := strings.ToLower(strings.TrimSpace(selfiePayload.ContentType))
 
 	storageDir, err := rt.ensureSelfieDir(eventID)
 	if err != nil {
@@ -342,7 +373,7 @@ func (rt *_router) postSelfie(w http.ResponseWriter, r *http.Request, ctx reqcon
 	filename := fmt.Sprintf("%s%s", fileID.String(), ext)
 	fullPath := filepath.Join(storageDir, filename)
 
-	if err := os.WriteFile(fullPath, data, 0o644); err != nil {
+	if err := os.WriteFile(fullPath, selfiePayload.Data, 0o644); err != nil {
 		ctx.Logger.WithError(err).Error("cannot persist selfie image")
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Impossibile salvare l'immagine.")
 		return
@@ -353,7 +384,7 @@ func (rt *_router) postSelfie(w http.ResponseWriter, r *http.Request, ctx reqcon
 		ctx.Logger.WithError(err).Error("cannot lookup previous selfie")
 	}
 
-	selfie, err := rt.db.SaveSelfie(eventID, deviceID, caption, fullPath, contentType)
+	selfie, err := rt.db.SaveSelfie(eventID, deviceID, selfiePayload.Caption, fullPath, contentType, selfiePayload.AcceptedImageTerms)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot store selfie metadata")
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Impossibile salvare il selfie.")

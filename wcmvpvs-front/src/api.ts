@@ -342,7 +342,12 @@ export async function submitReactionTestResult(eventId: number, reactionTimeMs: 
 
 export async function uploadSelfie(
   eventId: number,
-  { file, caption, imageBase64 }: { file?: File; caption?: string; imageBase64?: string },
+  {
+    file,
+    caption,
+    imageBase64,
+    acceptedImageTerms,
+  }: { file?: File; caption?: string; imageBase64?: string; acceptedImageTerms?: boolean },
 ) {
   if (!eventId) {
     return { ok: false, error: new Error('missing_event_id') };
@@ -353,6 +358,10 @@ export async function uploadSelfie(
     return { ok: false, error: new Error('missing_device_id') };
   }
 
+  if (!acceptedImageTerms) {
+    return { ok: false, error: new Error('missing_image_terms') };
+  }
+
   try {
     if (file instanceof File) {
       const formData = new FormData();
@@ -360,6 +369,7 @@ export async function uploadSelfie(
       if (caption) {
         formData.append('caption', caption);
       }
+      formData.append('accepted_image_terms', 'true');
 
       const { data } = await apiClient.post(`/events/${eventId}/selfies`, formData, {
         headers,
@@ -371,6 +381,7 @@ export async function uploadSelfie(
       const payload = {
         caption: caption ?? '',
         image_base64: imageBase64,
+        accepted_image_terms: Boolean(acceptedImageTerms),
       };
       const { data } = await apiClient.post(`/events/${eventId}/selfies`, payload, {
         headers: { ...headers, 'Content-Type': 'application/json' },

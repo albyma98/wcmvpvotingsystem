@@ -996,6 +996,10 @@
                   Dimensione:
                   {{ formatSelfieFileSize(selfie.file_size_bytes) || "N/D" }}
                 </p>
+                <p class="selfie-admin-meta">
+                  Consenso uso immagine:
+                  <strong>{{ selfie.accepted_image_terms ? "Accettato" : "Non indicato" }}</strong>
+                </p>
                 <p class="selfie-admin-status">
                   Stato: <strong>{{ selfieStatusLabel(selfie) }}</strong>
                 </p>
@@ -2508,6 +2512,11 @@ const normalizeSelfieResponse = (item) => {
     typeof item?.image_url === "string" ? item.image_url.trim() : "";
   const approved = Boolean(item?.approved);
   const showOnScreen = Boolean(item?.show_on_screen);
+  const acceptedImageTerms = Boolean(
+    Object.prototype.hasOwnProperty.call(item || {}, "accepted_image_terms")
+      ? item.accepted_image_terms
+      : item?.acceptedImageTerms,
+  );
   const deviceToken =
     typeof item?.device_token === "string" ? item.device_token : "";
   const fileSize = Number(item?.file_size_bytes);
@@ -2529,6 +2538,7 @@ const normalizeSelfieResponse = (item) => {
       typeof item?.content_type === "string" ? item.content_type : "",
     approved,
     show_on_screen: showOnScreen,
+    accepted_image_terms: acceptedImageTerms,
     device_token: deviceToken,
     file_size_bytes: fileSizeBytes,
     submitted_at: submittedAt,
