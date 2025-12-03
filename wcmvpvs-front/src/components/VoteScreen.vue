@@ -13,6 +13,8 @@ import PlayerCard from "./PlayerCard.vue";
 import SelfieMvpSection from "./SelfieMvpSection.vue";
 import ReactionTestSection from "./ReactionTestSection.vue";
 import LiveResultsSection from "./LiveResultsSection.vue";
+import ArenaLightShow from "./ArenaLightShow.vue";
+import EpicOpeningModal from "./EpicOpeningModal.vue";
 import {
   apiClient,
   vote,
@@ -1808,9 +1810,18 @@ const disableVotes = computed(
     isOpeningGuardActive.value,
 );
 
-const isLightShowActive = computed(
-  () => !hasVoted.value && !isVotingClosed.value && !isEventUpcoming.value,
-);
+const lightShowState = computed(() => {
+  if (hasVoted.value || isVotingClosed.value) {
+    return "off";
+  }
+  if (isPrematch.value) {
+    return "prematch";
+  }
+  return "live";
+});
+
+const isLightShowActive = computed(() => lightShowState.value !== "off");
+const isLightShowCalm = computed(() => lightShowState.value === "live");
 
 const spotlightedPlayerId = computed(() => {
   const playerId = Number(votedPlayerId.value);
@@ -2063,28 +2074,24 @@ const handleQrError = () => {
           <div
             v-if="fieldPlayers.length"
             class="relative h-[95svh] court-stage"
-            :class="isPrematch ? 'prematch-mode' : ''"
+            :class="[
+              isPrematch ? 'prematch-mode' : '',
+              hasVoted ? 'court-stage--settled' : '',
+            ]"
           >
-            <div
-              class="court-stage__lights"
-              :class="{
-                'court-stage__lights--active': isLightShowActive,
-                'court-stage__lights--calm': !isLightShowActive,
-              }"
-              aria-hidden="true"
-            >
-              <span class="court-stage__beam court-stage__beam--one"></span>
-              <span class="court-stage__beam court-stage__beam--two"></span>
-              <span class="court-stage__wash"></span>
-            </div>
-            <div
+            <ArenaLightShow
               v-if="isLightShowActive"
-              class="court-stage__copy"
-              role="status"
-              aria-live="polite"
-            >
+              :players="fieldPlayers"
+              :active="isLightShowActive"
+              :calm="isLightShowCalm"
+              :prematch="isPrematch"
+              :spotlighted-player-id="spotlightedPlayerId"
+            />
+            <div v-if="isLightShowActive" class="court-stage__copy" role="status" aria-live="polite">
               <p class="court-stage__eyebrow">Gioco di luci in attesa del tuo MVP…</p>
-              <p class="court-stage__title">Scegli chi merita il titolo 🏆</p>
+              <p class="court-stage__title">
+                {{ isPrematch ? 'Pre-partita in scena' : 'Spettacolo live: scegli il campione 🏆' }}
+              </p>
             </div>
             <VolleyCourt
               class="block h-full w-full"
@@ -2096,7 +2103,7 @@ const handleQrError = () => {
               :court-sponsors="visibleCourtSponsors"
               :is-prematch="isPrematch"
               :activation-cue="cardActivationCue"
-              :light-show-active="isLightShowActive"
+              :light-show-active="isLightShowActive && !isPrematch"
               :spotlighted-player-id="spotlightedPlayerId"
               @select="openPlayerModal"
               @sponsor-click="handleSponsorClick"
@@ -2497,28 +2504,7 @@ const handleQrError = () => {
       ></div>
     </transition>
 
-    <transition name="rise">
-      <div
-        v-if="showOpeningModal"
-        class="fixed inset-0 z-[70] flex items-center justify-center px-6 py-10 opening-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="opening-title"
-      >
-        <div class="opening-modal__panel">
-          <p class="opening-modal__eyebrow">Live broadcast mode</p>
-          <h3 id="opening-title" class="opening-modal__title">
-            LE VOTAZIONI SONO APERTE
-          </h3>
-          <p class="opening-modal__subtitle">
-            Scegli il campione della partita 🏆
-          </p>
-          <button type="button" class="opening-modal__cta" @click="closeOpeningModal">
-            VOTA ORA
-          </button>
-        </div>
-      </div>
-    </transition>
+    <EpicOpeningModal :show="showOpeningModal" @close="closeOpeningModal" />
 
     <transition name="fade">
       <div
@@ -2733,54 +2719,11 @@ const handleQrError = () => {
 
 .court-stage {
   isolation: isolate;
+  transition: filter 0.4s ease, opacity 0.35s ease;
 }
 
-.court-stage__lights {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-  border-radius: 2.5rem;
-  z-index: 4;
-}
-
-.court-stage__wash {
-  position: absolute;
-  inset: -10% -15% 0;
-  background: radial-gradient(circle at 50% 20%, rgba(255, 229, 180, 0.2), transparent 55%),
-    linear-gradient(180deg, rgba(12, 18, 32, 0.35), rgba(12, 18, 32, 0.85));
-  mix-blend-mode: screen;
-  opacity: 0.7;
-  filter: blur(16px);
-  transition: opacity 0.35s ease;
-}
-
-.court-stage__beam {
-  position: absolute;
-  width: 120%;
-  height: 90%;
-  top: -8%;
-  background: linear-gradient(105deg, rgba(255, 232, 191, 0.4), rgba(255, 255, 255, 0));
-  filter: blur(18px);
-  opacity: 0.65;
-}
-
-.court-stage__beam--one {
-  left: -45%;
-  transform: rotate(-18deg);
-  animation: arena-beam-left 12s ease-in-out infinite;
-}
-
-.court-stage__beam--two {
-  right: -45%;
-  transform: rotate(18deg);
-  animation: arena-beam-right 11s ease-in-out infinite;
-}
-
-.court-stage__lights--calm .court-stage__beam,
-.court-stage__lights--calm .court-stage__wash {
-  animation-play-state: paused;
-  opacity: 0.3;
+.court-stage--settled {
+  filter: saturate(0.92) brightness(0.95);
 }
 
 .court-stage__copy {
@@ -2844,36 +2787,6 @@ const handleQrError = () => {
   z-index: 5;
 }
 
-@keyframes arena-beam-left {
-  0% {
-    transform: translateX(-12%) rotate(-20deg);
-    opacity: 0.45;
-  }
-  50% {
-    transform: translateX(36%) rotate(-10deg);
-    opacity: 0.9;
-  }
-  100% {
-    transform: translateX(8%) rotate(-16deg);
-    opacity: 0.6;
-  }
-}
-
-@keyframes arena-beam-right {
-  0% {
-    transform: translateX(12%) rotate(20deg);
-    opacity: 0.45;
-  }
-  50% {
-    transform: translateX(-32%) rotate(8deg);
-    opacity: 0.9;
-  }
-  100% {
-    transform: translateX(-6%) rotate(16deg);
-    opacity: 0.6;
-  }
-}
-
 .prematch-banner__title {
   margin-top: 0.75rem;
   font-size: clamp(1rem, 2.8vw, 1.5rem);
@@ -2897,87 +2810,6 @@ const handleQrError = () => {
     radial-gradient(circle at 80% 25%, rgba(255, 215, 128, 0.35), transparent 35%),
     linear-gradient(120deg, rgba(255, 255, 255, 0.08), rgba(255, 215, 128, 0.15), transparent);
   filter: saturate(1.2);
-}
-
-.opening-modal {
-  background: radial-gradient(circle at 50% 30%, rgba(8, 12, 24, 0.86), rgba(4, 6, 14, 0.92));
-  backdrop-filter: blur(6px);
-}
-
-.opening-modal__panel {
-  width: min(520px, 100%);
-  padding: clamp(1.5rem, 4vw, 2.75rem);
-  border-radius: 32px;
-  background: linear-gradient(145deg, rgba(26, 37, 59, 0.9), rgba(12, 18, 32, 0.9));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 28px 68px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-  text-align: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.opening-modal__panel::before {
-  content: "";
-  position: absolute;
-  inset: 12% -18%;
-  background: linear-gradient(120deg, rgba(255, 214, 102, 0.14), transparent 45%);
-  filter: blur(18px);
-  opacity: 0.8;
-}
-
-.opening-modal__panel::after {
-  content: "";
-  position: absolute;
-  inset: -40% -25% 50%;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.12), transparent 60%);
-  opacity: 0.35;
-}
-
-.opening-modal__eyebrow {
-  position: relative;
-  text-transform: uppercase;
-  letter-spacing: 0.35em;
-  font-weight: 700;
-  color: rgba(226, 232, 240, 0.75);
-  font-size: 0.7rem;
-  margin-bottom: 0.85rem;
-}
-
-.opening-modal__title {
-  position: relative;
-  font-size: clamp(1.5rem, 3.5vw, 2.4rem);
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  color: #f8fafc;
-  text-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
-}
-
-.opening-modal__subtitle {
-  position: relative;
-  margin-top: 1rem;
-  font-size: clamp(1rem, 2.8vw, 1.35rem);
-  color: rgba(241, 245, 249, 0.9);
-}
-
-.opening-modal__cta {
-  position: relative;
-  margin-top: 1.8rem;
-  width: 100%;
-  padding: 0.95rem 1.5rem;
-  border-radius: 9999px;
-  background: linear-gradient(120deg, #fbbf24, #f59e0b);
-  color: #0f172a;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.28em;
-  border: none;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 16px 36px rgba(251, 191, 36, 0.25);
-  animation: glow-pulse 2.6s ease-in-out infinite;
-}
-
-.opening-modal__cta:focus-visible {
-  outline: 2px solid #fbbf24;
-  outline-offset: 3px;
 }
 
 .closed-banner {

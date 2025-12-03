@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "axios": "^1.6.8",
+    "@vueuse/motion": "file:src/vendor/motion-stub.js",
+    "gsap": "file:src/vendor/gsap-stub.js",
     "vue": "^3.5.22",
     "vue-qrcode-reader": "^5.7.3"
   },
