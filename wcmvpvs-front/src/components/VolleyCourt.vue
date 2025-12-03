@@ -28,6 +28,14 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  isPrematch: {
+    type: Boolean,
+    default: false,
+  },
+  activationCue: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emits = defineEmits(['select', 'sponsor-click']);
@@ -43,10 +51,11 @@ const sponsorDimensions = computed(() => {
 const sponsorCardBaseClass =
   'pointer-events-auto group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_42px_rgba(8,15,28,0.45)] backdrop-blur';
 
-const positionStyle = computed(() => (player) => ({
+const positionStyle = computed(() => (player, index = 0) => ({
   left: `${player.position.x}%`,
   top: `${player.position.y}%`,
   transform: 'translate(-50%, -50%)',
+  '--card-index': index,
 }));
 
 const sponsorList = computed(() =>
@@ -283,10 +292,10 @@ const centerSponsorStyle = computed(() => ({
       </div>
 
       <div
-        v-for="player in players"
+        v-for="(player, index) in players"
         :key="player.id"
         class="absolute"
-        :style="positionStyle(player)"
+        :style="positionStyle(player, index)"
       >
         <PlayerCard
           :player="player"
@@ -294,6 +303,8 @@ const centerSponsorStyle = computed(() => ({
           :is-selected="selectedPlayerId === player.id"
           :disabled="disableVotes && selectedPlayerId !== player.id"
           :is-voting="isVoting"
+          :is-prematch="isPrematch"
+          :activation-cue="activationCue"
           @select="() => emits('select', player)"
         />
       </div>

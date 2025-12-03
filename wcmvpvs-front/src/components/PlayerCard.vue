@@ -22,6 +22,14 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  isPrematch: {
+    type: Boolean,
+    default: false,
+  },
+  activationCue: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emits = defineEmits(['select']);
@@ -86,15 +94,19 @@ const handleSelect = () => {
   <div class="flex flex-col items-center" :style="wrapperStyle">
     <div
       :style="cardStyle"
-      class="relative rounded-[1.75rem] border border-white/10 bg-slate-950/60 transition-transform duration-200 ease-out"
+      class="player-card relative rounded-[1.75rem] border border-white/10 bg-slate-950/60 transition-transform duration-200 ease-out"
       :class="[
         tierRingClass,
         isSelected ? 'scale-[1.05]' : 'hover:scale-[1.03]',
         disabled && !isSelected ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
         isSelected ? 'ring-4' : 'ring-2',
+        isPrematch ? 'player-card--prematch' : 'player-card--live',
+        activationCue && !isPrematch ? 'player-card--activation' : '',
       ]"
       @click="handleSelect"
     >
+      <span class="player-card__spotlight" aria-hidden="true"></span>
+      <span class="player-card__sweep" aria-hidden="true"></span>
       <div
         class="pointer-events-none absolute left-1/2 top-[100%] z-20  -translate-x-1/2 -translate-y-full px-6 text-center font-bold uppercase text-white"
       >
@@ -123,3 +135,112 @@ const handleSelect = () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.player-card {
+  overflow: hidden;
+  isolation: isolate;
+  transition: transform 220ms ease, filter 300ms ease;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 18px 32px rgba(0, 0, 0, 0.35);
+}
+
+.player-card--prematch {
+  filter: brightness(0.5) saturate(0.8);
+}
+
+.player-card--live {
+  filter: brightness(1);
+}
+
+.player-card--activation {
+  animation: card-ignite 1s ease;
+}
+
+.player-card__spotlight,
+.player-card__sweep {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  transition: opacity 300ms ease;
+}
+
+.player-card__spotlight {
+  background: radial-gradient(circle at 50% 40%, rgba(255, 221, 120, 0.32), transparent 45%);
+  opacity: 0;
+}
+
+.player-card__sweep {
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.32) 50%, transparent 70%);
+  transform: translateX(-120%);
+  opacity: 0;
+}
+
+.player-card--prematch .player-card__sweep {
+  opacity: 0.75;
+  animation: stadium-sweep 6s linear infinite;
+  animation-delay: calc(var(--card-index, 0) * 0.6s);
+}
+
+.player-card--live:hover .player-card__spotlight,
+.player-card--live:focus-visible .player-card__spotlight {
+  opacity: 0.9;
+  mix-blend-mode: screen;
+}
+
+.player-card--live:hover,
+.player-card--live:focus-visible {
+  transform: scale(1.03);
+}
+
+.player-card--live:active {
+  animation: card-bounce 260ms ease;
+}
+
+@keyframes stadium-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  50% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(180%);
+  }
+}
+
+@keyframes card-ignite {
+  0% {
+    filter: brightness(0.6) saturate(0.8);
+    box-shadow: inset 0 0 0 1px rgba(255, 214, 102, 0.35), 0 0 0 rgba(255, 214, 102, 0.55);
+    transform: scale(0.98);
+  }
+  50% {
+    filter: brightness(1.08) saturate(1.05);
+    box-shadow: inset 0 0 20px rgba(255, 214, 102, 0.5), 0 18px 40px rgba(255, 214, 102, 0.25);
+    transform: scale(1.04);
+  }
+  100% {
+    filter: brightness(1);
+    box-shadow: inset 0 0 0 1px rgba(255, 214, 102, 0.3), 0 18px 32px rgba(0, 0, 0, 0.35);
+    transform: scale(1);
+  }
+}
+
+@keyframes card-bounce {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.98);
+  }
+  100% {
+    transform: scale(1.02);
+  }
+}
+
+@media (hover: none) {
+  .player-card--live:active {
+    animation: card-bounce 260ms ease;
+  }
+}
+</style>
