@@ -2104,24 +2104,29 @@ const handleQrError = () => {
                 </h3>
               </div>
               <div class="voted-player-panel__card">
-                <div
-                  v-if="isEditingVote && fieldPlayers.length"
-                  class="voted-player-panel__court"
-                >
-                  <VolleyCourt
-                    class="block h-full w-full"
-                    :players="fieldPlayers"
-                    :card-size="afterVoteCardSize"
-                    :selected-player-id="votedPlayerId"
-                    :disable-votes="disableVotes"
-                    :is-voting="isVoting"
-                    :court-sponsors="visibleCourtSponsors"
-                    :is-pre-match="isPreMatch"
-                    :voting-open="votingOpen"
-                    @select="openPlayerModal"
-                    @sponsor-click="handleSponsorClick"
-                  />
-                </div>
+                <template v-if="isEditingVote">
+                  <div
+                    v-if="fieldPlayers.length"
+                    class="voted-player-panel__court"
+                  >
+                    <VolleyCourt
+                      class="block h-full w-full"
+                      :players="fieldPlayers"
+                      :card-size="afterVoteCardSize"
+                      :selected-player-id="votedPlayerId"
+                      :disable-votes="disableVotes"
+                      :is-voting="isVoting"
+                      :court-sponsors="visibleCourtSponsors"
+                      :is-pre-match="isPreMatch"
+                      :voting-open="votingOpen"
+                      @select="openPlayerModal"
+                      @sponsor-click="handleSponsorClick"
+                    />
+                  </div>
+                  <p v-else class="voted-player-panel__placeholder">
+                    I giocatori non sono disponibili al momento.
+                  </p>
+                </template>
                 <PlayerCard
                   v-else
                   :player="selectedPlayer"
@@ -2241,63 +2246,63 @@ const handleQrError = () => {
             </p>
           </div>
 
-          <div class="after-vote-selection">
-            <div class="after-vote-selection__header">
-              <p class="after-vote-selection__eyebrow">Hai votato:</p>
-              <h4 class="after-vote-selection__player">
-                {{ selectedPlayerName || "Il tuo giocatore" }}
-              </h4>
-              <p v-if="votingOpen" class="after-vote-selection__hint">
-                Puoi cambiare il tuo voto finché le votazioni sono aperte.
-              </p>
-              <p v-else class="after-vote-selection__hint">
-                Le votazioni sono chiuse. Il tuo voto finale è salvato.
-              </p>
-              <button
-                v-if="canEditVote && !isEditingVote"
-                type="button"
-                class="after-vote-selection__action"
-                @click="startVoteEdit"
-              >
-                Modifica il mio voto
-              </button>
-              <p v-else-if="isEditingVote" class="after-vote-selection__hint emphasize">
-                Puoi cambiare il tuo voto finché le votazioni sono aperte.
-              </p>
-              <p v-if="voteUpdateMessage" class="after-vote-selection__confirmation">
-                {{ voteUpdateMessage }}
-              </p>
-            </div>
+            <div v-if="!showVoteSummary" class="after-vote-selection">
+              <div class="after-vote-selection__header">
+                <p class="after-vote-selection__eyebrow">Hai votato:</p>
+                <h4 class="after-vote-selection__player">
+                  {{ selectedPlayerName || "Il tuo giocatore" }}
+                </h4>
+                <p v-if="votingOpen" class="after-vote-selection__hint">
+                  Puoi cambiare il tuo voto finché le votazioni sono aperte.
+                </p>
+                <p v-else class="after-vote-selection__hint">
+                  Le votazioni sono chiuse. Il tuo voto finale è salvato.
+                </p>
+                <button
+                  v-if="canEditVote && !isEditingVote"
+                  type="button"
+                  class="after-vote-selection__action"
+                  @click="startVoteEdit"
+                >
+                  Modifica il mio voto
+                </button>
+                <p v-else-if="isEditingVote" class="after-vote-selection__hint emphasize">
+                  Puoi cambiare il tuo voto finché le votazioni sono aperte.
+                </p>
+                <p v-if="voteUpdateMessage" class="after-vote-selection__confirmation">
+                  {{ voteUpdateMessage }}
+                </p>
+              </div>
 
-            <div
-              v-if="fieldPlayers.length"
-              class="after-vote-selection__court"
-              :class="{ 'is-locked': !canSelectPlayers }"
-            >
-              <VolleyCourt
-                class="block h-full w-full"
-                :players="fieldPlayers"
-                :card-size="afterVoteCardSize"
-                :selected-player-id="votedPlayerId"
-                :disable-votes="disableVotes"
-                :is-voting="isVoting"
-                :court-sponsors="visibleCourtSponsors"
-                :is-pre-match="isPreMatch"
-                :voting-open="votingOpen"
-                @select="openPlayerModal"
-                @sponsor-click="handleSponsorClick"
-              />
+              <div
+                v-if="fieldPlayers.length"
+                class="after-vote-selection__court"
+                :class="{ 'is-locked': !canSelectPlayers }"
+              >
+                <VolleyCourt
+                  class="block h-full w-full"
+                  :players="fieldPlayers"
+                  :card-size="afterVoteCardSize"
+                  :selected-player-id="votedPlayerId"
+                  :disable-votes="disableVotes"
+                  :is-voting="isVoting"
+                  :court-sponsors="visibleCourtSponsors"
+                  :is-pre-match="isPreMatch"
+                  :voting-open="votingOpen"
+                  @select="openPlayerModal"
+                  @sponsor-click="handleSponsorClick"
+                />
+              </div>
+              <p v-else-if="isLoadingPlayers" class="players-message">
+                Caricamento dei giocatori in corso…
+              </p>
+              <p v-else-if="playersError" class="players-message error">
+                {{ playersError }}
+              </p>
+              <p v-else class="players-message">
+                I giocatori non sono ancora stati configurati. Torna più tardi!
+              </p>
             </div>
-            <p v-else-if="isLoadingPlayers" class="players-message">
-              Caricamento dei giocatori in corso…
-            </p>
-            <p v-else-if="playersError" class="players-message error">
-              {{ playersError }}
-            </p>
-            <p v-else class="players-message">
-              I giocatori non sono ancora stati configurati. Torna più tardi!
-            </p>
-          </div>
 
           <LiveResultsSection
             v-if="showLiveResultsSection"
@@ -3025,6 +3030,13 @@ const handleQrError = () => {
   padding: 0.5rem;
   background: radial-gradient(circle at 50% 30%, rgba(250, 204, 21, 0.08), transparent 60%);
   border-radius: 1.5rem;
+}
+
+.voted-player-panel__placeholder {
+  margin: 1.5rem 0;
+  text-align: center;
+  color: #cbd5e1;
+  letter-spacing: 0.04em;
 }
 
 .voted-player-panel__court {
