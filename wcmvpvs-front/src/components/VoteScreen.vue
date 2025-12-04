@@ -2957,7 +2957,8 @@ const handleQrError = () => {
   display: grid;
   gap: 1rem;
   align-items: stretch;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
 }
 
 .voted-player-panel {
@@ -3646,10 +3647,6 @@ const handleQrError = () => {
 }
 
 @media (min-width: 900px) {
-  .post-vote-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .voted-player-panel {
     padding: 2rem 1.75rem;
   }
