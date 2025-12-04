@@ -133,6 +133,7 @@ const courtSponsors = computed(() => {
   return sponsors.value.slice(0, 2);
 });
 const sponsorSectionRef = ref(null);
+const votingSectionRef = ref(null);
 const sponsorObserverThresholds = [0, 0.25, 0.5, 0.75, 1];
 let sponsorIntersectionObserver = null;
 let sponsorVisibilityInterval = 0;
@@ -653,11 +654,18 @@ const voteUpdateMessage = ref("");
 const showTicketModal = ref(false);
 const showAlreadyVotedModal = ref(false);
 const ticketCode = ref("");
+const ticketQrData = ref("");
 const ticketQrUrl = ref("");
 const ticketLoadError = ref("");
 const isTicketLoading = ref(false);
 const showVoteSummary = computed(
   () => hasVoted.value && Boolean(ticketCode.value || ticketQrUrl.value),
+);
+const showVotingSection = computed(
+  () => !hasVoted.value || isEditingVote.value,
+);
+const showAfterVoteSection = computed(
+  () => hasVoted.value && !isEditingVote.value,
 );
 
 const buildQrUrl = (qrData) =>
@@ -1165,6 +1173,7 @@ async function refreshVoteStatus(eventId) {
   const storedTicket = loadStoredTicketData(eventId);
   if (storedTicket) {
     ticketCode.value = storedTicket.code;
+    ticketQrData.value = storedTicket.qrData;
     ticketQrUrl.value = buildQrUrl(storedTicket.qrData);
     isTicketLoading.value = false;
   }
@@ -1895,8 +1904,18 @@ const startVoteEdit = () => {
   if (!canEditVote.value) {
     return;
   }
+  pendingPlayer.value = null;
+  errorMessage.value = "";
   isEditingVote.value = true;
   voteUpdateMessage.value = "";
+  nextTick(() => {
+    if (votingSectionRef.value?.scrollIntoView) {
+      votingSectionRef.value.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  });
 };
 
 const voteForPlayer = async (player) => {
@@ -1938,22 +1957,31 @@ const voteForPlayer = async (player) => {
         ? `Voto aggiornato! Ora il tuo MVP è ${resolvedPlayerName}.`
         : `Voto registrato! Ora il tuo MVP è ${resolvedPlayerName}.`;
 
-      const codeSource = voteResult.code || "";
-      const qrSource = voteResult.qr_data || "";
+      const hadExistingTicket = Boolean(ticketCode.value);
+      const previousQrData = ticketQrData.value?.trim();
+      const codeSource = ticketCode.value?.trim() || voteResult.code || "";
+      const qrSource =
+        ticketQrData.value?.trim() || (codeSource ? voteResult.qr_data || "" : "");
 
       if (codeSource) {
         ticketCode.value = codeSource;
+        ticketQrData.value = qrSource;
         ticketLoadError.value = "";
-        isTicketLoading.value = Boolean(qrSource);
-        ticketQrUrl.value = buildQrUrl(qrSource);
+        isTicketLoading.value = Boolean(qrSource && !ticketQrUrl.value);
+        const resolvedQrUrl = buildQrUrl(qrSource);
+        if (resolvedQrUrl) {
+          ticketQrUrl.value = resolvedQrUrl;
+        }
         if (!qrSource) {
           isTicketLoading.value = false;
         }
-        persistTicketData(eventId, {
-          code: codeSource,
-          qrData: qrSource,
-        });
-        showTicketModal.value = true;
+        if (!hadExistingTicket || (!previousQrData && qrSource)) {
+          persistTicketData(eventId, {
+            code: codeSource,
+            qrData: qrSource,
+          });
+        }
+        showTicketModal.value = !hadExistingTicket;
         refreshVoteTotal({ silent: true });
       } else {
         console.warn("voteForPlayer: missing ticket data", response);
@@ -2104,36 +2132,16 @@ const handleQrError = () => {
                 </h3>
               </div>
               <div class="voted-player-panel__card">
-                <template v-if="isEditingVote">
-                  <div
-                    v-if="fieldPlayers.length"
-                    class="voted-player-panel__court"
-                  >
-                    <VolleyCourt
-                      class="block h-full w-full"
-                      :players="fieldPlayers"
-                      :card-size="afterVoteCardSize"
-                      :selected-player-id="votedPlayerId"
-                      :disable-votes="disableVotes"
-                      :is-voting="isVoting"
-                      :court-sponsors="visibleCourtSponsors"
-                      :is-pre-match="isPreMatch"
-                      :voting-open="votingOpen"
-                      @select="openPlayerModal"
-                      @sponsor-click="handleSponsorClick"
-                    />
-                  </div>
-                  <p v-else class="voted-player-panel__placeholder">
-                    I giocatori non sono disponibili al momento.
-                  </p>
-                </template>
                 <PlayerCard
-                  v-else
+                  v-if="selectedPlayer"
                   :player="selectedPlayer"
                   :card-size="180"
                   :is-selected="true"
                   :voting-open="votingOpen"
                 />
+                <p v-else class="voted-player-panel__placeholder">
+                  I giocatori non sono disponibili al momento.
+                </p>
               </div>
               <button
                 type="button"
@@ -2146,7 +2154,7 @@ const handleQrError = () => {
             </div>
           </div>
         </section>
-        <section v-if="!hasVoted" class="px-4">
+        <section v-if="showVotingSection" ref="votingSectionRef" class="px-4">
           <div class="mb-6 text-center prematch-intro">
             <Transition name="waiting-message-fade" mode="out-in">
               <p
@@ -2168,6 +2176,13 @@ const handleQrError = () => {
             <p v-else class="mt-2 text-sm text-slate-300">
               La votazione sarà disponibile all'inizio della partita.
             </p>
+            <div
+              v-if="isEditingVote"
+              class="mt-4 rounded-2xl border border-amber-300/40 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-100 shadow-[0_12px_28px_rgba(251,191,36,0.15)]"
+            >
+              Stai modificando il tuo voto: il codice della lotteria resta valido.
+              Tocca il giocatore che preferisci per aggiornare la tua scelta.
+            </div>
             <div
               v-if="isPreMatch && countdownLabel"
               class="prematch-countdown"
@@ -2213,7 +2228,7 @@ const handleQrError = () => {
             I giocatori non sono ancora stati configurati. Torna più tardi!
           </p>
         </section>
-        <section v-else class="px-4 after-vote-section">
+        <section v-if="showAfterVoteSection" class="px-4 after-vote-section">
           <div class="after-vote-panel">
             <h3>{{ eventTitle }}</h3>
             <p>
