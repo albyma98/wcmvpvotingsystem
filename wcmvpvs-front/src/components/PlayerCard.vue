@@ -53,6 +53,12 @@ const wrapperStyle = computed(() => ({
   width: `${props.cardSize}px`,
 }));
 
+const selectedGlowClass = computed(() =>
+  props.isSelected
+    ? 'selected-glow'
+    : 'card-shell',
+);
+
 const playerNameParts = computed(() => {
   const rawName = props.player.name?.trim();
   if (!rawName) {
@@ -107,6 +113,7 @@ const handleSelect = () => {
       class="relative rounded-[1.75rem] border border-white/10 bg-slate-950/60 transition-transform duration-300 ease-out"
       :class="[
         tierRingClass,
+        selectedGlowClass,
         isSelected ? 'scale-[1.05]' : '',
         interactionClass,
         isSelected ? 'ring-4' : 'ring-2',
@@ -180,6 +187,17 @@ const handleSelect = () => {
 
 .selection-badge__label {
   white-space: nowrap;
+}
+
+.card-shell {
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.38);
+}
+
+.selected-glow {
+  box-shadow:
+    0 22px 48px rgba(250, 204, 21, 0.45),
+    0 12px 32px rgba(0, 0, 0, 0.35);
+  filter: saturate(1.06) brightness(1.06);
 }
 
 @keyframes prematch-breath {
