@@ -1784,6 +1784,14 @@ const updateCardSize = () => {
   cardSize.value = clamp(Math.min(sizeFromWidth, sizeFromHeight), 58, 112);
 };
 
+const afterVoteCardSize = computed(() =>
+  clamp(
+    Math.round(cardSize.value * 0.82),
+    54,
+    Math.max(cardSize.value - 12, 72),
+  ),
+);
+
 onMounted(() => {
   updateCardSize();
   window.addEventListener("resize", updateCardSize, { passive: true });
@@ -2215,7 +2223,7 @@ const handleQrError = () => {
               <VolleyCourt
                 class="block h-full w-full"
                 :players="fieldPlayers"
-                :card-size="cardSize"
+                :card-size="afterVoteCardSize"
                 :selected-player-id="votedPlayerId"
                 :disable-votes="disableVotes"
                 :is-voting="isVoting"
