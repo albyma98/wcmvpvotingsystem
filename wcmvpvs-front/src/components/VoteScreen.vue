@@ -21,6 +21,7 @@ import {
   submitEventFeedback,
   trackPageEngagement,
   fetchEventEngagement,
+  fetchContactBonuses,
   submitContactChance,
 } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, mapPlayersToLayout } from "../roster";
@@ -155,6 +156,7 @@ const contactFormError = ref("");
 const contactFormSuccess = ref("");
 const isSubmittingContact = ref(false);
 const hasContactBonus = ref(false);
+const bonusCodes = ref([]);
 const contactCelebration = ref(false);
 
 const totalVotes = ref(0);
@@ -721,6 +723,7 @@ const buildQrUrl = (qrData) =>
     : "";
 
 const TICKET_STORAGE_PREFIX = "wcmvp-ticket:";
+const BONUS_STORAGE_PREFIX = "wcmvp-bonus:";
 
 const getTicketStorageKey = (eventId) =>
   `${TICKET_STORAGE_PREFIX}${eventId}`;
@@ -738,6 +741,89 @@ function persistTicketData(eventId, data) {
     console.warn("Impossibile salvare il ticket in locale", error);
   }
 }
+
+const getBonusStorageKey = (eventId) => `${BONUS_STORAGE_PREFIX}${eventId}`;
+
+function persistBonusCodes(eventId, bonuses) {
+  if (typeof window === "undefined" || !eventId) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(getBonusStorageKey(eventId), JSON.stringify(bonuses));
+  } catch (error) {
+    console.warn("Impossibile salvare i bonus in locale", error);
+  }
+}
+
+function loadStoredBonusCodes(eventId) {
+  if (typeof window === "undefined" || !eventId) {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getBonusStorageKey(eventId));
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .map((item) => ({
+        code: typeof item.code === "string" ? item.code.trim() : "",
+        signature: typeof item.signature === "string" ? item.signature.trim() : "",
+        contactType:
+          typeof item.contactType === "string"
+            ? item.contactType
+            : typeof item.contact_type === "string"
+              ? item.contact_type
+              : "",
+        createdAt:
+          typeof item.createdAt === "string"
+            ? item.createdAt
+            : typeof item.created_at === "string"
+              ? item.created_at
+              : "",
+      }))
+      .filter((item) => item.code);
+  } catch (error) {
+    console.warn("Impossibile caricare i bonus salvati", error);
+    return [];
+  }
+}
+
+const normalizeBonusEntries = (entries = []) => {
+  const sanitized = Array.isArray(entries) ? entries : [];
+  const unique = [];
+  const seen = new Set();
+
+  for (const entry of sanitized) {
+    const code = typeof entry.code === "string" ? entry.code.trim() : "";
+    if (!code || seen.has(code)) {
+      continue;
+    }
+    seen.add(code);
+    unique.push({
+      code,
+      signature: typeof entry.signature === "string" ? entry.signature.trim() : "",
+      contactType:
+        typeof entry.contactType === "string"
+          ? entry.contactType
+          : typeof entry.contact_type === "string"
+            ? entry.contact_type
+            : "",
+      createdAt:
+        typeof entry.createdAt === "string"
+          ? entry.createdAt
+          : typeof entry.created_at === "string"
+            ? entry.created_at
+            : "",
+    });
+  }
+
+  return unique;
+};
 
 function loadStoredTicketData(eventId) {
   if (typeof window === "undefined" || !eventId) {
@@ -1577,20 +1663,27 @@ watch(
       refreshVoteTotal();
       startVoteTotalPolling();
     } else {
-      isVoteTotalLoading.value = false;
-    }
-    hasVoted.value = false;
-    isEditingVote.value = false;
-    voteUpdateMessage.value = "";
-    const storedTicket = loadStoredTicketData(eventId);
-    if (storedTicket) {
-      ticketCode.value = storedTicket.code;
-      ticketQrUrl.value = buildQrUrl(storedTicket.qrData);
-      hasVoted.value = Boolean(storedTicket.code);
-    }
-    if (eventId) {
-      refreshVoteStatus(eventId);
-    }
+    isVoteTotalLoading.value = false;
+  }
+  hasVoted.value = false;
+  isEditingVote.value = false;
+  voteUpdateMessage.value = "";
+  hasContactBonus.value = false;
+  bonusCodes.value = [];
+  const storedTicket = loadStoredTicketData(eventId);
+  if (storedTicket) {
+    ticketCode.value = storedTicket.code;
+    ticketQrUrl.value = buildQrUrl(storedTicket.qrData);
+    hasVoted.value = Boolean(storedTicket.code);
+  }
+  const storedBonuses = loadStoredBonusCodes(eventId);
+  if (storedBonuses.length) {
+    updateBonusState(eventId, storedBonuses);
+  }
+  if (eventId) {
+    refreshVoteStatus(eventId);
+    loadBonusCodes(eventId);
+  }
     if (eventId && isVotingClosed.value) {
       loadEngagementStats(eventId);
     }
@@ -2104,6 +2197,32 @@ const handleQrError = () => {
     "Non siamo riusciti a caricare il QR del ticket. Riprova tra qualche istante.";
 };
 
+const updateBonusState = (eventId, bonuses) => {
+  const normalized = normalizeBonusEntries(bonuses);
+  bonusCodes.value = normalized;
+  hasContactBonus.value = normalized.length > 0 || hasContactBonus.value;
+  if (normalized.length) {
+    persistBonusCodes(eventId, normalized);
+  }
+};
+
+const loadBonusCodes = async (eventId) => {
+  if (!eventId) {
+    bonusCodes.value = [];
+    hasContactBonus.value = false;
+    return;
+  }
+
+  try {
+    const { ok, bonuses } = await fetchContactBonuses(eventId);
+    if (ok) {
+      updateBonusState(eventId, bonuses);
+    }
+  } catch (error) {
+    console.warn("Impossibile recuperare i codici bonus", error);
+  }
+};
+
 const submitContactBonus = async () => {
   contactFormError.value = "";
   contactFormSuccess.value = "";
@@ -2140,6 +2259,18 @@ const submitContactBonus = async () => {
 
     if (!ok) {
       hasContactBonus.value = status === 409 || hasContactBonus.value;
+      if (Array.isArray(data?.bonuses) || data?.bonus_code) {
+        const bonuses = Array.isArray(data?.bonuses)
+          ? data?.bonuses
+          : [
+              {
+                code: data?.bonus_code,
+                signature: data?.bonus_signature,
+                contactType: detectedType,
+              },
+            ];
+        updateBonusState(eventId, bonuses);
+      }
       contactFormError.value =
         message ||
         (status === 409
@@ -2151,6 +2282,18 @@ const submitContactBonus = async () => {
     hasContactBonus.value = true;
     contactFormSuccess.value =
       data?.message || "🎉 Extra chance aggiunta! Buona fortuna!";
+    if (Array.isArray(data?.bonuses) || data?.bonus_code) {
+      const bonuses = Array.isArray(data?.bonuses)
+        ? data?.bonuses
+        : [
+            {
+              code: data?.bonus_code,
+              signature: data?.bonus_signature,
+              contactType: detectedType,
+            },
+          ];
+      updateBonusState(eventId, bonuses);
+    }
     contactValueInput.value = sanitizedValue;
     contactCelebration.value = true;
     if (typeof window !== "undefined") {
@@ -2220,6 +2363,21 @@ const submitContactBonus = async () => {
                 <p class="vote-summary__code" aria-label="Codice di voto">
                   Codice: <span>{{ ticketCode }}</span>
                 </p>
+                <div v-if="bonusCodes.length" class="vote-summary__bonus-block">
+                  <p class="vote-summary__label">Bonus:</p>
+                  <ul class="vote-summary__bonus-list">
+                    <li
+                      v-for="bonus in bonusCodes"
+                      :key="bonus.code"
+                      class="vote-summary__bonus-item"
+                    >
+                      <span class="vote-summary__bonus-code">{{ bonus.code }}</span>
+                      <span v-if="bonus.contactType" class="vote-summary__bonus-meta">
+                        ({{ bonus.contactType === "phone" ? "Telefono" : "Email" }})
+                      </span>
+                    </li>
+                  </ul>
+                </div>
                 <p class="vote-summary__hint">
                   Mostra questo codice e il QR allo staff in caso di
                   estrazione del premio.
@@ -3325,6 +3483,46 @@ const submitContactBonus = async () => {
 
 .vote-summary__code span {
   color: #38bdf8;
+}
+
+.vote-summary__bonus-block {
+  margin-top: 0.25rem;
+}
+
+.vote-summary__label {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.vote-summary__bonus-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.35rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.vote-summary__bonus-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.vote-summary__bonus-code {
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vote-summary__bonus-meta {
+  font-size: 0.85rem;
+  color: rgba(148, 163, 184, 0.95);
 }
 
 .vote-summary__hint {

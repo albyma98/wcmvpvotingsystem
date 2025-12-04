@@ -688,6 +688,7 @@ type AppDatabase interface {
 	GetMasterEngagement() (MasterEngagementSummary, error)
 	RecordContactSubmission(contact ContactSubmission) (ContactSubmission, error)
 	GetContactSubmission(eventID int, deviceID string) (ContactSubmission, error)
+	ListContactBonuses(eventID int, deviceID string) ([]ContactSubmission, error)
 	RecordContactEvent(eventID int, deviceID, name string) error
 	PurgeEventData(eventID int) error
 	RecordEventFeedback(feedback EventFeedback) error
@@ -4069,6 +4070,42 @@ func (db *appdbimpl) GetContactSubmission(eventID int, deviceID string) (Contact
 	contact.MarketingConsent = marketingConsent == 1
 	contact.IsVerified = isVerified == 1
 	return contact, nil
+}
+
+func (db *appdbimpl) ListContactBonuses(eventID int, deviceID string) ([]ContactSubmission, error) {
+	if eventID <= 0 {
+		return nil, sql.ErrNoRows
+	}
+
+	normalizedDevice := strings.TrimSpace(deviceID)
+	if normalizedDevice == "" {
+		return nil, ErrInvalidContactData
+	}
+
+	rows, err := db.c.Query(`SELECT id, event_id, device_id, contact_value, contact_type, marketing_consent, is_verified, IFNULL(bonus_code, ''), IFNULL(bonus_signature, ''), created_at FROM contacts WHERE event_id = ? AND device_id = ? ORDER BY created_at ASC`, eventID, normalizedDevice)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []ContactSubmission
+	for rows.Next() {
+		var contact ContactSubmission
+		var marketingConsent int
+		var isVerified int
+		if err := rows.Scan(&contact.ID, &contact.EventID, &contact.DeviceID, &contact.ContactValue, &contact.ContactType, &marketingConsent, &isVerified, &contact.BonusCode, &contact.BonusSignature, &contact.CreatedAt); err != nil {
+			return nil, err
+		}
+		contact.MarketingConsent = marketingConsent == 1
+		contact.IsVerified = isVerified == 1
+		results = append(results, contact)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 func (db *appdbimpl) RecordContactEvent(eventID int, deviceID, name string) error {

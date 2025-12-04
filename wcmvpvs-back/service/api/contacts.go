@@ -28,12 +28,24 @@ type contactSubmissionRequest struct {
 }
 
 type contactSubmissionResponse struct {
-	Message          string `json:"message"`
-	BadgeLabel       string `json:"badge_label,omitempty"`
-	BonusCode        string `json:"bonus_code,omitempty"`
-	BonusSignature   string `json:"bonus_signature,omitempty"`
-	AlreadySubmitted bool   `json:"already_submitted,omitempty"`
-	ContactType      string `json:"contact_type,omitempty"`
+	Message          string              `json:"message"`
+	BadgeLabel       string              `json:"badge_label,omitempty"`
+	BonusCode        string              `json:"bonus_code,omitempty"`
+	BonusSignature   string              `json:"bonus_signature,omitempty"`
+	BonusCodes       []contactBonusEntry `json:"bonuses,omitempty"`
+	AlreadySubmitted bool                `json:"already_submitted,omitempty"`
+	ContactType      string              `json:"contact_type,omitempty"`
+}
+
+type contactBonusEntry struct {
+	Code        string `json:"code"`
+	Signature   string `json:"signature,omitempty"`
+	ContactType string `json:"contact_type,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+}
+
+type contactBonusListResponse struct {
+	Bonuses []contactBonusEntry `json:"bonuses"`
 }
 
 func normalizeContactValue(value string, contactType string) string {
@@ -76,6 +88,49 @@ func detectContactType(value string) string {
 	}
 
 	return ""
+}
+
+func (rt *_router) listContactBonuses(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	eventID, err := strconv.Atoi(chi.URLParam(r, "eventId"))
+	if err != nil || eventID <= 0 {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Evento non valido.")
+		return
+	}
+
+	if !rt.ensureEventInOrganization(w, ctx, eventID) {
+		return
+	}
+
+	deviceID := rt.deviceIDFromRequest(r)
+	if strings.TrimSpace(deviceID) == "" {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Identificativo dispositivo mancante.")
+		return
+	}
+
+	bonuses, err := rt.db.ListContactBonuses(eventID, deviceID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot list contact bonuses")
+		_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra poco.")
+		return
+	}
+
+	resp := contactBonusListResponse{}
+
+	for _, bonus := range bonuses {
+		if strings.TrimSpace(bonus.BonusCode) == "" {
+			continue
+		}
+		resp.Bonuses = append(resp.Bonuses, contactBonusEntry{
+			Code:        bonus.BonusCode,
+			Signature:   bonus.BonusSignature,
+			ContactType: bonus.ContactType,
+			CreatedAt:   bonus.CreatedAt,
+		})
+	}
+
+	if err := writeJSON(w, http.StatusOK, resp); err != nil {
+		ctx.Logger.WithError(err).Error("cannot encode contact bonuses response")
+	}
 }
 
 func (rt *_router) submitContact(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -134,14 +189,23 @@ func (rt *_router) submitContact(w http.ResponseWriter, r *http.Request, ctx req
 	existing, err := rt.db.GetContactSubmission(eventID, deviceID)
 	switch {
 	case err == nil:
-		_ = writeJSON(w, http.StatusConflict, contactSubmissionResponse{
+		resp := contactSubmissionResponse{
 			Message:          "Hai già massimizzato le tue chance per oggi!",
 			BadgeLabel:       "+1 CHANCE",
 			BonusCode:        existing.BonusCode,
 			BonusSignature:   existing.BonusSignature,
 			AlreadySubmitted: true,
 			ContactType:      existing.ContactType,
-		})
+		}
+		if strings.TrimSpace(existing.BonusCode) != "" {
+			resp.BonusCodes = []contactBonusEntry{{
+				Code:        existing.BonusCode,
+				Signature:   existing.BonusSignature,
+				ContactType: existing.ContactType,
+				CreatedAt:   existing.CreatedAt,
+			}}
+		}
+		_ = writeJSON(w, http.StatusConflict, resp)
 		return
 	case errors.Is(err, sql.ErrNoRows):
 	default:
@@ -196,13 +260,23 @@ func (rt *_router) submitContact(w http.ResponseWriter, r *http.Request, ctx req
 		ctx.Logger.WithError(err).Warn("contact analytics event failed")
 	}
 
-	if err := writeJSON(w, http.StatusCreated, contactSubmissionResponse{
+	resp := contactSubmissionResponse{
 		Message:        "🎉 Extra chance aggiunta! Buona fortuna!",
 		BadgeLabel:     "+1 CHANCE",
 		BonusCode:      bonusCode,
 		BonusSignature: bonusSignature,
 		ContactType:    contactType,
-	}); err != nil {
+	}
+
+	if strings.TrimSpace(bonusCode) != "" {
+		resp.BonusCodes = []contactBonusEntry{{
+			Code:        bonusCode,
+			Signature:   bonusSignature,
+			ContactType: contactType,
+		}}
+	}
+
+	if err := writeJSON(w, http.StatusCreated, resp); err != nil {
 		ctx.Logger.WithError(err).Error("cannot encode contact submission response")
 	}
 }
