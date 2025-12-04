@@ -2352,19 +2352,16 @@ const submitContactBonus = async () => {
             </div>
           </div>
         </section>
-        <section v-if="showVoteSummary" class="px-4">
+        <section v-if="showVoteSummary" class="px-2">
           <div class="post-vote-grid">
             <div class="vote-summary" role="status" aria-live="polite">
               <div class="vote-summary__content">
                 <p class="vote-summary__eyebrow">Hai votato!</p>
-                <h3 class="vote-summary__title">
-                  Conserva il tuo codice per l'estrazione
-                </h3>
                 <p class="vote-summary__code" aria-label="Codice di voto">
                   Codice: <span>{{ ticketCode }}</span>
                 </p>
                 <div v-if="bonusCodes.length" class="vote-summary__bonus-block">
-                  <p class="vote-summary__label">Bonus:</p>
+                  <p class="vote-summary__label">Codici Bonus:</p>
                   <ul class="vote-summary__bonus-list">
                     <li
                       v-for="bonus in bonusCodes"
@@ -2402,8 +2399,40 @@ const submitContactBonus = async () => {
                   QR non disponibile
                 </div>
               </div>
+            </div>
 
-              <div class="bonus-contact-card" role="form" aria-label="Raddoppia le tue possibilità">
+            
+
+            <div v-if="selectedPlayer" class="voted-player-panel">
+              <div class="voted-player-panel__header">
+                <p class="voted-player-panel__eyebrow">Hai votato</p>
+                <h3 class="voted-player-panel__title">
+                  {{ selectedPlayerName }}
+                </h3>
+              </div>
+              <div class="voted-player-panel__card">
+                <PlayerCard
+                  v-if="selectedPlayer"
+                  :player="selectedPlayer"
+                  :card-size="150"
+                  :is-selected="true"
+                  :voting-open="votingOpen"
+                />
+                <p v-else class="voted-player-panel__placeholder">
+                  I giocatori non sono disponibili al momento.
+                </p>
+              </div>
+              <button
+                type="button"
+                class="vote-edit-button"
+                :disabled="!canEditVote || isEditingVote"
+                @click="startVoteEdit"
+              >
+                Modifica voto
+              </button>
+            </div>
+          </div>
+                        <div class="bonus-contact-card" role="form" aria-label="Raddoppia le tue possibilità">
                 <div class="bonus-contact-card__header">
                   <span class="bonus-contact-card__icon" aria-hidden="true">🎁</span>
                   <div>
@@ -2464,37 +2493,6 @@ const submitContactBonus = async () => {
                   </div>
                 </form>
               </div>
-            </div>
-
-            <div v-if="selectedPlayer" class="voted-player-panel">
-              <div class="voted-player-panel__header">
-                <p class="voted-player-panel__eyebrow">Hai votato</p>
-                <h3 class="voted-player-panel__title">
-                  {{ selectedPlayerName }}
-                </h3>
-              </div>
-              <div class="voted-player-panel__card">
-                <PlayerCard
-                  v-if="selectedPlayer"
-                  :player="selectedPlayer"
-                  :card-size="180"
-                  :is-selected="true"
-                  :voting-open="votingOpen"
-                />
-                <p v-else class="voted-player-panel__placeholder">
-                  I giocatori non sono disponibili al momento.
-                </p>
-              </div>
-              <button
-                type="button"
-                class="vote-edit-button"
-                :disabled="!canEditVote || isEditingVote"
-                @click="startVoteEdit"
-              >
-                Modifica voto
-              </button>
-            </div>
-          </div>
         </section>
         <section v-if="showVotingSection" ref="votingSectionRef" class="px-4">
           <div class="mb-6 text-center prematch-intro">
@@ -2571,13 +2569,7 @@ const submitContactBonus = async () => {
           </p>
         </section>
         <section v-if="showAfterVoteSection" class="px-4 after-vote-section">
-          <div class="after-vote-panel">
-            <h3>{{ eventTitle }}</h3>
-            <p>
-              Hai già espresso il tuo voto per questa partita. Conserva il
-              codice mostrato in alto e attendi l'estrazione dei premi.
-            </p>
-          </div>
+
 
           <div class="after-vote-success">
             <p class="after-vote-success__eyebrow">
@@ -3587,8 +3579,8 @@ const submitContactBonus = async () => {
 
 .bonus-badge {
   position: absolute;
-  top: -0.4rem;
-  right: -0.35rem;
+  top: -1.2rem;
+  right:0rem;
   background: linear-gradient(135deg, #22d3ee, #0ea5e9);
   color: #0b1224;
   font-weight: 800;

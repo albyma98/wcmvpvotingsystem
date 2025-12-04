@@ -18,7 +18,7 @@
           <p class="selfie-card__eyebrow">Selfie MVP</p>
           <h2 class="selfie-card__title">Scatta un selfie mentre tifi o con i tuoi amici!</h2>
           <p class="selfie-card__subtitle">
-            Condividi il tuo entusiasmo: i selfie approvati potranno essere mostrati sul maxischermo durante la partita.
+            Condividi il tuo entusiasmo: i selfie approvati potranno essere scelti e pubblicate sulle storie Instagram di JOY VOLLEY.
           </p>
         </header>
 
@@ -54,14 +54,8 @@
                 required
                 :disabled="interactionDisabled"
               />
-              <span>
-                Inviando questa foto, dichiaro di avere almeno 18 anni e/o di avere ottenuto
-                il consenso esplicito da tutte le persone riconoscibili presenti nella foto,
-                inclusi i genitori/tutori legali in caso di minorenni. Autorizzo [NOME
-                SQUADRA] a utilizzare gratuitamente la fotografia inviata, senza limiti
-                territoriali e temporali, per finalità informative e promozionali sui propri
-                canali social e materiali di comunicazione. Acconsento inoltre al trattamento
-                dei dati personali secondo la relativa informativa privacy.
+              <span style="font-size:6px;">
+Confermo autorizzazioni e consensi all’uso dell’immagine e accetto la privacy policy.<br>
               </span>
             </label>
             <button
@@ -131,41 +125,64 @@
           ✕
         </button>
       </header>
-      <div class="selfie-modal__body">
-        <section class="selfie-modal__section">
-          <h4>Liberatoria sull’uso dell’immagine</h4>
-          <p>
-            Inviando questa foto, dichiaro di avere almeno 18 anni e/o di avere ottenuto il
-            consenso esplicito da tutte le persone riconoscibili presenti nella foto, inclusi
-            i genitori/tutori legali in caso di minorenni. Autorizzo [NOME SQUADRA] a
-            utilizzare gratuitamente la fotografia inviata, senza limiti territoriali e
-            temporali, per finalità informative e promozionali sui propri canali social e
-            materiali di comunicazione. Acconsento inoltre al trattamento dei dati personali
-            secondo la relativa informativa privacy.
-          </p>
-        </section>
-        <section class="selfie-modal__section">
-          <h4>Informativa Privacy</h4>
-          <p>
-            [Contenuto placeholder: inserire l’informativa privacy completa con indicazione
-            delle finalità, base giuridica, tempi di conservazione e modalità di trattamento
-            dei dati personali raccolti tramite il selfie.]
-          </p>
-        </section>
-        <section class="selfie-modal__section">
-          <h4>Contatti per esercizio dei diritti privacy</h4>
-          <p>[Contenuto placeholder: indicare indirizzo email o recapito del DPO/responsabile.]</p>
-        </section>
-        <section class="selfie-modal__section">
-          <h4>Riferimento GDPR</h4>
-          <p>[Contenuto placeholder: richiamo agli artt. 13-14 del GDPR e ai diritti dell’interessato.]</p>
-        </section>
-      </div>
-      <footer class="selfie-modal__footer">
-        <button type="button" class="selfie-button primary" @click="showInformativaModal = false">
-          Chiudi
-        </button>
-      </footer>
+<div class="selfie-modal__body">
+  <section class="selfie-modal__section">
+    <h4>Liberatoria sull’uso dell’immagine</h4>
+    <p>
+      Inviando questa foto confermo di avere almeno 18 anni e/o il
+      consenso delle persone riconoscibili presenti nell’immagine,
+      inclusi i genitori/tutori legali in caso di minorenni. Autorizzo
+      gratuitamente JOY VOLLEY a utilizzare la fotografia inviata,
+      senza limiti territoriali e temporali, per finalità informative e
+      promozionali sui propri canali ufficiali (social, sito web,
+      materiali di comunicazione). L’autorizzazione è concedibile senza
+      alcun compenso e potrà essere revocata in qualsiasi momento nei
+      limiti di legge.
+    </p>
+  </section>
+
+  <section class="selfie-modal__section">
+    <h4>Informativa Privacy</h4>
+    <p>
+      I dati personali e le immagini trasmesse tramite questa funzione
+      sono trattati da JOY VOLLEY in qualità di Titolare del
+      trattamento e da Alberto Marra in qualità di
+      responsabile esterno. Il trattamento avviene per permettere la
+      partecipazione all’attività “Selfie MVP” e la pubblicazione dei
+      contenuti sui canali ufficiali della squadra, sulla base del
+      consenso dell’utente. I dati saranno conservati per il tempo
+      strettamente necessario alle attività indicate o fino alla
+      revoca del consenso. Il conferimento è facoltativo, ma in sua
+      assenza non sarà possibile utilizzare la foto inviata.
+    </p>
+  </section>
+
+  <section class="selfie-modal__section">
+    <h4>Diritti dell’interessato</h4>
+    <p>
+      Gli utenti possono esercitare i diritti previsti dagli artt.
+      15-22 del GDPR, tra cui l’accesso, la rettifica, la cancellazione
+      dell’immagine e la revoca del consenso in qualsiasi momento,
+      scrivendo ai recapiti indicati di seguito.
+    </p>
+  </section>
+
+  <section class="selfie-modal__section">
+    <h3>Contatti Privacy</h3>
+    <p>
+      Per richieste o informazioni: <br>
+      <strong>Responsabile trattamento tecnico:</strong> marralby@yahoo.it
+    </p>
+  </section>
+</div>
+
+<footer class="selfie-modal__footer">
+  <button type="button" class="selfie-button primary"
+          @click="showInformativaModal = false">
+    Chiudi
+  </button>
+</footer>
+
     </div>
   </div>
 </template>
