@@ -2104,7 +2104,26 @@ const handleQrError = () => {
                 </h3>
               </div>
               <div class="voted-player-panel__card">
+                <div
+                  v-if="isEditingVote && fieldPlayers.length"
+                  class="voted-player-panel__court"
+                >
+                  <VolleyCourt
+                    class="block h-full w-full"
+                    :players="fieldPlayers"
+                    :card-size="afterVoteCardSize"
+                    :selected-player-id="votedPlayerId"
+                    :disable-votes="disableVotes"
+                    :is-voting="isVoting"
+                    :court-sponsors="visibleCourtSponsors"
+                    :is-pre-match="isPreMatch"
+                    :voting-open="votingOpen"
+                    @select="openPlayerModal"
+                    @sponsor-click="handleSponsorClick"
+                  />
+                </div>
                 <PlayerCard
+                  v-else
                   :player="selectedPlayer"
                   :card-size="180"
                   :is-selected="true"
@@ -3006,6 +3025,18 @@ const handleQrError = () => {
   padding: 0.5rem;
   background: radial-gradient(circle at 50% 30%, rgba(250, 204, 21, 0.08), transparent 60%);
   border-radius: 1.5rem;
+}
+
+.voted-player-panel__court {
+  width: 100%;
+  min-height: 260px;
+  max-height: 420px;
+  flex: 1 1 auto;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: linear-gradient(160deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+  padding: 0.35rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .vote-edit-button {
