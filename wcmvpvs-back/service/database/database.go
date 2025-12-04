@@ -560,6 +560,19 @@ type ReactionTestStats struct {
 	Average  float64 `json:"average_ms"`
 }
 
+type ContactSubmission struct {
+	ID               int    `json:"id"`
+	EventID          int    `json:"event_id"`
+	DeviceID         string `json:"device_id"`
+	ContactValue     string `json:"contact_value"`
+	ContactType      string `json:"contact_type"`
+	MarketingConsent bool   `json:"marketing_consent"`
+	IsVerified       bool   `json:"is_verified"`
+	BonusCode        string `json:"bonus_code,omitempty"`
+	BonusSignature   string `json:"bonus_signature,omitempty"`
+	CreatedAt        string `json:"created_at"`
+}
+
 type ShopProduct struct {
 	ID          int    `json:"id"`
 	Name        string `json:"name"`
@@ -673,6 +686,9 @@ type AppDatabase interface {
 	RecordEngagementSession(eventID int, deviceID string, durationSeconds int) error
 	GetEventEngagement(eventID int) (EventEngagementStats, error)
 	GetMasterEngagement() (MasterEngagementSummary, error)
+	RecordContactSubmission(contact ContactSubmission) (ContactSubmission, error)
+	GetContactSubmission(eventID int, deviceID string) (ContactSubmission, error)
+	RecordContactEvent(eventID int, deviceID, name string) error
 	PurgeEventData(eventID int) error
 	RecordEventFeedback(feedback EventFeedback) error
 	GetEventFeedbackSummary(eventID int) (EventFeedbackSummary, error)
@@ -701,6 +717,7 @@ var (
 	ErrTicketSignatureMismatch = errors.New("ticket signature mismatch")
 	ErrEventAlreadyConcluded   = errors.New("event already concluded")
 	ErrInvalidOrganizationData = errors.New("invalid organization data")
+	ErrInvalidContactData      = errors.New("invalid contact data")
 )
 
 type rowScanner interface {
@@ -1065,6 +1082,56 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_event_feedback_event ON event_feedback(event_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring event_feedback event index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='contacts';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE contacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL,
+        contact_value TEXT NOT NULL,
+        contact_type TEXT NOT NULL,
+        marketing_consent INTEGER NOT NULL DEFAULT 0,
+        is_verified INTEGER NOT NULL DEFAULT 0,
+        bonus_code TEXT,
+        bonus_signature TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(event_id, device_id),
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating contacts table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying contacts table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_contacts_event ON contacts(event_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring contacts event index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='contact_events';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE contact_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL,
+        event_name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating contact_events table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying contact_events table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_contact_events_event ON contact_events(event_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring contact_events event index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tickets';`).Scan(&tableName)
@@ -2227,6 +2294,14 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	}
 
 	if _, err := tx.Exec(`DELETE FROM sponsor_sessions WHERE event_id = ?`, eventID); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM contact_events WHERE event_id = ?`, eventID); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM contacts WHERE event_id = ?`, eventID); err != nil {
 		return err
 	}
 
@@ -3924,6 +3999,91 @@ func (db *appdbimpl) normalizeSponsorPositions(organizationID int) error {
 		position++
 	}
 	return nil
+}
+
+func (db *appdbimpl) RecordContactSubmission(contact ContactSubmission) (ContactSubmission, error) {
+	if contact.EventID <= 0 {
+		return ContactSubmission{}, sql.ErrNoRows
+	}
+
+	normalizedDevice := strings.TrimSpace(contact.DeviceID)
+	normalizedValue := strings.TrimSpace(contact.ContactValue)
+	normalizedType := strings.ToLower(strings.TrimSpace(contact.ContactType))
+	normalizedBonus := strings.TrimSpace(contact.BonusCode)
+	normalizedSignature := strings.TrimSpace(contact.BonusSignature)
+
+	if normalizedDevice == "" || normalizedValue == "" || normalizedType == "" {
+		return ContactSubmission{}, ErrInvalidContactData
+	}
+
+	res := ContactSubmission{
+		EventID:          contact.EventID,
+		DeviceID:         normalizedDevice,
+		ContactValue:     normalizedValue,
+		ContactType:      normalizedType,
+		MarketingConsent: contact.MarketingConsent,
+		BonusCode:        normalizedBonus,
+		BonusSignature:   normalizedSignature,
+		IsVerified:       false,
+	}
+
+	result, err := db.c.Exec(`INSERT INTO contacts (event_id, device_id, contact_value, contact_type, marketing_consent, is_verified, bonus_code, bonus_signature) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`, res.EventID, res.DeviceID, res.ContactValue, res.ContactType, boolToInt(res.MarketingConsent), res.BonusCode, res.BonusSignature)
+	if err != nil {
+		return ContactSubmission{}, err
+	}
+
+	insertID, err := result.LastInsertId()
+	if err == nil {
+		res.ID = int(insertID)
+	}
+
+	var createdAt string
+	var isVerified int
+	if err := db.c.QueryRow(`SELECT created_at, is_verified FROM contacts WHERE event_id = ? AND device_id = ?`, res.EventID, res.DeviceID).Scan(&createdAt, &isVerified); err == nil {
+		res.CreatedAt = createdAt
+		res.IsVerified = isVerified == 1
+	}
+
+	return res, nil
+}
+
+func (db *appdbimpl) GetContactSubmission(eventID int, deviceID string) (ContactSubmission, error) {
+	var contact ContactSubmission
+	if eventID <= 0 {
+		return contact, sql.ErrNoRows
+	}
+
+	normalizedDevice := strings.TrimSpace(deviceID)
+	if normalizedDevice == "" {
+		return contact, sql.ErrNoRows
+	}
+
+	var marketingConsent int
+	var isVerified int
+
+	err := db.c.QueryRow(`SELECT id, event_id, device_id, contact_value, contact_type, marketing_consent, is_verified, IFNULL(bonus_code, ''), IFNULL(bonus_signature, ''), created_at FROM contacts WHERE event_id = ? AND device_id = ? LIMIT 1`, eventID, normalizedDevice).Scan(&contact.ID, &contact.EventID, &contact.DeviceID, &contact.ContactValue, &contact.ContactType, &marketingConsent, &isVerified, &contact.BonusCode, &contact.BonusSignature, &contact.CreatedAt)
+	if err != nil {
+		return ContactSubmission{}, err
+	}
+
+	contact.MarketingConsent = marketingConsent == 1
+	contact.IsVerified = isVerified == 1
+	return contact, nil
+}
+
+func (db *appdbimpl) RecordContactEvent(eventID int, deviceID, name string) error {
+	if eventID <= 0 {
+		return sql.ErrNoRows
+	}
+
+	normalizedDevice := strings.TrimSpace(deviceID)
+	normalizedName := strings.TrimSpace(name)
+	if normalizedDevice == "" || normalizedName == "" {
+		return ErrInvalidContactData
+	}
+
+	_, err := db.c.Exec(`INSERT INTO contact_events (event_id, device_id, event_name) VALUES (?, ?, ?)`, eventID, normalizedDevice, normalizedName)
+	return err
 }
 
 func parseSQLiteTimestamp(value string) (time.Time, error) {
