@@ -1842,15 +1842,23 @@ onBeforeUnmount(() => {
 });
 
 const canEditVote = computed(() => hasVoted.value && votingOpen.value);
-const canSelectPlayers = computed(
-  () =>
-    votingOpen.value &&
-    !showInactiveNotice.value &&
-    !isCheckingActiveEvent.value &&
-    !isVotingClosed.value &&
-    !isEventUpcoming.value &&
-    (!hasVoted.value || isEditingVote.value),
-);
+const canSelectPlayers = computed(() => {
+  if (
+    !votingOpen.value ||
+    showInactiveNotice.value ||
+    isCheckingActiveEvent.value ||
+    isVotingClosed.value ||
+    isEventUpcoming.value
+  ) {
+    return false;
+  }
+
+  if (!hasVoted.value) {
+    return true;
+  }
+
+  return canEditVote.value || isEditingVote.value;
+});
 const disableVotes = computed(
   () =>
     !canSelectPlayers.value ||
