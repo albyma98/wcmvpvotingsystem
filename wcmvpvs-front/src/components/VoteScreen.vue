@@ -2067,31 +2067,58 @@ const handleQrError = () => {
           </div>
         </section>
         <section v-if="showVoteSummary" class="px-4">
-          <div class="vote-summary" role="status" aria-live="polite">
-            <div class="vote-summary__content">
-              <p class="vote-summary__eyebrow">Hai votato!</p>
-              <h3 class="vote-summary__title">
-                Conserva il tuo codice per l'estrazione
-              </h3>
-              <p class="vote-summary__code" aria-label="Codice di voto">
-                Codice: <span>{{ ticketCode }}</span>
-              </p>
-              <p class="vote-summary__hint">
-                Mostra questo codice e il QR allo staff in caso di estrazione
-                del premio.
-              </p>
-              <p v-if="ticketLoadError" class="vote-summary__error">
-                {{ ticketLoadError }}
-              </p>
+          <div class="post-vote-grid">
+            <div class="vote-summary" role="status" aria-live="polite">
+              <div class="vote-summary__content">
+                <p class="vote-summary__eyebrow">Hai votato!</p>
+                <h3 class="vote-summary__title">
+                  Conserva il tuo codice per l'estrazione
+                </h3>
+                <p class="vote-summary__code" aria-label="Codice di voto">
+                  Codice: <span>{{ ticketCode }}</span>
+                </p>
+                <p class="vote-summary__hint">
+                  Mostra questo codice e il QR allo staff in caso di
+                  estrazione del premio.
+                </p>
+                <p v-if="ticketLoadError" class="vote-summary__error">
+                  {{ ticketLoadError }}
+                </p>
+              </div>
+              <div class="vote-summary__qr" aria-hidden="true">
+                <div v-if="isTicketLoading" class="vote-summary__qr-loader">
+                  <span class="qr-loader"></span>
+                </div>
+                <img v-else-if="ticketQrUrl" :src="ticketQrUrl" alt="QR code" />
+                <div v-else class="vote-summary__qr-placeholder">
+                  QR non disponibile
+                </div>
+              </div>
             </div>
-            <div class="vote-summary__qr" aria-hidden="true">
-              <div v-if="isTicketLoading" class="vote-summary__qr-loader">
-                <span class="qr-loader"></span>
+
+            <div v-if="selectedPlayer" class="voted-player-panel">
+              <div class="voted-player-panel__header">
+                <p class="voted-player-panel__eyebrow">Hai votato</p>
+                <h3 class="voted-player-panel__title">
+                  {{ selectedPlayerName }}
+                </h3>
               </div>
-              <img v-else-if="ticketQrUrl" :src="ticketQrUrl" alt="QR code" />
-              <div v-else class="vote-summary__qr-placeholder">
-                QR non disponibile
+              <div class="voted-player-panel__card">
+                <PlayerCard
+                  :player="selectedPlayer"
+                  :card-size="180"
+                  :is-selected="true"
+                  :voting-open="votingOpen"
+                />
               </div>
+              <button
+                type="button"
+                class="vote-edit-button"
+                :disabled="!canEditVote || isEditingVote"
+                @click="startVoteEdit"
+              >
+                Modifica voto
+              </button>
             </div>
           </div>
         </section>
@@ -2926,6 +2953,86 @@ const handleQrError = () => {
   color: #f8fafc;
 }
 
+.post-vote-grid {
+  display: grid;
+  gap: 1rem;
+  align-items: stretch;
+  grid-template-columns: 1fr;
+}
+
+.voted-player-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.75rem 1.5rem;
+  border-radius: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(
+    150deg,
+    rgba(30, 41, 59, 0.85),
+    rgba(15, 23, 42, 0.9)
+  );
+  box-shadow: 0 28px 52px rgba(15, 23, 42, 0.55);
+  height: 100%;
+}
+
+.voted-player-panel__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.voted-player-panel__eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: #facc15;
+}
+
+.voted-player-panel__title {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f8fafc;
+}
+
+.voted-player-panel__card {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.5rem;
+  background: radial-gradient(circle at 50% 30%, rgba(250, 204, 21, 0.08), transparent 60%);
+  border-radius: 1.5rem;
+}
+
+.vote-edit-button {
+  align-self: stretch;
+  padding: 0.9rem 1rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(249, 115, 22, 0.55);
+  background: linear-gradient(135deg, #fb923c, #f97316);
+  color: #0f172a;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.95rem;
+  transition: transform 200ms ease, box-shadow 200ms ease, opacity 150ms ease;
+  box-shadow: 0 18px 32px rgba(249, 115, 22, 0.35);
+}
+
+.vote-edit-button:not(:disabled):hover {
+  transform: translateY(-1px) scale(1.01);
+  box-shadow: 0 22px 36px rgba(249, 115, 22, 0.45);
+}
+
+.vote-edit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .vote-summary {
   display: flex;
   flex-direction: column;
@@ -2939,6 +3046,7 @@ const handleQrError = () => {
     rgba(30, 41, 59, 0.75)
   );
   box-shadow: 0 28px 52px rgba(15, 23, 42, 0.55);
+  height: 100%;
 }
 
 .vote-summary__content {
@@ -3534,6 +3642,16 @@ const handleQrError = () => {
 
   .vote-summary__qr {
     flex-shrink: 0;
+  }
+}
+
+@media (min-width: 900px) {
+  .post-vote-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .voted-player-panel {
+    padding: 2rem 1.75rem;
   }
 }
 
