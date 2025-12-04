@@ -197,6 +197,37 @@ export function getDeviceHeaders() {
   return deviceId ? { 'X-Device-ID': deviceId } : {};
 }
 
+export async function submitContactChance({
+  eventId,
+  contactValue,
+  contactType,
+  marketingConsent,
+}: {
+  eventId: number;
+  contactValue: string;
+  contactType: string;
+  marketingConsent: boolean;
+}) {
+  const payload = {
+    event_id: eventId,
+    device_id: getOrCreateDeviceId(),
+    contact_value: contactValue,
+    contact_type: contactType,
+    marketing_consent: marketingConsent,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    const { data } = await apiClient.post(`/events/${eventId}/contacts`, payload);
+    return { ok: true, data };
+  } catch (error) {
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    const data = axios.isAxiosError(error) ? error.response?.data : undefined;
+    return { ok: false, status, message, data, error };
+  }
+}
+
 export async function vote({ eventId, playerId }) {
   try {
     const { data: voteData } = await apiClient.post('/vote', {

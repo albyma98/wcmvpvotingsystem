@@ -21,6 +21,7 @@ import {
   submitEventFeedback,
   trackPageEngagement,
   fetchEventEngagement,
+  submitContactChance,
 } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, mapPlayersToLayout } from "../roster";
 import { getOrCreateDeviceId } from "../deviceId";
@@ -148,6 +149,14 @@ const recordedSponsorWatched = new Set();
 const hasVoted = ref(false);
 const isCheckingVoteStatus = ref(false);
 
+const contactValueInput = ref("");
+const contactMarketingConsent = ref(false);
+const contactFormError = ref("");
+const contactFormSuccess = ref("");
+const isSubmittingContact = ref(false);
+const hasContactBonus = ref(false);
+const contactCelebration = ref(false);
+
 const totalVotes = ref(0);
 const isVoteTotalLoading = ref(false);
 const voteTotalError = ref("");
@@ -209,6 +218,42 @@ const startWaitingMessageTimer = () => {
   waitingMessageTimer = window.setInterval(() => {
     waitingMessageIndex.value = (waitingMessageIndex.value + 1) % waitingMessages.length;
   }, 9000);
+};
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const phonePattern = /^\+?[0-9]{6,15}$/;
+
+const sanitizeContactValue = (value, contactType) => {
+  const trimmed = (value || "").trim();
+  if (contactType === "phone") {
+    const cleaned = trimmed.replace(/[^0-9+]/g, "");
+    if (cleaned.startsWith("++")) {
+      return cleaned.replace(/^\++/, "+");
+    }
+    if (cleaned.split("+").length > 2) {
+      return cleaned.replace(/\+/g, "");
+    }
+    return cleaned;
+  }
+  if (contactType === "email") {
+    return trimmed.toLowerCase();
+  }
+  return trimmed;
+};
+
+const detectContactType = (value) => {
+  const trimmed = (value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (emailPattern.test(trimmed)) {
+    return "email";
+  }
+  const phoneCandidate = sanitizeContactValue(trimmed, "phone");
+  if (phonePattern.test(phoneCandidate)) {
+    return "phone";
+  }
+  return "";
 };
 
 const isMobileDevice = () => {
@@ -2033,6 +2078,14 @@ const modalActionLabel = computed(() => {
   return "Vota MVP";
 });
 
+const contactCtaLabel = computed(() =>
+  hasContactBonus.value ? "Chance attiva!" : "Ottieni +1 possibilità! 🚀",
+);
+
+const isContactInputValid = computed(() =>
+  Boolean(detectContactType(contactValueInput.value)),
+);
+
 const confirmVote = () => {
   if (!pendingPlayer.value || votedPlayerId.value === pendingPlayer.value.id) {
     return;
@@ -2049,6 +2102,68 @@ const handleQrError = () => {
   ticketQrUrl.value = "";
   ticketLoadError.value =
     "Non siamo riusciti a caricare il QR del ticket. Riprova tra qualche istante.";
+};
+
+const submitContactBonus = async () => {
+  contactFormError.value = "";
+  contactFormSuccess.value = "";
+  contactCelebration.value = false;
+
+  const eventId = currentEventId.value;
+  if (!eventId) {
+    contactFormError.value = "Servizio non disponibile: evento non valido.";
+    return;
+  }
+
+  const detectedType = detectContactType(contactValueInput.value);
+  if (!detectedType) {
+    contactFormError.value = "Inserisci un contatto valido (email o telefono).";
+    return;
+  }
+
+  if (!contactMarketingConsent.value) {
+    contactFormError.value = "Conferma il consenso marketing per ottenere il bonus.";
+    return;
+  }
+
+  isSubmittingContact.value = true;
+
+  const sanitizedValue = sanitizeContactValue(contactValueInput.value, detectedType);
+
+  try {
+    const { ok, status, message, data } = await submitContactChance({
+      eventId,
+      contactValue: sanitizedValue,
+      contactType: detectedType,
+      marketingConsent: true,
+    });
+
+    if (!ok) {
+      hasContactBonus.value = status === 409 || hasContactBonus.value;
+      contactFormError.value =
+        message ||
+        (status === 409
+          ? "Hai già massimizzato le tue chance per oggi!"
+          : "Impossibile salvare il contatto in questo momento.");
+      return;
+    }
+
+    hasContactBonus.value = true;
+    contactFormSuccess.value =
+      data?.message || "🎉 Extra chance aggiunta! Buona fortuna!";
+    contactValueInput.value = sanitizedValue;
+    contactCelebration.value = true;
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        contactCelebration.value = false;
+      }, 1500);
+    }
+  } catch (error) {
+    console.error("contact submission error", error);
+    contactFormError.value = "Impossibile salvare il contatto in questo momento.";
+  } finally {
+    isSubmittingContact.value = false;
+  }
 };
 </script>
 
@@ -2114,6 +2229,13 @@ const handleQrError = () => {
                 </p>
               </div>
               <div class="vote-summary__qr" aria-hidden="true">
+                <span
+                  v-if="hasContactBonus"
+                  class="bonus-badge"
+                  :class="{ 'bonus-badge--pulse': contactCelebration }"
+                >
+                  +1 CHANCE
+                </span>
                 <div v-if="isTicketLoading" class="vote-summary__qr-loader">
                   <span class="qr-loader"></span>
                 </div>
@@ -2121,6 +2243,68 @@ const handleQrError = () => {
                 <div v-else class="vote-summary__qr-placeholder">
                   QR non disponibile
                 </div>
+              </div>
+
+              <div class="bonus-contact-card" role="form" aria-label="Raddoppia le tue possibilità">
+                <div class="bonus-contact-card__header">
+                  <span class="bonus-contact-card__icon" aria-hidden="true">🎁</span>
+                  <div>
+                    <p class="bonus-contact-card__title">
+                      🔥 Raddoppia le tue possibilità di vincita!
+                    </p>
+                    <p class="bonus-contact-card__subtitle">
+                      Inserisci un contatto per ricevere un secondo codice premio.
+                    </p>
+                  </div>
+                </div>
+
+                <form class="bonus-contact-card__form" @submit.prevent="submitContactBonus">
+                  <div class="bonus-contact-card__field">
+                    <input
+                      id="bonus-contact"
+                      v-model.trim="contactValueInput"
+                      type="text"
+                      inputmode="email"
+                      autocomplete="email"
+                      :disabled="isSubmittingContact"
+                      class="bonus-contact-card__input"
+                      placeholder="Email o numero di telefono"
+                    />
+                    <button
+                      type="submit"
+                      class="bonus-contact-card__cta"
+                      :disabled="
+                        isSubmittingContact || !isContactInputValid || !contactMarketingConsent
+                      "
+                    >
+                      <span v-if="isSubmittingContact" class="bonus-contact-card__spinner"></span>
+                      <span>{{ contactCtaLabel }}</span>
+                    </button>
+                  </div>
+
+                  <label class="bonus-contact-card__consent">
+                    <input
+                      v-model="contactMarketingConsent"
+                      type="checkbox"
+                      :disabled="isSubmittingContact"
+                    />
+                    <span>Accetto di ricevere notizie e premi della squadra</span>
+                  </label>
+
+                  <div class="bonus-contact-card__messages" aria-live="polite">
+                    <p v-if="contactFormError" class="bonus-contact-card__error">
+                      {{ contactFormError }}
+                    </p>
+                    <p v-else-if="contactFormSuccess" class="bonus-contact-card__success">
+                      {{ contactFormSuccess }}
+                    </p>
+                    <Transition name="fade">
+                      <p v-if="contactCelebration" class="bonus-contact-card__celebration">
+                        Hai +1 chance!
+                      </p>
+                    </Transition>
+                  </div>
+                </form>
               </div>
             </div>
 
@@ -3160,6 +3344,7 @@ const handleQrError = () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
 .vote-summary__qr img {
@@ -3200,6 +3385,176 @@ const handleQrError = () => {
 .vote-summary__qr-loader .qr-loader {
   width: 2.5rem;
   height: 2.5rem;
+}
+
+.bonus-badge {
+  position: absolute;
+  top: -0.4rem;
+  right: -0.35rem;
+  background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+  color: #0b1224;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  box-shadow: 0 15px 30px rgba(14, 165, 233, 0.45);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.bonus-badge--pulse {
+  animation: badgePulse 1.4s ease-out;
+}
+
+@keyframes badgePulse {
+  0% {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 8px rgba(14, 165, 233, 0.12);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.08);
+  }
+}
+
+.bonus-contact-card {
+  margin-top: 0.25rem;
+  padding: 1rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  background: linear-gradient(140deg, rgba(14, 165, 233, 0.12), rgba(14, 116, 144, 0.08));
+  box-shadow: 0 18px 32px rgba(8, 47, 73, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bonus-contact-card__header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.bonus-contact-card__icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.bonus-contact-card__title {
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #e0f2fe;
+}
+
+.bonus-contact-card__subtitle {
+  margin: 0.1rem 0 0;
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 0.95rem;
+}
+
+.bonus-contact-card__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.bonus-contact-card__field {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  background: rgba(8, 47, 73, 0.45);
+  border: 1px solid rgba(125, 211, 252, 0.45);
+  border-radius: 1rem;
+  padding: 0.6rem 0.6rem 0.6rem 0.85rem;
+}
+
+.bonus-contact-card__input {
+  flex: 1 1 auto;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.bonus-contact-card__input::placeholder {
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.bonus-contact-card__cta {
+  padding: 0.65rem 0.95rem;
+  border-radius: 0.9rem;
+  border: none;
+  background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+  color: #0b1224;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 14px 28px rgba(14, 165, 233, 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.bonus-contact-card__cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.bonus-contact-card__spinner {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  border: 2px solid rgba(15, 23, 42, 0.3);
+  border-top-color: #0f172a;
+  animation: spin 0.75s linear infinite;
+}
+
+.bonus-contact-card__consent {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.bonus-contact-card__messages {
+  min-height: 1.4rem;
+}
+
+.bonus-contact-card__error {
+  margin: 0;
+  color: #fecdd3;
+  font-weight: 600;
+}
+
+.bonus-contact-card__success {
+  margin: 0;
+  color: #a5f3fc;
+  font-weight: 700;
+}
+
+.bonus-contact-card__celebration {
+  margin: 0.2rem 0 0;
+  color: #fbbf24;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .after-vote-panel {
