@@ -155,9 +155,17 @@ const contactMarketingConsent = ref(false);
 const contactFormError = ref("");
 const contactFormSuccess = ref("");
 const isSubmittingContact = ref(false);
+const contactType = ref("");
 const hasContactBonus = ref(false);
 const bonusCodes = ref([]);
 const contactCelebration = ref(false);
+const bonusFlightActive = ref(false);
+const qrGlowActive = ref(false);
+const showInstantWinModal = ref(false);
+const contactPrefilledFromDevice = ref(false);
+const contactPrefillNoteVisible = ref(false);
+const bonusCount = ref(58);
+const bonusCountLoading = ref(false);
 
 const totalVotes = ref(0);
 const isVoteTotalLoading = ref(false);
@@ -257,6 +265,17 @@ const detectContactType = (value) => {
   }
   return "";
 };
+
+watch(
+  contactValueInput,
+  (value) => {
+    const detected = detectContactType(value);
+    contactType.value = detected;
+    contactPrefillNoteVisible.value =
+      contactPrefilledFromDevice.value && Boolean(value);
+  },
+  { immediate: true },
+);
 
 const isMobileDevice = () => {
   if (typeof navigator === "undefined") {
@@ -724,6 +743,9 @@ const buildQrUrl = (qrData) =>
 
 const TICKET_STORAGE_PREFIX = "wcmvp-ticket:";
 const BONUS_STORAGE_PREFIX = "wcmvp-bonus:";
+const CONTACT_STORAGE_KEY = "wcmvp-contact:last";
+const BONUS_COUNT_STORAGE_KEY = "wcmvp:bonus-count";
+const DEFAULT_BONUS_COUNT = 58;
 
 const getTicketStorageKey = (eventId) =>
   `${TICKET_STORAGE_PREFIX}${eventId}`;
@@ -754,6 +776,70 @@ function persistBonusCodes(eventId, bonuses) {
     console.warn("Impossibile salvare i bonus in locale", error);
   }
 }
+
+function persistContactValue(contactValue, type, completed = false) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      CONTACT_STORAGE_KEY,
+      JSON.stringify({ value: contactValue, type, completed, ts: Date.now() }),
+    );
+  } catch (error) {
+    console.warn("Impossibile salvare il contatto", error);
+  }
+}
+
+function loadStoredContactValue() {
+  if (typeof window === "undefined") {
+    return { value: "", type: "", completed: false };
+  }
+  try {
+    const raw = window.localStorage.getItem(CONTACT_STORAGE_KEY);
+    if (!raw) {
+      return { value: "", type: "", completed: false };
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      value: typeof parsed?.value === "string" ? parsed.value : "",
+      type: typeof parsed?.type === "string" ? parsed.type : "",
+      completed: Boolean(parsed?.completed),
+    };
+  } catch (error) {
+    console.warn("Impossibile caricare il contatto salvato", error);
+    return { value: "", type: "", completed: false };
+  }
+}
+
+function persistBonusCount(value) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(BONUS_COUNT_STORAGE_KEY, String(value));
+  } catch (error) {
+    console.warn("Impossibile salvare il contatore bonus", error);
+  }
+}
+
+function loadStoredBonusCount() {
+  if (typeof window === "undefined") {
+    return DEFAULT_BONUS_COUNT;
+  }
+  try {
+    const raw = window.localStorage.getItem(BONUS_COUNT_STORAGE_KEY);
+    const parsed = raw ? Number(raw) : NaN;
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  } catch (error) {
+    console.warn("Impossibile caricare il contatore bonus", error);
+  }
+  return DEFAULT_BONUS_COUNT;
+}
+
+bonusCount.value = loadStoredBonusCount();
 
 function loadStoredBonusCodes(eventId) {
   if (typeof window === "undefined" || !eventId) {
@@ -1639,6 +1725,52 @@ const isCountdownCritical = computed(
 
 const isEventUpcoming = computed(() => timeUntilEventStartMs.value > 0);
 
+const resolveVotingCloseValue = (event) => {
+  if (!event) {
+    return null;
+  }
+  const rawClose =
+    event?.votes_close_at ??
+    event?.votesCloseAt ??
+    event?.voting_close_at ??
+    event?.votingCloseAt ??
+    event?.votingEndsAt ??
+    event?.voting_end_at;
+  if (rawClose) {
+    const parsed = new Date(rawClose.includes("T") ? rawClose : `${rawClose}T00:00:00`);
+    const ts = parsed.getTime();
+    if (!Number.isNaN(ts)) {
+      return ts;
+    }
+  }
+  const rawSeconds = event?.seconds_to_close ?? event?.secondsToClose;
+  if (typeof rawSeconds === "number" && rawSeconds > 0) {
+    return Date.now() + rawSeconds * 1000;
+  }
+  return null;
+};
+
+// Timer di urgenza per la chiusura delle votazioni post-voto
+const votingCloseTimestamp = computed(() => resolveVotingCloseValue(props.activeEvent));
+
+const secondsToClose = computed(() => {
+  if (!votingCloseTimestamp.value) {
+    return 0;
+  }
+  const diff = Math.floor((votingCloseTimestamp.value - nowTimestamp.value) / 1000);
+  return diff > 0 ? diff : 0;
+});
+
+const formattedSecondsToClose = computed(() => {
+  const minutes = Math.floor(secondsToClose.value / 60);
+  const seconds = secondsToClose.value % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+});
+
+const isCloseCountdownCritical = computed(
+  () => secondsToClose.value > 0 && secondsToClose.value <= 60,
+);
+
 watch(
   currentEventId,
   (eventId, previousEventId) => {
@@ -1663,27 +1795,50 @@ watch(
       refreshVoteTotal();
       startVoteTotalPolling();
     } else {
-    isVoteTotalLoading.value = false;
-  }
-  hasVoted.value = false;
-  isEditingVote.value = false;
-  voteUpdateMessage.value = "";
-  hasContactBonus.value = false;
-  bonusCodes.value = [];
-  const storedTicket = loadStoredTicketData(eventId);
-  if (storedTicket) {
-    ticketCode.value = storedTicket.code;
+      isVoteTotalLoading.value = false;
+    }
+    hasVoted.value = false;
+    isEditingVote.value = false;
+    voteUpdateMessage.value = "";
+    contactValueInput.value = "";
+    contactMarketingConsent.value = false;
+    contactFormError.value = "";
+    contactFormSuccess.value = "";
+    contactCelebration.value = false;
+    bonusFlightActive.value = false;
+    qrGlowActive.value = false;
+    showInstantWinModal.value = false;
+    contactType.value = "";
+    contactPrefilledFromDevice.value = false;
+    contactPrefillNoteVisible.value = false;
+    hasContactBonus.value = false;
+    bonusCodes.value = [];
+    const storedContact = loadStoredContactValue();
+    if (storedContact.value) {
+      contactValueInput.value = storedContact.value;
+      contactType.value =
+        detectContactType(storedContact.value) || storedContact.type;
+      contactPrefilledFromDevice.value = true;
+      contactPrefillNoteVisible.value = true;
+      contactMarketingConsent.value =
+        storedContact.completed || contactMarketingConsent.value;
+    }
+    const storedTicket = loadStoredTicketData(eventId);
+    if (storedTicket) {
+      ticketCode.value = storedTicket.code;
     ticketQrUrl.value = buildQrUrl(storedTicket.qrData);
     hasVoted.value = Boolean(storedTicket.code);
-  }
+    }
   const storedBonuses = loadStoredBonusCodes(eventId);
   if (storedBonuses.length) {
     updateBonusState(eventId, storedBonuses);
+    contactFormSuccess.value = "2ª chance attiva ✅";
   }
   if (eventId) {
     refreshVoteStatus(eventId);
     loadBonusCodes(eventId);
-  }
+    loadBonusCount(eventId);
+    }
     if (eventId && isVotingClosed.value) {
       loadEngagementStats(eventId);
     }
@@ -1846,6 +2001,16 @@ watch(isVotingClosed, (closed) => {
 });
 
 watch(
+  votingCloseTimestamp,
+  (timestamp) => {
+    if (timestamp) {
+      startCountdownTimer();
+    }
+  },
+  { immediate: true },
+);
+
+watch(
   isEventUpcoming,
   (upcoming) => {
     if (upcoming) {
@@ -1855,7 +2020,7 @@ watch(
       showAlreadyVotedModal.value = false;
       ticketLoadError.value = "";
       isTicketLoading.value = false;
-    } else {
+    } else if (!secondsToClose.value) {
       stopCountdownTimer();
     }
   },
@@ -2038,6 +2203,10 @@ const closeAlreadyVotedModal = () => {
   showAlreadyVotedModal.value = false;
 };
 
+const closeInstantWinModal = () => {
+  showInstantWinModal.value = false;
+};
+
 const startVoteEdit = () => {
   if (!canEditVote.value) {
     return;
@@ -2171,13 +2340,40 @@ const modalActionLabel = computed(() => {
   return "Vota MVP";
 });
 
-const contactCtaLabel = computed(() =>
-  hasContactBonus.value ? "Chance attiva!" : "Ottieni +1 possibilità! 🚀",
+const contactCtaLabel = computed(() => {
+  if (isSubmittingContact.value) {
+    return "Invio in corso…";
+  }
+  if (hasContactBonus.value) {
+    return "2ª chance attiva ✅";
+  }
+  return "Ottieni la 2ª chance 🚀";
+});
+
+const detectedContactType = computed(() => detectContactType(contactValueInput.value));
+
+const isContactInputValid = computed(() => Boolean(detectedContactType.value));
+
+const contactInputMode = computed(() => {
+  if (contactType.value === "phone") {
+    return "tel";
+  }
+  if (/^\+|^[0-9]/.test(contactValueInput.value || "")) {
+    return "tel";
+  }
+  return "email";
+});
+
+const contactInputType = computed(() =>
+  contactInputMode.value === "tel" ? "tel" : "email",
 );
 
-const isContactInputValid = computed(() =>
-  Boolean(detectContactType(contactValueInput.value)),
-);
+const bonusCountLabel = computed(() => {
+  if (bonusCount.value > 50) {
+    return "Più di 50 tifosi hanno già attivato la 2ª chance oggi 🔥";
+  }
+  return `Finora ${bonusCount.value} tifosi hanno già attivato la 2ª chance.`;
+});
 
 const confirmVote = () => {
   if (!pendingPlayer.value || votedPlayerId.value === pendingPlayer.value.id) {
@@ -2206,6 +2402,11 @@ const updateBonusState = (eventId, bonuses) => {
   }
 };
 
+const applyBonusCountIncrement = (increment = 1) => {
+  bonusCount.value = Math.max(1, bonusCount.value + increment);
+  persistBonusCount(bonusCount.value);
+};
+
 const loadBonusCodes = async (eventId) => {
   if (!eventId) {
     bonusCodes.value = [];
@@ -2217,16 +2418,65 @@ const loadBonusCodes = async (eventId) => {
     const { ok, bonuses } = await fetchContactBonuses(eventId);
     if (ok) {
       updateBonusState(eventId, bonuses);
+      if (Array.isArray(bonuses) && bonuses.length) {
+        contactFormSuccess.value = "2ª chance attiva ✅";
+      }
     }
   } catch (error) {
     console.warn("Impossibile recuperare i codici bonus", error);
   }
 };
 
+// Social proof: recupera un valore base dal backend per il contatore "tifosi"
+const loadBonusCount = async (eventId) => {
+  if (!eventId) {
+    return;
+  }
+  bonusCountLoading.value = true;
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/contacts/stats`);
+    const remoteCount = Number(
+      data?.bonus_count ?? data?.bonusCount ?? data?.count ?? data?.total,
+    );
+    if (Number.isFinite(remoteCount) && remoteCount > 0) {
+      bonusCount.value = Math.max(remoteCount, bonusCount.value);
+      persistBonusCount(bonusCount.value);
+    }
+  } catch (error) {
+    console.debug("Statistiche bonus non disponibili", error);
+  } finally {
+    bonusCountLoading.value = false;
+  }
+};
+
+const triggerBonusCelebration = () => {
+  contactCelebration.value = false;
+  bonusFlightActive.value = false;
+  qrGlowActive.value = false;
+  nextTick(() => {
+    contactCelebration.value = true;
+    bonusFlightActive.value = true;
+    qrGlowActive.value = true;
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        contactCelebration.value = false;
+      }, 1600);
+      window.setTimeout(() => {
+        bonusFlightActive.value = false;
+      }, 900);
+      window.setTimeout(() => {
+        qrGlowActive.value = false;
+      }, 1800);
+    }
+  });
+};
+
 const submitContactBonus = async () => {
   contactFormError.value = "";
   contactFormSuccess.value = "";
   contactCelebration.value = false;
+  bonusFlightActive.value = false;
+  qrGlowActive.value = false;
 
   const eventId = currentEventId.value;
   if (!eventId) {
@@ -2235,13 +2485,15 @@ const submitContactBonus = async () => {
   }
 
   const detectedType = detectContactType(contactValueInput.value);
+  contactType.value = detectedType;
   if (!detectedType) {
-    contactFormError.value = "Inserisci un contatto valido (email o telefono).";
+    contactFormError.value = "Inserisci un contatto valido per continuare.";
     return;
   }
 
   if (!contactMarketingConsent.value) {
-    contactFormError.value = "Conferma il consenso marketing per ottenere il bonus.";
+    contactFormError.value =
+      "Per continuare devi accettare di ricevere notizie e premi.";
     return;
   }
 
@@ -2271,17 +2523,24 @@ const submitContactBonus = async () => {
             ];
         updateBonusState(eventId, bonuses);
       }
-      contactFormError.value =
-        message ||
-        (status === 409
-          ? "Hai già massimizzato le tue chance per oggi!"
-          : "Impossibile salvare il contatto in questo momento.");
+      if (status === 409) {
+        contactFormError.value = "";
+        contactFormSuccess.value =
+          "Hai già attivato la tua chance extra per questa partita 😉";
+        contactValueInput.value = sanitizedValue;
+        contactMarketingConsent.value = true;
+        persistContactValue(sanitizedValue, detectedType, true);
+        triggerBonusCelebration();
+      } else {
+        contactFormError.value =
+          message || "Impossibile salvare il contatto in questo momento.";
+      }
       return;
     }
 
     hasContactBonus.value = true;
     contactFormSuccess.value =
-      data?.message || "🎉 Extra chance aggiunta! Buona fortuna!";
+      data?.message || "2ª chance attiva ✅ Buona fortuna!";
     if (Array.isArray(data?.bonuses) || data?.bonus_code) {
       const bonuses = Array.isArray(data?.bonuses)
         ? data?.bonuses
@@ -2295,11 +2554,13 @@ const submitContactBonus = async () => {
       updateBonusState(eventId, bonuses);
     }
     contactValueInput.value = sanitizedValue;
-    contactCelebration.value = true;
-    if (typeof window !== "undefined") {
-      window.setTimeout(() => {
-        contactCelebration.value = false;
-      }, 1500);
+    contactMarketingConsent.value = true;
+    contactType.value = detectedType;
+    persistContactValue(sanitizedValue, detectedType, true);
+    applyBonusCountIncrement(1);
+    triggerBonusCelebration();
+    if (data?.instantWin) {
+      showInstantWinModal.value = true;
     }
   } catch (error) {
     console.error("contact submission error", error);
@@ -2384,10 +2645,14 @@ const submitContactBonus = async () => {
                 </p>
               </div>
               <div class="vote-summary__qr" aria-hidden="true">
+                <div class="qr-confetti" :class="{ 'qr-confetti--active': qrGlowActive }"></div>
                 <span
                   v-if="hasContactBonus"
                   class="bonus-badge"
-                  :class="{ 'bonus-badge--pulse': contactCelebration }"
+                  :class="{
+                    'bonus-badge--pulse': contactCelebration,
+                    'bonus-badge--glow': qrGlowActive,
+                  }"
                 >
                   +1 CHANCE
                 </span>
@@ -2432,28 +2697,46 @@ const submitContactBonus = async () => {
               </button>
             </div>
           </div>
-                        <div class="bonus-contact-card" role="form" aria-label="Raddoppia le tue possibilità">
-                <div class="bonus-contact-card__header">
+            <div
+              class="bonus-contact-card"
+              role="form"
+              aria-label="Power-up seconda chance"
+            >
+              <div class="bonus-contact-card__header">
+                <div class="bonus-contact-card__title-row">
                   <span class="bonus-contact-card__icon" aria-hidden="true">🎁</span>
                   <div>
                     <p class="bonus-contact-card__title">
-                      🔥 Raddoppia le tue possibilità di vincita!
+                      ⚠️ Hai ancora solo 1 possibilità di vincere.
                     </p>
-                    <p class="bonus-contact-card__subtitle">
-                      Inserisci un contatto per ricevere un secondo codice premio.
+                    <p
+                      v-if="secondsToClose > 0"
+                      class="bonus-contact-card__timer"
+                      :class="{ 'bonus-contact-card__timer--rush': isCloseCountdownCritical }"
+                    >
+                      ⏳ Chiudiamo tra {{ formattedSecondsToClose }}. Attiva ora la 2ª chance!
                     </p>
                   </div>
                 </div>
+                <p class="bonus-contact-card__subtitle">
+                  Inserisci un contatto per ottenere SUBITO una 2ª chance nel sorteggio. E
+                  ti avvisiamo noi se vinci 📲
+                </p>
+              </div>
 
+              <div class="bonus-contact-card__body">
+                <p class="bonus-contact-card__microcopy">
+                  Promettiamo niente spam, solo notizie e premi sulla tua squadra 💙
+                </p>
                 <form class="bonus-contact-card__form" @submit.prevent="submitContactBonus">
                   <div class="bonus-contact-card__field">
                     <input
                       id="bonus-contact"
                       v-model.trim="contactValueInput"
-                      type="text"
-                      inputmode="email"
-                      autocomplete="email"
-                      :disabled="isSubmittingContact"
+                      :type="contactInputType"
+                      :inputmode="contactInputMode"
+                      :disabled="isSubmittingContact || hasContactBonus"
+                      :autocomplete="contactType === 'email' ? 'email' : 'tel'"
                       class="bonus-contact-card__input"
                       placeholder="Email o numero di telefono"
                     />
@@ -2461,22 +2744,32 @@ const submitContactBonus = async () => {
                       type="submit"
                       class="bonus-contact-card__cta"
                       :disabled="
-                        isSubmittingContact || !isContactInputValid || !contactMarketingConsent
+                        isSubmittingContact ||
+                        hasContactBonus ||
+                        !isContactInputValid ||
+                        !contactMarketingConsent
                       "
                     >
                       <span v-if="isSubmittingContact" class="bonus-contact-card__spinner"></span>
                       <span>{{ contactCtaLabel }}</span>
                     </button>
+                    <Transition name="bonus-flight">
+                      <span v-if="bonusFlightActive" class="bonus-flight-badge">+1 CHANCE</span>
+                    </Transition>
                   </div>
 
                   <label class="bonus-contact-card__consent">
                     <input
                       v-model="contactMarketingConsent"
                       type="checkbox"
-                      :disabled="isSubmittingContact"
+                      :disabled="isSubmittingContact || hasContactBonus"
                     />
                     <span>Accetto di ricevere notizie e premi della squadra</span>
                   </label>
+
+                  <div v-if="contactPrefillNoteVisible" class="bonus-contact-card__note">
+                    Lo usiamo solo per avvisarti in caso di vincita.
+                  </div>
 
                   <div class="bonus-contact-card__messages" aria-live="polite">
                     <p v-if="contactFormError" class="bonus-contact-card__error">
@@ -2492,7 +2785,22 @@ const submitContactBonus = async () => {
                     </Transition>
                   </div>
                 </form>
+
+                <div class="bonus-contact-card__proof" aria-live="polite">
+                  <p>
+                    <span v-if="bonusCountLoading">Aggiornamento tifosi…</span>
+                    <span v-else>{{ bonusCountLabel }}</span>
+                  </p>
+                  <p
+                    v-if="hasContactBonus && contactType"
+                    class="bonus-contact-card__reassurance"
+                  >
+                    Se vinci, ti avvisiamo noi su
+                    {{ contactType === 'phone' ? 'telefono' : 'email' }} 😉
+                  </p>
+                </div>
               </div>
+            </div>
         </section>
         <section v-if="showVotingSection" ref="votingSectionRef" class="px-4">
           <div class="mb-6 text-center prematch-intro">
@@ -3114,6 +3422,37 @@ const submitContactBonus = async () => {
         </div>
       </div>
     </transition>
+
+    <transition name="fade">
+      <div
+        v-if="showInstantWinModal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 px-6 py-10"
+      >
+        <button
+          class="absolute inset-0"
+          type="button"
+          aria-label="Chiudi premio istantaneo"
+          @click="closeInstantWinModal"
+        ></button>
+        <div
+          class="relative z-10 w-full max-w-sm rounded-[2rem] border border-emerald-400/40 bg-slate-900/95 px-6 py-7 text-center shadow-[0_30px_60px_rgba(16,185,129,0.35)]"
+        >
+          <button
+            class="instant-win__close"
+            type="button"
+            aria-label="Chiudi premio istantaneo"
+            @click="closeInstantWinModal"
+          >
+            ✕
+          </button>
+          <p class="instant-win__eyebrow">Premio immediato</p>
+          <h3 class="instant-win__title">🎉 Hai vinto un premio istantaneo!</h3>
+          <p class="instant-win__text">
+            Mostra questo messaggio allo staff per scoprire cosa hai vinto.
+          </p>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -3572,6 +3911,44 @@ const submitContactBonus = async () => {
   padding: 0.75rem;
 }
 
+.qr-confetti {
+  position: absolute;
+  inset: -0.6rem;
+  border-radius: 1.5rem;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.qr-confetti--active {
+  animation: confettiBurst 1.2s ease-out;
+}
+
+@keyframes confettiBurst {
+  0% {
+    opacity: 0.95;
+    box-shadow: 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  40% {
+    opacity: 0.85;
+    box-shadow:
+      0 0 0 rgba(16, 185, 129, 0.4),
+      -12px -14px 0 rgba(34, 211, 238, 0.45),
+      10px -12px 0 rgba(250, 204, 21, 0.45),
+      -10px 12px 0 rgba(59, 130, 246, 0.45),
+      12px 10px 0 rgba(236, 72, 153, 0.35);
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 0;
+    box-shadow:
+      -18px -24px 0 rgba(34, 211, 238, 0),
+      16px -22px 0 rgba(250, 204, 21, 0),
+      -16px 22px 0 rgba(59, 130, 246, 0),
+      22px 16px 0 rgba(236, 72, 153, 0);
+    transform: scale(1.1);
+  }
+}
+
 .vote-summary__qr-loader .qr-loader {
   width: 2.5rem;
   height: 2.5rem;
@@ -3597,6 +3974,11 @@ const submitContactBonus = async () => {
   animation: badgePulse 1.4s ease-out;
 }
 
+.bonus-badge--glow {
+  animation: badgeGlow 1s ease-out;
+  box-shadow: 0 0 0 6px rgba(34, 211, 238, 0.2), 0 20px 40px rgba(34, 211, 238, 0.4);
+}
+
 @keyframes badgePulse {
   0% {
     transform: scale(0.9);
@@ -3612,56 +3994,122 @@ const submitContactBonus = async () => {
   }
 }
 
+@keyframes badgeGlow {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+}
+
 .bonus-contact-card {
-  margin-top: 0.25rem;
-  padding: 1rem;
-  border-radius: 1.25rem;
-  border: 1px solid rgba(125, 211, 252, 0.35);
-  background: linear-gradient(140deg, rgba(14, 165, 233, 0.12), rgba(14, 116, 144, 0.08));
-  box-shadow: 0 18px 32px rgba(8, 47, 73, 0.35);
+  position: relative;
+  margin-top: 0.75rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(94, 234, 212, 0.5);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.94), rgba(16, 185, 129, 0.12));
+  box-shadow: 0 22px 44px rgba(16, 185, 129, 0.25);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.9rem;
+  overflow: hidden;
+}
+
+.bonus-contact-card::before {
+  content: "";
+  position: absolute;
+  inset: -40% 5% auto auto;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.24), transparent 60%);
+  filter: blur(18px);
+  opacity: 0.8;
 }
 
 .bonus-contact-card__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  position: relative;
+  z-index: 1;
+}
+
+.bonus-contact-card__title-row {
   display: flex;
   gap: 0.75rem;
   align-items: flex-start;
 }
 
 .bonus-contact-card__icon {
-  font-size: 1.4rem;
+  font-size: 1.6rem;
   line-height: 1;
 }
 
 .bonus-contact-card__title {
   margin: 0;
   font-weight: 800;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   color: #e0f2fe;
 }
 
+.bonus-contact-card__timer {
+  margin: 0.2rem 0 0;
+  color: #facc15;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bonus-contact-card__timer--rush {
+  color: #f59e0b;
+  animation: timerPulse 1.1s ease-in-out infinite;
+}
+
 .bonus-contact-card__subtitle {
-  margin: 0.1rem 0 0;
+  margin: 0;
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.bonus-contact-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  position: relative;
+  z-index: 1;
+}
+
+.bonus-contact-card__microcopy {
+  margin: 0;
+  font-size: 0.9rem;
   color: rgba(226, 232, 240, 0.85);
-  font-size: 0.95rem;
 }
 
 .bonus-contact-card__form {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.7rem;
 }
 
 .bonus-contact-card__field {
+  position: relative;
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  background: rgba(8, 47, 73, 0.45);
-  border: 1px solid rgba(125, 211, 252, 0.45);
-  border-radius: 1rem;
-  padding: 0.6rem 0.6rem 0.6rem 0.85rem;
+  background: rgba(45, 212, 191, 0.08);
+  border: 1px solid rgba(94, 234, 212, 0.6);
+  border-radius: 1.1rem;
+  padding: 0.65rem 0.65rem 0.65rem 0.9rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .bonus-contact-card__input {
@@ -3669,33 +4117,40 @@ const submitContactBonus = async () => {
   border: none;
   background: transparent;
   color: #e2e8f0;
-  font-size: 0.95rem;
+  font-size: 1rem;
   outline: none;
 }
 
 .bonus-contact-card__input::placeholder {
-  color: rgba(226, 232, 240, 0.7);
+  color: rgba(226, 232, 240, 0.65);
 }
 
 .bonus-contact-card__cta {
-  padding: 0.65rem 0.95rem;
-  border-radius: 0.9rem;
+  padding: 0.7rem 1rem;
+  border-radius: 0.95rem;
   border: none;
   background: linear-gradient(135deg, #22d3ee, #0ea5e9);
   color: #0b1224;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   cursor: pointer;
-  box-shadow: 0 14px 28px rgba(14, 165, 233, 0.35);
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.35);
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  transition: transform 180ms ease, box-shadow 180ms ease, opacity 140ms ease;
 }
 
 .bonus-contact-card__cta:disabled {
   opacity: 0.55;
   cursor: not-allowed;
   box-shadow: none;
+  transform: none;
+}
+
+.bonus-contact-card__cta:not(:disabled):hover {
+  transform: translateY(-1px) scale(1.01);
+  box-shadow: 0 18px 32px rgba(14, 165, 233, 0.45);
 }
 
 .bonus-contact-card__spinner {
@@ -3711,8 +4166,13 @@ const submitContactBonus = async () => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.9rem;
-  color: rgba(226, 232, 240, 0.85);
+  font-size: 0.92rem;
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.bonus-contact-card__note {
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.78);
 }
 
 .bonus-contact-card__messages {
@@ -3738,12 +4198,80 @@ const submitContactBonus = async () => {
   letter-spacing: 0.05em;
 }
 
+.bonus-contact-card__proof {
+  padding: 0.75rem 0.9rem;
+  border-radius: 1rem;
+  background: rgba(94, 234, 212, 0.06);
+  border: 1px dashed rgba(94, 234, 212, 0.35);
+  color: rgba(226, 232, 240, 0.92);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.bonus-contact-card__reassurance {
+  margin: 0.25rem 0 0;
+  color: rgba(226, 232, 240, 0.75);
+  font-weight: 600;
+}
+
+.bonus-flight-badge {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+  color: #0b1224;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.4);
+}
+
+.bonus-flight-enter-active {
+  animation: bonusFlight 0.8s ease-out forwards;
+}
+
+.bonus-flight-leave-active {
+  display: none;
+}
+
+@keyframes bonusFlight {
+  0% {
+    transform: translate(0, 0) scale(0.85);
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+    transform: translate(-8px, -40px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(140px, -170px) scale(0.92);
+  }
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes timerPulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 
@@ -4220,6 +4748,49 @@ const submitContactBonus = async () => {
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+.instant-win__close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(94, 234, 212, 0.4);
+  color: #a5f3fc;
+  border-radius: 999px;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 150ms ease, opacity 150ms ease;
+}
+
+.instant-win__close:hover {
+  transform: scale(1.05);
+  opacity: 0.9;
+}
+
+.instant-win__eyebrow {
+  margin: 0;
+  color: #34d399;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+
+.instant-win__title {
+  margin: 0.75rem 0 0.35rem;
+  color: #ecfeff;
+  font-size: 1.3rem;
+  letter-spacing: 0.04em;
+}
+
+.instant-win__text {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.9);
+  line-height: 1.6;
 }
 
 .feedback-modal-fade-enter-active,
