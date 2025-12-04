@@ -228,6 +228,23 @@ export async function submitContactChance({
   }
 }
 
+export async function fetchContactBonuses(eventId: number) {
+  if (!eventId) {
+    return { ok: false, status: 400 };
+  }
+
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/contacts`, {
+      headers: getDeviceHeaders(),
+    });
+    return { ok: true, bonuses: data?.bonuses ?? [] };
+  } catch (error) {
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, status, message, error };
+  }
+}
+
 export async function vote({ eventId, playerId }) {
   try {
     const { data: voteData } = await apiClient.post('/vote', {
