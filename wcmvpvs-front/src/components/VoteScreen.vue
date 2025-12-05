@@ -5357,6 +5357,8 @@ const submitContactBonus = async () => {
   overflow: hidden;
   padding: 1rem;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  height: min(88vh, 840px);
+  min-height: 65vh;
 }
 
 .edit-vote-court.is-locked {
