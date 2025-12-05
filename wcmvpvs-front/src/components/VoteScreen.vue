@@ -727,12 +727,23 @@ const isTicketLoading = ref(false);
 const showVoteSummary = computed(
   () => hasVoted.value && Boolean(ticketCode.value || ticketQrUrl.value),
 );
-const showVotingSection = computed(
-  () => !hasVoted.value || isEditingVote.value,
-);
+const showVotingSection = computed(() => !hasVoted.value);
 const showAfterVoteSection = computed(
   () => hasVoted.value && !isEditingVote.value,
 );
+const canOpenVoteTrend = computed(
+  () => hasVoted.value && postVoteSettings.value.showVoteTrend,
+);
+const canOpenSelfie = computed(
+  () => hasVoted.value && postVoteSettings.value.showSelfie,
+);
+const canOpenReactionTest = computed(
+  () => hasVoted.value && postVoteSettings.value.showReactionTest,
+);
+const showVoteTrendModal = ref(false);
+const showSelfMvpModal = ref(false);
+const showReactionTestModal = ref(false);
+const showEditVoteModal = ref(false);
 
 const buildQrUrl = (qrData) =>
   qrData
@@ -1587,36 +1598,6 @@ const votingOpen = computed(
   () => !isVotingClosed.value && !isEventUpcoming.value,
 );
 
-const showLiveResultsSection = computed(() => {
-  if (!postVoteSettings.value.showVoteTrend) {
-    return false;
-  }
-  if (!currentEventId.value) {
-    return false;
-  }
-  return hasVoted.value || isCheckingVoteStatus.value;
-});
-
-const showSelfieSection = computed(() => {
-  if (!postVoteSettings.value.showSelfie) {
-    return false;
-  }
-  if (!currentEventId.value) {
-    return false;
-  }
-  return hasVoted.value || isCheckingVoteStatus.value;
-});
-
-const showReactionTestSection = computed(() => {
-  if (!postVoteSettings.value.showReactionTest) {
-    return false;
-  }
-  if (!currentEventId.value) {
-    return false;
-  }
-  return hasVoted.value;
-});
-
 const resolveEventStartValue = (event) => {
   if (!event || typeof event !== "object") {
     return null;
@@ -1799,6 +1780,10 @@ watch(
     }
     hasVoted.value = false;
     isEditingVote.value = false;
+    showEditVoteModal.value = false;
+    showVoteTrendModal.value = false;
+    showSelfMvpModal.value = false;
+    showReactionTestModal.value = false;
     voteUpdateMessage.value = "";
     contactValueInput.value = "";
     contactMarketingConsent.value = false;
@@ -1895,6 +1880,10 @@ watch(hasVoted, (voted) => {
     }
     showFeedbackModal.value = false;
     isEditingVote.value = false;
+    showVoteTrendModal.value = false;
+    showSelfMvpModal.value = false;
+    showReactionTestModal.value = false;
+    showEditVoteModal.value = false;
     voteUpdateMessage.value = "";
     return;
   }
@@ -1908,6 +1897,33 @@ watch(
   (enabled) => {
     if (!enabled) {
       showFeedbackModal.value = false;
+    }
+  },
+);
+
+watch(
+  () => postVoteSettings.value.showVoteTrend,
+  (enabled) => {
+    if (!enabled) {
+      showVoteTrendModal.value = false;
+    }
+  },
+);
+
+watch(
+  () => postVoteSettings.value.showSelfie,
+  (enabled) => {
+    if (!enabled) {
+      showSelfMvpModal.value = false;
+    }
+  },
+);
+
+watch(
+  () => postVoteSettings.value.showReactionTest,
+  (enabled) => {
+    if (!enabled) {
+      showReactionTestModal.value = false;
     }
   },
 );
@@ -1993,6 +2009,10 @@ watch(isVotingClosed, (closed) => {
     ticketLoadError.value = "";
     isTicketLoading.value = false;
     isEditingVote.value = false;
+    showEditVoteModal.value = false;
+    showVoteTrendModal.value = false;
+    showSelfMvpModal.value = false;
+    showReactionTestModal.value = false;
     voteUpdateMessage.value = "";
   } else {
     engagementStats.value = null;
@@ -2207,6 +2227,39 @@ const closeInstantWinModal = () => {
   showInstantWinModal.value = false;
 };
 
+const openVoteTrendModal = () => {
+  if (!canOpenVoteTrend.value) {
+    return;
+  }
+  showVoteTrendModal.value = true;
+};
+
+const openSelfMvpModal = () => {
+  if (!canOpenSelfie.value) {
+    return;
+  }
+  showSelfMvpModal.value = true;
+};
+
+const openReactionTestModal = () => {
+  if (!canOpenReactionTest.value) {
+    return;
+  }
+  showReactionTestModal.value = true;
+};
+
+const closeVoteTrendModal = () => {
+  showVoteTrendModal.value = false;
+};
+
+const closeSelfMvpModal = () => {
+  showSelfMvpModal.value = false;
+};
+
+const closeReactionTestModal = () => {
+  showReactionTestModal.value = false;
+};
+
 const startVoteEdit = () => {
   if (!canEditVote.value) {
     return;
@@ -2215,14 +2268,14 @@ const startVoteEdit = () => {
   errorMessage.value = "";
   isEditingVote.value = true;
   voteUpdateMessage.value = "";
-  nextTick(() => {
-    if (votingSectionRef.value?.scrollIntoView) {
-      votingSectionRef.value.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }
-  });
+  showEditVoteModal.value = true;
+};
+
+const closeEditVoteModal = () => {
+  showEditVoteModal.value = false;
+  if (hasVoted.value) {
+    isEditingVote.value = false;
+  }
 };
 
 const voteForPlayer = async (player) => {
@@ -2257,6 +2310,7 @@ const voteForPlayer = async (player) => {
       pendingPlayer.value = null;
       hasVoted.value = true;
       isEditingVote.value = false;
+      showEditVoteModal.value = false;
 
       const resolvedPlayerName =
         formatPlayerName(player) || formatPlayerName(player?.raw) || "il tuo giocatore";
@@ -2664,9 +2718,9 @@ const submitContactBonus = async () => {
                   QR non disponibile
                 </div>
               </div>
-            </div>
+          </div>
+          
 
-            
 
             <div v-if="selectedPlayer" class="voted-player-panel">
               <div class="voted-player-panel__header">
@@ -2696,6 +2750,44 @@ const submitContactBonus = async () => {
                 Modifica voto
               </button>
             </div>
+          </div>
+
+          <div
+            v-if="canOpenVoteTrend || canOpenSelfie || canOpenReactionTest"
+            class="extra-dashboard"
+            role="navigation"
+            aria-label="Funzionalità extra post-voto"
+          >
+            <button
+              type="button"
+              class="dashboard-tile"
+              :class="{ 'dashboard-tile--disabled': !canOpenVoteTrend }"
+              :disabled="!canOpenVoteTrend"
+              @click="openVoteTrendModal"
+            >
+              <span class="dashboard-tile__icon" aria-hidden="true">📈</span>
+              <span class="dashboard-tile__label">Andamento voti</span>
+            </button>
+            <button
+              type="button"
+              class="dashboard-tile"
+              :class="{ 'dashboard-tile--disabled': !canOpenSelfie }"
+              :disabled="!canOpenSelfie"
+              @click="openSelfMvpModal"
+            >
+              <span class="dashboard-tile__icon" aria-hidden="true">🤳</span>
+              <span class="dashboard-tile__label">Self-MVP</span>
+            </button>
+            <button
+              type="button"
+              class="dashboard-tile"
+              :class="{ 'dashboard-tile--disabled': !canOpenReactionTest }"
+              :disabled="!canOpenReactionTest"
+              @click="openReactionTestModal"
+            >
+              <span class="dashboard-tile__icon" aria-hidden="true">⚡</span>
+              <span class="dashboard-tile__label">Reaction Test</span>
+            </button>
           </div>
             <div
               class="bonus-contact-card"
@@ -2959,33 +3051,9 @@ const submitContactBonus = async () => {
               <p v-else class="players-message">
                 I giocatori non sono ancora stati configurati. Torna più tardi!
               </p>
-            </div>
+          </div>
 
-          <LiveResultsSection
-            v-if="showLiveResultsSection"
-            class="mt-6"
-            :event-id="currentEventId"
-            :enabled="hasVoted && postVoteSettings.showVoteTrend"
-          />
         </section>
-
-        <SelfieMvpSection
-          v-if="showSelfieSection"
-          :class="['px-4', hasVoted ? 'pt-0' : '']"
-          :event-id="currentEventId"
-          :enabled="hasVoted && postVoteSettings.showSelfie"
-          :loading-status="isCheckingVoteStatus"
-          :compact="hasVoted"
-          @selfie-submitted="handleSelfieSubmitted"
-        />
-
-        <ReactionTestSection
-          v-if="showReactionTestSection"
-          class="mt-8"
-          :event-id="currentEventId"
-          :enabled="hasVoted && postVoteSettings.showReactionTest"
-        />
-
         <section v-if="showSponsorSection" ref="sponsorSectionRef" class="px-4">
           <div
             class="relative overflow-hidden rounded-[2.25rem] border border-slate-700/40 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 shadow-[0_26px_52px_rgba(8,15,28,0.55)]"
@@ -3236,6 +3304,164 @@ const submitContactBonus = async () => {
             </div>
           </div>
         </transition>
+
+        <Teleport to="body">
+          <transition name="modal-fade">
+            <div
+              v-if="showVoteTrendModal"
+              class="fullscreen-modal"
+              @click.self="closeVoteTrendModal"
+            >
+              <div class="fullscreen-modal__panel">
+                <header class="fullscreen-modal__header">
+                  <h3 class="fullscreen-modal__title">Andamento voti</h3>
+                  <button
+                    type="button"
+                    class="fullscreen-modal__close"
+                    aria-label="Chiudi andamento voti"
+                    @click="closeVoteTrendModal"
+                  >
+                    ✕
+                  </button>
+                </header>
+                <div class="fullscreen-modal__body">
+                  <LiveResultsSection
+                    :event-id="currentEventId"
+                    :enabled="hasVoted && postVoteSettings.showVoteTrend"
+                  />
+                </div>
+              </div>
+            </div>
+          </transition>
+        </Teleport>
+
+        <Teleport to="body">
+          <transition name="modal-fade">
+            <div
+              v-if="showSelfMvpModal"
+              class="fullscreen-modal"
+              @click.self="closeSelfMvpModal"
+            >
+              <div class="fullscreen-modal__panel">
+                <header class="fullscreen-modal__header">
+                  <h3 class="fullscreen-modal__title">Self-MVP</h3>
+                  <button
+                    type="button"
+                    class="fullscreen-modal__close"
+                    aria-label="Chiudi Self-MVP"
+                    @click="closeSelfMvpModal"
+                  >
+                    ✕
+                  </button>
+                </header>
+                <div class="fullscreen-modal__body">
+                  <SelfieMvpSection
+                    :event-id="currentEventId"
+                    :enabled="hasVoted && postVoteSettings.showSelfie"
+                    :loading-status="isCheckingVoteStatus"
+                    compact
+                    @selfie-submitted="handleSelfieSubmitted"
+                  />
+                </div>
+              </div>
+            </div>
+          </transition>
+        </Teleport>
+
+        <Teleport to="body">
+          <transition name="modal-fade">
+            <div
+              v-if="showReactionTestModal"
+              class="fullscreen-modal"
+              @click.self="closeReactionTestModal"
+            >
+              <div class="fullscreen-modal__panel">
+                <header class="fullscreen-modal__header">
+                  <h3 class="fullscreen-modal__title">Reaction Test</h3>
+                  <button
+                    type="button"
+                    class="fullscreen-modal__close"
+                    aria-label="Chiudi Reaction Test"
+                    @click="closeReactionTestModal"
+                  >
+                    ✕
+                  </button>
+                </header>
+                <div class="fullscreen-modal__body">
+                  <ReactionTestSection
+                    :event-id="currentEventId"
+                    :enabled="hasVoted && postVoteSettings.showReactionTest"
+                  />
+                </div>
+              </div>
+            </div>
+          </transition>
+        </Teleport>
+
+        <Teleport to="body">
+          <transition name="modal-fade">
+            <div
+              v-if="showEditVoteModal"
+              class="fullscreen-modal"
+              @click.self="closeEditVoteModal"
+            >
+              <div class="fullscreen-modal__panel fullscreen-modal__panel--wide">
+                <header class="fullscreen-modal__header">
+                  <h3 class="fullscreen-modal__title">Modifica voto</h3>
+                  <button
+                    type="button"
+                    class="fullscreen-modal__close"
+                    aria-label="Chiudi modifica voto"
+                    @click="closeEditVoteModal"
+                  >
+                    ✕
+                  </button>
+                </header>
+                <div class="fullscreen-modal__body">
+                  <div class="edit-vote-intro">
+                    <p class="edit-vote-intro__eyebrow">Il tuo voto è al sicuro</p>
+                    <p class="edit-vote-intro__title">Aggiorna il tuo MVP</p>
+                    <p class="edit-vote-intro__hint">
+                      Tocca il giocatore che preferisci per sostituire la tua scelta. Il
+                      codice della lotteria e il QR restano validi.
+                    </p>
+                    <p v-if="!votingOpen" class="edit-vote-intro__hint emphasize">
+                      Le votazioni sono chiuse: il tuo voto finale è già salvato.
+                    </p>
+                  </div>
+                  <div
+                    v-if="fieldPlayers.length"
+                    class="edit-vote-court"
+                    :class="{ 'is-locked': !canSelectPlayers }"
+                  >
+                    <VolleyCourt
+                      class="block h-full w-full"
+                      :players="fieldPlayers"
+                      :card-size="afterVoteCardSize"
+                      :selected-player-id="votedPlayerId"
+                      :disable-votes="disableVotes"
+                      :is-voting="isVoting"
+                      :court-sponsors="visibleCourtSponsors"
+                      :is-pre-match="isPreMatch"
+                      :voting-open="votingOpen"
+                      @select="openPlayerModal"
+                      @sponsor-click="handleSponsorClick"
+                    />
+                  </div>
+                  <p v-else-if="isLoadingPlayers" class="players-message">
+                    Caricamento dei giocatori in corso…
+                  </p>
+                  <p v-else-if="playersError" class="players-message error">
+                    {{ playersError }}
+                  </p>
+                  <p v-else class="players-message">
+                    I giocatori non sono ancora stati configurati. Torna più tardi!
+                  </p>
+                </div>
+              </div>
+            </div>
+          </transition>
+        </Teleport>
       </div>
     </main>
 
@@ -4952,6 +5178,207 @@ const submitContactBonus = async () => {
 @keyframes counter-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+
+.extra-dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 0;
+  padding: 1rem 1.25rem;
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.85));
+  box-shadow: 0 26px 52px rgba(8, 15, 28, 0.45);
+  backdrop-filter: blur(10px);
+}
+
+.dashboard-tile {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.08), transparent 55%),
+    rgba(255, 255, 255, 0.03);
+  color: #e2e8f0;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.dashboard-tile__icon {
+  font-size: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dashboard-tile__label {
+  font-size: 0.95rem;
+}
+
+.dashboard-tile:hover,
+.dashboard-tile:focus-visible {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.5);
+  border-color: rgba(255, 255, 255, 0.2);
+  outline: none;
+}
+
+.dashboard-tile:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.dashboard-tile--disabled,
+.dashboard-tile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.fullscreen-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem 1rem;
+  background: rgba(6, 12, 24, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.fullscreen-modal__panel {
+  position: relative;
+  width: min(1100px, 100%);
+  max-height: 92vh;
+  overflow: hidden;
+  border-radius: 28px;
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.82));
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 26px 52px rgba(8, 15, 28, 0.6);
+  display: flex;
+  flex-direction: column;
+}
+
+.fullscreen-modal__panel--wide {
+  width: min(1200px, 100%);
+}
+
+.fullscreen-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.3rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fullscreen-modal__title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.fullscreen-modal__close {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.fullscreen-modal__close:hover,
+.fullscreen-modal__close:focus-visible {
+  transform: scale(1.05);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+  outline: none;
+}
+
+.fullscreen-modal__body {
+  padding: 1.25rem;
+  overflow-y: auto;
+  background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.03), transparent 45%);
+}
+
+.edit-vote-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.edit-vote-intro__eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+}
+
+.edit-vote-intro__title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.edit-vote-intro__hint {
+  margin: 0;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.edit-vote-court {
+  position: relative;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.9);
+  overflow: hidden;
+  padding: 1rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.edit-vote-court.is-locked {
+  opacity: 0.7;
+}
+
+@media (max-width: 768px) {
+  .extra-dashboard {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    padding: 0.9rem 1rem;
+  }
+
+  .dashboard-tile {
+    padding: 0.75rem 0.85rem;
+  }
+
+  .fullscreen-modal__panel {
+    max-height: 95vh;
+  }
+
+  .fullscreen-modal__body {
+    padding: 1rem 0.85rem 1.2rem;
   }
 }
 </style>
