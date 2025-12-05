@@ -3497,7 +3497,7 @@ const submitContactBonus = async () => {
     <transition name="fade">
       <div
         v-if="!showInactiveNotice && isModalOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-6 py-10"
+        class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 px-6 py-10"
       >
         <button
           class="absolute inset-0"
