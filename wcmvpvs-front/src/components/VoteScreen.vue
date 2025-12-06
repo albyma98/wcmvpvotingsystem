@@ -2820,7 +2820,7 @@ const submitContactBonus = async () => {
 
             <div v-if="selectedPlayer" class="voted-player-panel">
               <div class="voted-player-panel__header">
-                <p class="voted-player-panel__eyebrow">Hai votato</p>
+                <p class="voted-player-panel__eyebrow">Il tuo MVP</p>
                 <h3 class="voted-player-panel__title">
                   {{ selectedPlayerName }}
                 </h3>
@@ -2832,6 +2832,7 @@ const submitContactBonus = async () => {
                   :card-size="150"
                   :is-selected="true"
                   :voting-open="votingOpen"
+                  :show-selection-badge="false"
                 />
                 <p v-else class="voted-player-panel__placeholder">
                   I giocatori non sono disponibili al momento.
@@ -3453,6 +3454,7 @@ const submitContactBonus = async () => {
                       :court-sponsors="visibleCourtSponsors"
                       :is-pre-match="isPreMatch"
                       :voting-open="votingOpen"
+                      :show-selection-badge="false"
                       @select="openPlayerModal"
                       @sponsor-click="handleSponsorClick"
                     />

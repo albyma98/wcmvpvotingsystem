@@ -36,6 +36,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  showSelectionBadge: {
+    type: Boolean,
+    default: true,
+  },
 });
 
 const emits = defineEmits(['select', 'sponsor-click']);
@@ -324,6 +328,7 @@ const centerSponsorStyle = computed(() => ({
             :is-voting="isVoting"
             :is-pre-match="isPreMatch"
             :voting-open="votingOpen"
+            :show-selection-badge="showSelectionBadge"
             @select="() => emits('select', player)"
           />
         </div>
