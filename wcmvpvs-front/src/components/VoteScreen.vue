@@ -2227,6 +2227,12 @@ const closeInstantWinModal = () => {
   showInstantWinModal.value = false;
 };
 
+const missions = ref([
+  { id: "vote_trend", label: "Andamento voti", completed: false },
+  { id: "self_mvp", label: "Self-MVP", completed: false },
+  { id: "reaction_test", label: "Reaction Test", completed: false },
+]);
+
 const openVoteTrendModal = () => {
   if (!canOpenVoteTrend.value) {
     return;
@@ -2246,6 +2252,43 @@ const openReactionTestModal = () => {
     return;
   }
   showReactionTestModal.value = true;
+};
+
+const missionMeta = computed(() => ({
+  vote_trend: {
+    icon: "📈",
+    disabled: !canOpenVoteTrend.value,
+    onClick: openVoteTrendModal,
+  },
+  self_mvp: {
+    icon: "🤳",
+    disabled: !canOpenSelfie.value,
+    onClick: openSelfMvpModal,
+  },
+  reaction_test: {
+    icon: "⚡",
+    disabled: !canOpenReactionTest.value,
+    onClick: openReactionTestModal,
+  },
+}));
+
+const renderedMissions = computed(() =>
+  missions.value.map((mission) => {
+    const meta = missionMeta.value[mission.id] || {};
+    return {
+      ...mission,
+      icon: meta.icon || "🎯",
+      disabled: Boolean(meta.disabled),
+      onClick: typeof meta.onClick === "function" ? meta.onClick : () => {},
+    };
+  }),
+);
+
+const markMissionCompleted = (id) => {
+  const target = missions.value.find((mission) => mission.id === id);
+  if (target) {
+    target.completed = true;
+  }
 };
 
 const closeVoteTrendModal = () => {
@@ -2759,34 +2802,20 @@ const submitContactBonus = async () => {
             aria-label="Funzionalità extra post-voto"
           >
             <button
+              v-for="mission in renderedMissions"
+              :key="mission.id"
               type="button"
               class="dashboard-tile"
-              :class="{ 'dashboard-tile--disabled': !canOpenVoteTrend }"
-              :disabled="!canOpenVoteTrend"
-              @click="openVoteTrendModal"
+              :class="{
+                'dashboard-tile--disabled': mission.disabled,
+                'dashboard-tile--completed': mission.completed,
+              }"
+              :disabled="mission.disabled"
+              @click="mission.onClick"
             >
-              <span class="dashboard-tile__icon" aria-hidden="true">📈</span>
-              <span class="dashboard-tile__label">Andamento voti</span>
-            </button>
-            <button
-              type="button"
-              class="dashboard-tile"
-              :class="{ 'dashboard-tile--disabled': !canOpenSelfie }"
-              :disabled="!canOpenSelfie"
-              @click="openSelfMvpModal"
-            >
-              <span class="dashboard-tile__icon" aria-hidden="true">🤳</span>
-              <span class="dashboard-tile__label">Self-MVP</span>
-            </button>
-            <button
-              type="button"
-              class="dashboard-tile"
-              :class="{ 'dashboard-tile--disabled': !canOpenReactionTest }"
-              :disabled="!canOpenReactionTest"
-              @click="openReactionTestModal"
-            >
-              <span class="dashboard-tile__icon" aria-hidden="true">⚡</span>
-              <span class="dashboard-tile__label">Reaction Test</span>
+              <span v-if="mission.completed" class="dashboard-tile__badge">COMPLETATA ✅</span>
+              <span class="dashboard-tile__icon" aria-hidden="true">{{ mission.icon }}</span>
+              <span class="dashboard-tile__label">{{ mission.label }}</span>
             </button>
           </div>
             <div
@@ -5218,6 +5247,7 @@ const submitContactBonus = async () => {
   font-weight: 700;
   letter-spacing: 0.02em;
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  position: relative;
 }
 
 .dashboard-tile__icon {
@@ -5231,6 +5261,21 @@ const submitContactBonus = async () => {
   font-size: 0.95rem;
 }
 
+.dashboard-tile__badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  box-shadow: 0 8px 20px rgba(34, 197, 94, 0.25);
+}
+
 .dashboard-tile:hover,
 .dashboard-tile:focus-visible {
   transform: translateY(-2px) scale(1.01);
@@ -5241,6 +5286,11 @@ const submitContactBonus = async () => {
 
 .dashboard-tile:active {
   transform: translateY(0) scale(0.99);
+}
+
+.dashboard-tile--completed {
+  box-shadow: 0 22px 44px rgba(34, 197, 94, 0.18), 0 0 0 1px rgba(34, 197, 94, 0.35);
+  border-color: rgba(34, 197, 94, 0.4);
 }
 
 .dashboard-tile--disabled,
