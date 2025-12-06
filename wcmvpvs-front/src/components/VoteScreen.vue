@@ -1212,6 +1212,16 @@ const showFeedbackThankYouMessage = computed(
 
 const handleSelfieSubmitted = () => {
   hasVoted.value = true;
+  markMissionCompleted("self_mvp");
+};
+
+const handleReactionResult = (resultMs) => {
+  if (typeof resultMs === "number") {
+    reactionBestScoreMs.value = reactionBestScoreMs.value === null
+      ? resultMs
+      : Math.min(reactionBestScoreMs.value, resultMs);
+  }
+  markMissionCompleted("reaction_test");
 };
 
 const feedbackStorageKey = (eventId) => {
@@ -2171,6 +2181,9 @@ onBeforeUnmount(() => {
   stopSponsorVisibilityInterval();
   teardownSponsorObserver();
   stopWaitingMessageTimer();
+  if (missionToastTimer) {
+    window.clearTimeout(missionToastTimer);
+  }
 });
 
 const canEditVote = computed(() => hasVoted.value && votingOpen.value);
@@ -2232,6 +2245,10 @@ const missions = ref([
   { id: "self_mvp", label: "Self-MVP", completed: false },
   { id: "reaction_test", label: "Reaction Test", completed: false },
 ]);
+const reactionBestScoreMs = ref(null);
+const missionToastMessage = ref("");
+const showMissionToast = ref(false);
+let missionToastTimer = null;
 
 const totalMissions = computed(() => missions.value.length);
 
@@ -2247,9 +2264,15 @@ const progressPercent = computed(() => {
   return (completedMissions.value / totalMissions.value) * 100;
 });
 
+const isMissionCompleted = (id) =>
+  missions.value.some((mission) => mission.id === id && mission.completed);
+
 const openVoteTrendModal = () => {
   if (!canOpenVoteTrend.value) {
     return;
+  }
+  if (!isMissionCompleted("vote_trend")) {
+    markMissionCompleted("vote_trend");
   }
   showVoteTrendModal.value = true;
 };
@@ -2298,11 +2321,27 @@ const renderedMissions = computed(() =>
   }),
 );
 
+const showMissionToastMessage = (mission) => {
+  if (!mission) {
+    return;
+  }
+  missionToastMessage.value = `🎉 Missione '${mission.label}' completata! Hai ottenuto +1 chance.`;
+  showMissionToast.value = true;
+  if (missionToastTimer) {
+    window.clearTimeout(missionToastTimer);
+  }
+  missionToastTimer = window.setTimeout(() => {
+    showMissionToast.value = false;
+  }, 4000);
+};
+
 const markMissionCompleted = (id) => {
   const target = missions.value.find((mission) => mission.id === id);
-  if (target) {
-    target.completed = true;
+  if (!target || target.completed) {
+    return;
   }
+  target.completed = true;
+  showMissionToastMessage(target);
 };
 
 const closeVoteTrendModal = () => {
@@ -2859,6 +2898,12 @@ const submitContactBonus = async () => {
               <span v-if="mission.completed" class="dashboard-tile__badge">COMPLETATA ✅</span>
               <span class="dashboard-tile__icon" aria-hidden="true">{{ mission.icon }}</span>
               <span class="dashboard-tile__label">{{ mission.label }}</span>
+              <span
+                v-if="mission.id === 'reaction_test' && reactionBestScoreMs !== null"
+                class="dashboard-tile__hint"
+              >
+                Miglior tempo: {{ reactionBestScoreMs }} ms
+              </span>
             </button>
           </div>
             <div
@@ -3463,6 +3508,7 @@ const submitContactBonus = async () => {
                   <ReactionTestSection
                     :event-id="currentEventId"
                     :enabled="hasVoted && postVoteSettings.showReactionTest"
+                    @result-submitted="handleReactionResult"
                   />
                 </div>
               </div>
@@ -3531,6 +3577,19 @@ const submitContactBonus = async () => {
                   </p>
                 </div>
               </div>
+            </div>
+          </transition>
+        </Teleport>
+
+        <Teleport to="body">
+          <transition name="toast-fade">
+            <div
+              v-if="showMissionToast"
+              class="mission-toast"
+              role="status"
+              aria-live="polite"
+            >
+              {{ missionToastMessage }}
             </div>
           </transition>
         </Teleport>
@@ -5263,6 +5322,33 @@ const submitContactBonus = async () => {
   opacity: 0;
 }
 
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.toast-fade-enter-from,
+.toast-fade-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.mission-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  padding: 0.9rem 1.2rem;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(94, 234, 212, 0.45);
+  color: #e2e8f0;
+  box-shadow: 0 20px 40px rgba(8, 15, 28, 0.45);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  z-index: 120;
+}
+
 .fan-missions {
   margin: 1.25rem 0 0;
   padding: 1rem 1.25rem;
@@ -5369,6 +5455,16 @@ const submitContactBonus = async () => {
 
 .dashboard-tile__label {
   font-size: 0.95rem;
+}
+
+.dashboard-tile__hint {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  margin-top: 0.15rem;
+  font-weight: 600;
 }
 
 .dashboard-tile__badge {
