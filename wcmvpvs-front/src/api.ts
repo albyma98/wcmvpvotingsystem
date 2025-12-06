@@ -392,6 +392,37 @@ export async function submitReactionTestResult(eventId: number, reactionTimeMs: 
   }
 }
 
+export async function submitLiberoReflexResult(
+  eventId: number,
+  payload: { attempts: number; successCount: number; reward: string },
+) {
+  if (!eventId) {
+    return { ok: false, error: new Error('missing_event_id') };
+  }
+
+  const headers = getDeviceHeaders();
+  if (!headers['X-Device-ID']) {
+    return { ok: false, error: new Error('missing_device_id') };
+  }
+
+  try {
+    const { data } = await apiClient.post(`/events/${eventId}/libero-reflex`, payload, {
+      headers,
+    });
+    return { ok: true, data };
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      return {
+        ok: false,
+        status: error.response?.status,
+        data: error.response?.data,
+        error,
+      };
+    }
+    return { ok: false, error };
+  }
+}
+
 export async function uploadSelfie(
   eventId: number,
   {

@@ -12,6 +12,7 @@ import VolleyCourt from "./VolleyCourt.vue";
 import PlayerCard from "./PlayerCard.vue";
 import SelfieMvpSection from "./SelfieMvpSection.vue";
 import ReactionTestSection from "./ReactionTestSection.vue";
+import LiberoReflexModal from "./LiberoReflexModal.vue";
 import LiveResultsSection from "./LiveResultsSection.vue";
 import {
   apiClient,
@@ -23,6 +24,7 @@ import {
   fetchEventEngagement,
   fetchContactBonuses,
   submitContactChance,
+  submitLiberoReflexResult,
 } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, mapPlayersToLayout } from "../roster";
 import { getOrCreateDeviceId } from "../deviceId";
@@ -740,9 +742,13 @@ const canOpenSelfie = computed(
 const canOpenReactionTest = computed(
   () => hasVoted.value && postVoteSettings.value.showReactionTest,
 );
+const canOpenLiberoReflex = computed(
+  () => hasVoted.value && postVoteSettings.value.showLiberoReflex,
+);
 const showVoteTrendModal = ref(false);
 const showSelfMvpModal = ref(false);
 const showReactionTestModal = ref(false);
+const showLiberoReflexModal = ref(false);
 const showEditVoteModal = ref(false);
 
 const buildQrUrl = (qrData) =>
@@ -1224,6 +1230,36 @@ const handleReactionResult = (resultMs) => {
   markMissionCompleted("reaction_test");
 };
 
+const sendLiberoReflexResult = async ({ attempts = 0, successCount = 0, reward = "none" }) => {
+  const eventId = currentEventId.value;
+  if (!eventId || reward === "none") {
+    return;
+  }
+  try {
+    await submitLiberoReflexResult(eventId, { attempts, successCount, reward });
+  } catch (error) {
+    console.error("libero reflex submit error", error);
+  }
+};
+
+const handleLiberoReflexFinished = (result) => {
+  const attempts = Number.isFinite(result?.attempts) ? result.attempts : 0;
+  const successCount = Number.isFinite(result?.successCount)
+    ? result.successCount
+    : 0;
+  const reward = typeof result?.reward === "string" ? result.reward : "none";
+
+  if (successCount >= 2) {
+    const toastMessage =
+      reward === "perfect"
+        ? "Perfetto! +1 chance e badge Libero d'Acciaio!"
+        : "Ottimo! +1 chance per te!";
+    markMissionCompleted("libero_reflex", { toastMessage });
+  }
+
+  sendLiberoReflexResult({ attempts, successCount, reward });
+};
+
 const feedbackStorageKey = (eventId) => {
   if (!eventId) {
     return "";
@@ -1545,6 +1581,11 @@ const postVoteSettings = computed(() => {
     showReactionTest: resolveEventFlag(
       event,
       ["show_reaction_test", "showReactionTest"],
+      true,
+    ),
+    showLiberoReflex: resolveEventFlag(
+      event,
+      ["show_libero_reflex", "showLiberoReflex", "show_reflex"],
       true,
     ),
     showSelfie: resolveEventFlag(event, ["show_selfie", "showSelfie"], true),
@@ -1893,6 +1934,7 @@ watch(hasVoted, (voted) => {
     showVoteTrendModal.value = false;
     showSelfMvpModal.value = false;
     showReactionTestModal.value = false;
+    showLiberoReflexModal.value = false;
     showEditVoteModal.value = false;
     voteUpdateMessage.value = "";
     return;
@@ -1934,6 +1976,15 @@ watch(
   (enabled) => {
     if (!enabled) {
       showReactionTestModal.value = false;
+    }
+  },
+);
+
+watch(
+  () => postVoteSettings.value.showLiberoReflex,
+  (enabled) => {
+    if (!enabled) {
+      showLiberoReflexModal.value = false;
     }
   },
 );
@@ -2244,6 +2295,12 @@ const missions = ref([
   { id: "vote_trend", label: "Andamento voti", completed: false },
   { id: "self_mvp", label: "Self-MVP", completed: false },
   { id: "reaction_test", label: "Reaction Test", completed: false },
+  {
+    id: "libero_reflex",
+    label: "Libero Reflex",
+    subtitle: "Blocca la palla solo quando entra nel cerchio verde! Hai 3 tentativi.",
+    completed: false,
+  },
 ]);
 const reactionBestScoreMs = ref(null);
 const missionToastMessage = ref("");
@@ -2291,6 +2348,13 @@ const openReactionTestModal = () => {
   showReactionTestModal.value = true;
 };
 
+const openLiberoReflexModal = () => {
+  if (!canOpenLiberoReflex.value || isMissionCompleted("libero_reflex")) {
+    return;
+  }
+  showLiberoReflexModal.value = true;
+};
+
 const missionMeta = computed(() => ({
   vote_trend: {
     icon: "📈",
@@ -2307,6 +2371,11 @@ const missionMeta = computed(() => ({
     disabled: !canOpenReactionTest.value,
     onClick: openReactionTestModal,
   },
+  libero_reflex: {
+    icon: "🛡️",
+    disabled: !canOpenLiberoReflex.value,
+    onClick: openLiberoReflexModal,
+  },
 }));
 
 const renderedMissions = computed(() =>
@@ -2315,17 +2384,18 @@ const renderedMissions = computed(() =>
     return {
       ...mission,
       icon: meta.icon || "🎯",
-      disabled: Boolean(meta.disabled),
+      disabled: Boolean(meta.disabled || mission.completed),
       onClick: typeof meta.onClick === "function" ? meta.onClick : () => {},
     };
   }),
 );
 
-const showMissionToastMessage = (mission) => {
+const showMissionToastMessage = (mission, customMessage = "") => {
   if (!mission) {
     return;
   }
-  missionToastMessage.value = `🎉 Missione '${mission.label}' completata! Hai ottenuto +1 chance.`;
+  missionToastMessage.value =
+    customMessage || `🎉 Missione '${mission.label}' completata! Hai ottenuto +1 chance.`;
   showMissionToast.value = true;
   if (missionToastTimer) {
     window.clearTimeout(missionToastTimer);
@@ -2335,13 +2405,13 @@ const showMissionToastMessage = (mission) => {
   }, 4000);
 };
 
-const markMissionCompleted = (id) => {
+const markMissionCompleted = (id, { toastMessage } = {}) => {
   const target = missions.value.find((mission) => mission.id === id);
   if (!target || target.completed) {
     return;
   }
   target.completed = true;
-  showMissionToastMessage(target);
+  showMissionToastMessage(target, toastMessage);
 };
 
 const closeVoteTrendModal = () => {
@@ -2354,6 +2424,10 @@ const closeSelfMvpModal = () => {
 
 const closeReactionTestModal = () => {
   showReactionTestModal.value = false;
+};
+
+const closeLiberoReflexModal = () => {
+  showLiberoReflexModal.value = false;
 };
 
 const startVoteEdit = () => {
@@ -2850,7 +2924,9 @@ const submitContactBonus = async () => {
           </div>
 
           <div
-            v-if="canOpenVoteTrend || canOpenSelfie || canOpenReactionTest"
+            v-if="
+              canOpenVoteTrend || canOpenSelfie || canOpenReactionTest || canOpenLiberoReflex
+            "
             class="fan-missions"
             role="navigation"
             aria-label="Missioni tifoso"
@@ -2892,13 +2968,17 @@ const submitContactBonus = async () => {
                 @click="mission.onClick"
               >
                 <span class="dashboard-tile__icon" aria-hidden="true">{{ mission.icon }}</span>
-                <span class="dashboard-tile__label">{{ mission.label }}</span>
-                <span
-                  v-if="mission.id === 'reaction_test' && reactionBestScoreMs !== null"
-                  class="dashboard-tile__hint"
-                >
-                  Miglior tempo: {{ reactionBestScoreMs }} ms
-                </span>
+                <div class="dashboard-tile__text">
+                  <span class="dashboard-tile__label">{{ mission.label }}</span>
+                  <span v-if="mission.subtitle" class="dashboard-tile__subtitle">{{ mission.subtitle }}</span>
+                  <span
+                    v-if="mission.id === 'reaction_test' && reactionBestScoreMs !== null"
+                    class="dashboard-tile__hint"
+                  >
+                    Miglior tempo: {{ reactionBestScoreMs }} ms
+                  </span>
+                </div>
+                <span v-if="mission.completed" class="dashboard-tile__badge">COMPLETATA</span>
               </button>
             </div>
           </div>
@@ -3401,6 +3481,39 @@ const submitContactBonus = async () => {
                     :event-id="currentEventId"
                     :enabled="hasVoted && postVoteSettings.showReactionTest"
                     @result-submitted="handleReactionResult"
+                  />
+                </div>
+              </div>
+            </div>
+          </transition>
+        </Teleport>
+
+        <Teleport to="body">
+          <transition name="modal-fade">
+            <div
+              v-if="showLiberoReflexModal"
+              class="fullscreen-modal"
+              @click.self="closeLiberoReflexModal"
+            >
+              <div class="fullscreen-modal__panel fullscreen-modal__panel--wide">
+                <header class="fullscreen-modal__header">
+                  <h3 class="fullscreen-modal__title">Libero Reflex</h3>
+                  <button
+                    type="button"
+                    class="fullscreen-modal__close"
+                    aria-label="Chiudi Libero Reflex"
+                    @click="closeLiberoReflexModal"
+                  >
+                    ✕
+                  </button>
+                </header>
+                <div class="fullscreen-modal__body">
+                  <LiberoReflexModal
+                    :event-id="currentEventId"
+                    :enabled="hasVoted && postVoteSettings.showLiberoReflex"
+                    :completed="isMissionCompleted('libero_reflex')"
+                    @close="closeLiberoReflexModal"
+                    @game-finished="handleLiberoReflexFinished"
                   />
                 </div>
               </div>
@@ -5074,8 +5187,22 @@ const submitContactBonus = async () => {
   justify-content: center;
 }
 
+.dashboard-tile__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  text-align: left;
+}
+
 .dashboard-tile__label {
   font-size: 0.95rem;
+}
+
+.dashboard-tile__subtitle {
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  line-height: 1.4;
 }
 
 .dashboard-tile__hint {
@@ -5098,6 +5225,21 @@ const submitContactBonus = async () => {
 
 .dashboard-tile:active {
   transform: translateY(0) scale(0.99);
+}
+
+.dashboard-tile__badge {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #0b1224;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  box-shadow: 0 10px 22px rgba(22, 163, 74, 0.3);
 }
 
 .dashboard-tile--completed {
