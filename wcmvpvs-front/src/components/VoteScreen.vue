@@ -761,6 +761,7 @@ const buildQrUrl = (qrData) =>
 const TICKET_STORAGE_PREFIX = "wcmvp-ticket:";
 const BONUS_STORAGE_PREFIX = "wcmvp-bonus:";
 const CONTACT_STORAGE_KEY = "wcmvp-contact:last";
+const LIBERO_REWARD_STORAGE_PREFIX = "wcmvp:libero-rewards:";
 const BONUS_COUNT_STORAGE_KEY = "wcmvp:bonus-count";
 const DEFAULT_BONUS_COUNT = 58;
 
@@ -857,6 +858,41 @@ function loadStoredBonusCount() {
 }
 
 bonusCount.value = loadStoredBonusCount();
+
+const getLiberoRewardKey = (eventId) => `${LIBERO_REWARD_STORAGE_PREFIX}${eventId ?? "global"}`;
+
+function loadLiberoRewardedLevels(eventId) {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(getLiberoRewardKey(eventId));
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .map((value) => Number(value))
+      .filter((num) => Number.isFinite(num) && num >= 1 && num <= 3);
+  } catch (error) {
+    console.warn("Impossibile caricare i livelli Libero Reflex premiati", error);
+    return [];
+  }
+}
+
+function persistLiberoRewardedLevels(eventId, levels) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(getLiberoRewardKey(eventId), JSON.stringify(levels));
+  } catch (error) {
+    console.warn("Impossibile salvare i livelli Libero Reflex premiati", error);
+  }
+}
 
 function loadStoredBonusCodes(eventId) {
   if (typeof window === "undefined" || !eventId) {
@@ -1230,34 +1266,80 @@ const handleReactionResult = (resultMs) => {
   markMissionCompleted("reaction_test");
 };
 
-const sendLiberoReflexResult = async ({ attempts = 0, successCount = 0, reward = "none" }) => {
+const awardLiberoBadge = () => "Badge Libero d'Acciaio";
+
+const sendLiberoReflexResult = async ({
+  level = 1,
+  attempts = 0,
+  successCount = 0,
+  reward = "none",
+  rewardGranted = false,
+}) => {
   const eventId = currentEventId.value;
-  if (!eventId || reward === "none") {
+  if (!eventId) {
     return;
   }
   try {
-    await submitLiberoReflexResult(eventId, { attempts, successCount, reward });
+    await submitLiberoReflexResult(eventId, {
+      level,
+      attempts,
+      successCount,
+      reward,
+      rewardGranted,
+    });
   } catch (error) {
     console.error("libero reflex submit error", error);
   }
 };
 
 const handleLiberoReflexFinished = (result) => {
+  const level = Number.isFinite(result?.level) ? result.level : 1;
   const attempts = Number.isFinite(result?.attempts) ? result.attempts : 0;
   const successCount = Number.isFinite(result?.successCount)
     ? result.successCount
     : 0;
   const reward = typeof result?.reward === "string" ? result.reward : "none";
+  const requiredSuccess = level === 3 ? 3 : 2;
+  const passedLevel = successCount >= requiredSuccess;
+  const mission = missions.value.find((item) => item.id === "libero_reflex");
+  const alreadyRewarded = liberoRewardedLevels.value.includes(level);
 
-  if (successCount >= 2) {
-    const toastMessage =
-      reward === "perfect"
-        ? "Perfetto! +1 chance e badge Libero d'Acciaio!"
-        : "Ottimo! +1 chance per te!";
-    markMissionCompleted("libero_reflex", { toastMessage });
+  let rewardGranted = false;
+  let rewardLabel = passedLevel ? `level${level}_${reward}` : `level${level}_failed`;
+  let toastMessage = "";
+
+  if (passedLevel && alreadyRewarded) {
+    rewardLabel = `${rewardLabel}_repeat`;
   }
 
-  sendLiberoReflexResult({ attempts, successCount, reward });
+  if (passedLevel && !alreadyRewarded) {
+    rewardGranted = true;
+    const updated = Array.from(new Set([...liberoRewardedLevels.value, level])).sort();
+    liberoRewardedLevels.value = updated;
+    persistLiberoRewardedLevels(currentEventId.value, updated);
+
+    if (level === 3 && reward === "badge") {
+      toastMessage = "Sei un Libero d'Acciaio! Badge sbloccato (+1 chance).";
+      awardLiberoBadge();
+    } else {
+      toastMessage = `Livello ${level} completato! +1 chance extra.`;
+    }
+  }
+
+  if (passedLevel && level === 1) {
+    const firstLevelToast = toastMessage || "Livello 1 completato! +1 chance extra.";
+    markMissionCompleted("libero_reflex", { toastMessage: firstLevelToast });
+  } else if (rewardGranted && mission) {
+    showMissionToastMessage(mission, toastMessage);
+  }
+
+  sendLiberoReflexResult({
+    level,
+    attempts,
+    successCount,
+    reward: rewardLabel,
+    rewardGranted,
+  });
 };
 
 const feedbackStorageKey = (eventId) => {
@@ -1849,6 +1931,7 @@ watch(
     contactPrefillNoteVisible.value = false;
     hasContactBonus.value = false;
     bonusCodes.value = [];
+    liberoRewardedLevels.value = loadLiberoRewardedLevels(eventId);
     const storedContact = loadStoredContactValue();
     if (storedContact.value) {
       contactValueInput.value = storedContact.value;
@@ -1862,18 +1945,18 @@ watch(
     const storedTicket = loadStoredTicketData(eventId);
     if (storedTicket) {
       ticketCode.value = storedTicket.code;
-    ticketQrUrl.value = buildQrUrl(storedTicket.qrData);
-    hasVoted.value = Boolean(storedTicket.code);
+      ticketQrUrl.value = buildQrUrl(storedTicket.qrData);
+      hasVoted.value = Boolean(storedTicket.code);
     }
-  const storedBonuses = loadStoredBonusCodes(eventId);
-  if (storedBonuses.length) {
-    updateBonusState(eventId, storedBonuses);
-    contactFormSuccess.value = "2ª chance attiva ✅";
-  }
-  if (eventId) {
-    refreshVoteStatus(eventId);
-    loadBonusCodes(eventId);
-    loadBonusCount(eventId);
+    const storedBonuses = loadStoredBonusCodes(eventId);
+    if (storedBonuses.length) {
+      updateBonusState(eventId, storedBonuses);
+      contactFormSuccess.value = "2ª chance attiva ✅";
+    }
+    if (eventId) {
+      refreshVoteStatus(eventId);
+      loadBonusCodes(eventId);
+      loadBonusCount(eventId);
     }
     if (eventId && isVotingClosed.value) {
       loadEngagementStats(eventId);
@@ -2298,10 +2381,11 @@ const missions = ref([
   {
     id: "libero_reflex",
     label: "Libero Reflex",
-    subtitle: "Blocca la palla solo quando entra nel cerchio verde! Hai 3 tentativi.",
+    subtitle: "3 livelli: blocca la palla nel verde per sbloccare chance extra e badge!",
     completed: false,
   },
 ]);
+const liberoRewardedLevels = ref([]);
 const reactionBestScoreMs = ref(null);
 const missionToastMessage = ref("");
 const showMissionToast = ref(false);
@@ -2349,7 +2433,7 @@ const openReactionTestModal = () => {
 };
 
 const openLiberoReflexModal = () => {
-  if (!canOpenLiberoReflex.value || isMissionCompleted("libero_reflex")) {
+  if (!canOpenLiberoReflex.value) {
     return;
   }
   showLiberoReflexModal.value = true;
@@ -2381,10 +2465,11 @@ const missionMeta = computed(() => ({
 const renderedMissions = computed(() =>
   missions.value.map((mission) => {
     const meta = missionMeta.value[mission.id] || {};
+    const isLiberoMission = mission.id === "libero_reflex";
     return {
       ...mission,
       icon: meta.icon || "🎯",
-      disabled: Boolean(meta.disabled || mission.completed),
+      disabled: isLiberoMission ? Boolean(meta.disabled) : Boolean(meta.disabled || mission.completed),
       onClick: typeof meta.onClick === "function" ? meta.onClick : () => {},
     };
   }),

@@ -2,14 +2,31 @@
   <div class="libero-reflex">
     <p class="libero-reflex__eyebrow">Mini gioco</p>
     <h4 class="libero-reflex__title">Libero Reflex</h4>
-    <p class="libero-reflex__subtitle">Tocca lo schermo solo quando la palla entra nella zona verde!</p>
+    <p class="libero-reflex__subtitle">
+      Tre livelli di difficoltà: tocca lo schermo solo quando la palla entra nella zona verde!
+    </p>
+
+    <div class="libero-reflex__level-header">
+      <span class="libero-reflex__level-label">Livello {{ currentLevel }} / 3</span>
+      <div class="libero-reflex__level-progress" role="presentation">
+        <span
+          v-for="level in levelConfigs"
+          :key="level.id"
+          class="libero-reflex__level-dot"
+          :class="{
+            'libero-reflex__level-dot--done': completedLevels.includes(level.id),
+            'libero-reflex__level-dot--active': level.id === currentLevel,
+          }"
+        />
+      </div>
+    </div>
 
     <div
       class="libero-reflex__field"
       :class="{
         'libero-reflex__field--success': feedbackState === 'success',
         'libero-reflex__field--fail': feedbackState === 'fail',
-        'libero-reflex__field--disabled': !props.enabled || props.completed,
+        'libero-reflex__field--disabled': !props.enabled,
       }"
       role="button"
       tabindex="0"
@@ -44,11 +61,29 @@
       <p class="libero-reflex__summary-reward">{{ rewardMessage }}</p>
     </div>
 
+    <div v-if="levelComplete" class="libero-reflex__level-end" aria-live="polite">
+      <p class="libero-reflex__level-end-title">{{ levelEndTitle }}</p>
+      <p class="libero-reflex__level-end-subtitle">{{ levelEndSubtitle }}</p>
+      <div class="libero-reflex__level-end-actions">
+        <button
+          v-if="showNextLevelCta"
+          type="button"
+          class="libero-reflex__primary"
+          @click="goToNextLevel"
+        >
+          {{ nextLevelLabel }}
+        </button>
+        <button type="button" class="libero-reflex__secondary" @click="emit('close')">
+          Chiudi
+        </button>
+      </div>
+    </div>
+
     <div class="libero-reflex__actions">
       <button
         type="button"
         class="libero-reflex__primary"
-        :disabled="!props.enabled || props.completed || isPlaying"
+        :disabled="!props.enabled || isPlaying"
         @click="startGame"
       >
         {{ gameCtaLabel }}
@@ -79,54 +114,126 @@ const props = defineProps({
 const emit = defineEmits(['game-finished', 'close']);
 
 const maxAttempts = 3;
+const levelConfigs = [
+  {
+    id: 1,
+    baseSpeed: 0.07,
+    randomBoost: 0.02,
+    zoneStart: 33,
+    zoneEnd: 67,
+    requiredSuccess: 2,
+    completionTitle: 'Livello 1 completato',
+    completionSubtitle: '+1 chance extra sbloccata. Vuoi salire di livello?',
+  },
+  {
+    id: 2,
+    baseSpeed: 0.09,
+    randomBoost: 0.025,
+    zoneStart: 38,
+    zoneEnd: 62,
+    requiredSuccess: 2,
+    completionTitle: 'Livello 2 completato',
+    completionSubtitle: '+1 chance extra pronta! Passa al livello finale.',
+  },
+  {
+    id: 3,
+    baseSpeed: 0.105,
+    randomBoost: 0.03,
+    zoneStart: 42,
+    zoneEnd: 58,
+    requiredSuccess: 3,
+    completionTitle: 'Sei un Libero d\'Acciaio!',
+    completionSubtitle: 'Percorso perfetto! Badge speciale sbloccato.',
+  },
+];
 const attempts = ref(0);
 const successCount = ref(0);
 const isPlaying = ref(false);
 const gameOver = ref(false);
 const feedbackMessage = ref('');
 const feedbackState = ref('');
-const statusLabel = ref('Hai 3 tentativi: blocca la palla solo nel verde!');
+const statusLabel = ref('3 livelli: blocca la palla solo nel verde!');
 const ballPosition = ref(10);
 const ballDirection = ref(1);
 const baseSpeed = ref(0.08);
+const currentLevel = ref(1);
+const levelComplete = ref(false);
+const levelPassed = ref(false);
+const completedLevels = ref([]);
 const pauseTimer = ref(null);
 let animationFrame = null;
 let lastTs = 0;
 
-const zoneStart = 40;
-const zoneEnd = 60;
+const currentLevelConfig = computed(
+  () => levelConfigs.find((level) => level.id === currentLevel.value) || levelConfigs[0],
+);
 
-const rewardType = computed(() => {
-  if (successCount.value === maxAttempts) {
-    return 'perfect';
+const nextLevelLabel = computed(() => {
+  if (currentLevel.value === levelConfigs.length) {
+    return '';
   }
-  if (successCount.value === maxAttempts - 1) {
-    return 'good';
-  }
-  return 'none';
+  return `Vai al livello ${currentLevel.value + 1}`;
 });
 
-const rewardMessage = computed(() => {
-  if (rewardType.value === 'perfect') {
-    return 'Perfetto! Hai i riflessi di un vero libero! 🛡️ Badge: Libero d\'Acciaio';
+const rewardType = computed(() => {
+  const config = currentLevelConfig.value;
+  const passedLevel = successCount.value >= config.requiredSuccess;
+  if (!passedLevel) {
+    return 'none';
   }
-  if (rewardType.value === 'good') {
-    return 'Ottimo! +1 chance per te!';
+
+  if (currentLevel.value === 3 && successCount.value === maxAttempts) {
+    return 'badge';
+  }
+
+  return 'chance';
+});
+
+const levelEndTitle = computed(() => {
+  if (!levelPassed.value) {
+    return 'Ritenta il livello';
+  }
+  return currentLevelConfig.value.completionTitle;
+});
+
+const levelEndSubtitle = computed(() => {
+  if (!levelPassed.value) {
+    return 'Ti servono almeno 2 blocchi su 3 (o 3/3 nel livello finale). Riprova!';
+  }
+  if (currentLevel.value === 3 && rewardType.value === 'badge') {
+    return 'Sei un Libero d\'Acciaio! Badge e chance extra sbloccati.';
+  }
+  return currentLevelConfig.value.completionSubtitle;
+});
+
+const showNextLevelCta = computed(() => levelPassed.value && currentLevel.value < levelConfigs.length);
+
+const rewardMessage = computed(() => {
+  if (rewardType.value === 'badge') {
+    return 'Perfetto! Hai i riflessi di un vero libero! 🛡️ Libero d\'Acciaio sbloccato';
+  }
+  if (rewardType.value === 'chance') {
+    return 'Ottimo! +1 chance extra per questo livello.';
   }
   return 'Quasi! Riprova per ottenere la chance.';
 });
 
 const gameCtaLabel = computed(() => {
-  if (props.completed) {
-    return 'Missione completata';
-  }
   if (isPlaying.value) {
     return 'In corso…';
   }
   if (attempts.value > 0 && !gameOver.value) {
     return 'In corso…';
   }
-  return attempts.value > 0 ? 'Riprova' : 'Gioca';
+  if (gameOver.value && levelPassed.value) {
+    return currentLevel.value === levelConfigs.length
+      ? 'Rigioca il livello finale'
+      : 'Riprova o passa al prossimo livello';
+  }
+  if (gameOver.value) {
+    return 'Riprova il livello';
+  }
+  return `Avvia livello ${currentLevel.value}`;
 });
 
 const ballStyle = computed(() => ({
@@ -145,20 +252,23 @@ const feedbackClasses = computed(() => ({
 }));
 
 const zoneStyle = computed(() => ({
-  left: `${zoneStart}%`,
-  width: `${zoneEnd - zoneStart}%`,
+  left: `${currentLevelConfig.value.zoneStart}%`,
+  width: `${currentLevelConfig.value.zoneEnd - currentLevelConfig.value.zoneStart}%`,
 }));
 
 function resetState() {
   attempts.value = 0;
   successCount.value = 0;
   gameOver.value = false;
+  levelComplete.value = false;
+  levelPassed.value = false;
   feedbackMessage.value = '';
   feedbackState.value = '';
-  statusLabel.value = 'Hai 3 tentativi: blocca la palla solo nel verde!';
+  statusLabel.value = '3 livelli: blocca la palla solo nel verde!';
   ballPosition.value = 10 + Math.random() * 80;
   ballDirection.value = Math.random() > 0.5 ? 1 : -1;
-  baseSpeed.value = 0.075 + Math.random() * 0.03;
+  baseSpeed.value =
+    currentLevelConfig.value.baseSpeed + Math.random() * currentLevelConfig.value.randomBoost;
 }
 
 function stopAnimation() {
@@ -204,8 +314,17 @@ function finishGame() {
   gameOver.value = true;
   feedbackState.value = '';
   feedbackMessage.value = '';
-  statusLabel.value = 'Partita conclusa.';
+  const config = currentLevelConfig.value;
+  levelPassed.value = successCount.value >= config.requiredSuccess;
+  if (levelPassed.value && !completedLevels.value.includes(currentLevel.value)) {
+    completedLevels.value = [...completedLevels.value, currentLevel.value];
+  }
+  levelComplete.value = levelPassed.value;
+  statusLabel.value = levelPassed.value
+    ? 'Livello superato!'
+    : 'Non hai raggiunto i blocchi necessari.';
   emit('game-finished', {
+    level: currentLevel.value,
     attempts: attempts.value,
     successCount: successCount.value,
     reward: rewardType.value,
@@ -236,12 +355,14 @@ function applyVibration() {
 }
 
 function handleTap() {
-  if (!isPlaying.value || gameOver.value || !props.enabled || props.completed) {
+  if (!isPlaying.value || gameOver.value || !props.enabled) {
     return;
   }
 
   attempts.value += 1;
-  const isInside = ballPosition.value >= zoneStart && ballPosition.value <= zoneEnd;
+  const isInside =
+    ballPosition.value >= currentLevelConfig.value.zoneStart &&
+    ballPosition.value <= currentLevelConfig.value.zoneEnd;
   stopAnimation();
 
   if (isInside) {
@@ -265,13 +386,22 @@ function handleTap() {
 }
 
 function startGame() {
-  if (!props.enabled || props.completed) {
+  if (!props.enabled) {
     return;
   }
   resetState();
   isPlaying.value = true;
   statusLabel.value = 'Muovi le dita: tocca solo nel verde!';
   startAnimation();
+}
+
+function goToNextLevel() {
+  if (currentLevel.value >= levelConfigs.length) {
+    return;
+  }
+  currentLevel.value += 1;
+  resetState();
+  startGame();
 }
 
 onBeforeUnmount(() => {
@@ -310,6 +440,46 @@ onBeforeUnmount(() => {
   margin: 0;
   color: #cbd5e1;
   line-height: 1.5;
+}
+
+.libero-reflex__level-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.libero-reflex__level-label {
+  color: #38bdf8;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.libero-reflex__level-progress {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.libero-reflex__level-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.4);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.12);
+}
+
+.libero-reflex__level-dot--active {
+  background: #22d3ee;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+}
+
+.libero-reflex__level-dot--done {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  border-color: rgba(34, 197, 94, 0.8);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
 }
 
 .libero-reflex__field {
@@ -489,6 +659,31 @@ onBeforeUnmount(() => {
 .libero-reflex__summary-reward {
   margin: 0.35rem 0 0;
   color: #e2e8f0;
+}
+
+.libero-reflex__level-end {
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(59, 130, 246, 0.12));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+}
+
+.libero-reflex__level-end-title {
+  margin: 0 0 0.25rem;
+  color: #e0f2fe;
+  font-weight: 800;
+}
+
+.libero-reflex__level-end-subtitle {
+  margin: 0 0 0.75rem;
+  color: #cbd5e1;
+}
+
+.libero-reflex__level-end-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 .libero-reflex__actions {
