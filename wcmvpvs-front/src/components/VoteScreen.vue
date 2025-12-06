@@ -3027,6 +3027,8 @@ const submitContactBonus = async () => {
           <div
             v-if="canOpenVoteTrend || canOpenSelfie || canOpenReactionTest"
             class="fan-missions"
+            role="navigation"
+            aria-label="Missioni tifoso"
           >
             <div class="fan-missions__header">
               <h3 class="fan-missions__title">🏅 Missioni tifoso</h3>
@@ -3051,36 +3053,30 @@ const submitContactBonus = async () => {
                 </span>
               </div>
             </div>
-          </div>
-
-          <div
-            v-if="canOpenVoteTrend || canOpenSelfie || canOpenReactionTest"
-            class="extra-dashboard"
-            role="navigation"
-            aria-label="Funzionalità extra post-voto"
-          >
-            <button
-              v-for="mission in renderedMissions"
-              :key="mission.id"
-              type="button"
-              class="dashboard-tile"
-              :class="{
-                'dashboard-tile--disabled': mission.disabled,
-                'dashboard-tile--completed': mission.completed,
-              }"
-              :disabled="mission.disabled"
-              @click="mission.onClick"
-            >
-              <span v-if="mission.completed" class="dashboard-tile__badge">COMPLETATA ✅</span>
-              <span class="dashboard-tile__icon" aria-hidden="true">{{ mission.icon }}</span>
-              <span class="dashboard-tile__label">{{ mission.label }}</span>
-              <span
-                v-if="mission.id === 'reaction_test' && reactionBestScoreMs !== null"
-                class="dashboard-tile__hint"
+            <div class="fan-missions__missions" aria-label="Azioni missioni disponibili">
+              <button
+                v-for="mission in renderedMissions"
+                :key="mission.id"
+                type="button"
+                class="dashboard-tile"
+                :class="{
+                  'dashboard-tile--disabled': mission.disabled,
+                  'dashboard-tile--completed': mission.completed,
+                }"
+                :disabled="mission.disabled"
+                @click="mission.onClick"
               >
-                Miglior tempo: {{ reactionBestScoreMs }} ms
-              </span>
-            </button>
+                <span v-if="mission.completed" class="dashboard-tile__badge">COMPLETATA ✅</span>
+                <span class="dashboard-tile__icon" aria-hidden="true">{{ mission.icon }}</span>
+                <span class="dashboard-tile__label">{{ mission.label }}</span>
+                <span
+                  v-if="mission.id === 'reaction_test' && reactionBestScoreMs !== null"
+                  class="dashboard-tile__hint"
+                >
+                  Miglior tempo: {{ reactionBestScoreMs }} ms
+                </span>
+              </button>
+            </div>
           </div>
             <div
               class="bonus-contact-card"
@@ -5824,7 +5820,7 @@ const submitContactBonus = async () => {
 
 .fan-missions {
   margin: 1.25rem 0 0;
-  padding: 1rem 1.25rem;
+  padding: 1rem 1.25rem 1.2rem;
   border-radius: 24px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.85));
@@ -5889,17 +5885,11 @@ const submitContactBonus = async () => {
   pointer-events: none;
 }
 
-.extra-dashboard {
+.fan-missions__missions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 1rem;
-  margin: 1.5rem 0 0;
-  padding: 1rem 1.25rem;
-  border-radius: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: linear-gradient(145deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.85));
-  box-shadow: 0 26px 52px rgba(8, 15, 28, 0.45);
-  backdrop-filter: blur(10px);
+  margin: 1rem 0 0;
 }
 
 .dashboard-tile {
@@ -6095,9 +6085,8 @@ const submitContactBonus = async () => {
 }
 
 @media (max-width: 768px) {
-  .extra-dashboard {
+  .fan-missions__missions {
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    padding: 0.9rem 1rem;
   }
 
   .dashboard-tile {
