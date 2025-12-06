@@ -2233,6 +2233,20 @@ const missions = ref([
   { id: "reaction_test", label: "Reaction Test", completed: false },
 ]);
 
+const totalMissions = computed(() => missions.value.length);
+
+const completedMissions = computed(
+  () => missions.value.filter((mission) => mission.completed).length,
+);
+
+const progressPercent = computed(() => {
+  if (totalMissions.value === 0) {
+    return 0;
+  }
+
+  return (completedMissions.value / totalMissions.value) * 100;
+});
+
 const openVoteTrendModal = () => {
   if (!canOpenVoteTrend.value) {
     return;
@@ -2792,6 +2806,35 @@ const submitContactBonus = async () => {
               >
                 Modifica voto
               </button>
+            </div>
+          </div>
+
+          <div
+            v-if="canOpenVoteTrend || canOpenSelfie || canOpenReactionTest"
+            class="fan-missions"
+          >
+            <div class="fan-missions__header">
+              <h3 class="fan-missions__title">🏅 Missioni tifoso</h3>
+              <p class="fan-missions__subtitle">
+                Completa le missioni per ottenere più chance e badge esclusivi.
+              </p>
+            </div>
+            <div class="fan-missions__progress" aria-label="Avanzamento missioni tifoso">
+              <div
+                class="fan-missions__progress-bar"
+                role="progressbar"
+                :aria-valuenow="Math.round(progressPercent)"
+                aria-valuemin="0"
+                :aria-valuemax="100"
+              >
+                <div
+                  class="fan-missions__progress-fill"
+                  :style="{ width: progressPercent + '%' }"
+                ></div>
+                <span class="fan-missions__progress-text">
+                  {{ completedMissions }} / {{ totalMissions }} completate
+                </span>
+              </div>
             </div>
           </div>
 
@@ -5218,6 +5261,73 @@ const submitContactBonus = async () => {
 .modal-fade-enter-from,
 .modal-fade-leave-to {
   opacity: 0;
+}
+
+.fan-missions {
+  margin: 1.25rem 0 0;
+  padding: 1rem 1.25rem;
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.85));
+  box-shadow: 0 24px 48px rgba(8, 15, 28, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+.fan-missions__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.fan-missions__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #e2e8f0;
+}
+
+.fan-missions__subtitle {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+}
+
+.fan-missions__progress {
+  margin-top: 0.25rem;
+}
+
+.fan-missions__progress-bar {
+  position: relative;
+  width: 100%;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 24px rgba(8, 15, 28, 0.25);
+}
+
+.fan-missions__progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(94, 234, 212, 0.6), rgba(14, 165, 233, 0.85));
+  border-radius: inherit;
+  transition: width 0.3s ease, opacity 0.3s ease;
+  box-shadow: 0 8px 18px rgba(14, 165, 233, 0.3);
+}
+
+.fan-missions__progress-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
 }
 
 .extra-dashboard {
