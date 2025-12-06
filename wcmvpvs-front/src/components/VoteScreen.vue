@@ -2245,6 +2245,23 @@ const missions = ref([
   { id: "self_mvp", label: "Self-MVP", completed: false },
   { id: "reaction_test", label: "Reaction Test", completed: false },
 ]);
+const isRegistered = ref(false);
+const showRegistrationModal = ref(false);
+const hasDismissedRegistration = ref(false);
+const fanName = ref("");
+const registrationContactValue = ref("");
+const registrationContactType = ref("");
+const acceptsMarketing = ref(false);
+const isSubmittingRegistration = ref(false);
+const registrationErrors = reactive({
+  name: "",
+  contact: "",
+  consent: "",
+  general: "",
+});
+const registrationToastMessage = ref("");
+const showRegistrationToast = ref(false);
+let registrationToastTimer = null;
 const reactionBestScoreMs = ref(null);
 const missionToastMessage = ref("");
 const showMissionToast = ref(false);
@@ -2342,6 +2359,139 @@ const markMissionCompleted = (id) => {
   }
   target.completed = true;
   showMissionToastMessage(target);
+};
+
+const detectRegistrationContactType = (value) => {
+  const trimmed = (value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.includes("@")) {
+    return "email";
+  }
+  return "phone";
+};
+
+watch(registrationContactValue, (value) => {
+  registrationContactType.value = detectRegistrationContactType(value);
+});
+
+watch(
+  completedMissions,
+  (value) => {
+    if (hasDismissedRegistration.value || isRegistered.value) {
+      return;
+    }
+    if (value >= 2) {
+      showRegistrationModal.value = true;
+    }
+  },
+  { immediate: true },
+);
+
+const closeRegistrationModal = () => {
+  showRegistrationModal.value = false;
+  hasDismissedRegistration.value = true;
+};
+
+const validateRegistrationForm = () => {
+  registrationErrors.name = "";
+  registrationErrors.contact = "";
+  registrationErrors.consent = "";
+  registrationErrors.general = "";
+
+  const trimmedName = fanName.value.trim();
+  const trimmedContact = registrationContactValue.value.trim();
+  const detectedType = detectRegistrationContactType(trimmedContact);
+
+  if (!trimmedName) {
+    registrationErrors.name = "Inserisci un nome";
+  }
+
+  if (!trimmedContact) {
+    registrationErrors.contact = "Inserisci un contatto valido";
+  } else if (detectedType === "email") {
+    if (!emailPattern.test(trimmedContact)) {
+      registrationErrors.contact = "Inserisci un contatto valido";
+    }
+  } else {
+    const sanitizedPhone = sanitizeContactValue(trimmedContact, "phone");
+    if (sanitizedPhone.replace(/[^0-9]/g, "").length < 7) {
+      registrationErrors.contact = "Inserisci un contatto valido";
+    }
+  }
+
+  registrationContactType.value = detectedType;
+
+  if (!acceptsMarketing.value) {
+    registrationErrors.consent = "Devi accettare di ricevere notizie e premi";
+  }
+
+  return (
+    !registrationErrors.name &&
+    !registrationErrors.contact &&
+    !registrationErrors.consent
+  );
+};
+
+const showRegistrationToastMessage = (message) => {
+  if (!message) {
+    return;
+  }
+  registrationToastMessage.value = message;
+  showRegistrationToast.value = true;
+  if (registrationToastTimer) {
+    window.clearTimeout(registrationToastTimer);
+  }
+  registrationToastTimer = window.setTimeout(() => {
+    showRegistrationToast.value = false;
+  }, 3500);
+};
+
+const submitRegistration = async () => {
+  if (isSubmittingRegistration.value) {
+    return;
+  }
+
+  const isValid = validateRegistrationForm();
+  if (!isValid) {
+    return;
+  }
+
+  isSubmittingRegistration.value = true;
+  registrationErrors.general = "";
+
+  const contactType =
+    registrationContactType.value ||
+    detectRegistrationContactType(registrationContactValue.value);
+  const sanitizedContactValue = sanitizeContactValue(
+    registrationContactValue.value,
+    contactType === "email" ? "email" : "phone",
+  );
+
+  try {
+    await apiClient.post("/api/fans/register", {
+      device_id: getOrCreateDeviceId(),
+      event_id: currentEventId.value,
+      name: fanName.value.trim(),
+      contact_value: sanitizedContactValue,
+      contact_type: contactType === "email" ? "email" : "phone",
+      marketing_consent: true,
+      completed_missions: completedMissions.value,
+    });
+    isRegistered.value = true;
+    hasDismissedRegistration.value = true;
+    showRegistrationModal.value = false;
+    showRegistrationToastMessage(
+      "Profilo creato! Le tue ricompense sono al sicuro 🏅",
+    );
+  } catch (error) {
+    console.error("registration submission error", error);
+    registrationErrors.general =
+      "Si è verificato un problema, riprova fra poco.";
+  } finally {
+    isSubmittingRegistration.value = false;
+  }
 };
 
 const closeVoteTrendModal = () => {
@@ -3519,6 +3669,110 @@ const submitContactBonus = async () => {
         <Teleport to="body">
           <transition name="modal-fade">
             <div
+              v-if="showRegistrationModal"
+              class="fullscreen-modal"
+              @click.self="closeRegistrationModal"
+            >
+              <div class="fullscreen-modal__panel registration-modal__panel">
+                <button
+                  type="button"
+                  class="registration-modal__close"
+                  aria-label="Chiudi proposta di registrazione"
+                  @click="closeRegistrationModal"
+                >
+                  ✕
+                </button>
+                <div class="registration-modal">
+                  <h3 class="registration-modal__title">
+                    🎉 Hai sbloccato ricompense speciali!
+                  </h3>
+                  <p class="registration-modal__text">
+                    Hai completato {{ completedMissions }} missioni e ottenuto più chance nel sorteggio.
+                    Crea il tuo profilo in 15 secondi per non perdere progressi, badge e premi futuri 💙
+                  </p>
+                  <form class="registration-modal__form" @submit.prevent="submitRegistration">
+                    <label class="registration-modal__field">
+                      <span class="registration-modal__label">Nome</span>
+                      <input
+                        v-model.trim="fanName"
+                        type="text"
+                        name="fan-name"
+                        required
+                        autocomplete="name"
+                        class="registration-modal__input"
+                        :disabled="isSubmittingRegistration"
+                        placeholder="Il tuo nome"
+                      />
+                      <p v-if="registrationErrors.name" class="registration-modal__error">
+                        {{ registrationErrors.name }}
+                      </p>
+                    </label>
+
+                    <label class="registration-modal__field">
+                      <span class="registration-modal__label">Email o numero di telefono</span>
+                      <input
+                        v-model.trim="registrationContactValue"
+                        type="text"
+                        name="fan-contact"
+                        class="registration-modal__input"
+                        :disabled="isSubmittingRegistration"
+                        :inputmode="
+                          registrationContactType === 'email' ? 'email' : 'tel'
+                        "
+                        :autocomplete="
+                          registrationContactType === 'email' ? 'email' : 'tel'
+                        "
+                        placeholder="Email o numero di telefono"
+                      />
+                      <p v-if="registrationErrors.contact" class="registration-modal__error">
+                        {{ registrationErrors.contact }}
+                      </p>
+                    </label>
+
+                    <label class="registration-modal__checkbox">
+                      <input
+                        v-model="acceptsMarketing"
+                        type="checkbox"
+                        :disabled="isSubmittingRegistration"
+                      />
+                      <span>Accetto di ricevere notizie e premi della squadra</span>
+                    </label>
+                    <p v-if="registrationErrors.consent" class="registration-modal__error">
+                      {{ registrationErrors.consent }}
+                    </p>
+
+                    <p v-if="registrationErrors.general" class="registration-modal__error registration-modal__error--general">
+                      {{ registrationErrors.general }}
+                    </p>
+
+                    <div class="registration-modal__actions">
+                      <button
+                        type="submit"
+                        class="registration-modal__submit"
+                        :disabled="isSubmittingRegistration"
+                      >
+                        <span v-if="isSubmittingRegistration" class="registration-modal__spinner"></span>
+                        <span>BLOCCA LE TUE RICOMPENSE 🔒</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="registration-modal__secondary"
+                        :disabled="isSubmittingRegistration"
+                        @click="closeRegistrationModal"
+                      >
+                        Magari più tardi
+                      </button>
+                  </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </transition>
+        </Teleport>
+
+        <Teleport to="body">
+          <transition name="modal-fade">
+            <div
               v-if="showEditVoteModal"
               class="fullscreen-modal"
               @click.self="closeEditVoteModal"
@@ -3590,6 +3844,19 @@ const submitContactBonus = async () => {
               aria-live="polite"
             >
               {{ missionToastMessage }}
+            </div>
+          </transition>
+        </Teleport>
+
+        <Teleport to="body">
+          <transition name="toast-fade">
+            <div
+              v-if="showRegistrationToast"
+              class="registration-toast"
+              role="status"
+              aria-live="polite"
+            >
+              {{ registrationToastMessage }}
             </div>
           </transition>
         </Teleport>
@@ -5331,6 +5598,186 @@ const submitContactBonus = async () => {
 .toast-fade-leave-to {
   opacity: 0;
   transform: translateY(8px);
+}
+
+.registration-modal__panel {
+  position: relative;
+  max-width: 32rem;
+  padding: 1.5rem 1.25rem 1.75rem;
+}
+
+.registration-modal__close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.registration-modal__close:hover,
+.registration-modal__close:focus-visible {
+  background: rgba(94, 234, 212, 0.15);
+  color: #e2e8f0;
+}
+
+.registration-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.registration-modal__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+  color: #ecfeff;
+  letter-spacing: 0.01em;
+}
+
+.registration-modal__text {
+  margin: 0;
+  color: #cbd5e1;
+  line-height: 1.55;
+}
+
+.registration-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.registration-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.registration-modal__label {
+  font-size: 0.9rem;
+  color: #e2e8f0;
+  font-weight: 700;
+}
+
+.registration-modal__input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+  font-size: 1rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.registration-modal__input:focus-visible {
+  outline: none;
+  border-color: rgba(94, 234, 212, 0.65);
+  box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.18);
+}
+
+.registration-modal__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.95rem;
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.registration-modal__checkbox input {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.registration-modal__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.35rem;
+}
+
+.registration-modal__submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.95rem 1.25rem;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #38bdf8, #22d3ee);
+  color: #0f172a;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.registration-modal__submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 36px rgba(34, 211, 238, 0.35);
+}
+
+.registration-modal__submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.registration-modal__secondary {
+  border: none;
+  background: transparent;
+  color: #93c5fd;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.registration-modal__secondary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.registration-modal__error {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #fca5a5;
+}
+
+.registration-modal__error--general {
+  font-weight: 700;
+}
+
+.registration-modal__spinner {
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 999px;
+  border: 3px solid rgba(15, 23, 42, 0.15);
+  border-top-color: #0f172a;
+  animation: counter-spin 0.8s linear infinite;
+}
+
+.registration-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  padding: 0.95rem 1.3rem;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.6);
+  color: #e2e8f0;
+  box-shadow: 0 20px 40px rgba(8, 15, 28, 0.45);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  z-index: 120;
 }
 
 .mission-toast {
