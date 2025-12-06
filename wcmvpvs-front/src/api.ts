@@ -392,7 +392,7 @@ export async function submitReactionTestResult(eventId: number, reactionTimeMs: 
   }
 }
 
-export async function submitLiberoReflexResult(
+export async function submitPerfectDigResult(
   eventId: number,
   payload: { attempts: number; successCount: number; reward: string },
 ) {

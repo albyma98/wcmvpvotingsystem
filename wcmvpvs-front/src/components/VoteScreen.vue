@@ -12,7 +12,7 @@ import VolleyCourt from "./VolleyCourt.vue";
 import PlayerCard from "./PlayerCard.vue";
 import SelfieMvpSection from "./SelfieMvpSection.vue";
 import ReactionTestSection from "./ReactionTestSection.vue";
-import LiberoReflexModal from "./LiberoReflexModal.vue";
+import PerfectDigModal from "./PerfectDigModal.vue";
 import LiveResultsSection from "./LiveResultsSection.vue";
 import {
   apiClient,
@@ -24,7 +24,7 @@ import {
   fetchEventEngagement,
   fetchContactBonuses,
   submitContactChance,
-  submitLiberoReflexResult,
+  submitPerfectDigResult,
 } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, mapPlayersToLayout } from "../roster";
 import { getOrCreateDeviceId } from "../deviceId";
@@ -742,13 +742,13 @@ const canOpenSelfie = computed(
 const canOpenReactionTest = computed(
   () => hasVoted.value && postVoteSettings.value.showReactionTest,
 );
-const canOpenLiberoReflex = computed(
+const canOpenPerfectDig = computed(
   () => hasVoted.value && postVoteSettings.value.showLiberoReflex,
 );
 const showVoteTrendModal = ref(false);
 const showSelfMvpModal = ref(false);
 const showReactionTestModal = ref(false);
-const showLiberoReflexModal = ref(false);
+const showPerfectDigModal = ref(false);
 const showEditVoteModal = ref(false);
 
 const buildQrUrl = (qrData) =>
@@ -761,7 +761,7 @@ const buildQrUrl = (qrData) =>
 const TICKET_STORAGE_PREFIX = "wcmvp-ticket:";
 const BONUS_STORAGE_PREFIX = "wcmvp-bonus:";
 const CONTACT_STORAGE_KEY = "wcmvp-contact:last";
-const LIBERO_REWARD_STORAGE_PREFIX = "wcmvp:libero-rewards:";
+const PERFECT_DIG_REWARD_STORAGE_PREFIX = "wcmvp:perfect-dig-rewards:";
 const BONUS_COUNT_STORAGE_KEY = "wcmvp:bonus-count";
 const DEFAULT_BONUS_COUNT = 58;
 
@@ -859,14 +859,19 @@ function loadStoredBonusCount() {
 
 bonusCount.value = loadStoredBonusCount();
 
-const getLiberoRewardKey = (eventId) => `${LIBERO_REWARD_STORAGE_PREFIX}${eventId ?? "global"}`;
+const LEGACY_LIBERO_REWARD_STORAGE_PREFIX = "wcmvp:libero-rewards:";
 
-function loadLiberoRewardedLevels(eventId) {
+const getPerfectDigRewardKey = (eventId) => `${PERFECT_DIG_REWARD_STORAGE_PREFIX}${eventId ?? "global"}`;
+const getLegacyLiberoRewardKey = (eventId) => `${LEGACY_LIBERO_REWARD_STORAGE_PREFIX}${eventId ?? "global"}`;
+
+function loadPerfectDigRewardedLevels(eventId) {
   if (typeof window === "undefined") {
     return [];
   }
   try {
-    const raw = window.localStorage.getItem(getLiberoRewardKey(eventId));
+    const primary = window.localStorage.getItem(getPerfectDigRewardKey(eventId));
+    const legacy = window.localStorage.getItem(getLegacyLiberoRewardKey(eventId));
+    const raw = primary ?? legacy;
     if (!raw) {
       return [];
     }
@@ -878,19 +883,21 @@ function loadLiberoRewardedLevels(eventId) {
       .map((value) => Number(value))
       .filter((num) => Number.isFinite(num) && num >= 1 && num <= 3);
   } catch (error) {
-    console.warn("Impossibile caricare i livelli Libero Reflex premiati", error);
+    console.warn("Impossibile caricare i livelli Perfect DIG premiati", error);
     return [];
   }
 }
 
-function persistLiberoRewardedLevels(eventId, levels) {
+function persistPerfectDigRewardedLevels(eventId, levels) {
   if (typeof window === "undefined") {
     return;
   }
   try {
-    window.localStorage.setItem(getLiberoRewardKey(eventId), JSON.stringify(levels));
+    const payload = JSON.stringify(levels);
+    window.localStorage.setItem(getPerfectDigRewardKey(eventId), payload);
+    window.localStorage.setItem(getLegacyLiberoRewardKey(eventId), payload);
   } catch (error) {
-    console.warn("Impossibile salvare i livelli Libero Reflex premiati", error);
+    console.warn("Impossibile salvare i livelli Perfect DIG premiati", error);
   }
 }
 
@@ -1266,9 +1273,9 @@ const handleReactionResult = (resultMs) => {
   markMissionCompleted("reaction_test");
 };
 
-const awardLiberoBadge = () => "Badge Libero d'Acciaio";
+const awardPerfectDigBadge = () => "Badge LIBERO D'ACCIAIO";
 
-const sendLiberoReflexResult = async ({
+const sendPerfectDigResult = async ({
   level = 1,
   attempts = 0,
   successCount = 0,
@@ -1280,7 +1287,7 @@ const sendLiberoReflexResult = async ({
     return;
   }
   try {
-    await submitLiberoReflexResult(eventId, {
+    await submitPerfectDigResult(eventId, {
       level,
       attempts,
       successCount,
@@ -1288,21 +1295,20 @@ const sendLiberoReflexResult = async ({
       rewardGranted,
     });
   } catch (error) {
-    console.error("libero reflex submit error", error);
+    console.error("perfect dig submit error", error);
   }
 };
 
-const handleLiberoReflexFinished = (result) => {
+const handlePerfectDigFinished = (result) => {
   const level = Number.isFinite(result?.level) ? result.level : 1;
   const attempts = Number.isFinite(result?.attempts) ? result.attempts : 0;
   const successCount = Number.isFinite(result?.successCount)
     ? result.successCount
     : 0;
   const reward = typeof result?.reward === "string" ? result.reward : "none";
-  const requiredSuccess = level === 3 ? 3 : 2;
-  const passedLevel = successCount >= requiredSuccess;
+  const passedLevel = reward !== "none" && successCount >= 2;
   const mission = missions.value.find((item) => item.id === "libero_reflex");
-  const alreadyRewarded = liberoRewardedLevels.value.includes(level);
+  const alreadyRewarded = perfectDigRewardedLevels.value.includes(level);
 
   let rewardGranted = false;
   let rewardLabel = passedLevel ? `level${level}_${reward}` : `level${level}_failed`;
@@ -1314,26 +1320,28 @@ const handleLiberoReflexFinished = (result) => {
 
   if (passedLevel && !alreadyRewarded) {
     rewardGranted = true;
-    const updated = Array.from(new Set([...liberoRewardedLevels.value, level])).sort();
-    liberoRewardedLevels.value = updated;
-    persistLiberoRewardedLevels(currentEventId.value, updated);
+    const updated = Array.from(new Set([...perfectDigRewardedLevels.value, level])).sort();
+    perfectDigRewardedLevels.value = updated;
+    persistPerfectDigRewardedLevels(currentEventId.value, updated);
 
     if (level === 3 && reward === "badge") {
-      toastMessage = "Sei un Libero d'Acciaio! Badge sbloccato (+1 chance).";
-      awardLiberoBadge();
+      toastMessage = "LIBERO D'ACCIAIO! Badge verde e +1 chance.";
+      awardPerfectDigBadge();
+    } else if (level === 2) {
+      toastMessage = "Livello 2 completato! +1 chance extra.";
     } else {
-      toastMessage = `Livello ${level} completato! +1 chance extra.`;
+      toastMessage = "Livello 1 completato! +1 chance.";
     }
   }
 
   if (passedLevel && level === 1) {
-    const firstLevelToast = toastMessage || "Livello 1 completato! +1 chance extra.";
+    const firstLevelToast = toastMessage || "Livello 1 completato! +1 chance.";
     markMissionCompleted("libero_reflex", { toastMessage: firstLevelToast });
   } else if (rewardGranted && mission) {
     showMissionToastMessage(mission, toastMessage);
   }
 
-  sendLiberoReflexResult({
+  sendPerfectDigResult({
     level,
     attempts,
     successCount,
@@ -1931,7 +1939,7 @@ watch(
     contactPrefillNoteVisible.value = false;
     hasContactBonus.value = false;
     bonusCodes.value = [];
-    liberoRewardedLevels.value = loadLiberoRewardedLevels(eventId);
+    perfectDigRewardedLevels.value = loadPerfectDigRewardedLevels(eventId);
     const storedContact = loadStoredContactValue();
     if (storedContact.value) {
       contactValueInput.value = storedContact.value;
@@ -2017,7 +2025,7 @@ watch(hasVoted, (voted) => {
     showVoteTrendModal.value = false;
     showSelfMvpModal.value = false;
     showReactionTestModal.value = false;
-    showLiberoReflexModal.value = false;
+    showPerfectDigModal.value = false;
     showEditVoteModal.value = false;
     voteUpdateMessage.value = "";
     return;
@@ -2067,7 +2075,7 @@ watch(
   () => postVoteSettings.value.showLiberoReflex,
   (enabled) => {
     if (!enabled) {
-      showLiberoReflexModal.value = false;
+      showPerfectDigModal.value = false;
     }
   },
 );
@@ -2380,12 +2388,12 @@ const missions = ref([
   { id: "reaction_test", label: "Reaction Test", completed: false },
   {
     id: "libero_reflex",
-    label: "Libero Reflex",
-    subtitle: "3 livelli: blocca la palla nel verde per sbloccare chance extra e badge!",
+    label: "Perfect DIG – Difesa perfetta",
+    subtitle: "Blocca la palla con la piattaforma! + chance e badge!",
     completed: false,
   },
 ]);
-const liberoRewardedLevels = ref([]);
+const perfectDigRewardedLevels = ref([]);
 const reactionBestScoreMs = ref(null);
 const missionToastMessage = ref("");
 const showMissionToast = ref(false);
@@ -2432,11 +2440,11 @@ const openReactionTestModal = () => {
   showReactionTestModal.value = true;
 };
 
-const openLiberoReflexModal = () => {
-  if (!canOpenLiberoReflex.value) {
+const openPerfectDigModal = () => {
+  if (!canOpenPerfectDig.value) {
     return;
   }
-  showLiberoReflexModal.value = true;
+  showPerfectDigModal.value = true;
 };
 
 const missionMeta = computed(() => ({
@@ -2456,20 +2464,22 @@ const missionMeta = computed(() => ({
     onClick: openReactionTestModal,
   },
   libero_reflex: {
-    icon: "🛡️",
-    disabled: !canOpenLiberoReflex.value,
-    onClick: openLiberoReflexModal,
+    icon: "🧤",
+    disabled: !canOpenPerfectDig.value,
+    onClick: openPerfectDigModal,
   },
 }));
 
 const renderedMissions = computed(() =>
   missions.value.map((mission) => {
     const meta = missionMeta.value[mission.id] || {};
-    const isLiberoMission = mission.id === "libero_reflex";
+    const isPerfectDigMission = mission.id === "libero_reflex";
     return {
       ...mission,
       icon: meta.icon || "🎯",
-      disabled: isLiberoMission ? Boolean(meta.disabled) : Boolean(meta.disabled || mission.completed),
+      disabled: isPerfectDigMission
+        ? Boolean(meta.disabled)
+        : Boolean(meta.disabled || mission.completed),
       onClick: typeof meta.onClick === "function" ? meta.onClick : () => {},
     };
   }),
@@ -2511,8 +2521,8 @@ const closeReactionTestModal = () => {
   showReactionTestModal.value = false;
 };
 
-const closeLiberoReflexModal = () => {
-  showLiberoReflexModal.value = false;
+const closePerfectDigModal = () => {
+  showPerfectDigModal.value = false;
 };
 
 const startVoteEdit = () => {
@@ -3010,7 +3020,7 @@ const submitContactBonus = async () => {
 
           <div
             v-if="
-              canOpenVoteTrend || canOpenSelfie || canOpenReactionTest || canOpenLiberoReflex
+              canOpenVoteTrend || canOpenSelfie || canOpenReactionTest || canOpenPerfectDig
             "
             class="fan-missions"
             role="navigation"
@@ -3576,29 +3586,29 @@ const submitContactBonus = async () => {
         <Teleport to="body">
           <transition name="modal-fade">
             <div
-              v-if="showLiberoReflexModal"
+              v-if="showPerfectDigModal"
               class="fullscreen-modal"
-              @click.self="closeLiberoReflexModal"
+              @click.self="closePerfectDigModal"
             >
               <div class="fullscreen-modal__panel fullscreen-modal__panel--wide">
                 <header class="fullscreen-modal__header">
-                  <h3 class="fullscreen-modal__title">Libero Reflex</h3>
+                  <h3 class="fullscreen-modal__title">Perfect DIG – Difesa perfetta</h3>
                   <button
                     type="button"
                     class="fullscreen-modal__close"
-                    aria-label="Chiudi Libero Reflex"
-                    @click="closeLiberoReflexModal"
+                    aria-label="Chiudi Perfect DIG"
+                    @click="closePerfectDigModal"
                   >
                     ✕
                   </button>
                 </header>
                 <div class="fullscreen-modal__body">
-                  <LiberoReflexModal
+                  <PerfectDigModal
                     :event-id="currentEventId"
                     :enabled="hasVoted && postVoteSettings.showLiberoReflex"
                     :completed="isMissionCompleted('libero_reflex')"
-                    @close="closeLiberoReflexModal"
-                    @game-finished="handleLiberoReflexFinished"
+                    @close="closePerfectDigModal"
+                    @game-finished="handlePerfectDigFinished"
                   />
                 </div>
               </div>
