@@ -3066,7 +3066,6 @@ const submitContactBonus = async () => {
                 :disabled="mission.disabled"
                 @click="mission.onClick"
               >
-                <span v-if="mission.completed" class="dashboard-tile__badge">COMPLETATA ✅</span>
                 <span class="dashboard-tile__icon" aria-hidden="true">{{ mission.icon }}</span>
                 <span class="dashboard-tile__label">{{ mission.label }}</span>
                 <span
@@ -5928,21 +5927,6 @@ const submitContactBonus = async () => {
   color: #cbd5e1;
   margin-top: 0.15rem;
   font-weight: 600;
-}
-
-.dashboard-tile__badge {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.35);
-  box-shadow: 0 8px 20px rgba(34, 197, 94, 0.25);
 }
 
 .dashboard-tile:hover,
