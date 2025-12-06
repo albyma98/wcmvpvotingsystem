@@ -2458,6 +2458,12 @@ const submitRegistration = async () => {
     return;
   }
 
+  const eventId = currentEventId.value;
+  if (!eventId) {
+    registrationErrors.general = "Servizio non disponibile: evento non valido.";
+    return;
+  }
+
   isSubmittingRegistration.value = true;
   registrationErrors.general = "";
 
@@ -2470,15 +2476,35 @@ const submitRegistration = async () => {
   );
 
   try {
-    await apiClient.post("/api/fans/register", {
-      device_id: getOrCreateDeviceId(),
-      event_id: currentEventId.value,
-      name: fanName.value.trim(),
-      contact_value: sanitizedContactValue,
-      contact_type: contactType === "email" ? "email" : "phone",
-      marketing_consent: true,
-      completed_missions: completedMissions.value,
+    const { ok, status, message, data } = await submitContactChance({
+      eventId,
+      contactValue: sanitizedContactValue,
+      contactType: contactType === "email" ? "email" : "phone",
+      marketingConsent: acceptsMarketing.value,
     });
+
+    if (!ok && status !== 409) {
+      registrationErrors.general =
+        message || "Si è verificato un problema, riprova fra poco.";
+      return;
+    }
+
+    const bonuses = Array.isArray(data?.bonuses)
+      ? data?.bonuses
+      : data?.bonus_code
+        ? [
+            {
+              code: data?.bonus_code,
+              signature: data?.bonus_signature,
+              contactType: contactType === "email" ? "email" : "phone",
+            },
+          ]
+        : [];
+
+    if (bonuses.length) {
+      updateBonusState(eventId, bonuses);
+    }
+
     isRegistered.value = true;
     hasDismissedRegistration.value = true;
     showRegistrationModal.value = false;
