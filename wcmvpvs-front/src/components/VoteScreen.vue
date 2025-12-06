@@ -3925,7 +3925,7 @@ const submitContactBonus = async () => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  padding: 1.75rem 1.5rem;
+  padding: 1.4rem 1.2rem;
   border-radius: 2rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: linear-gradient(
@@ -3977,8 +3977,8 @@ const submitContactBonus = async () => {
 
 .voted-player-panel__court {
   width: 100%;
-  min-height: 260px;
-  max-height: 420px;
+  min-height: 208px;
+  max-height: 336px;
   flex: 1 1 auto;
   border-radius: 1.25rem;
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -4017,7 +4017,7 @@ const submitContactBonus = async () => {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  padding: 1.75rem 1.5rem;
+  padding: 1.4rem 1.2rem;
   border-radius: 2rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: linear-gradient(
