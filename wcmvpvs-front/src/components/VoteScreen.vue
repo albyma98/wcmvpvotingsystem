@@ -13,6 +13,8 @@ import PlayerCard from "./PlayerCard.vue";
 import SelfieMvpSection from "./SelfieMvpSection.vue";
 import ReactionTestSection from "./ReactionTestSection.vue";
 import LiveResultsSection from "./LiveResultsSection.vue";
+import MissionDashboard from "./MissionDashboard.vue";
+import RegistrationModal from "./RegistrationModal.vue";
 import {
   apiClient,
   vote,
@@ -275,6 +277,13 @@ watch(
       contactPrefilledFromDevice.value && Boolean(value);
   },
   { immediate: true },
+);
+
+watch(
+  registrationSessionKey,
+  () => {
+    rememberRegistrationStateFromSession();
+  },
 );
 
 const isMobileDevice = () => {
@@ -1212,6 +1221,7 @@ const showFeedbackThankYouMessage = computed(
 
 const handleSelfieSubmitted = () => {
   hasVoted.value = true;
+  markMissionCompleted("self_mvp");
 };
 
 const feedbackStorageKey = (eventId) => {
@@ -1483,6 +1493,58 @@ const eventTitle = computed(() => {
 });
 
 const currentEventId = computed(() => props.eventId ?? props.activeEvent?.id);
+
+const missions = reactive([
+  {
+    id: "vote_trend",
+    label: "Andamento voti",
+    icon: "chart",
+    rewardText: "+1 chance",
+    completed: false,
+    justCompleted: false,
+  },
+  {
+    id: "self_mvp",
+    label: "Self-MVP",
+    icon: "selfie",
+    rewardText: "+1 chance",
+    completed: false,
+    justCompleted: false,
+  },
+  {
+    id: "reaction_test",
+    label: "Reaction Test",
+    icon: "flash",
+    rewardText: "+1 chance",
+    completed: false,
+    justCompleted: false,
+    bestScoreMs: null,
+  },
+]);
+
+const totalMissions = computed(() => missions.length);
+const completedMissionsCount = computed(
+  () => missions.filter((mission) => mission.completed).length,
+);
+
+const showMissionToast = ref(false);
+const missionToastMessage = ref("");
+let missionToastTimer = null;
+let voteTrendTimer = null;
+
+const registrationThreshold = 2;
+const showRegistrationModal = ref(false);
+const registrationSubmitting = ref(false);
+const isRegistered = ref(false);
+const registrationDismissed = ref(false);
+
+const registrationSessionKey = computed(() => {
+  const eventId = currentEventId.value;
+  if (!eventId) {
+    return "mission_pack_registration_generic";
+  }
+  return `mission_pack_registration_${eventId}`;
+});
 
 const resolveEventFlag = (event, keys, fallback = true) => {
   if (!event || typeof event !== "object") {
@@ -1798,6 +1860,15 @@ watch(
     contactPrefillNoteVisible.value = false;
     hasContactBonus.value = false;
     bonusCodes.value = [];
+    missions.forEach((mission) => {
+      mission.completed = false;
+      mission.justCompleted = false;
+      if (mission.id === "reaction_test") {
+        mission.bestScoreMs = null;
+      }
+    });
+    showRegistrationModal.value = false;
+    rememberRegistrationStateFromSession();
     const storedContact = loadStoredContactValue();
     if (storedContact.value) {
       contactValueInput.value = storedContact.value;
@@ -2137,6 +2208,7 @@ onMounted(() => {
   }
   loadSponsors();
   loadPlayers();
+  rememberRegistrationStateFromSession();
   if (currentEventId.value) {
     if (preVoteSettings.value.showVoteCounter) {
       refreshVoteTotal();
@@ -2171,6 +2243,12 @@ onBeforeUnmount(() => {
   stopSponsorVisibilityInterval();
   teardownSponsorObserver();
   stopWaitingMessageTimer();
+  if (missionToastTimer) {
+    window.clearTimeout(missionToastTimer);
+  }
+  if (voteTrendTimer) {
+    window.clearTimeout(voteTrendTimer);
+  }
 });
 
 const canEditVote = computed(() => hasVoted.value && votingOpen.value);
@@ -2232,6 +2310,16 @@ const openVoteTrendModal = () => {
     return;
   }
   showVoteTrendModal.value = true;
+  const mission = missions.find((entry) => entry.id === "vote_trend");
+  if (mission && !mission.completed) {
+    if (voteTrendTimer) {
+      window.clearTimeout(voteTrendTimer);
+    }
+    voteTrendTimer = window.setTimeout(() => {
+      markMissionCompleted("vote_trend");
+      voteTrendTimer = null;
+    }, 2200);
+  }
 };
 
 const openSelfMvpModal = () => {
@@ -2250,6 +2338,10 @@ const openReactionTestModal = () => {
 
 const closeVoteTrendModal = () => {
   showVoteTrendModal.value = false;
+  if (voteTrendTimer) {
+    window.clearTimeout(voteTrendTimer);
+    voteTrendTimer = null;
+  }
 };
 
 const closeSelfMvpModal = () => {
@@ -2623,6 +2715,161 @@ const submitContactBonus = async () => {
     isSubmittingContact.value = false;
   }
 };
+
+const showMissionToastMessage = (message) => {
+  if (!message) {
+    return;
+  }
+  missionToastMessage.value = message;
+  showMissionToast.value = true;
+  if (missionToastTimer) {
+    window.clearTimeout(missionToastTimer);
+  }
+  missionToastTimer = window.setTimeout(() => {
+    showMissionToast.value = false;
+    missionToastMessage.value = "";
+  }, 2600);
+};
+
+const completeMissionOnServer = async (missionId, extraPayload = {}) => {
+  const eventId = currentEventId.value;
+  if (!missionId || !eventId) {
+    return;
+  }
+  try {
+    await apiClient.post(`/events/${eventId}/missions/${missionId}/complete`, {
+      device_id: getOrCreateDeviceId(),
+      event_id: eventId,
+      ...extraPayload,
+    });
+  } catch (error) {
+    console.error("mission completion error", error);
+  }
+};
+
+const checkRegistrationGate = () => {
+  if (
+    !isRegistered.value &&
+    !registrationDismissed.value &&
+    registrationThreshold > 0 &&
+    completedMissionsCount.value >= registrationThreshold
+  ) {
+    showRegistrationModal.value = true;
+  }
+};
+
+const markMissionCompleted = (missionId, payload = {}) => {
+  const mission = missions.find((entry) => entry.id === missionId);
+  if (!mission) {
+    return;
+  }
+
+  if (mission.id === "reaction_test" && typeof payload.bestScoreMs === "number") {
+    mission.bestScoreMs = mission.bestScoreMs
+      ? Math.min(mission.bestScoreMs, payload.bestScoreMs)
+      : payload.bestScoreMs;
+  }
+
+  if (mission.completed) {
+    return;
+  }
+
+  mission.completed = true;
+  mission.justCompleted = true;
+  window.setTimeout(() => {
+    mission.justCompleted = false;
+  }, 1200);
+
+  showMissionToastMessage(`🎉 Missione "${mission.label}" completata! Hai ottenuto ${mission.rewardText}.`);
+  completeMissionOnServer(mission.id, {
+    best_score_ms: mission.bestScoreMs ?? payload.bestScoreMs ?? undefined,
+  });
+  checkRegistrationGate();
+};
+
+const rememberRegistrationStateFromSession = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  registrationDismissed.value =
+    sessionStorage.getItem(registrationSessionKey.value) === "dismissed";
+  isRegistered.value = sessionStorage.getItem("mission_pack_registered") === "true";
+};
+
+const rememberRegistrationDismissal = () => {
+  registrationDismissed.value = true;
+  showRegistrationModal.value = false;
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem(registrationSessionKey.value, "dismissed");
+  }
+};
+
+const rememberRegistrationSuccess = () => {
+  isRegistered.value = true;
+  registrationDismissed.value = true;
+  showRegistrationModal.value = false;
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem("mission_pack_registered", "true");
+    sessionStorage.setItem(registrationSessionKey.value, "dismissed");
+  }
+};
+
+const registrationError = ref("");
+
+const handleRegistrationRequest = () => {
+  registrationError.value = "";
+  if (isRegistered.value || registrationDismissed.value) {
+    return;
+  }
+  showRegistrationModal.value = true;
+};
+
+const handleRegistrationLater = () => {
+  registrationError.value = "";
+  rememberRegistrationDismissal();
+};
+
+const handleRegistrationSubmit = async ({
+  name,
+  contactValue,
+  contactType,
+  marketingConsent,
+}) => {
+  registrationError.value = "";
+  if (!currentEventId.value) {
+    registrationError.value = "Nessun evento attivo per completare la registrazione.";
+    return;
+  }
+
+  registrationSubmitting.value = true;
+  try {
+    await apiClient.post(`/events/${currentEventId.value}/missions/register`, {
+      device_id: getOrCreateDeviceId(),
+      event_id: currentEventId.value,
+      name,
+      contact_value: contactValue,
+      contact_type: contactType,
+      marketing_consent: marketingConsent,
+      completed_missions: completedMissionsCount.value,
+    });
+
+    rememberRegistrationSuccess();
+    showMissionToastMessage("Profilo creato! Le tue ricompense sono al sicuro 🏅");
+  } catch (error) {
+    console.error("registration error", error);
+    registrationError.value = "Impossibile creare il profilo. Riprova tra poco.";
+  } finally {
+    registrationSubmitting.value = false;
+  }
+};
+
+const handleReactionCompleted = (payload) => {
+  const bestScore =
+    typeof payload?.bestScoreMs === "number" && !Number.isNaN(payload.bestScoreMs)
+      ? payload.bestScoreMs
+      : null;
+  markMissionCompleted("reaction_test", { bestScoreMs: bestScore });
+};
 </script>
 
 <template>
@@ -2633,6 +2880,16 @@ const submitContactBonus = async () => {
       v-if="!isCheckingActiveEvent && !showInactiveNotice"
       class="flex-1 overflow-y-auto"
     >
+      <transition name="toast-fade">
+        <div
+          v-if="showMissionToast"
+          class="mission-toast"
+          role="status"
+          aria-live="polite"
+        >
+          {{ missionToastMessage }}
+        </div>
+      </transition>
       <div class="flex flex-col" :class="hasVoted ? 'gap-6' : 'gap-10'">
         <section v-if="isVotingClosed" class="px-4">
           <div class="closed-banner" role="status" aria-live="polite">
@@ -2752,43 +3009,21 @@ const submitContactBonus = async () => {
             </div>
           </div>
 
-          <div
+          <MissionDashboard
             v-if="canOpenVoteTrend || canOpenSelfie || canOpenReactionTest"
-            class="extra-dashboard"
-            role="navigation"
-            aria-label="Funzionalità extra post-voto"
-          >
-            <button
-              type="button"
-              class="dashboard-tile"
-              :class="{ 'dashboard-tile--disabled': !canOpenVoteTrend }"
-              :disabled="!canOpenVoteTrend"
-              @click="openVoteTrendModal"
-            >
-              <span class="dashboard-tile__icon" aria-hidden="true">📈</span>
-              <span class="dashboard-tile__label">Andamento voti</span>
-            </button>
-            <button
-              type="button"
-              class="dashboard-tile"
-              :class="{ 'dashboard-tile--disabled': !canOpenSelfie }"
-              :disabled="!canOpenSelfie"
-              @click="openSelfMvpModal"
-            >
-              <span class="dashboard-tile__icon" aria-hidden="true">🤳</span>
-              <span class="dashboard-tile__label">Self-MVP</span>
-            </button>
-            <button
-              type="button"
-              class="dashboard-tile"
-              :class="{ 'dashboard-tile--disabled': !canOpenReactionTest }"
-              :disabled="!canOpenReactionTest"
-              @click="openReactionTestModal"
-            >
-              <span class="dashboard-tile__icon" aria-hidden="true">⚡</span>
-              <span class="dashboard-tile__label">Reaction Test</span>
-            </button>
-          </div>
+            :missions="missions"
+            :completed-missions="completedMissionsCount"
+            :total-missions="totalMissions"
+            :is-registered="isRegistered"
+            :registration-threshold="registrationThreshold"
+            :can-open-vote-trend="canOpenVoteTrend"
+            :can-open-selfie="canOpenSelfie"
+            :can-open-reaction-test="canOpenReactionTest"
+            @open-vote-trend="openVoteTrendModal"
+            @open-self-mvp="openSelfMvpModal"
+            @open-reaction-test="openReactionTestModal"
+            @request-registration="handleRegistrationRequest"
+          />
             <div
               class="bonus-contact-card"
               role="form"
@@ -3391,11 +3626,25 @@ const submitContactBonus = async () => {
                   <ReactionTestSection
                     :event-id="currentEventId"
                     :enabled="hasVoted && postVoteSettings.showReactionTest"
+                    @test-completed="handleReactionCompleted"
                   />
                 </div>
               </div>
             </div>
           </transition>
+        </Teleport>
+
+        <Teleport to="body">
+          <RegistrationModal
+            :visible="showRegistrationModal"
+            :completed-missions="completedMissionsCount"
+            :submitting="registrationSubmitting"
+            :initial-contact="contactValueInput"
+            :error="registrationError"
+            @submit="handleRegistrationSubmit"
+            @close="handleRegistrationLater"
+            @later="handleRegistrationLater"
+          />
         </Teleport>
 
         <Teleport to="body">
@@ -3691,6 +3940,32 @@ const submitContactBonus = async () => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast-fade-enter-from,
+.toast-fade-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.mission-toast {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 80;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.18), rgba(139, 92, 246, 0.2));
+  border: 1px solid rgba(94, 234, 212, 0.55);
+  color: #e2e8f0;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  box-shadow: 0 18px 44px rgba(8, 15, 28, 0.6);
+  font-weight: 700;
+  max-width: min(360px, 90vw);
 }
 
 .waiting-message-fade-enter-active,
