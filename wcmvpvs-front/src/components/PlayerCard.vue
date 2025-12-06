@@ -30,6 +30,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  showSelectionBadge: {
+    type: Boolean,
+    default: true,
+  },
 });
 
 const emits = defineEmits(['select']);
@@ -57,6 +61,10 @@ const selectedGlowClass = computed(() =>
   props.isSelected
     ? 'selected-glow'
     : 'card-shell',
+);
+
+const selectionPulseClass = computed(() =>
+  props.isSelected && !props.showSelectionBadge ? 'selected-glow--pulse' : '',
 );
 
 const playerNameParts = computed(() => {
@@ -114,13 +122,15 @@ const handleSelect = () => {
       :class="[
         tierRingClass,
         selectedGlowClass,
+        selectionPulseClass,
         isSelected ? 'scale-[1.05]' : '',
         interactionClass,
         isSelected ? 'ring-4' : 'ring-2',
       ]"
       @click="handleSelect"
     >
-      <div v-if="isSelected" class="selection-badge" aria-label="Il tuo MVP">
+      <div v-if="isSelected && !showSelectionBadge" class="selection-glow-overlay" aria-hidden="true"></div>
+      <div v-if="isSelected && showSelectionBadge" class="selection-badge" aria-label="Il tuo MVP">
         <span class="selection-badge__dot" aria-hidden="true"></span>
         <span class="selection-badge__label">Il tuo MVP</span>
       </div>
@@ -200,6 +210,20 @@ const handleSelect = () => {
   filter: saturate(1.06) brightness(1.06);
 }
 
+.selected-glow--pulse {
+  animation: selected-pulse 2.2s ease-in-out infinite;
+}
+
+.selection-glow-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 50% 40%, rgba(250, 204, 21, 0.3), transparent 55%);
+  filter: blur(12px);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
 @keyframes prematch-breath {
   0% {
     transform: scale(0.95);
@@ -209,6 +233,27 @@ const handleSelect = () => {
   }
   100% {
     transform: scale(0.95);
+  }
+}
+
+@keyframes selected-pulse {
+  0% {
+    box-shadow:
+      0 22px 48px rgba(250, 204, 21, 0.45),
+      0 12px 32px rgba(0, 0, 0, 0.35),
+      0 0 0 0 rgba(250, 204, 21, 0.32);
+  }
+  60% {
+    box-shadow:
+      0 22px 48px rgba(250, 204, 21, 0.45),
+      0 12px 32px rgba(0, 0, 0, 0.35),
+      0 0 0 14px rgba(250, 204, 21, 0);
+  }
+  100% {
+    box-shadow:
+      0 22px 48px rgba(250, 204, 21, 0.45),
+      0 12px 32px rgba(0, 0, 0, 0.35),
+      0 0 0 0 rgba(250, 204, 21, 0);
   }
 }
 </style>
