@@ -105,6 +105,8 @@ const props = defineProps({
   },
 });
 
+const emit = defineEmits(["result-submitted"]);
+
 const loadingStatus = ref(false);
 const isSubmitting = ref(false);
 const gameState = ref('idle');
@@ -344,6 +346,7 @@ async function finalizeReaction() {
     attemptsCount.value = Number.isFinite(data?.attempts) ? data.attempts : attemptsCount.value;
     averageMs.value = Number.isFinite(data?.average_ms) ? data.average_ms : averageMs.value;
     lastResultMs.value = typeof data?.reaction_time_ms === 'number' ? data.reaction_time_ms : measured;
+    emit("result-submitted", lastResultMs.value);
     const roundedAverage = averageMs.value > 0 ? Math.round(averageMs.value) : null;
     if (data?.faster_than_average) {
       comparisonMessage.value = 'Più veloce della media! ⚡';
