@@ -2450,6 +2450,7 @@ const missionMeta = computed(() => ({
     icon: "🏐",
     disabled: !canOpenLiberoReflex.value,
     onClick: openLiberoReflexModal,
+    fullWidth: true,
   },
   feedback: {
     icon: "💙",
