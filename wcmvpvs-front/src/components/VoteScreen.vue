@@ -3025,7 +3025,7 @@ const submitContactBonus = async () => {
             <div class="fan-missions__header">
               <h3 class="fan-missions__title">🏅 Missioni tifoso</h3>
               <p class="fan-missions__subtitle">
-                Completa le missioni per ottenere più chance e badge esclusivi.
+                Completa le missioni :)
               </p>
             </div>
             <div class="fan-missions__progress" aria-label="Avanzamento missioni tifoso">
@@ -3149,17 +3149,6 @@ const submitContactBonus = async () => {
           </p>
         </section>
         <section v-if="showAfterVoteSection" class="px-4 after-vote-section">
-
-
-          <div class="after-vote-success">
-            <p class="after-vote-success__eyebrow">
-              Voto registrato <span aria-hidden="true">✅</span>
-            </p>
-            <h3 class="after-vote-success__title">
-              Grazie per aver partecipato!
-            </h3>
-          </div>
-
             <div v-if="!showVoteSummary" class="after-vote-selection">
               <div class="after-vote-selection__header">
                 <p class="after-vote-selection__eyebrow">Hai votato:</p>
