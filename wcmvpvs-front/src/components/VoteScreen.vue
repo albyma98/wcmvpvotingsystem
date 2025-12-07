@@ -2456,7 +2456,7 @@ const missionMeta = computed(() => ({
     icon: "💙",
     disabled: !shouldShowFeedbackCta.value,
     onClick: openFeedbackModal,
-    fullWidth: true,
+    fullWidth: false,
   },
 }));
 
