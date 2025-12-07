@@ -55,7 +55,7 @@
                 :disabled="interactionDisabled"
               />
               <span style="font-size:6px;">
-Confermo autorizzazioni e consensi all’uso dell’immagine e accetto la privacy policy.<br>
+Accetto la privacy policy.<br>
               </span>
             </label>
             <button
@@ -64,7 +64,7 @@ Confermo autorizzazioni e consensi all’uso dell’immagine e accetto la privac
               :disabled="interactionDisabled"
               @click="showInformativaModal = true"
             >
-              Leggi l’informativa completa
+             Privacy policy
             </button>
           </div>
 

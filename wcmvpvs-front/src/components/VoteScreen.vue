@@ -3024,9 +3024,6 @@ const submitContactBonus = async () => {
           >
             <div class="fan-missions__header">
               <h3 class="fan-missions__title">🏅 Missioni tifoso</h3>
-              <p class="fan-missions__subtitle">
-                Completa le missioni :)
-              </p>
             </div>
             <div class="fan-missions__progress" aria-label="Avanzamento missioni tifoso">
               <div
