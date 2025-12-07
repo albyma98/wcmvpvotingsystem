@@ -190,6 +190,7 @@ Confermo autorizzazioni e consensi all’uso dell’immagine e accetto la privac
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { fetchMySelfie, resolveApiUrl, uploadSelfie } from '../api';
+import { safeTrackEvent } from '../tracking';
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
 const DEFAULT_ASPECT_RATIO = '16 / 10';
@@ -276,6 +277,7 @@ function triggerCapture() {
   if (interactionDisabled.value) {
     return;
   }
+  safeTrackEvent('mission', 'start', 'self_mvp');
   if (fileInputRef.value) {
     fileInputRef.value.click();
   }

@@ -69,6 +69,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import volleyballBall from '../assets/volleyball.svg';
+import { safeTrackEvent } from '../tracking';
 
 type GameResult = {
   attempts: number;
@@ -107,6 +108,10 @@ const targetStart = ref(42);
 const targetEnd = ref(58);
 const currentLevel = ref(1);
 const lives = ref(3);
+const attempts = ref(0);
+const successCount = ref(0);
+const hasStartedGame = ref(false);
+const hasCompletedRun = ref(false);
 const statusMessage = ref('');
 const statusType = ref<'info' | 'success' | 'warning' | 'error'>('info');
 const levelConfigs = [
@@ -178,6 +183,20 @@ const clearFeedback = () => {
   feedbackState.value = '';
 };
 
+const handleGameCompletion = (success: boolean) => {
+  if (hasCompletedRun.value) {
+    return;
+  }
+  hasCompletedRun.value = true;
+  endGame();
+  safeTrackEvent('mission', 'complete', 'libero_reflex', {
+    success,
+    attempts: attempts.value,
+    successCount: successCount.value,
+  });
+  emit('game-finished', { attempts: attempts.value, successCount: successCount.value });
+};
+
 const applyLevelConfig = (level: number) => {
   const config = levelConfigs[level - 1];
   if (!config || !arenaRef.value) return;
@@ -220,6 +239,11 @@ const startGame = () => {
   if (!props.enabled) {
     return;
   }
+  hasStartedGame.value = true;
+  hasCompletedRun.value = false;
+  attempts.value = 0;
+  successCount.value = 0;
+  safeTrackEvent('mission', 'start', 'libero_reflex');
   clearFeedback();
   statusMessage.value = '';
   statusType.value = 'info';
@@ -236,6 +260,7 @@ const handleTap = () => {
     return;
   }
 
+  attempts.value += 1;
   const inTarget = ballX.value >= targetStart.value && ballX.value <= targetEnd.value;
 
   if (feedbackTimer) {
@@ -245,6 +270,7 @@ const handleTap = () => {
   if (inTarget) {
     feedbackState.value = 'success';
     statusMessage.value = '';
+    successCount.value += 1;
     const nextLevel = currentLevel.value + 1;
     currentLevel.value = nextLevel;
 
@@ -253,6 +279,8 @@ const handleTap = () => {
       statusType.value = 'success';
       currentLevel.value = 1;
       lives.value = 3;
+      handleGameCompletion(true);
+      return;
     }
 
     applyLevelConfig(currentLevel.value);
@@ -274,6 +302,8 @@ const handleTap = () => {
       currentLevel.value = 1;
       lives.value = 3;
       applyLevelConfig(1);
+      handleGameCompletion(false);
+      return;
     } else {
       statusMessage.value = `Attento! Ti rimangono ${lives.value} vite.`;
     }
@@ -289,6 +319,9 @@ const endGame = () => {
 };
 
 const handleClose = () => {
+  if (!hasStartedGame.value) {
+    safeTrackEvent('mission', 'abandon', 'libero_reflex');
+  }
   endGame();
   emit('close');
 };
@@ -325,6 +358,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   endGame();
   window.removeEventListener('resize', handleResize);
+  if (!hasStartedGame.value) {
+    safeTrackEvent('mission', 'abandon', 'libero_reflex');
+  }
 });
 </script>
 
