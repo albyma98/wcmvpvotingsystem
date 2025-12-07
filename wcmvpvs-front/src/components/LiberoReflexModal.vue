@@ -1,8 +1,6 @@
 <template>
   <div class="libero-reflex">
-    <p class="libero-reflex__eyebrow">Mini missione</p>
     <h4 class="libero-reflex__title">Libero Reflex</h4>
-    <p class="libero-reflex__subtitle">Tocca al momento giusto!</p>
     <div class="libero-reflex__instruction" aria-live="polite">
       <span class="libero-reflex__instruction-icon" aria-hidden="true">✋</span>
       <span>Blocca la palla <strong>QUANDO</strong> è nella zona verde!</span>
@@ -323,23 +321,10 @@ onBeforeUnmount(() => {
   color: #0f172a;
 }
 
-.libero-reflex__eyebrow {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #0ea5e9;
-  margin: 0;
-}
-
 .libero-reflex__title {
   font-size: 1.7rem;
   margin: 0;
   color: #0b1021;
-}
-
-.libero-reflex__subtitle {
-  margin: 0;
-  color: #334155;
 }
 
 .libero-reflex__instruction {

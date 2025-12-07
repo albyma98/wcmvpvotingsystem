@@ -3042,7 +3042,6 @@ const submitContactBonus = async () => {
                     Miglior tempo: {{ reactionBestScoreMs }} ms
                   </span>
                 </div>
-                <span v-if="mission.completed" class="dashboard-tile__badge">COMPLETATA</span>
               </button>
             </div>
           </div>
@@ -5221,10 +5220,13 @@ const submitContactBonus = async () => {
 }
 
 .fan-missions__missions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   gap: 1rem;
   margin: 1rem 0 0;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  align-items: stretch;
 }
 
 .dashboard-tile {
@@ -5242,6 +5244,7 @@ const submitContactBonus = async () => {
   letter-spacing: 0.02em;
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
   position: relative;
+  min-width: 180px;
 }
 
 .dashboard-tile__icon {
@@ -5291,24 +5294,16 @@ const submitContactBonus = async () => {
   transform: translateY(0) scale(0.99);
 }
 
-.dashboard-tile__badge {
-  position: absolute;
-  top: 0.4rem;
-  right: 0.75rem;
-  padding: 0.2rem 0.55rem;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: #0b1224;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  box-shadow: 0 10px 22px rgba(22, 163, 74, 0.3);
+.dashboard-tile--completed {
+  background: linear-gradient(135deg, #bbf7d0, #86efac);
+  color: #0f172a;
+  box-shadow: 0 18px 32px rgba(22, 163, 74, 0.28), 0 0 0 1px rgba(34, 197, 94, 0.45);
+  border-color: rgba(34, 197, 94, 0.55);
 }
 
-.dashboard-tile--completed {
-  box-shadow: 0 22px 44px rgba(34, 197, 94, 0.18), 0 0 0 1px rgba(34, 197, 94, 0.35);
-  border-color: rgba(34, 197, 94, 0.4);
+.dashboard-tile--completed .dashboard-tile__subtitle,
+.dashboard-tile--completed .dashboard-tile__hint {
+  color: #0f172a;
 }
 
 .dashboard-tile--disabled,
@@ -5434,12 +5429,9 @@ const submitContactBonus = async () => {
 }
 
 @media (max-width: 768px) {
-  .fan-missions__missions {
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  }
-
   .dashboard-tile {
     padding: 0.75rem 0.85rem;
+    min-width: 150px;
   }
 
   .fullscreen-modal__panel {
