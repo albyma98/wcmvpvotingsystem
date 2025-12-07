@@ -1247,13 +1247,6 @@ const shouldShowFeedbackCta = computed(
     !hasCompletedFeedback.value,
 );
 
-const showFeedbackThankYouMessage = computed(
-  () =>
-    postVoteSettings.value.showFeedbackSurvey &&
-    hasCompletedFeedback.value &&
-    showFeedbackThankYou.value,
-);
-
 const handleSelfieSubmitted = () => {
   hasVoted.value = true;
   markMissionCompleted("self_mvp");
@@ -1473,6 +1466,9 @@ async function submitFeedback() {
       persistFeedbackCompletion(eventId);
       hasCompletedFeedback.value = true;
       showFeedbackThankYou.value = true;
+      markMissionCompleted("feedback", {
+        toastMessage: "Grazie per il feedback! +1 chance 💙",
+      });
       resetFeedbackFlow();
       return;
     }
@@ -1950,9 +1946,11 @@ watch(
       const completed = readFeedbackCompletion(eventId);
       hasCompletedFeedback.value = completed;
       showFeedbackThankYou.value = completed && hasVoted.value;
+      setMissionCompletion("feedback", completed);
     } else {
       hasCompletedFeedback.value = false;
       showFeedbackThankYou.value = false;
+      setMissionCompletion("feedback", false);
     }
   },
   { immediate: true },
@@ -2353,7 +2351,12 @@ const missions = ref([
   {
     id: "libero_reflex",
     label: "Libero Reflex",
-    subtitle: "Blocca la palla solo quando è nella zona verde! Hai 3 tentativi.",
+    completed: false,
+  },
+  {
+    id: "feedback",
+    label: "Migliora la tua esperienza",
+    subtitle: "In solo 15 secondi",
     completed: false,
   },
 ]);
@@ -2363,11 +2366,21 @@ const missionToastMessage = ref("");
 const showMissionToast = ref(false);
 let missionToastTimer = null;
 
-const totalMissions = computed(() => missions.value.length);
+const availableMissions = computed(() =>
+  missions.value.filter((mission) =>
+    mission.id !== "feedback"
+      ? true
+      : postVoteSettings.value.showFeedbackSurvey && hasVoted.value,
+  ),
+);
+
+const totalMissions = computed(() => availableMissions.value.length);
 
 const completedMissions = computed(
-  () => missions.value.filter((mission) => mission.completed).length,
+  () => availableMissions.value.filter((mission) => mission.completed).length,
 );
+
+const hasVisibleMissions = computed(() => availableMissions.value.length > 0);
 
 const setMissionCompletion = (id, completed) => {
   const target = missions.value.find((mission) => mission.id === id);
@@ -2440,10 +2453,15 @@ const missionMeta = computed(() => ({
     disabled: !canOpenLiberoReflex.value,
     onClick: openLiberoReflexModal,
   },
+  feedback: {
+    icon: "💙",
+    disabled: !shouldShowFeedbackCta.value,
+    onClick: openFeedbackModal,
+  },
 }));
 
 const renderedMissions = computed(() =>
-  missions.value.map((mission) => {
+  availableMissions.value.map((mission) => {
     const meta = missionMeta.value[mission.id] || {};
     return {
       ...mission,
@@ -2988,9 +3006,7 @@ const submitContactBonus = async () => {
           </div>
 
           <div
-            v-if="
-              canOpenVoteTrend || canOpenSelfie || canOpenReactionTest || canOpenLiberoReflex
-            "
+            v-if="hasVisibleMissions"
             class="fan-missions"
             role="navigation"
             aria-label="Missioni tifoso"
@@ -3131,21 +3147,6 @@ const submitContactBonus = async () => {
             <h3 class="after-vote-success__title">
               Grazie per aver partecipato!
             </h3>
-            <button
-              v-if="shouldShowFeedbackCta"
-              type="button"
-              class="feedback-cta"
-              @click="openFeedbackModal"
-            >
-              <span class="feedback-cta__label">Migliora la tua esperienza!💙</span>
-              <span class="feedback-cta__time">(in solo 15 secondi)</span>
-            </button>
-            <p
-              v-else-if="showFeedbackThankYouMessage"
-              class="after-vote-success__thanks"
-            >
-              Grazie 💙 Hai aiutato a migliorare l’esperienza dei tifosi 🙌
-            </p>
           </div>
 
             <div v-if="!showVoteSummary" class="after-vote-selection">
@@ -4586,59 +4587,6 @@ const submitContactBonus = async () => {
 
 .after-vote-selection__court.is-locked {
   opacity: 0.92;
-}
-
-.feedback-cta {
-  margin: 1.25rem auto 0;
-  min-width: 100%;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.15rem;
-  padding: 0.95rem 1.5rem;
-  border-radius: 999px;
-  border: none;
-  background: linear-gradient(135deg, #38bdf8, #6366f1);
-  color: #0f172a;
-  font-size: 1rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  box-shadow: 0 22px 40px rgba(99, 102, 241, 0.4);
-  cursor: pointer;
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    filter 0.2s ease;
-}
-
-.feedback-cta:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 26px 48px rgba(99, 102, 241, 0.45);
-}
-
-.feedback-cta:active {
-  transform: translateY(1px);
-  filter: brightness(0.95);
-}
-
-.feedback-cta__label {
-  font-size: 0.95rem;
-  letter-spacing: 0.08em;
-}
-
-.feedback-cta__time {
-  font-size: 0.75rem;
-  letter-spacing: 0.12em;
-  font-weight: 600;
-}
-
-@media (min-width: 640px) {
-  .feedback-cta {
-    min-width: auto;
-    padding: 0.95rem 2.5rem;
-  }
 }
 
 .feedback-modal {
