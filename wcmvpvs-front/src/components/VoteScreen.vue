@@ -2470,7 +2470,9 @@ const renderedMissions = computed(() =>
     return {
       ...mission,
       icon: meta.icon || "🎯",
-      disabled: Boolean(meta.disabled || mission.completed),
+      disabled: Boolean(
+        meta.disabled || (mission.completed && mission.id === "feedback"),
+      ),
       onClick: typeof meta.onClick === "function" ? meta.onClick : () => {},
       fullWidth: Boolean(meta.fullWidth || mission.fullWidth),
     };
