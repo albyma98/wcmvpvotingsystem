@@ -1654,6 +1654,42 @@ const postVoteSettings = computed(() => {
   };
 });
 
+const availablePrizes = computed(() => {
+  const prizes = Array.isArray(props.activeEvent?.prizes)
+    ? props.activeEvent.prizes
+    : [];
+
+  const normalized = prizes
+    .map((prize, index) => {
+      if (!prize || typeof prize !== "object") {
+        return null;
+      }
+
+      const id = Number(prize.id ?? prize.ID) || 0;
+      const position = Number(prize.position ?? prize.Position) || index + 1;
+      const rawName = prize.name ?? prize.Name ?? "";
+      const name = typeof rawName === "string" ? rawName.trim() : "";
+
+      const winner =
+        prize.winner && typeof prize.winner === "object" ? prize.winner : null;
+
+      return {
+        id,
+        position,
+        name,
+        winner,
+      };
+    })
+    .filter(Boolean);
+
+  return normalized.sort((a, b) => {
+    if (a.position === b.position) {
+      return a.id - b.id;
+    }
+    return a.position - b.position;
+  });
+});
+
 const visibleCourtSponsors = computed(() =>
   preVoteSettings.value.showCourtSponsors ? courtSponsors.value : [],
 );
@@ -2953,8 +2989,41 @@ const submitContactBonus = async () => {
                 </div>
               </div>
           </div>
-          
 
+
+
+            <div
+              v-if="availablePrizes.length"
+              class="prize-list"
+              role="region"
+              aria-labelledby="prize-list-title"
+            >
+              <div class="prize-list__header">
+                <p class="prize-list__eyebrow">Premi in palio</p>
+                <h3 id="prize-list-title" class="prize-list__title">
+                  Tutti i premi disponibili per questa estrazione
+                </h3>
+                <p class="prize-list__subtitle">
+                  In caso di estrazione, mostra il tuo codice per ritirare il premio.
+                </p>
+              </div>
+              <ul class="prize-list__items">
+                <li
+                  v-for="prize in availablePrizes"
+                  :key="prize.id || prize.position"
+                  class="prize-list__item"
+                >
+                  <span class="prize-list__badge">#{{ prize.position }}</span>
+                  <div class="prize-list__details">
+                    <p class="prize-list__name">
+                      {{ prize.name || `Premio ${prize.position}` }}
+                    </p>
+                    <p class="prize-list__meta">Estrazione n° {{ prize.position }}</p>
+                  </div>
+                  <span v-if="prize.winner" class="prize-list__status">Assegnato</span>
+                </li>
+              </ul>
+            </div>
 
             <div v-if="selectedPlayer" class="voted-player-panel">
               <div class="voted-player-panel__header">
@@ -4096,8 +4165,112 @@ const submitContactBonus = async () => {
   display: grid;
   gap: 1rem;
   align-items: stretch;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   grid-auto-rows: 1fr;
+}
+
+.prize-list {
+  padding: 1.25rem 1.4rem;
+  border-radius: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.86), rgba(30, 41, 59, 0.72));
+  box-shadow: 0 28px 52px rgba(8, 15, 28, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.prize-list__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.prize-list__eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.prize-list__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #f8fafc;
+}
+
+.prize-list__subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.prize-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.prize-list__item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1.4rem;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.prize-list__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 42px;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #111827;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  box-shadow: 0 14px 28px rgba(251, 191, 36, 0.35);
+}
+
+.prize-list__details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.prize-list__name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.prize-list__meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.prize-list__status {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .voted-player-panel {
