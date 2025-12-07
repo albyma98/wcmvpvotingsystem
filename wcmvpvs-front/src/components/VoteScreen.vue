@@ -2457,6 +2457,7 @@ const missionMeta = computed(() => ({
     icon: "💙",
     disabled: !shouldShowFeedbackCta.value,
     onClick: openFeedbackModal,
+    fullWidth: true,
   },
 }));
 
@@ -2468,6 +2469,7 @@ const renderedMissions = computed(() =>
       icon: meta.icon || "🎯",
       disabled: Boolean(meta.disabled || mission.completed),
       onClick: typeof meta.onClick === "function" ? meta.onClick : () => {},
+      fullWidth: Boolean(meta.fullWidth || mission.fullWidth),
     };
   }),
 );
@@ -3043,6 +3045,7 @@ const submitContactBonus = async () => {
                 :class="{
                   'dashboard-tile--disabled': mission.disabled,
                   'dashboard-tile--completed': mission.completed,
+                  'dashboard-tile--full': mission.fullWidth,
                 }"
                 :disabled="mission.disabled"
                 @click="mission.onClick"
@@ -5173,6 +5176,10 @@ const submitContactBonus = async () => {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 1rem;
   margin: 1rem 0 0;
+}
+
+.dashboard-tile--full {
+  grid-column: 1 / -1;
 }
 
 .dashboard-tile {
