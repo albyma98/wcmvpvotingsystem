@@ -1,7 +1,6 @@
 <template>
   <div class="libero-reflex">
     <p class="libero-reflex__eyebrow">Mini missione</p>
-    <h4 class="libero-reflex__title">Libero Reflex</h4>
     <p class="libero-reflex__subtitle">Tocca al momento giusto!</p>
     <div class="libero-reflex__instruction" aria-live="polite">
       <span class="libero-reflex__instruction-icon" aria-hidden="true">✋</span>
@@ -31,12 +30,12 @@
       role="button"
       tabindex="0"
       aria-label="Campo di Libero Reflex"
+      ref="arenaRef"
       @pointerdown.prevent="handleTap"
       @keydown.space.prevent="handleTap"
       @keydown.enter.prevent="handleTap"
     >
       <div class="libero-reflex__zone" :style="zoneStyle" aria-hidden="true">
-        <div class="libero-reflex__zone-arrows" aria-hidden="true"></div>
         <span class="libero-reflex__zone-label">Zona verde</span>
       </div>
 
@@ -83,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import volleyballBall from '../assets/volleyball.svg';
 
 type GameResult = {
@@ -110,7 +109,8 @@ const emit = defineEmits<{
 const minX = 10;
 const maxX = 90;
 const baseSpeed = 0.085;
-const maxLevel = 5;
+const ballSize = ref(64);
+const baseZoneScale = 2;
 
 const isPlaying = ref(false);
 const feedbackState = ref<'success' | 'fail' | ''>('');
@@ -118,7 +118,7 @@ const feedbackMessage = ref('');
 const ballX = ref(12);
 const direction = ref(1);
 const speedMultiplier = ref(1);
-const targetWidth = ref(0.32);
+const targetWidthPx = ref(ballSize.value * baseZoneScale);
 const targetStart = ref(42);
 const targetEnd = ref(58);
 const currentLevel = ref(1);
@@ -126,12 +126,14 @@ const lives = ref(3);
 const statusMessage = ref('');
 const statusType = ref<'info' | 'success' | 'warning' | 'error'>('info');
 const levelConfigs = [
-  { speed: 1.0, targetWidth: 0.4 },
-  { speed: 1.3, targetWidth: 0.32 },
-  { speed: 1.6, targetWidth: 0.26 },
-  { speed: 2.0, targetWidth: 0.2 },
-  { speed: 2.4, targetWidth: 0.16 },
+  { speed: 1.0, zoneScale: 1 },
+  { speed: 1.3, zoneScale: 0.9 },
+  { speed: 1.6, zoneScale: 0.75 },
+  { speed: 2.0, zoneScale: 0.6 },
+  { speed: 2.4, zoneScale: 0.5 },
 ];
+const maxLevel = levelConfigs.length;
+const arenaRef = ref<HTMLElement | null>(null);
 let animationFrame = 0;
 let lastTimestamp = 0;
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -158,7 +160,7 @@ const ballStyle = computed(() => ({
 }));
 
 const zoneStyle = computed(() => ({
-  '--zone-width': `${(targetWidth.value * 100).toFixed(0)}%`,
+  '--zone-width': `${targetWidthPx.value.toFixed(0)}px`,
 }));
 
 const feedbackStyle = computed(() => ({
@@ -200,10 +202,15 @@ const clearFeedback = () => {
 
 const applyLevelConfig = (level: number) => {
   const config = levelConfigs[level - 1];
-  if (!config) return;
+  if (!config || !arenaRef.value) return;
   speedMultiplier.value = config.speed;
-  targetWidth.value = config.targetWidth;
-  const halfWidth = (targetWidth.value * 100) / 2;
+  const zoneWidthPx = ballSize.value * baseZoneScale * config.zoneScale;
+  const arenaWidth = Math.max(arenaRef.value.clientWidth, 1);
+  const zoneWidthPercent = (zoneWidthPx / arenaWidth) * 100;
+
+  targetWidthPx.value = zoneWidthPx;
+
+  const halfWidth = zoneWidthPercent / 2;
   targetStart.value = 50 - halfWidth;
   targetEnd.value = 50 + halfWidth;
 };
@@ -309,9 +316,30 @@ watch(
   },
 );
 
+const syncBallSize = () => {
+  if (!arenaRef.value || typeof window === 'undefined') return;
+  const computedStyle = getComputedStyle(arenaRef.value);
+  const size = parseFloat(computedStyle.getPropertyValue('--ball-size'));
+  if (!Number.isNaN(size)) {
+    ballSize.value = size;
+  }
+};
+
+const handleResize = () => {
+  syncBallSize();
+  applyLevelConfig(currentLevel.value);
+};
+
+onMounted(() => {
+  syncBallSize();
+  applyLevelConfig(currentLevel.value);
+  window.addEventListener('resize', handleResize, { passive: true });
+});
+
 onBeforeUnmount(() => {
   stopAnimation();
   clearFeedback();
+  window.removeEventListener('resize', handleResize);
 });
 </script>
 
@@ -321,6 +349,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 1rem;
   color: #0f172a;
+  --ball-size: 64px;
 }
 
 .libero-reflex__eyebrow {
@@ -350,7 +379,7 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: rgba(14, 165, 233, 0.08);
   border: 1px solid rgba(14, 165, 233, 0.18);
-  color: #0b172a;
+  color: #fff;
   font-weight: 700;
   box-shadow: 0 8px 20px rgba(14, 165, 233, 0.12);
 }
@@ -478,43 +507,14 @@ onBeforeUnmount(() => {
 
 .libero-reflex__zone::before {
   content: '';
-  width: var(--zone-width, 32%);
-  height: 100%;
+  width: var(--zone-width, 128px);
+  height: var(--zone-width, 128px);
   background: linear-gradient(180deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.42));
-  border-left: 2px solid rgba(22, 163, 74, 0.6);
-  border-right: 2px solid rgba(22, 163, 74, 0.6);
-  border-radius: 14px;
+  border: 2px solid rgba(22, 163, 74, 0.6);
+  border-radius: 16px;
   box-shadow: 0 0 18px rgba(34, 197, 94, 0.45), 0 0 0 2px rgba(74, 222, 128, 0.18);
   animation: zone-breathe 2.4s ease-in-out infinite;
   transition: width 0.5s ease, box-shadow 0.4s ease;
-}
-
-.libero-reflex__zone-arrows {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  pointer-events: none;
-  width: calc(var(--zone-width, 32%) + 52px);
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.libero-reflex__zone-arrows::before,
-.libero-reflex__zone-arrows::after {
-  content: '';
-  width: 12px;
-  height: 18px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, rgba(74, 222, 128, 0.9), rgba(16, 185, 129, 0.4));
-  clip-path: polygon(100% 50%, 0 0, 0 100%);
-  opacity: 0.55;
-  animation: arrow-pulse 1.2s ease-in-out infinite;
-}
-
-.libero-reflex__zone-arrows::after {
-  transform: rotate(180deg);
 }
 
 .libero-reflex__zone-label {
@@ -532,8 +532,8 @@ onBeforeUnmount(() => {
 .libero-reflex__ball {
   position: absolute;
   top: 50%;
-  width: 64px;
-  height: 64px;
+  width: var(--ball-size);
+  height: var(--ball-size);
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -543,8 +543,8 @@ onBeforeUnmount(() => {
 }
 
 .libero-reflex__ball img {
-  width: 56px;
-  height: 56px;
+  width: calc(var(--ball-size) - 8px);
+  height: calc(var(--ball-size) - 8px);
 }
 
 .libero-reflex__ball--pulse {
@@ -732,18 +732,6 @@ onBeforeUnmount(() => {
   }
 }
 
-@keyframes arrow-pulse {
-  0%,
-  100% {
-    opacity: 0.3;
-    transform: translateX(0);
-  }
-  50% {
-    opacity: 0.85;
-    transform: translateX(3px);
-  }
-}
-
 @keyframes heart-glow {
   0%,
   100% {
@@ -808,14 +796,8 @@ onBeforeUnmount(() => {
     min-height: 200px;
   }
 
-  .libero-reflex__ball {
-    width: 56px;
-    height: 56px;
-  }
-
-  .libero-reflex__ball img {
-    width: 48px;
-    height: 48px;
+  .libero-reflex {
+    --ball-size: 56px;
   }
 }
 </style>
