@@ -5,9 +5,12 @@
     <p class="libero-reflex__subtitle">Tocca al momento giusto!</p>
 
     <div class="libero-reflex__status">
-      <span class="libero-reflex__attempts">Tentativi: {{ attempts }} / {{ maxAttempts }}</span>
-      <span class="libero-reflex__success" :class="{ 'is-positive': successCount >= 2 }">
-        Blocchi riusciti: {{ successCount }}
+      <span class="libero-reflex__level">Livello: {{ currentLevel }} / {{ maxLevel }}</span>
+      <span class="libero-reflex__lives" aria-label="Vite rimaste">
+        Vite:
+        <span v-for="heart in hearts" :key="heart.id" :class="['libero-reflex__heart', { 'is-empty': heart.empty }]">
+          ♥
+        </span>
       </span>
     </div>
 
@@ -21,7 +24,7 @@
       @keydown.space.prevent="handleTap"
       @keydown.enter.prevent="handleTap"
     >
-      <div class="libero-reflex__zone" aria-hidden="true">
+      <div class="libero-reflex__zone" :style="zoneStyle" aria-hidden="true">
         <span class="libero-reflex__zone-label">Zona verde</span>
       </div>
 
@@ -40,28 +43,21 @@
       </Transition>
     </div>
 
+    <div v-if="statusMessage" class="libero-reflex__banner" :class="`libero-reflex__banner--${statusType}`" aria-live="polite">
+      {{ statusMessage }}
+    </div>
+
     <div class="libero-reflex__cta">
       <button
         type="button"
         class="libero-reflex__primary"
-        :disabled="!enabled || isPlaying"
+        :disabled="!enabled"
         @click="startGame"
       >
         {{ gameCtaLabel }}
       </button>
       <button type="button" class="libero-reflex__secondary" @click="emit('close')">Chiudi</button>
     </div>
-
-    <div v-if="gameOver" class="libero-reflex__summary" aria-live="polite">
-      <p class="libero-reflex__summary-title">{{ summaryTitle }}</p>
-      <p class="libero-reflex__summary-subtitle">{{ summarySubtitle }}</p>
-      <div class="libero-reflex__summary-actions">
-        <button type="button" class="libero-reflex__primary" @click="startGame">Riprova</button>
-        <button type="button" class="libero-reflex__secondary" @click="emit('close')">Chiudi</button>
-      </div>
-    </div>
-
-    <p v-if="completed" class="libero-reflex__completion-hint">Missione già completata: puoi rigiocare, ma la ricompensa è già stata assegnata.</p>
   </div>
 </template>
 
@@ -90,32 +86,36 @@ const emit = defineEmits<{
   (e: 'game-finished', payload: GameResult): void;
 }>();
 
-const maxAttempts = 3;
-const targetStart = 42;
-const targetEnd = 58;
 const minX = 10;
 const maxX = 90;
 const baseSpeed = 0.085;
+const maxLevel = 5;
 
-const attempts = ref(0);
-const successCount = ref(0);
 const isPlaying = ref(false);
-const gameOver = ref(false);
 const feedbackState = ref<'success' | 'fail' | ''>('');
 const feedbackMessage = ref('');
 const ballX = ref(12);
 const direction = ref(1);
+const speedMultiplier = ref(1);
+const targetWidth = ref(0.32);
+const targetStart = ref(42);
+const targetEnd = ref(58);
+const currentLevel = ref(1);
+const lives = ref(3);
+const statusMessage = ref('');
+const statusType = ref<'info' | 'success' | 'warning' | 'error'>('info');
+const levelConfigs = [
+  { speed: 1.0, targetWidth: 0.4 },
+  { speed: 1.3, targetWidth: 0.32 },
+  { speed: 1.6, targetWidth: 0.26 },
+  { speed: 2.0, targetWidth: 0.2 },
+  { speed: 2.4, targetWidth: 0.16 },
+];
 let animationFrame = 0;
 let lastTimestamp = 0;
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 const gameCtaLabel = computed(() => {
-  if (isPlaying.value) {
-    return 'In gioco...';
-  }
-  if (gameOver.value) {
-    return 'Gioca di nuovo';
-  }
   return 'Gioca';
 });
 
@@ -123,7 +123,6 @@ const arenaClasses = computed(() => ({
   'libero-reflex__arena--success': feedbackState.value === 'success',
   'libero-reflex__arena--fail': feedbackState.value === 'fail',
   'libero-reflex__arena--disabled': !props.enabled,
-  'libero-reflex__arena--done': gameOver.value,
 }));
 
 const ballClasses = computed(() => ({
@@ -135,22 +134,16 @@ const ballStyle = computed(() => ({
   transform: `translate(-50%, -50%) scale(${feedbackState.value === 'success' ? 1.08 : 1})`,
 }));
 
-const summaryTitle = computed(() => {
-  if (successCount.value >= 2) {
-    return 'Ottimo! Hai bloccato la palla!';
-  }
-  return 'Quasi! Riprova per ottenere la chance bonus.';
-});
+const zoneStyle = computed(() => ({
+  '--zone-width': `${(targetWidth.value * 100).toFixed(0)}%`,
+}));
 
-const summarySubtitle = computed(() => {
-  if (successCount.value >= 2) {
-    return 'Hai sincronizzato i riflessi: +1 chance assegnata.';
-  }
-  if (attempts.value === maxAttempts) {
-    return '3 tentativi consumati, concentra i riflessi e riparti!';
-  }
-  return 'Premi Gioca per una nuova sfida lampo.';
-});
+const hearts = computed(() =>
+  Array.from({ length: 3 }, (_, index) => ({
+    id: index,
+    empty: lives.value <= index,
+  })),
+);
 
 const stopAnimation = () => {
   if (animationFrame) {
@@ -169,15 +162,19 @@ const clearFeedback = () => {
   feedbackMessage.value = '';
 };
 
-const resetGame = () => {
-  attempts.value = 0;
-  successCount.value = 0;
-  gameOver.value = false;
-  feedbackState.value = '';
-  feedbackMessage.value = '';
+const applyLevelConfig = (level: number) => {
+  const config = levelConfigs[level - 1];
+  if (!config) return;
+  speedMultiplier.value = config.speed;
+  targetWidth.value = config.targetWidth;
+  const halfWidth = (targetWidth.value * 100) / 2;
+  targetStart.value = 50 - halfWidth;
+  targetEnd.value = 50 + halfWidth;
+};
+
+const resetBall = () => {
   ballX.value = 12;
   direction.value = 1;
-  stopAnimation();
 };
 
 const animate = (timestamp: number) => {
@@ -189,7 +186,7 @@ const animate = (timestamp: number) => {
   }
   const delta = timestamp - lastTimestamp;
   lastTimestamp = timestamp;
-  const nextPosition = ballX.value + direction.value * delta * baseSpeed;
+  const nextPosition = ballX.value + direction.value * delta * baseSpeed * speedMultiplier.value;
   if (nextPosition > maxX || nextPosition < minX) {
     direction.value *= -1;
   }
@@ -198,44 +195,51 @@ const animate = (timestamp: number) => {
   animationFrame = window.requestAnimationFrame(animate);
 };
 
-const finishGame = () => {
-  gameOver.value = true;
-  isPlaying.value = false;
-  stopAnimation();
-  emit('game-finished', { attempts: attempts.value, successCount: successCount.value });
-};
-
 const startGame = () => {
   if (!props.enabled) {
     return;
   }
   clearFeedback();
-  resetGame();
+  statusMessage.value = '';
+  statusType.value = 'info';
+  currentLevel.value = 1;
+  lives.value = 3;
+  applyLevelConfig(1);
+  resetBall();
   isPlaying.value = true;
-  gameOver.value = false;
   animationFrame = window.requestAnimationFrame(animate);
 };
 
 const handleTap = () => {
-  if (!isPlaying.value || gameOver.value) {
+  if (!isPlaying.value) {
     return;
   }
 
-  const nextAttempts = attempts.value + 1;
-  attempts.value = nextAttempts;
-  const inTarget = ballX.value >= targetStart && ballX.value <= targetEnd;
+  const inTarget = ballX.value >= targetStart.value && ballX.value <= targetEnd.value;
 
   if (feedbackTimer) {
     clearTimeout(feedbackTimer);
   }
 
   if (inTarget) {
-    successCount.value += 1;
     feedbackState.value = 'success';
     feedbackMessage.value = 'BLOCK!';
+    statusMessage.value = '';
+    const nextLevel = currentLevel.value + 1;
+    currentLevel.value = nextLevel;
+
+    if (nextLevel > maxLevel) {
+      statusMessage.value = 'Hai completato tutti i livelli! Il gioco ricomincia dal livello 1.';
+      statusType.value = 'success';
+      currentLevel.value = 1;
+      lives.value = 3;
+    }
+
+    applyLevelConfig(currentLevel.value);
   } else {
     feedbackState.value = 'fail';
     feedbackMessage.value = 'Troppo presto o troppo tardi!';
+    statusType.value = 'warning';
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
         navigator.vibrate(80);
@@ -243,13 +247,20 @@ const handleTap = () => {
         // ignore vibration errors
       }
     }
+    lives.value -= 1;
+
+    if (lives.value <= 0) {
+      statusMessage.value = 'Hai finito le vite, il gioco è ricominciato dal livello 1.';
+      statusType.value = 'error';
+      currentLevel.value = 1;
+      lives.value = 3;
+      applyLevelConfig(1);
+    } else {
+      statusMessage.value = `Attento! Ti rimangono ${lives.value} vite.`;
+    }
   }
 
   feedbackTimer = setTimeout(clearFeedback, 800);
-
-  if (nextAttempts >= maxAttempts) {
-    finishGame();
-  }
 };
 
 watch(
@@ -307,13 +318,26 @@ onBeforeUnmount(() => {
   color: #0b132a;
 }
 
-.libero-reflex__success {
-  color: #ef4444;
-  font-weight: 700;
+.libero-reflex__level {
+  font-weight: 800;
+  color: #0b1021;
 }
 
-.libero-reflex__success.is-positive {
-  color: #16a34a;
+.libero-reflex__lives {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.libero-reflex__heart {
+  color: #ef4444;
+  font-size: 1.2rem;
+  text-shadow: 0 4px 10px rgba(239, 68, 68, 0.4);
+}
+
+.libero-reflex__heart.is-empty {
+  color: #cbd5e1;
+  text-shadow: none;
 }
 
 .libero-reflex__arena {
@@ -345,10 +369,6 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-.libero-reflex__arena--done {
-  border-color: rgba(14, 165, 233, 0.4);
-}
-
 .libero-reflex__zone {
   position: absolute;
   inset: 0;
@@ -360,7 +380,7 @@ onBeforeUnmount(() => {
 
 .libero-reflex__zone::before {
   content: '';
-  width: 32%;
+  width: var(--zone-width, 32%);
   height: 100%;
   background: linear-gradient(180deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.32));
   border-left: 2px dashed rgba(22, 163, 74, 0.8);
@@ -479,39 +499,35 @@ onBeforeUnmount(() => {
   transform: translateY(1px);
 }
 
-.libero-reflex__summary {
-  background: #ecfeff;
-  border: 1px solid #bae6fd;
-  border-radius: 14px;
-  padding: 1rem;
-  color: #0c4a6e;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+.libero-reflex__banner {
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
 }
 
-.libero-reflex__summary-title {
-  margin: 0 0 0.25rem;
-  font-size: 1.2rem;
-  font-weight: 800;
+.libero-reflex__banner--info {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #0f172a;
 }
 
-.libero-reflex__summary-subtitle {
-  margin: 0 0 0.75rem;
+.libero-reflex__banner--success {
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+  color: #166534;
 }
 
-.libero-reflex__summary-actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+.libero-reflex__banner--warning {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
 }
 
-.libero-reflex__completion-hint {
-  margin: 0;
-  padding: 0.5rem 0.75rem;
-  background: #fef9c3;
-  border: 1px solid #fcd34d;
-  border-radius: 10px;
-  color: #854d0e;
-  font-weight: 600;
+.libero-reflex__banner--error {
+  background: #fef2f2;
+  border-color: #fecdd3;
+  color: #b91c1c;
 }
 
 @media (max-width: 640px) {
