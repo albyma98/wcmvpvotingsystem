@@ -392,6 +392,37 @@ export async function submitReactionTestResult(eventId: number, reactionTimeMs: 
   }
 }
 
+export async function completeMission(
+  missionId: string,
+  payload: Record<string, unknown> = {},
+) {
+  if (!missionId) {
+    return { ok: false, error: new Error('missing_mission_id') };
+  }
+
+  const headers = getDeviceHeaders();
+  if (!headers['X-Device-ID']) {
+    return { ok: false, error: new Error('missing_device_id') };
+  }
+
+  try {
+    const { data } = await apiClient.post(`/missions/${missionId}/complete`, payload, {
+      headers,
+    });
+    return { ok: true, data };
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      return {
+        ok: false,
+        status: error.response?.status,
+        data: error.response?.data,
+        error,
+      };
+    }
+    return { ok: false, error };
+  }
+}
+
 export async function submitPerfectDigResult(
   eventId: number,
   payload: { attempts: number; successCount: number; reward: string },
