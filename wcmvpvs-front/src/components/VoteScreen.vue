@@ -2352,11 +2352,6 @@ const missions = ref([
   { id: "self_mvp", label: "Self-MVP", completed: false },
   { id: "reaction_test", label: "Reaction Test", completed: false },
   {
-    id: "libero_reflex",
-    label: "Libero Reflex",
-    completed: false,
-  },
-  {
     id: "feedback",
     label: "Migliora la tua esperienza",
     subtitle: "In solo 15 secondi",
@@ -2484,7 +2479,7 @@ const showMissionToastMessage = (mission, customMessage = "") => {
     return;
   }
   missionToastMessage.value =
-    customMessage || `🎉 Missione '${mission.label}' completata! Hai ottenuto +1 chance.`;
+    customMessage || `🎉 Missione '${mission.label}' completata!`;
   showMissionToast.value = true;
   if (missionToastTimer) {
     window.clearTimeout(missionToastTimer);
