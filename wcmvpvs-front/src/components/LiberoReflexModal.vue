@@ -43,23 +43,8 @@
         <img :src="volleyballBall" alt="Palla da volley" />
       </div>
 
-      <Transition name="libero-reflex-perfect">
-        <div v-if="feedbackState === 'success'" class="libero-reflex__perfect">Perfetto!</div>
-      </Transition>
-
       <Transition name="libero-reflex-level">
         <div key="currentLevel" class="libero-reflex__level-toast">LIVELLO {{ currentLevel }}</div>
-      </Transition>
-
-      <Transition name="libero-reflex-feedback">
-        <div
-          v-if="feedbackMessage"
-          class="libero-reflex__feedback"
-          :style="feedbackStyle"
-          :class="{ 'is-success': feedbackState === 'success', 'is-fail': feedbackState === 'fail' }"
-        >
-          {{ feedbackMessage }}
-        </div>
       </Transition>
     </div>
 
@@ -71,12 +56,12 @@
       <button
         type="button"
         class="libero-reflex__primary"
-        :disabled="!enabled"
+        :disabled="!enabled || isPlaying"
         @click="startGame"
       >
         {{ gameCtaLabel }}
       </button>
-      <button type="button" class="libero-reflex__secondary" @click="emit('close')">Chiudi</button>
+      <button type="button" class="libero-reflex__secondary" @click="handleClose">Chiudi</button>
     </div>
   </div>
 </template>
@@ -114,7 +99,6 @@ const baseZoneScale = 2;
 
 const isPlaying = ref(false);
 const feedbackState = ref<'success' | 'fail' | ''>('');
-const feedbackMessage = ref('');
 const ballX = ref(12);
 const direction = ref(1);
 const speedMultiplier = ref(1);
@@ -139,7 +123,7 @@ let lastTimestamp = 0;
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 const gameCtaLabel = computed(() => {
-  return 'Gioca';
+  return isPlaying.value ? 'In corso...' : 'Gioca';
 });
 
 const arenaClasses = computed(() => ({
@@ -161,11 +145,6 @@ const ballStyle = computed(() => ({
 
 const zoneStyle = computed(() => ({
   '--zone-width': `${targetWidthPx.value.toFixed(0)}px`,
-}));
-
-const feedbackStyle = computed(() => ({
-  left: `${ballX.value}%`,
-  transform: 'translate(-50%, -110%)',
 }));
 
 const levelStyle = computed(() => {
@@ -197,7 +176,6 @@ const clearFeedback = () => {
     feedbackTimer = null;
   }
   feedbackState.value = '';
-  feedbackMessage.value = '';
 };
 
 const applyLevelConfig = (level: number) => {
@@ -266,7 +244,6 @@ const handleTap = () => {
 
   if (inTarget) {
     feedbackState.value = 'success';
-    feedbackMessage.value = 'Preso!';
     statusMessage.value = '';
     const nextLevel = currentLevel.value + 1;
     currentLevel.value = nextLevel;
@@ -281,7 +258,6 @@ const handleTap = () => {
     applyLevelConfig(currentLevel.value);
   } else {
     feedbackState.value = 'fail';
-    feedbackMessage.value = 'Troppo presto / troppo tardi!';
     statusType.value = 'warning';
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
@@ -306,12 +282,22 @@ const handleTap = () => {
   feedbackTimer = setTimeout(clearFeedback, 700);
 };
 
+const endGame = () => {
+  isPlaying.value = false;
+  stopAnimation();
+  clearFeedback();
+};
+
+const handleClose = () => {
+  endGame();
+  emit('close');
+};
+
 watch(
   () => props.enabled,
   (enabled) => {
     if (!enabled) {
-      isPlaying.value = false;
-      stopAnimation();
+      endGame();
     }
   },
 );
@@ -337,8 +323,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  stopAnimation();
-  clearFeedback();
+  endGame();
   window.removeEventListener('resize', handleResize);
 });
 </script>
