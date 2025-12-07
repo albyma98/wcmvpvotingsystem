@@ -150,6 +150,9 @@ const recordedSponsorSessions = new Set();
 const recordedSponsorSeen = new Set();
 const recordedSponsorWatched = new Set();
 const hasVoted = ref(false);
+const isVotedPlayerLoading = computed(
+  () => hasVoted.value && isLoadingPlayers.value && !selectedPlayer.value,
+);
 const isCheckingVoteStatus = ref(false);
 
 const contactValueInput = ref("");
@@ -2922,7 +2925,7 @@ const submitContactBonus = async () => {
           </div>
         </section>
         <section v-if="showVoteSummary" class="px-2">
-          <div class="post-vote-grid">
+            <div class="post-vote-grid">
             <div class="vote-summary" role="status" aria-live="polite">
               <div class="vote-summary__content">
                 <p class="vote-summary__eyebrow">Hai votato!</p>
@@ -2976,7 +2979,7 @@ const submitContactBonus = async () => {
           
 
 
-            <div v-if="selectedPlayer" class="voted-player-panel">
+            <div v-if="hasVoted" class="voted-player-panel">
               <div class="voted-player-panel__header">
                 <p class="voted-player-panel__eyebrow">Il tuo MVP</p>
                 <h3 class="voted-player-panel__title">
@@ -2984,8 +2987,12 @@ const submitContactBonus = async () => {
                 </h3>
               </div>
               <div class="voted-player-panel__card">
+                <div v-if="isVotedPlayerLoading" class="voted-player-panel__loader" role="status">
+                  <span class="voted-player-panel__spinner" aria-hidden="true"></span>
+                  <span class="voted-player-panel__loader-text">Caricamento giocatore...</span>
+                </div>
                 <PlayerCard
-                  v-if="selectedPlayer"
+                  v-else-if="selectedPlayer"
                   :player="selectedPlayer"
                   :card-size="150"
                   :is-selected="true"
@@ -3061,7 +3068,6 @@ const submitContactBonus = async () => {
                     Miglior tempo: {{ reactionBestScoreMs }} ms
                   </span>
                 </div>
-                <span v-if="mission.completed" class="dashboard-tile__badge">COMPLETATA</span>
               </button>
             </div>
           </div>
@@ -4149,6 +4155,30 @@ const submitContactBonus = async () => {
   padding: 0.5rem;
   background: radial-gradient(circle at 50% 30%, rgba(250, 204, 21, 0.08), transparent 60%);
   border-radius: 1.5rem;
+}
+
+.voted-player-panel__loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem 1rem;
+  color: #e2e8f0;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.voted-player-panel__loader-text {
+  font-size: 0.95rem;
+}
+
+.voted-player-panel__spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid rgba(226, 232, 240, 0.25);
+  border-top-color: #facc15;
+  animation: counter-spin 0.9s linear infinite;
 }
 
 .voted-player-panel__placeholder {
