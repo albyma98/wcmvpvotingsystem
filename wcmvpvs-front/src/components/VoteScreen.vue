@@ -28,6 +28,7 @@ import {
 } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, mapPlayersToLayout } from "../roster";
 import { getOrCreateDeviceId } from "../deviceId";
+import { safeTrackEvent } from "../tracking";
 
 const props = defineProps({
   eventId: {
@@ -753,6 +754,48 @@ const showSelfMvpModal = ref(false);
 const showReactionTestModal = ref(false);
 const showLiberoReflexModal = ref(false);
 const showEditVoteModal = ref(false);
+const LAST_POST_VOTE_VISIT_KEY = "wcmvp:last_post_vote_visit";
+let hasTrackedPostVoteVisit = false;
+let isRestoringContactValue = false;
+let hasTrackedImproveExperienceOpen = false;
+
+const readLastPostVoteVisit = () => {
+  if (typeof window === "undefined") {
+    return 0;
+  }
+  try {
+    const raw = window.localStorage.getItem(LAST_POST_VOTE_VISIT_KEY);
+    const parsed = Number.parseInt(raw ?? "", 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch (error) {
+    return 0;
+  }
+};
+
+const recordPostVoteVisit = () => {
+  if (hasTrackedPostVoteVisit) {
+    return;
+  }
+  const now = Date.now();
+  const deviceId = getOrCreateDeviceId();
+  safeTrackEvent("visit_stats", "visit", "platform");
+
+  const lastVisit = readLastPostVoteVisit();
+  if (!lastVisit) {
+    safeTrackEvent("visit_stats", "first_visit", deviceId);
+  } else if (now - lastVisit > 30 * 60 * 1000) {
+    safeTrackEvent("visit_stats", "return_visit", deviceId);
+  }
+
+  hasTrackedPostVoteVisit = true;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(LAST_POST_VOTE_VISIT_KEY, now.toString());
+    } catch (error) {
+      // ignore storage errors
+    }
+  }
+};
 
 const buildQrUrl = (qrData) =>
   qrData
@@ -1252,6 +1295,7 @@ const shouldShowFeedbackCta = computed(
 
 const handleSelfieSubmitted = () => {
   hasVoted.value = true;
+  safeTrackEvent("mission", "complete", "self_mvp");
   markMissionCompleted("self_mvp");
 };
 
@@ -1261,6 +1305,7 @@ const handleReactionResult = (resultMs) => {
       ? resultMs
       : Math.min(reactionBestScoreMs.value, resultMs);
   }
+  safeTrackEvent("mission", "complete", "reaction_test", { bestMs: resultMs });
   markMissionCompleted("reaction_test");
 };
 
@@ -1274,6 +1319,12 @@ const handleLiberoReflexFinished = async (result) => {
   const success = successCount >= 2;
 
   liberoReflexResult.value = { attempts, successCount, completed: alreadyCompleted };
+
+  safeTrackEvent("mission", "complete", "libero_reflex", {
+    attempts,
+    successCount,
+    success,
+  });
 
   if (success && !alreadyCompleted) {
     liberoReflexResult.value.completed = true;
@@ -1857,6 +1908,9 @@ const isCloseCountdownCritical = computed(
 watch(
   currentEventId,
   (eventId, previousEventId) => {
+    hasTrackedPostVoteVisit = false;
+    hasTrackedImproveExperienceOpen = false;
+    isRestoringContactValue = false;
     if (previousEventId) {
       sendEngagementIfNeeded(previousEventId);
     }
@@ -1894,6 +1948,7 @@ watch(
     contactCelebration.value = false;
     bonusFlightActive.value = false;
     qrGlowActive.value = false;
+    hasTrackedImproveExperienceOpen = false;
     showInstantWinModal.value = false;
     contactType.value = "";
     contactPrefilledFromDevice.value = false;
@@ -1905,6 +1960,7 @@ watch(
     setMissionCompletion("libero_reflex", storedLiberoReflex.completed);
     const storedContact = loadStoredContactValue();
     if (storedContact.value) {
+      isRestoringContactValue = true;
       contactValueInput.value = storedContact.value;
       contactType.value =
         detectContactType(storedContact.value) || storedContact.type;
@@ -1912,6 +1968,7 @@ watch(
       contactPrefillNoteVisible.value = true;
       contactMarketingConsent.value =
         storedContact.completed || contactMarketingConsent.value;
+      isRestoringContactValue = false;
     }
     const storedTicket = loadStoredTicketData(eventId);
     if (storedTicket) {
@@ -1979,6 +2036,24 @@ watch(
   },
   { deep: true },
 );
+
+watch(showAfterVoteSection, (visible) => {
+  if (visible) {
+    recordPostVoteVisit();
+  }
+});
+
+watch(contactValueInput, (value) => {
+  if (
+    !hasTrackedImproveExperienceOpen &&
+    !isRestoringContactValue &&
+    typeof value === "string" &&
+    value.trim() !== ""
+  ) {
+    safeTrackEvent("mission", "open", "improve_experience");
+    hasTrackedImproveExperienceOpen = true;
+  }
+});
 
 watch(hasVoted, (voted) => {
   if (!voted) {
@@ -2403,6 +2478,7 @@ const openVoteTrendModal = () => {
   if (!canOpenVoteTrend.value) {
     return;
   }
+  safeTrackEvent("mission", "open", "vote_trend");
   if (!isMissionCompleted("vote_trend")) {
     markMissionCompleted("vote_trend");
   }
@@ -2413,6 +2489,7 @@ const openSelfMvpModal = () => {
   if (!canOpenSelfie.value) {
     return;
   }
+  safeTrackEvent("mission", "open", "self_mvp");
   showSelfMvpModal.value = true;
 };
 
@@ -2420,6 +2497,7 @@ const openReactionTestModal = () => {
   if (!canOpenReactionTest.value) {
     return;
   }
+  safeTrackEvent("mission", "open", "reaction_test");
   showReactionTestModal.value = true;
 };
 
@@ -2427,6 +2505,7 @@ const openLiberoReflexModal = () => {
   if (!canOpenLiberoReflex.value) {
     return;
   }
+  safeTrackEvent("mission", "open", "libero_reflex");
   showLiberoReflexModal.value = true;
 };
 
@@ -2504,6 +2583,9 @@ const closeVoteTrendModal = () => {
 };
 
 const closeSelfMvpModal = () => {
+  if (!isMissionCompleted("self_mvp")) {
+    safeTrackEvent("mission", "abandon", "self_mvp");
+  }
   showSelfMvpModal.value = false;
 };
 
@@ -2519,6 +2601,8 @@ const startVoteEdit = () => {
   if (!canEditVote.value) {
     return;
   }
+  const playerName = selectedPlayerName.value || "";
+  safeTrackEvent("vote", "modify_vote_click", playerName);
   pendingPlayer.value = null;
   errorMessage.value = "";
   isEditingVote.value = true;
@@ -2840,6 +2924,7 @@ const submitContactBonus = async () => {
         contactMarketingConsent.value = true;
         persistContactValue(sanitizedValue, detectedType, true);
         triggerBonusCelebration();
+        safeTrackEvent("mission", "complete", "improve_experience", { status });
       } else {
         contactFormError.value =
           message || "Impossibile salvare il contatto in questo momento.";
@@ -2868,6 +2953,7 @@ const submitContactBonus = async () => {
     persistContactValue(sanitizedValue, detectedType, true);
     applyBonusCountIncrement(1);
     triggerBonusCelebration();
+    safeTrackEvent("mission", "complete", "improve_experience", { status: "ok" });
     if (data?.instantWin) {
       showInstantWinModal.value = true;
     }

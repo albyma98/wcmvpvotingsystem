@@ -93,6 +93,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { fetchReactionTestStatus, submitReactionTestResult } from '../api';
+import { safeTrackEvent } from '../tracking';
 
 const props = defineProps({
   eventId: {
@@ -121,6 +122,7 @@ const lastResultMs = ref(null);
 const cooldownUntil = ref(null);
 const nowTs = ref(Date.now());
 const reactionStartAt = ref(0);
+const hasStartedGame = ref(false);
 
 let countdownTimer = null;
 let delayTimer = null;
@@ -376,6 +378,8 @@ function startGame() {
   if (startDisabled.value) {
     return;
   }
+  hasStartedGame.value = true;
+  safeTrackEvent('mission', 'start', 'reaction_test');
   resetStage();
   beginCountdown();
 }
@@ -425,6 +429,9 @@ onBeforeUnmount(() => {
   if (nowTimer) {
     window.clearInterval(nowTimer);
     nowTimer = null;
+  }
+  if (!hasStartedGame.value) {
+    safeTrackEvent('mission', 'abandon', 'reaction_test');
   }
 });
 </script>
