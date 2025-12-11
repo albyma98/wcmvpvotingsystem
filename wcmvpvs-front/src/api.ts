@@ -228,6 +228,31 @@ export async function submitContactChance({
   }
 }
 
+export async function fetchEventCoupons(eventId: number, options: { segment?: string } = {}) {
+  if (!eventId) {
+    return { ok: false, status: 400, message: "Evento non valido" };
+  }
+
+  try {
+    const params: Record<string, string> = {};
+    if (options.segment) {
+      params.segment = options.segment;
+    }
+
+    const { data } = await apiClient.get(`/events/${eventId}/coupons`, {
+      params,
+      headers: getDeviceHeaders(),
+    });
+
+    return { ok: true, coupons: Array.isArray(data) ? data : [] };
+  } catch (error) {
+    console.error("fetchEventCoupons error", error);
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, status, message, error };
+  }
+}
+
 export async function fetchContactBonuses(eventId: number) {
   if (!eventId) {
     return { ok: false, status: 400 };

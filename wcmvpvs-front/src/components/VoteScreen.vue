@@ -23,6 +23,7 @@ import {
   trackPageEngagement,
   fetchEventEngagement,
   fetchContactBonuses,
+  fetchEventCoupons,
   submitContactChance,
   completeMission,
 } from "../api";
@@ -753,6 +754,54 @@ const showSelfMvpModal = ref(false);
 const showReactionTestModal = ref(false);
 const showLiberoReflexModal = ref(false);
 const showEditVoteModal = ref(false);
+const showCouponsModal = ref(false);
+const isLoadingCoupons = ref(false);
+const couponLoadError = ref("");
+const eventCoupons = ref([]);
+
+function normalizeEventCoupon(item) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+
+  const id = Number(item.id) || 0;
+  const title = typeof item.title === "string" ? item.title.trim() : "";
+  if (!id || !title) {
+    return null;
+  }
+
+  return {
+    id,
+    title,
+    shortDesc:
+      typeof item.short_desc === "string"
+        ? item.short_desc
+        : typeof item.shortDesc === "string"
+          ? item.shortDesc
+          : "",
+    imageUrl:
+      typeof item.image_url === "string"
+        ? item.image_url
+        : typeof item.imageUrl === "string"
+          ? item.imageUrl
+          : "",
+    highlight: Boolean(item.highlight),
+    sponsorId: Number(item.sponsor_id ?? item.sponsorId) || 0,
+  };
+}
+
+const normalizedEventCoupons = computed(() =>
+  eventCoupons.value
+    .map((item) => normalizeEventCoupon(item))
+    .filter((coupon) => coupon !== null)
+    .sort((a, b) => {
+      if (a.highlight !== b.highlight) {
+        return Number(b.highlight) - Number(a.highlight);
+      }
+      return a.title.localeCompare(b.title, "it", { sensitivity: "base" });
+    }),
+);
+const hasEventCoupons = computed(() => normalizedEventCoupons.value.length > 0);
 
 const buildQrUrl = (qrData) =>
   qrData
@@ -1871,6 +1920,10 @@ watch(
     ticketLoadError.value = "";
     isTicketLoading.value = false;
     showAlreadyVotedModal.value = false;
+    showCouponsModal.value = false;
+    isLoadingCoupons.value = false;
+    couponLoadError.value = "";
+    eventCoupons.value = [];
     totalVotes.value = 0;
     voteTotalError.value = "";
     stopVoteTotalPolling();
@@ -2758,6 +2811,42 @@ const loadBonusCount = async (eventId) => {
   }
 };
 
+const loadEventCoupons = async (eventId) => {
+  if (!eventId) {
+    couponLoadError.value = "Evento non disponibile.";
+    return;
+  }
+
+  isLoadingCoupons.value = true;
+  couponLoadError.value = "";
+
+  try {
+    const { ok, coupons, message } = await fetchEventCoupons(eventId);
+    if (ok) {
+      eventCoupons.value = Array.isArray(coupons) ? coupons : [];
+    } else {
+      couponLoadError.value =
+        message || "Impossibile caricare i coupon disponibili in questo momento.";
+    }
+  } catch (error) {
+    console.warn("Impossibile recuperare i coupon dell'evento", error);
+    couponLoadError.value = "Impossibile caricare i coupon disponibili in questo momento.";
+  } finally {
+    isLoadingCoupons.value = false;
+  }
+};
+
+const openCouponsModal = async () => {
+  showCouponsModal.value = true;
+  if (!hasEventCoupons.value && !isLoadingCoupons.value) {
+    await loadEventCoupons(currentEventId.value);
+  }
+};
+
+const closeCouponsModal = () => {
+  showCouponsModal.value = false;
+};
+
 const triggerBonusCelebration = () => {
   contactCelebration.value = false;
   bonusFlightActive.value = false;
@@ -2953,24 +3042,48 @@ const submitContactBonus = async () => {
                   {{ ticketLoadError }}
                 </p>
               </div>
-              <div class="vote-summary__qr" aria-hidden="true">
-                <div class="qr-confetti" :class="{ 'qr-confetti--active': qrGlowActive }"></div>
-                <span
-                  v-if="hasContactBonus"
-                  class="bonus-badge"
-                  :class="{
-                    'bonus-badge--pulse': contactCelebration,
-                    'bonus-badge--glow': qrGlowActive,
-                  }"
-                >
-                  +1 CHANCE
-                </span>
-                <div v-if="isTicketLoading" class="vote-summary__qr-loader">
-                  <span class="qr-loader"></span>
+              <div class="vote-summary__aside">
+                <div class="vote-summary__qr" aria-hidden="true">
+                  <div class="qr-confetti" :class="{ 'qr-confetti--active': qrGlowActive }"></div>
+                  <span
+                    v-if="hasContactBonus"
+                    class="bonus-badge"
+                    :class="{
+                      'bonus-badge--pulse': contactCelebration,
+                      'bonus-badge--glow': qrGlowActive,
+                    }"
+                  >
+                    +1 CHANCE
+                  </span>
+                  <div v-if="isTicketLoading" class="vote-summary__qr-loader">
+                    <span class="qr-loader"></span>
+                  </div>
+                  <img v-else-if="ticketQrUrl" :src="ticketQrUrl" alt="QR code" />
+                  <div v-else class="vote-summary__qr-placeholder">
+                    QR non disponibile
+                  </div>
                 </div>
-                <img v-else-if="ticketQrUrl" :src="ticketQrUrl" alt="QR code" />
-                <div v-else class="vote-summary__qr-placeholder">
-                  QR non disponibile
+                <div class="coupon-actions">
+                  <button
+                    type="button"
+                    class="coupon-actions__button"
+                    :disabled="isLoadingCoupons"
+                    @click="openCouponsModal"
+                  >
+                    {{
+                      isLoadingCoupons
+                        ? "Caricamento..."
+                        : hasEventCoupons
+                          ? "Vedi i coupon disponibili"
+                          : "Coupon disponibili"
+                    }}
+                  </button>
+                  <p class="coupon-actions__hint">
+                    Mostra i coupon attivi associati a questo evento.
+                  </p>
+                  <p v-if="couponLoadError" class="coupon-actions__error">
+                    {{ couponLoadError }}
+                  </p>
                 </div>
               </div>
           </div>
@@ -3476,6 +3589,68 @@ const submitContactBonus = async () => {
                     :event-id="currentEventId"
                     :enabled="hasVoted && postVoteSettings.showVoteTrend"
                   />
+                </div>
+              </div>
+            </div>
+          </transition>
+        </Teleport>
+
+        <Teleport to="body">
+          <transition name="modal-fade">
+            <div
+              v-if="showCouponsModal"
+              class="fullscreen-modal"
+              @click.self="closeCouponsModal"
+            >
+              <div class="fullscreen-modal__panel fullscreen-modal__panel--wide">
+                <header class="fullscreen-modal__header coupon-modal__header">
+                  <div>
+                    <p class="coupon-modal__eyebrow">Promo evento</p>
+                    <h3 class="fullscreen-modal__title">Coupon disponibili</h3>
+                  </div>
+                  <button
+                    type="button"
+                    class="fullscreen-modal__close"
+                    aria-label="Chiudi elenco coupon"
+                    @click="closeCouponsModal"
+                  >
+                    ✕
+                  </button>
+                </header>
+
+                <div class="fullscreen-modal__body coupon-modal__body">
+                  <div v-if="isLoadingCoupons" class="coupon-modal__loader" role="status">
+                    <span class="qr-loader" aria-hidden="true"></span>
+                    <p class="coupon-modal__loader-text">Caricamento coupon…</p>
+                  </div>
+
+                  <p v-else-if="couponLoadError" class="coupon-modal__error">
+                    {{ couponLoadError }}
+                  </p>
+
+                  <p v-else-if="!hasEventCoupons" class="coupon-modal__empty">
+                    Nessun coupon attivo per questo evento al momento.
+                  </p>
+
+                  <ul v-else class="coupon-list" role="list">
+                    <li
+                      v-for="coupon in normalizedEventCoupons"
+                      :key="coupon.id"
+                      class="coupon-card"
+                      :class="{ 'coupon-card--highlighted': coupon.highlight }"
+                    >
+                      <div v-if="coupon.imageUrl" class="coupon-card__media">
+                        <img :src="coupon.imageUrl" :alt="coupon.title" loading="lazy" />
+                      </div>
+                      <div class="coupon-card__content">
+                        <p v-if="coupon.highlight" class="coupon-card__badge">In evidenza</p>
+                        <h4 class="coupon-card__title">{{ coupon.title }}</h4>
+                        <p v-if="coupon.shortDesc" class="coupon-card__desc">
+                          {{ coupon.shortDesc }}
+                        </p>
+                      </div>
+                    </li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -4232,6 +4407,13 @@ const submitContactBonus = async () => {
   gap: 0.5rem;
 }
 
+.vote-summary__aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+}
+
 .vote-summary__eyebrow {
   margin: 0;
   font-size: 0.75rem;
@@ -4354,6 +4536,51 @@ const submitContactBonus = async () => {
   text-transform: uppercase;
   text-align: center;
   padding: 0.75rem;
+}
+
+.coupon-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.coupon-actions__button {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(56, 189, 248, 0.6);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(14, 165, 233, 0.3));
+  color: #e0f2fe;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: transform 180ms ease, box-shadow 180ms ease, opacity 120ms ease;
+  box-shadow: 0 14px 30px rgba(56, 189, 248, 0.2);
+}
+
+.coupon-actions__button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 36px rgba(56, 189, 248, 0.28);
+}
+
+.coupon-actions__button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.coupon-actions__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.72);
+  text-align: center;
+}
+
+.coupon-actions__error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #fca5a5;
+  text-align: center;
 }
 
 .qr-confetti {
@@ -4941,6 +5168,15 @@ const submitContactBonus = async () => {
     flex: 1;
   }
 
+  .vote-summary__aside {
+    align-items: flex-end;
+    gap: 1.1rem;
+  }
+
+  .coupon-actions {
+    width: 220px;
+  }
+
   .vote-summary__qr {
     flex-shrink: 0;
   }
@@ -5356,6 +5592,108 @@ const submitContactBonus = async () => {
   padding: 1.25rem;
   overflow-y: auto;
   background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.03), transparent 45%);
+}
+
+.coupon-modal__header {
+  gap: 0.5rem;
+}
+
+.coupon-modal__eyebrow {
+  margin: 0 0 0.15rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #38bdf8;
+}
+
+.coupon-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.coupon-modal__loader {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.coupon-modal__loader-text {
+  margin: 0;
+}
+
+.coupon-modal__error {
+  margin: 0;
+  color: #fecaca;
+  font-weight: 600;
+}
+
+.coupon-modal__empty {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.85);
+  font-weight: 600;
+}
+
+.coupon-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.coupon-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.78), rgba(30, 41, 59, 0.72));
+  box-shadow: 0 18px 32px rgba(8, 15, 28, 0.55);
+}
+
+.coupon-card--highlighted {
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 22px 44px rgba(59, 130, 246, 0.25);
+}
+
+.coupon-card__media img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: #0f172a;
+}
+
+.coupon-card__badge {
+  display: inline-block;
+  margin: 0 0 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.18);
+  color: #bfdbfe;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+}
+
+.coupon-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.coupon-card__desc {
+  margin: 0.25rem 0 0;
+  color: rgba(226, 232, 240, 0.85);
+  line-height: 1.5;
 }
 
 .edit-vote-intro {
