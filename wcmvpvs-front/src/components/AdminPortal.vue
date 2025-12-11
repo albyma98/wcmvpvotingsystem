@@ -1779,6 +1779,223 @@
           </p>
         </section>
 
+        <section v-else-if="section === 'coupons'" class="card">
+          <header class="section-header">
+            <h2>Coupon</h2>
+            <p>
+              Crea e gestisci i coupon promozionali collegati agli sponsor e
+              alle partite.
+            </p>
+          </header>
+
+          <form @submit.prevent="createCoupon" class="form-grid coupon-form">
+            <label>
+              Titolo
+              <input
+                v-model.trim="newCoupon.title"
+                type="text"
+                placeholder="Sconto speciale"
+                required
+              />
+            </label>
+            <label>
+              Descrizione breve
+              <textarea
+                v-model.trim="newCoupon.shortDesc"
+                rows="2"
+                placeholder="Testo sintetico per il coupon"
+              ></textarea>
+            </label>
+            <label>
+              Sponsor
+              <select v-model.number="newCoupon.sponsorId" :disabled="!sponsors.length">
+                <option value="0" disabled>Nessuno sponsor disponibile</option>
+                <option v-for="sponsor in sponsors" :key="sponsor.id" :value="sponsor.id">
+                  {{ sponsor.name || `Sponsor ${sponsor.id}` }}
+                </option>
+              </select>
+              <small class="field-hint" v-if="!sponsors.length">
+                Aggiungi almeno uno sponsor per creare un coupon.
+              </small>
+            </label>
+            <label>
+              Stato
+              <select v-model="newCoupon.status">
+                <option v-for="status in couponStatusOptions" :key="status" :value="status">
+                  {{ status === 'active' ? 'Attivo' : status }}
+                </option>
+              </select>
+            </label>
+            <label>
+              Segmentazione
+              <select v-model="newCoupon.segmentation">
+                <option v-for="segment in couponSegmentationOptions" :key="segment.value" :value="segment.value">
+                  {{ segment.label }}
+                </option>
+              </select>
+            </label>
+            <label>
+              Limite utilizzi
+              <input
+                v-model.number="newCoupon.maxUses"
+                type="number"
+                min="0"
+                placeholder="0 per illimitato"
+              />
+            </label>
+            <label>
+              Data inizio
+              <input v-model="newCoupon.startDateInput" type="datetime-local" />
+            </label>
+            <label>
+              Data fine
+              <input v-model="newCoupon.endDateInput" type="datetime-local" />
+            </label>
+            <label>
+              Immagine (URL)
+              <input
+                v-model.trim="newCoupon.imageUrl"
+                type="url"
+                placeholder="https://example.com/immagine.jpg"
+              />
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" v-model="newCoupon.highlight" />
+              Evidenzia coupon
+            </label>
+
+            <div class="match-selector">
+              <span>Associa alle partite</span>
+              <div class="match-selector__grid">
+                <label v-for="event in events" :key="event.id" class="checkbox">
+                  <input
+                    type="checkbox"
+                    :value="event.id"
+                    v-model.number="newCoupon.matchIds"
+                  />
+                  <span>
+                    {{ event.title }}
+                    <small class="muted block">{{ event.start_datetime }}</small>
+                  </span>
+                </label>
+                <p v-if="!events.length" class="muted small">
+                  Nessuna partita disponibile: crea un evento per associare dei coupon.
+                </p>
+              </div>
+            </div>
+
+            <button class="btn primary" type="submit" :disabled="isCreatingCoupon">
+              {{ isCreatingCoupon ? "Creazione…" : "Crea coupon" }}
+            </button>
+          </form>
+
+          <p v-if="couponError" class="error">{{ couponError }}</p>
+          <p v-if="couponSuccess" class="success-message">{{ couponSuccess }}</p>
+
+          <ul v-if="coupons.length" class="item-list coupons-list">
+            <li v-for="coupon in coupons" :key="coupon.id" class="item coupon-item">
+              <div class="coupon-fields">
+                <div class="form-grid compact">
+                  <label>
+                    Titolo
+                    <input v-model.trim="coupon.title" type="text" />
+                  </label>
+                  <label>
+                    Sponsor
+                    <select v-model.number="coupon.sponsorId">
+                      <option v-for="sponsor in sponsors" :key="sponsor.id" :value="sponsor.id">
+                        {{ sponsor.name || `Sponsor ${sponsor.id}` }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    Stato
+                    <select v-model="coupon.status">
+                      <option v-for="status in couponStatusOptions" :key="status" :value="status">
+                        {{ status }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    Segmentazione
+                    <select v-model="coupon.segmentation">
+                      <option
+                        v-for="segment in couponSegmentationOptions"
+                        :key="segment.value"
+                        :value="segment.value"
+                      >
+                        {{ segment.label }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    Limite utilizzi
+                    <input v-model.number="coupon.maxUses" type="number" min="0" />
+                  </label>
+                  <label>
+                    Data inizio
+                    <input v-model="coupon.startDateInput" type="datetime-local" />
+                  </label>
+                  <label>
+                    Data fine
+                    <input v-model="coupon.endDateInput" type="datetime-local" />
+                  </label>
+                  <label>
+                    Immagine (URL)
+                    <input v-model.trim="coupon.imageUrl" type="url" />
+                  </label>
+                </div>
+                <label class="checkbox inline-checkbox">
+                  <input type="checkbox" v-model="coupon.highlight" />
+                  Evidenzia coupon
+                </label>
+                <label>
+                  Descrizione breve
+                  <textarea v-model.trim="coupon.shortDesc" rows="2"></textarea>
+                </label>
+                <div class="match-selector inline">
+                  <span class="muted small">Partite associate</span>
+                  <div class="match-selector__grid">
+                    <label v-for="event in events" :key="event.id" class="checkbox">
+                      <input
+                        type="checkbox"
+                        :value="event.id"
+                        v-model.number="coupon.matchIds"
+                      />
+                      <span>{{ event.title }}</span>
+                    </label>
+                  </div>
+                </div>
+                <p class="muted coupon-meta">
+                  Viste: {{ coupon.totalViews }} • Richieste: {{ coupon.totalClaims }} •
+                  Utilizzi: {{ coupon.totalRedemptions }}
+                </p>
+              </div>
+              <div class="item-actions vertical">
+                <button
+                  class="btn secondary"
+                  type="button"
+                  @click="updateCouponEntry(coupon)"
+                  :disabled="couponBeingSaved === coupon.id"
+                >
+                  <span v-if="couponBeingSaved === coupon.id">Salvataggio…</span>
+                  <span v-else>Salva</span>
+                </button>
+                <button
+                  class="btn danger"
+                  type="button"
+                  @click="deleteCouponEntry(coupon.id)"
+                  :disabled="couponBeingDeleted === coupon.id"
+                >
+                  <span v-if="couponBeingDeleted === coupon.id">Eliminazione…</span>
+                  <span v-else>Elimina</span>
+                </button>
+              </div>
+            </li>
+          </ul>
+          <p v-else class="muted text-center">Nessun coupon configurato.</p>
+        </section>
+
         <section v-else-if="section === 'admins'" class="card">
           <header class="section-header">
             <h2>Utenti amministratori</h2>
@@ -2149,6 +2366,7 @@ const tabs = [
   { id: "teams", label: "Squadre" },
   { id: "players", label: "Giocatori" },
   { id: "sponsors", label: "Sponsor" },
+  { id: "coupons", label: "Coupon" },
   { id: "admins", label: "Admin" },
 ];
 const STAFF_TAB_IDS = new Set(["closing", "results"]);
@@ -2158,6 +2376,7 @@ const players = ref([]);
 const events = ref([]);
 const admins = ref([]);
 const sponsors = ref([]);
+const coupons = ref([]);
 const eventHistory = ref([]);
 const eventSelfies = ref([]);
 const isLoadingEventHistory = ref(false);
@@ -2234,6 +2453,22 @@ function createDefaultNewEventState() {
   };
 }
 
+function createEmptyCouponDraft() {
+  return {
+    title: "",
+    shortDesc: "",
+    sponsorId: sponsors.value?.[0]?.id ?? 0,
+    matchIds: [],
+    startDateInput: "",
+    endDateInput: "",
+    maxUses: 0,
+    status: "draft",
+    imageUrl: "",
+    highlight: false,
+    segmentation: "all",
+  };
+}
+
 const newEvent = reactive(createDefaultNewEventState());
 const newEventSurvey = reactive(normalizeFeedbackSurveyInput());
 const newEventPrizes = ref([{ name: "" }]);
@@ -2247,6 +2482,13 @@ const newAdmin = reactive({
   role: "",
 });
 const maxSponsors = 4;
+const couponStatusOptions = ["draft", "active", "paused", "archived"];
+const couponSegmentationOptions = [
+  { value: "all", label: "Tutti" },
+  { value: "home", label: "Tifosi di casa" },
+  { value: "away", label: "Tifosi ospiti" },
+  { value: "vip", label: "VIP / premium" },
+];
 const newSponsor = reactive({
   name: "",
   reportName: "",
@@ -2254,11 +2496,17 @@ const newSponsor = reactive({
   logoData: "",
   isActive: true,
 });
+const newCoupon = reactive(createEmptyCouponDraft());
 const desiredActiveSponsorCount = ref(0);
 const isCreatingSponsor = ref(false);
 const sponsorBeingUpdated = ref(0);
 const sponsorBeingDeleted = ref(0);
 const isApplyingSponsorCount = ref(false);
+const isCreatingCoupon = ref(false);
+const couponBeingSaved = ref(0);
+const couponBeingDeleted = ref(0);
+const couponError = ref("");
+const couponSuccess = ref("");
 const lastCreatedEventLink = ref("");
 const isClosingVotes = ref(false);
 const closeVotesMessage = ref("");
@@ -2977,6 +3225,7 @@ function resetForms() {
   teamInputs.away = "";
   Object.assign(newAdmin, { username: "", password: "", role: "" });
   resetNewSponsorForm();
+  resetNewCouponForm();
   desiredActiveSponsorCount.value = Math.min(
     sponsorSliderMax.value,
     activeSponsorCount.value,
@@ -3053,12 +3302,23 @@ watch(activeEventVotesClosed, (closed) => {
   }
 });
 
+watch(
+  sponsors,
+  (list) => {
+    if (!newCoupon.sponsorId && Array.isArray(list) && list.length) {
+      newCoupon.sponsorId = list[0].id;
+    }
+  },
+  { immediate: true },
+);
+
 function clearCollections() {
   teams.value = [];
   players.value = [];
   events.value = [];
   admins.value = [];
   sponsors.value = [];
+  coupons.value = [];
   eventHistory.value = [];
   eventSelfies.value = [];
   hasLoadedEventHistory.value = false;
@@ -3085,6 +3345,10 @@ function clearCollections() {
     delete historyReportDownloadState[key];
   });
   lastCreatedEventLink.value = "";
+  resetNewCouponForm();
+  couponBeingSaved.value = 0;
+  couponBeingDeleted.value = 0;
+  isCreatingCoupon.value = false;
   resetNewEventPrizes();
   resetResultsState();
   sponsorAnalytics.value = null;
@@ -3440,6 +3704,128 @@ function normalizeSponsorResponse(item) {
   };
 }
 
+function toDateTimeLocalInput(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const pad = (num) => `${num}`.padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}
+
+function fromDateTimeLocalInput(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toISOString();
+}
+
+function normalizeCouponResponse(item) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const normalizedMatchIds = Array.isArray(item.match_ids ?? item.matchIds)
+    ? (item.match_ids ?? item.matchIds)
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+  return {
+    id: Number(item.id) || 0,
+    title: typeof item.title === "string" ? item.title : "",
+    shortDesc:
+      typeof item.short_desc === "string"
+        ? item.short_desc
+        : typeof item.shortDesc === "string"
+          ? item.shortDesc
+          : "",
+    sponsorId: Number(item.sponsor_id ?? item.sponsorId) || 0,
+    matchIds: normalizedMatchIds,
+    startDate:
+      typeof item.start_date === "string"
+        ? item.start_date
+        : typeof item.startDate === "string"
+          ? item.startDate
+          : "",
+    endDate:
+      typeof item.end_date === "string"
+        ? item.end_date
+        : typeof item.endDate === "string"
+          ? item.endDate
+          : "",
+    maxUses: Number(item.max_uses ?? item.maxUses) || 0,
+    status: typeof item.status === "string" ? item.status : "",
+    imageUrl:
+      typeof item.image_url === "string"
+        ? item.image_url
+        : typeof item.imageUrl === "string"
+          ? item.imageUrl
+          : "",
+    highlight: Boolean(item.highlight),
+    segmentation:
+      typeof item.segmentation === "string" && item.segmentation.trim()
+        ? item.segmentation.trim()
+        : "all",
+    totalViews: Number(item.total_views ?? item.totalViews) || 0,
+    totalClaims: Number(item.total_claims ?? item.totalClaims) || 0,
+    totalRedemptions:
+      Number(item.total_redemptions ?? item.totalRedemptions) || 0,
+    createdAt:
+      typeof item.created_at === "string"
+        ? item.created_at
+        : typeof item.createdAt === "string"
+          ? item.createdAt
+          : "",
+    updatedAt:
+      typeof item.updated_at === "string"
+        ? item.updated_at
+        : typeof item.updatedAt === "string"
+          ? item.updatedAt
+          : "",
+  };
+}
+
+function toEditableCoupon(coupon) {
+  const normalized = normalizeCouponResponse(coupon);
+  if (!normalized || !normalized.id) {
+    return null;
+  }
+  return {
+    ...normalized,
+    startDateInput: toDateTimeLocalInput(normalized.startDate),
+    endDateInput: toDateTimeLocalInput(normalized.endDate),
+  };
+}
+
+function serializeCouponPayload(coupon) {
+  const normalized = normalizeCouponResponse(coupon);
+  return {
+    title: normalized?.title?.trim() || "",
+    short_desc: normalized?.shortDesc?.trim() || "",
+    sponsor_id: normalized?.sponsorId || 0,
+    match_ids: Array.isArray(coupon?.matchIds)
+      ? coupon.matchIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      : [],
+    start_date: fromDateTimeLocalInput(coupon?.startDateInput) || normalized?.startDate,
+    end_date: fromDateTimeLocalInput(coupon?.endDateInput) || normalized?.endDate,
+    max_uses: Number.isFinite(normalized?.maxUses) ? normalized.maxUses : 0,
+    status: normalized?.status?.trim() || "draft",
+    image_url: normalized?.imageUrl?.trim() || "",
+    highlight: Boolean(normalized?.highlight),
+    segmentation: normalized?.segmentation?.trim() || "all",
+  };
+}
+
 const toCamelCaseKey = (key) => {
   if (typeof key !== "string" || !key.includes("_")) {
     return key;
@@ -3585,6 +3971,12 @@ function resetNewSponsorForm() {
     logoData: "",
     isActive: true,
   });
+}
+
+function resetNewCouponForm() {
+  Object.assign(newCoupon, createEmptyCouponDraft());
+  couponError.value = "";
+  couponSuccess.value = "";
 }
 
 async function readFileAsDataUrl(file) {
@@ -4071,6 +4463,18 @@ async function loadSponsors() {
     : [];
   sponsors.value = normalized;
   recomputeActiveSponsorSlider();
+}
+
+async function loadCoupons() {
+  const { data } = await secureRequest(() =>
+    apiClient.get("/admin/coupons", authHeaders.value),
+  );
+  const normalized = Array.isArray(data)
+    ? data
+        .map((item) => toEditableCoupon(item))
+        .filter((item) => item && item.id)
+    : [];
+  coupons.value = normalized;
 }
 
 async function loadEventSelfies(eventId) {
@@ -4839,6 +5243,7 @@ async function loadAll() {
   await loadPlayers();
   if (isSuperAdmin.value) {
     await Promise.all([loadAdmins(), loadSponsors()]);
+    await loadCoupons();
   }
   ensureSelfieSelection();
   if (section.value === "selfies" && selectedSelfieEventId.value) {
@@ -5205,6 +5610,86 @@ async function applyActiveSponsorCount() {
     }
   } finally {
     isApplyingSponsorCount.value = false;
+  }
+}
+
+async function createCoupon() {
+  if (isCreatingCoupon.value) {
+    return;
+  }
+  couponError.value = "";
+  couponSuccess.value = "";
+  if (!newCoupon.title.trim()) {
+    couponError.value = "Inserisci un titolo per il coupon.";
+    return;
+  }
+  if (!newCoupon.sponsorId) {
+    couponError.value = "Seleziona lo sponsor associato.";
+    return;
+  }
+  const payload = serializeCouponPayload(newCoupon);
+  isCreatingCoupon.value = true;
+  try {
+    await secureRequest(() =>
+      apiClient.post("/admin/coupons", payload, authHeaders.value),
+    );
+    couponSuccess.value = "Coupon creato correttamente.";
+    resetNewCouponForm();
+    await loadCoupons();
+  } catch (error) {
+    if (error?.response?.status === 400) {
+      couponError.value = "Controlla i dati inseriti per il coupon.";
+    }
+  } finally {
+    isCreatingCoupon.value = false;
+  }
+}
+
+async function updateCouponEntry(coupon) {
+  if (!coupon?.id || couponBeingSaved.value === coupon.id) {
+    return;
+  }
+  couponError.value = "";
+  couponSuccess.value = "";
+  const payload = serializeCouponPayload(coupon);
+  couponBeingSaved.value = coupon.id;
+  try {
+    await secureRequest(() =>
+      apiClient.put(
+        `/admin/coupons/${coupon.id}`,
+        payload,
+        authHeaders.value,
+      ),
+    );
+    couponSuccess.value = "Coupon aggiornato.";
+    await loadCoupons();
+  } catch (error) {
+    if (error?.response?.status === 400) {
+      couponError.value = "Impossibile salvare il coupon. Verifica i campi.";
+    }
+  } finally {
+    couponBeingSaved.value = 0;
+  }
+}
+
+async function deleteCouponEntry(id) {
+  if (!id || couponBeingDeleted.value === id) {
+    return;
+  }
+  couponError.value = "";
+  couponSuccess.value = "";
+  couponBeingDeleted.value = id;
+  try {
+    await secureRequest(() =>
+      apiClient.delete(`/admin/coupons/${id}`, authHeaders.value),
+    );
+    await loadCoupons();
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      couponError.value = "Coupon già rimosso.";
+    }
+  } finally {
+    couponBeingDeleted.value = 0;
   }
 }
 
@@ -6595,6 +7080,53 @@ textarea:focus {
 
 .sponsor-meta {
   font-size: 0.85rem;
+}
+
+.coupon-form {
+  margin-bottom: 1.25rem;
+}
+
+.coupons-list .coupon-item {
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.coupon-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.match-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.match-selector__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.match-selector.inline {
+  margin-top: 0;
+}
+
+.match-selector.inline .match-selector__grid {
+  margin-top: 0.25rem;
+}
+
+.coupon-meta {
+  font-size: 0.9rem;
+}
+
+.inline-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .item-actions.vertical {
