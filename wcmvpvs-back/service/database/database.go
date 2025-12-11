@@ -31,6 +31,7 @@ Then you can initialize the AppDatabase and pass it to the api package.
 package database
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -39,6 +40,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -524,6 +526,41 @@ type SponsorAnalytics struct {
 	Timeline         []SponsorTimelinePoint `json:"timeline"`
 }
 
+// Coupon represents a promotional offer connected to one or more matches and sponsors.
+type Coupon struct {
+	ID               int    `json:"id"`
+	Title            string `json:"title"`
+	ShortDesc        string `json:"short_desc"`
+	SponsorID        int    `json:"sponsor_id"`
+	OrganizationID   int    `json:"organization_id"`
+	MatchIDs         []int  `json:"match_ids"`
+	StartDate        string `json:"start_date"`
+	EndDate          string `json:"end_date"`
+	MaxUses          int    `json:"max_uses"`
+	Status           string `json:"status"`
+	ImageURL         string `json:"image_url"`
+	Highlight        bool   `json:"highlight"`
+	Segmentation     string `json:"segmentation"`
+	TotalViews       int    `json:"total_views"`
+	TotalClaims      int    `json:"total_claims"`
+	TotalRedemptions int    `json:"total_redemptions"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+}
+
+// UserCoupon stores a generated code for a coupon assigned to a user or device.
+type UserCoupon struct {
+	ID              int     `json:"id"`
+	CouponID        int     `json:"coupon_id"`
+	UserID          *int    `json:"user_id,omitempty"`
+	MatchID         int     `json:"match_id"`
+	Code            string  `json:"code"`
+	ClaimedAt       string  `json:"claimed_at"`
+	UsedAt          *string `json:"used_at,omitempty"`
+	UsedBySponsorID *int    `json:"used_by_sponsor_id,omitempty"`
+	CreatedAt       string  `json:"created_at"`
+}
+
 type EventMVP struct {
 	PlayerID   int    `json:"player_id"`
 	FirstName  string `json:"first_name"`
@@ -698,6 +735,16 @@ type AppDatabase interface {
 	CreateShopProduct(product ShopProduct) (ShopProduct, error)
 	ListShopOrders() ([]ShopOrder, error)
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
+	// Coupons
+	CreateCoupon(coupon Coupon) (Coupon, error)
+	UpdateCoupon(coupon Coupon) (Coupon, error)
+	DeleteCoupon(id int, organizationID int) error
+	ListCoupons(organizationID int) ([]Coupon, error)
+	GetCouponByID(id int) (Coupon, error)
+	RecordCouponView(id int) error
+	ClaimCoupon(couponID int, userID *int, matchID int) (UserCoupon, error)
+	RedeemCoupon(code string, sponsorID int) (UserCoupon, error)
+	ListUserCoupons(userID *int, sponsorID int) ([]UserCoupon, error)
 	Ping() error
 }
 
@@ -706,6 +753,7 @@ type appdbimpl struct {
 }
 
 const maxSponsorSlots = 4
+const couponCodeAttempts = 50
 
 var (
 	ErrMaxSponsors             = errors.New("maximum number of sponsors reached")
@@ -719,6 +767,8 @@ var (
 	ErrEventAlreadyConcluded   = errors.New("event already concluded")
 	ErrInvalidOrganizationData = errors.New("invalid organization data")
 	ErrInvalidContactData      = errors.New("invalid contact data")
+	ErrCouponUnavailable       = errors.New("coupon not available")
+	ErrCouponMaxReached        = errors.New("coupon max uses reached")
 )
 
 type rowScanner interface {
@@ -1272,6 +1322,72 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsor_exposures_device_event ON sponsor_exposures(event_id, device_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring sponsor_exposures device index: %w", err)
+	}
+
+	// Coupons tables
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='coupons';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE coupons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        short_desc TEXT,
+        sponsor_id INTEGER NOT NULL,
+        match_ids TEXT,
+        start_date TEXT,
+        end_date TEXT,
+        max_uses INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'draft',
+        image_url TEXT,
+        highlight INTEGER NOT NULL DEFAULT 0,
+        segmentation TEXT NOT NULL DEFAULT 'all',
+        total_views INTEGER NOT NULL DEFAULT 0,
+        total_claims INTEGER NOT NULL DEFAULT 0,
+        total_redemptions INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        organization_id INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (sponsor_id) REFERENCES sponsors(id) ON DELETE CASCADE
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating coupons table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying coupons table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_coupons_sponsor ON coupons(sponsor_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring coupons sponsor index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_coupons_org ON coupons(organization_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring coupons organization index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='user_coupons';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE user_coupons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        coupon_id INTEGER NOT NULL,
+        user_id INTEGER,
+        match_id INTEGER NOT NULL,
+        code TEXT NOT NULL UNIQUE,
+        claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        used_at TEXT,
+        used_by_sponsor_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (coupon_id) REFERENCES coupons(id) ON DELETE CASCADE
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating user_coupons table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying user_coupons table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_user_coupons_coupon ON user_coupons(coupon_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring user_coupons coupon index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_user_coupons_sponsor ON user_coupons(used_by_sponsor_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring user_coupons sponsor index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_products';`).Scan(&tableName)
@@ -4520,4 +4636,340 @@ func (db *appdbimpl) CreateShopOrder(order ShopOrder, items []ShopOrderItem) (Sh
 	order.Items = storedItems
 
 	return order, nil
+}
+
+// Coupon management
+
+func (db *appdbimpl) CreateCoupon(coupon Coupon) (Coupon, error) {
+	cleanTitle := strings.TrimSpace(coupon.Title)
+	if cleanTitle == "" || coupon.SponsorID <= 0 {
+		return Coupon{}, fmt.Errorf("invalid coupon payload")
+	}
+
+	matchIDs := joinMatchIDs(coupon.MatchIDs)
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := db.c.Exec(`INSERT INTO coupons (title, short_desc, sponsor_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, cleanTitle, strings.TrimSpace(coupon.ShortDesc), coupon.SponsorID, matchIDs, coupon.StartDate, coupon.EndDate, coupon.MaxUses, strings.TrimSpace(coupon.Status), strings.TrimSpace(coupon.ImageURL), boolToInt(coupon.Highlight), strings.TrimSpace(coupon.Segmentation), coupon.OrganizationID, now, now)
+	if err != nil {
+		return Coupon{}, err
+	}
+
+	couponID, err := result.LastInsertId()
+	if err != nil {
+		return Coupon{}, err
+	}
+
+	return db.GetCouponByID(int(couponID))
+}
+
+func (db *appdbimpl) UpdateCoupon(coupon Coupon) (Coupon, error) {
+	if coupon.ID <= 0 {
+		return Coupon{}, fmt.Errorf("invalid coupon id")
+	}
+
+	matchIDs := joinMatchIDs(coupon.MatchIDs)
+	_, err := db.c.Exec(`UPDATE coupons SET title=?, short_desc=?, sponsor_id=?, match_ids=?, start_date=?, end_date=?, max_uses=?, status=?, image_url=?, highlight=?, segmentation=?, organization_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, strings.TrimSpace(coupon.Title), strings.TrimSpace(coupon.ShortDesc), coupon.SponsorID, matchIDs, coupon.StartDate, coupon.EndDate, coupon.MaxUses, strings.TrimSpace(coupon.Status), strings.TrimSpace(coupon.ImageURL), boolToInt(coupon.Highlight), strings.TrimSpace(coupon.Segmentation), coupon.OrganizationID, coupon.ID)
+	if err != nil {
+		return Coupon{}, err
+	}
+	return db.GetCouponByID(coupon.ID)
+}
+
+func (db *appdbimpl) DeleteCoupon(id int, organizationID int) error {
+	if id <= 0 {
+		return fmt.Errorf("invalid coupon id")
+	}
+	res, err := db.c.Exec(`DELETE FROM coupons WHERE id=? AND (organization_id = ? OR ? = 0)`, id, organizationID, organizationID)
+	if err != nil {
+		return err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (db *appdbimpl) ListCoupons(organizationID int) ([]Coupon, error) {
+	rows, err := db.c.Query(`SELECT id, title, short_desc, sponsor_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, total_views, total_claims, total_redemptions, created_at, updated_at, organization_id FROM coupons WHERE organization_id = ? OR ? = 0 ORDER BY created_at DESC`, organizationID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var coupons []Coupon
+	for rows.Next() {
+		var c Coupon
+		var matchIDs string
+		var highlight int
+		if err := rows.Scan(&c.ID, &c.Title, &c.ShortDesc, &c.SponsorID, &matchIDs, &c.StartDate, &c.EndDate, &c.MaxUses, &c.Status, &c.ImageURL, &highlight, &c.Segmentation, &c.TotalViews, &c.TotalClaims, &c.TotalRedemptions, &c.CreatedAt, &c.UpdatedAt, &c.OrganizationID); err != nil {
+			return nil, err
+		}
+		c.MatchIDs = parseMatchIDs(matchIDs)
+		c.Highlight = highlight == 1
+		coupons = append(coupons, c)
+	}
+	return coupons, rows.Err()
+}
+
+func (db *appdbimpl) GetCouponByID(id int) (Coupon, error) {
+	var c Coupon
+	var matchIDs string
+	var highlight int
+	err := db.c.QueryRow(`SELECT id, title, short_desc, sponsor_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, total_views, total_claims, total_redemptions, created_at, updated_at, organization_id FROM coupons WHERE id=?`, id).Scan(&c.ID, &c.Title, &c.ShortDesc, &c.SponsorID, &matchIDs, &c.StartDate, &c.EndDate, &c.MaxUses, &c.Status, &c.ImageURL, &highlight, &c.Segmentation, &c.TotalViews, &c.TotalClaims, &c.TotalRedemptions, &c.CreatedAt, &c.UpdatedAt, &c.OrganizationID)
+	if err != nil {
+		return Coupon{}, err
+	}
+	c.MatchIDs = parseMatchIDs(matchIDs)
+	c.Highlight = highlight == 1
+	return c, nil
+}
+
+func (db *appdbimpl) RecordCouponView(id int) error {
+	if id <= 0 {
+		return fmt.Errorf("invalid coupon id")
+	}
+	_, err := db.c.Exec(`UPDATE coupons SET total_views = total_views + 1 WHERE id=?`, id)
+	return err
+}
+
+func (db *appdbimpl) ClaimCoupon(couponID int, userID *int, matchID int) (UserCoupon, error) {
+	coupon, err := db.GetCouponByID(couponID)
+	if err != nil {
+		return UserCoupon{}, err
+	}
+
+	if strings.ToLower(coupon.Status) != "active" {
+		return UserCoupon{}, ErrCouponUnavailable
+	}
+
+	now := time.Now()
+	if coupon.StartDate != "" {
+		if start, err := time.Parse(time.RFC3339, coupon.StartDate); err == nil && now.Before(start) {
+			return UserCoupon{}, ErrCouponUnavailable
+		}
+	}
+	if coupon.EndDate != "" {
+		if end, err := time.Parse(time.RFC3339, coupon.EndDate); err == nil && now.After(end) {
+			return UserCoupon{}, ErrCouponUnavailable
+		}
+	}
+
+	if coupon.MaxUses > 0 {
+		var used int
+		if err := db.c.QueryRow(`SELECT COUNT(*) FROM user_coupons WHERE coupon_id = ?`, couponID).Scan(&used); err != nil {
+			return UserCoupon{}, err
+		}
+		if used >= coupon.MaxUses {
+			return UserCoupon{}, ErrCouponMaxReached
+		}
+	}
+
+	code, err := generateCouponCode(db.c)
+	if err != nil {
+		return UserCoupon{}, err
+	}
+
+	var userValue interface{}
+	if userID != nil {
+		userValue = *userID
+	}
+
+	result, err := db.c.Exec(`INSERT INTO user_coupons (coupon_id, user_id, match_id, code, claimed_at, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, couponID, userValue, matchID, code)
+	if err != nil {
+		return UserCoupon{}, err
+	}
+
+	if _, err := db.c.Exec(`UPDATE coupons SET total_claims = total_claims + 1 WHERE id=?`, couponID); err != nil {
+		return UserCoupon{}, err
+	}
+
+	claimID, err := result.LastInsertId()
+	if err != nil {
+		return UserCoupon{}, err
+	}
+
+	return db.getUserCouponByID(int(claimID))
+}
+
+func (db *appdbimpl) RedeemCoupon(code string, sponsorID int) (UserCoupon, error) {
+	var uc UserCoupon
+	var usedAt sql.NullString
+	var userID sql.NullInt64
+	var usedBy sql.NullInt64
+	var couponID int
+	err := db.c.QueryRow(`SELECT id, coupon_id, user_id, match_id, code, claimed_at, used_at, used_by_sponsor_id, created_at FROM user_coupons WHERE code=?`, strings.TrimSpace(code)).Scan(&uc.ID, &couponID, &userID, &uc.MatchID, &uc.Code, &uc.ClaimedAt, &usedAt, &usedBy, &uc.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return UserCoupon{}, sql.ErrNoRows
+	}
+	if err != nil {
+		return UserCoupon{}, err
+	}
+
+	coupon, err := db.GetCouponByID(couponID)
+	if err != nil {
+		return UserCoupon{}, err
+	}
+
+	if coupon.SponsorID != sponsorID {
+		return UserCoupon{}, ErrCouponUnavailable
+	}
+	if usedAt.Valid {
+		return UserCoupon{}, ErrCouponMaxReached
+	}
+
+	now := time.Now()
+	if coupon.EndDate != "" {
+		if end, err := time.Parse(time.RFC3339, coupon.EndDate); err == nil && now.After(end) {
+			return UserCoupon{}, ErrCouponUnavailable
+		}
+	}
+
+	if coupon.MaxUses > 0 {
+		var redeemed int
+		if err := db.c.QueryRow(`SELECT COUNT(*) FROM user_coupons WHERE coupon_id=? AND used_at IS NOT NULL`, couponID).Scan(&redeemed); err != nil {
+			return UserCoupon{}, err
+		}
+		if redeemed >= coupon.MaxUses {
+			return UserCoupon{}, ErrCouponMaxReached
+		}
+	}
+
+	_, err = db.c.Exec(`UPDATE user_coupons SET used_at=CURRENT_TIMESTAMP, used_by_sponsor_id=? WHERE id=?`, sponsorID, uc.ID)
+	if err != nil {
+		return UserCoupon{}, err
+	}
+	_, _ = db.c.Exec(`UPDATE coupons SET total_redemptions = total_redemptions + 1 WHERE id=?`, couponID)
+
+	if userID.Valid {
+		val := int(userID.Int64)
+		uc.UserID = &val
+	}
+	if usedBy.Valid {
+		val := int(usedBy.Int64)
+		uc.UsedBySponsorID = &val
+	}
+	if usedAt.Valid {
+		uc.UsedAt = &usedAt.String
+	} else {
+		nowStr := time.Now().UTC().Format(time.RFC3339)
+		uc.UsedAt = &nowStr
+	}
+	uc.CouponID = couponID
+	return uc, nil
+}
+
+func (db *appdbimpl) ListUserCoupons(userID *int, sponsorID int) ([]UserCoupon, error) {
+	query := `SELECT id, coupon_id, user_id, match_id, code, claimed_at, used_at, used_by_sponsor_id, created_at FROM user_coupons WHERE 1=1`
+	var args []interface{}
+	if userID != nil {
+		query += ` AND user_id = ?`
+		args = append(args, *userID)
+	}
+	if sponsorID > 0 {
+		query += ` AND coupon_id IN (SELECT id FROM coupons WHERE sponsor_id = ?)`
+		args = append(args, sponsorID)
+	}
+	query += ` ORDER BY claimed_at DESC`
+
+	rows, err := db.c.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var coupons []UserCoupon
+	for rows.Next() {
+		var uc UserCoupon
+		var user sql.NullInt64
+		var usedAt sql.NullString
+		var usedBy sql.NullInt64
+		if err := rows.Scan(&uc.ID, &uc.CouponID, &user, &uc.MatchID, &uc.Code, &uc.ClaimedAt, &usedAt, &usedBy, &uc.CreatedAt); err != nil {
+			return nil, err
+		}
+		if user.Valid {
+			val := int(user.Int64)
+			uc.UserID = &val
+		}
+		if usedAt.Valid {
+			uc.UsedAt = &usedAt.String
+		}
+		if usedBy.Valid {
+			val := int(usedBy.Int64)
+			uc.UsedBySponsorID = &val
+		}
+		coupons = append(coupons, uc)
+	}
+
+	return coupons, rows.Err()
+}
+
+func (db *appdbimpl) getUserCouponByID(id int) (UserCoupon, error) {
+	var uc UserCoupon
+	var user sql.NullInt64
+	var usedAt sql.NullString
+	var usedBy sql.NullInt64
+	err := db.c.QueryRow(`SELECT id, coupon_id, user_id, match_id, code, claimed_at, used_at, used_by_sponsor_id, created_at FROM user_coupons WHERE id=?`, id).Scan(&uc.ID, &uc.CouponID, &user, &uc.MatchID, &uc.Code, &uc.ClaimedAt, &usedAt, &usedBy, &uc.CreatedAt)
+	if err != nil {
+		return UserCoupon{}, err
+	}
+	if user.Valid {
+		val := int(user.Int64)
+		uc.UserID = &val
+	}
+	if usedAt.Valid {
+		uc.UsedAt = &usedAt.String
+	}
+	if usedBy.Valid {
+		val := int(usedBy.Int64)
+		uc.UsedBySponsorID = &val
+	}
+	return uc, nil
+}
+
+func joinMatchIDs(ids []int) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id > 0 {
+			parts = append(parts, fmt.Sprintf("%d", id))
+		}
+	}
+	return strings.Join(parts, ",")
+}
+
+func parseMatchIDs(raw string) []int {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	var ids []int
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		if v, err := strconv.Atoi(strings.TrimSpace(p)); err == nil && v > 0 {
+			ids = append(ids, v)
+		}
+	}
+	return ids
+}
+
+func generateCouponCode(dbConn *sql.DB) (string, error) {
+	for i := 0; i < couponCodeAttempts; i++ {
+		buf := make([]byte, 6)
+		if _, err := rand.Read(buf); err != nil {
+			return "", err
+		}
+		code := strings.ToUpper(hex.EncodeToString(buf))
+		var existing int
+		if err := dbConn.QueryRow(`SELECT COUNT(*) FROM user_coupons WHERE code=?`, code).Scan(&existing); err != nil {
+			return "", err
+		}
+		if existing == 0 {
+			return code, nil
+		}
+	}
+	return "", fmt.Errorf("unable to generate unique coupon code")
 }
