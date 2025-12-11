@@ -1,7 +1,9 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -155,6 +157,9 @@ func (rt *_router) listEventCoupons(w http.ResponseWriter, r *http.Request, ctx 
 		if segment != "" && !strings.EqualFold(c.Segmentation, "all") && !strings.EqualFold(c.Segmentation, segment) {
 			continue
 		}
+		if err := rt.db.RecordCouponView(c.ID); err != nil {
+			ctx.Logger.WithError(err).Warn("coupon view tracking")
+		}
 		filtered = append(filtered, c)
 	}
 
@@ -201,15 +206,22 @@ func (rt *_router) validatePartnerCoupon(w http.ResponseWriter, r *http.Request,
 	}
 	claim, err := rt.db.RedeemCoupon(payload.Code, payload.SponsorID)
 	if err != nil {
-		if err == database.ErrCouponUnavailable {
-			writeJSON(w, http.StatusOK, map[string]string{"status": "scaduto"})
-			return
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "codice inesistente"})
+		case errors.Is(err, database.ErrCouponWrongSponsor):
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "sponsor errato"})
+		case errors.Is(err, database.ErrCouponExpired):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "coupon scaduto"})
+		case errors.Is(err, database.ErrCouponAlreadyUsed):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "coupon già usato"})
+		case errors.Is(err, database.ErrCouponMaxReached):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "limite max raggiunto"})
+		case errors.Is(err, database.ErrCouponUnavailable):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "coupon non attivo"})
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		if err == database.ErrCouponMaxReached {
-			writeJSON(w, http.StatusOK, map[string]string{"status": "usato"})
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "valido", "coupon": claim})

@@ -559,6 +559,7 @@ type UserCoupon struct {
 	UsedAt          *string `json:"used_at,omitempty"`
 	UsedBySponsorID *int    `json:"used_by_sponsor_id,omitempty"`
 	CreatedAt       string  `json:"created_at"`
+	Coupon          *Coupon `json:"coupon,omitempty"`
 }
 
 type EventMVP struct {
@@ -768,6 +769,9 @@ var (
 	ErrInvalidOrganizationData = errors.New("invalid organization data")
 	ErrInvalidContactData      = errors.New("invalid contact data")
 	ErrCouponUnavailable       = errors.New("coupon not available")
+	ErrCouponWrongSponsor      = errors.New("coupon sponsor mismatch")
+	ErrCouponExpired           = errors.New("coupon expired")
+	ErrCouponAlreadyUsed       = errors.New("coupon already used")
 	ErrCouponMaxReached        = errors.New("coupon max uses reached")
 )
 
@@ -4811,15 +4815,23 @@ func (db *appdbimpl) RedeemCoupon(code string, sponsorID int) (UserCoupon, error
 	}
 
 	if coupon.SponsorID != sponsorID {
+		return UserCoupon{}, ErrCouponWrongSponsor
+	}
+	if !strings.EqualFold(coupon.Status, "active") {
 		return UserCoupon{}, ErrCouponUnavailable
 	}
 	if usedAt.Valid {
-		return UserCoupon{}, ErrCouponMaxReached
+		return UserCoupon{}, ErrCouponAlreadyUsed
 	}
 
 	now := time.Now()
 	if coupon.EndDate != "" {
 		if end, err := time.Parse(time.RFC3339, coupon.EndDate); err == nil && now.After(end) {
+			return UserCoupon{}, ErrCouponExpired
+		}
+	}
+	if coupon.StartDate != "" {
+		if start, err := time.Parse(time.RFC3339, coupon.StartDate); err == nil && now.Before(start) {
 			return UserCoupon{}, ErrCouponUnavailable
 		}
 	}
@@ -4855,6 +4867,7 @@ func (db *appdbimpl) RedeemCoupon(code string, sponsorID int) (UserCoupon, error
 		uc.UsedAt = &nowStr
 	}
 	uc.CouponID = couponID
+	uc.Coupon = &coupon
 	return uc, nil
 }
 
@@ -4878,6 +4891,7 @@ func (db *appdbimpl) ListUserCoupons(userID *int, sponsorID int) ([]UserCoupon, 
 	defer rows.Close()
 
 	var coupons []UserCoupon
+	cachedCoupons := make(map[int]Coupon)
 	for rows.Next() {
 		var uc UserCoupon
 		var user sql.NullInt64
@@ -4897,6 +4911,36 @@ func (db *appdbimpl) ListUserCoupons(userID *int, sponsorID int) ([]UserCoupon, 
 			val := int(usedBy.Int64)
 			uc.UsedBySponsorID = &val
 		}
+
+		coupon, ok := cachedCoupons[uc.CouponID]
+		if !ok {
+			stored, err := db.GetCouponByID(uc.CouponID)
+			if err != nil {
+				return nil, err
+			}
+			cachedCoupons[uc.CouponID] = stored
+			coupon = stored
+		}
+		uc.Coupon = &coupon
+
+		if usedAt.Valid {
+			continue
+		}
+		if strings.ToLower(coupon.Status) != "active" {
+			continue
+		}
+		now := time.Now()
+		if coupon.StartDate != "" {
+			if start, err := time.Parse(time.RFC3339, coupon.StartDate); err == nil && now.Before(start) {
+				continue
+			}
+		}
+		if coupon.EndDate != "" {
+			if end, err := time.Parse(time.RFC3339, coupon.EndDate); err == nil && now.After(end) {
+				continue
+			}
+		}
+
 		coupons = append(coupons, uc)
 	}
 
@@ -4922,6 +4966,10 @@ func (db *appdbimpl) getUserCouponByID(id int) (UserCoupon, error) {
 	if usedBy.Valid {
 		val := int(usedBy.Int64)
 		uc.UsedBySponsorID = &val
+	}
+
+	if coupon, err := db.GetCouponByID(uc.CouponID); err == nil {
+		uc.Coupon = &coupon
 	}
 	return uc, nil
 }
