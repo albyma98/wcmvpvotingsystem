@@ -40,6 +40,11 @@ func (rt *_router) Handler() chi.Router {
 
 	rt.router.Get("/active-event", rt.wrap(rt.getActiveEvent))
 	rt.router.Get("/sponsors", rt.wrap(rt.listPublicSponsors))
+	rt.router.Get("/events/{eventId}/coupons", rt.wrap(rt.listEventCoupons))
+	rt.router.Post("/coupons/{couponId}/view", rt.wrap(rt.recordCouponView))
+	rt.router.Post("/coupons/{couponId}/claim", rt.wrap(rt.claimCoupon))
+	rt.router.Get("/user/coupons", rt.wrap(rt.listUserCoupons))
+	rt.router.Post("/partner/coupons/validate", rt.wrap(rt.validatePartnerCoupon))
 
 	rt.router.Post("/events/{eventId}/engagement", rt.wrap(rt.recordPageEngagement))
 	rt.router.Get("/events/{eventId}/engagement", rt.wrap(rt.getEventEngagementStats))
@@ -99,6 +104,11 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admin/sponsors", rt.wrapAdmin(rt.createSponsor))
 	rt.router.Put("/admin/sponsors/{id}", rt.wrapAdmin(rt.updateSponsor))
 	rt.router.Delete("/admin/sponsors/{id}", rt.wrapAdmin(rt.deleteSponsor))
+
+	rt.router.Get("/admin/coupons", rt.wrapAdmin(rt.listAdminCoupons))
+	rt.router.Post("/admin/coupons", rt.wrapAdmin(rt.createAdminCoupon))
+	rt.router.Put("/admin/coupons/{id}", rt.wrapAdmin(rt.updateAdminCoupon))
+	rt.router.Delete("/admin/coupons/{id}", rt.wrapAdmin(rt.deleteAdminCoupon))
 
 	return rt.router
 }
