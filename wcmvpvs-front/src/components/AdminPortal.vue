@@ -1818,13 +1818,23 @@
                 Aggiungi almeno uno sponsor per creare un coupon.
               </small>
             </label>
-            <label>
+            <label class="choice-group">
               Stato
-              <select v-model="newCoupon.status">
-                <option v-for="status in couponStatusOptions" :key="status" :value="status">
-                  {{ status === 'active' ? 'Attivo' : status }}
-                </option>
-              </select>
+              <div class="status-options" role="radiogroup" aria-label="Stato coupon">
+                <label
+                  v-for="status in couponStatusOptions"
+                  :key="status"
+                  class="status-option"
+                >
+                  <input
+                    type="radio"
+                    name="new-coupon-status"
+                    :value="status"
+                    v-model="newCoupon.status"
+                  />
+                  <span>{{ getCouponStatusLabel(status) }}</span>
+                </label>
+              </div>
             </label>
             <label>
               Segmentazione
@@ -1908,13 +1918,27 @@
                       </option>
                     </select>
                   </label>
-                  <label>
+                  <label class="choice-group">
                     Stato
-                    <select v-model="coupon.status">
-                      <option v-for="status in couponStatusOptions" :key="status" :value="status">
-                        {{ status }}
-                      </option>
-                    </select>
+                    <div
+                      class="status-options"
+                      role="radiogroup"
+                      :aria-label="`Stato coupon ${coupon.title || coupon.id}`"
+                    >
+                      <label
+                        v-for="status in couponStatusOptions"
+                        :key="status"
+                        class="status-option"
+                      >
+                        <input
+                          type="radio"
+                          :name="`coupon-status-${coupon.id}`"
+                          :value="status"
+                          v-model="coupon.status"
+                        />
+                        <span>{{ getCouponStatusLabel(status) }}</span>
+                      </label>
+                    </div>
                   </label>
                   <label>
                     Segmentazione
@@ -2483,12 +2507,19 @@ const newAdmin = reactive({
 });
 const maxSponsors = 4;
 const couponStatusOptions = ["draft", "active", "paused", "archived"];
+const couponStatusLabels = {
+  draft: "Bozza",
+  active: "Attivo",
+  paused: "In pausa",
+  archived: "Archiviato",
+};
 const couponSegmentationOptions = [
   { value: "all", label: "Tutti" },
   { value: "home", label: "Tifosi di casa" },
   { value: "away", label: "Tifosi ospiti" },
   { value: "vip", label: "VIP / premium" },
 ];
+const getCouponStatusLabel = (status) => couponStatusLabels[status] || status;
 const newSponsor = reactive({
   name: "",
   reportName: "",
@@ -7089,6 +7120,36 @@ textarea:focus {
 .coupons-list .coupon-item {
   align-items: flex-start;
   gap: 1rem;
+}
+
+.choice-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.status-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.status-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.status-option input {
+  margin: 0;
+}
+
+.status-option span {
+  text-transform: capitalize;
 }
 
 .coupon-fields {
