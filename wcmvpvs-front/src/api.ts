@@ -57,34 +57,34 @@ const resolveApiBaseUrl = () => {
   return ensureApiPath(`${protocol}//${hostname}${originPort}`);
 };
 
-function detectOrganizationSlug(pathname: string | undefined) {
-  if (!pathname) {
-    return '';
-  }
-
-  const segments = pathname
-    .split('/')
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  if (!segments.length) {
-    return '';
-  }
-
-  const first = segments[0].toLowerCase();
+function detectOrganizationSlug(pathname: string | undefined, search?: string) {
   const reservedPrefixes = new Set(['admin', 'shop', 'lottery', 'welcome', 'partner']);
-  if (reservedPrefixes.has(first)) {
-    return '';
+
+  if (pathname) {
+    const segments = pathname
+      .split('/')
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (segments.length) {
+      const first = segments[0].toLowerCase();
+      if (!reservedPrefixes.has(first)) {
+        return segments[0];
+      }
+    }
   }
 
-  return segments[0];
+  const params = new URLSearchParams(search || '');
+  const slugFromQuery =
+    params.get('organization_slug') || params.get('org') || params.get('organization') || '';
+  return slugFromQuery.trim();
 }
 
 function getOrganizationSlugFromLocation() {
   if (typeof window === 'undefined') {
     return '';
   }
-  return detectOrganizationSlug(window.location?.pathname || '');
+  return detectOrganizationSlug(window.location?.pathname || '', window.location?.search || '');
 }
 
 export const apiClient = axios.create({
