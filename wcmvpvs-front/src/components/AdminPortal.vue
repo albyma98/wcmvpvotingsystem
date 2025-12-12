@@ -1879,11 +1879,6 @@
                 placeholder="https://example.com/immagine.jpg"
               />
             </label>
-            <label class="checkbox">
-              <input type="checkbox" v-model="newCoupon.highlight" />
-              Evidenzia coupon
-            </label>
-
             <div class="match-selector">
               <span>Associa alle partite</span>
               <div class="match-selector__grid">
@@ -1988,10 +1983,6 @@
                     <input v-model.trim="coupon.imageUrl" type="url" />
                   </label>
                 </div>
-                <label class="checkbox inline-checkbox">
-                  <input type="checkbox" v-model="coupon.highlight" />
-                  Evidenzia coupon
-                </label>
                 <label>
                   Descrizione breve
                   <textarea v-model.trim="coupon.shortDesc" rows="2"></textarea>
@@ -2584,13 +2575,13 @@ function createEmptyCouponDraft() {
     title: "",
     shortDesc: "",
     sponsorId: partners.value?.[0]?.id ?? 0,
+    merchantId: partners.value?.[0]?.id ?? 0,
     matchIds: [],
     startDateInput: "",
     endDateInput: "",
     maxUses: 0,
     status: "draft",
     imageUrl: "",
-    highlight: false,
   };
 }
 
@@ -3442,8 +3433,20 @@ watch(
     if (!newCoupon.sponsorId && Array.isArray(list) && list.length) {
       newCoupon.sponsorId = list[0].id;
     }
+    if (!newCoupon.merchantId && Array.isArray(list) && list.length) {
+      newCoupon.merchantId = list[0].id;
+    }
   },
   { immediate: true },
+);
+
+watch(
+  () => newCoupon.sponsorId,
+  (sponsorId) => {
+    if (Number.isFinite(sponsorId) && sponsorId > 0) {
+      newCoupon.merchantId = sponsorId;
+    }
+  },
 );
 
 function clearCollections() {
@@ -3883,6 +3886,7 @@ function normalizeCouponResponse(item) {
           ? item.shortDesc
           : "",
     sponsorId: Number(item.sponsor_id ?? item.sponsorId) || 0,
+    merchantId: Number(item.merchant_id ?? item.merchantId) || 0,
     matchIds: normalizedMatchIds,
     startDate:
       typeof item.start_date === "string"
@@ -3942,6 +3946,7 @@ function serializeCouponPayload(coupon) {
     title: normalized?.title?.trim() || "",
     short_desc: normalized?.shortDesc?.trim() || "",
     sponsor_id: normalized?.sponsorId || 0,
+    merchant_id: normalized?.merchantId || normalized?.sponsorId || 0,
     match_ids: Array.isArray(coupon?.matchIds)
       ? coupon.matchIds
           .map((value) => Number(value))
@@ -3952,7 +3957,7 @@ function serializeCouponPayload(coupon) {
     max_uses: Number.isFinite(normalized?.maxUses) ? normalized.maxUses : 0,
     status: normalized?.status?.trim() || "draft",
     image_url: normalized?.imageUrl?.trim() || "",
-    highlight: Boolean(normalized?.highlight),
+    highlight: false,
   };
 }
 
