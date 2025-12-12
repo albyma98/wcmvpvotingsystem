@@ -72,7 +72,7 @@ function detectOrganizationSlug(pathname: string | undefined) {
   }
 
   const first = segments[0].toLowerCase();
-  const reservedPrefixes = new Set(['admin', 'shop', 'lottery', 'welcome']);
+  const reservedPrefixes = new Set(['admin', 'shop', 'lottery', 'welcome', 'partner']);
   if (reservedPrefixes.has(first)) {
     return '';
   }

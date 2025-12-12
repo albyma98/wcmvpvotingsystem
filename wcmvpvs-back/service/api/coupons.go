@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +38,7 @@ type couponClaimRequest struct {
 type couponValidationRequest struct {
 	Code      string `json:"code"`
 	SponsorID int    `json:"sponsor_id"`
+	Signature string `json:"signature"`
 }
 
 func (rt *_router) listAdminCoupons(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -192,18 +195,44 @@ func (rt *_router) claimCoupon(w http.ResponseWriter, r *http.Request, ctx reqco
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, http.StatusOK, claim)
+
+	sponsorID := 0
+	if claim.Coupon != nil {
+		sponsorID = claim.Coupon.SponsorID
+	}
+	signature := signCouponPayload(rt.VoteSecret, claim.Code, sponsorID)
+	validationURL := rt.buildCouponValidationURL(claim.Code, sponsorID, signature)
+
+	response := struct {
+		database.UserCoupon `json:",inline"`
+		Signature           string `json:"signature"`
+		QRData              string `json:"qr_data,omitempty"`
+	}{UserCoupon: claim, Signature: signature, QRData: validationURL}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (rt *_router) validatePartnerCoupon(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var payload couponValidationRequest
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || strings.TrimSpace(payload.Code) == "" {
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	payload.Code = strings.TrimSpace(payload.Code)
+	if payload.Code == "" || strings.TrimSpace(payload.Signature) == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	if payload.SponsorID == 0 {
 		payload.SponsorID = ctx.OrganizationID
 	}
+	expectedSignature := signCouponPayload(rt.VoteSecret, payload.Code, payload.SponsorID)
+	if payload.Signature != expectedSignature {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "firma non valida"})
+		return
+	}
+
 	claim, err := rt.db.RedeemCoupon(payload.Code, payload.SponsorID)
 	if err != nil {
 		switch {
@@ -225,6 +254,35 @@ func (rt *_router) validatePartnerCoupon(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "valido", "coupon": claim})
+}
+
+func signCouponPayload(secret, code string, sponsorID int) string {
+	payload := code
+	if sponsorID > 0 {
+		payload = fmt.Sprintf("%s|%d", code, sponsorID)
+	}
+	return signCode(secret, payload)
+}
+
+func (rt *_router) buildCouponValidationURL(code string, sponsorID int, signature string) string {
+	baseURL := strings.TrimSpace(rt.ticketValidationBaseURL)
+	if baseURL == "" || code == "" || signature == "" {
+		return ""
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+
+	parsed.Path = strings.TrimSuffix(parsed.Path, "/") + "/partner/validate"
+	q := parsed.Query()
+	q.Set("c", code)
+	q.Set("s", signature)
+	if sponsorID > 0 {
+		q.Set("sp", strconv.Itoa(sponsorID))
+	}
+	parsed.RawQuery = q.Encode()
+	return parsed.String()
 }
 
 func (rt *_router) listUserCoupons(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

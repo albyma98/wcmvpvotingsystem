@@ -17,6 +17,11 @@
       :current-search="currentSearch"
       :on-navigate="navigateTo"
     />
+    <PartnerPortal
+      v-else-if="appView === 'partner'"
+      :current-path="currentPath"
+      :current-search="currentSearch"
+    />
     <VoteScreen
       v-else
       :event-id="resolvedEventId"
@@ -37,6 +42,7 @@ import CashLanding from './components/CashLanding.vue';
 import VoteScreen from './components/VoteScreen.vue';
 import ShopShell from './components/shop/ShopShell.vue';
 import ShopAdminPortal from './components/shop/ShopAdminPortal.vue';
+import PartnerPortal from './components/PartnerPortal.vue';
 import { apiClient } from './api';
 
 function readEventId(search) {
@@ -65,7 +71,7 @@ const organizationSlug = computed(() => {
     return '';
   }
 
-  if (pathSegments.value[0] === 'admin' || pathSegments.value[0] === 'shop') {
+  if (pathSegments.value[0] === 'admin' || pathSegments.value[0] === 'shop' || pathSegments.value[0] === 'partner') {
     return '';
   }
 
@@ -100,6 +106,9 @@ const appView = computed(() => {
   }
   if (currentPath.value.startsWith('/shop')) {
     return 'shop';
+  }
+  if (currentPath.value.includes('/partner')) {
+    return 'partner';
   }
   return 'public';
 });
