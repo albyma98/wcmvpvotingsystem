@@ -532,6 +532,7 @@ type Coupon struct {
 	Title            string `json:"title"`
 	ShortDesc        string `json:"short_desc"`
 	SponsorID        int    `json:"sponsor_id"`
+	MerchantID       int    `json:"merchant_id"`
 	OrganizationID   int    `json:"organization_id"`
 	MatchIDs         []int  `json:"match_ids"`
 	StartDate        string `json:"start_date"`
@@ -703,6 +704,7 @@ type AppDatabase interface {
 	DeleteAdmin(id int) error
 	GetAdminByUsername(username string, organizationID int) (Admin, error)
 	GetAdminByID(id int) (Admin, error)
+	ListPartners(organizationID int) ([]Admin, error)
 	CreateOrganization(org Organization) (Organization, error)
 	UpdateOrganization(org Organization) (Organization, error)
 	ListOrganizations() ([]Organization, error)
@@ -1336,6 +1338,7 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
         title TEXT NOT NULL,
         short_desc TEXT,
         sponsor_id INTEGER NOT NULL,
+        merchant_id INTEGER NOT NULL DEFAULT 0,
         match_ids TEXT,
         start_date TEXT,
         end_date TEXT,
@@ -1357,6 +1360,36 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("error verifying coupons table: %w", err)
+	}
+
+	// Ensure merchant_id column exists for coupons
+	hasMerchantColumn := false
+	couponCols, err := db.Query(`PRAGMA table_info(coupons)`)
+	if err != nil {
+		return nil, fmt.Errorf("error inspecting coupons table: %w", err)
+	}
+	for couponCols.Next() {
+		var (
+			cid      int
+			name     string
+			colType  string
+			notNull  int
+			defaultV sql.NullString
+			primary  int
+		)
+		if err := couponCols.Scan(&cid, &name, &colType, &notNull, &defaultV, &primary); err != nil {
+			couponCols.Close()
+			return nil, fmt.Errorf("error parsing coupons table info: %w", err)
+		}
+		if name == "merchant_id" {
+			hasMerchantColumn = true
+		}
+	}
+	couponCols.Close()
+	if !hasMerchantColumn {
+		if _, err = db.Exec(`ALTER TABLE coupons ADD COLUMN merchant_id INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return nil, fmt.Errorf("error adding merchant_id to coupons: %w", err)
+		}
 	}
 
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_coupons_sponsor ON coupons(sponsor_id)`); err != nil {
@@ -2992,6 +3025,31 @@ func (db *appdbimpl) ListAdmins(organizationID int) ([]Admin, error) {
 		as = append(as, a)
 	}
 	return as, nil
+}
+
+func (db *appdbimpl) ListPartners(organizationID int) ([]Admin, error) {
+	query := `SELECT id, username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins WHERE LOWER(role) = 'partner'`
+	var args []interface{}
+	if organizationID > 0 {
+		query += ` AND organization_id = ?`
+		args = append(args, organizationID)
+	}
+
+	rows, err := db.c.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var partners []Admin
+	for rows.Next() {
+		var a Admin
+		if err := rows.Scan(&a.ID, &a.Username, &a.PasswordHash, &a.Role, &a.CreatedAt, &a.OrganizationID); err != nil {
+			return nil, err
+		}
+		partners = append(partners, a)
+	}
+	return partners, nil
 }
 
 func (db *appdbimpl) UpdateAdmin(a Admin) error {
@@ -4652,7 +4710,7 @@ func (db *appdbimpl) CreateCoupon(coupon Coupon) (Coupon, error) {
 
 	matchIDs := joinMatchIDs(coupon.MatchIDs)
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := db.c.Exec(`INSERT INTO coupons (title, short_desc, sponsor_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, cleanTitle, strings.TrimSpace(coupon.ShortDesc), coupon.SponsorID, matchIDs, coupon.StartDate, coupon.EndDate, coupon.MaxUses, strings.TrimSpace(coupon.Status), strings.TrimSpace(coupon.ImageURL), boolToInt(coupon.Highlight), strings.TrimSpace(coupon.Segmentation), coupon.OrganizationID, now, now)
+	result, err := db.c.Exec(`INSERT INTO coupons (title, short_desc, sponsor_id, merchant_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, cleanTitle, strings.TrimSpace(coupon.ShortDesc), coupon.SponsorID, coupon.MerchantID, matchIDs, coupon.StartDate, coupon.EndDate, coupon.MaxUses, strings.TrimSpace(coupon.Status), strings.TrimSpace(coupon.ImageURL), boolToInt(coupon.Highlight), strings.TrimSpace(coupon.Segmentation), coupon.OrganizationID, now, now)
 	if err != nil {
 		return Coupon{}, err
 	}
@@ -4671,7 +4729,7 @@ func (db *appdbimpl) UpdateCoupon(coupon Coupon) (Coupon, error) {
 	}
 
 	matchIDs := joinMatchIDs(coupon.MatchIDs)
-	_, err := db.c.Exec(`UPDATE coupons SET title=?, short_desc=?, sponsor_id=?, match_ids=?, start_date=?, end_date=?, max_uses=?, status=?, image_url=?, highlight=?, segmentation=?, organization_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, strings.TrimSpace(coupon.Title), strings.TrimSpace(coupon.ShortDesc), coupon.SponsorID, matchIDs, coupon.StartDate, coupon.EndDate, coupon.MaxUses, strings.TrimSpace(coupon.Status), strings.TrimSpace(coupon.ImageURL), boolToInt(coupon.Highlight), strings.TrimSpace(coupon.Segmentation), coupon.OrganizationID, coupon.ID)
+	_, err := db.c.Exec(`UPDATE coupons SET title=?, short_desc=?, sponsor_id=?, merchant_id=?, match_ids=?, start_date=?, end_date=?, max_uses=?, status=?, image_url=?, highlight=?, segmentation=?, organization_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, strings.TrimSpace(coupon.Title), strings.TrimSpace(coupon.ShortDesc), coupon.SponsorID, coupon.MerchantID, matchIDs, coupon.StartDate, coupon.EndDate, coupon.MaxUses, strings.TrimSpace(coupon.Status), strings.TrimSpace(coupon.ImageURL), boolToInt(coupon.Highlight), strings.TrimSpace(coupon.Segmentation), coupon.OrganizationID, coupon.ID)
 	if err != nil {
 		return Coupon{}, err
 	}
@@ -4694,7 +4752,7 @@ func (db *appdbimpl) DeleteCoupon(id int, organizationID int) error {
 }
 
 func (db *appdbimpl) ListCoupons(organizationID int) ([]Coupon, error) {
-	rows, err := db.c.Query(`SELECT id, title, short_desc, sponsor_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, total_views, total_claims, total_redemptions, created_at, updated_at, organization_id FROM coupons WHERE organization_id = ? OR ? = 0 ORDER BY created_at DESC`, organizationID, organizationID)
+	rows, err := db.c.Query(`SELECT id, title, short_desc, sponsor_id, merchant_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, total_views, total_claims, total_redemptions, created_at, updated_at, organization_id FROM coupons WHERE organization_id = ? OR ? = 0 ORDER BY created_at DESC`, organizationID, organizationID)
 	if err != nil {
 		return nil, err
 	}
@@ -4705,7 +4763,7 @@ func (db *appdbimpl) ListCoupons(organizationID int) ([]Coupon, error) {
 		var c Coupon
 		var matchIDs string
 		var highlight int
-		if err := rows.Scan(&c.ID, &c.Title, &c.ShortDesc, &c.SponsorID, &matchIDs, &c.StartDate, &c.EndDate, &c.MaxUses, &c.Status, &c.ImageURL, &highlight, &c.Segmentation, &c.TotalViews, &c.TotalClaims, &c.TotalRedemptions, &c.CreatedAt, &c.UpdatedAt, &c.OrganizationID); err != nil {
+		if err := rows.Scan(&c.ID, &c.Title, &c.ShortDesc, &c.SponsorID, &c.MerchantID, &matchIDs, &c.StartDate, &c.EndDate, &c.MaxUses, &c.Status, &c.ImageURL, &highlight, &c.Segmentation, &c.TotalViews, &c.TotalClaims, &c.TotalRedemptions, &c.CreatedAt, &c.UpdatedAt, &c.OrganizationID); err != nil {
 			return nil, err
 		}
 		c.MatchIDs = parseMatchIDs(matchIDs)
@@ -4719,7 +4777,7 @@ func (db *appdbimpl) GetCouponByID(id int) (Coupon, error) {
 	var c Coupon
 	var matchIDs string
 	var highlight int
-	err := db.c.QueryRow(`SELECT id, title, short_desc, sponsor_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, total_views, total_claims, total_redemptions, created_at, updated_at, organization_id FROM coupons WHERE id=?`, id).Scan(&c.ID, &c.Title, &c.ShortDesc, &c.SponsorID, &matchIDs, &c.StartDate, &c.EndDate, &c.MaxUses, &c.Status, &c.ImageURL, &highlight, &c.Segmentation, &c.TotalViews, &c.TotalClaims, &c.TotalRedemptions, &c.CreatedAt, &c.UpdatedAt, &c.OrganizationID)
+	err := db.c.QueryRow(`SELECT id, title, short_desc, sponsor_id, merchant_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, total_views, total_claims, total_redemptions, created_at, updated_at, organization_id FROM coupons WHERE id=?`, id).Scan(&c.ID, &c.Title, &c.ShortDesc, &c.SponsorID, &c.MerchantID, &matchIDs, &c.StartDate, &c.EndDate, &c.MaxUses, &c.Status, &c.ImageURL, &highlight, &c.Segmentation, &c.TotalViews, &c.TotalClaims, &c.TotalRedemptions, &c.CreatedAt, &c.UpdatedAt, &c.OrganizationID)
 	if err != nil {
 		return Coupon{}, err
 	}
@@ -4814,7 +4872,7 @@ func (db *appdbimpl) RedeemCoupon(code string, sponsorID int) (UserCoupon, error
 		return UserCoupon{}, err
 	}
 
-	if coupon.SponsorID != sponsorID {
+	if coupon.MerchantID > 0 && coupon.MerchantID != sponsorID {
 		return UserCoupon{}, ErrCouponWrongSponsor
 	}
 	if !strings.EqualFold(coupon.Status, "active") {

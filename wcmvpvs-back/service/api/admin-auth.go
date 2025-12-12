@@ -20,6 +20,11 @@ func (rt *_router) wrapAdmin(fn httpRouterHandler) http.HandlerFunc {
 			return
 		}
 
+		if strings.EqualFold(session.Role, "partner") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
 		ctx.AdminID = session.AdminID
 		ctx.AdminRole = session.Role
 		ctx.AdminUsername = session.Username
@@ -97,6 +102,80 @@ func (rt *_router) createAdminSession(adminID int, username, role string, orgID,
 	rt.adminSessionsMu.Unlock()
 
 	return token, nil
+}
+
+func (rt *_router) getPartnerSession(token string) (adminSession, bool) {
+	if token == "" {
+		return adminSession{}, false
+	}
+
+	rt.partnerSessionsMu.RLock()
+	session, ok := rt.partnerSessions[token]
+	rt.partnerSessionsMu.RUnlock()
+	if !ok {
+		return adminSession{}, false
+	}
+
+	if time.Now().After(session.ExpiresAt) {
+		rt.partnerSessionsMu.Lock()
+		delete(rt.partnerSessions, token)
+		rt.partnerSessionsMu.Unlock()
+		return adminSession{}, false
+	}
+
+	rt.partnerSessionsMu.Lock()
+	session.ExpiresAt = time.Now().Add(rt.sessionTimeout)
+	rt.partnerSessions[token] = session
+	rt.partnerSessionsMu.Unlock()
+
+	return session, true
+}
+
+func (rt *_router) createPartnerSession(adminID int, username string, orgID int, orgSlug string) (string, error) {
+	token, err := generateSessionToken()
+	if err != nil {
+		return "", err
+	}
+
+	rt.partnerSessionsMu.Lock()
+	rt.partnerSessions[token] = adminSession{
+		AdminID:          adminID,
+		Username:         username,
+		Role:             "partner",
+		OrganizationID:   orgID,
+		OrganizationSlug: orgSlug,
+		ExpiresAt:        time.Now().Add(rt.sessionTimeout),
+	}
+	rt.partnerSessionsMu.Unlock()
+
+	return token, nil
+}
+
+func (rt *_router) wrapPartner(fn httpRouterHandler) http.HandlerFunc {
+	return rt.wrap(func(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+		token := parseBearerToken(r.Header.Get("Authorization"))
+		session, ok := rt.getPartnerSession(token)
+		if !ok {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		if ctx.OrganizationID == 0 || ctx.OrganizationSlug == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if session.OrganizationID != ctx.OrganizationID {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		ctx.MerchantID = session.AdminID
+		ctx.MerchantUsername = session.Username
+		ctx.OrganizationID = session.OrganizationID
+		ctx.OrganizationSlug = session.OrganizationSlug
+
+		fn(w, r, ctx)
+	})
 }
 
 func generateSessionToken() (string, error) {
