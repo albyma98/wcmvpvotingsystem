@@ -205,11 +205,19 @@ func (rt *_router) claimCoupon(w http.ResponseWriter, r *http.Request, ctx reqco
 	}
 
 	merchantID := 0
+	orgSlug := ""
 	if claim.Coupon != nil {
 		merchantID = claim.Coupon.MerchantID
+		if claim.Coupon.OrganizationID > 0 {
+			if org, err := rt.db.GetOrganization(claim.Coupon.OrganizationID); err == nil {
+				orgSlug = strings.TrimSpace(org.Slug)
+			} else {
+				ctx.Logger.WithError(err).Warn("cannot resolve organization for coupon")
+			}
+		}
 	}
 	signature := signCouponPayload(rt.VoteSecret, claim.Code, merchantID)
-	validationURL := rt.buildCouponValidationURL(claim.Code, merchantID, signature)
+	validationURL := rt.buildCouponValidationURL(claim.Code, merchantID, signature, orgSlug)
 
 	response := struct {
 		database.UserCoupon `json:",inline"`
@@ -274,7 +282,7 @@ func signCouponPayload(secret, code string, merchantID int) string {
 	return signCode(secret, payload)
 }
 
-func (rt *_router) buildCouponValidationURL(code string, merchantID int, signature string) string {
+func (rt *_router) buildCouponValidationURL(code string, merchantID int, signature string, orgSlug string) string {
 	baseURL := strings.TrimSpace(rt.ticketValidationBaseURL)
 	if baseURL == "" || code == "" || signature == "" {
 		return ""
@@ -290,6 +298,9 @@ func (rt *_router) buildCouponValidationURL(code string, merchantID int, signatu
 	q.Set("s", signature)
 	if merchantID > 0 {
 		q.Set("m", strconv.Itoa(merchantID))
+	}
+	if orgSlug != "" {
+		q.Set("organization_slug", orgSlug)
 	}
 	parsed.RawQuery = q.Encode()
 	return parsed.String()

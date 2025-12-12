@@ -67,15 +67,16 @@ const pathSegments = computed(() =>
 );
 
 const organizationSlug = computed(() => {
-  if (!pathSegments.value.length) {
-    return '';
+  if (pathSegments.value.length) {
+    if (pathSegments.value[0] !== 'admin' && pathSegments.value[0] !== 'shop' && pathSegments.value[0] !== 'partner') {
+      return pathSegments.value[0];
+    }
   }
 
-  if (pathSegments.value[0] === 'admin' || pathSegments.value[0] === 'shop' || pathSegments.value[0] === 'partner') {
-    return '';
-  }
-
-  return pathSegments.value[0];
+  const params = new URLSearchParams(currentSearch.value || '');
+  const fromQuery =
+    params.get('organization_slug') || params.get('org') || params.get('organization') || '';
+  return fromQuery.trim();
 });
 
 const appView = computed(() => {
