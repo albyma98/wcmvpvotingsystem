@@ -3826,16 +3826,14 @@ const submitContactBonus = async () => {
                       v-for="coupon in normalizedEventCoupons"
                       :key="coupon.id"
                       class="coupon-card"
-                      :class="{ 'coupon-card--highlighted': coupon.highlight }"
-                    >
-                      <div v-if="coupon.imageUrl" class="coupon-card__media">
-                        <img :src="coupon.imageUrl" :alt="coupon.title" loading="lazy" />
-                      </div>
-                      <div class="coupon-card__content">
-                        <p v-if="coupon.highlight" class="coupon-card__badge">In evidenza</p>
-                        <h4 class="coupon-card__title">{{ coupon.title }}</h4>
-                        <p v-if="coupon.shortDesc" class="coupon-card__desc">
-                          {{ coupon.shortDesc }}
+                  >
+                    <div v-if="coupon.imageUrl" class="coupon-card__media">
+                      <img :src="coupon.imageUrl" :alt="coupon.title" loading="lazy" />
+                    </div>
+                    <div class="coupon-card__content">
+                      <h4 class="coupon-card__title">{{ coupon.title }}</h4>
+                      <p v-if="coupon.shortDesc" class="coupon-card__desc">
+                        {{ coupon.shortDesc }}
                         </p>
                         <div class="coupon-card__actions">
                           <div
@@ -5924,11 +5922,6 @@ const submitContactBonus = async () => {
   box-shadow: 0 18px 32px rgba(8, 15, 28, 0.55);
 }
 
-.coupon-card--highlighted {
-  border-color: rgba(59, 130, 246, 0.5);
-  box-shadow: 0 22px 44px rgba(59, 130, 246, 0.25);
-}
-
 .coupon-card__media img {
   width: 100%;
   max-height: 180px;
@@ -5936,19 +5929,6 @@ const submitContactBonus = async () => {
   border-radius: 1rem;
   border: 1px solid rgba(148, 163, 184, 0.24);
   background: #0f172a;
-}
-
-.coupon-card__badge {
-  display: inline-block;
-  margin: 0 0 0.35rem;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.18);
-  color: #bfdbfe;
-  font-size: 0.8rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  border: 1px solid rgba(59, 130, 246, 0.35);
 }
 
 .coupon-card__title {
