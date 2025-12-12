@@ -65,7 +65,7 @@
             <input v-model.trim="manualSignature" type="text" placeholder="Firma digitale" />
           </label>
           <label>
-            ID sponsor (opzionale)
+            ID esercente (opzionale)
             <input v-model.number="manualSponsorId" type="number" min="0" placeholder="0" />
           </label>
         </div>
@@ -155,7 +155,7 @@ function parseQueryParams(rawSearch) {
   const params = new URLSearchParams(rawSearch || '');
   const code = (params.get('c') || '').trim();
   const signature = (params.get('s') || '').trim();
-  const sponsorIdRaw = params.get('sp') || '';
+  const sponsorIdRaw = params.get('m') || params.get('sp') || '';
   const sponsorId = Number.parseInt(sponsorIdRaw, 10);
 
   return {
@@ -182,7 +182,7 @@ async function login() {
   loginError.value = '';
   isLoggingIn.value = true;
   try {
-    const { data } = await apiClient.post('/admin/login', {
+    const { data } = await apiClient.post('/partner/login', {
       username: loginForm.username,
       password: loginForm.password,
     });
@@ -260,7 +260,7 @@ async function validateCoupon(overrides = {}) {
       {
         code,
         signature,
-        sponsor_id: sponsorId,
+        merchant_id: sponsorId,
       },
       authHeaders.value,
     );

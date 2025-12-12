@@ -22,11 +22,17 @@ type RequestContext struct {
 	// AdminID is filled for authenticated admin requests. Zero if the request is not authenticated as admin.
 	AdminID int
 
+	// MerchantID is filled for authenticated partner requests. Zero if unauthenticated.
+	MerchantID int
+
 	// AdminRole is the role associated with the authenticated admin (e.g. "superadmin"). Empty if not available.
 	AdminRole string
 
 	// AdminUsername is the username associated with the authenticated admin. Empty if unauthenticated.
 	AdminUsername string
+
+	// MerchantUsername is the username associated with the authenticated merchant. Empty if unauthenticated.
+	MerchantUsername string
 
 	// OrganizationSlug is populated when the request is scoped to a specific organization.
 	OrganizationSlug string

@@ -800,6 +800,112 @@ func (rt *_router) deleteAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 	ctx.Logger.WithField("admin_id", id).Info("admin deleted")
 }
 
+// Partner accounts
+func (rt *_router) listPartners(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	partners, err := rt.db.ListPartners(ctx.OrganizationID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot list partners")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	type partnerResponse struct {
+		ID        int    `json:"id"`
+		Username  string `json:"username"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	resp := make([]partnerResponse, 0, len(partners))
+	for _, p := range partners {
+		resp = append(resp, partnerResponse{ID: p.ID, Username: p.Username, CreatedAt: p.CreatedAt})
+	}
+
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (rt *_router) createPartner(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	var payload struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if payload.Username == "" || payload.Password == "" || ctx.OrganizationID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	admin := database.Admin{Username: payload.Username, PasswordHash: hashAdminPassword(payload.Password), Role: "partner", OrganizationID: ctx.OrganizationID}
+	id, err := rt.db.CreateAdmin(admin)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot create partner")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(struct {
+		ID int `json:"id"`
+	}{ID: id})
+}
+
+func (rt *_router) updatePartner(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	var payload struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	partner, err := rt.db.GetAdminByID(id)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !strings.EqualFold(partner.Role, "partner") || partner.OrganizationID != ctx.OrganizationID {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	if payload.Password == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	updated := database.Admin{ID: id, Username: partner.Username, Role: partner.Role, OrganizationID: partner.OrganizationID, PasswordHash: hashAdminPassword(payload.Password)}
+	if err := rt.db.UpdateAdmin(updated); err != nil {
+		ctx.Logger.WithError(err).Error("cannot update partner")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (rt *_router) deletePartner(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	partner, err := rt.db.GetAdminByID(id)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !strings.EqualFold(partner.Role, "partner") || partner.OrganizationID != ctx.OrganizationID {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	if err := rt.db.DeleteAdmin(id); err != nil {
+		ctx.Logger.WithError(err).Error("cannot delete partner")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Sponsors
 func (rt *_router) listAllSponsors(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	sponsors, err := rt.db.ListSponsors(ctx.OrganizationID)
@@ -1000,6 +1106,57 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		Role     string `json:"role"`
 	}{Token: token, Username: admin.Username, Role: admin.Role})
 	ctx.Logger.WithField("username", admin.Username).Info("admin logged in")
+}
+
+func (rt *_router) partnerLogin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	var payload struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while logging partner in")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if payload.Username == "" || payload.Password == "" || ctx.OrganizationID == 0 || ctx.OrganizationSlug == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	admin, err := rt.db.GetAdminByUsername(payload.Username, ctx.OrganizationID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot retrieve partner credentials")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !strings.EqualFold(admin.Role, "partner") {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if !adminPasswordMatches(admin.PasswordHash, payload.Password) {
+		ctx.Logger.WithField("username", payload.Username).Warn("partner login failed: wrong password")
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	token, err := rt.createPartnerSession(admin.ID, admin.Username, ctx.OrganizationID, ctx.OrganizationSlug)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot create partner session")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(struct {
+		Token    string `json:"token"`
+		Username string `json:"username"`
+	}{Token: token, Username: admin.Username})
+	ctx.Logger.WithField("username", admin.Username).Info("partner logged in")
 }
 
 func hashAdminPassword(password string) string {

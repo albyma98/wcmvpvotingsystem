@@ -20,6 +20,7 @@ type couponPayload struct {
 	Title        string `json:"title"`
 	ShortDesc    string `json:"short_desc"`
 	SponsorID    int    `json:"sponsor_id"`
+	MerchantID   int    `json:"merchant_id"`
 	MatchIDs     []int  `json:"match_ids"`
 	StartDate    string `json:"start_date"`
 	EndDate      string `json:"end_date"`
@@ -36,9 +37,9 @@ type couponClaimRequest struct {
 }
 
 type couponValidationRequest struct {
-	Code      string `json:"code"`
-	SponsorID int    `json:"sponsor_id"`
-	Signature string `json:"signature"`
+	Code       string `json:"code"`
+	MerchantID int    `json:"merchant_id"`
+	Signature  string `json:"signature"`
 }
 
 func (rt *_router) listAdminCoupons(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -58,10 +59,16 @@ func (rt *_router) createAdminCoupon(w http.ResponseWriter, r *http.Request, ctx
 		return
 	}
 
+	if payload.MerchantID <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	coupon := database.Coupon{
 		Title:          payload.Title,
 		ShortDesc:      payload.ShortDesc,
 		SponsorID:      payload.SponsorID,
+		MerchantID:     payload.MerchantID,
 		MatchIDs:       payload.MatchIDs,
 		StartDate:      payload.StartDate,
 		EndDate:        payload.EndDate,
@@ -90,12 +97,18 @@ func (rt *_router) updateAdminCoupon(w http.ResponseWriter, r *http.Request, ctx
 		return
 	}
 
+	if payload.MerchantID <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	coupon := database.Coupon{
 		ID:             id,
 		Title:          payload.Title,
 		ShortDesc:      payload.ShortDesc,
 		SponsorID:      payload.SponsorID,
+		MerchantID:     payload.MerchantID,
 		MatchIDs:       payload.MatchIDs,
 		StartDate:      payload.StartDate,
 		EndDate:        payload.EndDate,
@@ -196,12 +209,12 @@ func (rt *_router) claimCoupon(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 
-	sponsorID := 0
+	merchantID := 0
 	if claim.Coupon != nil {
-		sponsorID = claim.Coupon.SponsorID
+		merchantID = claim.Coupon.MerchantID
 	}
-	signature := signCouponPayload(rt.VoteSecret, claim.Code, sponsorID)
-	validationURL := rt.buildCouponValidationURL(claim.Code, sponsorID, signature)
+	signature := signCouponPayload(rt.VoteSecret, claim.Code, merchantID)
+	validationURL := rt.buildCouponValidationURL(claim.Code, merchantID, signature)
 
 	response := struct {
 		database.UserCoupon `json:",inline"`
@@ -224,16 +237,18 @@ func (rt *_router) validatePartnerCoupon(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if payload.SponsorID == 0 {
-		payload.SponsorID = ctx.OrganizationID
+	if ctx.MerchantID == 0 {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
 	}
-	expectedSignature := signCouponPayload(rt.VoteSecret, payload.Code, payload.SponsorID)
+
+	expectedSignature := signCouponPayload(rt.VoteSecret, payload.Code, ctx.MerchantID)
 	if payload.Signature != expectedSignature {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "firma non valida"})
 		return
 	}
 
-	claim, err := rt.db.RedeemCoupon(payload.Code, payload.SponsorID)
+	claim, err := rt.db.RedeemCoupon(payload.Code, ctx.MerchantID)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -256,15 +271,15 @@ func (rt *_router) validatePartnerCoupon(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "valido", "coupon": claim})
 }
 
-func signCouponPayload(secret, code string, sponsorID int) string {
+func signCouponPayload(secret, code string, merchantID int) string {
 	payload := code
-	if sponsorID > 0 {
-		payload = fmt.Sprintf("%s|%d", code, sponsorID)
+	if merchantID > 0 {
+		payload = fmt.Sprintf("%s|%d", code, merchantID)
 	}
 	return signCode(secret, payload)
 }
 
-func (rt *_router) buildCouponValidationURL(code string, sponsorID int, signature string) string {
+func (rt *_router) buildCouponValidationURL(code string, merchantID int, signature string) string {
 	baseURL := strings.TrimSpace(rt.ticketValidationBaseURL)
 	if baseURL == "" || code == "" || signature == "" {
 		return ""
@@ -278,8 +293,8 @@ func (rt *_router) buildCouponValidationURL(code string, sponsorID int, signatur
 	q := parsed.Query()
 	q.Set("c", code)
 	q.Set("s", signature)
-	if sponsorID > 0 {
-		q.Set("sp", strconv.Itoa(sponsorID))
+	if merchantID > 0 {
+		q.Set("m", strconv.Itoa(merchantID))
 	}
 	parsed.RawQuery = q.Encode()
 	return parsed.String()
