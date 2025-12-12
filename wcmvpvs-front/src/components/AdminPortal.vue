@@ -1854,24 +1854,6 @@
                 </label>
               </div>
             </label>
-            <label class="choice-group">
-              Segmentazione
-              <div class="status-options" role="radiogroup" aria-label="Segmentazione coupon">
-                <label
-                  v-for="segment in couponSegmentationOptions"
-                  :key="segment.value"
-                  class="status-option"
-                >
-                  <input
-                    type="radio"
-                    name="new-coupon-segmentation"
-                    :value="segment.value"
-                    v-model="newCoupon.segmentation"
-                  />
-                  <span>{{ segment.label }}</span>
-                </label>
-              </div>
-            </label>
             <label>
               Limite utilizzi
               <input
@@ -1986,28 +1968,6 @@
                           v-model="coupon.status"
                         />
                         <span>{{ getCouponStatusLabel(status) }}</span>
-                      </label>
-                    </div>
-                  </label>
-                  <label class="choice-group">
-                    Segmentazione
-                    <div
-                      class="status-options"
-                      role="radiogroup"
-                      :aria-label="`Segmentazione coupon ${coupon.title || coupon.id}`"
-                    >
-                      <label
-                        v-for="segment in couponSegmentationOptions"
-                        :key="segment.value"
-                        class="status-option"
-                      >
-                        <input
-                          type="radio"
-                          :name="`coupon-segmentation-${coupon.id}`"
-                          :value="segment.value"
-                          v-model="coupon.segmentation"
-                        />
-                        <span>{{ segment.label }}</span>
                       </label>
                     </div>
                   </label>
@@ -2631,7 +2591,6 @@ function createEmptyCouponDraft() {
     status: "draft",
     imageUrl: "",
     highlight: false,
-    segmentation: "all",
   };
 }
 
@@ -2660,12 +2619,6 @@ const couponStatusLabels = {
   paused: "In pausa",
   archived: "Archiviato",
 };
-const couponSegmentationOptions = [
-  { value: "all", label: "Tutti" },
-  { value: "home", label: "Tifosi di casa" },
-  { value: "away", label: "Tifosi ospiti" },
-  { value: "vip", label: "VIP / premium" },
-];
 const getCouponStatusLabel = (status) => couponStatusLabels[status] || status;
 const newSponsor = reactive({
   name: "",
@@ -3952,10 +3905,6 @@ function normalizeCouponResponse(item) {
           ? item.imageUrl
           : "",
     highlight: Boolean(item.highlight),
-    segmentation:
-      typeof item.segmentation === "string" && item.segmentation.trim()
-        ? item.segmentation.trim()
-        : "all",
     totalViews: Number(item.total_views ?? item.totalViews) || 0,
     totalClaims: Number(item.total_claims ?? item.totalClaims) || 0,
     totalRedemptions:
@@ -4004,7 +3953,6 @@ function serializeCouponPayload(coupon) {
     status: normalized?.status?.trim() || "draft",
     image_url: normalized?.imageUrl?.trim() || "",
     highlight: Boolean(normalized?.highlight),
-    segmentation: normalized?.segmentation?.trim() || "all",
   };
 }
 

@@ -228,19 +228,13 @@ export async function submitContactChance({
   }
 }
 
-export async function fetchEventCoupons(eventId: number, options: { segment?: string } = {}) {
+export async function fetchEventCoupons(eventId: number) {
   if (!eventId) {
     return { ok: false, status: 400, message: "Evento non valido" };
   }
 
   try {
-    const params: Record<string, string> = {};
-    if (options.segment) {
-      params.segment = options.segment;
-    }
-
     const { data } = await apiClient.get(`/events/${eventId}/coupons`, {
-      params,
       headers: getDeviceHeaders(),
     });
 

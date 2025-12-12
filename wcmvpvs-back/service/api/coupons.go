@@ -17,18 +17,17 @@ import (
 )
 
 type couponPayload struct {
-	Title        string `json:"title"`
-	ShortDesc    string `json:"short_desc"`
-	SponsorID    int    `json:"sponsor_id"`
-	MerchantID   int    `json:"merchant_id"`
-	MatchIDs     []int  `json:"match_ids"`
-	StartDate    string `json:"start_date"`
-	EndDate      string `json:"end_date"`
-	MaxUses      int    `json:"max_uses"`
-	Status       string `json:"status"`
-	ImageURL     string `json:"image_url"`
-	Highlight    bool   `json:"highlight"`
-	Segmentation string `json:"segmentation"`
+	Title      string `json:"title"`
+	ShortDesc  string `json:"short_desc"`
+	SponsorID  int    `json:"sponsor_id"`
+	MerchantID int    `json:"merchant_id"`
+	MatchIDs   []int  `json:"match_ids"`
+	StartDate  string `json:"start_date"`
+	EndDate    string `json:"end_date"`
+	MaxUses    int    `json:"max_uses"`
+	Status     string `json:"status"`
+	ImageURL   string `json:"image_url"`
+	Highlight  bool   `json:"highlight"`
 }
 
 type couponClaimRequest struct {
@@ -76,7 +75,7 @@ func (rt *_router) createAdminCoupon(w http.ResponseWriter, r *http.Request, ctx
 		Status:         defaultCouponStatus(payload.Status),
 		ImageURL:       payload.ImageURL,
 		Highlight:      payload.Highlight,
-		Segmentation:   payload.Segmentation,
+		Segmentation:   "all",
 		OrganizationID: ctx.OrganizationID,
 	}
 
@@ -116,7 +115,7 @@ func (rt *_router) updateAdminCoupon(w http.ResponseWriter, r *http.Request, ctx
 		Status:         defaultCouponStatus(payload.Status),
 		ImageURL:       payload.ImageURL,
 		Highlight:      payload.Highlight,
-		Segmentation:   payload.Segmentation,
+		Segmentation:   "all",
 		OrganizationID: ctx.OrganizationID,
 	}
 
@@ -145,7 +144,6 @@ func (rt *_router) deleteAdminCoupon(w http.ResponseWriter, r *http.Request, ctx
 
 func (rt *_router) listEventCoupons(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	eventID, _ := strconv.Atoi(chi.URLParam(r, "eventId"))
-	segment := strings.TrimSpace(r.URL.Query().Get("segment"))
 	coupons, err := rt.db.ListCoupons(ctx.OrganizationID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("list coupons")
@@ -169,9 +167,6 @@ func (rt *_router) listEventCoupons(w http.ResponseWriter, r *http.Request, ctx 
 			if !matchAllowed {
 				continue
 			}
-		}
-		if segment != "" && !strings.EqualFold(c.Segmentation, "all") && !strings.EqualFold(c.Segmentation, segment) {
-			continue
 		}
 		if err := rt.db.RecordCouponView(c.ID); err != nil {
 			ctx.Logger.WithError(err).Warn("coupon view tracking")
