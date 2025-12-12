@@ -292,7 +292,12 @@ func (rt *_router) buildCouponValidationURL(code string, merchantID int, signatu
 		return ""
 	}
 
-	parsed.Path = strings.TrimSuffix(parsed.Path, "/") + "/partner/validate"
+	basePath := strings.TrimSuffix(parsed.Path, "/")
+	if orgSlug != "" {
+		parsed.Path = fmt.Sprintf("%s/%s/partner/validate", basePath, url.PathEscape(orgSlug))
+	} else {
+		parsed.Path = basePath + "/partner/validate"
+	}
 	q := parsed.Query()
 	q.Set("c", code)
 	q.Set("s", signature)
