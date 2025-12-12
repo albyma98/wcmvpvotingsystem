@@ -2020,6 +2020,87 @@
           <p v-else class="muted text-center">Nessun coupon configurato.</p>
         </section>
 
+        <section v-else-if="section === 'partners'" class="card">
+          <header class="section-header">
+            <h2>Partners</h2>
+            <p>
+              Crea le credenziali per gli esercenti che convalidano i coupon. Ogni
+              partner accede con username e password dedicati.
+            </p>
+          </header>
+          <form @submit.prevent="createPartner" class="form-grid">
+            <label>
+              Nome partner
+              <input
+                v-model.trim="newPartner.name"
+                type="text"
+                placeholder="Es. Bar dello Stadio"
+              />
+            </label>
+            <label>
+              Username
+              <input
+                v-model.trim="newPartner.username"
+                type="text"
+                placeholder="Credenziale di accesso"
+                required
+              />
+            </label>
+            <label>
+              Password
+              <input
+                v-model="newPartner.password"
+                type="password"
+                autocomplete="new-password"
+                required
+              />
+            </label>
+            <button class="btn primary" type="submit">Aggiungi partner</button>
+          </form>
+          <ul class="item-list compact" v-if="partners.length">
+            <li v-for="partner in partners" :key="partner.id" class="item">
+              <div class="item-body">
+                <div>
+                  <strong>{{ partner.displayName }}</strong>
+                  <span class="muted"> • {{ partner.username }}</span>
+                  <p class="muted small" v-if="partner.createdAtLabel">
+                    Creato il {{ partner.createdAtLabel }}
+                  </p>
+                </div>
+                <div class="partner-actions">
+                  <label class="inline-input">
+                    <span>Nuova password</span>
+                    <input
+                      v-model="partner.newPassword"
+                      type="password"
+                      placeholder="Aggiorna password"
+                    />
+                  </label>
+                  <button
+                    class="btn secondary"
+                    type="button"
+                    @click="updatePartnerPassword(partner)"
+                    :disabled="partner.isUpdating || !partner.newPassword"
+                  >
+                    <span v-if="partner.isUpdating">Salvataggio…</span>
+                    <span v-else>Aggiorna</span>
+                  </button>
+                  <button
+                    class="btn danger"
+                    type="button"
+                    @click="deletePartner(partner.id)"
+                    :disabled="partner.isDeleting"
+                  >
+                    <span v-if="partner.isDeleting">Eliminazione…</span>
+                    <span v-else>Elimina</span>
+                  </button>
+                </div>
+              </div>
+            </li>
+          </ul>
+          <p v-else class="muted text-center">Nessun partner configurato.</p>
+        </section>
+
         <section v-else-if="section === 'admins'" class="card">
           <header class="section-header">
             <h2>Utenti amministratori</h2>
@@ -2391,6 +2472,7 @@ const tabs = [
   { id: "players", label: "Giocatori" },
   { id: "sponsors", label: "Sponsor" },
   { id: "coupons", label: "Coupon" },
+  { id: "partners", label: "Partners" },
   { id: "admins", label: "Admin" },
 ];
 const STAFF_TAB_IDS = new Set(["closing", "results"]);
@@ -2399,6 +2481,7 @@ const teams = ref([]);
 const players = ref([]);
 const events = ref([]);
 const admins = ref([]);
+const partners = ref([]);
 const sponsors = ref([]);
 const coupons = ref([]);
 const eventHistory = ref([]);
@@ -2505,6 +2588,11 @@ const newAdmin = reactive({
   password: "",
   role: "",
 });
+const newPartner = reactive({
+  name: "",
+  username: "",
+  password: "",
+});
 const maxSponsors = 4;
 const couponStatusOptions = ["draft", "active", "paused", "archived"];
 const couponStatusLabels = {
@@ -2536,6 +2624,8 @@ const isApplyingSponsorCount = ref(false);
 const isCreatingCoupon = ref(false);
 const couponBeingSaved = ref(0);
 const couponBeingDeleted = ref(0);
+const partnerBeingUpdated = ref(0);
+const partnerBeingDeleted = ref(0);
 const couponError = ref("");
 const couponSuccess = ref("");
 const lastCreatedEventLink = ref("");
@@ -3255,6 +3345,7 @@ function resetForms() {
   teamInputs.home = "";
   teamInputs.away = "";
   Object.assign(newAdmin, { username: "", password: "", role: "" });
+  Object.assign(newPartner, { name: "", username: "", password: "" });
   resetNewSponsorForm();
   resetNewCouponForm();
   desiredActiveSponsorCount.value = Math.min(
@@ -3348,6 +3439,7 @@ function clearCollections() {
   players.value = [];
   events.value = [];
   admins.value = [];
+  partners.value = [];
   sponsors.value = [];
   coupons.value = [];
   eventHistory.value = [];
@@ -4482,6 +4574,36 @@ async function loadAdmins() {
   admins.value = data;
 }
 
+function normalizePartnerResponse(item) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+
+  const createdAt = item.created_at ? new Date(item.created_at) : null;
+
+  return {
+    id: Number(item.id) || 0,
+    username: item.username || "",
+    displayName: item.username || "",
+    createdAtLabel: createdAt ? createdAt.toLocaleString("it-IT") : "",
+    newPassword: "",
+    isUpdating: false,
+    isDeleting: false,
+  };
+}
+
+async function loadPartners() {
+  const { data } = await secureRequest(() =>
+    apiClient.get("/admin/partners", authHeaders.value),
+  );
+  const normalized = Array.isArray(data)
+    ? data
+        .map((item) => normalizePartnerResponse(item))
+        .filter((item) => item && item.id)
+    : [];
+  partners.value = normalized;
+}
+
 async function loadSponsors() {
   const { data } = await secureRequest(() =>
     apiClient.get("/admin/sponsors", authHeaders.value),
@@ -5273,7 +5395,7 @@ async function loadAll() {
   await Promise.all([loadEvents(), loadTeams()]);
   await loadPlayers();
   if (isSuperAdmin.value) {
-    await Promise.all([loadAdmins(), loadSponsors()]);
+    await Promise.all([loadAdmins(), loadSponsors(), loadPartners()]);
     await loadCoupons();
   }
   ensureSelfieSelection();
@@ -5492,6 +5614,70 @@ async function deleteAdmin(id) {
     apiClient.delete(`/admins/${id}`, authHeaders.value),
   );
   await loadAdmins();
+}
+
+async function createPartner() {
+  const username = (newPartner.username || newPartner.name).trim();
+  const password = newPartner.password;
+  globalError.value = "";
+
+  if (!username || !password) {
+    globalError.value = "Inserisci almeno nome utente e password.";
+    return;
+  }
+
+  await secureRequest(() =>
+    apiClient.post(
+      "/admin/partners",
+      { username, password },
+      authHeaders.value,
+    ),
+  );
+  Object.assign(newPartner, { name: "", username: "", password: "" });
+  await loadPartners();
+}
+
+async function updatePartnerPassword(partner) {
+  if (!partner?.id || partnerBeingUpdated.value === partner.id) {
+    return;
+  }
+
+  const trimmed = (partner.newPassword || "").trim();
+  if (!trimmed) {
+    return;
+  }
+
+  globalError.value = "";
+  partnerBeingUpdated.value = partner.id;
+  try {
+    await secureRequest(() =>
+      apiClient.put(
+        `/admin/partners/${partner.id}`,
+        { password: trimmed },
+        authHeaders.value,
+      ),
+    );
+    partner.newPassword = "";
+    await loadPartners();
+  } finally {
+    partnerBeingUpdated.value = 0;
+  }
+}
+
+async function deletePartner(id) {
+  if (!id || partnerBeingDeleted.value === id) {
+    return;
+  }
+  globalError.value = "";
+  partnerBeingDeleted.value = id;
+  try {
+    await secureRequest(() =>
+      apiClient.delete(`/admin/partners/${id}`, authHeaders.value),
+    );
+    await loadPartners();
+  } finally {
+    partnerBeingDeleted.value = 0;
+  }
 }
 
 async function createSponsor() {
@@ -6469,6 +6655,32 @@ textarea:focus {
 
 .item-body h3 {
   margin: 0 0 0.35rem;
+}
+
+.partner-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.partner-actions .inline-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 12rem;
+}
+
+.partner-actions .inline-input input {
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .partner-actions {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+  }
 }
 
 .badge {
