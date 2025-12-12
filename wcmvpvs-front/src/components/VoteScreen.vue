@@ -2965,16 +2965,23 @@ const saveCouponClaim = (eventId, couponId, claimData, email) => {
     return;
   }
 
+  const signature =
+    typeof claimData?.signature === "string" ? claimData.signature.trim() : "";
+  const qrDataField =
+    typeof claimData?.qrData === "string" && claimData.qrData.trim()
+      ? claimData.qrData.trim()
+      : typeof claimData?.qr_data === "string" && claimData.qr_data.trim()
+        ? claimData.qr_data.trim()
+        : "";
+
   couponClaims.value = {
     ...couponClaims.value,
     [couponId]: {
       couponId,
       code,
+      signature,
       email: email || "",
-      qrData:
-        typeof claimData?.qrData === "string" && claimData.qrData.trim()
-          ? claimData.qrData.trim()
-          : code,
+      qrData: qrDataField || code,
       claimedAt:
         typeof claimData?.claimedAt === "string"
           ? claimData.claimedAt

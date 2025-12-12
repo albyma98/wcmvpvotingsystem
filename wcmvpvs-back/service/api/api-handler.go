@@ -44,7 +44,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/coupons/{couponId}/view", rt.wrap(rt.recordCouponView))
 	rt.router.Post("/coupons/{couponId}/claim", rt.wrap(rt.claimCoupon))
 	rt.router.Get("/user/coupons", rt.wrap(rt.listUserCoupons))
-	rt.router.Post("/partner/coupons/validate", rt.wrap(rt.validatePartnerCoupon))
+	rt.router.Post("/partner/coupons/validate", rt.wrapAdmin(rt.validatePartnerCoupon))
 
 	rt.router.Post("/events/{eventId}/engagement", rt.wrap(rt.recordPageEngagement))
 	rt.router.Get("/events/{eventId}/engagement", rt.wrap(rt.getEventEngagementStats))
