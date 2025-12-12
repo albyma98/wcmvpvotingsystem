@@ -24,6 +24,7 @@ import {
   fetchEventEngagement,
   fetchContactBonuses,
   fetchEventCoupons,
+  claimCoupon,
   submitContactChance,
   completeMission,
 } from "../api";
@@ -758,6 +759,12 @@ const showCouponsModal = ref(false);
 const isLoadingCoupons = ref(false);
 const couponLoadError = ref("");
 const eventCoupons = ref([]);
+const couponClaims = ref({});
+const showCouponRedeemModal = ref(false);
+const couponRedeemTarget = ref(null);
+const couponRedeemEmail = ref("");
+const couponRedeemError = ref("");
+const couponRedeemLoading = ref(false);
 
 function normalizeEventCoupon(item) {
   if (!item || typeof item !== "object") {
@@ -802,6 +809,13 @@ const normalizedEventCoupons = computed(() =>
     }),
 );
 const hasEventCoupons = computed(() => normalizedEventCoupons.value.length > 0);
+const claimedCouponMap = computed(() => couponClaims.value || {});
+
+const couponClaimQrUrl = (couponId) => {
+  const entry = claimedCouponMap.value?.[couponId];
+  const qrData = entry?.qrData || entry?.code || "";
+  return qrData ? buildQrUrl(qrData) : "";
+};
 
 const buildQrUrl = (qrData) =>
   qrData
@@ -812,6 +826,7 @@ const buildQrUrl = (qrData) =>
 
 const TICKET_STORAGE_PREFIX = "wcmvp-ticket:";
 const BONUS_STORAGE_PREFIX = "wcmvp-bonus:";
+const COUPON_CLAIMS_STORAGE_PREFIX = "wcmvp-coupons:";
 const CONTACT_STORAGE_KEY = "wcmvp-contact:last";
 const LIBERO_REFLEX_RESULT_STORAGE_PREFIX = "wcmvp:libero-reflex:result:";
 const BONUS_COUNT_STORAGE_KEY = "wcmvp:bonus-count";
@@ -844,6 +859,70 @@ function persistBonusCodes(eventId, bonuses) {
     window.localStorage.setItem(getBonusStorageKey(eventId), JSON.stringify(bonuses));
   } catch (error) {
     console.warn("Impossibile salvare i bonus in locale", error);
+  }
+}
+
+const getCouponClaimsStorageKey = (eventId) => `${COUPON_CLAIMS_STORAGE_PREFIX}${eventId}`;
+
+function persistCouponClaims(eventId, claims) {
+  if (typeof window === "undefined" || !eventId) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      getCouponClaimsStorageKey(eventId),
+      JSON.stringify(claims),
+    );
+  } catch (error) {
+    console.warn("Impossibile salvare i coupon riscattati", error);
+  }
+}
+
+function loadStoredCouponClaims(eventId) {
+  if (typeof window === "undefined" || !eventId) {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getCouponClaimsStorageKey(eventId));
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+
+    return Object.entries(parsed).reduce((acc, [couponId, entry]) => {
+      const normalizedId = Number(couponId);
+      const code = typeof entry?.code === "string" ? entry.code.trim() : "";
+
+      if (!normalizedId || !code) {
+        return acc;
+      }
+
+      acc[normalizedId] = {
+        couponId: normalizedId,
+        code,
+        email: typeof entry?.email === "string" ? entry.email.trim() : "",
+        qrData:
+          typeof entry?.qrData === "string" && entry.qrData.trim()
+            ? entry.qrData.trim()
+            : code,
+        claimedAt:
+          typeof entry?.claimedAt === "string"
+            ? entry.claimedAt
+            : typeof entry?.claimed_at === "string"
+              ? entry.claimed_at
+              : "",
+      };
+
+      return acc;
+    }, {});
+  } catch (error) {
+    console.warn("Impossibile caricare i coupon riscattati", error);
+    return {};
   }
 }
 
@@ -1940,6 +2019,12 @@ watch(
     showSelfMvpModal.value = false;
     showReactionTestModal.value = false;
     voteUpdateMessage.value = "";
+    couponClaims.value = eventId ? loadStoredCouponClaims(eventId) : {};
+    showCouponRedeemModal.value = false;
+    couponRedeemTarget.value = null;
+    couponRedeemEmail.value = "";
+    couponRedeemError.value = "";
+    couponRedeemLoading.value = false;
     contactValueInput.value = "";
     contactMarketingConsent.value = false;
     contactFormError.value = "";
@@ -2847,6 +2932,103 @@ const closeCouponsModal = () => {
   showCouponsModal.value = false;
 };
 
+const prefillCouponEmail = () => {
+  const value = (contactValueInput.value || "").trim();
+  return detectContactType(value) === "email" ? value : "";
+};
+
+const resetCouponRedeemState = () => {
+  couponRedeemEmail.value = prefillCouponEmail();
+  couponRedeemError.value = "";
+  couponRedeemLoading.value = false;
+};
+
+const openCouponRedeemModal = (coupon) => {
+  if (!coupon) {
+    return;
+  }
+  couponRedeemTarget.value = coupon;
+  resetCouponRedeemState();
+  showCouponRedeemModal.value = true;
+};
+
+const closeCouponRedeemModal = () => {
+  showCouponRedeemModal.value = false;
+  couponRedeemTarget.value = null;
+  couponRedeemError.value = "";
+  couponRedeemLoading.value = false;
+};
+
+const saveCouponClaim = (eventId, couponId, claimData, email) => {
+  const code = typeof claimData?.code === "string" ? claimData.code.trim() : "";
+  if (!eventId || !couponId || !code) {
+    return;
+  }
+
+  couponClaims.value = {
+    ...couponClaims.value,
+    [couponId]: {
+      couponId,
+      code,
+      email: email || "",
+      qrData:
+        typeof claimData?.qrData === "string" && claimData.qrData.trim()
+          ? claimData.qrData.trim()
+          : code,
+      claimedAt:
+        typeof claimData?.claimedAt === "string"
+          ? claimData.claimedAt
+          : typeof claimData?.claimed_at === "string"
+            ? claimData.claimed_at
+            : new Date().toISOString(),
+    },
+  };
+
+  persistCouponClaims(eventId, couponClaims.value);
+};
+
+const submitCouponRedeem = async () => {
+  const coupon = couponRedeemTarget.value;
+  const eventId = currentEventId.value;
+  if (!coupon || !eventId) {
+    couponRedeemError.value = "Seleziona un coupon valido.";
+    return;
+  }
+
+  const email = (couponRedeemEmail.value || "").trim();
+  if (!emailPattern.test(email)) {
+    couponRedeemError.value = "Inserisci un indirizzo email valido.";
+    return;
+  }
+
+  couponRedeemLoading.value = true;
+  couponRedeemError.value = "";
+
+  try {
+    const { ok, claim, status, message } = await claimCoupon(coupon.id, {
+      matchId: eventId,
+    });
+
+    if (!ok || !claim?.code) {
+      couponRedeemError.value =
+        message ||
+        (status === 409
+          ? "Coupon non più disponibile."
+          : "Impossibile riscattare il coupon. Riprova.");
+      return;
+    }
+
+    saveCouponClaim(eventId, coupon.id, claim, email);
+    showCouponRedeemModal.value = false;
+  } catch (error) {
+    console.warn("Impossibile riscattare il coupon", error);
+    couponRedeemError.value =
+      "Non siamo riusciti a riscattare il coupon. Riprova tra poco.";
+  } finally {
+    couponRedeemLoading.value = false;
+  }
+};
+
 const triggerBonusCelebration = () => {
   contactCelebration.value = false;
   bonusFlightActive.value = false;
@@ -3648,9 +3830,88 @@ const submitContactBonus = async () => {
                         <p v-if="coupon.shortDesc" class="coupon-card__desc">
                           {{ coupon.shortDesc }}
                         </p>
+                        <div class="coupon-card__actions">
+                          <div
+                            v-if="claimedCouponMap[coupon.id] && couponClaimQrUrl(coupon.id)"
+                            class="coupon-card__qr"
+                          >
+                            <img
+                              :src="couponClaimQrUrl(coupon.id)"
+                              :alt="`QR coupon ${coupon.title}`"
+                              loading="lazy"
+                            />
+                            <p class="coupon-card__qr-hint">
+                              Mostra questo QR all'esercente per validare l'offerta.
+                            </p>
+                          </div>
+                          <button
+                            v-else
+                            type="button"
+                            class="coupon-card__redeem"
+                            @click="openCouponRedeemModal(coupon)"
+                          >
+                            RISCATTA ORA
+                          </button>
+                        </div>
                       </div>
                     </li>
                   </ul>
+                </div>
+              </div>
+            </div>
+          </transition>
+        </Teleport>
+
+        <Teleport to="body">
+          <transition name="modal-fade">
+            <div
+              v-if="showCouponRedeemModal"
+              class="fullscreen-modal"
+              @click.self="closeCouponRedeemModal"
+            >
+              <div class="fullscreen-modal__panel">
+                <header class="fullscreen-modal__header">
+                  <h3 class="fullscreen-modal__title">
+                    Riscatta coupon
+                  </h3>
+                  <button
+                    type="button"
+                    class="fullscreen-modal__close"
+                    aria-label="Chiudi riscatto coupon"
+                    @click="closeCouponRedeemModal"
+                  >
+                    ✕
+                  </button>
+                </header>
+
+                <div class="fullscreen-modal__body coupon-redeem__body">
+                  <p class="coupon-redeem__intro">
+                    Inserisci il tuo indirizzo e-mail per ottenere il QR code
+                    dell'offerta
+                    <strong v-if="couponRedeemTarget">{{ couponRedeemTarget.title }}</strong>.
+                  </p>
+                  <form class="coupon-redeem__form" @submit.prevent="submitCouponRedeem">
+                    <label class="coupon-redeem__label" for="coupon-email">Indirizzo e-mail</label>
+                    <input
+                      id="coupon-email"
+                      v-model.trim="couponRedeemEmail"
+                      type="email"
+                      name="coupon-email"
+                      inputmode="email"
+                      autocomplete="email"
+                      required
+                      placeholder="es. nome@email.com"
+                    />
+                    <p v-if="couponRedeemError" class="coupon-redeem__error">{{ couponRedeemError }}</p>
+                    <div class="coupon-redeem__actions">
+                      <button type="button" class="button-secondary" @click="closeCouponRedeemModal">
+                        Annulla
+                      </button>
+                      <button type="submit" class="button-primary" :disabled="couponRedeemLoading">
+                        {{ couponRedeemLoading ? "Invio…" : "Ottieni QR" }}
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             </div>
@@ -5694,6 +5955,146 @@ const submitContactBonus = async () => {
   margin: 0.25rem 0 0;
   color: rgba(226, 232, 240, 0.85);
   line-height: 1.5;
+}
+
+.coupon-card__actions {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.coupon-card__redeem {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(52, 211, 153, 0.55);
+  background: linear-gradient(120deg, rgba(16, 185, 129, 0.18), rgba(5, 150, 105, 0.22));
+  color: #bbf7d0;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.coupon-card__redeem:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(5, 150, 105, 0.4);
+  border-color: rgba(52, 211, 153, 0.8);
+}
+
+.coupon-card__qr {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem;
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+}
+
+.coupon-card__qr img {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  background: #0f172a;
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.coupon-card__qr-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.86);
+  text-align: center;
+  line-height: 1.4;
+}
+
+.coupon-redeem__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.coupon-redeem__intro {
+  margin: 0;
+  color: #cbd5e1;
+  line-height: 1.6;
+  font-weight: 600;
+}
+
+.coupon-redeem__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.coupon-redeem__label {
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.coupon-redeem__form input[type="email"] {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.7);
+  color: #f8fafc;
+  font-size: 1rem;
+}
+
+.coupon-redeem__form input[type="email"]:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.55);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.coupon-redeem__error {
+  margin: 0.15rem 0 0;
+  color: #fecaca;
+  font-weight: 700;
+}
+
+.coupon-redeem__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  align-items: center;
+  margin-top: 0.4rem;
+}
+
+.button-primary,
+.button-secondary {
+  padding: 0.75rem 1.1rem;
+  border-radius: 0.85rem;
+  font-weight: 800;
+  border: 1px solid transparent;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.button-primary {
+  background: linear-gradient(120deg, rgba(59, 130, 246, 0.85), rgba(59, 130, 246, 0.7));
+  color: #e0f2fe;
+  box-shadow: 0 14px 32px rgba(59, 130, 246, 0.35);
+}
+
+.button-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.button-secondary {
+  background: transparent;
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+.button-primary:not(:disabled):hover,
+.button-secondary:hover {
+  transform: translateY(-1px);
 }
 
 .edit-vote-intro {

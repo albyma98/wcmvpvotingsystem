@@ -253,6 +253,33 @@ export async function fetchEventCoupons(eventId: number, options: { segment?: st
   }
 }
 
+export async function claimCoupon(
+  couponId: number,
+  payload: { userId?: number; matchId?: number } = {},
+) {
+  if (!couponId) {
+    return { ok: false, status: 400, message: "Coupon non valido" };
+  }
+
+  try {
+    const { data } = await apiClient.post(
+      `/coupons/${couponId}/claim`,
+      {
+        user_id: payload.userId,
+        match_id: payload.matchId,
+      },
+      { headers: getDeviceHeaders() },
+    );
+
+    return { ok: true, claim: data };
+  } catch (error) {
+    console.error("claimCoupon error", error);
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, status, message, error };
+  }
+}
+
 export async function fetchContactBonuses(eventId: number) {
   if (!eventId) {
     return { ok: false, status: 400 };
