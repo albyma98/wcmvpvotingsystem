@@ -1806,16 +1806,34 @@
                 placeholder="Testo sintetico per il coupon"
               ></textarea>
             </label>
-            <label>
-              Sponsor
-              <select v-model.number="newCoupon.sponsorId" :disabled="!sponsors.length">
-                <option value="0" disabled>Nessuno sponsor disponibile</option>
-                <option v-for="sponsor in sponsors" :key="sponsor.id" :value="sponsor.id">
-                  {{ sponsor.name || `Sponsor ${sponsor.id}` }}
-                </option>
-              </select>
-              <small class="field-hint" v-if="!sponsors.length">
-                Aggiungi almeno uno sponsor per creare un coupon.
+            <label class="choice-group">
+              Partner
+              <div
+                class="status-options"
+                role="radiogroup"
+                aria-label="Partner associato al coupon"
+              >
+                <label
+                  v-for="partner in partners"
+                  :key="partner.id"
+                  class="status-option"
+                >
+                  <input
+                    type="radio"
+                    name="new-coupon-partner"
+                    :value="partner.id"
+                    v-model.number="newCoupon.sponsorId"
+                    :disabled="!partners.length"
+                  />
+                  <span>
+                    {{
+                      partner.displayName || partner.username || `Partner ${partner.id}`
+                    }}
+                  </span>
+                </label>
+              </div>
+              <small class="field-hint" v-if="!partners.length">
+                Aggiungi almeno un partner per creare un coupon.
               </small>
             </label>
             <label class="choice-group">
@@ -1836,13 +1854,23 @@
                 </label>
               </div>
             </label>
-            <label>
+            <label class="choice-group">
               Segmentazione
-              <select v-model="newCoupon.segmentation">
-                <option v-for="segment in couponSegmentationOptions" :key="segment.value" :value="segment.value">
-                  {{ segment.label }}
-                </option>
-              </select>
+              <div class="status-options" role="radiogroup" aria-label="Segmentazione coupon">
+                <label
+                  v-for="segment in couponSegmentationOptions"
+                  :key="segment.value"
+                  class="status-option"
+                >
+                  <input
+                    type="radio"
+                    name="new-coupon-segmentation"
+                    :value="segment.value"
+                    v-model="newCoupon.segmentation"
+                  />
+                  <span>{{ segment.label }}</span>
+                </label>
+              </div>
             </label>
             <label>
               Limite utilizzi
@@ -1884,7 +1912,7 @@
                     v-model.number="newCoupon.matchIds"
                   />
                   <span>
-                    {{ event.title }}
+                    {{ couponMatchLabel(event) }}
                     <small class="muted block">{{ event.start_datetime }}</small>
                   </span>
                 </label>
@@ -1910,13 +1938,34 @@
                     Titolo
                     <input v-model.trim="coupon.title" type="text" />
                   </label>
-                  <label>
-                    Sponsor
-                    <select v-model.number="coupon.sponsorId">
-                      <option v-for="sponsor in sponsors" :key="sponsor.id" :value="sponsor.id">
-                        {{ sponsor.name || `Sponsor ${sponsor.id}` }}
-                      </option>
-                    </select>
+                  <label class="choice-group">
+                    Partner
+                    <div
+                      class="status-options"
+                      role="radiogroup"
+                      :aria-label="`Partner per il coupon ${coupon.title || coupon.id}`"
+                    >
+                      <label
+                        v-for="partner in partners"
+                        :key="partner.id"
+                        class="status-option"
+                      >
+                        <input
+                          type="radio"
+                          :name="`coupon-partner-${coupon.id}`"
+                          :value="partner.id"
+                          v-model.number="coupon.sponsorId"
+                          :disabled="!partners.length"
+                        />
+                        <span>
+                          {{
+                            partner.displayName ||
+                              partner.username ||
+                              `Partner ${partner.id}`
+                          }}
+                        </span>
+                      </label>
+                    </div>
                   </label>
                   <label class="choice-group">
                     Stato
@@ -1940,17 +1989,27 @@
                       </label>
                     </div>
                   </label>
-                  <label>
+                  <label class="choice-group">
                     Segmentazione
-                    <select v-model="coupon.segmentation">
-                      <option
+                    <div
+                      class="status-options"
+                      role="radiogroup"
+                      :aria-label="`Segmentazione coupon ${coupon.title || coupon.id}`"
+                    >
+                      <label
                         v-for="segment in couponSegmentationOptions"
                         :key="segment.value"
-                        :value="segment.value"
+                        class="status-option"
                       >
-                        {{ segment.label }}
-                      </option>
-                    </select>
+                        <input
+                          type="radio"
+                          :name="`coupon-segmentation-${coupon.id}`"
+                          :value="segment.value"
+                          v-model="coupon.segmentation"
+                        />
+                        <span>{{ segment.label }}</span>
+                      </label>
+                    </div>
                   </label>
                   <label>
                     Limite utilizzi
@@ -1986,7 +2045,7 @@
                         :value="event.id"
                         v-model.number="coupon.matchIds"
                       />
-                      <span>{{ event.title }}</span>
+                      <span>{{ couponMatchLabel(event) }}</span>
                     </label>
                   </div>
                 </div>
@@ -2564,7 +2623,7 @@ function createEmptyCouponDraft() {
   return {
     title: "",
     shortDesc: "",
-    sponsorId: sponsors.value?.[0]?.id ?? 0,
+    sponsorId: partners.value?.[0]?.id ?? 0,
     matchIds: [],
     startDateInput: "",
     endDateInput: "",
@@ -3425,7 +3484,7 @@ watch(activeEventVotesClosed, (closed) => {
 });
 
 watch(
-  sponsors,
+  partners,
   (list) => {
     if (!newCoupon.sponsorId && Array.isArray(list) && list.length) {
       newCoupon.sponsorId = list[0].id;
@@ -4395,6 +4454,24 @@ function syncEventFeedbackDrafts(eventList) {
 
 function eventLabel(event) {
   return `${resolveEventTeamName(event, "team1")} vs ${resolveEventTeamName(event, "team2")}`;
+}
+
+function formatMatchDateLabel(event) {
+  const rawDate = event?.start_datetime ?? event?.startDatetime ?? event?.startDate;
+  if (!rawDate) {
+    return "";
+  }
+  const parsed = new Date(rawDate);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  return parsed.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
+}
+
+function couponMatchLabel(event) {
+  const baseLabel = eventLabel(event);
+  const dateLabel = formatMatchDateLabel(event);
+  return dateLabel ? `${baseLabel} ${dateLabel}` : baseLabel;
 }
 
 function resolveEventTeamName(event, teamKey) {
@@ -5841,7 +5918,7 @@ async function createCoupon() {
     return;
   }
   if (!newCoupon.sponsorId) {
-    couponError.value = "Seleziona lo sponsor associato.";
+    couponError.value = "Seleziona il partner associato.";
     return;
   }
   const payload = serializeCouponPayload(newCoupon);
