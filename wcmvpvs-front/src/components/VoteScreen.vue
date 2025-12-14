@@ -30,6 +30,7 @@ import {
 } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, mapPlayersToLayout } from "../roster";
 import { getOrCreateDeviceId } from "../deviceId";
+import { safeTrackEvent } from "../tracking";
 
 const props = defineProps({
   eventId: {
@@ -152,6 +153,7 @@ const recordedSponsorSessions = new Set();
 const recordedSponsorSeen = new Set();
 const recordedSponsorWatched = new Set();
 const hasVoted = ref(false);
+const postVoteVisitTracked = ref(false);
 const isVotedPlayerLoading = computed(
   () => hasVoted.value && isLoadingPlayers.value && !selectedPlayer.value,
 );
@@ -163,6 +165,7 @@ const contactFormError = ref("");
 const contactFormSuccess = ref("");
 const isSubmittingContact = ref(false);
 const contactType = ref("");
+const hasContactInputInteracted = ref(false);
 const hasContactBonus = ref(false);
 const bonusCodes = ref([]);
 const contactCelebration = ref(false);
@@ -193,6 +196,9 @@ const activeWaitingMessage = computed(
 );
 const hasTriggeredFinalCountdownEffect = ref(false);
 
+const reactionTestStarted = ref(false);
+const liberoReflexStarted = ref(false);
+
 const engagementStats = ref(null);
 const userEngagementSeconds = ref(0);
 const engagementLoading = ref(false);
@@ -200,6 +206,42 @@ const engagementState = reactive({
   startedAt: 0,
   accumulatedMs: 0,
 });
+
+const recordPostVoteVisit = () => {
+  if (postVoteVisitTracked.value) {
+    return;
+  }
+
+  postVoteVisitTracked.value = true;
+  safeTrackEvent("visit_stats", "visit", "platform");
+
+  try {
+    const deviceId = getOrCreateDeviceId();
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storage = window.localStorage;
+    const now = Date.now();
+    const lastVisitRaw = storage.getItem(VISIT_LAST_SEEN_KEY);
+    const lastVisitMs = Number(lastVisitRaw);
+    const hasRecordedFirstVisit = storage.getItem(VISIT_FIRST_SEEN_KEY) === "1";
+
+    if (!hasRecordedFirstVisit) {
+      storage.setItem(VISIT_FIRST_SEEN_KEY, "1");
+      safeTrackEvent("visit_stats", "first_visit", deviceId);
+    } else if (
+      Number.isFinite(lastVisitMs) &&
+      now - lastVisitMs > RETURN_VISIT_COOLDOWN_MS
+    ) {
+      safeTrackEvent("visit_stats", "return_visit", deviceId);
+    }
+
+    storage.setItem(VISIT_LAST_SEEN_KEY, String(now));
+  } catch (error) {
+    console.warn("visit tracking failed", error);
+  }
+};
 
 const updateNowTimestamp = () => {
   nowTimestamp.value = Date.now();
@@ -830,6 +872,9 @@ const COUPON_CLAIMS_STORAGE_PREFIX = "wcmvp-coupons:";
 const CONTACT_STORAGE_KEY = "wcmvp-contact:last";
 const LIBERO_REFLEX_RESULT_STORAGE_PREFIX = "wcmvp:libero-reflex:result:";
 const BONUS_COUNT_STORAGE_KEY = "wcmvp:bonus-count";
+const VISIT_LAST_SEEN_KEY = "wcmvp:visit:last";
+const VISIT_FIRST_SEEN_KEY = "wcmvp:visit:first";
+const RETURN_VISIT_COOLDOWN_MS = 30 * 60 * 1000;
 const DEFAULT_BONUS_COUNT = 58;
 
 const getTicketStorageKey = (eventId) =>
@@ -1383,12 +1428,21 @@ const handleSelfieSubmitted = () => {
   markMissionCompleted("self_mvp");
 };
 
+const handleReactionStarted = () => {
+  reactionTestStarted.value = true;
+};
+
+const handleLiberoReflexStart = () => {
+  liberoReflexStarted.value = true;
+};
+
 const handleReactionResult = (resultMs) => {
   if (typeof resultMs === "number") {
     reactionBestScoreMs.value = reactionBestScoreMs.value === null
       ? resultMs
       : Math.min(reactionBestScoreMs.value, resultMs);
   }
+  reactionTestStarted.value = false;
   markMissionCompleted("reaction_test");
 };
 
@@ -1399,6 +1453,7 @@ const handleLiberoReflexFinished = async (result) => {
     : 0;
   const mission = missions.value.find((item) => item.id === "libero_reflex");
   const alreadyCompleted = Boolean(mission?.completed || liberoReflexResult.value.completed);
+  liberoReflexStarted.value = false;
   const success = successCount >= 2;
 
   liberoReflexResult.value = { attempts, successCount, completed: alreadyCompleted };
@@ -2038,6 +2093,10 @@ watch(
     contactPrefillNoteVisible.value = false;
     hasContactBonus.value = false;
     bonusCodes.value = [];
+    postVoteVisitTracked.value = false;
+    reactionTestStarted.value = false;
+    liberoReflexStarted.value = false;
+    hasContactInputInteracted.value = false;
     const storedLiberoReflex = loadLiberoReflexResult(eventId);
     liberoReflexResult.value = storedLiberoReflex;
     setMissionCompletion("libero_reflex", storedLiberoReflex.completed);
@@ -2131,11 +2190,15 @@ watch(hasVoted, (voted) => {
     showLiberoReflexModal.value = false;
     showEditVoteModal.value = false;
     voteUpdateMessage.value = "";
+    postVoteVisitTracked.value = false;
+    reactionTestStarted.value = false;
+    liberoReflexStarted.value = false;
     return;
   }
   if (hasCompletedFeedback.value && postVoteSettings.value.showFeedbackSurvey) {
     showFeedbackThankYou.value = true;
   }
+  recordPostVoteVisit();
 });
 
 watch(
@@ -2182,6 +2245,16 @@ watch(
     }
   },
 );
+
+watch(contactValueInput, (value) => {
+  if (hasContactInputInteracted.value) {
+    return;
+  }
+  if ((value || "").trim()) {
+    hasContactInputInteracted.value = true;
+    safeTrackEvent("mission", "open", "improve_experience");
+  }
+});
 
 watch(
   () => preVoteSettings.value.showVoteCounter,
@@ -2541,6 +2614,7 @@ const openVoteTrendModal = () => {
   if (!canOpenVoteTrend.value) {
     return;
   }
+  safeTrackEvent("mission", "open", "vote_trend");
   if (!isMissionCompleted("vote_trend")) {
     markMissionCompleted("vote_trend");
   }
@@ -2551,6 +2625,7 @@ const openSelfMvpModal = () => {
   if (!canOpenSelfie.value) {
     return;
   }
+  safeTrackEvent("mission", "open", "self_mvp");
   showSelfMvpModal.value = true;
 };
 
@@ -2558,6 +2633,8 @@ const openReactionTestModal = () => {
   if (!canOpenReactionTest.value) {
     return;
   }
+  reactionTestStarted.value = false;
+  safeTrackEvent("mission", "open", "reaction_test");
   showReactionTestModal.value = true;
 };
 
@@ -2565,6 +2642,8 @@ const openLiberoReflexModal = () => {
   if (!canOpenLiberoReflex.value) {
     return;
   }
+  liberoReflexStarted.value = false;
+  safeTrackEvent("mission", "open", "libero_reflex");
   showLiberoReflexModal.value = true;
 };
 
@@ -2642,14 +2721,23 @@ const closeVoteTrendModal = () => {
 };
 
 const closeSelfMvpModal = () => {
+  if (!isMissionCompleted("self_mvp")) {
+    safeTrackEvent("mission", "abandon", "self_mvp");
+  }
   showSelfMvpModal.value = false;
 };
 
 const closeReactionTestModal = () => {
+  if (!reactionTestStarted.value && !isMissionCompleted("reaction_test")) {
+    safeTrackEvent("mission", "abandon", "reaction_test");
+  }
   showReactionTestModal.value = false;
 };
 
 const closeLiberoReflexModal = () => {
+  if (!liberoReflexStarted.value && !isMissionCompleted("libero_reflex")) {
+    safeTrackEvent("mission", "abandon", "libero_reflex");
+  }
   showLiberoReflexModal.value = false;
 };
 
@@ -2657,6 +2745,11 @@ const startVoteEdit = () => {
   if (!canEditVote.value) {
     return;
   }
+  safeTrackEvent(
+    "vote",
+    "modify_vote_click",
+    selectedPlayerName.value || `${votedPlayerId.value || ""}`,
+  );
   pendingPlayer.value = null;
   errorMessage.value = "";
   isEditingVote.value = true;
@@ -3118,6 +3211,7 @@ const submitContactBonus = async () => {
         contactMarketingConsent.value = true;
         persistContactValue(sanitizedValue, detectedType, true);
         triggerBonusCelebration();
+        safeTrackEvent("mission", "complete", "improve_experience");
       } else {
         contactFormError.value =
           message || "Impossibile salvare il contatto in questo momento.";
@@ -3146,6 +3240,7 @@ const submitContactBonus = async () => {
     persistContactValue(sanitizedValue, detectedType, true);
     applyBonusCountIncrement(1);
     triggerBonusCelebration();
+    safeTrackEvent("mission", "complete", "improve_experience");
     if (data?.instantWin) {
       showInstantWinModal.value = true;
     }
@@ -3979,6 +4074,7 @@ const submitContactBonus = async () => {
                   <ReactionTestSection
                     :event-id="currentEventId"
                     :enabled="hasVoted && postVoteSettings.showReactionTest"
+                    @game-started="handleReactionStarted"
                     @result-submitted="handleReactionResult"
                   />
                 </div>
@@ -4011,6 +4107,7 @@ const submitContactBonus = async () => {
                     :event-id="currentEventId"
                     :enabled="hasVoted && postVoteSettings.showLiberoReflex"
                     :completed="isMissionCompleted('libero_reflex')"
+                    @game-started="handleLiberoReflexStart"
                     @close="closeLiberoReflexModal"
                     @game-finished="handleLiberoReflexFinished"
                   />
