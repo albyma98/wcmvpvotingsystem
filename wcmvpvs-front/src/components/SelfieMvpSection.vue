@@ -189,11 +189,18 @@ Accetto la privacy policy.<br>
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { fetchMySelfie, resolveApiUrl, uploadSelfie } from '../api';
+import { fetchMySelfie, resolveApiUrl, trackPostVoteAction, uploadSelfie } from '../api';
 import { safeTrackEvent } from '../tracking';
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
 const DEFAULT_ASPECT_RATIO = '16 / 10';
+
+const recordSelfieAction = (action) => {
+  if (!props.eventId || !action) {
+    return;
+  }
+  trackPostVoteAction(props.eventId, action);
+};
 
 const props = defineProps({
   eventId: {
@@ -276,6 +283,9 @@ function clearSelection() {
 function triggerCapture() {
   if (interactionDisabled.value) {
     return;
+  }
+  if (selfie.value) {
+    recordSelfieAction("photo_edit_open");
   }
   safeTrackEvent('mission', 'start', 'self_mvp');
   if (fileInputRef.value) {

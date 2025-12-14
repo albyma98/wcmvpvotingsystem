@@ -1360,6 +1360,94 @@
                         >{{ entry.engagement.usersLabel }}</strong
                       >
                     </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Aperture andamento voti</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.voteTrendOpensLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Aperture Selfie MVP</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.selfieOpensLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Selfie MVP chiuso senza invio</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.selfieAbandonsLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Aperture Reaction test</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.reactionOpensLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Reaction test chiuso senza giocare</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.reactionAbandonsLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Aperture "Migliora la tua esperienza"</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.experienceOpensLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Feedback avviato ma non inviato</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.experienceAbandonsLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Aperture modifica foto</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.photoEditOpensLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Aperture modifica voto</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.voteEditOpensLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Modifica voto chiusa senza aggiornare</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.voteEditAbandonsLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Voti modificati dopo l'apertura</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.voteEditCompletionsLabel }}</strong
+                      >
+                    </div>
                     <p
                       v-if="!entry.engagement.hasData"
                       class="muted small history-engagement__empty"
@@ -4978,11 +5066,65 @@ function normalizeHistoryEngagement(raw) {
     raw?.average_duration_seconds ?? raw?.averageDurationSeconds ?? 0,
   );
   const totalUsers = Number(raw?.total_users ?? raw?.totalUsers ?? 0);
+  const voteTrendOpens = Number(
+    raw?.vote_trend_opens ?? raw?.voteTrendOpens ?? 0,
+  );
+  const selfieOpens = Number(raw?.selfie_opens ?? raw?.selfieOpens ?? 0);
+  const selfieAbandons = Number(
+    raw?.selfie_abandons ?? raw?.selfieAbandons ?? 0,
+  );
+  const reactionOpens = Number(
+    raw?.reaction_opens ?? raw?.reactionOpens ?? 0,
+  );
+  const reactionAbandons = Number(
+    raw?.reaction_abandons ?? raw?.reactionAbandons ?? 0,
+  );
+  const experienceOpens = Number(
+    raw?.experience_opens ?? raw?.experienceOpens ?? 0,
+  );
+  const experienceAbandons = Number(
+    raw?.experience_abandons ?? raw?.experienceAbandons ?? 0,
+  );
+  const photoEditOpens = Number(
+    raw?.photo_edit_opens ?? raw?.photoEditOpens ?? 0,
+  );
+  const voteEditOpens = Number(
+    raw?.vote_edit_opens ?? raw?.voteEditOpens ?? 0,
+  );
+  const voteEditAbandons = Number(
+    raw?.vote_edit_abandons ?? raw?.voteEditAbandons ?? 0,
+  );
+  const voteEditCompletions = Number(
+    raw?.vote_edit_completions ?? raw?.voteEditCompletions ?? 0,
+  );
 
   const normalized = {
     totalSeconds: Number.isFinite(totalSeconds) ? totalSeconds : 0,
     averageSeconds: Number.isFinite(averageSeconds) ? averageSeconds : 0,
     users: Number.isFinite(totalUsers) ? totalUsers : 0,
+    voteTrendOpens: Number.isFinite(voteTrendOpens) ? voteTrendOpens : 0,
+    selfieOpens: Number.isFinite(selfieOpens) ? selfieOpens : 0,
+    selfieAbandons: Number.isFinite(selfieAbandons)
+      ? selfieAbandons
+      : 0,
+    reactionOpens: Number.isFinite(reactionOpens) ? reactionOpens : 0,
+    reactionAbandons: Number.isFinite(reactionAbandons)
+      ? reactionAbandons
+      : 0,
+    experienceOpens: Number.isFinite(experienceOpens)
+      ? experienceOpens
+      : 0,
+    experienceAbandons: Number.isFinite(experienceAbandons)
+      ? experienceAbandons
+      : 0,
+    photoEditOpens: Number.isFinite(photoEditOpens) ? photoEditOpens : 0,
+    voteEditOpens: Number.isFinite(voteEditOpens) ? voteEditOpens : 0,
+    voteEditAbandons: Number.isFinite(voteEditAbandons)
+      ? voteEditAbandons
+      : 0,
+    voteEditCompletions: Number.isFinite(voteEditCompletions)
+      ? voteEditCompletions
+      : 0,
   };
 
   return {
@@ -4994,6 +5136,22 @@ function normalizeHistoryEngagement(raw) {
     totalLabel: formatSecondsDuration(normalized.totalSeconds),
     averageLabel: formatSecondsDuration(normalized.averageSeconds),
     usersLabel: normalized.users.toLocaleString("it-IT"),
+    voteTrendOpensLabel: normalized.voteTrendOpens.toLocaleString("it-IT"),
+    selfieOpensLabel: normalized.selfieOpens.toLocaleString("it-IT"),
+    selfieAbandonsLabel: normalized.selfieAbandons.toLocaleString("it-IT"),
+    reactionOpensLabel: normalized.reactionOpens.toLocaleString("it-IT"),
+    reactionAbandonsLabel:
+      normalized.reactionAbandons.toLocaleString("it-IT"),
+    experienceOpensLabel:
+      normalized.experienceOpens.toLocaleString("it-IT"),
+    experienceAbandonsLabel:
+      normalized.experienceAbandons.toLocaleString("it-IT"),
+    photoEditOpensLabel: normalized.photoEditOpens.toLocaleString("it-IT"),
+    voteEditOpensLabel: normalized.voteEditOpens.toLocaleString("it-IT"),
+    voteEditAbandonsLabel:
+      normalized.voteEditAbandons.toLocaleString("it-IT"),
+    voteEditCompletionsLabel:
+      normalized.voteEditCompletions.toLocaleString("it-IT"),
   };
 }
 

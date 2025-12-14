@@ -130,6 +130,17 @@ type EventEngagementStats struct {
 	TotalDurationSeconds   int64   `json:"total_duration_seconds"`
 	AverageDurationSeconds float64 `json:"average_duration_seconds"`
 	TotalUsers             int     `json:"total_users"`
+	VoteTrendOpens         int     `json:"vote_trend_opens"`
+	SelfieOpens            int     `json:"selfie_opens"`
+	SelfieAbandons         int     `json:"selfie_abandons"`
+	ReactionOpens          int     `json:"reaction_opens"`
+	ReactionAbandons       int     `json:"reaction_abandons"`
+	ExperienceOpens        int     `json:"experience_opens"`
+	ExperienceAbandons     int     `json:"experience_abandons"`
+	PhotoEditOpens         int     `json:"photo_edit_opens"`
+	VoteEditOpens          int     `json:"vote_edit_opens"`
+	VoteEditAbandons       int     `json:"vote_edit_abandons"`
+	VoteEditCompletions    int     `json:"vote_edit_completions"`
 }
 
 type OrganizationEngagementStat struct {
@@ -724,6 +735,7 @@ type AppDatabase interface {
 	GetSponsorAnalytics(eventID int) (SponsorAnalytics, error)
 	GetSponsorClickStats(eventID int) ([]SponsorClickStat, error)
 	RecordEngagementSession(eventID int, deviceID string, durationSeconds int) error
+	RecordPostVoteAction(eventID int, deviceID, action string) error
 	GetEventEngagement(eventID int) (EventEngagementStats, error)
 	GetMasterEngagement() (MasterEngagementSummary, error)
 	RecordContactSubmission(contact ContactSubmission) (ContactSubmission, error)
@@ -776,6 +788,20 @@ var (
 	ErrCouponAlreadyUsed       = errors.New("coupon already used")
 	ErrCouponMaxReached        = errors.New("coupon max uses reached")
 )
+
+var allowedPostVoteActions = map[string]struct{}{
+	"vote_trend_open":    {},
+	"selfie_open":        {},
+	"selfie_abandon":     {},
+	"reaction_open":      {},
+	"reaction_abandon":   {},
+	"experience_open":    {},
+	"experience_abandon": {},
+	"photo_edit_open":    {},
+	"vote_edit_open":     {},
+	"vote_edit_abandon":  {},
+	"vote_edit_complete": {},
+}
 
 type rowScanner interface {
 	Scan(dest ...interface{}) error
@@ -1114,6 +1140,31 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_page_engagements_device ON page_engagements(event_id, device_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring page_engagements device index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='post_vote_actions';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE post_vote_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        device_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating post_vote_actions table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying post_vote_actions table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_post_vote_actions_event ON post_vote_actions(event_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring post_vote_actions event index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_post_vote_actions_action ON post_vote_actions(event_id, action)`); err != nil {
+		return nil, fmt.Errorf("error ensuring post_vote_actions action index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='event_feedback';`).Scan(&tableName)
@@ -3845,6 +3896,24 @@ func (db *appdbimpl) RecordEngagementSession(eventID int, deviceID string, durat
 	return err
 }
 
+func (db *appdbimpl) RecordPostVoteAction(eventID int, deviceID, action string) error {
+	if eventID <= 0 {
+		return ErrInvalidSponsorData
+	}
+
+	normalizedDevice := strings.TrimSpace(deviceID)
+	if normalizedDevice == "" {
+		return ErrInvalidSponsorData
+	}
+
+	if _, ok := allowedPostVoteActions[action]; !ok {
+		return ErrInvalidSponsorData
+	}
+
+	_, err := db.c.Exec(`INSERT INTO post_vote_actions (event_id, device_id, action) VALUES (?, ?, ?)`, eventID, normalizedDevice, action)
+	return err
+}
+
 func (db *appdbimpl) GetEventEngagement(eventID int) (EventEngagementStats, error) {
 	stats := EventEngagementStats{EventID: eventID}
 	if eventID <= 0 {
@@ -3864,6 +3933,44 @@ func (db *appdbimpl) GetEventEngagement(eventID int) (EventEngagementStats, erro
 		stats.AverageDurationSeconds = avg.Float64
 	}
 	stats.TotalUsers = users
+
+	rows, err := db.c.Query(`SELECT action, COUNT(DISTINCT device_id) FROM post_vote_actions WHERE event_id = ? GROUP BY action`, eventID)
+	if err != nil {
+		return stats, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var action string
+		var count int
+		if err := rows.Scan(&action, &count); err != nil {
+			return stats, err
+		}
+		switch action {
+		case "vote_trend_open":
+			stats.VoteTrendOpens = count
+		case "selfie_open":
+			stats.SelfieOpens = count
+		case "selfie_abandon":
+			stats.SelfieAbandons = count
+		case "reaction_open":
+			stats.ReactionOpens = count
+		case "reaction_abandon":
+			stats.ReactionAbandons = count
+		case "experience_open":
+			stats.ExperienceOpens = count
+		case "experience_abandon":
+			stats.ExperienceAbandons = count
+		case "photo_edit_open":
+			stats.PhotoEditOpens = count
+		case "vote_edit_open":
+			stats.VoteEditOpens = count
+		case "vote_edit_abandon":
+			stats.VoteEditAbandons = count
+		case "vote_edit_complete":
+			stats.VoteEditCompletions = count
+		}
+	}
 	return stats, nil
 }
 
