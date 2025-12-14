@@ -69,6 +69,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import volleyballBall from '../assets/volleyball.svg';
+import { safeTrackEvent } from '../tracking';
 
 type GameResult = {
   attempts: number;
@@ -87,6 +88,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits<{
+  (e: 'game-started'): void;
   (e: 'close'): void;
   (e: 'game-finished', payload: GameResult): void;
 }>();
@@ -105,6 +107,9 @@ const speedMultiplier = ref(1);
 const targetWidthPx = ref(ballSize.value * baseZoneScale);
 const targetStart = ref(42);
 const targetEnd = ref(58);
+const attempts = ref(0);
+const successCount = ref(0);
+const hasStarted = ref(false);
 const currentLevel = ref(1);
 const lives = ref(3);
 const statusMessage = ref('');
@@ -161,6 +166,21 @@ const hearts = computed(() =>
     empty: lives.value <= index,
   })),
 );
+
+const emitGameFinished = () => {
+  if (!hasStarted.value) {
+    return;
+  }
+
+  const payload: GameResult = {
+    attempts: attempts.value,
+    successCount: successCount.value,
+  };
+
+  hasStarted.value = false;
+  emit('game-finished', payload);
+  safeTrackEvent('mission', 'complete', 'libero_reflex');
+};
 
 const stopAnimation = () => {
   if (animationFrame) {
@@ -220,6 +240,11 @@ const startGame = () => {
   if (!props.enabled) {
     return;
   }
+  attempts.value = 0;
+  successCount.value = 0;
+  hasStarted.value = true;
+  safeTrackEvent('mission', 'start', 'libero_reflex');
+  emit('game-started');
   clearFeedback();
   statusMessage.value = '';
   statusType.value = 'info';
@@ -236,6 +261,8 @@ const handleTap = () => {
     return;
   }
 
+  attempts.value += 1;
+
   const inTarget = ballX.value >= targetStart.value && ballX.value <= targetEnd.value;
 
   if (feedbackTimer) {
@@ -247,12 +274,17 @@ const handleTap = () => {
     statusMessage.value = '';
     const nextLevel = currentLevel.value + 1;
     currentLevel.value = nextLevel;
+    successCount.value += 1;
 
     if (nextLevel > maxLevel) {
       statusMessage.value = 'Hai completato tutti i livelli! Il gioco ricomincia dal livello 1.';
       statusType.value = 'success';
+      emitGameFinished();
+      endGame();
       currentLevel.value = 1;
       lives.value = 3;
+      applyLevelConfig(1);
+      return;
     }
 
     applyLevelConfig(currentLevel.value);
@@ -271,9 +303,12 @@ const handleTap = () => {
     if (lives.value <= 0) {
       statusMessage.value = 'Hai finito le vite, il gioco è ricominciato dal livello 1.';
       statusType.value = 'error';
+      emitGameFinished();
+      endGame();
       currentLevel.value = 1;
       lives.value = 3;
       applyLevelConfig(1);
+      return;
     } else {
       statusMessage.value = `Attento! Ti rimangono ${lives.value} vite.`;
     }
@@ -284,6 +319,7 @@ const handleTap = () => {
 
 const endGame = () => {
   isPlaying.value = false;
+  hasStarted.value = false;
   stopAnimation();
   clearFeedback();
 };

@@ -190,6 +190,7 @@ Accetto la privacy policy.<br>
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { fetchMySelfie, resolveApiUrl, uploadSelfie } from '../api';
+import { safeTrackEvent } from '../tracking';
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
 const DEFAULT_ASPECT_RATIO = '16 / 10';
@@ -276,6 +277,7 @@ function triggerCapture() {
   if (interactionDisabled.value) {
     return;
   }
+  safeTrackEvent('mission', 'start', 'self_mvp');
   if (fileInputRef.value) {
     fileInputRef.value.click();
   }
@@ -367,6 +369,7 @@ async function submitSelfie() {
     if (ok) {
       selfie.value = data || null;
       successMessage.value = 'Selfie inviato';
+      safeTrackEvent('mission', 'complete', 'self_mvp');
       emit('selfie-submitted', data);
       clearSelection();
     } else {

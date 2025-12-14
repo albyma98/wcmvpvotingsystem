@@ -93,6 +93,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { fetchReactionTestStatus, submitReactionTestResult } from '../api';
+import { safeTrackEvent } from '../tracking';
 
 const props = defineProps({
   eventId: {
@@ -105,7 +106,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(["result-submitted"]);
+const emit = defineEmits(["result-submitted", "game-started"]);
 
 const loadingStatus = ref(false);
 const isSubmitting = ref(false);
@@ -347,6 +348,7 @@ async function finalizeReaction() {
     averageMs.value = Number.isFinite(data?.average_ms) ? data.average_ms : averageMs.value;
     lastResultMs.value = typeof data?.reaction_time_ms === 'number' ? data.reaction_time_ms : measured;
     emit("result-submitted", lastResultMs.value);
+    safeTrackEvent('mission', 'complete', 'reaction_test');
     const roundedAverage = averageMs.value > 0 ? Math.round(averageMs.value) : null;
     if (data?.faster_than_average) {
       comparisonMessage.value = 'Più veloce della media! ⚡';
@@ -376,7 +378,9 @@ function startGame() {
   if (startDisabled.value) {
     return;
   }
+  safeTrackEvent('mission', 'start', 'reaction_test');
   resetStage();
+  emit('game-started');
   beginCountdown();
 }
 
