@@ -1332,6 +1332,44 @@
                   <p v-else class="muted">Nessun feedback raccolto.</p>
                 </div>
                 <div
+                  class="history-details__column history-details__column--engagement"
+                >
+                  <h4>Tracking post voto</h4>
+                  <div v-if="entry.engagement" class="history-engagement">
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Tempo totale</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.totalLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Tempo medio</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.averageLabel }}</strong
+                      >
+                    </div>
+                    <div class="history-engagement__row">
+                      <span class="history-engagement__label"
+                        >Utenti tracciati</span
+                      >
+                      <strong class="history-engagement__value"
+                        >{{ entry.engagement.usersLabel }}</strong
+                      >
+                    </div>
+                    <p
+                      v-if="!entry.engagement.hasData"
+                      class="muted small history-engagement__empty"
+                    >
+                      Nessun dato di permanenza registrato.
+                    </p>
+                  </div>
+                  <p v-else class="muted">Tracking non disponibile.</p>
+                </div>
+                <div
                   class="history-details__column history-details__column--prizes"
                 >
                   <h4>Estrazione premi</h4>
@@ -4480,6 +4518,21 @@ function formatWatchDuration(ms) {
   return `${Math.round(value)} ms`;
 }
 
+function formatSecondsDuration(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const minutes = Math.floor(total / 60);
+  const remainingSeconds = total % 60;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours > 0) {
+    return `${hours}h ${remainingMinutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+  return `${remainingSeconds}s`;
+}
+
 function formatPercent(
   value,
   minimumFractionDigits = 1,
@@ -4914,6 +4967,36 @@ function buildHistoryTimelineChart(buckets, windowLabels = null) {
   };
 }
 
+function normalizeHistoryEngagement(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const totalSeconds = Number(
+    raw?.total_duration_seconds ?? raw?.totalDurationSeconds ?? 0,
+  );
+  const averageSeconds = Number(
+    raw?.average_duration_seconds ?? raw?.averageDurationSeconds ?? 0,
+  );
+  const totalUsers = Number(raw?.total_users ?? raw?.totalUsers ?? 0);
+
+  const normalized = {
+    totalSeconds: Number.isFinite(totalSeconds) ? totalSeconds : 0,
+    averageSeconds: Number.isFinite(averageSeconds) ? averageSeconds : 0,
+    users: Number.isFinite(totalUsers) ? totalUsers : 0,
+  };
+
+  return {
+    ...normalized,
+    hasData:
+      normalized.totalSeconds > 0 ||
+      normalized.averageSeconds > 0 ||
+      normalized.users > 0,
+    totalLabel: formatSecondsDuration(normalized.totalSeconds),
+    averageLabel: formatSecondsDuration(normalized.averageSeconds),
+    usersLabel: normalized.users.toLocaleString("it-IT"),
+  };
+}
+
 function normalizeHistoryEntry(item) {
   const id = Number(item?.id) || 0;
   const homeTeam =
@@ -5008,6 +5091,10 @@ function normalizeHistoryEntry(item) {
   const uniqueVisitors = Number(sponsorAnalyticsData.seenUsers) || 0;
   const totalVisitorsLabel = totalVisitors.toLocaleString("it-IT");
   const uniqueVisitorsLabel = uniqueVisitors.toLocaleString("it-IT");
+
+  const engagement = normalizeHistoryEngagement(
+    item?.engagement ?? item?.engagementStats,
+  );
 
   const sponsorAnalyticsTimelineRaw = Array.isArray(
     sponsorAnalyticsData.timeline,
@@ -5210,6 +5297,7 @@ function normalizeHistoryEntry(item) {
     totalVotesLabel: Number.isFinite(totalVotes)
       ? totalVotes.toLocaleString("it-IT")
       : "0",
+    engagement,
     sponsorClicks,
     sponsorClicksTotal,
     sponsorClicksTotalLabel,
@@ -6893,6 +6981,33 @@ textarea:focus {
   margin: 0 0 0.5rem;
   font-size: 1rem;
   color: #0f172a;
+}
+
+.history-engagement {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.history-engagement__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.history-engagement__label {
+  color: #334155;
+  font-weight: 600;
+}
+
+.history-engagement__value {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.history-engagement__empty {
+  margin: 0.25rem 0 0;
 }
 
 .history-sponsor-list {
