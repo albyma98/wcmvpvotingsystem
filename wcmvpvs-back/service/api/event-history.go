@@ -51,6 +51,7 @@ type eventHistoryEntry struct {
 	TotalVotes         int                                `json:"total_votes"`
 	SponsorClicksTotal int                                `json:"sponsor_clicks_total"`
 	MVP                *database.EventMVP                 `json:"mvp,omitempty"`
+	Engagement         database.EventEngagementStats      `json:"engagement"`
 	SponsorClicks      []database.SponsorClickStat        `json:"sponsor_clicks"`
 	SponsorAnalytics   sponsorAnalyticsResponse           `json:"sponsor_analytics"`
 	Timeline           []historyTimelineBucket            `json:"timeline"`
@@ -140,6 +141,14 @@ func (rt *_router) buildEventHistoryEntry(ctx reqcontext.RequestContext, event d
 	}
 	sponsorAnalytics := buildSponsorAnalyticsResponse(sponsorSummary)
 
+	engagement, err := rt.db.GetEventEngagement(event.ID)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load engagement for history")
+		}
+		engagement = database.EventEngagementStats{EventID: event.ID}
+	}
+
 	voteTimestamps, err := rt.db.ListEventVoteTimestamps(event.ID)
 	if err != nil {
 		ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load vote timestamps for history")
@@ -203,6 +212,7 @@ func (rt *_router) buildEventHistoryEntry(ctx reqcontext.RequestContext, event d
 		TotalVotes:         totalVotes,
 		SponsorClicksTotal: sponsorTotal,
 		MVP:                mvpPtr,
+		Engagement:         engagement,
 		SponsorClicks:      sponsorStats,
 		SponsorAnalytics:   sponsorAnalytics,
 		Timeline:           timeline,
