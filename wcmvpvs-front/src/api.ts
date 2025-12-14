@@ -611,6 +611,20 @@ export function trackPageEngagement(eventId: number, durationSeconds: number) {
   });
 }
 
+export function trackPostVoteAction(eventId: number, action: string) {
+  if (!eventId || !action?.trim()) {
+    return Promise.resolve();
+  }
+
+  const headers = getDeviceHeaders();
+  const deviceId = headers['X-Device-ID'];
+
+  return sendJsonBeacon(`/events/${eventId}/post-vote-actions`, {
+    action: action.trim(),
+    device_id: deviceId,
+  });
+}
+
 export async function fetchEventEngagement(eventId: number) {
   if (!eventId) {
     return { ok: false, error: new Error('missing_event_id') };

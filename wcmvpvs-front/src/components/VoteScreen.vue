@@ -21,6 +21,7 @@ import {
   sendJsonBeacon,
   submitEventFeedback,
   trackPageEngagement,
+  trackPostVoteAction,
   fetchEventEngagement,
   fetchContactBonuses,
   fetchEventCoupons,
@@ -206,6 +207,14 @@ const engagementState = reactive({
   startedAt: 0,
   accumulatedMs: 0,
 });
+
+const recordPostVoteAction = (action) => {
+  const eventId = currentEventId.value;
+  if (!eventId || !action) {
+    return;
+  }
+  trackPostVoteAction(eventId, action);
+};
 
 const recordPostVoteVisit = () => {
   if (postVoteVisitTracked.value) {
@@ -1369,6 +1378,7 @@ const isFeedbackSubmitting = ref(false);
 const feedbackError = ref("");
 const showFeedbackThankYou = ref(false);
 const hasCompletedFeedback = ref(false);
+const hasTrackedFeedbackOpen = ref(false);
 const optionalFeedbackMaxLength = 80;
 const feedbackStoragePrefix = "wcmvpvs-feedback";
 const mandatoryFeedbackKeys = [
@@ -1540,6 +1550,10 @@ function openFeedbackModal() {
   if (!shouldShowFeedbackCta.value) {
     return;
   }
+  if (!hasTrackedFeedbackOpen.value) {
+    recordPostVoteAction("experience_open");
+    hasTrackedFeedbackOpen.value = true;
+  }
   const firstIncompleteIndex = feedbackQuestions.value.findIndex(
     (question) => !feedbackAnswers[question.answerKey],
   );
@@ -1556,6 +1570,9 @@ function openFeedbackModal() {
 function closeFeedbackModal() {
   if (isFeedbackSubmitting.value) {
     return;
+  }
+  if (!hasCompletedFeedback.value) {
+    recordPostVoteAction("experience_abandon");
   }
   showFeedbackModal.value = false;
   feedbackError.value = "";
@@ -2193,6 +2210,7 @@ watch(hasVoted, (voted) => {
     postVoteVisitTracked.value = false;
     reactionTestStarted.value = false;
     liberoReflexStarted.value = false;
+    hasTrackedFeedbackOpen.value = false;
     return;
   }
   if (hasCompletedFeedback.value && postVoteSettings.value.showFeedbackSurvey) {
@@ -2252,6 +2270,10 @@ watch(contactValueInput, (value) => {
   }
   if ((value || "").trim()) {
     hasContactInputInteracted.value = true;
+    if (!hasTrackedFeedbackOpen.value) {
+      recordPostVoteAction("experience_open");
+      hasTrackedFeedbackOpen.value = true;
+    }
     safeTrackEvent("mission", "open", "improve_experience");
   }
 });
@@ -2614,6 +2636,7 @@ const openVoteTrendModal = () => {
   if (!canOpenVoteTrend.value) {
     return;
   }
+  recordPostVoteAction("vote_trend_open");
   safeTrackEvent("mission", "open", "vote_trend");
   if (!isMissionCompleted("vote_trend")) {
     markMissionCompleted("vote_trend");
@@ -2625,6 +2648,7 @@ const openSelfMvpModal = () => {
   if (!canOpenSelfie.value) {
     return;
   }
+  recordPostVoteAction("selfie_open");
   safeTrackEvent("mission", "open", "self_mvp");
   showSelfMvpModal.value = true;
 };
@@ -2633,6 +2657,7 @@ const openReactionTestModal = () => {
   if (!canOpenReactionTest.value) {
     return;
   }
+  recordPostVoteAction("reaction_open");
   reactionTestStarted.value = false;
   safeTrackEvent("mission", "open", "reaction_test");
   showReactionTestModal.value = true;
@@ -2722,6 +2747,7 @@ const closeVoteTrendModal = () => {
 
 const closeSelfMvpModal = () => {
   if (!isMissionCompleted("self_mvp")) {
+    recordPostVoteAction("selfie_abandon");
     safeTrackEvent("mission", "abandon", "self_mvp");
   }
   showSelfMvpModal.value = false;
@@ -2729,6 +2755,7 @@ const closeSelfMvpModal = () => {
 
 const closeReactionTestModal = () => {
   if (!reactionTestStarted.value && !isMissionCompleted("reaction_test")) {
+    recordPostVoteAction("reaction_abandon");
     safeTrackEvent("mission", "abandon", "reaction_test");
   }
   showReactionTestModal.value = false;
@@ -2745,6 +2772,7 @@ const startVoteEdit = () => {
   if (!canEditVote.value) {
     return;
   }
+  recordPostVoteAction("vote_edit_open");
   safeTrackEvent(
     "vote",
     "modify_vote_click",
@@ -2758,6 +2786,9 @@ const startVoteEdit = () => {
 };
 
 const closeEditVoteModal = () => {
+  if (isEditingVote.value) {
+    recordPostVoteAction("vote_edit_abandon");
+  }
   showEditVoteModal.value = false;
   if (hasVoted.value) {
     isEditingVote.value = false;
@@ -2827,6 +2858,9 @@ const voteForPlayer = async (player) => {
             code: codeSource,
             qrData: qrSource,
           });
+        }
+        if (previousPlayerId && previousPlayerId !== player.id) {
+          recordPostVoteAction("vote_edit_complete");
         }
         showTicketModal.value = !hadExistingTicket;
         refreshVoteTotal({ silent: true });
