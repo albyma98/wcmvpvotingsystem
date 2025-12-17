@@ -6045,60 +6045,87 @@ const submitContactBonus = async () => {
 .coupon-card {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
-  border-radius: 1.25rem;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.78), rgba(30, 41, 59, 0.72));
-  box-shadow: 0 18px 32px rgba(8, 15, 28, 0.55);
+  gap: 1rem;
+  padding: 1.6rem;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.78), rgba(30, 41, 59, 0.7));
+  box-shadow: 0 20px 34px rgba(8, 15, 28, 0.45);
 }
 
-.coupon-card__media img {
-  width: 100%;
-  max-height: 180px;
-  object-fit: cover;
-  border-radius: 1rem;
+.coupon-card__media {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.1rem;
   border: 1px solid rgba(148, 163, 184, 0.24);
   background: #0f172a;
 }
 
+.coupon-card__media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.1);
+  pointer-events: none;
+}
+
+.coupon-card__media img {
+  width: 100%;
+  height: 135px;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.coupon-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
 .coupon-card__title {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 800;
+  font-size: 1.2rem;
+  font-weight: 900;
   color: #f8fafc;
 }
 
 .coupon-card__desc {
-  margin: 0.25rem 0 0;
-  color: rgba(226, 232, 240, 0.85);
+  margin: 0;
+  color: rgba(226, 232, 240, 0.7);
   line-height: 1.5;
+  font-size: 0.95rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .coupon-card__actions {
-  margin-top: 0.75rem;
+  margin-top: 1.15rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.9rem;
 }
 
 .coupon-card__redeem {
   width: 100%;
-  padding: 0.85rem 1rem;
-  border-radius: 0.95rem;
-  border: 1px solid rgba(52, 211, 153, 0.55);
-  background: linear-gradient(120deg, rgba(16, 185, 129, 0.18), rgba(5, 150, 105, 0.22));
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(52, 211, 153, 0.68);
+  background: linear-gradient(120deg, rgba(16, 185, 129, 0.24), rgba(5, 150, 105, 0.28));
   color: #bbf7d0;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  box-shadow: 0 16px 34px rgba(5, 150, 105, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .coupon-card__redeem:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 32px rgba(5, 150, 105, 0.4);
-  border-color: rgba(52, 211, 153, 0.8);
+  box-shadow: 0 18px 36px rgba(5, 150, 105, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border-color: rgba(52, 211, 153, 0.85);
 }
 
 .coupon-card__qr {
@@ -6127,6 +6154,41 @@ const submitContactBonus = async () => {
   color: rgba(226, 232, 240, 0.86);
   text-align: center;
   line-height: 1.4;
+}
+
+@media (min-width: 768px) {
+  .coupon-card {
+    flex-direction: row;
+    gap: 1.25rem;
+    align-items: stretch;
+  }
+
+  .coupon-card__media {
+    flex: 0 0 40%;
+    max-width: 40%;
+    border-radius: 1.15rem 0 0 1.15rem;
+  }
+
+  .coupon-card__media img {
+    height: 100%;
+    min-height: 135px;
+    max-height: 220px;
+  }
+
+  .coupon-card__content {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .coupon-card__actions {
+    margin-top: 1.25rem;
+    align-items: flex-start;
+  }
+
+  .coupon-card__redeem {
+    width: auto;
+    padding-inline: 1.35rem;
+  }
 }
 
 .coupon-redeem__body {
