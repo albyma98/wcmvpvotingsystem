@@ -777,11 +777,15 @@ const isEditingVote = ref(false);
 const voteUpdateMessage = ref("");
 const showTicketModal = ref(false);
 const showAlreadyVotedModal = ref(false);
+const fanMissionsRef = ref(null);
+const postVoteModalRef = ref(null);
 const ticketCode = ref("");
 const ticketQrData = ref("");
 const ticketQrUrl = ref("");
 const ticketLoadError = ref("");
 const isTicketLoading = ref(false);
+const postVoteFocusableSelectors =
+  'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const showVoteSummary = computed(
   () => hasVoted.value && Boolean(ticketCode.value || ticketQrUrl.value),
 );
@@ -2264,6 +2268,24 @@ watch(
   },
 );
 
+watch(showTicketModal, (isOpen) => {
+  const panel = postVoteModalRef.value;
+  if (!isOpen) {
+    if (panel) {
+      panel.removeEventListener("keydown", handlePostVoteKeydown);
+    }
+    return;
+  }
+  nextTick(() => {
+    const modalPanel = postVoteModalRef.value;
+    if (!modalPanel) {
+      return;
+    }
+    modalPanel.addEventListener("keydown", handlePostVoteKeydown);
+    focusPostVoteModal();
+  });
+});
+
 watch(contactValueInput, (value) => {
   if (hasContactInputInteracted.value) {
     return;
@@ -2524,6 +2546,9 @@ onBeforeUnmount(() => {
   if (missionToastTimer) {
     window.clearTimeout(missionToastTimer);
   }
+  if (postVoteModalRef.value) {
+    postVoteModalRef.value.removeEventListener("keydown", handlePostVoteKeydown);
+  }
 });
 
 const canEditVote = computed(() => hasVoted.value && votingOpen.value);
@@ -2570,6 +2595,95 @@ const closeModal = () => {
 const closeTicketModal = () => {
   showTicketModal.value = false;
   isTicketLoading.value = false;
+};
+
+const focusPostVoteModal = () => {
+  if (!postVoteModalRef.value) {
+    return;
+  }
+  const focusable = postVoteModalRef.value.querySelectorAll(
+    postVoteFocusableSelectors,
+  );
+  const firstFocusable = focusable?.[0] || postVoteModalRef.value;
+  if (typeof firstFocusable?.focus === "function") {
+    firstFocusable.focus();
+  }
+};
+
+const handlePostVoteKeydown = (event) => {
+  if (!showTicketModal.value) {
+    return;
+  }
+  if (typeof document === "undefined") {
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeTicketModal();
+    return;
+  }
+  if (event.key !== "Tab") {
+    return;
+  }
+  const focusable = postVoteModalRef.value?.querySelectorAll(
+    postVoteFocusableSelectors,
+  );
+  if (!focusable || focusable.length === 0) {
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+  if (event.shiftKey) {
+    if (active === first || active === postVoteModalRef.value) {
+      event.preventDefault();
+      if (typeof last?.focus === "function") {
+        last.focus();
+      }
+    }
+  } else if (active === last) {
+    event.preventDefault();
+    if (typeof first?.focus === "function") {
+      first.focus();
+    }
+  }
+};
+
+const handlePostVoteCoupons = async () => {
+  closeTicketModal();
+  await nextTick();
+  openCouponsModal();
+};
+
+const handlePostVoteMission = async () => {
+  if (!hasVisibleMissions.value) {
+    return;
+  }
+  closeTicketModal();
+  await nextTick();
+  if (fanMissionsRef.value) {
+    fanMissionsRef.value.scrollIntoView({ behavior: "smooth", block: "start" });
+    const target = fanMissionsRef.value.querySelector("button:not([disabled])");
+    if (target && typeof target.focus === "function") {
+      target.focus();
+    }
+  }
+};
+
+const handlePostVoteVoteTrend = async () => {
+  closeTicketModal();
+  await nextTick();
+  if (canOpenVoteTrend.value) {
+    openVoteTrendModal();
+  }
+};
+
+const handlePostVoteReactionTest = async () => {
+  closeTicketModal();
+  await nextTick();
+  if (canOpenReactionTest.value) {
+    openReactionTestModal();
+  }
 };
 
 const closeAlreadyVotedModal = () => {
@@ -3376,7 +3490,13 @@ const submitContactBonus = async () => {
                   <div v-if="isTicketLoading" class="vote-summary__qr-loader">
                     <span class="qr-loader"></span>
                   </div>
-                  <img v-else-if="ticketQrUrl" :src="ticketQrUrl" alt="QR code" />
+                  <img
+                    v-else-if="ticketQrUrl"
+                    :src="ticketQrUrl"
+                    alt="QR code"
+                    @load="handleQrLoaded"
+                    @error="handleQrError"
+                  />
                   <div v-else class="vote-summary__qr-placeholder">
                     QR non disponibile
                   </div>
@@ -3445,6 +3565,7 @@ const submitContactBonus = async () => {
 
           <div
             v-if="hasVisibleMissions"
+            ref="fanMissionsRef"
             class="fan-missions"
             role="navigation"
             aria-label="Missioni tifoso"
@@ -4310,74 +4431,94 @@ const submitContactBonus = async () => {
     <transition name="fade">
       <div
         v-if="!showInactiveNotice && showTicketModal"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-6 py-10"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-8"
       >
         <button
           class="absolute inset-0"
           type="button"
           @click="closeTicketModal"
-          aria-label="Chiudi"
+          aria-label="Chiudi modale post voto"
+          tabindex="-1"
         ></button>
         <div
-          class="relative z-10 w-full max-w-sm rounded-[2.25rem] border border-white/10 bg-slate-900/95 px-6 py-7 text-center shadow-[0_30px_60px_rgba(15,23,42,0.6)]"
+          ref="postVoteModalRef"
+          class="post-vote-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="post-vote-modal-title"
+          aria-describedby="post-vote-modal-subtitle"
+          tabindex="-1"
         >
-          <h3
-            class="text-lg font-semibold uppercase tracking-[0.35em] text-slate-100"
-          >
-            Voto registrato
-          </h3>
-          <p class="mt-3 text-sm text-slate-300">
-            Fai subito uno screenshot di questa pagina e conservalo. Attendi la
-            fine della partita per l'estrazione dei premi e mostra lo screenshot
-            allo staff nel caso in cui venga estratto il tuo codice.
-          </p>
-          <div class="important-notice" role="alert">
-            <p
-              class="font-semibold uppercase tracking-[0.25em] text-yellow-300"
-            >
-              Importante
-            </p>
-            <p class="mt-2 text-sm leading-relaxed text-slate-100">
-              SENZA LO SCREENSHOT IL PREMIO NON POTRA' ESSERE ASSEGNATO.
-            </p>
-          </div>
-          <div
-            class="mt-5 flex flex-col items-center gap-2 text-lg text-slate-200"
-          >
-            <p class="font-bold tracking-[0.2em]">Codice: {{ ticketCode }}</p>
-          </div>
-          <div
-            v-if="isTicketLoading"
-            class="mt-6 flex flex-col items-center gap-3 text-slate-200"
-            role="status"
-            aria-live="polite"
-          >
-            <span class="qr-loader"></span>
-            <p
-              class="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300"
-            >
-              Attendi…
-            </p>
-          </div>
-          <p v-if="ticketLoadError" class="mt-4 text-sm text-rose-300">
-            {{ ticketLoadError }}
-          </p>
-          <img
-            v-if="ticketQrUrl"
-            :src="ticketQrUrl"
-            alt="QR code"
-            class="mx-auto mt-6 h-40 w-40 rounded-3xl border border-white/10 bg-white p-3"
-            :class="{ hidden: isTicketLoading }"
-            @load="handleQrLoaded"
-            @error="handleQrError"
-          />
           <button
-            class="mt-7 w-full rounded-full bg-yellow-400 px-4 py-3 text-sm font-semibold uppercase tracking-[0.35em] text-slate-900 transition-colors duration-200 hover:bg-yellow-300"
+            class="post-vote-modal__close"
             type="button"
+            aria-label="Chiudi modale"
             @click="closeTicketModal"
           >
-            Chiudi
+            ✕
           </button>
+          <div class="post-vote-modal__header">
+            <div class="post-vote-modal__icon" aria-hidden="true">✅</div>
+            <div>
+              <h3 id="post-vote-modal-title" class="post-vote-modal__title">
+                Voto registrato
+              </h3>
+              <p id="post-vote-modal-subtitle" class="post-vote-modal__subtitle">
+                L’esperienza non finisce qui: continua con una di queste attività.
+              </p>
+            </div>
+          </div>
+          <div class="post-vote-modal__actions" role="group" aria-label="Azioni successive al voto">
+            <button type="button" class="post-vote-card post-vote-card--primary" @click="handlePostVoteCoupons">
+              <div class="post-vote-card__content">
+                <span class="post-vote-card__eyebrow">Suggerito</span>
+                <span class="post-vote-card__label">Scopri i coupon</span>
+                <span class="post-vote-card__hint">Apri la lista di coupon disponibili.</span>
+              </div>
+              <span class="post-vote-card__chevron" aria-hidden="true">➜</span>
+            </button>
+            <button
+              type="button"
+              class="post-vote-card"
+              :disabled="!hasVisibleMissions"
+              @click="handlePostVoteMission"
+            >
+              <div class="post-vote-card__content">
+                <span class="post-vote-card__label">Missioni tifoso</span>
+                <span class="post-vote-card__hint">Vai alle missioni e completa nuove sfide.</span>
+              </div>
+              <span class="post-vote-card__chevron" aria-hidden="true">→</span>
+            </button>
+            <button
+              type="button"
+              class="post-vote-card"
+              :disabled="!canOpenVoteTrend"
+              @click="handlePostVoteVoteTrend"
+            >
+              <div class="post-vote-card__content">
+                <span class="post-vote-card__label">Andamento voti</span>
+                <span class="post-vote-card__hint">Apri la vista live con il trend dei voti.</span>
+              </div>
+              <span class="post-vote-card__chevron" aria-hidden="true">→</span>
+            </button>
+            <button
+              type="button"
+              class="post-vote-card"
+              :disabled="!canOpenReactionTest"
+              @click="handlePostVoteReactionTest"
+            >
+              <div class="post-vote-card__content">
+                <span class="post-vote-card__label">Reaction Test</span>
+                <span class="post-vote-card__hint">Apri subito il test dei riflessi.</span>
+              </div>
+              <span class="post-vote-card__chevron" aria-hidden="true">→</span>
+            </button>
+          </div>
+          <div class="post-vote-modal__footer">
+            <button type="button" class="post-vote-modal__dismiss" @click="closeTicketModal">
+              Chiudi
+            </button>
+          </div>
         </div>
       </div>
     </transition>
@@ -5615,14 +5756,194 @@ const submitContactBonus = async () => {
   color: #fee2e2;
 }
 
-.important-notice {
-  margin-top: 1.75rem;
-  padding: 1.5rem 1.25rem;
-  border-radius: 1.75rem;
-  border: 1px solid rgba(250, 204, 21, 0.5);
-  background: rgba(30, 64, 175, 0.35);
-  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.45);
-  text-align: center;
+.post-vote-modal {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 48rem;
+  padding: 2.25rem;
+  border-radius: 2rem;
+  background: radial-gradient(circle at 10% 20%, rgba(14, 165, 233, 0.12), transparent 25%),
+    radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.12), transparent 28%),
+    rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 38px 80px rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(10px);
+}
+
+@media (min-width: 640px) {
+  .post-vote-modal {
+    padding: 2.75rem;
+  }
+}
+
+.post-vote-modal__close {
+  position: absolute;
+  right: 1.25rem;
+  top: 1.25rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.6);
+  color: #cbd5e1;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.post-vote-modal__close:hover {
+  transform: scale(1.05);
+  border-color: rgba(226, 232, 240, 0.65);
+  color: #e2e8f0;
+}
+
+.post-vote-modal__header {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.post-vote-modal__icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.22), rgba(16, 185, 129, 0.3));
+  border: 1px solid rgba(52, 211, 153, 0.5);
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  color: #bbf7d0;
+  box-shadow: 0 16px 38px rgba(52, 211, 153, 0.25);
+}
+
+.post-vote-modal__title {
+  margin: 0 0 0.25rem;
+  font-size: 1.35rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e2e8f0;
+}
+
+.post-vote-modal__subtitle {
+  margin: 0;
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+
+.post-vote-modal__actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .post-vote-modal__actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.post-vote-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  padding: 1.25rem 1.35rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.7);
+  color: #e2e8f0;
+  text-align: left;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.post-vote-card:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: rgba(94, 234, 212, 0.5);
+  box-shadow: 0 24px 50px rgba(14, 165, 233, 0.18);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(14, 165, 233, 0.1));
+}
+
+.post-vote-card:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.post-vote-card--primary {
+  border-color: rgba(250, 204, 21, 0.5);
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.2), rgba(56, 189, 248, 0.12));
+  box-shadow: 0 26px 56px rgba(250, 204, 21, 0.25);
+}
+
+.post-vote-card--primary:hover:not(:disabled) {
+  border-color: rgba(250, 204, 21, 0.7);
+  box-shadow: 0 30px 70px rgba(56, 189, 248, 0.28);
+}
+
+.post-vote-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.post-vote-card__eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #facc15;
+}
+
+.post-vote-card__label {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.post-vote-card__hint {
+  color: #cbd5e1;
+  line-height: 1.5;
+  font-size: 0.9rem;
+}
+
+.post-vote-card__chevron {
+  font-size: 1.25rem;
+  color: #94a3b8;
+  padding-top: 0.15rem;
+}
+
+.post-vote-modal__footer {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: center;
+}
+
+.post-vote-modal__dismiss {
+  border-radius: 999px;
+  padding: 0.95rem 1.6rem;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+
+.post-vote-modal__dismiss:hover {
+  background: rgba(148, 163, 184, 0.2);
+  transform: translateY(-1px);
+  border-color: rgba(226, 232, 240, 0.75);
 }
 
 .inactive-panel h2 {
