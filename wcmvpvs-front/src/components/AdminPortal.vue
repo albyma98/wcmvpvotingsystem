@@ -2001,10 +2001,37 @@
               Immagine (URL)
               <input
                 v-model.trim="newCoupon.imageUrl"
-                type="url"
+                type="text"
+                inputmode="url"
                 placeholder="https://example.com/immagine.jpg"
+                @input="syncCouponImageSource(newCoupon)"
+              />
+              <small class="field-hint"
+                >In alternativa puoi caricare un file dal dispositivo.</small
+              >
+            </label>
+            <label class="file-input coupon-file-input">
+              Carica immagine
+              <input
+                type="file"
+                accept="image/*"
+                @change="(event) => handleCouponImageFileChange(event, newCoupon)"
               />
             </label>
+            <div
+              v-if="newCoupon.imagePreview"
+              class="coupon-image-preview"
+              aria-label="Anteprima immagine coupon"
+            >
+              <img :src="newCoupon.imagePreview" alt="Anteprima coupon" />
+              <button
+                class="btn link"
+                type="button"
+                @click="clearCouponImage(newCoupon)"
+              >
+                Rimuovi immagine
+              </button>
+            </div>
             <div class="match-selector">
               <span>Associa alle partite</span>
               <div class="match-selector__grid">
@@ -2106,8 +2133,38 @@
                   </label>
                   <label>
                     Immagine (URL)
-                    <input v-model.trim="coupon.imageUrl" type="url" />
+                    <input
+                      v-model.trim="coupon.imageUrl"
+                      type="text"
+                      inputmode="url"
+                      @input="syncCouponImageSource(coupon)"
+                    />
+                    <small class="field-hint"
+                      >Puoi inserire un URL oppure caricare un file.</small
+                    >
                   </label>
+                  <label class="file-input coupon-file-input">
+                    Carica immagine
+                    <input
+                      type="file"
+                      accept="image/*"
+                      @change="(event) => handleCouponImageFileChange(event, coupon)"
+                    />
+                  </label>
+                  <div
+                    v-if="coupon.imagePreview"
+                    class="coupon-image-preview"
+                    :aria-label="`Anteprima immagine per ${coupon.title || coupon.id}`"
+                  >
+                    <img :src="coupon.imagePreview" alt="Anteprima coupon" />
+                    <button
+                      class="btn link"
+                      type="button"
+                      @click="clearCouponImage(coupon)"
+                    >
+                      Rimuovi immagine
+                    </button>
+                  </div>
                 </div>
                 <label>
                   Descrizione breve
@@ -2708,6 +2765,7 @@ function createEmptyCouponDraft() {
     maxUses: 0,
     status: "draft",
     imageUrl: "",
+    imagePreview: "",
   };
 }
 
@@ -4063,6 +4121,7 @@ function toEditableCoupon(coupon) {
     ...normalized,
     startDateInput: toDateTimeLocalInput(normalized.startDate),
     endDateInput: toDateTimeLocalInput(normalized.endDate),
+    imagePreview: resolveCouponImageSource(normalized.imageUrl),
   };
 }
 
@@ -4085,6 +4144,20 @@ function serializeCouponPayload(coupon) {
     image_url: normalized?.imageUrl?.trim() || "",
     highlight: false,
   };
+}
+
+function resolveCouponImageSource(value) {
+  const trimmed =
+    typeof value === "string" || value instanceof String
+      ? value.toString().trim()
+      : "";
+  if (!trimmed) {
+    return "";
+  }
+  if (/^data:/i.test(trimmed)) {
+    return trimmed;
+  }
+  return resolveApiUrl(trimmed);
 }
 
 const toCamelCaseKey = (key) => {
@@ -4251,6 +4324,44 @@ async function readFileAsDataUrl(file) {
     };
     reader.readAsDataURL(file);
   });
+}
+
+function syncCouponImageSource(targetCoupon) {
+  if (!targetCoupon) {
+    return;
+  }
+  targetCoupon.imagePreview = resolveCouponImageSource(targetCoupon.imageUrl);
+}
+
+async function handleCouponImageFileChange(event, targetCoupon) {
+  const [file] = event?.target?.files || [];
+  if (!file || !targetCoupon) {
+    return;
+  }
+  couponError.value = "";
+  couponSuccess.value = "";
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    if (dataUrl) {
+      targetCoupon.imageUrl = dataUrl;
+      targetCoupon.imagePreview = dataUrl;
+    }
+  } catch (error) {
+    console.error("Errore caricamento immagine coupon", error);
+    couponError.value = "Impossibile caricare l'immagine del coupon.";
+  } finally {
+    if (event?.target) {
+      event.target.value = "";
+    }
+  }
+}
+
+function clearCouponImage(targetCoupon) {
+  if (!targetCoupon) {
+    return;
+  }
+  targetCoupon.imageUrl = "";
+  targetCoupon.imagePreview = "";
 }
 
 async function handleSponsorLogoChange(event, targetSponsor) {
@@ -6584,6 +6695,26 @@ onBeforeUnmount(() => {
   width: 100%;
   max-width: 200px;
   aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+}
+
+.coupon-file-input {
+  align-self: flex-start;
+}
+
+.coupon-image-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.coupon-image-preview img {
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 16 / 9;
   object-fit: cover;
   border-radius: 0.85rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
