@@ -889,6 +889,7 @@ const VISIT_LAST_SEEN_KEY = "wcmvp:visit:last";
 const VISIT_FIRST_SEEN_KEY = "wcmvp:visit:first";
 const RETURN_VISIT_COOLDOWN_MS = 30 * 60 * 1000;
 const DEFAULT_BONUS_COUNT = 58;
+const MISSION_STATUS_STORAGE_PREFIX = "wcmvp:missions:";
 
 const getTicketStorageKey = (eventId) =>
   `${TICKET_STORAGE_PREFIX}${eventId}`;
@@ -1120,6 +1121,64 @@ function loadStoredBonusCodes(eventId) {
   } catch (error) {
     console.warn("Impossibile caricare i bonus salvati", error);
     return [];
+  }
+}
+
+const getMissionStorageKey = (eventId) => {
+  if (!eventId) {
+    return "";
+  }
+  const deviceId = getOrCreateDeviceId();
+  const normalizedDeviceId =
+    typeof deviceId === "string" && deviceId.trim() ? deviceId.trim() : "anonymous";
+  return `${MISSION_STATUS_STORAGE_PREFIX}${normalizedDeviceId}:${eventId}`;
+};
+
+function loadStoredMissionStatus(eventId) {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  const storageKey = getMissionStorageKey(eventId);
+  if (!storageKey) {
+    return {};
+  }
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+    return Object.entries(parsed).reduce((acc, [missionId, value]) => {
+      if (typeof missionId === "string") {
+        acc[missionId] = Boolean(value);
+      }
+      return acc;
+    }, {});
+  } catch (error) {
+    console.warn("Impossibile caricare lo stato delle missioni", error);
+    return {};
+  }
+}
+
+function persistMissionStatus(eventId) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const storageKey = getMissionStorageKey(eventId);
+  if (!storageKey) {
+    return;
+  }
+  try {
+    const payload = missions.value.reduce((acc, mission) => {
+      acc[mission.id] = Boolean(mission.completed);
+      return acc;
+    }, {});
+    window.localStorage.setItem(storageKey, JSON.stringify(payload));
+  } catch (error) {
+    console.warn("Impossibile salvare lo stato delle missioni", error);
   }
 }
 
@@ -1785,6 +1844,21 @@ const eventTitle = computed(() => {
 
 const currentEventId = computed(() => props.eventId ?? props.activeEvent?.id);
 
+function restoreMissionStatus(eventId) {
+  missions.value.forEach((mission) => {
+    setMissionCompletion(mission.id, false, { persist: false });
+  });
+  if (!eventId) {
+    return;
+  }
+  const storedStatus = loadStoredMissionStatus(eventId);
+  missions.value.forEach((mission) => {
+    if (typeof storedStatus[mission.id] === "boolean") {
+      setMissionCompletion(mission.id, storedStatus[mission.id], { persist: false });
+    }
+  });
+}
+
 const resolveEventFlag = (event, keys, fallback = true) => {
   if (!event || typeof event !== "object") {
     return fallback;
@@ -2115,12 +2189,13 @@ watch(
     hasContactBonus.value = false;
     bonusCodes.value = [];
     postVoteVisitTracked.value = false;
+    restoreMissionStatus(eventId);
     reactionTestStarted.value = false;
     liberoReflexStarted.value = false;
     hasContactInputInteracted.value = false;
     const storedLiberoReflex = loadLiberoReflexResult(eventId);
     liberoReflexResult.value = storedLiberoReflex;
-    setMissionCompletion("libero_reflex", storedLiberoReflex.completed);
+    setMissionCompletion("libero_reflex", storedLiberoReflex.completed, { persist: false });
     const storedContact = loadStoredContactValue();
     if (storedContact.value) {
       contactValueInput.value = storedContact.value;
@@ -2167,11 +2242,11 @@ watch(
       const completed = readFeedbackCompletion(eventId);
       hasCompletedFeedback.value = completed;
       showFeedbackThankYou.value = completed && hasVoted.value;
-      setMissionCompletion("feedback", completed);
+      setMissionCompletion("feedback", completed, { persist: false });
     } else {
       hasCompletedFeedback.value = false;
       showFeedbackThankYou.value = false;
-      setMissionCompletion("feedback", false);
+      setMissionCompletion("feedback", false, { persist: false });
     }
   },
   { immediate: true },
@@ -2194,6 +2269,16 @@ watch(
         setupSponsorObserver();
       }
     });
+  },
+  { deep: true },
+);
+
+watch(
+  missions,
+  () => {
+    if (currentEventId.value) {
+      persistMissionStatus(currentEventId.value);
+    }
   },
   { deep: true },
 );
@@ -2727,12 +2812,15 @@ const completedMissions = computed(
 
 const hasVisibleMissions = computed(() => availableMissions.value.length > 0);
 
-const setMissionCompletion = (id, completed) => {
+const setMissionCompletion = (id, completed, { persist = true } = {}) => {
   const target = missions.value.find((mission) => mission.id === id);
   if (!target) {
     return;
   }
   target.completed = Boolean(completed);
+  if (persist && currentEventId.value) {
+    persistMissionStatus(currentEventId.value);
+  }
 };
 
 const progressPercent = computed(() => {
@@ -2851,7 +2939,7 @@ const markMissionCompleted = (id, { toastMessage } = {}) => {
   if (!target || target.completed) {
     return;
   }
-  target.completed = true;
+  setMissionCompletion(id, true);
   showMissionToastMessage(target, toastMessage);
 };
 
