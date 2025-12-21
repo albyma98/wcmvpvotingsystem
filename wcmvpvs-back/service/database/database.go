@@ -553,6 +553,9 @@ type Coupon struct {
 	ImageURL         string `json:"image_url"`
 	Highlight        bool   `json:"highlight"`
 	Segmentation     string `json:"segmentation"`
+	RedemptionType   string `json:"redemption_type"`
+	ManualCode       string `json:"manual_code"`
+	RedeemURL        string `json:"redeem_url"`
 	TotalViews       int    `json:"total_views"`
 	TotalClaims      int    `json:"total_claims"`
 	TotalRedemptions int    `json:"total_redemptions"`
@@ -758,6 +761,7 @@ type AppDatabase interface {
 	GetCouponByID(id int) (Coupon, error)
 	RecordCouponView(id int) error
 	ClaimCoupon(couponID int, userID *int, matchID int) (UserCoupon, error)
+	RecordCouponClaim(id int) error
 	RedeemCoupon(code string, sponsorID int) (UserCoupon, error)
 	ListUserCoupons(userID *int, sponsorID int) ([]UserCoupon, error)
 	Ping() error
@@ -1398,6 +1402,9 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
         image_url TEXT,
         highlight INTEGER NOT NULL DEFAULT 0,
         segmentation TEXT NOT NULL DEFAULT 'all',
+        redemption_type TEXT NOT NULL DEFAULT 'qr',
+        manual_code TEXT,
+        redeem_url TEXT,
         total_views INTEGER NOT NULL DEFAULT 0,
         total_claims INTEGER NOT NULL DEFAULT 0,
         total_redemptions INTEGER NOT NULL DEFAULT 0,
@@ -1413,8 +1420,11 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 		return nil, fmt.Errorf("error verifying coupons table: %w", err)
 	}
 
-	// Ensure merchant_id column exists for coupons
+	// Ensure optional columns exist for coupons
 	hasMerchantColumn := false
+	hasRedemptionType := false
+	hasManualCode := false
+	hasRedeemURL := false
 	couponCols, err := db.Query(`PRAGMA table_info(coupons)`)
 	if err != nil {
 		return nil, fmt.Errorf("error inspecting coupons table: %w", err)
@@ -1432,14 +1442,36 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 			couponCols.Close()
 			return nil, fmt.Errorf("error parsing coupons table info: %w", err)
 		}
-		if name == "merchant_id" {
+		switch name {
+		case "merchant_id":
 			hasMerchantColumn = true
+		case "redemption_type":
+			hasRedemptionType = true
+		case "manual_code":
+			hasManualCode = true
+		case "redeem_url":
+			hasRedeemURL = true
 		}
 	}
 	couponCols.Close()
 	if !hasMerchantColumn {
 		if _, err = db.Exec(`ALTER TABLE coupons ADD COLUMN merchant_id INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return nil, fmt.Errorf("error adding merchant_id to coupons: %w", err)
+		}
+	}
+	if !hasRedemptionType {
+		if _, err = db.Exec(`ALTER TABLE coupons ADD COLUMN redemption_type TEXT NOT NULL DEFAULT 'qr'`); err != nil {
+			return nil, fmt.Errorf("error adding redemption_type to coupons: %w", err)
+		}
+	}
+	if !hasManualCode {
+		if _, err = db.Exec(`ALTER TABLE coupons ADD COLUMN manual_code TEXT`); err != nil {
+			return nil, fmt.Errorf("error adding manual_code to coupons: %w", err)
+		}
+	}
+	if !hasRedeemURL {
+		if _, err = db.Exec(`ALTER TABLE coupons ADD COLUMN redeem_url TEXT`); err != nil {
+			return nil, fmt.Errorf("error adding redeem_url to coupons: %w", err)
 		}
 	}
 
@@ -4815,9 +4847,10 @@ func (db *appdbimpl) CreateCoupon(coupon Coupon) (Coupon, error) {
 		return Coupon{}, fmt.Errorf("invalid coupon payload")
 	}
 
+	redemptionType := normalizeCouponRedemptionType(coupon.RedemptionType)
 	matchIDs := joinMatchIDs(coupon.MatchIDs)
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := db.c.Exec(`INSERT INTO coupons (title, short_desc, sponsor_id, merchant_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, cleanTitle, strings.TrimSpace(coupon.ShortDesc), coupon.SponsorID, coupon.MerchantID, matchIDs, coupon.StartDate, coupon.EndDate, coupon.MaxUses, strings.TrimSpace(coupon.Status), strings.TrimSpace(coupon.ImageURL), boolToInt(coupon.Highlight), strings.TrimSpace(coupon.Segmentation), coupon.OrganizationID, now, now)
+	result, err := db.c.Exec(`INSERT INTO coupons (title, short_desc, sponsor_id, merchant_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, redemption_type, manual_code, redeem_url, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, cleanTitle, strings.TrimSpace(coupon.ShortDesc), coupon.SponsorID, coupon.MerchantID, matchIDs, coupon.StartDate, coupon.EndDate, coupon.MaxUses, strings.TrimSpace(coupon.Status), strings.TrimSpace(coupon.ImageURL), boolToInt(coupon.Highlight), strings.TrimSpace(coupon.Segmentation), redemptionType, strings.TrimSpace(coupon.ManualCode), strings.TrimSpace(coupon.RedeemURL), coupon.OrganizationID, now, now)
 	if err != nil {
 		return Coupon{}, err
 	}
@@ -4835,8 +4868,9 @@ func (db *appdbimpl) UpdateCoupon(coupon Coupon) (Coupon, error) {
 		return Coupon{}, fmt.Errorf("invalid coupon id")
 	}
 
+	redemptionType := normalizeCouponRedemptionType(coupon.RedemptionType)
 	matchIDs := joinMatchIDs(coupon.MatchIDs)
-	_, err := db.c.Exec(`UPDATE coupons SET title=?, short_desc=?, sponsor_id=?, merchant_id=?, match_ids=?, start_date=?, end_date=?, max_uses=?, status=?, image_url=?, highlight=?, segmentation=?, organization_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, strings.TrimSpace(coupon.Title), strings.TrimSpace(coupon.ShortDesc), coupon.SponsorID, coupon.MerchantID, matchIDs, coupon.StartDate, coupon.EndDate, coupon.MaxUses, strings.TrimSpace(coupon.Status), strings.TrimSpace(coupon.ImageURL), boolToInt(coupon.Highlight), strings.TrimSpace(coupon.Segmentation), coupon.OrganizationID, coupon.ID)
+	_, err := db.c.Exec(`UPDATE coupons SET title=?, short_desc=?, sponsor_id=?, merchant_id=?, match_ids=?, start_date=?, end_date=?, max_uses=?, status=?, image_url=?, highlight=?, segmentation=?, redemption_type=?, manual_code=?, redeem_url=?, organization_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, strings.TrimSpace(coupon.Title), strings.TrimSpace(coupon.ShortDesc), coupon.SponsorID, coupon.MerchantID, matchIDs, coupon.StartDate, coupon.EndDate, coupon.MaxUses, strings.TrimSpace(coupon.Status), strings.TrimSpace(coupon.ImageURL), boolToInt(coupon.Highlight), strings.TrimSpace(coupon.Segmentation), redemptionType, strings.TrimSpace(coupon.ManualCode), strings.TrimSpace(coupon.RedeemURL), coupon.OrganizationID, coupon.ID)
 	if err != nil {
 		return Coupon{}, err
 	}
@@ -4859,7 +4893,7 @@ func (db *appdbimpl) DeleteCoupon(id int, organizationID int) error {
 }
 
 func (db *appdbimpl) ListCoupons(organizationID int) ([]Coupon, error) {
-	rows, err := db.c.Query(`SELECT id, title, short_desc, sponsor_id, merchant_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, total_views, total_claims, total_redemptions, created_at, updated_at, organization_id FROM coupons WHERE organization_id = ? OR ? = 0 ORDER BY created_at DESC`, organizationID, organizationID)
+	rows, err := db.c.Query(`SELECT id, title, short_desc, sponsor_id, merchant_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, redemption_type, manual_code, redeem_url, total_views, total_claims, total_redemptions, created_at, updated_at, organization_id FROM coupons WHERE organization_id = ? OR ? = 0 ORDER BY created_at DESC`, organizationID, organizationID)
 	if err != nil {
 		return nil, err
 	}
@@ -4870,11 +4904,14 @@ func (db *appdbimpl) ListCoupons(organizationID int) ([]Coupon, error) {
 		var c Coupon
 		var matchIDs string
 		var highlight int
-		if err := rows.Scan(&c.ID, &c.Title, &c.ShortDesc, &c.SponsorID, &c.MerchantID, &matchIDs, &c.StartDate, &c.EndDate, &c.MaxUses, &c.Status, &c.ImageURL, &highlight, &c.Segmentation, &c.TotalViews, &c.TotalClaims, &c.TotalRedemptions, &c.CreatedAt, &c.UpdatedAt, &c.OrganizationID); err != nil {
+		if err := rows.Scan(&c.ID, &c.Title, &c.ShortDesc, &c.SponsorID, &c.MerchantID, &matchIDs, &c.StartDate, &c.EndDate, &c.MaxUses, &c.Status, &c.ImageURL, &highlight, &c.Segmentation, &c.RedemptionType, &c.ManualCode, &c.RedeemURL, &c.TotalViews, &c.TotalClaims, &c.TotalRedemptions, &c.CreatedAt, &c.UpdatedAt, &c.OrganizationID); err != nil {
 			return nil, err
 		}
 		c.MatchIDs = parseMatchIDs(matchIDs)
 		c.Highlight = highlight == 1
+		c.RedemptionType = normalizeCouponRedemptionType(c.RedemptionType)
+		c.ManualCode = strings.TrimSpace(c.ManualCode)
+		c.RedeemURL = strings.TrimSpace(c.RedeemURL)
 		coupons = append(coupons, c)
 	}
 	return coupons, rows.Err()
@@ -4884,12 +4921,15 @@ func (db *appdbimpl) GetCouponByID(id int) (Coupon, error) {
 	var c Coupon
 	var matchIDs string
 	var highlight int
-	err := db.c.QueryRow(`SELECT id, title, short_desc, sponsor_id, merchant_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, total_views, total_claims, total_redemptions, created_at, updated_at, organization_id FROM coupons WHERE id=?`, id).Scan(&c.ID, &c.Title, &c.ShortDesc, &c.SponsorID, &c.MerchantID, &matchIDs, &c.StartDate, &c.EndDate, &c.MaxUses, &c.Status, &c.ImageURL, &highlight, &c.Segmentation, &c.TotalViews, &c.TotalClaims, &c.TotalRedemptions, &c.CreatedAt, &c.UpdatedAt, &c.OrganizationID)
+	err := db.c.QueryRow(`SELECT id, title, short_desc, sponsor_id, merchant_id, match_ids, start_date, end_date, max_uses, status, image_url, highlight, segmentation, redemption_type, manual_code, redeem_url, total_views, total_claims, total_redemptions, created_at, updated_at, organization_id FROM coupons WHERE id=?`, id).Scan(&c.ID, &c.Title, &c.ShortDesc, &c.SponsorID, &c.MerchantID, &matchIDs, &c.StartDate, &c.EndDate, &c.MaxUses, &c.Status, &c.ImageURL, &highlight, &c.Segmentation, &c.RedemptionType, &c.ManualCode, &c.RedeemURL, &c.TotalViews, &c.TotalClaims, &c.TotalRedemptions, &c.CreatedAt, &c.UpdatedAt, &c.OrganizationID)
 	if err != nil {
 		return Coupon{}, err
 	}
 	c.MatchIDs = parseMatchIDs(matchIDs)
 	c.Highlight = highlight == 1
+	c.RedemptionType = normalizeCouponRedemptionType(c.RedemptionType)
+	c.ManualCode = strings.TrimSpace(c.ManualCode)
+	c.RedeemURL = strings.TrimSpace(c.RedeemURL)
 	return c, nil
 }
 
@@ -4898,6 +4938,14 @@ func (db *appdbimpl) RecordCouponView(id int) error {
 		return fmt.Errorf("invalid coupon id")
 	}
 	_, err := db.c.Exec(`UPDATE coupons SET total_views = total_views + 1 WHERE id=?`, id)
+	return err
+}
+
+func (db *appdbimpl) RecordCouponClaim(id int) error {
+	if id <= 0 {
+		return fmt.Errorf("invalid coupon id")
+	}
+	_, err := db.c.Exec(`UPDATE coupons SET total_claims = total_claims + 1 WHERE id=?`, id)
 	return err
 }
 
@@ -5150,6 +5198,14 @@ func joinMatchIDs(ids []int) string {
 		}
 	}
 	return strings.Join(parts, ",")
+}
+
+func normalizeCouponRedemptionType(value string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "code" {
+		return "code"
+	}
+	return "qr"
 }
 
 func parseMatchIDs(raw string) []int {

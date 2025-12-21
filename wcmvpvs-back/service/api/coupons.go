@@ -17,17 +17,20 @@ import (
 )
 
 type couponPayload struct {
-	Title      string `json:"title"`
-	ShortDesc  string `json:"short_desc"`
-	SponsorID  int    `json:"sponsor_id"`
-	MerchantID int    `json:"merchant_id"`
-	MatchIDs   []int  `json:"match_ids"`
-	StartDate  string `json:"start_date"`
-	EndDate    string `json:"end_date"`
-	MaxUses    int    `json:"max_uses"`
-	Status     string `json:"status"`
-	ImageURL   string `json:"image_url"`
-	Highlight  bool   `json:"highlight"`
+	Title          string `json:"title"`
+	ShortDesc      string `json:"short_desc"`
+	SponsorID      int    `json:"sponsor_id"`
+	MerchantID     int    `json:"merchant_id"`
+	MatchIDs       []int  `json:"match_ids"`
+	StartDate      string `json:"start_date"`
+	EndDate        string `json:"end_date"`
+	MaxUses        int    `json:"max_uses"`
+	Status         string `json:"status"`
+	ImageURL       string `json:"image_url"`
+	Highlight      bool   `json:"highlight"`
+	RedemptionType string `json:"redemption_type"`
+	ManualCode     string `json:"manual_code"`
+	RedeemURL      string `json:"redeem_url"`
 }
 
 type couponClaimRequest struct {
@@ -63,6 +66,14 @@ func (rt *_router) createAdminCoupon(w http.ResponseWriter, r *http.Request, ctx
 		return
 	}
 
+	redemptionType := normalizeCouponRedemptionType(payload.RedemptionType)
+	if redemptionType == "code" {
+		if strings.TrimSpace(payload.ManualCode) == "" || strings.TrimSpace(payload.RedeemURL) == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	}
+
 	coupon := database.Coupon{
 		Title:          payload.Title,
 		ShortDesc:      payload.ShortDesc,
@@ -77,6 +88,9 @@ func (rt *_router) createAdminCoupon(w http.ResponseWriter, r *http.Request, ctx
 		Highlight:      payload.Highlight,
 		Segmentation:   "all",
 		OrganizationID: ctx.OrganizationID,
+		RedemptionType: redemptionType,
+		ManualCode:     payload.ManualCode,
+		RedeemURL:      payload.RedeemURL,
 	}
 
 	stored, err := rt.db.CreateCoupon(coupon)
@@ -101,6 +115,14 @@ func (rt *_router) updateAdminCoupon(w http.ResponseWriter, r *http.Request, ctx
 		return
 	}
 
+	redemptionType := normalizeCouponRedemptionType(payload.RedemptionType)
+	if redemptionType == "code" {
+		if strings.TrimSpace(payload.ManualCode) == "" || strings.TrimSpace(payload.RedeemURL) == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	}
+
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	coupon := database.Coupon{
 		ID:             id,
@@ -117,6 +139,9 @@ func (rt *_router) updateAdminCoupon(w http.ResponseWriter, r *http.Request, ctx
 		Highlight:      payload.Highlight,
 		Segmentation:   "all",
 		OrganizationID: ctx.OrganizationID,
+		RedemptionType: redemptionType,
+		ManualCode:     payload.ManualCode,
+		RedeemURL:      payload.RedeemURL,
 	}
 
 	updated, err := rt.db.UpdateCoupon(coupon)
@@ -193,6 +218,45 @@ func (rt *_router) claimCoupon(w http.ResponseWriter, r *http.Request, ctx reqco
 	if payload.UserID > 0 {
 		userPtr = &payload.UserID
 	}
+
+	coupon, err := rt.db.GetCouponByID(id)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	redemptionType := normalizeCouponRedemptionType(coupon.RedemptionType)
+	if redemptionType == "code" {
+		if !isCouponActive(coupon) {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		if coupon.MaxUses > 0 && coupon.TotalClaims >= coupon.MaxUses {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		code := strings.TrimSpace(coupon.ManualCode)
+		if code == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if err := rt.db.RecordCouponClaim(coupon.ID); err != nil {
+			ctx.Logger.WithError(err).Warn("claim manual coupon")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"code":              code,
+			"redeem_url":        strings.TrimSpace(coupon.RedeemURL),
+			"redemption_type":   redemptionType,
+			"coupon_id":         coupon.ID,
+			"sponsor_id":        coupon.SponsorID,
+			"merchant_id":       coupon.MerchantID,
+			"manual_redemption": true,
+		})
+		return
+	}
+
 	claim, err := rt.db.ClaimCoupon(id, userPtr, payload.MatchID)
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("claim coupon")
@@ -223,7 +287,9 @@ func (rt *_router) claimCoupon(w http.ResponseWriter, r *http.Request, ctx reqco
 		database.UserCoupon `json:",inline"`
 		Signature           string `json:"signature"`
 		QRData              string `json:"qr_data,omitempty"`
-	}{UserCoupon: claim, Signature: signature, QRData: validationURL}
+		RedemptionType      string `json:"redemption_type,omitempty"`
+		RedeemURL           string `json:"redeem_url,omitempty"`
+	}{UserCoupon: claim, Signature: signature, QRData: validationURL, RedemptionType: redemptionType, RedeemURL: strings.TrimSpace(coupon.RedeemURL)}
 
 	writeJSON(w, http.StatusOK, response)
 }
@@ -351,4 +417,12 @@ func defaultCouponStatus(status string) string {
 		return "draft"
 	}
 	return trimmed
+}
+
+func normalizeCouponRedemptionType(value string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "code" {
+		return "code"
+	}
+	return "qr"
 }

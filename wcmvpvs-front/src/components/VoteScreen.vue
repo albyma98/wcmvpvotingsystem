@@ -820,6 +820,12 @@ const couponRedeemTarget = ref(null);
 const couponRedeemEmail = ref("");
 const couponRedeemError = ref("");
 const couponRedeemLoading = ref(false);
+const couponRedeemType = computed(() =>
+  typeof couponRedeemTarget.value?.redemptionType === "string"
+    ? couponRedeemTarget.value.redemptionType.trim().toLowerCase()
+    : "qr",
+);
+const couponRedeemIsManual = computed(() => couponRedeemType.value === "code");
 
 function normalizeEventCoupon(item) {
   if (!item || typeof item !== "object") {
@@ -849,6 +855,24 @@ function normalizeEventCoupon(item) {
           : "",
     highlight: Boolean(item.highlight),
     sponsorId: Number(item.sponsor_id ?? item.sponsorId) || 0,
+    redemptionType:
+      typeof item.redemption_type === "string"
+        ? item.redemption_type
+        : typeof item.redemptionType === "string"
+          ? item.redemptionType
+          : "qr",
+    manualCode:
+      typeof item.manual_code === "string"
+        ? item.manual_code
+        : typeof item.manualCode === "string"
+          ? item.manualCode
+          : "",
+    redeemUrl:
+      typeof item.redeem_url === "string"
+        ? item.redeem_url
+        : typeof item.redeemUrl === "string"
+          ? item.redeemUrl
+          : "",
   };
 }
 
@@ -866,8 +890,20 @@ const normalizedEventCoupons = computed(() =>
 const hasEventCoupons = computed(() => normalizedEventCoupons.value.length > 0);
 const claimedCouponMap = computed(() => couponClaims.value || {});
 
+const getClaimRedemptionType = (couponId, fallbackType = "qr") => {
+  const entry = claimedCouponMap.value?.[couponId];
+  const fromEntry =
+    typeof entry?.redemptionType === "string" && entry.redemptionType.trim()
+      ? entry.redemptionType.trim()
+      : fallbackType;
+  return fromEntry.trim().toLowerCase();
+};
+
 const couponClaimQrUrl = (couponId) => {
   const entry = claimedCouponMap.value?.[couponId];
+  if (getClaimRedemptionType(couponId, entry?.redemptionType) === "code") {
+    return "";
+  }
   const qrData = entry?.qrData || entry?.code || "";
   return qrData ? buildQrUrl(qrData) : "";
 };
@@ -968,6 +1004,18 @@ function loadStoredCouponClaims(eventId) {
           typeof entry?.qrData === "string" && entry.qrData.trim()
             ? entry.qrData.trim()
             : code,
+        redeemUrl:
+          typeof entry?.redeemUrl === "string" && entry.redeemUrl.trim()
+            ? entry.redeemUrl.trim()
+            : typeof entry?.redeem_url === "string" && entry.redeem_url.trim()
+              ? entry.redeem_url.trim()
+              : "",
+        redemptionType:
+          typeof entry?.redemptionType === "string" && entry.redemptionType.trim()
+            ? entry.redemptionType.trim()
+            : typeof entry?.redemption_type === "string" && entry.redemption_type.trim()
+              ? entry.redemption_type.trim()
+              : "qr",
         claimedAt:
           typeof entry?.claimedAt === "string"
             ? entry.claimedAt
@@ -3200,7 +3248,7 @@ const closeCouponRedeemModal = () => {
   couponRedeemLoading.value = false;
 };
 
-const saveCouponClaim = (eventId, couponId, claimData, email) => {
+const saveCouponClaim = (eventId, couponId, claimData, email, redemptionType) => {
   const code = typeof claimData?.code === "string" ? claimData.code.trim() : "";
   if (!eventId || !couponId || !code) {
     return;
@@ -3214,6 +3262,20 @@ const saveCouponClaim = (eventId, couponId, claimData, email) => {
       : typeof claimData?.qr_data === "string" && claimData.qr_data.trim()
         ? claimData.qr_data.trim()
         : "";
+  const redeemUrlField =
+    typeof claimData?.redeemUrl === "string" && claimData.redeemUrl.trim()
+      ? claimData.redeemUrl.trim()
+      : typeof claimData?.redeem_url === "string" && claimData.redeem_url.trim()
+        ? claimData.redeem_url.trim()
+        : "";
+  const redemptionTypeField =
+    typeof redemptionType === "string" && redemptionType.trim()
+      ? redemptionType.trim()
+      : typeof claimData?.redemptionType === "string" && claimData.redemptionType.trim()
+        ? claimData.redemptionType.trim()
+        : typeof claimData?.redemption_type === "string" && claimData.redemption_type.trim()
+          ? claimData.redemption_type.trim()
+          : "";
 
   couponClaims.value = {
     ...couponClaims.value,
@@ -3223,6 +3285,8 @@ const saveCouponClaim = (eventId, couponId, claimData, email) => {
       signature,
       email: email || "",
       qrData: qrDataField || code,
+      redeemUrl: redeemUrlField,
+      redemptionType: redemptionTypeField || "qr",
       claimedAt:
         typeof claimData?.claimedAt === "string"
           ? claimData.claimedAt
@@ -3266,7 +3330,7 @@ const submitCouponRedeem = async () => {
       return;
     }
 
-    saveCouponClaim(eventId, coupon.id, claim, email);
+    saveCouponClaim(eventId, coupon.id, claim, email, coupon.redemptionType);
     showCouponRedeemModal.value = false;
   } catch (error) {
     console.warn("Impossibile riscattare il coupon", error);
@@ -4086,18 +4150,38 @@ const submitContactBonus = async () => {
                         {{ coupon.shortDesc }}
                         </p>
                         <div class="coupon-card__actions">
-                          <div
-                            v-if="claimedCouponMap[coupon.id] && couponClaimQrUrl(coupon.id)"
-                            class="coupon-card__qr"
-                          >
-                            <img
-                              :src="couponClaimQrUrl(coupon.id)"
-                              :alt="`QR coupon ${coupon.title}`"
-                              loading="lazy"
-                            />
-                            <p class="coupon-card__qr-hint">
-                              Mostra questo QR all'esercente per validare l'offerta.
-                            </p>
+                          <div v-if="claimedCouponMap[coupon.id]">
+                            <div
+                              v-if="couponClaimQrUrl(coupon.id)"
+                              class="coupon-card__qr"
+                            >
+                              <img
+                                :src="couponClaimQrUrl(coupon.id)"
+                                :alt="`QR coupon ${coupon.title}`"
+                                loading="lazy"
+                              />
+                              <p class="coupon-card__qr-hint">
+                                Mostra questo QR all'esercente per validare l'offerta.
+                              </p>
+                            </div>
+                            <div
+                              v-else
+                              class="coupon-card__code"
+                            >
+                              <p class="coupon-card__code-label">Codice sconto</p>
+                              <p class="coupon-card__code-value">
+                                {{ claimedCouponMap[coupon.id].code }}
+                              </p>
+                              <a
+                                v-if="claimedCouponMap[coupon.id].redeemUrl"
+                                class="coupon-card__code-link"
+                                :href="claimedCouponMap[coupon.id].redeemUrl"
+                                target="_blank"
+                                rel="noopener"
+                              >
+                                Vai al sito per riscattare
+                              </a>
+                            </div>
                           </div>
                           <button
                             v-else
@@ -4141,8 +4225,8 @@ const submitContactBonus = async () => {
 
                 <div class="fullscreen-modal__body coupon-redeem__body">
                   <p class="coupon-redeem__intro">
-                    Inserisci il tuo indirizzo e-mail per ottenere il QR code
-                    dell'offerta
+                    Inserisci il tuo indirizzo e-mail per ottenere
+                    {{ couponRedeemIsManual ? "il codice sconto" : "il QR code" }} dell'offerta
                     <strong v-if="couponRedeemTarget">{{ couponRedeemTarget.title }}</strong>.
                   </p>
                   <form class="coupon-redeem__form" @submit.prevent="submitCouponRedeem">
@@ -4163,7 +4247,13 @@ const submitContactBonus = async () => {
                         Annulla
                       </button>
                       <button type="submit" class="button-primary" :disabled="couponRedeemLoading">
-                        {{ couponRedeemLoading ? "Invio…" : "Ottieni QR" }}
+                        {{
+                          couponRedeemLoading
+                            ? "Invio…"
+                            : couponRedeemIsManual
+                              ? "Ottieni codice"
+                              : "Ottieni QR"
+                        }}
                       </button>
                     </div>
                   </form>
@@ -6475,6 +6565,37 @@ const submitContactBonus = async () => {
   color: rgba(226, 232, 240, 0.86);
   text-align: center;
   line-height: 1.4;
+}
+
+.coupon-card__code {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.9rem;
+  border-radius: 1rem;
+  border: 1px dashed rgba(248, 250, 252, 0.3);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.coupon-card__code-label {
+  margin: 0;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.coupon-card__code-value {
+  margin: 0;
+  font-weight: 900;
+  font-size: 1.3rem;
+  color: #f8fafc;
+}
+
+.coupon-card__code-link {
+  color: #38bdf8;
+  font-weight: 700;
+  text-decoration: underline;
 }
 
 @media (min-width: 768px) {
