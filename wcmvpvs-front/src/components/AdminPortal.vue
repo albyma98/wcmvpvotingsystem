@@ -3585,6 +3585,12 @@ const availableTabs = computed(() => {
   return tabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
 });
 
+function redirectToMasterPortal() {
+  if (typeof window !== "undefined") {
+    window.location.href = "/admin/master";
+  }
+}
+
 const loginForm = reactive({
   username: "",
   password: "",
@@ -4877,6 +4883,10 @@ async function login() {
     selectDefaultSection();
     loginForm.username = "";
     loginForm.password = "";
+    if (isSuperAdmin.value && !resolvedOrganizationSlug.value) {
+      redirectToMasterPortal();
+      return;
+    }
     await loadAll();
   } catch (error) {
     if (error?.response?.status === 401) {
@@ -5889,6 +5899,10 @@ async function loadAll() {
   if (!isAuthenticated.value) {
     return;
   }
+  if (isSuperAdmin.value && !resolvedOrganizationSlug.value) {
+    redirectToMasterPortal();
+    return;
+  }
   await Promise.all([loadEvents(), loadTeams()]);
   await loadPlayers();
   if (isSuperAdmin.value) {
@@ -6527,7 +6541,11 @@ watch(selectedSelfieEventId, (eventId) => {
 
 if (isAuthenticated.value) {
   selectDefaultSection();
-  loadAll();
+  if (isSuperAdmin.value && !resolvedOrganizationSlug.value) {
+    redirectToMasterPortal();
+  } else {
+    loadAll();
+  }
 }
 
 onBeforeUnmount(() => {
