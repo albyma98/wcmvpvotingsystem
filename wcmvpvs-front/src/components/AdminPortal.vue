@@ -1980,6 +1980,33 @@
                 </label>
               </div>
             </label>
+            <label class="choice-group">
+              Tipo di riscatto
+              <div class="status-options" role="radiogroup" aria-label="Tipo di riscatto">
+                <label class="status-option">
+                  <input
+                    type="radio"
+                    name="new-coupon-redemption-type"
+                    value="qr"
+                    v-model="newCoupon.redemptionType"
+                  />
+                  <span>QR generato automaticamente</span>
+                </label>
+                <label class="status-option">
+                  <input
+                    type="radio"
+                    name="new-coupon-redemption-type"
+                    value="code"
+                    v-model="newCoupon.redemptionType"
+                  />
+                  <span>Codice sconto manuale</span>
+                </label>
+              </div>
+              <small class="field-hint"
+                >Scegli se generare un QR da convalidare oppure mostrare un codice sconto
+                con il sito di riscatto.</small
+              >
+            </label>
             <label>
               Limite utilizzi
               <input
@@ -1987,6 +2014,22 @@
                 type="number"
                 min="0"
                 placeholder="0 per illimitato"
+              />
+            </label>
+            <label v-if="isManualCouponRedemption(newCoupon)">
+              Codice sconto
+              <input
+                v-model.trim="newCoupon.manualCode"
+                type="text"
+                placeholder="ABC123"
+              />
+            </label>
+            <label v-if="isManualCouponRedemption(newCoupon)">
+              Sito per il riscatto
+              <input
+                v-model.trim="newCoupon.redeemUrl"
+                type="url"
+                placeholder="https://www.esercente.it/offerta"
               />
             </label>
             <label>
@@ -2119,6 +2162,33 @@
                       </label>
                     </div>
                   </label>
+                  <label class="choice-group">
+                    Tipo di riscatto
+                    <div
+                      class="status-options"
+                      role="radiogroup"
+                      :aria-label="`Tipo di riscatto per ${coupon.title || coupon.id}`"
+                    >
+                      <label class="status-option">
+                        <input
+                          type="radio"
+                          :name="`coupon-redemption-${coupon.id}`"
+                          value="qr"
+                          v-model="coupon.redemptionType"
+                        />
+                        <span>QR generato automaticamente</span>
+                      </label>
+                      <label class="status-option">
+                        <input
+                          type="radio"
+                          :name="`coupon-redemption-${coupon.id}`"
+                          value="code"
+                          v-model="coupon.redemptionType"
+                        />
+                        <span>Codice sconto manuale</span>
+                      </label>
+                    </div>
+                  </label>
                   <label>
                     Limite utilizzi
                     <input v-model.number="coupon.maxUses" type="number" min="0" />
@@ -2149,6 +2219,18 @@
                       type="file"
                       accept="image/*"
                       @change="(event) => handleCouponImageFileChange(event, coupon)"
+                    />
+                  </label>
+                  <label v-if="isManualCouponRedemption(coupon)">
+                    Codice sconto
+                    <input v-model.trim="coupon.manualCode" type="text" />
+                  </label>
+                  <label v-if="isManualCouponRedemption(coupon)">
+                    Sito per il riscatto
+                    <input
+                      v-model.trim="coupon.redeemUrl"
+                      type="url"
+                      placeholder="https://www.esercente.it/offerta"
                     />
                   </label>
                   <div
@@ -2766,6 +2848,9 @@ function createEmptyCouponDraft() {
     status: "draft",
     imageUrl: "",
     imagePreview: "",
+    redemptionType: "qr",
+    manualCode: "",
+    redeemUrl: "",
   };
 }
 
@@ -4093,6 +4178,24 @@ function normalizeCouponResponse(item) {
           ? item.imageUrl
           : "",
     highlight: Boolean(item.highlight),
+    redemptionType:
+      typeof item.redemption_type === "string"
+        ? item.redemption_type
+        : typeof item.redemptionType === "string"
+          ? item.redemptionType
+          : "qr",
+    manualCode:
+      typeof item.manual_code === "string"
+        ? item.manual_code
+        : typeof item.manualCode === "string"
+          ? item.manualCode
+          : "",
+    redeemUrl:
+      typeof item.redeem_url === "string"
+        ? item.redeem_url
+        : typeof item.redeemUrl === "string"
+          ? item.redeemUrl
+          : "",
     totalViews: Number(item.total_views ?? item.totalViews) || 0,
     totalClaims: Number(item.total_claims ?? item.totalClaims) || 0,
     totalRedemptions:
@@ -4143,6 +4246,13 @@ function serializeCouponPayload(coupon) {
     status: normalized?.status?.trim() || "draft",
     image_url: normalized?.imageUrl?.trim() || "",
     highlight: false,
+    redemption_type:
+      typeof normalized?.redemptionType === "string"
+        ? normalized.redemptionType.trim() || "qr"
+        : "qr",
+    manual_code:
+      typeof normalized?.manualCode === "string" ? normalized.manualCode.trim() : "",
+    redeem_url: typeof normalized?.redeemUrl === "string" ? normalized.redeemUrl.trim() : "",
   };
 }
 
@@ -6217,6 +6327,24 @@ async function applyActiveSponsorCount() {
   }
 }
 
+const isManualCouponRedemption = (coupon) =>
+  typeof coupon?.redemptionType === "string" &&
+  coupon.redemptionType.trim().toLowerCase() === "code";
+
+function validateCouponRedemptionFields(targetCoupon) {
+  const redemptionType = isManualCouponRedemption(targetCoupon) ? "code" : "qr";
+  if (redemptionType === "code") {
+    const hasCode = typeof targetCoupon?.manualCode === "string" && targetCoupon.manualCode.trim();
+    const hasUrl = typeof targetCoupon?.redeemUrl === "string" && targetCoupon.redeemUrl.trim();
+    if (!hasCode || !hasUrl) {
+      couponError.value =
+        "Per i coupon manuali inserisci sia il codice sconto sia il sito di riscatto.";
+      return false;
+    }
+  }
+  return true;
+}
+
 async function createCoupon() {
   if (isCreatingCoupon.value) {
     return;
@@ -6229,6 +6357,9 @@ async function createCoupon() {
   }
   if (!newCoupon.sponsorId) {
     couponError.value = "Seleziona il partner associato.";
+    return;
+  }
+  if (!validateCouponRedemptionFields(newCoupon)) {
     return;
   }
   const payload = serializeCouponPayload(newCoupon);
@@ -6255,6 +6386,9 @@ async function updateCouponEntry(coupon) {
   }
   couponError.value = "";
   couponSuccess.value = "";
+  if (!validateCouponRedemptionFields(coupon)) {
+    return;
+  }
   const payload = serializeCouponPayload(coupon);
   couponBeingSaved.value = coupon.id;
   try {
