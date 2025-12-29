@@ -4099,7 +4099,14 @@ const submitContactBonus = async () => {
                               Mostra questo QR all'esercente per validare l'offerta.
                             </p>
                           </div>
-
+                            <button
+                            v-else
+                            type="button"
+                            class="coupon-card__redeem"
+                            @click="openCouponRedeemModal(coupon)"
+                          >
+                            RISCATTA ORA
+                          </button>
                         </div>
                       </div>
                     </li>
