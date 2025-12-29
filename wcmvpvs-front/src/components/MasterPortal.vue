@@ -1,67 +1,64 @@
 <template>
-  <div class="master-portal">
-    <header class="master-header">
-      <div>
-        <p class="eyebrow">Portale master</p>
-        <h1>Controllo centrale</h1>
-        <p class="subtitle">Monitora le società e lo stato dei voti in tutta la piattaforma.</p>
-      </div>
-      <div class="header-actions" v-if="isSuperAdmin">
-        <a class="btn ghost" href="/admin" title="Vai al pannello società">Portale società</a>
-        <button class="btn outline" type="button" @click="logout">Esci</button>
-      </div>
-    </header>
+  <AppShell
+    title="Master Portal"
+    badge="MASTER"
+    :nav-items="navItems"
+    :active-key="activeNavKey"
+    @navigate="handleNavigate"
+  >
+    <v-container fluid class="master-container">
+      <header class="master-header">
+        <div>
+          <p class="eyebrow">Portale master</p>
+          <h1>Controllo centrale</h1>
+          <p class="subtitle">Monitora le società e lo stato dei voti in tutta la piattaforma.</p>
+        </div>
+        <div class="header-actions" v-if="isSuperAdmin">
+          <a class="btn ghost" href="/admin" title="Vai al pannello società">Portale società</a>
+          <button class="btn outline" type="button" @click="logout">Esci</button>
+        </div>
+      </header>
 
-    <section v-if="!isAuthenticated" class="card login-card">
-      <h2>Accedi come super admin</h2>
-      <form class="form-grid" @submit.prevent="login">
-        <label>
-          Username
-          <input v-model.trim="loginForm.username" type="text" autocomplete="username" required />
-        </label>
-        <label>
-          Password
-          <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
-        </label>
-        <button class="btn primary" type="submit" :disabled="isLoggingIn">
-          {{ isLoggingIn ? "Accesso in corso…" : "Entra" }}
-        </button>
-      </form>
-      <p v-if="loginError" class="error">{{ loginError }}</p>
-    </section>
+      <v-row v-if="!isAuthenticated">
+        <v-col cols="12" md="7" lg="5">
+          <v-card class="pa-6" rounded="lg" elevation="1">
+            <h2 class="mb-4">Accedi come super admin</h2>
+            <form class="form-grid" @submit.prevent="login">
+              <label>
+                Username
+                <input v-model.trim="loginForm.username" type="text" autocomplete="username" required />
+              </label>
+              <label>
+                Password
+                <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
+              </label>
+              <div class="d-flex justify-end">
+                <button class="btn primary" type="submit" :disabled="isLoggingIn">
+                  {{ isLoggingIn ? "Accesso in corso…" : "Entra" }}
+                </button>
+              </div>
+            </form>
+            <p v-if="loginError" class="error mt-4">{{ loginError }}</p>
+          </v-card>
+        </v-col>
+      </v-row>
 
-    <section v-else-if="!isSuperAdmin" class="card warning-card">
-      <h2>Accesso limitato</h2>
-      <p>Solo gli utenti con ruolo <strong>superadmin</strong> possono accedere al portale master.</p>
-      <div class="warning-actions">
-        <a class="btn ghost" href="/admin">Vai al portale società</a>
-        <button class="btn outline" type="button" @click="logout">Esci</button>
-      </div>
-    </section>
+      <v-row v-else-if="!isSuperAdmin">
+        <v-col cols="12" md="8" lg="6">
+          <v-card class="pa-6 warning-card" rounded="lg" elevation="1">
+            <h2>Accesso limitato</h2>
+            <p>Solo gli utenti con ruolo <strong>superadmin</strong> possono accedere al portale master.</p>
+            <div class="warning-actions mt-4">
+              <a class="btn ghost" href="/admin">Vai al portale società</a>
+              <button class="btn outline" type="button" @click="logout">Esci</button>
+            </div>
+          </v-card>
+        </v-col>
+      </v-row>
 
-    <section v-else class="master-shell">
-      <nav class="master-nav">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          :class="['nav-btn', { active: activeSection === tab.id }]"
-          type="button"
-          @click="switchSection(tab.id)"
-        >
-          {{ tab.label }}
-        </button>
-        <button
-          v-if="selectedOrganizationId && activeSection === 'organization-detail'"
-          class="nav-btn"
-          type="button"
-          @click="switchSection('organizations')"
-        >
-          Torna alla lista
-        </button>
-      </nav>
-
-      <div class="master-content">
-        <div v-if="activeSection === 'dashboard'" class="dashboard-view">
+      <v-card v-else class="pa-6 master-shell" rounded="lg" elevation="1">
+        <div class="master-content">
+          <div v-if="activeSection === 'dashboard'" class="dashboard-view">
           <div class="grid-cards">
             <article class="stat-card" aria-live="polite">
               <p class="label">Società registrate</p>
@@ -621,13 +618,15 @@
           </p>
         </div>
       </div>
-    </section>
-  </div>
+    </v-card>
+    </v-container>
+  </AppShell>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
+import AppShell from './layout/AppShell.vue';
 import VoteTrendChart from './VoteTrendChart.vue';
 
 const token = ref(localStorage.getItem('adminToken') || '');
@@ -636,11 +635,18 @@ const activeRole = ref(localStorage.getItem('adminRole') || '');
 const isAuthenticated = computed(() => Boolean(token.value));
 const isSuperAdmin = computed(() => activeRole.value === 'superadmin');
 
-const tabs = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'organizations', label: 'Società' },
-];
 const activeSection = ref('dashboard');
+const dashboardNavKey = ref('SUMMARY');
+const navItems = [
+  { header: 'LIVE', items: [{ key: 'SUMMARY', label: 'Riepilogo' }] },
+  { header: 'ANALYTICS', items: [{ key: 'ANALYTICS', label: 'Analytics' }] },
+  { header: 'SYSTEM', items: [{ key: 'ORGANIZATIONS', label: 'Società' }] },
+];
+const activeNavKey = computed(() =>
+  activeSection.value === 'organizations' || activeSection.value === 'organization-detail'
+    ? 'ORGANIZATIONS'
+    : dashboardNavKey.value,
+);
 
 const loginForm = reactive({ username: '', password: '' });
 const isLoggingIn = ref(false);
@@ -727,6 +733,15 @@ function closeOrganizationForm() {
 
 function switchSection(section) {
   activeSection.value = section;
+}
+
+function handleNavigate(key) {
+  if (key === 'ORGANIZATIONS') {
+    switchSection('organizations');
+    return;
+  }
+  dashboardNavKey.value = key;
+  switchSection('dashboard');
 }
 
 function resolveAdminLink(slug) {

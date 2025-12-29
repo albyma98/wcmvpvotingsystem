@@ -1,67 +1,75 @@
 <template>
-  <div class="admin-portal">
-    <header class="admin-header">
-      <h1>Area amministratore</h1>
-      <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
-      <p v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</p>
-    </header>
+  <AppShell
+    title="Admin Portal"
+    badge="ADMIN"
+    :subtitle="organizationSlug ? `Società: ${organizationSlug}` : ''"
+    :nav-items="navItems"
+    :active-key="activeNavKey"
+    @navigate="handleNavigate"
+  >
+    <v-container fluid class="admin-container">
+      <header class="admin-header">
+        <h1>Area amministratore</h1>
+        <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
+        <p v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</p>
+      </header>
 
-    <section v-if="!isAuthenticated" class="card login-card">
-      <h2>Accedi</h2>
-      <form @submit.prevent="login" class="form-grid">
-        <label>
-          Username
-          <input
-            v-model.trim="loginForm.username"
-            type="text"
-            autocomplete="username"
-            required
-          />
-        </label>
-        <label>
-          Password
-          <input
-            v-model="loginForm.password"
-            type="password"
-            autocomplete="current-password"
-            required
-          />
-        </label>
-        <button class="btn primary" type="submit" :disabled="isLoggingIn">
-          {{ isLoggingIn ? "Accesso in corso…" : "Entra" }}
-        </button>
-      </form>
-      <p v-if="loginError" class="error">{{ loginError }}</p>
-    </section>
+      <section v-if="!isAuthenticated" class="card login-card">
+        <h2>Accedi</h2>
+        <form @submit.prevent="login" class="form-grid">
+          <label>
+            Username
+            <input
+              v-model.trim="loginForm.username"
+              type="text"
+              autocomplete="username"
+              required
+            />
+          </label>
+          <label>
+            Password
+            <input
+              v-model="loginForm.password"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+          <button class="btn primary" type="submit" :disabled="isLoggingIn">
+            {{ isLoggingIn ? "Accesso in corso…" : "Entra" }}
+          </button>
+        </form>
+        <p v-if="loginError" class="error">{{ loginError }}</p>
+      </section>
 
-    <section v-else class="portal" ref="portalRef">
-      <div class="toolbar" ref="toolbarRef">
-        <div class="user-info">
-          <span
-            >Connesso come <strong>{{ activeUsername }}</strong></span
-          >
-          <button class="btn outline" type="button" @click="goToLottery">
-            Lotteria
-          </button>
-          <button
-            v-for="tab in availableTabs"
-            :key="tab.id"
-            :class="['btn outline', { active: section === tab.id }]"
-            type="button"
-            :aria-current="section === tab.id ? 'page' : undefined"
-            @click="section = tab.id"
-          >
-            {{ tab.label }}
-          </button>
-          <button class="btn secondary" type="button" @click="logout">
-            Esci
-          </button>
+      <section v-else class="portal" ref="portalRef">
+        <div class="toolbar" ref="toolbarRef">
+          <div class="user-info">
+            <span
+              >Connesso come <strong>{{ activeUsername }}</strong></span
+            >
+            <button class="btn outline" type="button" @click="goToLottery">
+              Lotteria
+            </button>
+            <button
+              v-for="tab in availableTabs"
+              :key="tab.id"
+              :class="['btn outline', { active: section === tab.id }]"
+              type="button"
+              :aria-current="section === tab.id ? 'page' : undefined"
+              @click="section = tab.id"
+            >
+              {{ tab.label }}
+            </button>
+            <button class="btn secondary" type="button" @click="logout">
+              Esci
+            </button>
+          </div>
         </div>
-      </div>
-      <div class="portal-content">
-        <p v-if="globalError" class="error">{{ globalError }}</p>
+        <div class="portal-content">
+          <p v-if="globalError" class="error">{{ globalError }}</p>
 
-        <section v-if="section === 'events'" class="card">
+          <section v-if="section === 'events'" class="card">
           <header class="section-header">
             <h2>Eventi</h2>
             <p>Crea una nuova partita per abilitare il voto pubblico.</p>
@@ -2390,7 +2398,8 @@
         </div>
       </div>
     </section>
-  </div>
+  </v-container>
+</AppShell>
 </template>
 
 <script setup>
@@ -2406,6 +2415,7 @@ import {
 } from "vue";
 import { apiClient, resolveApiUrl } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, MAX_PLAYER_SLOTS } from "../roster";
+import AppShell from "./layout/AppShell.vue";
 import VoteTrendChart from "./VoteTrendChart.vue";
 
 const props = defineProps({
@@ -3499,6 +3509,56 @@ const availableTabs = computed(() => {
   }
   return tabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
 });
+const navItems = [
+  { header: "LIVE", items: [{ key: "EVENTS", label: "Eventi" }, { key: "RESULTS", label: "Risultati" }] },
+  {
+    header: "SETUP",
+    items: [
+      { key: "TEAMS", label: "Squadre" },
+      { key: "PLAYERS", label: "Giocatori" },
+      { key: "SPONSORS", label: "Sponsor" },
+      { key: "COUPONS", label: "Coupon" },
+      { key: "PARTNERS", label: "Partners" },
+    ],
+  },
+  { header: "ANALYTICS", items: [{ key: "HISTORY", label: "Storico" }] },
+  {
+    header: "SYSTEM",
+    items: [
+      { key: "LOTTERY", label: "Lotteria" },
+      { key: "CLOSING", label: "Chiusura voti" },
+      { key: "SELFIES", label: "Selfie MVP" },
+      { key: "ADMINS", label: "Admin" },
+    ],
+  },
+];
+const navKeyToSection = {
+  EVENTS: "events",
+  RESULTS: "results",
+  TEAMS: "teams",
+  PLAYERS: "players",
+  SPONSORS: "sponsors",
+  COUPONS: "coupons",
+  PARTNERS: "partners",
+  HISTORY: "history",
+  ADMINS: "admins",
+  SELFIES: "selfies",
+  CLOSING: "closing",
+};
+const sectionToNavKey = {
+  events: "EVENTS",
+  closing: "CLOSING",
+  results: "RESULTS",
+  selfies: "SELFIES",
+  history: "HISTORY",
+  teams: "TEAMS",
+  players: "PLAYERS",
+  sponsors: "SPONSORS",
+  coupons: "COUPONS",
+  partners: "PARTNERS",
+  admins: "ADMINS",
+};
+const activeNavKey = computed(() => sectionToNavKey[section.value] || "EVENTS");
 
 const loginForm = reactive({
   username: "",
@@ -4397,6 +4457,17 @@ function buildEventLink(eventId) {
     url.searchParams.delete("eventId");
   }
   return url.toString();
+}
+
+function handleNavigate(key) {
+  if (key === "LOTTERY") {
+    goToLottery();
+    return;
+  }
+  const targetSection = navKeyToSection[key];
+  if (targetSection) {
+    section.value = targetSection;
+  }
 }
 
 function goToLottery() {
