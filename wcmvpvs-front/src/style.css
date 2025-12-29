@@ -29,3 +29,23 @@
     @apply bg-gradient-to-br from-orange-200 via-amber-300 to-amber-600 text-slate-900 border border-amber-500/80;
   }
 }
+
+:root {
+  --bg-app: #0b1220;
+  --surface: rgba(255, 255, 255, 0.03);
+  --surface-strong: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.08);
+  --text-primary: #e5e7eb;
+  --text-muted: #9ca3af;
+}
+
+body {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.app-root {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #0b1220 0%, #0b1220 50%, #0b1220 100%);
+}
