@@ -1,17 +1,5 @@
 <template>
   <div class="master-portal">
-    <header class="master-header">
-      <div>
-        <p class="eyebrow">Portale master</p>
-        <h1>Controllo centrale</h1>
-        <p class="subtitle">Monitora le società e lo stato dei voti in tutta la piattaforma.</p>
-      </div>
-      <div class="header-actions" v-if="isSuperAdmin">
-        <a class="btn ghost" href="/admin" title="Vai al pannello società">Portale società</a>
-        <button class="btn outline" type="button" @click="logout">Esci</button>
-      </div>
-    </header>
-
     <section v-if="!isAuthenticated" class="card login-card">
       <h2>Accedi come super admin</h2>
       <form class="form-grid" @submit.prevent="login">
@@ -39,26 +27,27 @@
       </div>
     </section>
 
-    <section v-else class="master-shell">
-      <nav class="master-nav">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          :class="['nav-btn', { active: activeSection === tab.id }]"
-          type="button"
-          @click="switchSection(tab.id)"
-        >
-          {{ tab.label }}
-        </button>
-        <button
-          v-if="selectedOrganizationId && activeSection === 'organization-detail'"
-          class="nav-btn"
-          type="button"
-          @click="switchSection('organizations')"
-        >
-          Torna alla lista
-        </button>
-      </nav>
+    <AppShell
+      v-else
+      class="master-shell"
+      eyebrow="Portale master"
+      title="Controllo centrale"
+      subtitle="Monitora le società e lo stato dei voti in tutta la piattaforma."
+      :nav-items="masterNavItems"
+      :active-key="activeSection"
+      @navigate="handleNavigate"
+    >
+      <template #top-actions>
+        <div class="header-actions" v-if="isSuperAdmin">
+          <a class="btn ghost" href="/admin" title="Vai al pannello società">Portale società</a>
+          <button class="btn outline" type="button" @click="logout">Esci</button>
+        </div>
+      </template>
+      <template #nav-header>
+        <p class="nav-eyebrow">Super admin</p>
+        <strong class="nav-username">{{ activeUsername || 'Utente master' }}</strong>
+        <p class="nav-meta">Ruolo: {{ activeRole || '—' }}</p>
+      </template>
 
       <div class="master-content">
         <div v-if="activeSection === 'dashboard'" class="dashboard-view">
@@ -130,54 +119,63 @@
 
           <p v-if="analyticsError" class="error">{{ analyticsError }}</p>
 
-          <section class="card analytics-card">
-            <header class="section-header">
-              <div>
-                <h2>Classifica società</h2>
-                <p>Andamento voti e crescita negli ultimi 7 giorni.</p>
-              </div>
-              <button class="btn outline" type="button" @click="refreshDashboard" :disabled="isLoadingAnalytics">
-                {{ isLoadingAnalytics ? 'Aggiornamento…' : 'Aggiorna dati' }}
-              </button>
-            </header>
-            <div class="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Società</th>
-                    <th>Voti totali</th>
-                    <th>Ultimi 7 giorni</th>
-                    <th>Eventi</th>
-                    <th>Crescita</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="entry in masterAnalytics.organization_leaderboard" :key="entry.organization_id">
-                    <td>
-                      <div class="org-cell">
-                        <img v-if="entry.logo_url" :src="entry.logo_url" :alt="`Logo ${entry.name}`" />
-                        <div>
-                          <p class="org-name">{{ entry.name }}</p>
-                          <small class="muted">{{ entry.city || '—' }}</small>
-                        </div>
+          <Card class="panel-card">
+            <template #title>Classifica società</template>
+            <template #subtitle>Andamento voti e crescita negli ultimi 7 giorni.</template>
+            <template #content>
+              <Toolbar class="panel-toolbar">
+                <template #start>
+                  <div class="toolbar-text">
+                    <p>Vista sintetica delle performance di ogni società.</p>
+                  </div>
+                </template>
+                <template #end>
+                  <button class="btn outline" type="button" @click="refreshDashboard" :disabled="isLoadingAnalytics">
+                    {{ isLoadingAnalytics ? 'Aggiornamento…' : 'Aggiorna dati' }}
+                  </button>
+                </template>
+              </Toolbar>
+              <DataTable
+                :value="masterAnalytics.organization_leaderboard"
+                dataKey="organization_id"
+                stripedRows
+                responsiveLayout="stack"
+                class="prime-table"
+              >
+                <Column header="Società">
+                  <template #body="{ data }">
+                    <div class="org-cell">
+                      <img v-if="data.logo_url" :src="data.logo_url" :alt="`Logo ${data.name}`" />
+                      <div>
+                        <p class="org-name">{{ data.name }}</p>
+                        <small class="muted">{{ data.city || '—' }}</small>
                       </div>
-                    </td>
-                    <td>{{ entry.total_votes.toLocaleString('it-IT') }}</td>
-                    <td>{{ entry.votes_last_7_days.toLocaleString('it-IT') }}</td>
-                    <td>{{ entry.total_events.toLocaleString('it-IT') }}</td>
-                    <td>
-                      <span :class="['delta', resolveDeltaClass(entry.growth_percentage)]">
-                        {{ formatPercent(entry.growth_percentage) }}
-                      </span>
-                    </td>
-                  </tr>
-                  <tr v-if="!masterAnalytics.organization_leaderboard.length">
-                    <td colspan="5" class="muted">Nessuna società disponibile.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
+                    </div>
+                  </template>
+                </Column>
+                <Column field="total_votes" header="Voti totali">
+                  <template #body="{ data }">{{ data.total_votes.toLocaleString('it-IT') }}</template>
+                </Column>
+                <Column field="votes_last_7_days" header="Ultimi 7 giorni">
+                  <template #body="{ data }">{{ data.votes_last_7_days.toLocaleString('it-IT') }}</template>
+                </Column>
+                <Column field="total_events" header="Eventi">
+                  <template #body="{ data }">{{ data.total_events.toLocaleString('it-IT') }}</template>
+                </Column>
+                <Column header="Crescita">
+                  <template #body="{ data }">
+                    <Tag
+                      :value="formatPercent(data.growth_percentage)"
+                      :severity="resolveDeltaSeverity(data.growth_percentage)"
+                      rounded
+                      class="table-tag"
+                    />
+                  </template>
+                </Column>
+              </DataTable>
+              <p v-if="!masterAnalytics.organization_leaderboard.length" class="muted empty">Nessuna società disponibile.</p>
+            </template>
+          </Card>
 
           <section class="card analytics-card">
             <header class="section-header">
@@ -393,20 +391,26 @@
         </div>
 
         <div v-else-if="activeSection === 'organizations'" class="organizations-view">
-          <header class="section-header">
-            <div>
-              <h2>Società</h2>
-              <p>Gestisci anagrafiche e stato delle società.</p>
-            </div>
-            <div class="section-actions">
-              <button class="btn outline" type="button" @click="fetchOrganizations" :disabled="isLoadingOrganizations">
-                {{ isLoadingOrganizations ? 'Aggiornamento…' : 'Aggiorna elenco' }}
-              </button>
-              <button class="btn primary" type="button" @click="openCreateOrganization">
-                Nuova società
-              </button>
-            </div>
-          </header>
+          <Toolbar class="panel-toolbar">
+            <template #start>
+              <div class="section-header">
+                <div>
+                  <h2>Società</h2>
+                  <p>Gestisci anagrafiche e stato delle società.</p>
+                </div>
+              </div>
+            </template>
+            <template #end>
+              <div class="section-actions">
+                <button class="btn outline" type="button" @click="fetchOrganizations" :disabled="isLoadingOrganizations">
+                  {{ isLoadingOrganizations ? 'Aggiornamento…' : 'Aggiorna elenco' }}
+                </button>
+                <button class="btn primary" type="button" @click="openCreateOrganization">
+                  Nuova società
+                </button>
+              </div>
+            </template>
+          </Toolbar>
 
           <div v-if="organizationFormVisible" class="card form-card">
             <header>
@@ -450,42 +454,41 @@
             </form>
           </div>
 
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Società</th>
-                  <th>Slug / URL</th>
-                  <th>Città</th>
-                  <th>Stato</th>
-                  <th>Creata il</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="org in organizations" :key="org.id">
-                  <td>
+          <Card class="panel-card">
+            <template #title>Elenco società</template>
+            <template #content>
+              <DataTable
+                :value="organizations"
+                dataKey="id"
+                stripedRows
+                responsiveLayout="stack"
+                class="prime-table"
+              >
+                <Column header="Società">
+                  <template #body="{ data }">
                     <div class="org-cell">
-                      <img v-if="org.logo_url" :src="org.logo_url" :alt="`Logo ${org.name}`" />
+                      <img v-if="data.logo_url" :src="data.logo_url" :alt="`Logo ${data.name}`" />
                       <div>
-                        <p class="org-name">{{ org.name }}</p>
-                        <small>ID {{ org.id }}</small>
+                        <p class="org-name">{{ data.name }}</p>
+                        <small>ID {{ data.id }}</small>
                       </div>
                     </div>
-                  </td>
-                  <td>
+                  </template>
+                </Column>
+                <Column header="Slug / URL">
+                  <template #body="{ data }">
                     <div class="slug-cell">
-                      <div v-if="org.slug" class="slug-links">
+                      <div v-if="data.slug" class="slug-links">
                         <a
-                          :href="resolvePublicLink(org.slug)"
+                          :href="resolvePublicLink(data.slug)"
                           class="slug-link"
                           target="_blank"
                           rel="noreferrer"
                         >
-                          {{ org.slug }}
+                          {{ data.slug }}
                         </a>
                         <a
-                          :href="resolveAdminLink(org.slug)"
+                          :href="resolveAdminLink(data.slug)"
                           class="slug-link admin"
                           target="_blank"
                           rel="noreferrer"
@@ -495,32 +498,40 @@
                       </div>
                       <span v-else class="muted">—</span>
                     </div>
-                  </td>
-                  <td>{{ org.city || '—' }}</td>
-                  <td>
-                    <span :class="['status-pill', org.is_active ? 'active' : 'inactive']">
-                      {{ org.is_active ? 'Attiva' : 'Disattiva' }}
-                    </span>
-                  </td>
-                  <td>{{ formatDate(org.created_at) }}</td>
-                  <td class="actions">
-                    <button class="btn ghost" type="button" @click="viewOrganization(org.id)">
-                      Dettagli
-                    </button>
-                    <button class="btn outline" type="button" @click="openEditOrganization(org)">
-                      Modifica
-                    </button>
-                  </td>
-                </tr>
-                <tr v-if="!organizations.length && !isLoadingOrganizations">
-                  <td colspan="4" class="empty">Nessuna società registrata.</td>
-                </tr>
-                <tr v-if="isLoadingOrganizations">
-                  <td colspan="4" class="empty">Caricamento in corso…</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                  </template>
+                </Column>
+                <Column field="city" header="Città">
+                  <template #body="{ data }">{{ data.city || '—' }}</template>
+                </Column>
+                <Column header="Stato">
+                  <template #body="{ data }">
+                    <Tag
+                      :value="data.is_active ? 'Attiva' : 'Disattiva'"
+                      :severity="data.is_active ? 'success' : 'danger'"
+                      rounded
+                    />
+                  </template>
+                </Column>
+                <Column header="Creata il">
+                  <template #body="{ data }">{{ formatDate(data.created_at) }}</template>
+                </Column>
+                <Column header="Azioni">
+                  <template #body="{ data }">
+                    <div class="actions">
+                      <button class="btn ghost" type="button" @click="viewOrganization(data.id)">
+                        Dettagli
+                      </button>
+                      <button class="btn outline" type="button" @click="openEditOrganization(data)">
+                        Modifica
+                      </button>
+                    </div>
+                  </template>
+                </Column>
+              </DataTable>
+              <p v-if="!organizations.length && !isLoadingOrganizations" class="empty">Nessuna società registrata.</p>
+              <p v-if="isLoadingOrganizations" class="empty">Caricamento in corso…</p>
+            </template>
+          </Card>
         </div>
 
         <div v-else-if="activeSection === 'organization-detail'" class="detail-view">
@@ -621,12 +632,18 @@
           </p>
         </div>
       </div>
-    </section>
+    </AppShell>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import Card from 'primevue/card';
+import Column from 'primevue/column';
+import DataTable from 'primevue/datatable';
+import Tag from 'primevue/tag';
+import Toolbar from 'primevue/toolbar';
+import AppShell from './AppShell.vue';
 import { apiClient } from '../api';
 import VoteTrendChart from './VoteTrendChart.vue';
 
@@ -680,6 +697,14 @@ const isLoadingOrganizations = ref(false);
 const organizationsLoaded = ref(false);
 
 const selectedOrganizationId = ref(0);
+const masterNavItems = computed(() => {
+  const baseTabs = tabs.map((tab) => ({ key: tab.id, label: tab.label }));
+  if (selectedOrganizationId.value) {
+    baseTabs.push({ key: 'organization-detail', label: 'Dettaglio società' });
+  }
+  return baseTabs;
+});
+
 const organizationDetail = ref(null);
 const isLoadingDetail = ref(false);
 
@@ -727,6 +752,13 @@ function closeOrganizationForm() {
 
 function switchSection(section) {
   activeSection.value = section;
+}
+
+function handleNavigate(section) {
+  if (section === 'organization-detail' && !selectedOrganizationId.value) {
+    return;
+  }
+  switchSection(section);
 }
 
 function resolveAdminLink(slug) {
@@ -796,6 +828,12 @@ function resolveDeltaClass(value) {
   if (value > 0) return 'positive';
   if (value < 0) return 'negative';
   return 'neutral';
+}
+
+function resolveDeltaSeverity(value) {
+  if (value > 0) return 'success';
+  if (value < 0) return 'danger';
+  return 'info';
 }
 
 function formatDelta(delta) {
@@ -1706,6 +1744,111 @@ dl dd {
 .error {
   color: #b91c1c;
   margin-top: 0.5rem;
+}
+
+.master-portal {
+  min-height: 100vh;
+  background: #0b1021;
+  padding: 1.25rem;
+  color: #e2e8f0;
+}
+
+.master-shell {
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 18px 60px rgba(8, 47, 73, 0.35);
+}
+
+.master-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 0.75rem 1.5rem;
+}
+
+.nav-eyebrow {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.65);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.nav-username {
+  margin: 0.1rem 0;
+  font-size: 1rem;
+}
+
+.nav-meta {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.6);
+}
+
+.panel-card {
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(226, 232, 240, 0.08);
+  color: #e2e8f0;
+  border-radius: 1rem;
+}
+
+:deep(.panel-card .p-card-body) {
+  padding: 1.25rem;
+}
+
+.panel-toolbar {
+  margin-bottom: 0.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.05);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+:deep(.panel-toolbar .p-toolbar-group-start),
+:deep(.panel-toolbar .p-toolbar-group-end) {
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.prime-table {
+  margin-top: 0.5rem;
+}
+
+:deep(.prime-table .p-datatable) {
+  background: transparent;
+  color: inherit;
+}
+
+:deep(.prime-table .p-datatable-wrapper) {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+:deep(.prime-table .p-datatable-thead > tr > th) {
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+  border: none;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+:deep(.prime-table .p-datatable-tbody > tr) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+:deep(.prime-table .p-datatable-tbody > tr:nth-child(even)) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+:deep(.prime-table .p-datatable-tbody > tr > td) {
+  border: none;
+  color: #e2e8f0;
+}
+
+.table-tag {
+  font-weight: 700;
+}
+
+.toolbar-text {
+  color: #cbd5e1;
 }
 
 @media (max-width: 640px) {

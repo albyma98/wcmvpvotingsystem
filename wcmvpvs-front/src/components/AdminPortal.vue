@@ -1,6 +1,6 @@
 <template>
   <div class="admin-portal">
-    <header class="admin-header">
+    <header v-if="!isAuthenticated" class="admin-header">
       <h1>Area amministratore</h1>
       <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
       <p v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</p>
@@ -34,31 +34,53 @@
       <p v-if="loginError" class="error">{{ loginError }}</p>
     </section>
 
-    <section v-else class="portal" ref="portalRef">
-      <div class="toolbar" ref="toolbarRef">
-        <div class="user-info">
-          <span
-            >Connesso come <strong>{{ activeUsername }}</strong></span
-          >
+    <AppShell
+      v-else
+      ref="portalRef"
+      class="portal-shell"
+      eyebrow="Area amministratore"
+      title="Controllo eventi"
+      subtitle="Gestisci eventi, squadre e votazioni MVP"
+      :nav-items="adminNavItems"
+      :active-key="section"
+      @navigate="section = $event"
+    >
+      <template #top-actions>
+        <div class="top-actions">
           <button class="btn outline" type="button" @click="goToLottery">
             Lotteria
-          </button>
-          <button
-            v-for="tab in availableTabs"
-            :key="tab.id"
-            :class="['btn outline', { active: section === tab.id }]"
-            type="button"
-            :aria-current="section === tab.id ? 'page' : undefined"
-            @click="section = tab.id"
-          >
-            {{ tab.label }}
           </button>
           <button class="btn secondary" type="button" @click="logout">
             Esci
           </button>
         </div>
-      </div>
-      <div class="portal-content">
+      </template>
+      <template #nav-header>
+        <p class="nav-eyebrow">Società</p>
+        <strong class="nav-username">{{ organizationSlug || "Non impostata" }}</strong>
+        <p class="nav-meta">Utente: {{ activeUsername }}</p>
+      </template>
+
+      <div class="portal-shell__content">
+        <Toolbar class="admin-toolbar" ref="toolbarRef">
+          <template #start>
+            <div class="user-info">
+              <span>Connesso come <strong>{{ activeUsername }}</strong></span>
+              <span v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</span>
+            </div>
+          </template>
+          <template #end>
+            <div class="toolbar-actions">
+              <button class="btn outline" type="button" @click="goToLottery">
+                Lotteria
+              </button>
+              <button class="btn secondary" type="button" @click="logout">
+                Esci
+              </button>
+            </div>
+          </template>
+        </Toolbar>
+        <div class="portal-content">
         <p v-if="globalError" class="error">{{ globalError }}</p>
 
         <section v-if="section === 'events'" class="card">
@@ -2389,7 +2411,8 @@
           </div>
         </div>
       </div>
-    </section>
+      </div>
+    </AppShell>
   </div>
 </template>
 
@@ -2404,8 +2427,10 @@ import {
   ref,
   watch,
 } from "vue";
+import Toolbar from "primevue/toolbar";
 import { apiClient, resolveApiUrl } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, MAX_PLAYER_SLOTS } from "../roster";
+import AppShell from "./AppShell.vue";
 import VoteTrendChart from "./VoteTrendChart.vue";
 
 const props = defineProps({
@@ -3499,6 +3524,9 @@ const availableTabs = computed(() => {
   }
   return tabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
 });
+const adminNavItems = computed(() =>
+  availableTabs.value.map((tab) => ({ key: tab.id, label: tab.label })),
+);
 
 const loginForm = reactive({
   username: "",
@@ -6436,6 +6464,57 @@ onBeforeUnmount(() => {
   color: #bfdbfe;
   font-weight: 600;
   font-size: 0.95rem;
+}
+
+.portal-shell {
+  min-height: 100vh;
+  color: #e2e8f0;
+  background: #0b1021;
+}
+
+.portal-shell__content {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-toolbar {
+  margin-bottom: 1rem;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 1rem;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(12px);
+}
+
+:deep(.admin-toolbar .p-toolbar-group-start),
+:deep(.admin-toolbar .p-toolbar-group-end) {
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.top-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.nav-eyebrow {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.65);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.nav-username {
+  margin: 0.1rem 0;
+  font-size: 1rem;
+}
+
+.nav-meta {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.6);
 }
 
 .portal {
