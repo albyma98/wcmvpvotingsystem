@@ -174,24 +174,6 @@ export function sendJsonBeacon(path: string, payload: Record<string, unknown> = 
   return apiClient.post(path, payload).then(() => {});
 }
 
-export function resolveStaticAssetUrl(path: string) {
-  if (!path) {
-    return '';
-  }
-
-  if (/^https?:\/\//i.test(path)) {
-    return path;
-  }
-
-  const sanitizedPath = path.startsWith('/') ? path : `/${path}`;
-
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}${sanitizedPath}`;
-  }
-
-  return sanitizedPath;
-}
-
 export function getDeviceHeaders() {
   const deviceId = getOrCreateDeviceId();
   return deviceId ? { 'X-Device-ID': deviceId } : {};
@@ -469,37 +451,6 @@ export async function completeMission(
   }
 }
 
-export async function submitPerfectDigResult(
-  eventId: number,
-  payload: { attempts: number; successCount: number; reward: string },
-) {
-  if (!eventId) {
-    return { ok: false, error: new Error('missing_event_id') };
-  }
-
-  const headers = getDeviceHeaders();
-  if (!headers['X-Device-ID']) {
-    return { ok: false, error: new Error('missing_device_id') };
-  }
-
-  try {
-    const { data } = await apiClient.post(`/events/${eventId}/libero-reflex`, payload, {
-      headers,
-    });
-    return { ok: true, data };
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      return {
-        ok: false,
-        status: error.response?.status,
-        data: error.response?.data,
-        error,
-      };
-    }
-    return { ok: false, error };
-  }
-}
-
 export async function uploadSelfie(
   eventId: number,
   {
@@ -550,18 +501,6 @@ export async function uploadSelfie(
     }
 
     return { ok: false, error: new Error('missing_image_data') };
-  } catch (error) {
-    return { ok: false, error };
-  }
-}
-
-export async function listApprovedSelfies(eventId: number) {
-  if (!eventId) {
-    return { ok: true, selfies: [] };
-  }
-  try {
-    const { data } = await apiClient.get(`/events/${eventId}/selfies/approved`);
-    return { ok: true, selfies: Array.isArray(data) ? data : [] };
   } catch (error) {
     return { ok: false, error };
   }
