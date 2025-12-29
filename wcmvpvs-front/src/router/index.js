@@ -1,16 +1,31 @@
 import { computed, h, inject, provide, ref } from 'vue';
+import { detectOrganizationSlug } from '../api';
 
 const RouterSymbol = Symbol('simple-router');
 
 function readLocation() {
   if (typeof window === 'undefined') {
-    return { path: '/', search: '', hash: '' };
+    return { path: '/', search: '', hash: '', organizationSlug: '', rawPath: '/' };
   }
 
+  const rawPath = window.location.pathname || '/';
+  const search = window.location.search || '';
+  const hash = window.location.hash || '';
+  const organizationSlug = detectOrganizationSlug(rawPath, search);
+  const normalizedPath = (() => {
+    if (organizationSlug && rawPath.startsWith(`/${organizationSlug}`)) {
+      const trimmed = rawPath.slice(organizationSlug.length + 1);
+      return trimmed ? `/${trimmed.replace(/^\/+/, '')}` : '/';
+    }
+    return rawPath || '/';
+  })();
+
   return {
-    path: window.location.pathname || '/',
-    search: window.location.search || '',
-    hash: window.location.hash || '',
+    path: normalizedPath,
+    search,
+    hash,
+    organizationSlug,
+    rawPath,
   };
 }
 
@@ -26,6 +41,29 @@ function normalizeTarget(target) {
     console.warn('Percorso non valido, fallback a "/"', error);
     return '/';
   }
+}
+
+function applySlugToTarget(normalizedTarget, organizationSlug) {
+  if (!organizationSlug || /^https?:\/\//i.test(normalizedTarget)) {
+    return normalizedTarget;
+  }
+
+  const [pathAndSearch, hash = ''] = normalizedTarget.split('#', 2);
+  const [pathPart, searchPart = ''] = pathAndSearch.split('?', 2);
+  const safePath = pathPart.startsWith('/') ? pathPart : `/${pathPart}`;
+  const firstSegment = safePath
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean)[0];
+
+  if (firstSegment === organizationSlug || firstSegment === 'master') {
+    return normalizedTarget;
+  }
+
+  const prefixedPath = `/${organizationSlug}${safePath}`;
+  const searchSuffix = searchPart ? `?${searchPart}` : '';
+  const hashSuffix = hash ? `#${hash}` : '';
+  return `${prefixedPath}${searchSuffix}${hashSuffix}`;
 }
 
 function findMatchingRoute(path, routes) {
@@ -52,6 +90,7 @@ function resolveRoute(path, routes, location) {
   return {
     ...matched,
     location,
+    slug: location.organizationSlug || '',
     fullPath: `${location.path}${location.search}${location.hash}`,
   };
 }
@@ -63,15 +102,16 @@ export function createRouter(options) {
 
   function navigate(target, replace = false) {
     const normalized = normalizeTarget(target);
+    const withSlug = applySlugToTarget(normalized, location.value.organizationSlug);
     if (typeof window === 'undefined') {
       location.value = readLocation();
       return;
     }
 
     if (replace) {
-      window.history.replaceState({}, '', normalized);
+      window.history.replaceState({}, '', withSlug);
     } else {
-      window.history.pushState({}, '', normalized);
+      window.history.pushState({}, '', withSlug);
     }
     location.value = readLocation();
   }
@@ -117,7 +157,9 @@ const RouterView = {
     const route = useRoute();
     return () => {
       const component = route.value?.component;
-      return component ? h(component, { route: route.value }) : null;
+      const routeProps =
+        typeof route.value?.props === 'function' ? route.value.props(route.value) : route.value?.props;
+      return component ? h(component, { route: route.value, ...(routeProps || {}) }) : null;
     };
   },
 };

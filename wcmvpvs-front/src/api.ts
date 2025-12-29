@@ -57,8 +57,8 @@ const resolveApiBaseUrl = () => {
   return ensureApiPath(`${protocol}//${hostname}${originPort}`);
 };
 
-function detectOrganizationSlug(pathname: string | undefined, search?: string) {
-  const reservedPrefixes = new Set(['admin', 'shop', 'lottery', 'welcome', 'partner']);
+export function detectOrganizationSlug(pathname: string | undefined, search?: string) {
+  const reservedPrefixes = new Set(['admin', 'shop', 'lottery', 'welcome', 'partner', 'master']);
 
   if (pathname) {
     const segments = pathname

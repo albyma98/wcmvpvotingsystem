@@ -1,84 +1,84 @@
-import AdminEventsView from '../views/AdminEventsView.vue';
-import AdminPlayersView from '../views/AdminPlayersView.vue';
-import AdminHistoryView from '../views/AdminHistoryView.vue';
-import AdminPlaceholderView from '../views/AdminPlaceholderView.vue';
 import PublicVoteView from '../views/PublicVoteView.vue';
 import CashLanding from '../components/CashLanding.vue';
 import TicketValidationView from '../components/TicketValidationView.vue';
+import AdminPortal from '../components/AdminPortal.vue';
+import MasterPortal from '../components/MasterPortal.vue';
+import PartnerPortal from '../components/PartnerPortal.vue';
 
 export const routes = [
-  { path: '/', redirect: '/admin/events' },
+  {
+    path: '/',
+    redirect: (location) => (location?.organizationSlug ? '/admin' : '/vote'),
+  },
   { path: '/vote', name: 'public-vote', component: PublicVoteView },
   { path: '/welcome', name: 'welcome', component: CashLanding },
   { path: '/lottery/validate', name: 'ticket-validation', component: TicketValidationView },
-  { path: '/admin/events', name: 'admin-events', component: AdminEventsView },
-  { path: '/admin/players', name: 'admin-players', component: AdminPlayersView },
-  { path: '/admin/history', name: 'admin-history', component: AdminHistoryView },
+  {
+    path: '/partner',
+    name: 'partner-portal',
+    component: PartnerPortal,
+    props: (route) => ({
+      currentPath: route?.location?.rawPath || route?.fullPath || '/',
+      currentSearch: route?.location?.search || '',
+    }),
+  },
+  {
+    path: '/admin',
+    name: 'admin-portal',
+    component: AdminPortal,
+    props: (route) => ({ organizationSlug: route?.slug || '' }),
+  },
+  { path: '/admin/events', redirect: '/admin' },
+  { path: '/admin/players', redirect: '/admin' },
+  { path: '/admin/history', redirect: '/admin' },
   {
     path: '/admin/live/event',
-    name: 'admin-live-event',
-    component: AdminPlaceholderView,
-    meta: { title: 'Evento live', description: 'Monitor live dell\'evento attivo.' },
+    redirect: '/admin',
   },
   {
     path: '/admin/live/votes',
-    name: 'admin-live-votes',
-    component: AdminPlaceholderView,
-    meta: { title: 'Votazioni live', description: 'Tracking voti in tempo reale.' },
+    redirect: '/admin',
   },
   {
     path: '/admin/live/lottery',
-    name: 'admin-live-lottery',
-    component: AdminPlaceholderView,
-    meta: { title: 'Lotteria live', description: 'Gestione estrazioni e premi.' },
+    redirect: '/admin',
   },
   {
     path: '/admin/live/selfie',
-    name: 'admin-live-selfie',
-    component: AdminPlaceholderView,
-    meta: { title: 'Selfie MVP', description: 'Moderazione e approvazione selfie.' },
+    redirect: '/admin',
   },
   {
     path: '/admin/teams',
-    name: 'admin-teams',
-    component: AdminPlaceholderView,
-    meta: { title: 'Squadre', description: 'Gestione roster squadre.' },
+    redirect: '/admin',
   },
   {
     path: '/admin/sponsors',
-    name: 'admin-sponsors',
-    component: AdminPlaceholderView,
-    meta: { title: 'Sponsor', description: 'Gestione inventory e click tracking.' },
+    redirect: '/admin',
   },
   {
     path: '/admin/coupons',
-    name: 'admin-coupons',
-    component: AdminPlaceholderView,
-    meta: { title: 'Coupon', description: 'Gestione coupon e conversioni.' },
+    redirect: '/admin',
   },
   {
     path: '/admin/results',
-    name: 'admin-results',
-    component: AdminPlaceholderView,
-    meta: { title: 'Risultati', description: 'Analisi risultati live.' },
+    redirect: '/admin',
   },
   {
     path: '/admin/reports',
-    name: 'admin-reports',
-    component: AdminPlaceholderView,
-    meta: { title: 'Reportistica', description: 'Report esportabili e KPI.' },
+    redirect: '/admin',
   },
   {
     path: '/admin/admins',
-    name: 'admin-admins',
-    component: AdminPlaceholderView,
-    meta: { title: 'Gestione admin', description: 'Ruoli e permessi di sistema.' },
+    redirect: '/admin',
   },
   {
     path: '/admin/logout',
-    name: 'admin-logout',
-    component: AdminPlaceholderView,
-    meta: { title: 'Logout', description: 'Disconnessione sicura dalla console.' },
+    redirect: '/admin',
   },
-  { path: '*', redirect: '/admin/events' },
+  {
+    path: '/master',
+    name: 'master-portal',
+    component: MasterPortal,
+  },
+  { path: '*', redirect: '/admin' },
 ];
