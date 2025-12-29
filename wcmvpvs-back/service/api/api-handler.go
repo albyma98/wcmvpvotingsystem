@@ -7,7 +7,6 @@ import (
 // Handler returns an instance of chi.Router that handles APIs registered here
 func (rt *_router) Handler() chi.Router {
 	// Register routes
-	rt.router.Get("/", rt.getHelloWorld)
 	rt.router.Get("/context", rt.wrap(rt.getContextReply))
 	rt.router.Get("/t", rt.ticketValidationPage)
 	rt.router.Get("/tickets/validate", rt.wrap(rt.ticketValidationStatus))
