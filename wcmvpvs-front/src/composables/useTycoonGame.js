@@ -31,8 +31,10 @@ const defaultConfig = {
 
 export function useTycoonGame() {
   const deviceId = getOrCreateDeviceId();
-  const points = ref(0);
-  const pointsPerTick = ref(0);
+  const serverPoints = ref(0);
+  const displayPoints = ref(0);
+  const pointsPerTick = ref(1);
+  const tickIntervalMs = ref(2000);
   const pointsPerSecond = ref(0);
   const upgrades = ref([]);
   const coupons = ref([]);
@@ -46,6 +48,8 @@ export function useTycoonGame() {
 
   let syncTimer = null;
   let clickCooldownTimer = null;
+  let tickTimer = null;
+  let visibilityHandler = null;
 
   const upgradeViews = computed(() => {
     return upgrades.value.map((upgrade) => {
@@ -56,7 +60,7 @@ export function useTycoonGame() {
         id: key,
         key,
         nextCost,
-        canAfford: points.value >= nextCost,
+        canAfford: serverPoints.value >= nextCost,
       };
     });
   });
@@ -66,12 +70,12 @@ export function useTycoonGame() {
     return sorted.find((item) => item.canAfford) || sorted[0];
   });
 
-  const formattedPoints = computed(() => points.value.toLocaleString("it-IT"));
+  const formattedPoints = computed(() => displayPoints.value.toLocaleString("it-IT"));
 
   const couponViews = computed(() => {
     return coupons.value.map((coupon) => {
       const redeemed = Boolean(coupon.redeemed);
-      const canRedeem = !redeemed && points.value >= (coupon.cost || 0);
+      const canRedeem = !redeemed && serverPoints.value >= (coupon.cost || 0);
       return {
         ...coupon,
         redeemed,
@@ -113,21 +117,90 @@ export function useTycoonGame() {
     }, remaining);
   }
 
-  function applyState(payload, options = {}) {
+  function stopTicker() {
+    if (tickTimer) {
+      clearInterval(tickTimer);
+      tickTimer = null;
+    }
+  }
+
+  function runTick() {
+    if (typeof document !== "undefined" && document.hidden) {
+      return;
+    }
+    const increment = pointsPerTick.value || 0;
+    if (increment <= 0) {
+      return;
+    }
+    displayPoints.value = Math.max(0, Math.floor(displayPoints.value + increment));
+    tickPulse.value = true;
+    tickEventId.value += 1;
+    setTimeout(() => (tickPulse.value = false), 220);
+  }
+
+  function startTicker() {
+    if (typeof window === "undefined") {
+      return;
+    }
+    stopTicker();
+    if (typeof document !== "undefined" && document.hidden) {
+      return;
+    }
+    const interval = tickIntervalMs.value || config.value.baseTickMs || defaultConfig.baseTickMs;
+    if (!interval || interval <= 0) {
+      return;
+    }
+    tickTimer = setInterval(runTick, interval);
+  }
+
+  function attachVisibilityListener() {
+    if (typeof document === "undefined") {
+      return;
+    }
+    if (visibilityHandler) {
+      document.removeEventListener("visibilitychange", visibilityHandler);
+    }
+    visibilityHandler = () => {
+      if (document.hidden) {
+        stopTicker();
+      } else {
+        startTicker();
+      }
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
+  }
+
+  function detachVisibilityListener() {
+    if (typeof document === "undefined") {
+      return;
+    }
+    if (visibilityHandler) {
+      document.removeEventListener("visibilitychange", visibilityHandler);
+      visibilityHandler = null;
+    }
+  }
+
+  function applyServerState(payload, options = {}) {
     const { silent = false } = options;
     if (!payload || typeof payload !== "object") {
       return;
     }
 
-    const previousPoints = points.value;
-    points.value = Math.max(0, Math.floor(payload.points ?? 0));
+    const previousDisplay = displayPoints.value;
+    serverPoints.value = Math.max(0, Math.floor(payload.points ?? 0));
     pointsPerTick.value = Math.max(0, Math.floor(payload.pointsPerTick ?? 0));
 
-    const tickInterval = payload.tickIntervalMs || config.value.baseTickMs || defaultConfig.baseTickMs;
+    const incomingTickInterval =
+      payload.tickIntervalMs || config.value.baseTickMs || defaultConfig.baseTickMs;
+    tickIntervalMs.value = Math.max(0, incomingTickInterval);
+    startTicker();
+
     if (typeof payload.pointsPerSecond === "number") {
       pointsPerSecond.value = payload.pointsPerSecond;
-    } else if (tickInterval > 0) {
-      pointsPerSecond.value = Number(((pointsPerTick.value * 1000) / tickInterval).toFixed(2));
+    } else if (tickIntervalMs.value > 0) {
+      pointsPerSecond.value = Number(
+        ((pointsPerTick.value * 1000) / tickIntervalMs.value).toFixed(2),
+      );
     } else {
       pointsPerSecond.value = 0;
     }
@@ -139,7 +212,15 @@ export function useTycoonGame() {
       config.value = { ...config.value, ...payload.config };
     }
 
-    if (!silent && points.value > previousPoints) {
+    const divergence = Math.abs(displayPoints.value - serverPoints.value);
+    const threshold = (pointsPerTick.value || 0) * 3;
+    if (divergence > threshold) {
+      displayPoints.value = serverPoints.value;
+    } else {
+      displayPoints.value = serverPoints.value;
+    }
+
+    if (!silent && displayPoints.value > previousDisplay) {
       tickPulse.value = true;
       tickEventId.value += 1;
       setTimeout(() => (tickPulse.value = false), 220);
@@ -157,7 +238,7 @@ export function useTycoonGame() {
     isSyncing.value = true;
     try {
       const state = await fetchTycoonState(deviceId);
-      applyState(state);
+      applyServerState(state);
     } catch (error) {
       console.warn("tycoon sync failed", error);
     } finally {
@@ -183,10 +264,7 @@ export function useTycoonGame() {
     if (isClickCoolingDown.value) {
       return;
     }
-    // Optimistic UI: bump local points right away, then reconcile with the authoritative
-    // server response (or rollback on error) without adding extra local accrual logic.
-    const previousPoints = points.value;
-    points.value = Math.max(0, Math.floor(points.value + 1));
+    displayPoints.value = Math.max(0, Math.floor(displayPoints.value + 1));
     manualClicks.value += 1;
     drumPulse.value = true;
     setTimeout(() => (drumPulse.value = false), 180);
@@ -194,16 +272,17 @@ export function useTycoonGame() {
 
     try {
       const state = await sendTycoonClick(deviceId);
-      applyState(state, { silent: true });
+      applyServerState(state, { silent: true });
+      displayPoints.value = serverPoints.value;
       if (manualClicks.value % 10 === 0) {
         trackEvent("tycoon_manual_clicks", { count: manualClicks.value });
       }
     } catch (error) {
       const state = error?.response?.data?.state;
       if (state) {
-        applyState(state, { silent: true });
+        applyServerState(state, { silent: true });
       } else {
-        points.value = previousPoints;
+        displayPoints.value = serverPoints.value;
       }
       if (error?.response?.status === 429) {
         scheduleClickCooldown();
@@ -218,7 +297,7 @@ export function useTycoonGame() {
     }
     try {
       const state = await sendTycoonBuyUpgrade(upgradeId, deviceId);
-      applyState(state);
+      applyServerState(state);
       trackEvent("tycoon_upgrade_purchase", {
         upgradeId,
         remainingPoints: state.points,
@@ -227,7 +306,7 @@ export function useTycoonGame() {
     } catch (error) {
       const state = error?.response?.data?.state;
       if (state) {
-        applyState(state);
+        applyServerState(state);
       }
       console.warn("tycoon upgrade failed", error);
       return false;
@@ -240,13 +319,13 @@ export function useTycoonGame() {
     }
     try {
       const state = await sendTycoonRedeemCoupon(couponId, deviceId);
-      applyState(state);
+      applyServerState(state);
       trackEvent("coupon_redeem", { couponId, remainingPoints: state.points });
       return true;
     } catch (error) {
       const state = error?.response?.data?.state;
       if (state) {
-        applyState(state);
+        applyServerState(state);
       }
       console.warn("coupon redeem failed", error);
       return false;
@@ -256,20 +335,25 @@ export function useTycoonGame() {
   onMounted(() => {
     syncState();
     startSyncLoop();
+    attachVisibilityListener();
   });
 
   onUnmounted(() => {
     stopSyncLoop();
     clearClickCooldownTimer();
+    stopTicker();
+    detachVisibilityListener();
   });
 
   return {
     BASE_TICK_MS: computed(() => config.value.baseTickMs),
     OFFLINE_CAP_SECONDS: computed(() => config.value.offlineCapSeconds),
     COST_GROWTH_FACTOR: computed(() => config.value.costGrowthFactor),
-    points,
+    serverPoints,
+    displayPoints,
     formattedPoints,
     pointsPerTick,
+    tickIntervalMs,
     pointsPerSecond: pointsPerSecondDisplay,
     upgradeViews,
     quickUpgrade,
