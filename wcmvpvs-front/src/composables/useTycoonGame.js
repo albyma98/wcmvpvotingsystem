@@ -1,83 +1,11 @@
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-
-// Configurazioni di base (MVP)
-const BASE_POINTS_PER_TICK = 1; // punti generati ad ogni tick
-const BASE_TICK_MS = 2000; // durata base del tick (ms)
-const OFFLINE_CAP_MS = 2 * 60 * 60 * 1000; // progresso offline massimo (2 ore)
-const COST_GROWTH_FACTOR = 1.6; // moltiplicatore di crescita dei costi
-const CLICK_COOLDOWN_MS = 300; // cooldown manuale per il tamburello
-
-const STORAGE_KEY = "tycoon_game_state_v1";
-const COUPON_STORAGE_KEY = "tycoon_coupons_state_v1";
-
-const UPGRADE_BLUEPRINTS = [
-  {
-    id: "tamburello",
-    name: "Tamburello Pro",
-    icon: "🥁",
-    description: "+1 punto per tick",
-    baseCost: 8,
-    bonusType: "flat",
-    bonusValue: 1,
-  },
-  {
-    id: "megafono",
-    name: "Megafono Curva",
-    icon: "📣",
-    description: "+3 punti per tick",
-    baseCost: 18,
-    bonusType: "flat",
-    bonusValue: 3,
-  },
-  {
-    id: "coro",
-    name: "Coro Coordinato",
-    icon: "🎶",
-    description: "+12% produzione",
-    baseCost: 36,
-    bonusType: "multiplier",
-    bonusValue: 0.12,
-  },
-  {
-    id: "banda",
-    name: "Banda Ritmo",
-    icon: "🥁🥁",
-    description: "Tick più rapido (-5%)",
-    baseCost: 55,
-    bonusType: "speed",
-    bonusValue: 0.05,
-  },
-];
-
-const COUPON_BLUEPRINTS = [
-  {
-    id: "sconto-10",
-    name: "Coupon Sconto 10%",
-    cost: 45,
-  },
-  {
-    id: "drink-omaggio",
-    name: "Drink omaggio",
-    cost: 65,
-  },
-  {
-    id: "merch-small",
-    name: "Mini merch curva",
-    cost: 95,
-  },
-  {
-    id: "fan-kit",
-    name: "Fan kit completo",
-    cost: 140,
-  },
-];
-
-function getStorage() {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return null;
-  }
-  return window.localStorage;
-}
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import {
+  fetchTycoonState,
+  sendTycoonBuyUpgrade,
+  sendTycoonClick,
+  sendTycoonRedeemCoupon,
+} from "../api";
+import { getOrCreateDeviceId } from "../deviceId";
 
 export function trackEvent(name, payload) {
   try {
@@ -91,61 +19,41 @@ export function trackEvent(name, payload) {
   }
 }
 
+const SYNC_INTERVAL_MS = 5000;
+
+const defaultConfig = {
+  baseTickMs: 2000,
+  offlineCapSeconds: 7200,
+  clickCooldownMs: 300,
+  costGrowthFactor: 1.6,
+  basePointsPerTick: 1,
+};
+
 export function useTycoonGame() {
+  const deviceId = getOrCreateDeviceId();
   const points = ref(0);
-  const lastTickAt = ref(Date.now());
-  const upgrades = ref(
-    UPGRADE_BLUEPRINTS.map((upgrade) => ({ ...upgrade, level: 0 })),
-  );
+  const pointsPerTick = ref(0);
+  const pointsPerSecond = ref(0);
+  const upgrades = ref([]);
+  const coupons = ref([]);
+  const config = ref({ ...defaultConfig });
   const isClickCoolingDown = ref(false);
   const drumPulse = ref(false);
   const tickPulse = ref(false);
-  const manualClicks = ref(0);
   const tickEventId = ref(0);
-  const redeemedCoupons = ref({});
+  const manualClicks = ref(0);
+  const isSyncing = ref(false);
 
-  let tickTimer = null;
+  let syncTimer = null;
   let clickCooldownTimer = null;
-
-  const effectiveTickMs = computed(() => {
-    const speedUpgrade = upgrades.value.find((item) => item.id === "banda");
-    const reduction = speedUpgrade ? speedUpgrade.level * (speedUpgrade.bonusValue || 0) : 0;
-    const cappedReduction = Math.min(reduction, 0.5); // minimo 50% del tempo base
-    const tickMs = BASE_TICK_MS * (1 - cappedReduction);
-    return Math.max(600, tickMs);
-  });
-
-  const baseFlatBonus = computed(() => {
-    return upgrades.value
-      .filter((item) => item.bonusType === "flat")
-      .reduce((total, item) => total + item.level * (item.bonusValue || 0), 0);
-  });
-
-  const multiplierBonus = computed(() => {
-    return upgrades.value
-      .filter((item) => item.bonusType === "multiplier")
-      .reduce((total, item) => total + item.level * (item.bonusValue || 0), 0);
-  });
-
-  const pointsPerTick = computed(() => {
-    const flat = BASE_POINTS_PER_TICK + baseFlatBonus.value;
-    const multiplier = 1 + multiplierBonus.value;
-    const value = flat * multiplier;
-    return Math.max(1, Math.round(value));
-  });
-
-  const pointsPerSecond = computed(() => {
-    return Number(((pointsPerTick.value * 1000) / effectiveTickMs.value).toFixed(2));
-  });
 
   const upgradeViews = computed(() => {
     return upgrades.value.map((upgrade) => {
-      const nextCost = Math.round(upgrade.baseCost * Math.pow(COST_GROWTH_FACTOR, upgrade.level));
-      const canAfford = points.value >= nextCost;
+      const nextCost = Number(upgrade.nextCost || 0);
       return {
         ...upgrade,
         nextCost,
-        canAfford,
+        canAfford: points.value >= nextCost,
       };
     });
   });
@@ -158,232 +66,201 @@ export function useTycoonGame() {
   const formattedPoints = computed(() => points.value.toLocaleString("it-IT"));
 
   const couponViews = computed(() => {
-    return COUPON_BLUEPRINTS.map((coupon) => {
-      const redeemedAt = redeemedCoupons.value[coupon.id] || null;
-      const redeemed = Boolean(redeemedAt);
-      const canRedeem = !redeemed && points.value >= coupon.cost;
+    return coupons.value.map((coupon) => {
+      const redeemed = Boolean(coupon.redeemed);
+      const canRedeem = !redeemed && points.value >= (coupon.cost || 0);
       return {
         ...coupon,
         redeemed,
-        redeemedAt,
         canRedeem,
       };
     });
   });
 
-  function persistState() {
-    const storage = getStorage();
-    if (!storage) {
-      return;
-    }
-    try {
-      storage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          points: points.value,
-          upgrades: upgrades.value.map(({ id, level }) => ({ id, level })),
-          lastTickAt: lastTickAt.value,
-        }),
-      );
-    } catch (error) {
-      console.warn("persist tycoon failed", error);
-    }
-  }
+  const pointsPerSecondDisplay = computed(() => Number((pointsPerSecond.value || 0).toFixed(2)));
 
-  function persistCoupons() {
-    const storage = getStorage();
-    if (!storage) {
-      return;
-    }
-    try {
-      storage.setItem(COUPON_STORAGE_KEY, JSON.stringify(redeemedCoupons.value));
-    } catch (error) {
-      console.warn("persist coupons failed", error);
-    }
-  }
-
-  function hydrateState() {
-    const storage = getStorage();
-    if (!storage) {
-      return;
-    }
-    try {
-      const raw = storage.getItem(STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      if (Number.isFinite(parsed?.points)) {
-        points.value = Math.max(0, Math.floor(parsed.points));
-      }
-      if (Array.isArray(parsed?.upgrades)) {
-        upgrades.value = UPGRADE_BLUEPRINTS.map((blueprint) => {
-          const savedLevel = parsed.upgrades.find((item) => item.id === blueprint.id)?.level ?? 0;
-          return {
-            ...blueprint,
-            level: Math.max(0, Number(savedLevel) || 0),
-          };
-        });
-      }
-      if (Number.isFinite(parsed?.lastTickAt)) {
-        lastTickAt.value = parsed.lastTickAt;
-      }
-    } catch (error) {
-      console.warn("hydrate tycoon failed", error);
-    }
-  }
-
-  function hydrateCoupons() {
-    const storage = getStorage();
-    if (!storage) {
-      return;
-    }
-    try {
-      const raw = storage.getItem(COUPON_STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        redeemedCoupons.value = Object.entries(parsed).reduce((acc, [id, ts]) => {
-          acc[id] = Number(ts) || 0;
-          return acc;
-        }, {});
-      }
-    } catch (error) {
-      console.warn("hydrate coupons failed", error);
-    }
-  }
-
-  function applyOfflineProgress() {
-    const now = Date.now();
-    const elapsed = Math.max(0, now - lastTickAt.value);
-    const cappedElapsed = Math.min(elapsed, OFFLINE_CAP_MS);
-    const ticks = Math.floor(cappedElapsed / effectiveTickMs.value);
-    if (ticks > 0) {
-      const gained = ticks * pointsPerTick.value;
-      points.value += gained;
-      tickPulse.value = true;
-      setTimeout(() => (tickPulse.value = false), 280);
-    }
-    lastTickAt.value = now;
-  }
-
-  function runTick() {
-    points.value += pointsPerTick.value;
-    lastTickAt.value = Date.now();
-    tickPulse.value = true;
-    tickEventId.value += 1;
-    setTimeout(() => (tickPulse.value = false), 200);
-  }
-
-  function clearTimers() {
-    if (tickTimer) {
-      clearInterval(tickTimer);
-      tickTimer = null;
-    }
+  function clearClickCooldownTimer() {
     if (clickCooldownTimer) {
       clearTimeout(clickCooldownTimer);
       clickCooldownTimer = null;
     }
   }
 
-  function scheduleTick() {
-    clearTimers();
-    tickTimer = setInterval(runTick, effectiveTickMs.value);
-  }
+  function scheduleClickCooldown(lastClickAt) {
+    clearClickCooldownTimer();
+    const cooldownMs = config.value.clickCooldownMs || defaultConfig.clickCooldownMs;
+    let remaining = cooldownMs;
 
-  function handleManualClick() {
-    if (isClickCoolingDown.value) {
-      return;
+    if (lastClickAt) {
+      const parsed = Date.parse(lastClickAt);
+      if (!Number.isNaN(parsed)) {
+        const elapsed = Date.now() - parsed;
+        remaining = Math.max(0, cooldownMs - elapsed);
+      }
     }
-    points.value += 1;
-    manualClicks.value += 1;
-    drumPulse.value = true;
-    setTimeout(() => (drumPulse.value = false), 180);
 
-    if (manualClicks.value % 10 === 0) {
-      trackEvent("tycoon_manual_clicks", { count: manualClicks.value });
+    if (remaining <= 0) {
+      isClickCoolingDown.value = false;
+      return;
     }
 
     isClickCoolingDown.value = true;
     clickCooldownTimer = setTimeout(() => {
       isClickCoolingDown.value = false;
-    }, CLICK_COOLDOWN_MS);
+    }, remaining);
   }
 
-  function buyUpgrade(upgradeId) {
-    const upgrade = upgradeViews.value.find((item) => item.id === upgradeId);
-    if (!upgrade) {
+  function applyState(payload) {
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+
+    const previousPoints = points.value;
+    points.value = Math.max(0, Math.floor(payload.points ?? 0));
+    pointsPerTick.value = Math.max(0, Math.floor(payload.pointsPerTick ?? 0));
+
+    const tickInterval = payload.tickIntervalMs || config.value.baseTickMs || defaultConfig.baseTickMs;
+    if (typeof payload.pointsPerSecond === "number") {
+      pointsPerSecond.value = payload.pointsPerSecond;
+    } else if (tickInterval > 0) {
+      pointsPerSecond.value = Number(((pointsPerTick.value * 1000) / tickInterval).toFixed(2));
+    } else {
+      pointsPerSecond.value = 0;
+    }
+
+    upgrades.value = Array.isArray(payload.upgrades) ? payload.upgrades : [];
+    coupons.value = Array.isArray(payload.coupons) ? payload.coupons : [];
+
+    if (payload.config && typeof payload.config === "object") {
+      config.value = { ...config.value, ...payload.config };
+    }
+
+    if (points.value > previousPoints) {
+      tickPulse.value = true;
+      tickEventId.value += 1;
+      setTimeout(() => (tickPulse.value = false), 220);
+    }
+
+    if (payload.lastClickAt) {
+      scheduleClickCooldown(payload.lastClickAt);
+    }
+  }
+
+  async function syncState() {
+    if (isSyncing.value) {
+      return;
+    }
+    isSyncing.value = true;
+    try {
+      const state = await fetchTycoonState(deviceId);
+      applyState(state);
+    } catch (error) {
+      console.warn("tycoon sync failed", error);
+    } finally {
+      isSyncing.value = false;
+    }
+  }
+
+  function startSyncLoop() {
+    if (syncTimer) {
+      clearInterval(syncTimer);
+    }
+    syncTimer = setInterval(syncState, SYNC_INTERVAL_MS);
+  }
+
+  function stopSyncLoop() {
+    if (syncTimer) {
+      clearInterval(syncTimer);
+      syncTimer = null;
+    }
+  }
+
+  async function handleManualClick() {
+    if (isClickCoolingDown.value) {
+      return;
+    }
+    manualClicks.value += 1;
+    drumPulse.value = true;
+    setTimeout(() => (drumPulse.value = false), 180);
+    scheduleClickCooldown();
+
+    try {
+      const state = await sendTycoonClick(deviceId);
+      applyState(state);
+      if (manualClicks.value % 10 === 0) {
+        trackEvent("tycoon_manual_clicks", { count: manualClicks.value });
+      }
+    } catch (error) {
+      const state = error?.response?.data?.state;
+      if (state) {
+        applyState(state);
+      }
+      if (error?.response?.status === 429) {
+        scheduleClickCooldown();
+      }
+      console.warn("tycoon click failed", error);
+    }
+  }
+
+  async function buyUpgrade(upgradeId) {
+    if (!upgradeId) {
       return false;
     }
-    if (points.value < upgrade.nextCost) {
-      return false;
-    }
-    points.value -= upgrade.nextCost;
-    const target = upgrades.value.find((item) => item.id === upgradeId);
-    if (target) {
-      target.level += 1;
+    try {
+      const state = await sendTycoonBuyUpgrade(upgradeId, deviceId);
+      applyState(state);
       trackEvent("tycoon_upgrade_purchase", {
         upgradeId,
-        level: target.level,
-        remainingPoints: points.value,
+        remainingPoints: state.points,
       });
+      return true;
+    } catch (error) {
+      const state = error?.response?.data?.state;
+      if (state) {
+        applyState(state);
+      }
+      console.warn("tycoon upgrade failed", error);
+      return false;
     }
-    tickPulse.value = true;
-    setTimeout(() => (tickPulse.value = false), 200);
-    return true;
   }
 
-  function redeemCoupon(couponId) {
-    const coupon = couponViews.value.find((item) => item.id === couponId);
-    if (!coupon || coupon.redeemed) {
+  async function redeemCoupon(couponId) {
+    if (!couponId) {
       return false;
     }
-    if (points.value < coupon.cost) {
+    try {
+      const state = await sendTycoonRedeemCoupon(couponId, deviceId);
+      applyState(state);
+      trackEvent("coupon_redeem", { couponId, remainingPoints: state.points });
+      return true;
+    } catch (error) {
+      const state = error?.response?.data?.state;
+      if (state) {
+        applyState(state);
+      }
+      console.warn("coupon redeem failed", error);
       return false;
     }
-    points.value -= coupon.cost;
-    redeemedCoupons.value = {
-      ...redeemedCoupons.value,
-      [couponId]: Date.now(),
-    };
-    trackEvent("coupon_redeem", { couponId, cost: coupon.cost });
-    persistCoupons();
-    return true;
   }
 
   onMounted(() => {
-    hydrateState();
-    hydrateCoupons();
-    applyOfflineProgress();
-    scheduleTick();
+    syncState();
+    startSyncLoop();
   });
 
   onUnmounted(() => {
-    clearTimers();
+    stopSyncLoop();
+    clearClickCooldownTimer();
   });
 
-  watch(points, persistState);
-  watch(
-    () => upgrades.value.map((item) => item.level),
-    () => {
-      persistState();
-      scheduleTick();
-    },
-  );
-
-  watch(effectiveTickMs, scheduleTick);
-  watch(redeemedCoupons, persistCoupons, { deep: true });
-
   return {
-    BASE_TICK_MS,
-    OFFLINE_CAP_MS,
-    COST_GROWTH_FACTOR,
+    BASE_TICK_MS: computed(() => config.value.baseTickMs),
+    OFFLINE_CAP_SECONDS: computed(() => config.value.offlineCapSeconds),
+    COST_GROWTH_FACTOR: computed(() => config.value.costGrowthFactor),
     points,
     formattedPoints,
     pointsPerTick,
-    pointsPerSecond,
+    pointsPerSecond: pointsPerSecondDisplay,
     upgradeViews,
     quickUpgrade,
     couponViews,

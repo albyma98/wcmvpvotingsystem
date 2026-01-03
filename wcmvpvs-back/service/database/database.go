@@ -760,6 +760,11 @@ type AppDatabase interface {
 	ClaimCoupon(couponID int, userID *int, matchID int) (UserCoupon, error)
 	RedeemCoupon(code string, sponsorID int) (UserCoupon, error)
 	ListUserCoupons(userID *int, sponsorID int) ([]UserCoupon, error)
+	// Tycoon mini-game
+	GetTycoonState(deviceID string, cfg TycoonConfig) (TycoonState, error)
+	RecordTycoonClick(deviceID string, cfg TycoonConfig) (TycoonState, error)
+	PurchaseTycoonUpgrade(deviceID, upgradeKey string, cfg TycoonConfig) (TycoonState, error)
+	RedeemTycoonCoupon(deviceID, couponID string, cfg TycoonConfig) (TycoonState, error)
 	Ping() error
 }
 
@@ -1476,6 +1481,64 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_user_coupons_sponsor ON user_coupons(used_by_sponsor_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring user_coupons sponsor index: %w", err)
+	}
+
+	// Tycoon tables
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tycoon_state';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE tycoon_state (
+        device_id TEXT PRIMARY KEY,
+        points INTEGER NOT NULL DEFAULT 0,
+        last_accrual_at TEXT NOT NULL,
+        last_click_at TEXT
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating tycoon_state table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying tycoon_state table: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tycoon_upgrades';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE tycoon_upgrades (
+        device_id TEXT NOT NULL,
+        upgrade_key TEXT NOT NULL,
+        level INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (device_id, upgrade_key),
+        FOREIGN KEY (device_id) REFERENCES tycoon_state(device_id) ON DELETE CASCADE
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating tycoon_upgrades table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying tycoon_upgrades table: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tycoon_coupon_redemptions';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE tycoon_coupon_redemptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id TEXT NOT NULL,
+        coupon_id TEXT NOT NULL,
+        redeemed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(device_id, coupon_id),
+        FOREIGN KEY (device_id) REFERENCES tycoon_state(device_id) ON DELETE CASCADE
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating tycoon_coupon_redemptions table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying tycoon_coupon_redemptions table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_tycoon_upgrades_device ON tycoon_upgrades(device_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring tycoon_upgrades device index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_tycoon_redemptions_device ON tycoon_coupon_redemptions(device_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring tycoon redemptions device index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_products';`).Scan(&tableName)
