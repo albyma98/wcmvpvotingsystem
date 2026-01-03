@@ -8,6 +8,7 @@ const COST_GROWTH_FACTOR = 1.6; // moltiplicatore di crescita dei costi
 const CLICK_COOLDOWN_MS = 300; // cooldown manuale per il tamburello
 
 const STORAGE_KEY = "tycoon_game_state_v1";
+const COUPON_STORAGE_KEY = "tycoon_coupons_state_v1";
 
 const UPGRADE_BLUEPRINTS = [
   {
@@ -48,6 +49,29 @@ const UPGRADE_BLUEPRINTS = [
   },
 ];
 
+const COUPON_BLUEPRINTS = [
+  {
+    id: "sconto-10",
+    name: "Coupon Sconto 10%",
+    cost: 45,
+  },
+  {
+    id: "drink-omaggio",
+    name: "Drink omaggio",
+    cost: 65,
+  },
+  {
+    id: "merch-small",
+    name: "Mini merch curva",
+    cost: 95,
+  },
+  {
+    id: "fan-kit",
+    name: "Fan kit completo",
+    cost: 140,
+  },
+];
+
 function getStorage() {
   if (typeof window === "undefined" || !window.localStorage) {
     return null;
@@ -78,6 +102,7 @@ export function useTycoonGame() {
   const tickPulse = ref(false);
   const manualClicks = ref(0);
   const tickEventId = ref(0);
+  const redeemedCoupons = ref({});
 
   let tickTimer = null;
   let clickCooldownTimer = null;
@@ -132,6 +157,20 @@ export function useTycoonGame() {
 
   const formattedPoints = computed(() => points.value.toLocaleString("it-IT"));
 
+  const couponViews = computed(() => {
+    return COUPON_BLUEPRINTS.map((coupon) => {
+      const redeemedAt = redeemedCoupons.value[coupon.id] || null;
+      const redeemed = Boolean(redeemedAt);
+      const canRedeem = !redeemed && points.value >= coupon.cost;
+      return {
+        ...coupon,
+        redeemed,
+        redeemedAt,
+        canRedeem,
+      };
+    });
+  });
+
   function persistState() {
     const storage = getStorage();
     if (!storage) {
@@ -148,6 +187,18 @@ export function useTycoonGame() {
       );
     } catch (error) {
       console.warn("persist tycoon failed", error);
+    }
+  }
+
+  function persistCoupons() {
+    const storage = getStorage();
+    if (!storage) {
+      return;
+    }
+    try {
+      storage.setItem(COUPON_STORAGE_KEY, JSON.stringify(redeemedCoupons.value));
+    } catch (error) {
+      console.warn("persist coupons failed", error);
     }
   }
 
@@ -179,6 +230,28 @@ export function useTycoonGame() {
       }
     } catch (error) {
       console.warn("hydrate tycoon failed", error);
+    }
+  }
+
+  function hydrateCoupons() {
+    const storage = getStorage();
+    if (!storage) {
+      return;
+    }
+    try {
+      const raw = storage.getItem(COUPON_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        redeemedCoupons.value = Object.entries(parsed).reduce((acc, [id, ts]) => {
+          acc[id] = Number(ts) || 0;
+          return acc;
+        }, {});
+      }
+    } catch (error) {
+      console.warn("hydrate coupons failed", error);
     }
   }
 
@@ -262,8 +335,27 @@ export function useTycoonGame() {
     return true;
   }
 
+  function redeemCoupon(couponId) {
+    const coupon = couponViews.value.find((item) => item.id === couponId);
+    if (!coupon || coupon.redeemed) {
+      return false;
+    }
+    if (points.value < coupon.cost) {
+      return false;
+    }
+    points.value -= coupon.cost;
+    redeemedCoupons.value = {
+      ...redeemedCoupons.value,
+      [couponId]: Date.now(),
+    };
+    trackEvent("coupon_redeem", { couponId, cost: coupon.cost });
+    persistCoupons();
+    return true;
+  }
+
   onMounted(() => {
     hydrateState();
+    hydrateCoupons();
     applyOfflineProgress();
     scheduleTick();
   });
@@ -282,6 +374,7 @@ export function useTycoonGame() {
   );
 
   watch(effectiveTickMs, scheduleTick);
+  watch(redeemedCoupons, persistCoupons, { deep: true });
 
   return {
     BASE_TICK_MS,
@@ -293,12 +386,14 @@ export function useTycoonGame() {
     pointsPerSecond,
     upgradeViews,
     quickUpgrade,
+    couponViews,
     isClickCoolingDown,
     drumPulse,
     tickPulse,
     tickEventId,
     handleManualClick,
     buyUpgrade,
+    redeemCoupon,
   };
 }
 
