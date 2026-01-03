@@ -49,8 +49,12 @@ export function useTycoonGame() {
 
   let syncTimer = null;
   let clickCooldownTimer = null;
-  let tickTimer = null;
-  let visibilityHandler = null;
+  let clickFlushTimer = null;
+  let pendingClickCount = 0;
+  let isSendingClicks = false;
+  let trackedClickMilestone = 0;
+  let tickFrameId = null;
+  let lastTickTimestamp = 0;
   let thresholdSyncTimer = null;
 
   const upgradeViews = computed(() => {
@@ -110,6 +114,60 @@ export function useTycoonGame() {
     }, 500);
   }
 
+  function clearClickFlushTimer() {
+    if (clickFlushTimer) {
+      clearTimeout(clickFlushTimer);
+      clickFlushTimer = null;
+    }
+  }
+
+  function scheduleClickFlush() {
+    if (clickFlushTimer) {
+      return;
+    }
+    clickFlushTimer = setTimeout(() => {
+      clickFlushTimer = null;
+      void flushPendingClicks();
+    }, 240);
+  }
+
+  async function flushPendingClicks() {
+    if (isSendingClicks || pendingClickCount <= 0) {
+      return;
+    }
+    isSendingClicks = true;
+    try {
+      while (pendingClickCount > 0) {
+        pendingClickCount -= 1;
+        const state = await sendTycoonClick(deviceId);
+        applyServerState(state, { silent: true });
+        displayPoints.value = serverPoints.value;
+        const milestone = Math.floor(manualClicks.value / 10) * 10;
+        if (milestone > 0 && milestone > trackedClickMilestone) {
+          trackedClickMilestone = milestone;
+          trackEvent("tycoon_manual_clicks", { count: milestone });
+        }
+      }
+    } catch (error) {
+      const state = error?.response?.data?.state;
+      if (state) {
+        applyServerState(state, { silent: true });
+        displayPoints.value = serverPoints.value;
+      } else {
+        displayPoints.value = serverPoints.value;
+      }
+      if (error?.response?.status === 429) {
+        scheduleClickCooldown();
+      }
+      console.warn("tycoon click failed", error);
+    } finally {
+      isSendingClicks = false;
+      if (pendingClickCount > 0) {
+        scheduleClickFlush();
+      }
+    }
+  }
+
   function scheduleClickCooldown(lastClickAt) {
     clearClickCooldownTimer();
     const cooldownMs = config.value.clickCooldownMs || defaultConfig.clickCooldownMs;
@@ -134,17 +192,7 @@ export function useTycoonGame() {
     }, remaining);
   }
 
-  function stopTicker() {
-    if (tickTimer) {
-      clearInterval(tickTimer);
-      tickTimer = null;
-    }
-  }
-
   function runTick() {
-    if (typeof document !== "undefined" && document.hidden) {
-      return;
-    }
     const increment = pointsPerTick.value || 0;
     if (increment <= 0) {
       return;
@@ -155,46 +203,31 @@ export function useTycoonGame() {
     setTimeout(() => (tickPulse.value = false), 220);
   }
 
-  function startTicker() {
-    if (typeof window === "undefined") {
-      return;
-    }
-    stopTicker();
-    if (typeof document !== "undefined" && document.hidden) {
-      return;
-    }
+  function tickerStep(timestamp) {
     const interval = tickIntervalMs.value || config.value.baseTickMs || defaultConfig.baseTickMs;
-    if (!interval || interval <= 0) {
-      return;
+    if (!lastTickTimestamp) {
+      lastTickTimestamp = timestamp;
     }
-    tickTimer = setInterval(runTick, interval);
+    if (interval && interval > 0 && timestamp - lastTickTimestamp >= interval) {
+      runTick();
+      lastTickTimestamp = timestamp;
+    }
+    tickFrameId = requestAnimationFrame(tickerStep);
   }
 
-  function attachVisibilityListener() {
-    if (typeof document === "undefined") {
-      return;
+  function stopTicker() {
+    if (tickFrameId) {
+      cancelAnimationFrame(tickFrameId);
+      tickFrameId = null;
     }
-    if (visibilityHandler) {
-      document.removeEventListener("visibilitychange", visibilityHandler);
-    }
-    visibilityHandler = () => {
-      if (document.hidden) {
-        stopTicker();
-      } else {
-        startTicker();
-      }
-    };
-    document.addEventListener("visibilitychange", visibilityHandler);
+    lastTickTimestamp = 0;
   }
 
-  function detachVisibilityListener() {
-    if (typeof document === "undefined") {
+  function ensureTickerRunning() {
+    if (typeof window === "undefined" || tickFrameId) {
       return;
     }
-    if (visibilityHandler) {
-      document.removeEventListener("visibilitychange", visibilityHandler);
-      visibilityHandler = null;
-    }
+    tickFrameId = requestAnimationFrame(tickerStep);
   }
 
   function applyServerState(payload, options = {}) {
@@ -208,9 +241,8 @@ export function useTycoonGame() {
     pointsPerTick.value = Math.max(0, Math.floor(payload.pointsPerTick ?? 0));
 
     const incomingTickInterval =
-      payload.tickIntervalMs || config.value.baseTickMs || defaultConfig.baseTickMs;
+      payload.tickIntervalMs ?? config.value.baseTickMs ?? defaultConfig.baseTickMs;
     tickIntervalMs.value = Math.max(0, incomingTickInterval);
-    startTicker();
 
     if (typeof payload.pointsPerSecond === "number") {
       pointsPerSecond.value = payload.pointsPerSecond;
@@ -295,7 +327,7 @@ export function useTycoonGame() {
     { deep: true }
   );
 
-  async function handleManualClick() {
+  function handleManualClick() {
     if (isClickCoolingDown.value) {
       return;
     }
@@ -304,26 +336,8 @@ export function useTycoonGame() {
     drumPulse.value = true;
     setTimeout(() => (drumPulse.value = false), 180);
     scheduleClickCooldown();
-
-    try {
-      const state = await sendTycoonClick(deviceId);
-      applyServerState(state, { silent: true });
-      displayPoints.value = serverPoints.value;
-      if (manualClicks.value % 10 === 0) {
-        trackEvent("tycoon_manual_clicks", { count: manualClicks.value });
-      }
-    } catch (error) {
-      const state = error?.response?.data?.state;
-      if (state) {
-        applyServerState(state, { silent: true });
-      } else {
-        displayPoints.value = serverPoints.value;
-      }
-      if (error?.response?.status === 429) {
-        scheduleClickCooldown();
-      }
-      console.warn("tycoon click failed", error);
-    }
+    pendingClickCount += 1;
+    scheduleClickFlush();
   }
 
   async function buyUpgrade(upgradeId) {
@@ -369,17 +383,17 @@ export function useTycoonGame() {
   }
 
   onMounted(() => {
+    ensureTickerRunning();
     syncState();
     startSyncLoop();
-    attachVisibilityListener();
   });
 
   onUnmounted(() => {
     stopSyncLoop();
     clearClickCooldownTimer();
+    clearClickFlushTimer();
     stopTicker();
     clearThresholdSyncTimer();
-    detachVisibilityListener();
   });
 
   return {
