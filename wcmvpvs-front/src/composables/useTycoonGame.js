@@ -49,9 +49,12 @@ export function useTycoonGame() {
 
   const upgradeViews = computed(() => {
     return upgrades.value.map((upgrade) => {
+      const key = upgrade.key || upgrade.id;
       const nextCost = Number(upgrade.nextCost || 0);
       return {
         ...upgrade,
+        id: key,
+        key,
         nextCost,
         canAfford: points.value >= nextCost,
       };

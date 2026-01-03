@@ -2,6 +2,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import useTycoonGame from "../composables/useTycoonGame";
 
+const UPGRADE_META = {
+  drum: { key: "drum", title: "Tamburello", icon: "🥁", effect: "+1 per tick" },
+  megaphone: { key: "megaphone", title: "Megafono", icon: "📣", effect: "+3 per tick" },
+  choir: { key: "choir", title: "Coro", icon: "🎶", effect: "+12% prod." },
+};
+
 const {
   points,
   formattedPoints,
@@ -18,23 +24,40 @@ const {
   redeemCoupon,
 } = useTycoonGame();
 
-const primaryUpgrades = computed(() =>
-  upgradeViews.value.filter((upgrade) => ["tamburello", "megafono"].includes(upgrade.id)),
-);
-const upgradeTiles = computed(() => {
-  const upgrades = primaryUpgrades.value.map((upgrade) => ({
-    id: upgrade.id,
-    type: "upgrade",
-    upgrade,
-  }));
-  return [
-    ...upgrades,
-    {
-      id: "coupon",
-      type: "coupon",
-    },
-  ];
+const normalizeUpgradeKey = (key) => {
+  const lowered = (key || "").toString().toLowerCase();
+  if (lowered === "tamburello") return "drum";
+  if (lowered === "megafono") return "megaphone";
+  if (lowered === "coro") return "choir";
+  return lowered;
+};
+
+const upgradeCards = computed(() => {
+  const byKey = new Map();
+  upgradeViews.value.forEach((upgrade) => {
+    const normalized = normalizeUpgradeKey(upgrade.key || upgrade.id);
+    if (!normalized) return;
+    byKey.set(normalized, upgrade);
+  });
+
+  return Object.values(UPGRADE_META).map((meta) => {
+    const data = byKey.get(meta.key) || {};
+    const rawCost = Number(data.nextCost ?? 0);
+    const cost = Number.isFinite(rawCost) && rawCost > 0 ? rawCost : 0;
+    const affordable = data.canAfford ?? (cost > 0 && points.value >= cost);
+    return {
+      key: meta.key,
+      title: data.name || meta.title,
+      icon: data.icon || meta.icon,
+      effect: data.effectLabel || data.description || meta.effect,
+      level: Number.isFinite(data.level) ? data.level : 0,
+      cost,
+      affordable,
+      locked: cost <= 0 || !affordable,
+    };
+  });
 });
+
 const tappedUpgradeId = ref(null);
 const floatingTexts = ref([]);
 const cardRef = ref(null);
@@ -47,10 +70,10 @@ let cleanupMotion;
 let floatingId = 0;
 
 const recommendedUpgradeId = computed(() => {
-  const candidate = primaryUpgrades.value
-    .filter((item) => item.canAfford)
-    .sort((a, b) => a.nextCost - b.nextCost)[0];
-  return candidate?.id ?? null;
+  const candidate = upgradeCards.value
+    .filter((item) => item.affordable && !item.locked)
+    .sort((a, b) => a.cost - b.cost)[0];
+  return candidate?.key ?? null;
 });
 
 function handleUpgradeTap(upgradeId) {
@@ -202,55 +225,57 @@ watch(tickEventId, (current, previous) => {
       </button>
 
       <div class="tycoon-upgrade-grid" role="list">
-        <template v-for="tile in upgradeTiles" :key="tile.id">
-          <button
-            v-if="tile.type === 'upgrade'"
-            type="button"
-            class="tycoon-upgrade-box"
-            :class="{
-              'tycoon-upgrade-box--disabled': !tile.upgrade.canAfford,
-              'tycoon-upgrade-box--tapped': tappedUpgradeId === tile.id,
-              'tycoon-upgrade-box--recommended': recommendedUpgradeId === tile.id,
-            }"
-            :disabled="!tile.upgrade.canAfford"
-            @click="handleUpgradeTap(tile.id)"
+        <button
+          v-for="upgrade in upgradeCards"
+          :key="upgrade.key"
+          type="button"
+          class="tycoon-upgrade-box"
+          :class="{
+            'tycoon-upgrade-box--disabled': upgrade.locked || !upgrade.affordable,
+            'tycoon-upgrade-box--tapped': tappedUpgradeId === upgrade.key,
+            'tycoon-upgrade-box--recommended': recommendedUpgradeId === upgrade.key,
+            'tycoon-upgrade-box--active': upgrade.affordable && !upgrade.locked,
+          }"
+          :disabled="upgrade.locked || !upgrade.affordable"
+          @click="handleUpgradeTap(upgrade.key)"
+        >
+          <span v-if="upgrade.locked || !upgrade.affordable" class="tycoon-lock" aria-hidden="true"
+            >🔒</span
           >
-            <span v-if="!tile.upgrade.canAfford" class="tycoon-lock" aria-hidden="true">🔒</span>
-            <span class="tycoon-upgrade__icon" aria-hidden="true">{{ tile.upgrade.icon }}</span>
-            <div class="tycoon-upgrade__text">
-              <p class="tycoon-upgrade__title">{{ tile.upgrade.name }}</p>
-              <p class="tycoon-upgrade__desc">{{ tile.upgrade.description }}</p>
-            </div>
-            <div class="tycoon-upgrade__meta">
-              <span
-                class="tycoon-cost"
-                :class="{ 'tycoon-cost--disabled': !tile.upgrade.canAfford }"
-                >{{ tile.upgrade.nextCost.toLocaleString("it-IT") }} pts</span
-              >
-              <span class="tycoon-level">Lv. {{ tile.upgrade.level }}</span>
-            </div>
-          </button>
-          <button
-            v-else
-            type="button"
-            class="tycoon-upgrade-box tycoon-upgrade-box--coupon"
-            :class="{ 'tycoon-upgrade-box--tapped': isCouponPanelOpen }"
-            @click="toggleCouponPanel"
-          >
-            <span class="tycoon-upgrade__icon" aria-hidden="true">🎟️</span>
-            <div class="tycoon-upgrade__text">
-              <p class="tycoon-upgrade__title">Coupon</p>
-              <p class="tycoon-upgrade__desc">Scambia punti per premi rapidi</p>
-            </div>
-            <div class="tycoon-upgrade__meta">
-              <span class="tycoon-cost">Disponibili {{ couponViews.length }}</span>
-              <span class="tycoon-level">{{ isCouponPanelOpen ? "Chiudi" : "Apri" }}</span>
-            </div>
-          </button>
-        </template>
+          <span class="tycoon-upgrade__icon" aria-hidden="true">{{ upgrade.icon }}</span>
+          <div class="tycoon-upgrade__text">
+            <p class="tycoon-upgrade__title">{{ upgrade.title }}</p>
+            <p class="tycoon-upgrade__desc">{{ upgrade.effect }}</p>
+          </div>
+          <div class="tycoon-upgrade__meta">
+            <span class="tycoon-cost" :class="{ 'tycoon-cost--disabled': !upgrade.affordable }">
+              {{ upgrade.cost.toLocaleString("it-IT") }} pts
+            </span>
+            <span class="tycoon-level">Lv. {{ upgrade.level }}</span>
+          </div>
+        </button>
       </div>
 
-      <div v-if="isCouponPanelOpen" class="tycoon-coupon-panel" role="region" aria-live="polite">
+      <button
+        type="button"
+        class="tycoon-coupon-toggle"
+        :class="{ 'tycoon-coupon-toggle--open': isCouponPanelOpen }"
+        @click="toggleCouponPanel"
+      >
+        <span class="tycoon-coupon-toggle__icon" aria-hidden="true">🎟️</span>
+        <span class="tycoon-coupon-toggle__text">Coupon rapidi</span>
+        <span class="tycoon-coupon-toggle__badge">{{ couponViews.length }}</span>
+        <span class="tycoon-coupon-toggle__chevron" aria-hidden="true">
+          {{ isCouponPanelOpen ? "▲" : "▼" }}
+        </span>
+      </button>
+
+      <div
+        v-if="isCouponPanelOpen"
+        class="tycoon-coupon-panel"
+        role="region"
+        aria-live="polite"
+      >
         <div
           v-for="coupon in couponViews"
           :key="coupon.id"
@@ -549,12 +574,13 @@ watch(tickEventId, (current, previous) => {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+  align-items: stretch;
 }
 
 
 .tycoon-upgrade-box {
   position: relative;
-  min-height: 124px;
+  min-height: 128px;
   height: 100%;
   padding: 10px 8px 12px;
   border-radius: 12px;
@@ -572,6 +598,7 @@ watch(tickEventId, (current, previous) => {
     border-color 120ms ease,
     background 120ms ease;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 8px 18px rgba(0, 0, 0, 0.3);
+  isolation: isolate;
 }
 
 .tycoon-upgrade-box:not(:disabled):active {
@@ -584,6 +611,11 @@ watch(tickEventId, (current, previous) => {
   border-color: rgba(251, 191, 36, 0.45);
   background: linear-gradient(165deg, rgba(248, 180, 0, 0.12), rgba(17, 24, 39, 0.95));
   box-shadow: 0 10px 20px rgba(251, 191, 36, 0.16);
+}
+
+.tycoon-upgrade-box--active:not(:disabled) {
+  border-color: rgba(251, 191, 36, 0.6);
+  box-shadow: 0 10px 24px rgba(251, 191, 36, 0.16);
 }
 
 
@@ -640,9 +672,7 @@ watch(tickEventId, (current, previous) => {
   margin: 0;
   font-size: 11px;
   color: #cbd5e1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.3;
 }
 
 .tycoon-upgrade__meta {
@@ -666,12 +696,60 @@ watch(tickEventId, (current, previous) => {
   top: 6px;
   right: 8px;
   font-size: 13px;
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
 .tycoon-cost--disabled {
   background: rgba(148, 163, 184, 0.28);
   color: #0f172a;
+}
+
+.tycoon-coupon-toggle {
+  grid-column: 1 / 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-top: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(94, 234, 212, 0.4);
+  background: linear-gradient(165deg, rgba(15, 23, 42, 0.94), rgba(34, 197, 94, 0.06));
+  color: #e2e8f0;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.tycoon-coupon-toggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(94, 234, 212, 0.7);
+  box-shadow: 0 10px 20px rgba(45, 212, 191, 0.15);
+}
+
+.tycoon-coupon-toggle--open {
+  border-color: rgba(45, 212, 191, 0.75);
+  box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.25);
+}
+
+.tycoon-coupon-toggle__icon {
+  font-size: 18px;
+}
+
+.tycoon-coupon-toggle__text {
+  font-size: 13px;
+}
+
+.tycoon-coupon-toggle__badge {
+  background: rgba(45, 212, 191, 0.2);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #a5f3fc;
+}
+
+.tycoon-coupon-toggle__chevron {
+  margin-left: auto;
+  opacity: 0.8;
 }
 
 .tycoon-coupon-panel {
