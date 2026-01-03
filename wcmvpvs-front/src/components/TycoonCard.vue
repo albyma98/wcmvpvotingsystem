@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import useTycoonGame from "../composables/useTycoonGame";
 
 const {
@@ -9,17 +9,31 @@ const {
   pointsPerSecond,
   upgradeViews,
   quickUpgrade,
-  showAllUpgrades,
   isClickCoolingDown,
   drumPulse,
   tickPulse,
-  toggleUpgrades,
   handleManualClick,
   buyUpgrade,
 } = useTycoonGame();
 
 const nextQuickCost = computed(() => quickUpgrade.value?.nextCost ?? 0);
 const quickLabel = computed(() => quickUpgrade.value?.name || "Upgrade");
+const primaryUpgrades = computed(() =>
+  upgradeViews.value.filter((upgrade) =>
+    ["tamburello", "megafono", "coro"].includes(upgrade.id),
+  ),
+);
+const tappedUpgradeId = ref(null);
+
+function handleUpgradeTap(upgradeId) {
+  tappedUpgradeId.value = upgradeId;
+  setTimeout(() => {
+    if (tappedUpgradeId.value === upgradeId) {
+      tappedUpgradeId.value = null;
+    }
+  }, 160);
+  buyUpgrade(upgradeId);
+}
 </script>
 
 <template>
@@ -72,37 +86,30 @@ const quickLabel = computed(() => quickUpgrade.value?.name || "Upgrade");
         </button>
       </div>
 
-      <div class="tycoon-actions">
-        <button type="button" class="tycoon-toggle" @click="toggleUpgrades">
-          {{ showAllUpgrades ? "Nascondi upgrade" : "Mostra upgrade" }}
+      <div class="tycoon-upgrade-grid" role="list">
+        <button
+          v-for="upgrade in primaryUpgrades"
+          :key="upgrade.id"
+          type="button"
+          class="tycoon-upgrade-box"
+          :class="{
+            'tycoon-upgrade-box--disabled': !upgrade.canAfford,
+            'tycoon-upgrade-box--tapped': tappedUpgradeId === upgrade.id,
+          }"
+          :disabled="!upgrade.canAfford"
+          @click="handleUpgradeTap(upgrade.id)"
+        >
+          <span class="tycoon-upgrade__icon" aria-hidden="true">{{ upgrade.icon }}</span>
+          <div class="tycoon-upgrade__text">
+            <p class="tycoon-upgrade__title">{{ upgrade.name }}</p>
+            <p class="tycoon-upgrade__desc">{{ upgrade.description }}</p>
+          </div>
+          <div class="tycoon-upgrade__meta">
+            <span class="tycoon-cost">{{ upgrade.nextCost.toLocaleString("it-IT") }} pts</span>
+            <span class="tycoon-level">Lv. {{ upgrade.level }}</span>
+          </div>
         </button>
       </div>
-
-      <transition name="tycoon-fade">
-        <div v-if="showAllUpgrades" class="tycoon-upgrade-list" role="list">
-          <button
-            v-for="upgrade in upgradeViews"
-            :key="upgrade.id"
-            type="button"
-            class="tycoon-upgrade-card"
-            :class="{ 'tycoon-upgrade-card--disabled': !upgrade.canAfford }"
-            :disabled="!upgrade.canAfford"
-            @click="buyUpgrade(upgrade.id)"
-          >
-            <div class="tycoon-upgrade__label">
-              <span class="tycoon-upgrade__icon" aria-hidden="true">{{ upgrade.icon }}</span>
-              <div>
-                <p class="tycoon-upgrade__title">{{ upgrade.name }}</p>
-                <p class="tycoon-upgrade__desc">{{ upgrade.description }}</p>
-              </div>
-            </div>
-            <div class="tycoon-upgrade__meta">
-              <span class="tycoon-cost">{{ upgrade.nextCost.toLocaleString("it-IT") }} pts</span>
-              <span class="tycoon-level">Lv. {{ upgrade.level }}</span>
-            </div>
-          </button>
-        </div>
-      </transition>
     </div>
   </section>
 </template>
@@ -117,6 +124,8 @@ const quickLabel = computed(() => quickUpgrade.value?.name || "Upgrade");
   padding: 14px 14px 12px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
   color: #f8fafc;
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .tycoon-header {
@@ -304,71 +313,71 @@ const quickLabel = computed(() => quickUpgrade.value?.name || "Upgrade");
 
 .tycoon-cost {
   font-size: 12px;
-  color: #0f172a;
-  background: rgba(255, 255, 255, 0.2);
+  color: #0b1220;
+  background: rgba(251, 191, 36, 0.35);
   padding: 3px 6px;
   border-radius: 8px;
   font-weight: 700;
 }
 
-.tycoon-actions {
-  grid-column: 1 / 3;
-}
-
-.tycoon-toggle {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  color: #e2e8f0;
-  padding: 8px 10px;
-  border-radius: 12px;
-  font-weight: 700;
-}
-
-.tycoon-upgrade-list {
+.tycoon-upgrade-grid {
   grid-column: 1 / 3;
   display: grid;
-  gap: 8px;
-  max-height: 160px;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-
-.tycoon-upgrade-card {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: rgba(15, 23, 42, 0.7);
+}
+
+.tycoon-upgrade-box {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  padding: 12px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: linear-gradient(165deg, rgba(15, 23, 42, 0.85), rgba(17, 24, 39, 0.9));
   color: #e2e8f0;
-  transition: border-color 140ms ease, transform 140ms ease, background 140ms ease;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 6px;
+  align-items: start;
+  text-align: left;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 10px 22px rgba(0, 0, 0, 0.32);
 }
 
-.tycoon-upgrade-card:hover:not(:disabled) {
+.tycoon-upgrade-box:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.tycoon-upgrade-box:hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: rgba(251, 191, 36, 0.4);
-  background: rgba(248, 180, 0, 0.08);
+  border-color: rgba(251, 191, 36, 0.5);
+  background: linear-gradient(165deg, rgba(248, 180, 0, 0.12), rgba(17, 24, 39, 0.95));
+  box-shadow: 0 12px 26px rgba(251, 191, 36, 0.18);
 }
 
-.tycoon-upgrade-card--disabled {
-  opacity: 0.6;
+.tycoon-upgrade-box--disabled {
+  opacity: 0.55;
   cursor: not-allowed;
+  filter: grayscale(0.6);
+}
+
+.tycoon-upgrade-box--tapped {
+  box-shadow: 0 0 0 8px rgba(251, 191, 36, 0.08);
 }
 
 .tycoon-upgrade__icon {
-  font-size: 20px;
-  margin-right: 8px;
+  font-size: 26px;
+  margin: 0 auto;
+  display: block;
 }
 
-.tycoon-upgrade__label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
+.tycoon-upgrade__text {
+  display: grid;
+  gap: 2px;
 }
 
 .tycoon-upgrade__title {
@@ -386,27 +395,17 @@ const quickLabel = computed(() => quickUpgrade.value?.name || "Upgrade");
 .tycoon-upgrade__meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 6px;
   font-weight: 700;
 }
 
 .tycoon-level {
   padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.15);
+  background: rgba(148, 163, 184, 0.18);
   color: #cbd5e1;
   font-size: 12px;
-}
-
-.tycoon-fade-enter-active,
-.tycoon-fade-leave-active {
-  transition: opacity 160ms ease, transform 160ms ease;
-}
-
-.tycoon-fade-enter-from,
-.tycoon-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
 }
 
 @media (max-width: 430px) {
@@ -420,8 +419,9 @@ const quickLabel = computed(() => quickUpgrade.value?.name || "Upgrade");
     gap: 8px;
   }
 
-  .tycoon-upgrade-list {
-    max-height: 200px;
+  .tycoon-upgrade-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
   }
 }
 </style>
