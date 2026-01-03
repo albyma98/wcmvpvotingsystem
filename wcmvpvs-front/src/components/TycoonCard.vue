@@ -3,9 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import useTycoonGame from "../composables/useTycoonGame";
 
 const UPGRADE_META = {
-  drum: { key: "drum", title: "Tamburello", icon: "🥁", effect: "+1 per tick" },
-  megaphone: { key: "megaphone", title: "Megafono", icon: "📣", effect: "+3 per tick" },
-  choir: { key: "choir", title: "Coro", icon: "🎶", effect: "+12% prod." },
+  drum: { key: "drum", serverKey: "tamburello", title: "Tamburello", icon: "🥁", effect: "+1 per tick" },
+  megaphone: { key: "megaphone", serverKey: "megafono", title: "Megafono", icon: "📣", effect: "+3 per tick" },
+  choir: { key: "choir", serverKey: "coro", title: "Coro", icon: "🎶", effect: "+12% prod." },
 };
 
 const {
@@ -37,7 +37,7 @@ const upgradeCards = computed(() => {
   upgradeViews.value.forEach((upgrade) => {
     const normalized = normalizeUpgradeKey(upgrade.key || upgrade.id);
     if (!normalized) return;
-    byKey.set(normalized, upgrade);
+    byKey.set(normalized, { ...upgrade, normalizedKey: normalized });
   });
 
   return Object.values(UPGRADE_META).map((meta) => {
@@ -47,6 +47,7 @@ const upgradeCards = computed(() => {
     const affordable = data.canAfford ?? (cost > 0 && points.value >= cost);
     return {
       key: meta.key,
+      purchaseKey: data.key || data.id || meta.serverKey || meta.key,
       title: data.name || meta.title,
       icon: data.icon || meta.icon,
       effect: data.effectLabel || data.description || meta.effect,
@@ -76,14 +77,16 @@ const recommendedUpgradeId = computed(() => {
   return candidate?.key ?? null;
 });
 
-function handleUpgradeTap(upgradeId) {
+function handleUpgradeTap(upgrade) {
+  const upgradeId = upgrade?.key;
+  const purchaseKey = upgrade?.purchaseKey || upgradeId;
   tappedUpgradeId.value = upgradeId;
   setTimeout(() => {
     if (tappedUpgradeId.value === upgradeId) {
       tappedUpgradeId.value = null;
     }
   }, 160);
-  buyUpgrade(upgradeId);
+  buyUpgrade(purchaseKey);
 }
 
 function removeFloating(id) {
@@ -237,7 +240,7 @@ watch(tickEventId, (current, previous) => {
             'tycoon-upgrade-box--active': upgrade.affordable && !upgrade.locked,
           }"
           :disabled="upgrade.locked || !upgrade.affordable"
-          @click="handleUpgradeTap(upgrade.key)"
+          @click="handleUpgradeTap(upgrade)"
         >
           <span v-if="upgrade.locked || !upgrade.affordable" class="tycoon-lock" aria-hidden="true"
             >🔒</span
