@@ -77,6 +77,7 @@ export function useTycoonGame() {
   const drumPulse = ref(false);
   const tickPulse = ref(false);
   const manualClicks = ref(0);
+  const tickEventId = ref(0);
 
   let tickTimer = null;
   let clickCooldownTimer = null;
@@ -199,6 +200,7 @@ export function useTycoonGame() {
     points.value += pointsPerTick.value;
     lastTickAt.value = Date.now();
     tickPulse.value = true;
+    tickEventId.value += 1;
     setTimeout(() => (tickPulse.value = false), 200);
   }
 
@@ -294,6 +296,7 @@ export function useTycoonGame() {
     isClickCoolingDown,
     drumPulse,
     tickPulse,
+    tickEventId,
     handleManualClick,
     buyUpgrade,
   };
