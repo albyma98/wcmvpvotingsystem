@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import useTycoonGame from "../composables/useTycoonGame";
 
 const {
@@ -11,6 +11,7 @@ const {
   isClickCoolingDown,
   drumPulse,
   tickPulse,
+  tickEventId,
   handleManualClick,
   buyUpgrade,
 } = useTycoonGame();
@@ -21,6 +22,13 @@ const primaryUpgrades = computed(() =>
   ),
 );
 const tappedUpgradeId = ref(null);
+const floatingTexts = ref([]);
+const cardRef = ref(null);
+const drumRef = ref(null);
+const prefersReducedMotion = ref(false);
+let motionMediaQuery;
+let cleanupMotion;
+let floatingId = 0;
 
 const recommendedUpgradeId = computed(() => {
   const candidate = upgradeViews.value
@@ -38,10 +46,95 @@ function handleUpgradeTap(upgradeId) {
   }, 160);
   buyUpgrade(upgradeId);
 }
+
+function removeFloating(id) {
+  floatingTexts.value = floatingTexts.value.filter((item) => item.id !== id);
+}
+
+function addFloatingText(payload) {
+  if (prefersReducedMotion.value) {
+    return;
+  }
+  const id = ++floatingId;
+  floatingTexts.value.push({ ...payload, id });
+  const duration = payload.type === "tick" ? 780 : 640;
+  setTimeout(() => removeFloating(id), duration);
+}
+
+function getRelativeCoords(event) {
+  const cardEl = cardRef.value;
+  if (!cardEl) {
+    return null;
+  }
+  const cardRect = cardEl.getBoundingClientRect();
+  const x = event?.clientX != null ? event.clientX - cardRect.left : cardRect.width / 2;
+  const y = event?.clientY != null ? event.clientY - cardRect.top : cardRect.height / 2;
+  return { x, y };
+}
+
+function spawnTickText() {
+  if (!drumRef.value || prefersReducedMotion.value) {
+    return;
+  }
+  const drumRect = drumRef.value.getBoundingClientRect();
+  const cardRect = cardRef.value?.getBoundingClientRect();
+  if (!cardRect) {
+    return;
+  }
+  const x = drumRect.left + drumRect.width / 2 - cardRect.left;
+  const y = drumRect.top + drumRect.height / 2 - cardRect.top;
+  addFloatingText({ x, y, value: `+${pointsPerTick.value}`, type: "tick" });
+}
+
+function spawnClickText(event) {
+  const coords = getRelativeCoords(event);
+  if (!coords || prefersReducedMotion.value) {
+    return;
+  }
+  addFloatingText({ ...coords, value: "+1", type: "click" });
+}
+
+function handleDrumClick(event) {
+  handleManualClick();
+  spawnClickText(event);
+}
+
+function setupMotionPreference() {
+  if (typeof window === "undefined" || !window.matchMedia) {
+    return;
+  }
+  motionMediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  prefersReducedMotion.value = motionMediaQuery.matches;
+  const handleChange = (mediaEvent) => {
+    prefersReducedMotion.value = mediaEvent.matches;
+    if (mediaEvent.matches) {
+      floatingTexts.value = [];
+    }
+  };
+  motionMediaQuery.addEventListener("change", handleChange);
+  return () => motionMediaQuery.removeEventListener("change", handleChange);
+}
+
+onMounted(() => {
+  cleanupMotion = setupMotionPreference();
+});
+
+onBeforeUnmount(() => {
+  if (cleanupMotion) {
+    cleanupMotion();
+  }
+  floatingTexts.value = [];
+});
+
+watch(tickEventId, (current, previous) => {
+  if (previous === undefined || current > previous) {
+    spawnTickText();
+  }
+});
 </script>
 
 <template>
-  <section class="tycoon-card" aria-label="Idle Tycoon">
+  <section ref="cardRef" class="tycoon-card" aria-label="Idle Tycoon">
     <div class="tycoon-header">
       <div>
         <p class="tycoon-eyebrow">Mini-gioco</p>
@@ -62,13 +155,15 @@ function handleUpgradeTap(upgradeId) {
 
       <button
         type="button"
+        ref="drumRef"
         class="tycoon-drum"
         :class="{
           'tycoon-drum--cooldown': isClickCoolingDown,
-          'tycoon-drum--pulse': drumPulse || tickPulse,
+          'tycoon-drum--tick': tickPulse && !prefersReducedMotion,
+          'tycoon-drum--click': drumPulse && !tickPulse && !prefersReducedMotion,
         }"
         :disabled="isClickCoolingDown"
-        @click="handleManualClick"
+        @click="handleDrumClick"
       >
         <span class="tycoon-drum__emoji" aria-hidden="true">🥁</span>
         <span class="tycoon-drum__cta">Tocca</span>
@@ -105,6 +200,24 @@ function handleUpgradeTap(upgradeId) {
         </button>
       </div>
     </div>
+
+    <div class="tycoon-float-layer" aria-hidden="true">
+      <span
+        v-for="float in floatingTexts"
+        :key="float.id"
+        class="tycoon-float"
+        :class="{
+          'tycoon-float--tick': float.type === 'tick',
+          'tycoon-float--click': float.type === 'click',
+        }"
+        :style="{
+          left: `${float.x}px`,
+          top: `${float.y}px`,
+        }"
+      >
+        {{ float.value }}
+      </span>
+    </div>
   </section>
 </template>
 
@@ -120,6 +233,7 @@ function handleUpgradeTap(upgradeId) {
   color: #f8fafc;
   touch-action: manipulation;
   user-select: none;
+  position: relative;
 }
 
 .tycoon-header {
@@ -244,22 +358,38 @@ function handleUpgradeTap(upgradeId) {
   transform: scale(0.97);
 }
 
-.tycoon-drum--pulse {
-  animation: drumPulse 260ms ease;
+.tycoon-drum--tick {
+  animation: tickAnim 320ms ease;
 }
 
-@keyframes drumPulse {
+.tycoon-drum--click {
+  animation: clickAnim 200ms ease;
+}
+
+@keyframes tickAnim {
   0% {
     transform: scale(1) rotate(0deg);
   }
-  40% {
-    transform: scale(1.05) rotate(-6deg);
+  25% {
+    transform: scale(1.12) rotate(-10deg);
   }
-  70% {
-    transform: scale(0.98) rotate(6deg);
+  60% {
+    transform: scale(0.95) rotate(8deg);
   }
   100% {
     transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes clickAnim {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 
@@ -280,6 +410,62 @@ function handleUpgradeTap(upgradeId) {
   font-weight: 700;
 }
 
+.tycoon-float-layer {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.tycoon-float {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-weight: 800;
+  white-space: nowrap;
+  text-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.tycoon-float--tick {
+  color: #fbbf24;
+  font-size: 18px;
+  animation: floatTick 760ms ease-out forwards;
+}
+
+.tycoon-float--click {
+  color: #cbd5e1;
+  font-size: 14px;
+  animation: floatClick 620ms ease-out forwards;
+}
+
+@keyframes floatTick {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -80%) scale(1.06);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -115%) scale(1.12);
+  }
+}
+
+@keyframes floatClick {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  60% {
+    opacity: 0.9;
+    transform: translate(-50%, -70%) scale(1.02);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -95%) scale(1.05);
+  }
+}
 
 .tycoon-upgrade-grid {
   grid-column: 1 / 3;
@@ -399,6 +585,15 @@ function handleUpgradeTap(upgradeId) {
 .tycoon-cost--disabled {
   background: rgba(148, 163, 184, 0.28);
   color: #0f172a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tycoon-drum--tick,
+  .tycoon-drum--click,
+  .tycoon-float--tick,
+  .tycoon-float--click {
+    animation: none;
+  }
 }
 
 @media (max-width: 430px) {
