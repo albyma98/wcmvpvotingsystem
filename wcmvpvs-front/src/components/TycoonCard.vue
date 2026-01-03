@@ -8,7 +8,6 @@ const {
   pointsPerTick,
   pointsPerSecond,
   upgradeViews,
-  quickUpgrade,
   isClickCoolingDown,
   drumPulse,
   tickPulse,
@@ -16,14 +15,19 @@ const {
   buyUpgrade,
 } = useTycoonGame();
 
-const nextQuickCost = computed(() => quickUpgrade.value?.nextCost ?? 0);
-const quickLabel = computed(() => quickUpgrade.value?.name || "Upgrade");
 const primaryUpgrades = computed(() =>
   upgradeViews.value.filter((upgrade) =>
     ["tamburello", "megafono", "coro"].includes(upgrade.id),
   ),
 );
 const tappedUpgradeId = ref(null);
+
+const recommendedUpgradeId = computed(() => {
+  const candidate = upgradeViews.value
+    .filter((item) => item.canAfford)
+    .sort((a, b) => a.nextCost - b.nextCost)[0];
+  return candidate?.id ?? null;
+});
 
 function handleUpgradeTap(upgradeId) {
   tappedUpgradeId.value = upgradeId;
@@ -70,22 +74,6 @@ function handleUpgradeTap(upgradeId) {
         <span class="tycoon-drum__cta">Tocca</span>
       </button>
 
-      <div class="tycoon-quick">
-        <div>
-          <p class="tycoon-label">Upgrade rapido</p>
-          <p class="tycoon-hint">{{ quickLabel }}</p>
-        </div>
-        <button
-          type="button"
-          class="tycoon-upgrade-btn"
-          :disabled="points < nextQuickCost"
-          @click="buyUpgrade(quickUpgrade?.id)"
-        >
-          <span>{{ quickLabel }}</span>
-          <span class="tycoon-cost">{{ nextQuickCost.toLocaleString("it-IT") }} pts</span>
-        </button>
-      </div>
-
       <div class="tycoon-upgrade-grid" role="list">
         <button
           v-for="upgrade in primaryUpgrades"
@@ -95,17 +83,23 @@ function handleUpgradeTap(upgradeId) {
           :class="{
             'tycoon-upgrade-box--disabled': !upgrade.canAfford,
             'tycoon-upgrade-box--tapped': tappedUpgradeId === upgrade.id,
+            'tycoon-upgrade-box--recommended': recommendedUpgradeId === upgrade.id,
           }"
           :disabled="!upgrade.canAfford"
           @click="handleUpgradeTap(upgrade.id)"
         >
+          <span v-if="!upgrade.canAfford" class="tycoon-lock" aria-hidden="true">🔒</span>
           <span class="tycoon-upgrade__icon" aria-hidden="true">{{ upgrade.icon }}</span>
           <div class="tycoon-upgrade__text">
             <p class="tycoon-upgrade__title">{{ upgrade.name }}</p>
             <p class="tycoon-upgrade__desc">{{ upgrade.description }}</p>
           </div>
           <div class="tycoon-upgrade__meta">
-            <span class="tycoon-cost">{{ upgrade.nextCost.toLocaleString("it-IT") }} pts</span>
+            <span
+              class="tycoon-cost"
+              :class="{ 'tycoon-cost--disabled': !upgrade.canAfford }"
+              >{{ upgrade.nextCost.toLocaleString("it-IT") }} pts</span
+            >
             <span class="tycoon-level">Lv. {{ upgrade.level }}</span>
           </div>
         </button>
@@ -170,6 +164,7 @@ function handleUpgradeTap(upgradeId) {
   background: radial-gradient(circle, #fbbf24 0%, #f59e0b 80%);
   box-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
 }
+
 
 .tycoon-body {
   display: grid;
@@ -275,69 +270,37 @@ function handleUpgradeTap(upgradeId) {
   opacity: 0.7;
 }
 
-.tycoon-quick {
-  grid-column: 1 / 3;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(248, 180, 0, 0.08);
-  border: 1px solid rgba(248, 180, 0, 0.25);
-  border-radius: 14px;
-  padding: 10px 12px;
-  gap: 10px;
-}
-
-.tycoon-upgrade-btn {
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #0f172a;
-  padding: 8px 12px;
-  border-radius: 12px;
-  font-weight: 800;
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
-  box-shadow: 0 8px 18px rgba(234, 179, 8, 0.25);
-}
-
-.tycoon-upgrade-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-.tycoon-upgrade-btn:not(:disabled):active {
-  transform: translateY(1px);
-}
 
 .tycoon-cost {
-  font-size: 12px;
+  font-size: 11px;
   color: #0b1220;
   background: rgba(251, 191, 36, 0.35);
-  padding: 3px 6px;
+  padding: 2px 6px;
   border-radius: 8px;
   font-weight: 700;
 }
+
 
 .tycoon-upgrade-grid {
   grid-column: 1 / 3;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
+
 
 .tycoon-upgrade-box {
   position: relative;
-  aspect-ratio: 1 / 1;
-  padding: 12px 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  background: linear-gradient(165deg, rgba(15, 23, 42, 0.85), rgba(17, 24, 39, 0.9));
+  min-height: 124px;
+  height: 100%;
+  padding: 10px 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: linear-gradient(165deg, rgba(15, 23, 42, 0.9), rgba(17, 24, 39, 0.94));
   color: #e2e8f0;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  gap: 6px;
+  gap: 4px;
   align-items: start;
   text-align: left;
   transition:
@@ -345,33 +308,43 @@ function handleUpgradeTap(upgradeId) {
     box-shadow 120ms ease,
     border-color 120ms ease,
     background 120ms ease;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 10px 22px rgba(0, 0, 0, 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 8px 18px rgba(0, 0, 0, 0.3);
 }
 
 .tycoon-upgrade-box:not(:disabled):active {
   transform: scale(0.97);
 }
 
+
 .tycoon-upgrade-box:hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: rgba(251, 191, 36, 0.5);
+  border-color: rgba(251, 191, 36, 0.45);
   background: linear-gradient(165deg, rgba(248, 180, 0, 0.12), rgba(17, 24, 39, 0.95));
-  box-shadow: 0 12px 26px rgba(251, 191, 36, 0.18);
+  box-shadow: 0 10px 20px rgba(251, 191, 36, 0.16);
 }
 
+
 .tycoon-upgrade-box--disabled {
-  opacity: 0.55;
+  opacity: 0.45;
   cursor: not-allowed;
   filter: grayscale(0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  pointer-events: none;
+}
+
+.tycoon-upgrade-box--recommended:not(.tycoon-upgrade-box--disabled) {
+  border-color: rgba(251, 191, 36, 0.6);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.35), 0 12px 22px rgba(251, 191, 36, 0.18);
 }
 
 .tycoon-upgrade-box--tapped {
   box-shadow: 0 0 0 8px rgba(251, 191, 36, 0.08);
 }
 
+
 .tycoon-upgrade__icon {
-  font-size: 26px;
-  margin: 0 auto;
+  font-size: 22px;
+  margin: 0 auto 2px;
   display: block;
 }
 
@@ -384,28 +357,48 @@ function handleUpgradeTap(upgradeId) {
   margin: 0;
   font-weight: 800;
   color: #fbbf24;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tycoon-upgrade__desc {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: #cbd5e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tycoon-upgrade__meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
   font-weight: 700;
 }
 
 .tycoon-level {
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.18);
+  background: rgba(148, 163, 184, 0.22);
   color: #cbd5e1;
-  font-size: 12px;
+  font-size: 11px;
+}
+
+.tycoon-lock {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.tycoon-cost--disabled {
+  background: rgba(148, 163, 184, 0.28);
+  color: #0f172a;
 }
 
 @media (max-width: 430px) {
