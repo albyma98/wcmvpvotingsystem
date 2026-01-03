@@ -14,6 +14,13 @@ func (rt *_router) Handler() chi.Router {
 	// Special routes
 	rt.router.Get("/liveness", rt.liveness)
 
+	// Tycoon mini-game
+	rt.router.Get("/tycoon/state", rt.wrap(rt.tycoonState))
+	rt.router.Post("/tycoon/sync", rt.wrap(rt.tycoonSync))
+	rt.router.Post("/tycoon/click", rt.wrap(rt.tycoonClick))
+	rt.router.Post("/tycoon/upgrades/buy", rt.wrap(rt.tycoonBuyUpgrade))
+	rt.router.Post("/tycoon/coupons/redeem", rt.wrap(rt.tycoonRedeemCoupon))
+
 	rt.router.Post("/vote", rt.wrap(rt.postVote))
 	// Admin CRUD routes
 	rt.router.Post("/admin/login", rt.wrap(rt.adminLogin))
