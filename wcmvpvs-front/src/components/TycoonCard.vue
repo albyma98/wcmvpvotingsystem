@@ -66,8 +66,10 @@ const drumRef = ref(null);
 const prefersReducedMotion = ref(false);
 const isCouponPanelOpen = ref(false);
 const redeemedNoticeId = ref(null);
+const lastTouchTimestamp = ref(0);
 let motionMediaQuery;
 let cleanupMotion;
+let cleanupGestureHandlers;
 let floatingId = 0;
 
 const recommendedUpgradeId = computed(() => {
@@ -137,8 +139,30 @@ function spawnClickText(event) {
 }
 
 function handleDrumClick(event) {
+  if (event?.type === "click" && lastTouchTimestamp.value) {
+    const elapsed = Date.now() - lastTouchTimestamp.value;
+    if (elapsed < 320) {
+      return;
+    }
+  }
   handleManualClick();
   spawnClickText(event);
+}
+
+function handleDrumTouchStart() {
+  lastTouchTimestamp.value = Date.now();
+}
+
+function handleDrumTouchEnd(event) {
+  const touchPoint = event?.changedTouches?.[0] || event?.touches?.[0];
+  const normalizedEvent = touchPoint
+    ? {
+        clientX: touchPoint.clientX,
+        clientY: touchPoint.clientY,
+      }
+    : event;
+  lastTouchTimestamp.value = Date.now();
+  handleDrumClick(normalizedEvent);
 }
 
 function toggleCouponPanel() {
@@ -173,13 +197,31 @@ function setupMotionPreference() {
   return () => motionMediaQuery.removeEventListener("change", handleChange);
 }
 
+function setupGesturePrevention() {
+  const target = cardRef.value;
+  if (!target) return;
+  const gestureEvents = ["gesturestart", "gesturechange", "gestureend"];
+  const preventGesture = (event) => event.preventDefault();
+  gestureEvents.forEach((eventName) =>
+    target.addEventListener(eventName, preventGesture, { passive: false })
+  );
+  return () =>
+    gestureEvents.forEach((eventName) =>
+      target.removeEventListener(eventName, preventGesture)
+    );
+}
+
 onMounted(() => {
   cleanupMotion = setupMotionPreference();
+  cleanupGestureHandlers = setupGesturePrevention();
 });
 
 onBeforeUnmount(() => {
   if (cleanupMotion) {
     cleanupMotion();
+  }
+  if (cleanupGestureHandlers) {
+    cleanupGestureHandlers();
   }
   floatingTexts.value = [];
 });
@@ -221,7 +263,11 @@ watch(tickEventId, (current, previous) => {
           'tycoon-drum--click': drumPulse && !tickPulse && !prefersReducedMotion,
         }"
         :disabled="isClickCoolingDown"
-        @click="handleDrumClick"
+        @click.prevent="handleDrumClick"
+        @touchstart.prevent="handleDrumTouchStart"
+        @touchend.prevent="handleDrumTouchEnd"
+        @mousedown.prevent
+        @dblclick.prevent
       >
         <span class="tycoon-drum__emoji" aria-hidden="true">🥁</span>
         <span class="tycoon-drum__cta">Tocca</span>
@@ -338,6 +384,8 @@ watch(tickEventId, (current, previous) => {
   color: #f8fafc;
   touch-action: manipulation;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   position: relative;
 }
 
