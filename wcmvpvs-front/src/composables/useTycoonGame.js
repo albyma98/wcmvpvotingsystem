@@ -78,6 +78,19 @@ export function useTycoonGame() {
 
   const formattedPoints = computed(() => displayPoints.value.toLocaleString("it-IT"));
 
+  const nextAvailableCoupon = computed(() => {
+    const eligible = coupons.value.filter((coupon) => !coupon.redeemed);
+    return eligible.sort((a, b) => (a.cost || 0) - (b.cost || 0))[0] || null;
+  });
+
+  const goalPoints = computed(() => nextAvailableCoupon.value?.cost || 500);
+
+  const progressPct = computed(() => {
+    const goal = goalPoints.value;
+    if (!goal || goal <= 0) return 0;
+    return Math.min(1, Math.max(0, displayPoints.value / goal));
+  });
+
   const couponViews = computed(() => {
     return coupons.value.map((coupon) => {
       const redeemed = Boolean(coupon.redeemed);
@@ -90,7 +103,7 @@ export function useTycoonGame() {
     });
   });
 
-  const pointsPerSecondDisplay = computed(() => Number((pointsPerSecond.value || 0).toFixed(2)));
+  const pointsPerSecondDisplay = computed(() => Math.round(pointsPerSecond.value || 0));
 
   function clearClickCooldownTimer() {
     if (clickCooldownTimer) {
@@ -406,6 +419,9 @@ export function useTycoonGame() {
     pointsPerTick,
     tickIntervalMs,
     pointsPerSecond: pointsPerSecondDisplay,
+    nextAvailableCoupon,
+    goalPoints,
+    progressPct,
     upgradeViews,
     quickUpgrade,
     couponViews,
