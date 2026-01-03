@@ -9,7 +9,7 @@ const UPGRADE_META = {
 };
 
 const {
-  serverPoints,
+  displayPoints,
   formattedPoints,
   pointsPerTick,
   pointsPerSecond,
@@ -44,7 +44,7 @@ const upgradeCards = computed(() => {
     const data = byKey.get(meta.key) || {};
     const rawCost = Number(data.nextCost ?? 0);
     const cost = Number.isFinite(rawCost) && rawCost > 0 ? rawCost : 0;
-    const affordable = data.canAfford ?? (cost > 0 && serverPoints.value >= cost);
+    const affordable = data.canAfford ?? (cost > 0 && displayPoints.value >= cost);
     return {
       key: meta.key,
       purchaseKey: data.key || data.id || meta.serverKey || meta.key,

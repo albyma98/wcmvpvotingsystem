@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   fetchTycoonState,
   sendTycoonBuyUpgrade,
@@ -45,11 +45,13 @@ export function useTycoonGame() {
   const tickEventId = ref(0);
   const manualClicks = ref(0);
   const isSyncing = ref(false);
+  const affordableUpgradeKeys = ref(new Set());
 
   let syncTimer = null;
   let clickCooldownTimer = null;
   let tickTimer = null;
   let visibilityHandler = null;
+  let thresholdSyncTimer = null;
 
   const upgradeViews = computed(() => {
     return upgrades.value.map((upgrade) => {
@@ -60,7 +62,7 @@ export function useTycoonGame() {
         id: key,
         key,
         nextCost,
-        canAfford: serverPoints.value >= nextCost,
+        canAfford: displayPoints.value >= nextCost,
       };
     });
   });
@@ -91,6 +93,21 @@ export function useTycoonGame() {
       clearTimeout(clickCooldownTimer);
       clickCooldownTimer = null;
     }
+  }
+
+  function clearThresholdSyncTimer() {
+    if (thresholdSyncTimer) {
+      clearTimeout(thresholdSyncTimer);
+      thresholdSyncTimer = null;
+    }
+  }
+
+  function scheduleThresholdSync() {
+    clearThresholdSyncTimer();
+    thresholdSyncTimer = setTimeout(async () => {
+      thresholdSyncTimer = null;
+      await syncState();
+    }, 500);
   }
 
   function scheduleClickCooldown(lastClickAt) {
@@ -260,6 +277,24 @@ export function useTycoonGame() {
     }
   }
 
+  watch(
+    () => upgradeViews.value.map((upgrade) => ({ key: upgrade.key || upgrade.id, affordable: upgrade.canAfford })),
+    (current) => {
+      const nextAffordable = new Set();
+      current.forEach((item) => {
+        if (!item.key) return;
+        if (item.affordable) {
+          nextAffordable.add(item.key);
+          if (!affordableUpgradeKeys.value.has(item.key)) {
+            scheduleThresholdSync();
+          }
+        }
+      });
+      affordableUpgradeKeys.value = nextAffordable;
+    },
+    { deep: true }
+  );
+
   async function handleManualClick() {
     if (isClickCoolingDown.value) {
       return;
@@ -308,6 +343,7 @@ export function useTycoonGame() {
       if (state) {
         applyServerState(state);
       }
+      displayPoints.value = serverPoints.value;
       console.warn("tycoon upgrade failed", error);
       return false;
     }
@@ -342,6 +378,7 @@ export function useTycoonGame() {
     stopSyncLoop();
     clearClickCooldownTimer();
     stopTicker();
+    clearThresholdSyncTimer();
     detachVisibilityListener();
   });
 
