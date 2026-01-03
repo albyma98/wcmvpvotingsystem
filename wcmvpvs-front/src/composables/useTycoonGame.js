@@ -110,7 +110,8 @@ export function useTycoonGame() {
     }, remaining);
   }
 
-  function applyState(payload) {
+  function applyState(payload, options = {}) {
+    const { silent = false } = options;
     if (!payload || typeof payload !== "object") {
       return;
     }
@@ -135,7 +136,7 @@ export function useTycoonGame() {
       config.value = { ...config.value, ...payload.config };
     }
 
-    if (points.value > previousPoints) {
+    if (!silent && points.value > previousPoints) {
       tickPulse.value = true;
       tickEventId.value += 1;
       setTimeout(() => (tickPulse.value = false), 220);
@@ -179,6 +180,10 @@ export function useTycoonGame() {
     if (isClickCoolingDown.value) {
       return;
     }
+    // Optimistic UI: bump local points right away, then reconcile with the authoritative
+    // server response (or rollback on error) without adding extra local accrual logic.
+    const previousPoints = points.value;
+    points.value = Math.max(0, Math.floor(points.value + 1));
     manualClicks.value += 1;
     drumPulse.value = true;
     setTimeout(() => (drumPulse.value = false), 180);
@@ -186,14 +191,16 @@ export function useTycoonGame() {
 
     try {
       const state = await sendTycoonClick(deviceId);
-      applyState(state);
+      applyState(state, { silent: true });
       if (manualClicks.value % 10 === 0) {
         trackEvent("tycoon_manual_clicks", { count: manualClicks.value });
       }
     } catch (error) {
       const state = error?.response?.data?.state;
       if (state) {
-        applyState(state);
+        applyState(state, { silent: true });
+      } else {
+        points.value = previousPoints;
       }
       if (error?.response?.status === 429) {
         scheduleClickCooldown();
