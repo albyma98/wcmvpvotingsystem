@@ -73,7 +73,6 @@ export function useTycoonGame() {
   const upgrades = ref(
     UPGRADE_BLUEPRINTS.map((upgrade) => ({ ...upgrade, level: 0 })),
   );
-  const showAllUpgrades = ref(false);
   const isClickCoolingDown = ref(false);
   const drumPulse = ref(false);
   const tickPulse = ref(false);
@@ -261,10 +260,6 @@ export function useTycoonGame() {
     return true;
   }
 
-  function toggleUpgrades() {
-    showAllUpgrades.value = !showAllUpgrades.value;
-  }
-
   onMounted(() => {
     hydrateState();
     applyOfflineProgress();
@@ -296,11 +291,9 @@ export function useTycoonGame() {
     pointsPerSecond,
     upgradeViews,
     quickUpgrade,
-    showAllUpgrades,
     isClickCoolingDown,
     drumPulse,
     tickPulse,
-    toggleUpgrades,
     handleManualClick,
     buyUpgrade,
   };
