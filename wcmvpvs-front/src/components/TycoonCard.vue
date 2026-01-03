@@ -411,8 +411,8 @@ const quickLabel = computed(() => quickUpgrade.value?.name || "Upgrade");
 
 @media (max-width: 430px) {
   .tycoon-card {
-    max-height: 200px;
-    overflow: auto;
+    max-height: none;
+    overflow: visible;
   }
 
   .tycoon-body {
@@ -421,7 +421,7 @@ const quickLabel = computed(() => quickUpgrade.value?.name || "Upgrade");
   }
 
   .tycoon-upgrade-list {
-    max-height: 120px;
+    max-height: 200px;
   }
 }
 </style>
