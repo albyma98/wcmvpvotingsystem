@@ -3,9 +3,27 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import useTycoonGame from "../composables/useTycoonGame";
 
 const UPGRADE_META = {
-  drum: { key: "drum", serverKey: "tamburello", title: "Tamburello", icon: "🥁", effect: "+1 per tick" },
-  megaphone: { key: "megaphone", serverKey: "megafono", title: "Megafono", icon: "📣", effect: "+3 per tick" },
-  choir: { key: "choir", serverKey: "coro", title: "Coro", icon: "🎶", effect: "+12% prod." },
+  drum: {
+    key: "drum",
+    serverKey: "tamburello",
+    title: "Tamburo",
+    icon: "🥁",
+    effect: "Più colpi automatici",
+  },
+  megaphone: {
+    key: "megaphone",
+    serverKey: "megafono",
+    title: "Megafono",
+    icon: "📣",
+    effect: "Più punti per colpo",
+  },
+  choir: {
+    key: "choir",
+    serverKey: "coro",
+    title: "Coro",
+    icon: "🎶",
+    effect: "Bonus produzione",
+  },
 };
 
 const {
@@ -22,6 +40,9 @@ const {
   buyUpgrade,
   couponViews,
   redeemCoupon,
+  goalPoints,
+  progressPct,
+  nextAvailableCoupon,
 } = useTycoonGame();
 
 const normalizeUpgradeKey = (key) => {
@@ -59,6 +80,18 @@ const upgradeCards = computed(() => {
   });
 });
 
+const previewCoupons = computed(() => {
+  const sorted = [...couponViews.value].sort((a, b) => {
+    const costA = a.cost || 0;
+    const costB = b.cost || 0;
+    if (a.redeemed !== b.redeemed) {
+      return a.redeemed ? 1 : -1;
+    }
+    return costA - costB;
+  });
+  return sorted.slice(0, 2);
+});
+
 const tappedUpgradeId = ref(null);
 const floatingTexts = ref([]);
 const cardRef = ref(null);
@@ -67,6 +100,8 @@ const prefersReducedMotion = ref(false);
 const isCouponPanelOpen = ref(false);
 const redeemedNoticeId = ref(null);
 const lastTouchTimestamp = ref(0);
+const isOnboardingVisible = ref(false);
+const progressGlow = ref(false);
 let motionMediaQuery;
 let cleanupMotion;
 let cleanupGestureHandlers;
@@ -169,6 +204,13 @@ function toggleCouponPanel() {
   isCouponPanelOpen.value = !isCouponPanelOpen.value;
 }
 
+function confirmOnboarding() {
+  isOnboardingVisible.value = false;
+  if (typeof window !== "undefined" && window.localStorage) {
+    window.localStorage.setItem("tycoon_onboarding_seen", "1");
+  }
+}
+
 function handleCouponRedeem(couponId) {
   const ok = redeemCoupon(couponId);
   if (ok) {
@@ -214,6 +256,10 @@ function setupGesturePrevention() {
 onMounted(() => {
   cleanupMotion = setupMotionPreference();
   cleanupGestureHandlers = setupGesturePrevention();
+  if (typeof window !== "undefined" && window.localStorage) {
+    const seen = window.localStorage.getItem("tycoon_onboarding_seen");
+    isOnboardingVisible.value = seen !== "1";
+  }
 });
 
 onBeforeUnmount(() => {
@@ -231,26 +277,80 @@ watch(tickEventId, (current, previous) => {
     spawnTickText();
   }
 });
+
+watch(
+  () => [displayPoints.value, goalPoints.value],
+  ([points, goal], [prevPoints, prevGoal]) => {
+    if (goal > 0 && points >= goal && (prevPoints ?? 0) < (prevGoal ?? goal)) {
+      progressGlow.value = true;
+      setTimeout(() => {
+        progressGlow.value = false;
+      }, 1200);
+    }
+  }
+);
 </script>
 
 <template>
-  <section ref="cardRef" class="tycoon-card" aria-label="Idle Tycoon">
+  <section ref="cardRef" class="tycoon-card" aria-label="Carica la curva">
+    <div v-if="isOnboardingVisible" class="tycoon-onboarding">
+      <div class="tycoon-onboarding__body">
+        <p class="tycoon-onboarding__text">
+          Tocca il tamburo per fare rumore. I punti aumentano anche da soli.
+        </p>
+        <button
+          type="button"
+          class="tycoon-onboarding__btn"
+          @click="confirmOnboarding"
+        >
+          Ok
+        </button>
+      </div>
+    </div>
     <div class="tycoon-header">
-      <div>
+      <div class="tycoon-header__titles">
         <p class="tycoon-eyebrow">Mini-gioco</p>
-        <h3 class="tycoon-title">Idle Tycoon curva</h3>
+        <h3 class="tycoon-title">CARICA LA CURVA</h3>
+        <p class="tycoon-subtitle">Fai rumore → sblocca premi</p>
       </div>
       <div class="tycoon-rate" aria-live="polite">
         <span class="tycoon-dot"></span>
-        <span>+{{ pointsPerSecond }} /s</span>
+        <span>{{ pointsPerSecond }} /s</span>
       </div>
     </div>
 
     <div class="tycoon-body">
+      <div
+        class="tycoon-goal"
+        :class="{ 'tycoon-goal--unlocked': displayPoints >= goalPoints || progressGlow }"
+      >
+        <div class="tycoon-goal__label">
+          <span aria-hidden="true">🎯</span>
+          <span>Obiettivo</span>
+        </div>
+        <div class="tycoon-goal__text">
+          Prossimo premio a {{ goalPoints.toLocaleString("it-IT") }} punti
+        </div>
+        <div class="tycoon-goal__progress">
+          <div class="tycoon-goal__values">
+            <span>{{ displayPoints.toLocaleString("it-IT") }}</span>
+            <span>{{ goalPoints.toLocaleString("it-IT") }}</span>
+          </div>
+          <div class="tycoon-goal__bar">
+            <div
+              class="tycoon-goal__fill"
+              :class="{ 'tycoon-goal__fill--glow': progressGlow }"
+              :style="{ width: `${(progressPct * 100).toFixed(0)}%` }"
+            ></div>
+          </div>
+          <p v-if="progressGlow" class="tycoon-goal__status">Premio sbloccato!</p>
+        </div>
+      </div>
+
       <div class="tycoon-stats">
         <p class="tycoon-label">Punti</p>
         <p class="tycoon-points">{{ formattedPoints }}</p>
-        <p class="tycoon-hint">+{{ pointsPerTick }} per tick</p>
+        <p class="tycoon-hint">+{{ pointsPerTick }} ogni 2s</p>
       </div>
 
       <button
@@ -305,6 +405,34 @@ watch(tickEventId, (current, previous) => {
         </button>
       </div>
 
+      <div class="tycoon-coupon-preview">
+        <div class="tycoon-coupon-preview__head">
+          <div class="tycoon-coupon-preview__title">
+            <span aria-hidden="true">🎁</span>
+            <span>Premi sbloccabili</span>
+          </div>
+          <button type="button" class="tycoon-coupon-preview__cta" @click="toggleCouponPanel">
+            Vedi premi
+          </button>
+        </div>
+        <div class="tycoon-coupon-preview__list">
+          <div
+            v-for="coupon in previewCoupons"
+            :key="coupon.id"
+            class="tycoon-coupon-chip"
+            :class="{ 'tycoon-coupon-chip--redeemed': coupon.redeemed }"
+          >
+            <div class="tycoon-coupon-chip__name">
+              <span>{{ coupon.name }}</span>
+              <span v-if="coupon.redeemed" class="tycoon-chip-badge">Riscattato</span>
+            </div>
+            <span class="tycoon-coupon-chip__cost">
+              {{ coupon.cost.toLocaleString("it-IT") }} pts
+            </span>
+          </div>
+        </div>
+      </div>
+
       <button
         type="button"
         class="tycoon-coupon-toggle"
@@ -312,7 +440,7 @@ watch(tickEventId, (current, previous) => {
         @click="toggleCouponPanel"
       >
         <span class="tycoon-coupon-toggle__icon" aria-hidden="true">🎟️</span>
-        <span class="tycoon-coupon-toggle__text">Coupon rapidi</span>
+        <span class="tycoon-coupon-toggle__text">Vedi premi</span>
         <span class="tycoon-coupon-toggle__badge">{{ couponViews.length }}</span>
         <span class="tycoon-coupon-toggle__chevron" aria-hidden="true">
           {{ isCouponPanelOpen ? "▲" : "▼" }}
@@ -396,6 +524,12 @@ watch(tickEventId, (current, previous) => {
   gap: 12px;
 }
 
+.tycoon-header__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .tycoon-eyebrow {
   font-size: 12px;
   text-transform: uppercase;
@@ -409,6 +543,13 @@ watch(tickEventId, (current, previous) => {
   font-weight: 700;
   font-size: 16px;
   color: #fbbf24;
+}
+
+.tycoon-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #e2e8f0;
+  opacity: 0.88;
 }
 
 .tycoon-rate {
@@ -437,8 +578,175 @@ watch(tickEventId, (current, previous) => {
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-rows: auto auto auto auto;
-  gap: 10px;
+  gap: 12px;
   margin-top: 12px;
+}
+
+.tycoon-goal {
+  grid-column: 1 / 3;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  background: linear-gradient(145deg, rgba(17, 24, 39, 0.95), rgba(248, 180, 0, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.tycoon-goal--unlocked {
+  border-color: rgba(52, 211, 153, 0.5);
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.2), 0 12px 28px rgba(52, 211, 153, 0.16);
+}
+
+.tycoon-goal__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  color: #fbbf24;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.tycoon-goal__text {
+  margin: 0;
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.tycoon-goal__progress {
+  display: grid;
+  gap: 6px;
+}
+
+.tycoon-goal__values {
+  display: flex;
+  justify-content: space-between;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tycoon-goal__bar {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.tycoon-goal__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #fbbf24, #f97316);
+  border-radius: 999px;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
+  transition: width 180ms ease;
+}
+
+.tycoon-goal__fill--glow {
+  animation: goalGlow 1s ease;
+}
+
+.tycoon-goal__status {
+  margin: 0;
+  font-weight: 800;
+  color: #34d399;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.tycoon-coupon-preview {
+  grid-column: 1 / 3;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(94, 234, 212, 0.32);
+  background: linear-gradient(165deg, rgba(15, 23, 42, 0.94), rgba(34, 197, 94, 0.06));
+  display: grid;
+  gap: 8px;
+}
+
+.tycoon-coupon-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tycoon-coupon-preview__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  color: #e2e8f0;
+}
+
+.tycoon-coupon-preview__cta {
+  background: rgba(34, 197, 94, 0.2);
+  color: #a5f3fc;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.tycoon-coupon-preview__cta:hover {
+  transform: translateY(-1px);
+  border-color: rgba(34, 197, 94, 0.6);
+  box-shadow: 0 10px 16px rgba(34, 197, 94, 0.2);
+}
+
+.tycoon-coupon-preview__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tycoon-coupon-chip {
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.92);
+  display: grid;
+  gap: 4px;
+}
+
+.tycoon-coupon-chip--redeemed {
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.tycoon-coupon-chip__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #e2e8f0;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tycoon-coupon-chip__cost {
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tycoon-chip-badge {
+  background: rgba(52, 211, 153, 0.2);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  color: #bbf7d0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .tycoon-stats {
@@ -899,6 +1207,59 @@ watch(tickEventId, (current, previous) => {
   letter-spacing: 0.01em;
 }
 
+.tycoon-onboarding {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(4px);
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  z-index: 2;
+}
+
+.tycoon-onboarding__body {
+  background: linear-gradient(165deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.9));
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 14px;
+  padding: 14px;
+  width: min(320px, 90vw);
+  text-align: center;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+}
+
+.tycoon-onboarding__text {
+  margin: 0 0 12px;
+  color: #e2e8f0;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.tycoon-onboarding__btn {
+  width: 100%;
+  background: linear-gradient(135deg, #fbbf24, #f97316);
+  color: #0b1220;
+  font-weight: 800;
+  border: none;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(249, 115, 22, 0.25);
+}
+
+.tycoon-onboarding__btn:hover {
+  transform: translateY(-1px);
+}
+
+@keyframes goalGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(52, 211, 153, 0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tycoon-drum--tick,
   .tycoon-drum--click,
@@ -922,6 +1283,10 @@ watch(tickEventId, (current, previous) => {
   .tycoon-upgrade-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .tycoon-coupon-preview__list {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 
   .tycoon-coupon-panel {
