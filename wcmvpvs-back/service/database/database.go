@@ -765,6 +765,10 @@ type AppDatabase interface {
 	RecordTycoonClick(deviceID string, cfg TycoonConfig) (TycoonState, error)
 	PurchaseTycoonUpgrade(deviceID, upgradeKey string, cfg TycoonConfig) (TycoonState, error)
 	RedeemTycoonCoupon(deviceID, couponID string, cfg TycoonConfig) (TycoonState, error)
+	// Fan energy system
+	GetFanEnergyState(deviceID string) (FanEnergyState, error)
+	ActivateFanEnergyBoost(deviceID string) (FanEnergyState, error)
+	ClaimFanEnergy(deviceID string, amount int) (FanEnergyState, error)
 	Ping() error
 }
 
@@ -1481,6 +1485,23 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_user_coupons_sponsor ON user_coupons(used_by_sponsor_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring user_coupons sponsor index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='fan_energy';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE fan_energy (
+        device_id TEXT PRIMARY KEY,
+        energy INTEGER NOT NULL DEFAULT 0,
+        last_ts TEXT NOT NULL,
+        boost_ready_at TEXT NOT NULL,
+        boost_active_until TEXT,
+        tickets INTEGER NOT NULL DEFAULT 0
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating fan_energy table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying fan_energy table: %w", err)
 	}
 
 	// Tycoon tables
