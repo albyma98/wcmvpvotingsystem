@@ -1,43 +1,6 @@
 import axios from 'axios';
 import { getOrCreateDeviceId } from './deviceId';
 
-export type TycoonUpgradeView = {
-  key: string;
-  name: string;
-  description: string;
-  icon: string;
-  level: number;
-  nextCost: number;
-  bonusType: string;
-  bonusValue: number;
-};
-
-export type TycoonCouponView = {
-  id: string;
-  name: string;
-  cost: number;
-  redeemed: boolean;
-  redeemedAt?: string | null;
-};
-
-export type TycoonStateResponse = {
-  deviceId: string;
-  points: number;
-  pointsPerTick: number;
-  pointsPerSecond: number;
-  tickIntervalMs: number;
-  lastAccrualAt: string;
-  lastClickAt?: string;
-  upgrades: TycoonUpgradeView[];
-  coupons: TycoonCouponView[];
-  config: {
-    baseTickMs: number;
-    offlineCapSeconds: number;
-    clickCooldownMs: number;
-    costGrowthFactor: number;
-    basePointsPerTick: number;
-  };
-};
 
 const ensureApiPath = (baseUrl: string) => {
   const sanitized = baseUrl.replace(/\/+$/, '');
@@ -217,50 +180,6 @@ export function getDeviceHeaders() {
   return deviceId ? { 'X-Device-ID': deviceId } : {};
 }
 
-export async function fetchTycoonState(deviceId?: string): Promise<TycoonStateResponse> {
-  const targetDeviceId = deviceId || getOrCreateDeviceId();
-  const { data } = await apiClient.get('/tycoon/state', {
-    params: { deviceId: targetDeviceId },
-    headers: getDeviceHeaders(),
-  });
-  return data;
-}
-
-export async function sendTycoonClick(deviceId?: string): Promise<TycoonStateResponse> {
-  const targetDeviceId = deviceId || getOrCreateDeviceId();
-  const { data } = await apiClient.post(
-    '/tycoon/click',
-    { deviceId: targetDeviceId },
-    { headers: getDeviceHeaders() },
-  );
-  return data;
-}
-
-export async function sendTycoonBuyUpgrade(
-  upgradeKey: string,
-  deviceId?: string,
-): Promise<TycoonStateResponse> {
-  const targetDeviceId = deviceId || getOrCreateDeviceId();
-  const { data } = await apiClient.post(
-    '/tycoon/upgrades/buy',
-    { deviceId: targetDeviceId, upgradeKey },
-    { headers: getDeviceHeaders() },
-  );
-  return data;
-}
-
-export async function sendTycoonRedeemCoupon(
-  couponId: string,
-  deviceId?: string,
-): Promise<TycoonStateResponse> {
-  const targetDeviceId = deviceId || getOrCreateDeviceId();
-  const { data } = await apiClient.post(
-    '/tycoon/coupons/redeem',
-    { deviceId: targetDeviceId, couponId },
-    { headers: getDeviceHeaders() },
-  );
-  return data;
-}
 
 export async function submitContactChance({
   eventId,

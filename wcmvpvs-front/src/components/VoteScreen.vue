@@ -14,7 +14,7 @@ import SelfieMvpSection from "./SelfieMvpSection.vue";
 import ReactionTestSection from "./ReactionTestSection.vue";
 import LiberoReflexModal from "./LiberoReflexModal.vue";
 import LiveResultsSection from "./LiveResultsSection.vue";
-import TycoonCard from "./TycoonCard.vue";
+import FanEnergyBox from "./FanEnergyBox.vue";
 import {
   apiClient,
   vote,
@@ -3445,7 +3445,7 @@ const submitContactBonus = async () => {
           </div>
         </section>
         <section class="px-4">
-          <TycoonCard />
+          <FanEnergyBox />
         </section>
         <section v-if="showVoteSummary" class="px-2">
             <div class="post-vote-grid">
