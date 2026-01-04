@@ -769,6 +769,7 @@ type AppDatabase interface {
 	GetFanEnergyState(deviceID string) (FanEnergyState, error)
 	ActivateFanEnergyBoost(deviceID string) (FanEnergyState, error)
 	ClaimFanEnergy(deviceID string, amount int) (FanEnergyState, error)
+	TapFanEnergy(deviceID string) (FanEnergyState, error)
 	Ping() error
 }
 
@@ -1495,13 +1496,20 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
         last_ts TEXT NOT NULL,
         boost_ready_at TEXT NOT NULL,
         boost_active_until TEXT,
-        tickets INTEGER NOT NULL DEFAULT 0
+        tickets INTEGER NOT NULL DEFAULT 0,
+        last_tap_at TEXT
 );`
 		if _, err = db.Exec(sqlStmt); err != nil {
 			return nil, fmt.Errorf("error creating fan_energy table: %w", err)
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("error verifying fan_energy table: %w", err)
+	} else {
+		if _, err = db.Exec(`ALTER TABLE fan_energy ADD COLUMN last_tap_at TEXT`); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return nil, fmt.Errorf("error ensuring fan_energy last_tap_at column: %w", err)
+			}
+		}
 	}
 
 	// Tycoon tables

@@ -7,6 +7,7 @@ const BOOST_GAIN = 20;
 const TICK_MS = 5_000;
 const BOOST_DURATION_MS = 30_000;
 const BOOST_COOLDOWN_MS = 5 * 60 * 1_000;
+const TAP_COOLDOWN_MS = 2_000;
 const CLAIM_COST = 100;
 
 function computeGain(startMs, endMs, boostActiveUntilMs) {
@@ -69,6 +70,7 @@ function useFanEnergy() {
   const lastSyncTs = ref(Date.now());
   const nowTs = ref(Date.now());
   const claimPulse = ref(false);
+  const tapReadyAt = ref(0);
 
   let tickTimer = 0;
   let refreshTimer = 0;
@@ -110,13 +112,15 @@ function useFanEnergy() {
       return `BOOST ATTIVO (${formatSeconds(boostCooldownRemainingMs.value / 1000)})`;
     }
     if (isBoostReady.value) {
-      return "Pronto";
+      return "BOOST PRONTO";
     }
     return `Pronto tra ${formatSeconds(boostCooldownRemainingMs.value / 1000)}`;
   });
 
   const canCollect = computed(() => currentEnergy.value >= CLAIM_COST);
   const canBoost = computed(() => isBoostReady.value);
+  const tapCooldownRemaining = computed(() => Math.max(0, tapReadyAt.value - nowTs.value));
+  const canTap = computed(() => tapCooldownRemaining.value <= 0 && currentEnergy.value < ENERGY_CAP);
 
   const applyServerState = (payload = {}) => {
     const nowValue = Number(payload.now) || Date.now();
@@ -124,6 +128,7 @@ function useFanEnergy() {
     tickets.value = Number(payload.tickets) || 0;
     boostReadyAt.value = Number(payload.boostReadyAt) || nowValue;
     boostActiveUntil.value = Number(payload.boostActiveUntil) || 0;
+    tapReadyAt.value = Number(payload.tapReadyAt ?? nowValue);
     lastSyncTs.value = nowValue;
     nowTs.value = nowValue;
   };
@@ -183,6 +188,25 @@ function useFanEnergy() {
     }
   };
 
+  const tap = async () => {
+    if (!canTap.value) {
+      return false;
+    }
+    try {
+      const { data } = await apiClient.post(
+        "/fan-energy/tap",
+        {},
+        { headers: getDeviceHeaders() },
+      );
+      applyServerState(data || {});
+      return true;
+    } catch (error) {
+      console.warn("fan energy tap error", error);
+      tapReadyAt.value = Math.max(tapReadyAt.value || 0, nowTs.value + TAP_COOLDOWN_MS);
+      return false;
+    }
+  };
+
   const startLoops = () => {
     tickTimer = window.setInterval(() => {
       nowTs.value = Date.now();
@@ -227,6 +251,9 @@ function useFanEnergy() {
     boostProgressPct,
     canCollect,
     canBoost,
+    tapCooldownRemaining,
+    tap,
+    canTap,
     triggerBoost,
     claim,
     claimPulse,

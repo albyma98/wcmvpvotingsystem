@@ -17,6 +17,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/fan-energy/status", rt.wrap(rt.fanEnergyStatus))
 	rt.router.Post("/fan-energy/boost", rt.wrap(rt.fanEnergyBoost))
 	rt.router.Post("/fan-energy/claim", rt.wrap(rt.fanEnergyClaim))
+	rt.router.Post("/fan-energy/tap", rt.wrap(rt.fanEnergyTap))
 
 	// Tycoon mini-game
 	rt.router.Get("/tycoon/state", rt.wrap(rt.tycoonState))

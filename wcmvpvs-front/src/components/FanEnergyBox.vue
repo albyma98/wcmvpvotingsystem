@@ -13,18 +13,35 @@ const {
   claimPulse,
   canCollect,
   canBoost,
+  tapCooldownRemaining,
+  canTap,
+  tap,
 } = useFanEnergy();
 
 const claimResult = ref("");
 const isBoosting = ref(false);
 const isClaiming = ref(false);
+const isTapping = ref(false);
+const showTapGain = ref(false);
 
 const energyLabel = computed(() => energy.value.toLocaleString("it-IT"));
 const boostGlow = computed(() => isBoostReady.value && !isBoostActive.value);
+const boostStatus = computed(() => {
+  if (isBoostActive.value) return "Boost attivo";
+  if (isBoostReady.value) return "Boost pronto";
+  return "Ricarica boost";
+});
+const tapCooldownLabel = computed(() => {
+  if (tapCooldownRemaining.value <= 0) return "";
+  const seconds = Math.ceil(tapCooldownRemaining.value / 1000);
+  return `+1 tra ${seconds}s`;
+});
 
 async function handleBoost() {
   if (isBoosting.value || !canBoost.value) {
-    claimResult.value = "Boost non ancora pronto";
+    if (!isBoostActive.value) {
+      claimResult.value = "Boost non ancora pronto";
+    }
     return;
   }
   isBoosting.value = true;
@@ -42,6 +59,21 @@ async function handleBoost() {
   }, 1500);
 }
 
+async function handleTap() {
+  if (isTapping.value || !canTap.value) {
+    return;
+  }
+  isTapping.value = true;
+  const ok = await tap();
+  isTapping.value = false;
+  if (ok) {
+    showTapGain.value = true;
+    setTimeout(() => {
+      showTapGain.value = false;
+    }, 600);
+  }
+}
+
 async function handleCollect() {
   if (isClaiming.value || !canCollect.value) {
     claimResult.value = "Servono 100 energia";
@@ -54,9 +86,9 @@ async function handleCollect() {
     claimResult.value = "Errore nella raccolta";
     return;
   }
-  claimResult.value = "+1 ticket ottenuto";
+  claimResult.value = "+1 Ticket MVP aggiunto";
   setTimeout(() => {
-    if (claimResult.value === "+1 ticket ottenuto") {
+    if (claimResult.value === "+1 Ticket MVP aggiunto") {
       claimResult.value = "";
     }
   }, 2000);
@@ -64,14 +96,21 @@ async function handleCollect() {
 </script>
 
 <template>
-  <section class="fan-energy-card" aria-label="Energia Tifoso">
+  <section
+    class="fan-energy-card"
+    :class="{ 'fan-energy-card--boosting': isBoostActive }"
+    aria-label="Energia Tifoso"
+  >
     <div class="fan-energy-header">
       <h3 class="fan-energy-title">⚡ Energia Tifoso</h3>
       <span class="fan-energy-cap">Cap 999</span>
     </div>
 
     <div class="fan-energy-counter" aria-live="polite">
-      <p class="fan-energy-counter__value">{{ energyLabel }}</p>
+      <div class="fan-energy-counter__value-wrap">
+        <p class="fan-energy-counter__value">{{ energyLabel }}</p>
+        <span v-if="showTapGain" class="fan-energy-counter__micro">+1</span>
+      </div>
       <p class="fan-energy-counter__subtitle">+5 energia ogni 5s</p>
     </div>
 
@@ -85,7 +124,7 @@ async function handleCollect() {
             'fan-energy-boost__label--ready': boostGlow,
           }"
         >
-          {{ boostLabel }}
+          {{ boostStatus }}
         </p>
       </div>
       <div class="fan-energy-progress" role="presentation">
@@ -114,12 +153,23 @@ async function handleCollect() {
     <div class="fan-energy-actions">
       <button
         type="button"
+        class="fan-energy-btn fan-energy-btn--tap"
+        :disabled="!canTap || isTapping"
+        @click="handleTap"
+      >
+        ⚡ Tifa
+        <span v-if="tapCooldownLabel" class="fan-energy-btn__meta">{{ tapCooldownLabel }}</span>
+      </button>
+      <button
+        type="button"
         class="fan-energy-btn fan-energy-btn--ghost"
-        :class="{ 'fan-energy-btn--glow': boostGlow }"
+        :class="{ 'fan-energy-btn--glow': boostGlow, 'fan-energy-btn--active': isBoostActive }"
         :disabled="!canBoost || isBoosting"
         @click="handleBoost"
       >
-        Boost
+        <span>Boost</span>
+        <span v-if="isBoostReady" class="fan-energy-btn__badge">BOOST PRONTO</span>
+        <span v-if="isBoostActive || !isBoostReady" class="fan-energy-btn__meta">{{ boostLabel }}</span>
       </button>
       <button
         type="button"
@@ -132,6 +182,7 @@ async function handleCollect() {
       </button>
     </div>
 
+    <p class="fan-energy-note">100 energia → +1 Ticket MVP</p>
     <p v-if="claimResult" class="fan-energy-feedback">{{ claimResult }}</p>
   </section>
 </template>
@@ -139,6 +190,10 @@ async function handleCollect() {
 <style scoped>
 .fan-energy-card {
   @apply bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col gap-3;
+}
+
+.fan-energy-card--boosting {
+  @apply border-emerald-500/40 shadow-[0_0_18px_rgba(52,211,153,0.35)];
 }
 
 .fan-energy-header {
@@ -163,6 +218,15 @@ async function handleCollect() {
 
 .fan-energy-counter__subtitle {
   @apply text-sm text-slate-400;
+}
+
+.fan-energy-counter__value-wrap {
+  @apply inline-flex items-center gap-2 justify-center relative;
+}
+
+.fan-energy-counter__micro {
+  @apply text-emerald-300 text-sm font-bold;
+  animation: fan-rise 0.6s ease-out;
 }
 
 .fan-energy-boost {
@@ -214,7 +278,7 @@ async function handleCollect() {
 }
 
 .fan-energy-actions {
-  @apply grid grid-cols-2 gap-2;
+  @apply grid grid-cols-3 gap-2;
 }
 
 .fan-energy-btn {
@@ -229,12 +293,32 @@ async function handleCollect() {
   @apply bg-emerald-500 text-slate-900 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-400 disabled:cursor-not-allowed;
 }
 
+.fan-energy-btn--tap {
+  @apply bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed flex flex-col gap-0.5;
+}
+
 .fan-energy-btn--pulse {
   animation: fan-pulse 0.4s ease-in-out;
 }
 
 .fan-energy-btn--glow {
   box-shadow: 0 0 14px rgba(52, 211, 153, 0.4);
+}
+
+.fan-energy-btn--active {
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.35);
+}
+
+.fan-energy-btn__badge {
+  @apply text-[10px] font-black bg-emerald-300 text-emerald-900 rounded-full px-2 py-0.5 ml-2;
+}
+
+.fan-energy-btn__meta {
+  @apply block text-[11px] font-normal text-slate-300 leading-tight;
+}
+
+.fan-energy-note {
+  @apply text-xs text-slate-400 text-center -mt-1;
 }
 
 .fan-energy-feedback {
@@ -250,6 +334,20 @@ async function handleCollect() {
   }
   100% {
     transform: scale(1);
+  }
+}
+
+@keyframes fan-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
   }
 }
 </style>

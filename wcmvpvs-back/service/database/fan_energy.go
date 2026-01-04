@@ -13,9 +13,11 @@ const (
 	fanEnergyCap           = 999
 	fanEnergyBaseGain      = 5
 	fanEnergyBoostGain     = 20
+	fanEnergyTapGain       = 1
 	fanEnergyTick          = 5 * time.Second
 	fanEnergyBoostDuration = 30 * time.Second
 	fanEnergyBoostCooldown = 5 * time.Minute
+	fanEnergyTapCooldown   = 2 * time.Second
 )
 
 type FanEnergyState struct {
@@ -24,6 +26,7 @@ type FanEnergyState struct {
 	LastTs           time.Time
 	BoostReadyAt     time.Time
 	BoostActiveUntil time.Time
+	LastTapAt        time.Time
 	Tickets          int
 }
 
@@ -31,6 +34,7 @@ var (
 	ErrFanEnergyBoostNotReady      = errors.New("fan energy boost not ready")
 	ErrFanEnergyInsufficientEnergy = errors.New("insufficient fan energy")
 	ErrFanEnergyDeviceRequired     = errors.New("fan energy device id required")
+	ErrFanEnergyTapCooldown        = errors.New("fan energy tap cooldown active")
 )
 
 func (db *appdbimpl) GetFanEnergyState(deviceID string) (FanEnergyState, error) {
@@ -64,9 +68,29 @@ func (db *appdbimpl) ClaimFanEnergy(deviceID string, amount int) (FanEnergyState
 	})
 }
 
+func (db *appdbimpl) TapFanEnergy(deviceID string) (FanEnergyState, error) {
+	return db.withFanEnergyState(deviceID, func(state *FanEnergyState, now time.Time) error {
+		if !state.LastTapAt.IsZero() && now.Sub(state.LastTapAt) < fanEnergyTapCooldown {
+			return ErrFanEnergyTapCooldown
+		}
+
+		if state.Energy < fanEnergyCap {
+			state.Energy += fanEnergyTapGain
+			if state.Energy > fanEnergyCap {
+				state.Energy = fanEnergyCap
+			}
+		}
+
+		state.LastTapAt = now
+		state.LastTs = now
+		return nil
+	})
+}
+
 func shouldPersistFanEnergy(err error) bool {
 	return errors.Is(err, ErrFanEnergyBoostNotReady) ||
-		errors.Is(err, ErrFanEnergyInsufficientEnergy)
+		errors.Is(err, ErrFanEnergyInsufficientEnergy) ||
+		errors.Is(err, ErrFanEnergyTapCooldown)
 }
 
 func (db *appdbimpl) withFanEnergyState(deviceID string, mutate func(state *FanEnergyState, now time.Time) error) (FanEnergyState, error) {
@@ -120,17 +144,17 @@ func (db *appdbimpl) loadFanEnergyState(tx *sql.Tx, deviceID string, now time.Ti
 	var state FanEnergyState
 	state.DeviceID = deviceID
 
-	var lastTsRaw, readyRaw, activeRaw sql.NullString
-	err := tx.QueryRow(`SELECT energy, last_ts, boost_ready_at, boost_active_until, tickets FROM fan_energy WHERE device_id=?`, deviceID).
-		Scan(&state.Energy, &lastTsRaw, &readyRaw, &activeRaw, &state.Tickets)
+	var lastTsRaw, readyRaw, activeRaw, tapRaw sql.NullString
+	err := tx.QueryRow(`SELECT energy, last_ts, boost_ready_at, boost_active_until, tickets, last_tap_at FROM fan_energy WHERE device_id=?`, deviceID).
+		Scan(&state.Energy, &lastTsRaw, &readyRaw, &activeRaw, &state.Tickets, &tapRaw)
 	if errors.Is(err, sql.ErrNoRows) {
 		state.Energy = 0
 		state.LastTs = now
 		state.BoostReadyAt = now
 		state.BoostActiveUntil = time.Time{}
 		state.Tickets = 0
-		if _, err := tx.Exec(`INSERT INTO fan_energy (device_id, energy, last_ts, boost_ready_at, boost_active_until, tickets) VALUES (?, ?, ?, ?, ?, ?)`,
-			deviceID, state.Energy, now.Format(time.RFC3339), now.Format(time.RFC3339), nil, state.Tickets); err != nil {
+		if _, err := tx.Exec(`INSERT INTO fan_energy (device_id, energy, last_ts, boost_ready_at, boost_active_until, tickets, last_tap_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			deviceID, state.Energy, now.Format(time.RFC3339), now.Format(time.RFC3339), nil, state.Tickets, nil); err != nil {
 			return FanEnergyState{}, err
 		}
 		return state, nil
@@ -146,6 +170,11 @@ func (db *appdbimpl) loadFanEnergyState(tx *sql.Tx, deviceID string, now time.Ti
 	if readyRaw.Valid {
 		if parsed, perr := parseSQLiteTimestamp(readyRaw.String); perr == nil {
 			state.BoostReadyAt = parsed
+		}
+	}
+	if tapRaw.Valid {
+		if parsed, perr := parseSQLiteTimestamp(tapRaw.String); perr == nil {
+			state.LastTapAt = parsed
 		}
 	}
 	if activeRaw.Valid {
@@ -165,12 +194,13 @@ func (db *appdbimpl) loadFanEnergyState(tx *sql.Tx, deviceID string, now time.Ti
 }
 
 func (db *appdbimpl) saveFanEnergyState(tx *sql.Tx, state *FanEnergyState) error {
-	_, err := tx.Exec(`UPDATE fan_energy SET energy=?, last_ts=?, boost_ready_at=?, boost_active_until=?, tickets=? WHERE device_id=?`,
+	_, err := tx.Exec(`UPDATE fan_energy SET energy=?, last_ts=?, boost_ready_at=?, boost_active_until=?, tickets=?, last_tap_at=? WHERE device_id=?`,
 		state.Energy,
 		state.LastTs.Format(time.RFC3339),
 		state.BoostReadyAt.Format(time.RFC3339),
 		nullableTime(state.BoostActiveUntil),
 		state.Tickets,
+		nullableTime(state.LastTapAt),
 		state.DeviceID,
 	)
 	return err
