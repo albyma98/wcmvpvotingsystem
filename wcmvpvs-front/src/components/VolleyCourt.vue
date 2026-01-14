@@ -362,7 +362,7 @@ const centerSponsorStyle = computed(() => ({
           :key="player.id"
           :class="[
             'prematch-card-item',
-            hasTenPlayers ? 'prematch-card-item--grid' : 'absolute',
+            hasTenPlayers ? null : 'absolute',
           ]"
           :style="[resolvePlayerStyle(player), preMatchCardStyle(index)]"
         >
@@ -419,11 +419,6 @@ const centerSponsorStyle = computed(() => ({
 .prematch-card-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.prematch-card-item--grid {
-  justify-self: center;
-  align-self: center;
 }
 
 .prematch-card-item {
