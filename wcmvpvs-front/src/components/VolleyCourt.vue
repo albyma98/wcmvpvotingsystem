@@ -61,6 +61,49 @@ const positionStyle = computed(() => (player) => ({
   transform: 'translate(-50%, -50%)',
 }));
 
+const tenPlayerPositions = [
+  { row: 1, col: 1 },
+  { row: 1, col: 3 },
+  { row: 1, col: 5 },
+  { row: 2, col: 2 },
+  { row: 2, col: 4 },
+  { row: 3, col: 2 },
+  { row: 3, col: 4 },
+  { row: 4, col: 1 },
+  { row: 4, col: 3 },
+  { row: 4, col: 5 },
+];
+
+const hasTenPlayers = computed(
+  () => Array.isArray(props.players) && props.players.length === 10,
+);
+
+const positionedPlayers = computed(() => {
+  if (!Array.isArray(props.players)) {
+    return [];
+  }
+
+  if (!hasTenPlayers.value) {
+    return props.players;
+  }
+
+  return props.players.map((player, index) => ({
+    ...player,
+    ...tenPlayerPositions[index],
+  }));
+});
+
+const resolvePlayerStyle = (player) => {
+  if (Number.isFinite(player?.row) && Number.isFinite(player?.col)) {
+    return {
+      gridRow: player.row,
+      gridColumn: player.col,
+    };
+  }
+
+  return positionStyle.value(player);
+};
+
 const preMatchCardStyle = (index) => {
   if (!props.isPreMatch) {
     return {};
@@ -312,13 +355,16 @@ const centerSponsorStyle = computed(() => ({
         name="prematch-card"
         tag="div"
         class="absolute inset-0"
-        :class="{ 'is-pre-match': isPreMatch }"
+        :class="{ 'is-pre-match': isPreMatch, 'prematch-card-grid': hasTenPlayers }"
       >
         <div
-          v-for="(player, index) in players"
+          v-for="(player, index) in positionedPlayers"
           :key="player.id"
-          class="absolute prematch-card-item"
-          :style="[positionStyle(player), preMatchCardStyle(index)]"
+          :class="[
+            'prematch-card-item',
+            hasTenPlayers ? 'prematch-card-item--grid' : 'absolute',
+          ]"
+          :style="[resolvePlayerStyle(player), preMatchCardStyle(index)]"
         >
           <PlayerCard
             :player="player"
@@ -368,6 +414,16 @@ const centerSponsorStyle = computed(() => ({
 .prematch-card-leave-to {
   opacity: 0;
   transform: translateY(6px) scale(0.98);
+}
+
+.prematch-card-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.prematch-card-item--grid {
+  justify-self: center;
+  align-self: center;
 }
 
 .prematch-card-item {
