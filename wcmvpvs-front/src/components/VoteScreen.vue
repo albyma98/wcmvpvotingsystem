@@ -3467,8 +3467,8 @@ const submitContactBonus = async () => {
                   </ul>
                 </div>
                 <p class="vote-summary__hint">
-                  Mostra questo codice e il QR allo staff in caso di
-                  estrazione del premio.
+                  ⏰ Rimani fino a fine partita.
+                  Se il tuo codice viene estratto, mostra questo QR allo staff per ritirare il premio.
                 </p>
                 <p v-if="ticketLoadError" class="vote-summary__error">
                   {{ ticketLoadError }}
@@ -4457,7 +4457,7 @@ const submitContactBonus = async () => {
                 Voto registrato
               </h3>
               <p id="post-vote-modal-subtitle" class="post-vote-modal__subtitle">
-                L’esperienza non finisce qui: continua con una di queste attività.
+                ⚠️ Codice e QR → prossima schermata in alto a destra ⚠️
               </p>
             </div>
           </div>
