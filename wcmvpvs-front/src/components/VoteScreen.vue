@@ -5823,6 +5823,7 @@ const submitContactBonus = async () => {
 .post-vote-modal__subtitle {
   margin: 0;
   color: #cbd5e1;
+  font-size: 1.1rem;
   line-height: 1.6;
 }
 
