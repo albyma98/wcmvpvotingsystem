@@ -652,6 +652,15 @@ type ShopOrderItem struct {
 	ProductImageURL string `json:"product_image_url,omitempty"`
 }
 
+type QRRedirect struct {
+	ID         int    `json:"id"`
+	SourcePath string `json:"source_path"`
+	TargetPath string `json:"target_path"`
+	Hits       int    `json:"hits"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
 	GetName() (string, error)
@@ -750,6 +759,10 @@ type AppDatabase interface {
 	CreateShopProduct(product ShopProduct) (ShopProduct, error)
 	ListShopOrders() ([]ShopOrder, error)
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
+	UpsertQRRedirect(sourcePath, targetPath string) (QRRedirect, error)
+	ListQRRedirects() ([]QRRedirect, error)
+	GetQRRedirectBySource(sourcePath string) (QRRedirect, error)
+	IncrementQRRedirectHit(id int) error
 	// Coupons
 	CreateCoupon(coupon Coupon) (Coupon, error)
 	UpdateCoupon(coupon Coupon) (Coupon, error)
@@ -1636,6 +1649,20 @@ func ensureAdminsTable(db *sql.DB) error {
 
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_admins_org_username ON admins(organization_id, username);`); err != nil {
 		return fmt.Errorf("error ensuring admins organization index: %w", err)
+	}
+
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS qr_redirects (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+source_path TEXT NOT NULL,
+target_path TEXT NOT NULL,
+hits INTEGER NOT NULL DEFAULT 0,
+created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`); err != nil {
+		return fmt.Errorf("error ensuring qr_redirects table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_qr_redirects_source ON qr_redirects(source_path);`); err != nil {
+		return fmt.Errorf("error ensuring qr_redirects source index: %w", err)
 	}
 
 	return nil
@@ -4805,6 +4832,64 @@ func (db *appdbimpl) CreateShopOrder(order ShopOrder, items []ShopOrderItem) (Sh
 	order.Items = storedItems
 
 	return order, nil
+}
+
+// QR redirect management
+
+func (db *appdbimpl) UpsertQRRedirect(sourcePath, targetPath string) (QRRedirect, error) {
+	cleanSource := strings.TrimSpace(sourcePath)
+	cleanTarget := strings.TrimSpace(targetPath)
+	if cleanSource == "" || cleanTarget == "" {
+		return QRRedirect{}, fmt.Errorf("invalid qr redirect payload")
+	}
+
+	_, err := db.c.Exec(`INSERT INTO qr_redirects (source_path, target_path, hits, created_at, updated_at)
+VALUES (?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT(source_path) DO UPDATE SET target_path = excluded.target_path, updated_at = CURRENT_TIMESTAMP`, cleanSource, cleanTarget)
+	if err != nil {
+		return QRRedirect{}, err
+	}
+
+	return db.GetQRRedirectBySource(cleanSource)
+}
+
+func (db *appdbimpl) ListQRRedirects() ([]QRRedirect, error) {
+	rows, err := db.c.Query(`SELECT id, source_path, target_path, hits, created_at, updated_at FROM qr_redirects ORDER BY datetime(updated_at) DESC, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var redirects []QRRedirect
+	for rows.Next() {
+		var entry QRRedirect
+		if err := rows.Scan(&entry.ID, &entry.SourcePath, &entry.TargetPath, &entry.Hits, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
+			return nil, err
+		}
+		redirects = append(redirects, entry)
+	}
+	return redirects, rows.Err()
+}
+
+func (db *appdbimpl) GetQRRedirectBySource(sourcePath string) (QRRedirect, error) {
+	cleanSource := strings.TrimSpace(sourcePath)
+	if cleanSource == "" {
+		return QRRedirect{}, sql.ErrNoRows
+	}
+	var entry QRRedirect
+	err := db.c.QueryRow(`SELECT id, source_path, target_path, hits, created_at, updated_at FROM qr_redirects WHERE source_path = ?`, cleanSource).Scan(&entry.ID, &entry.SourcePath, &entry.TargetPath, &entry.Hits, &entry.CreatedAt, &entry.UpdatedAt)
+	if err != nil {
+		return QRRedirect{}, err
+	}
+	return entry, nil
+}
+
+func (db *appdbimpl) IncrementQRRedirectHit(id int) error {
+	if id <= 0 {
+		return fmt.Errorf("invalid qr redirect id")
+	}
+	_, err := db.c.Exec(`UPDATE qr_redirects SET hits = hits + 1 WHERE id = ?`, id)
+	return err
 }
 
 // Coupon management

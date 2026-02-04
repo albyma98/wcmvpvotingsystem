@@ -523,6 +523,70 @@
           </div>
         </div>
 
+        <div v-else-if="activeSection === 'qr-redirects'" class="qr-redirects-view">
+          <header class="section-header">
+            <div>
+              <h2>QR Redirect</h2>
+              <p>Collega un percorso QR generico a quello desiderato e monitora gli accessi.</p>
+            </div>
+            <div class="section-actions">
+              <button class="btn outline" type="button" @click="fetchQRRedirects" :disabled="isLoadingQrRedirects">
+                {{ isLoadingQrRedirects ? 'Aggiornamento…' : 'Aggiorna elenco' }}
+              </button>
+            </div>
+          </header>
+
+          <div class="card form-card">
+            <header>
+              <h3>Nuovo collegamento</h3>
+            </header>
+            <form class="form-grid" @submit.prevent="submitQRRedirect">
+              <label>
+                Path QR (origine)
+                <input v-model.trim="qrRedirectForm.source_path" type="text" placeholder="/qrred" required />
+              </label>
+              <label>
+                Path destinazione (redirect)
+                <input v-model.trim="qrRedirectForm.target_path" type="text" placeholder="/joy-volley" required />
+              </label>
+              <div class="form-actions">
+                <button class="btn primary" type="submit" :disabled="isSavingQrRedirect">
+                  {{ isSavingQrRedirect ? 'Salvataggio…' : 'Collega' }}
+                </button>
+                <button class="btn outline" type="button" @click="resetQRRedirectForm">Pulisci</button>
+              </div>
+              <p v-if="qrRedirectError" class="error">{{ qrRedirectError }}</p>
+            </form>
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Path QR</th>
+                  <th>Redirect</th>
+                  <th>Collegato il</th>
+                  <th>Arrivi da QR</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="redirect in qrRedirects" :key="redirect.id">
+                  <td><code>{{ redirect.source_path }}</code></td>
+                  <td><code>{{ redirect.target_path }}</code></td>
+                  <td>{{ formatDate(redirect.created_at) }}</td>
+                  <td>{{ (redirect.hits ?? 0).toLocaleString('it-IT') }}</td>
+                </tr>
+                <tr v-if="!qrRedirects.length && !isLoadingQrRedirects">
+                  <td colspan="4" class="empty">Nessun collegamento creato.</td>
+                </tr>
+                <tr v-if="isLoadingQrRedirects">
+                  <td colspan="4" class="empty">Caricamento in corso…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div v-else-if="activeSection === 'organization-detail'" class="detail-view">
           <div v-if="organizationDetail">
             <header class="section-header">
@@ -639,6 +703,7 @@ const isSuperAdmin = computed(() => activeRole.value === 'superadmin');
 const tabs = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'organizations', label: 'Società' },
+  { id: 'qr-redirects', label: 'QR Redirect' },
 ];
 const activeSection = ref('dashboard');
 
@@ -689,6 +754,13 @@ const organizationFormMode = ref('create');
 const isSavingOrganization = ref(false);
 const organizationFormError = ref('');
 
+const qrRedirectForm = reactive({ source_path: '', target_path: '' });
+const qrRedirects = ref([]);
+const isLoadingQrRedirects = ref(false);
+const qrRedirectsLoaded = ref(false);
+const isSavingQrRedirect = ref(false);
+const qrRedirectError = ref('');
+
 const authHeaders = computed(() => ({
   headers: { Authorization: token.value ? `Bearer ${token.value}` : '' },
 }));
@@ -701,6 +773,12 @@ function resetOrganizationForm() {
   organizationForm.logo_url = '';
   organizationForm.is_active = true;
   organizationFormError.value = '';
+}
+
+function resetQRRedirectForm() {
+  qrRedirectForm.source_path = '';
+  qrRedirectForm.target_path = '';
+  qrRedirectError.value = '';
 }
 
 function openCreateOrganization() {
@@ -882,6 +960,9 @@ function logout() {
   organizationsLoaded.value = false;
   selectedOrganizationId.value = 0;
   activeSection.value = 'dashboard';
+  qrRedirects.value = [];
+  qrRedirectsLoaded.value = false;
+  resetQRRedirectForm();
 }
 
 async function fetchSummary() {
@@ -1116,6 +1197,46 @@ async function submitOrganizationForm() {
   }
 }
 
+async function fetchQRRedirects() {
+  if (!isSuperAdmin.value || !token.value) return;
+  isLoadingQrRedirects.value = true;
+  try {
+    const { data } = await apiClient.get('/admin/master/qr-redirects', authHeaders.value);
+    qrRedirects.value = Array.isArray(data) ? data : [];
+    qrRedirectsLoaded.value = true;
+  } catch (error) {
+    console.error('Impossibile caricare i redirect QR', error);
+  } finally {
+    isLoadingQrRedirects.value = false;
+  }
+}
+
+async function submitQRRedirect() {
+  if (!qrRedirectForm.source_path || !qrRedirectForm.target_path) {
+    qrRedirectError.value = 'Compila entrambi i percorsi';
+    return;
+  }
+  qrRedirectError.value = '';
+  isSavingQrRedirect.value = true;
+  try {
+    await apiClient.post(
+      '/admin/master/qr-redirects',
+      { source_path: qrRedirectForm.source_path, target_path: qrRedirectForm.target_path },
+      authHeaders.value
+    );
+    resetQRRedirectForm();
+    fetchQRRedirects();
+  } catch (error) {
+    if (error?.response?.status === 400) {
+      qrRedirectError.value = 'Percorsi non validi. Usa path come /qrred e /joy-volley.';
+    } else {
+      qrRedirectError.value = 'Errore durante il salvataggio. Riprova.';
+    }
+  } finally {
+    isSavingQrRedirect.value = false;
+  }
+}
+
 function viewOrganization(id) {
   selectedOrganizationId.value = id;
   organizationDetail.value = null;
@@ -1132,6 +1253,9 @@ function ensureSectionData(section) {
   }
   if (section === 'organizations' && !organizationsLoaded.value) {
     fetchOrganizations();
+  }
+  if (section === 'qr-redirects' && !qrRedirectsLoaded.value) {
+    fetchQRRedirects();
   }
   if (section === 'organization-detail' && selectedOrganizationId.value && !organizationDetail.value && !isLoadingDetail.value) {
     fetchOrganizationDetail();
