@@ -538,7 +538,7 @@
 
           <div class="card form-card">
             <header>
-              <h3>Nuovo collegamento</h3>
+              <h3>{{ qrRedirectFormMode === 'edit' ? 'Modifica collegamento' : 'Nuovo collegamento' }}</h3>
             </header>
             <form class="form-grid" @submit.prevent="submitQRRedirect">
               <label>
@@ -551,9 +551,11 @@
               </label>
               <div class="form-actions">
                 <button class="btn primary" type="submit" :disabled="isSavingQrRedirect">
-                  {{ isSavingQrRedirect ? 'Salvataggio…' : 'Collega' }}
+                  {{ isSavingQrRedirect ? 'Salvataggio…' : qrRedirectFormMode === 'edit' ? 'Aggiorna' : 'Collega' }}
                 </button>
-                <button class="btn outline" type="button" @click="resetQRRedirectForm">Pulisci</button>
+                <button class="btn outline" type="button" @click="resetQRRedirectForm">
+                  {{ qrRedirectFormMode === 'edit' ? 'Annulla' : 'Pulisci' }}
+                </button>
               </div>
               <p v-if="qrRedirectError" class="error">{{ qrRedirectError }}</p>
             </form>
@@ -567,6 +569,7 @@
                   <th>Redirect</th>
                   <th>Collegato il</th>
                   <th>Arrivi da QR</th>
+                  <th>Azioni</th>
                 </tr>
               </thead>
               <tbody>
@@ -575,12 +578,20 @@
                   <td><code>{{ redirect.target_path }}</code></td>
                   <td>{{ formatDate(redirect.created_at) }}</td>
                   <td>{{ (redirect.hits ?? 0).toLocaleString('it-IT') }}</td>
+                  <td class="actions">
+                    <button class="btn outline" type="button" @click="openEditQRRedirect(redirect)">
+                      Modifica
+                    </button>
+                    <button class="btn ghost" type="button" @click="deleteQRRedirect(redirect)" :disabled="isDeletingQrRedirect">
+                      Elimina
+                    </button>
+                  </td>
                 </tr>
                 <tr v-if="!qrRedirects.length && !isLoadingQrRedirects">
-                  <td colspan="4" class="empty">Nessun collegamento creato.</td>
+                  <td colspan="5" class="empty">Nessun collegamento creato.</td>
                 </tr>
                 <tr v-if="isLoadingQrRedirects">
-                  <td colspan="4" class="empty">Caricamento in corso…</td>
+                  <td colspan="5" class="empty">Caricamento in corso…</td>
                 </tr>
               </tbody>
             </table>
@@ -754,11 +765,13 @@ const organizationFormMode = ref('create');
 const isSavingOrganization = ref(false);
 const organizationFormError = ref('');
 
-const qrRedirectForm = reactive({ source_path: '', target_path: '' });
+const qrRedirectForm = reactive({ id: null, source_path: '', target_path: '', original_source_path: '' });
+const qrRedirectFormMode = ref('create');
 const qrRedirects = ref([]);
 const isLoadingQrRedirects = ref(false);
 const qrRedirectsLoaded = ref(false);
 const isSavingQrRedirect = ref(false);
+const isDeletingQrRedirect = ref(false);
 const qrRedirectError = ref('');
 
 const authHeaders = computed(() => ({
@@ -776,8 +789,11 @@ function resetOrganizationForm() {
 }
 
 function resetQRRedirectForm() {
+  qrRedirectForm.id = null;
   qrRedirectForm.source_path = '';
   qrRedirectForm.target_path = '';
+  qrRedirectForm.original_source_path = '';
+  qrRedirectFormMode.value = 'create';
   qrRedirectError.value = '';
 }
 
@@ -796,6 +812,15 @@ function openEditOrganization(org) {
   organizationForm.logo_url = org.logo_url || '';
   organizationForm.is_active = Boolean(org.is_active);
   organizationFormVisible.value = true;
+}
+
+function openEditQRRedirect(redirect) {
+  qrRedirectFormMode.value = 'edit';
+  qrRedirectForm.id = redirect.id;
+  qrRedirectForm.source_path = redirect.source_path;
+  qrRedirectForm.target_path = redirect.target_path;
+  qrRedirectForm.original_source_path = redirect.source_path;
+  qrRedirectError.value = '';
 }
 
 function closeOrganizationForm() {
@@ -1224,6 +1249,14 @@ async function submitQRRedirect() {
       { source_path: qrRedirectForm.source_path, target_path: qrRedirectForm.target_path },
       authHeaders.value
     );
+    if (
+      qrRedirectFormMode.value === 'edit' &&
+      qrRedirectForm.id &&
+      qrRedirectForm.original_source_path &&
+      qrRedirectForm.original_source_path !== qrRedirectForm.source_path
+    ) {
+      await apiClient.delete(`/admin/master/qr-redirects/${qrRedirectForm.id}`, authHeaders.value);
+    }
     resetQRRedirectForm();
     fetchQRRedirects();
   } catch (error) {
@@ -1234,6 +1267,26 @@ async function submitQRRedirect() {
     }
   } finally {
     isSavingQrRedirect.value = false;
+  }
+}
+
+async function deleteQRRedirect(redirect) {
+  if (!redirect?.id) return;
+  const confirmed = window.confirm(`Vuoi eliminare il redirect ${redirect.source_path}?`);
+  if (!confirmed) return;
+  isDeletingQrRedirect.value = true;
+  qrRedirectError.value = '';
+  try {
+    await apiClient.delete(`/admin/master/qr-redirects/${redirect.id}`, authHeaders.value);
+    if (qrRedirectFormMode.value === 'edit' && qrRedirectForm.id === redirect.id) {
+      resetQRRedirectForm();
+    }
+    fetchQRRedirects();
+  } catch (error) {
+    qrRedirectError.value = 'Non siamo riusciti a eliminare il collegamento.';
+    console.error('Impossibile eliminare il redirect QR', error);
+  } finally {
+    isDeletingQrRedirect.value = false;
   }
 }
 
