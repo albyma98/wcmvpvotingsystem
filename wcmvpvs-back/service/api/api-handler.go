@@ -105,6 +105,8 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admin/master/organizations", rt.wrapAdmin(rt.createMasterOrganization))
 	rt.router.Get("/admin/master/organizations/{id}", rt.wrapAdmin(rt.getMasterOrganizationDetail))
 	rt.router.Put("/admin/master/organizations/{id}", rt.wrapAdmin(rt.updateMasterOrganization))
+	rt.router.Get("/admin/master/qr-redirects", rt.wrapAdmin(rt.listMasterQRRedirects))
+	rt.router.Post("/admin/master/qr-redirects", rt.wrapAdmin(rt.upsertMasterQRRedirect))
 
 	rt.router.Get("/admin/sponsors", rt.wrapAdmin(rt.listAllSponsors))
 	rt.router.Post("/admin/sponsors", rt.wrapAdmin(rt.createSponsor))
@@ -115,6 +117,8 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admin/coupons", rt.wrapAdmin(rt.createAdminCoupon))
 	rt.router.Put("/admin/coupons/{id}", rt.wrapAdmin(rt.updateAdminCoupon))
 	rt.router.Delete("/admin/coupons/{id}", rt.wrapAdmin(rt.deleteAdminCoupon))
+
+	rt.router.NotFound(rt.wrap(rt.handleQRRedirectNotFound))
 
 	return rt.router
 }
