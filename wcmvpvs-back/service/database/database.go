@@ -763,6 +763,7 @@ type AppDatabase interface {
 	ListQRRedirects() ([]QRRedirect, error)
 	GetQRRedirectBySource(sourcePath string) (QRRedirect, error)
 	IncrementQRRedirectHit(id int) error
+	DeleteQRRedirect(id int) error
 	// Coupons
 	CreateCoupon(coupon Coupon) (Coupon, error)
 	UpdateCoupon(coupon Coupon) (Coupon, error)
@@ -4890,6 +4891,24 @@ func (db *appdbimpl) IncrementQRRedirectHit(id int) error {
 	}
 	_, err := db.c.Exec(`UPDATE qr_redirects SET hits = hits + 1 WHERE id = ?`, id)
 	return err
+}
+
+func (db *appdbimpl) DeleteQRRedirect(id int) error {
+	if id <= 0 {
+		return fmt.Errorf("invalid qr redirect id")
+	}
+	result, err := db.c.Exec(`DELETE FROM qr_redirects WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // Coupon management

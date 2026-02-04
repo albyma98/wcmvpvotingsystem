@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
+	"github.com/go-chi/chi/v5"
 )
 
 func (rt *_router) listMasterQRRedirects(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -53,6 +55,30 @@ func (rt *_router) upsertMasterQRRedirect(w http.ResponseWriter, r *http.Request
 	}
 
 	_ = json.NewEncoder(w).Encode(entry)
+}
+
+func (rt *_router) deleteMasterQRRedirect(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if !rt.ensureSuperAdmin(w, ctx) {
+		return
+	}
+
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	if id <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := rt.db.DeleteQRRedirect(id); err != nil {
+		if err == sql.ErrNoRows {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot delete qr redirect")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (rt *_router) handleQRRedirectNotFound(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
