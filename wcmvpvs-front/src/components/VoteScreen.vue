@@ -1854,6 +1854,7 @@ const postVoteSettings = computed(() => {
       ["show_feedback_survey", "showFeedbackSurvey"],
       true,
     ),
+    showLottery: resolveEventFlag(event, ["show_lottery", "showLottery"], true),
   };
 });
 
@@ -3445,7 +3446,12 @@ const submitContactBonus = async () => {
         </section>
         <section v-if="showVoteSummary" class="px-2">
             <div class="post-vote-grid">
-            <div class="vote-summary" role="status" aria-live="polite">
+            <div
+              v-if="postVoteSettings.showLottery"
+              class="vote-summary"
+              role="status"
+              aria-live="polite"
+            >
               <div class="vote-summary__content">
                 <p class="vote-summary__eyebrow">Hai votato!</p>
                 <p class="vote-summary__code" aria-label="Codice di voto">
@@ -3645,7 +3651,10 @@ const submitContactBonus = async () => {
               v-if="isEditingVote"
               class="mt-4 rounded-2xl border border-amber-300/40 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-100 shadow-[0_12px_28px_rgba(251,191,36,0.15)]"
             >
-              Stai modificando il tuo voto: il codice della lotteria resta valido.
+              <span v-if="postVoteSettings.showLottery">
+                Stai modificando il tuo voto: il codice della lotteria resta valido.
+              </span>
+              <span v-else>Stai modificando il tuo voto: la tua scelta resta valida.</span>
               Tocca il giocatore che preferisci per aggiornare la tua scelta.
             </div>
             <div
@@ -4289,8 +4298,11 @@ const submitContactBonus = async () => {
                     <p class="edit-vote-intro__eyebrow">Il tuo voto è al sicuro</p>
                     <p class="edit-vote-intro__title">Aggiorna il tuo MVP</p>
                     <p class="edit-vote-intro__hint">
-                      Tocca il giocatore che preferisci per sostituire la tua scelta. Il
-                      codice della lotteria e il QR restano validi.
+                      Tocca il giocatore che preferisci per sostituire la tua scelta.
+                      <span v-if="postVoteSettings.showLottery">
+                        Il codice della lotteria e il QR restano validi.
+                      </span>
+                      <span v-else>La tua scelta aggiornata sarà salvata.</span>
                     </p>
                     <p v-if="!votingOpen" class="edit-vote-intro__hint emphasize">
                       Le votazioni sono chiuse: il tuo voto finale è già salvato.

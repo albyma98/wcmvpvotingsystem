@@ -1221,6 +1221,12 @@ func applyEventPostVoteDefaults(e *database.Event, raw map[string]json.RawMessag
 			e.ShowVoteCounter = true
 		}
 	}
+
+	if !eventFlagProvided(raw, "show_lottery", "showLottery") {
+		if !e.ShowLottery {
+			e.ShowLottery = true
+		}
+	}
 }
 
 func eventFlagProvided(raw map[string]json.RawMessage, keys ...string) bool {
