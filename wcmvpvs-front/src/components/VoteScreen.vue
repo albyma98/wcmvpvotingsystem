@@ -3445,7 +3445,10 @@ const submitContactBonus = async () => {
           </div>
         </section>
         <section v-if="showVoteSummary" class="px-2">
-            <div class="post-vote-grid">
+            <div
+              class="post-vote-grid"
+              :class="{ 'post-vote-grid--single': !postVoteSettings.showLottery }"
+            >
             <div
               v-if="postVoteSettings.showLottery"
               class="vote-summary"
@@ -4810,6 +4813,10 @@ const submitContactBonus = async () => {
   align-items: stretch;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: 1fr;
+}
+
+.post-vote-grid--single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .voted-player-panel {
