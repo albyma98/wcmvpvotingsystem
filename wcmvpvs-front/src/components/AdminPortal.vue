@@ -221,6 +221,14 @@
                   />
                   <span class="postvote-toggle__label">Sondaggio feedback</span>
                 </label>
+                <label class="postvote-toggle">
+                  <input
+                    type="checkbox"
+                    v-model="newEvent.show_lottery"
+                    :disabled="!hasEnoughTeams"
+                  />
+                  <span class="postvote-toggle__label">Lotteria e QR</span>
+                </label>
               </div>
             </div>
             <div class="feedback-editor new-event-feedback">
@@ -503,6 +511,14 @@
                     <span class="postvote-toggle__label"
                       >Sondaggio feedback</span
                     >
+                  </label>
+                  <label class="postvote-toggle">
+                    <input
+                      type="checkbox"
+                      v-model="event.show_lottery"
+                      :disabled="isSavingPrizesFor(event.id)"
+                    />
+                    <span class="postvote-toggle__label">Lotteria e QR</span>
                   </label>
                 </div>
               </div>
@@ -2750,6 +2766,7 @@ function createDefaultNewEventState() {
     show_pre_vote_sponsors: true,
     show_pre_vote_bottom_sponsors: true,
     show_vote_counter: true,
+    show_lottery: true,
   };
 }
 
@@ -3958,6 +3975,7 @@ function normalizeEventResponse(event) {
     ["show_feedback_survey", "showFeedbackSurvey"],
     true,
   );
+  normalized.show_lottery = resolveFlag(["show_lottery", "showLottery"], true);
   const preVoteSponsorBase = resolveFlag(
     [
       "show_pre_vote_sponsors",
@@ -4560,6 +4578,7 @@ async function savePrizesForEvent(event) {
     show_selfie: Boolean(event.show_selfie),
     show_vote_trend: Boolean(event.show_vote_trend),
     show_feedback_survey: Boolean(event.show_feedback_survey),
+    show_lottery: Boolean(event.show_lottery),
     feedback_survey: toApiSurveyPayload(surveyDraft),
     prizes: sanitized,
   };
@@ -5857,6 +5876,7 @@ async function createEvent() {
     show_selfie: Boolean(newEvent.show_selfie),
     show_vote_trend: Boolean(newEvent.show_vote_trend),
     show_feedback_survey: Boolean(newEvent.show_feedback_survey),
+    show_lottery: Boolean(newEvent.show_lottery),
     feedback_survey: toApiSurveyPayload(newEventSurvey),
     prizes: prizesPayload,
   };
