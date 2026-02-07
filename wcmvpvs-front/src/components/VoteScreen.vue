@@ -2712,11 +2712,17 @@ const missionToastMessage = ref("");
 const showMissionToast = ref(false);
 let missionToastTimer = null;
 
+const missionAvailability = computed(() => ({
+  vote_trend: postVoteSettings.value.showVoteTrend,
+  self_mvp: postVoteSettings.value.showSelfie,
+  reaction_test: postVoteSettings.value.showReactionTest,
+  libero_reflex: postVoteSettings.value.showLiberoReflex,
+  feedback: postVoteSettings.value.showFeedbackSurvey && hasVoted.value,
+}));
+
 const availableMissions = computed(() =>
-  missions.value.filter((mission) =>
-    mission.id !== "feedback"
-      ? true
-      : postVoteSettings.value.showFeedbackSurvey && hasVoted.value,
+  missions.value.filter(
+    (mission) => missionAvailability.value[mission.id] !== false,
   ),
 );
 
@@ -4486,9 +4492,9 @@ const submitContactBonus = async () => {
               <span class="post-vote-card__chevron" aria-hidden="true">➜</span>
             </button>
             <button
+              v-if="hasVisibleMissions"
               type="button"
               class="post-vote-card"
-              :disabled="!hasVisibleMissions"
               @click="handlePostVoteMission"
             >
               <div class="post-vote-card__content">
