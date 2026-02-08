@@ -4457,7 +4457,7 @@ const submitContactBonus = async () => {
                 Voto registrato
               </h3>
               <p id="post-vote-modal-subtitle" class="post-vote-modal__subtitle">
-                ⚠️ Codice e QR → prossima schermata in alto a destra ⚠️
+                ⚠️ Codice e QR → prossima schermata in alto a sinistra ⚠️
               </p>
             </div>
           </div>
