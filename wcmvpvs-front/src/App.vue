@@ -22,6 +22,7 @@
       :current-path="currentPath"
       :current-search="currentSearch"
     />
+    <LiveExperienceHome v-else-if="appView === 'newui'" />
     <VoteScreen
       v-else
       :event-id="resolvedEventId"
@@ -43,6 +44,7 @@ import VoteScreen from './components/VoteScreen.vue';
 import ShopShell from './components/shop/ShopShell.vue';
 import ShopAdminPortal from './components/shop/ShopAdminPortal.vue';
 import PartnerPortal from './components/PartnerPortal.vue';
+import LiveExperienceHome from './views/LiveExperienceHome.vue';
 import { apiClient } from './api';
 
 function readEventId(search) {
@@ -110,6 +112,9 @@ const appView = computed(() => {
   }
   if (currentPath.value.includes('/partner')) {
     return 'partner';
+  }
+  if (currentPath.value.startsWith('/newui')) {
+    return 'newui';
   }
   return 'public';
 });
