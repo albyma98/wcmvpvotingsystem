@@ -20,7 +20,7 @@
         <VolleyCourtModal
           v-if="players.length"
           :players="players"
-          :card-size="88"
+          :card-size="80"
           :selected-player-id="selectedPlayerId"
           :is-voting="isVoting"
           :disable-votes="isVoting"
