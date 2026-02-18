@@ -125,6 +125,14 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  votedPlayerLastName: {
+    type: String,
+    default: '',
+  },
+  votedPlayerNumber: {
+    type: [String, Number],
+    default: '',
+  },
 });
 
 const emit = defineEmits(['feature-select']);
@@ -136,11 +144,21 @@ const decoratedFeatures = computed(() =>
     }
 
     const hasVotedPlayer = Boolean(props.votedPlayerImageUrl);
+    const playerLastName = String(props.votedPlayerLastName || '').trim();
+    const fallbackName = String(props.votedPlayerName || '').trim();
+    const titleLabel = hasVotedPlayer ? (playerLastName || fallbackName || feature.title) : feature.title;
+    const hasPlayerNumber = String(props.votedPlayerNumber || '').trim() !== '';
+    const subtitleLabel = hasVotedPlayer
+      ? (hasPlayerNumber ? `#${String(props.votedPlayerNumber).trim()}` : '')
+      : feature.subtitle;
 
     return {
       ...feature,
+      title: titleLabel,
+      subtitle: subtitleLabel,
       actionLabel: hasVotedPlayer ? 'MODIFICA' : feature.actionLabel,
       previewImageUrl: hasVotedPlayer ? props.votedPlayerImageUrl : anonymousAvatarDataUrl,
+      previewImageFit: hasVotedPlayer ? 'contain' : 'cover',
       previewAlt: props.votedPlayerName
         ? `MVP selezionato: ${props.votedPlayerName}`
         : 'Avatar anonimo MVP',
