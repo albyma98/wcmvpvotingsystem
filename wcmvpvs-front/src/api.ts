@@ -67,6 +67,14 @@ function detectOrganizationSlug(pathname: string | undefined, search?: string) {
       .filter(Boolean);
 
     if (segments.length) {
+      if (segments[0].toLowerCase() === 'newui') {
+        return segments[1] || '';
+      }
+
+      if (segments[segments.length - 1].toLowerCase() === 'newui') {
+        return segments[0] || '';
+      }
+
       const first = segments[0].toLowerCase();
       if (!reservedPrefixes.has(first)) {
         return segments[0];
