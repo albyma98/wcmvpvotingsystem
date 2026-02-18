@@ -33,6 +33,15 @@
       >
     </div>
 
+    <div
+      v-else-if="centerBadge"
+      class="relative z-10 mt-2 flex flex-1 items-center justify-center rounded-lg border border-white/25 bg-black/30 px-2 py-4"
+    >
+      <p class="text-center text-[clamp(1.3rem,4.8vw,2.2rem)] font-black tracking-tight drop-shadow-md">
+        {{ centerBadge }}
+      </p>
+    </div>
+
     <div class="relative z-10 mt-auto rounded-md bg-black/35 px-2 py-1.5 text-[clamp(0.65rem,1.9vw,0.88rem)] font-semibold leading-tight text-white/95">
       <div class="flex items-center justify-center gap-1.5">
         <span aria-hidden="true" class="inline-flex h-4 w-4 items-center justify-center">{{ icon }}</span>
@@ -95,6 +104,10 @@ const props = defineProps({
   previewImageFit: {
     type: String,
     default: 'cover',
+  },
+  centerBadge: {
+    type: String,
+    default: '',
   },
 });
 

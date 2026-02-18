@@ -95,10 +95,11 @@ const props = defineProps({
       },
       {
         id: 'game-live',
-        title: 'GIOCO LIVE',
-        subtitle: 'Reaction Challenge',
-        description: 'Batti il record del pubblico',
-        actionLabel: 'GIOCA',
+        title: 'GUADAGNA MONETE',
+        subtitle: '',
+        description: 'usale per i premi',
+        actionLabel: 'OTTIENI',
+        centerBadge: '🪙 0',
         icon: '⚡',
         theme: 'blue',
       },
@@ -137,6 +138,10 @@ const props = defineProps({
     type: [String, Number],
     default: '',
   },
+  gainedCoins: {
+    type: Number,
+    default: 0,
+  },
 });
 
 const emit = defineEmits(['feature-select']);
@@ -144,7 +149,14 @@ const emit = defineEmits(['feature-select']);
 const decoratedFeatures = computed(() =>
   props.features.map((feature) => {
     if (feature.id !== 'vote-mvp') {
-      return feature;
+      if (feature.id !== 'game-live') {
+        return feature;
+      }
+
+      return {
+        ...feature,
+        centerBadge: `🪙 ${Math.max(0, Number(props.gainedCoins) || 0)}`,
+      };
     }
 
     const hasVotedPlayer = Boolean(props.votedPlayerImageUrl);
