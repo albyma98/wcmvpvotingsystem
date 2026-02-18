@@ -28,6 +28,8 @@
         :team-logo-url="newUiTeamLogoUrl"
         :voted-player-image-url="newUiSelectedPlayerImageUrl"
         :voted-player-name="newUiSelectedPlayerName"
+        :voted-player-last-name="newUiSelectedPlayerLastName"
+        :voted-player-number="newUiSelectedPlayerNumber"
         @feature-select="handleNewUiFeatureSelect"
       />
       <NewUiVoteModal
@@ -185,6 +187,12 @@ const newUiSelectedPlayerImageUrl = computed(() =>
 );
 const newUiSelectedPlayerName = computed(() =>
   typeof newUiSelectedPlayer.value?.name === 'string' ? newUiSelectedPlayer.value.name : '',
+);
+const newUiSelectedPlayerLastName = computed(() =>
+  typeof newUiSelectedPlayer.value?.lastName === 'string' ? newUiSelectedPlayer.value.lastName : '',
+);
+const newUiSelectedPlayerNumber = computed(() =>
+  newUiSelectedPlayer.value?.number == null ? '' : String(newUiSelectedPlayer.value.number),
 );
 
 function handlePopState() {

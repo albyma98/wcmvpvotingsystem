@@ -28,7 +28,8 @@
       <img
         :src="previewImageUrl"
         :alt="previewAlt || `MVP selezionato per ${title}`"
-        class="h-full min-h-[108px] w-full object-cover"
+        class="h-full min-h-[108px] w-full"
+        :class="previewImageFitClass"
       >
     </div>
 
@@ -91,6 +92,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  previewImageFit: {
+    type: String,
+    default: 'cover',
+  },
 });
 
 const emit = defineEmits(['select']);
@@ -118,6 +123,7 @@ const cardBackgroundClass = computed(() => currentTheme.value.cardBg);
 const cardGlowClass = computed(() => currentTheme.value.cardGlow);
 const buttonClass = computed(() => currentTheme.value.button);
 const buttonAriaLabel = computed(() => `${props.actionLabel} - ${props.title}`);
+const previewImageFitClass = computed(() => (props.previewImageFit === 'contain' ? 'object-contain' : 'object-cover'));
 
 function emitSelect() {
   emit('select', props.id);
