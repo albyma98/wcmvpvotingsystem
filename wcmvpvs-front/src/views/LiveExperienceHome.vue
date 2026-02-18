@@ -41,6 +41,25 @@ import FeatureCard from '../components/FeatureCard.vue';
 import LiveHeader from '../components/LiveHeader.vue';
 import LiveResultsBar from '../components/LiveResultsBar.vue';
 
+const anonymousAvatarSvg = encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 220'>
+    <defs>
+      <linearGradient id='bg' x1='0' x2='1' y1='0' y2='1'>
+        <stop offset='0%' stop-color='#1e293b'/>
+        <stop offset='100%' stop-color='#0f172a'/>
+      </linearGradient>
+      <linearGradient id='ring' x1='0' x2='1' y1='0' y2='1'>
+        <stop offset='0%' stop-color='#fde68a'/>
+        <stop offset='100%' stop-color='#f97316'/>
+      </linearGradient>
+    </defs>
+    <rect width='320' height='220' fill='url(#bg)'/>
+    <circle cx='160' cy='88' r='44' fill='#334155' stroke='url(#ring)' stroke-width='6'/>
+    <path d='M74 200c0-40 39-66 86-66s86 26 86 66' fill='#334155' stroke='url(#ring)' stroke-width='6' stroke-linecap='round'/>
+  </svg>`,
+);
+const anonymousAvatarDataUrl = `data:image/svg+xml,${anonymousAvatarSvg}`;
+
 const props = defineProps({
   teamName: {
     type: String,
@@ -116,12 +135,15 @@ const decoratedFeatures = computed(() =>
       return feature;
     }
 
+    const hasVotedPlayer = Boolean(props.votedPlayerImageUrl);
+
     return {
       ...feature,
-      previewImageUrl: props.votedPlayerImageUrl,
+      actionLabel: hasVotedPlayer ? 'MODIFICA' : feature.actionLabel,
+      previewImageUrl: hasVotedPlayer ? props.votedPlayerImageUrl : anonymousAvatarDataUrl,
       previewAlt: props.votedPlayerName
         ? `MVP selezionato: ${props.votedPlayerName}`
-        : 'MVP selezionato',
+        : 'Avatar anonimo MVP',
     };
   }),
 );

@@ -23,12 +23,12 @@
 
     <div
       v-if="previewImageUrl"
-      class="relative z-10 mt-2 overflow-hidden rounded-lg border border-white/30 bg-black/30"
+      class="relative z-10 mt-2 flex-1 overflow-hidden rounded-lg border border-white/30 bg-black/30"
     >
       <img
         :src="previewImageUrl"
         :alt="previewAlt || `MVP selezionato per ${title}`"
-        class="h-20 w-full object-cover"
+        class="h-full min-h-[108px] w-full object-cover"
       >
     </div>
 
