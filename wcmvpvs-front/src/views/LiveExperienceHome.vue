@@ -65,7 +65,7 @@ defineProps({
         title: 'VOTA L\'MVP',
         subtitle: 'del pubblico',
         description: 'Votazioni aperte',
-        actionLabel: 'VOTA ORA',
+        actionLabel: 'CLICCA ORA',
         icon: '◔',
         theme: 'orange',
       },
