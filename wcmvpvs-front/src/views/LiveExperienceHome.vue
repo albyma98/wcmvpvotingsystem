@@ -23,7 +23,7 @@
 
       <section class="animate-on-enter mt-[3.2vh] grid grid-cols-3 gap-2.5">
         <FeatureCard
-          v-for="feature in features"
+          v-for="feature in decoratedFeatures"
           :key="feature.id"
           v-bind="feature"
           @select="onFeatureSelect"
@@ -36,11 +36,12 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import FeatureCard from '../components/FeatureCard.vue';
 import LiveHeader from '../components/LiveHeader.vue';
 import LiveResultsBar from '../components/LiveResultsBar.vue';
 
-defineProps({
+const props = defineProps({
   teamName: {
     type: String,
     default: 'TEAM',
@@ -97,9 +98,33 @@ defineProps({
       { name: 'VERDI', value: 21 },
     ],
   },
+  votedPlayerImageUrl: {
+    type: String,
+    default: '',
+  },
+  votedPlayerName: {
+    type: String,
+    default: '',
+  },
 });
 
 const emit = defineEmits(['feature-select']);
+
+const decoratedFeatures = computed(() =>
+  props.features.map((feature) => {
+    if (feature.id !== 'vote-mvp') {
+      return feature;
+    }
+
+    return {
+      ...feature,
+      previewImageUrl: props.votedPlayerImageUrl,
+      previewAlt: props.votedPlayerName
+        ? `MVP selezionato: ${props.votedPlayerName}`
+        : 'MVP selezionato',
+    };
+  }),
+);
 
 function onFeatureSelect(featureId) {
   emit('feature-select', featureId);
