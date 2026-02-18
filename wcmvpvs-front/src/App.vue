@@ -178,7 +178,16 @@ const newUiTeamName = computed(() => {
   const fallbackName = String(activeEvent.value?.team1_name || '').trim();
   return fallbackName || 'TEAM';
 });
-const newUiTeamLogoUrl = computed(() => String(activeEvent.value?.organization_logo_url || '').trim());
+const newUiTeamLogoUrl = computed(() => {
+  const directLogo = String(
+    activeEvent.value?.organization_logo_url ||
+      activeEvent.value?.logo_url ||
+      activeEvent.value?.organization?.logo_url ||
+      '',
+  ).trim();
+
+  return directLogo;
+});
 
 function handlePopState() {
   currentPath.value = window.location.pathname;
