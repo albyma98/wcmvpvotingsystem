@@ -434,8 +434,26 @@
               </label>
               <label>
                 Logo (URL)
-                <input v-model.trim="organizationForm.logo_url" type="url" placeholder="https://…" />
+                <input
+                  v-model.trim="organizationForm.logo_url"
+                  type="text"
+                  placeholder="https://… o data:image/..."
+                />
+                <small class="help-text">Puoi incollare un URL oppure caricare direttamente un file immagine.</small>
               </label>
+              <label>
+                Carica logo
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  @change="onOrganizationLogoFileChange"
+                />
+                <small class="help-text">Formati supportati: PNG, JPG, WEBP, SVG. Max 2MB.</small>
+              </label>
+              <div class="logo-preview inline" v-if="organizationForm.logo_url">
+                <img :src="organizationForm.logo_url" :alt="organizationForm.name || 'Logo società'" />
+                <button class="btn ghost" type="button" @click="removeOrganizationLogo">Rimuovi logo</button>
+              </div>
               <label class="switch-field">
                 <input type="checkbox" v-model="organizationForm.is_active" />
                 <span>Società attiva</span>
@@ -826,6 +844,43 @@ function openEditQRRedirect(redirect) {
 function closeOrganizationForm() {
   organizationFormVisible.value = false;
   organizationFormError.value = '';
+}
+
+function onOrganizationLogoFileChange(event) {
+  const input = event?.target;
+  const file = input?.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  const maxSize = 2 * 1024 * 1024;
+  if (file.size > maxSize) {
+    organizationFormError.value = 'Il file del logo supera i 2MB.';
+    input.value = '';
+    return;
+  }
+
+  if (file.type && !file.type.startsWith('image/')) {
+    organizationFormError.value = 'Seleziona un file immagine valido.';
+    input.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    organizationForm.logo_url = typeof reader.result === 'string' ? reader.result : '';
+    organizationFormError.value = '';
+    input.value = '';
+  };
+  reader.onerror = () => {
+    organizationFormError.value = 'Impossibile leggere il file selezionato.';
+    input.value = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeOrganizationLogo() {
+  organizationForm.logo_url = '';
 }
 
 function switchSection(section) {
@@ -1842,6 +1897,23 @@ onMounted(() => {
   height: 80px;
   border-radius: 50%;
   overflow: hidden;
+  border: 2px solid rgba(15, 23, 42, 0.1);
+}
+
+.logo-preview.inline {
+  width: auto;
+  height: auto;
+  border-radius: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+}
+
+.logo-preview.inline img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
   border: 2px solid rgba(15, 23, 42, 0.1);
 }
 

@@ -67,6 +67,8 @@ type Player struct {
 type Event struct {
 	ID                        int                        `json:"id"`
 	OrganizationID            int                        `json:"organization_id"`
+	OrganizationName          string                     `json:"organization_name,omitempty"`
+	OrganizationLogoURL       string                     `json:"organization_logo_url,omitempty"`
 	Team1ID                   int                        `json:"team1_id"`
 	Team2ID                   int                        `json:"team2_id"`
 	StartDateTime             string                     `json:"start_datetime"`
@@ -2683,14 +2685,17 @@ SELECT e.id,
        e.show_pre_vote_bottom_sponsors,
        e.show_vote_counter,
        e.feedback_survey_config,
+       IFNULL(o.name, ''),
+       IFNULL(o.logo_url, ''),
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
+LEFT JOIN organizations o ON o.id = e.organization_id
 LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
 WHERE e.is_active = 1 AND e.organization_id = ?
 LIMIT 1
-`, organizationID).Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name)
+`, organizationID).Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.OrganizationName, &e.OrganizationLogoURL, &e.Team1Name, &e.Team2Name)
 	if err != nil {
 		return Event{}, err
 	}

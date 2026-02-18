@@ -1,13 +1,14 @@
 <template>
   <header class="flex h-20 items-center gap-3 rounded-xl border border-white/20 bg-slate-950/55 px-3 backdrop-blur-md">
     <div
-      class="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-amber-300/80 bg-slate-950 text-sm font-extrabold uppercase tracking-wide text-white shadow-[0_0_14px_rgba(250,180,60,0.55)]"
+      class="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden border-2 border-amber-300/80 bg-slate-950 text-sm font-extrabold uppercase tracking-wide text-white shadow-[0_0_14px_rgba(250,180,60,0.55)]"
+      :class="teamLogoUrl ? 'rounded-xl' : 'rounded-full'"
     >
       <img
         v-if="teamLogoUrl"
         :src="teamLogoUrl"
         :alt="`Logo ${teamName}`"
-        class="h-full w-full object-cover"
+        class="h-full w-full object-contain bg-white"
       >
       <span v-else>{{ teamName }}</span>
     </div>

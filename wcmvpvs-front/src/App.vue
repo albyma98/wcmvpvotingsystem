@@ -22,7 +22,12 @@
       :current-path="currentPath"
       :current-search="currentSearch"
     />
-    <LiveExperienceHome v-else-if="appView === 'newui'" @feature-select="handleNewUiFeatureSelect" />
+    <LiveExperienceHome
+      v-else-if="appView === 'newui'"
+      :team-name="newUiTeamName"
+      :team-logo-url="newUiTeamLogoUrl"
+      @feature-select="handleNewUiFeatureSelect"
+    />
     <VoteScreen
       v-else
       :event-id="resolvedEventId"
@@ -164,6 +169,16 @@ const appView = computed(() => {
 });
 
 const resolvedEventId = computed(() => currentEventId.value ?? activeEvent.value?.id);
+const newUiTeamName = computed(() => {
+  const organizationName = String(activeEvent.value?.organization_name || '').trim();
+  if (organizationName) {
+    return organizationName;
+  }
+
+  const fallbackName = String(activeEvent.value?.team1_name || '').trim();
+  return fallbackName || 'TEAM';
+});
+const newUiTeamLogoUrl = computed(() => String(activeEvent.value?.organization_logo_url || '').trim());
 
 function handlePopState() {
   currentPath.value = window.location.pathname;
