@@ -23,12 +23,12 @@
 
     <div
       v-if="previewImageUrl"
-      class="relative z-10 mt-2 flex-1 overflow-hidden rounded-lg border border-white/30 bg-black/30"
+      class="feature-card__preview relative z-10 mt-2 overflow-hidden rounded-lg border border-white/30 bg-black/30"
     >
       <img
         :src="previewImageUrl"
         :alt="previewAlt || `MVP selezionato per ${title}`"
-        class="h-full min-h-[108px] w-full"
+        class="h-full w-full"
         :class="previewImageFitClass"
       >
     </div>
@@ -129,3 +129,10 @@ function emitSelect() {
   emit('select', props.id);
 }
 </script>
+
+<style scoped>
+.feature-card__preview {
+  height: clamp(108px, 16vh, 138px);
+  min-height: 108px;
+}
+</style>
