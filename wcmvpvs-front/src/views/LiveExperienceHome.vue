@@ -107,7 +107,7 @@ const props = defineProps({
         id: 'lottery-live',
         title: 'PREMI',
         subtitle: 'utilizza le tue monete',
-        description: '🎁 X premi disponibili',
+        description: 'X premi disponibili',
         actionLabel: 'SCOPRI',
         centerBadge: '🎁',
         icon: '🎁',
