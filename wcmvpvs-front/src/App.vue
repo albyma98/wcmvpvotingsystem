@@ -36,26 +36,6 @@
       :loading-active-event="isFetchingActiveEvent"
     />
 
-    <div
-      v-if="showMvpVoteModal"
-      class="newui-modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Vota l'MVP del pubblico"
-      @click.self="closeMvpVoteModal"
-    >
-      <div class="newui-modal-panel">
-        <button
-          type="button"
-          class="newui-modal-close"
-          aria-label="Chiudi modale voto MVP"
-          @click="closeMvpVoteModal"
-        >
-          ✕
-        </button>
-        <VoteMVP :event-id="resolvedEventId" />
-      </div>
-    </div>
   </div>
 </template>
 
@@ -71,7 +51,6 @@ import ShopShell from './components/shop/ShopShell.vue';
 import ShopAdminPortal from './components/shop/ShopAdminPortal.vue';
 import PartnerPortal from './components/PartnerPortal.vue';
 import LiveExperienceHome from './views/LiveExperienceHome.vue';
-import VoteMVP from './components/VoteMVP.vue';
 import { apiClient } from './api';
 
 function readEventId(search) {
@@ -87,7 +66,6 @@ const currentEventId = ref(typeof window !== 'undefined' ? readEventId(window.lo
 const activeEvent = ref(null);
 const isFetchingActiveEvent = ref(false);
 const hasCheckedActiveEvent = ref(false);
-const showMvpVoteModal = ref(false);
 
 const pathSegments = computed(() =>
   currentPath.value
@@ -201,12 +179,15 @@ function handlePopState() {
 
 function handleNewUiFeatureSelect(featureId) {
   if (featureId === 'vote-mvp') {
-    showMvpVoteModal.value = true;
-  }
-}
+    const params = new URLSearchParams();
+    if (resolvedEventId.value) {
+      params.set('eventId', String(resolvedEventId.value));
+    }
 
-function closeMvpVoteModal() {
-  showMvpVoteModal.value = false;
+    const targetPath = organizationSlug.value ? `/${organizationSlug.value}` : '/';
+    const queryString = params.toString();
+    navigateTo(queryString ? `${targetPath}?${queryString}` : targetPath);
+  }
 }
 
 async function fetchActiveEvent() {
@@ -280,7 +261,6 @@ watch(appView, (view) => {
   } else {
     activeEvent.value = null;
     hasCheckedActiveEvent.value = false;
-    showMvpVoteModal.value = false;
   }
 });
 </script>
@@ -289,42 +269,5 @@ watch(appView, (view) => {
 .app-shell {
   min-height: 100vh;
   background: linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-}
-
-.newui-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  background: rgba(2, 6, 23, 0.74);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-}
-
-.newui-modal-panel {
-  position: relative;
-  width: min(100%, 920px);
-  max-height: calc(100dvh - 2rem);
-  overflow: auto;
-  border-radius: 1rem;
-  background: #f8fafc;
-  box-shadow: 0 32px 70px rgba(2, 6, 23, 0.55);
-}
-
-.newui-modal-close {
-  position: sticky;
-  top: 0.75rem;
-  float: right;
-  margin: 0.75rem 0.75rem 0 0;
-  border: 0;
-  border-radius: 999px;
-  width: 2.2rem;
-  height: 2.2rem;
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: #0f172a;
-  background: rgba(148, 163, 184, 0.25);
-  cursor: pointer;
 }
 </style>
