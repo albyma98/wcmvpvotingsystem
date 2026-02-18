@@ -17,7 +17,7 @@
           <span class="block text-[clamp(2.7rem,12vw,4.8rem)] text-amber-400">PARTITA</span>
         </h1>
         <p class="mx-auto mt-2 max-w-[92%] border-t border-amber-300/50 pt-2 text-[clamp(0.9rem,3.8vw,1.4rem)] font-extrabold tracking-tight text-slate-100/95 drop-shadow-md">
-          Vota • Gioca • Vinci • Partecipa
+          {{ matchLabel }}
         </p>
       </section>
 
@@ -76,6 +76,10 @@ const props = defineProps({
   sponsorLine: {
     type: String,
     default: 'Powered by MVP System',
+  },
+  matchLabel: {
+    type: String,
+    default: 'Vota • Gioca • Vinci • Partecipa',
   },
   features: {
     type: Array,

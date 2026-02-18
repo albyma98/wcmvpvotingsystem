@@ -26,6 +26,7 @@
       <LiveExperienceHome
         :team-name="newUiTeamName"
         :team-logo-url="newUiTeamLogoUrl"
+        :match-label="newUiMatchLabel"
         :voted-player-image-url="newUiSelectedPlayerImageUrl"
         :voted-player-name="newUiSelectedPlayerName"
         :voted-player-last-name="newUiSelectedPlayerLastName"
@@ -177,6 +178,16 @@ const newUiTeamLogoUrl = computed(() => {
   ).trim();
 
   return directLogo;
+});
+const newUiMatchLabel = computed(() => {
+  const homeTeamName = String(activeEvent.value?.team1_name || '').trim();
+  const awayTeamName = String(activeEvent.value?.team2_name || '').trim();
+
+  if (homeTeamName && awayTeamName) {
+    return `${homeTeamName} - ${awayTeamName}`;
+  }
+
+  return 'Vota • Gioca • Vinci • Partecipa';
 });
 
 const showNewUiVoteModal = ref(false);
