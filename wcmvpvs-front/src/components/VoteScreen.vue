@@ -123,6 +123,41 @@ const selectedPlayer = computed(() => {
   );
 });
 const selectedPlayerName = computed(() => formatPlayerName(selectedPlayer.value));
+const selectedPlayerImage = computed(() => {
+  const player = selectedPlayer.value;
+  if (!player || typeof player !== "object") {
+    return "";
+  }
+
+  const candidates = [
+    player.avatar,
+    player.image_url,
+    player.imageUrl,
+    player.raw?.image_url,
+    player.raw?.imageUrl,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  }
+
+  return "";
+});
+
+const votedPlayerCardStyle = computed(() => {
+  if (!selectedPlayerImage.value) {
+    return {};
+  }
+
+  return {
+    "--voted-player-bg-image": `url("${selectedPlayerImage.value.replace(/"/g, '\\"')}")`,
+  };
+});
 const activeSponsorIds = computed(() =>
   sponsors.value
     .map((item) => {
@@ -820,6 +855,9 @@ const couponRedeemTarget = ref(null);
 const couponRedeemEmail = ref("");
 const couponRedeemError = ref("");
 const couponRedeemLoading = ref(false);
+const modalCardSize = computed(() =>
+  clamp(Math.round(cardSize.value * 1.1), 72, 118),
+);
 
 function normalizeEventCoupon(item) {
   if (!item || typeof item !== "object") {
@@ -3535,7 +3573,11 @@ const submitContactBonus = async () => {
                   {{ selectedPlayerName }}
                 </h3>
               </div>
-              <div class="voted-player-panel__card">
+              <div
+                class="voted-player-panel__card"
+                :class="{ 'voted-player-panel__card--with-image': Boolean(selectedPlayerImage) }"
+                :style="votedPlayerCardStyle"
+              >
                 <div v-if="isVotedPlayerLoading" class="voted-player-panel__loader" role="status">
                   <span class="voted-player-panel__spinner" aria-hidden="true"></span>
                   <span class="voted-player-panel__loader-text">Caricamento giocatore...</span>
@@ -4389,15 +4431,15 @@ const submitContactBonus = async () => {
         <div
           class="relative z-10 w-full max-w-xs rounded-[2.25rem] border border-white/10 bg-slate-900/95 px-6 py-7 text-center shadow-[0_30px_60px_rgba(15,23,42,0.6)]"
         >
-          <div class="flex justify-center">
-            <PlayerCard
-              v-if="pendingPlayer"
-              :player="pendingPlayer"
-              :card-size="cardSize * 1.3"
-              :is-selected="votedPlayerId === pendingPlayer.id"
-              :disabled="true"
-            />
-          </div>
+              <div class="flex justify-center">
+                <PlayerCard
+                  v-if="pendingPlayer"
+                  :player="pendingPlayer"
+                  :card-size="modalCardSize"
+                  :is-selected="votedPlayerId === pendingPlayer.id"
+                  :disabled="true"
+                />
+              </div>
           <div class="mt-6 flex flex-col gap-3">
             <button
               class="w-full rounded-full bg-yellow-400 px-4 py-3 text-sm font-semibold uppercase tracking-[0.35em] text-slate-900 transition-colors duration-200 hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-70"
@@ -4839,12 +4881,43 @@ const submitContactBonus = async () => {
 }
 
 .voted-player-panel__card {
+  position: relative;
+  isolation: isolate;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 0.5rem;
+  overflow: hidden;
+  min-height: 246px;
+  padding: 0.75rem;
   background: radial-gradient(circle at 50% 30%, rgba(250, 204, 21, 0.08), transparent 60%);
+  border: 1px solid rgba(250, 204, 21, 0.2);
   border-radius: 1.5rem;
+}
+
+.voted-player-panel__card--with-image::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--voted-player-bg-image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: 0.24;
+  transform: scale(1.08);
+}
+
+.voted-player-panel__card--with-image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.2) 0%, rgba(2, 6, 23, 0.74) 72%),
+    radial-gradient(circle at 50% 24%, rgba(250, 204, 21, 0.22), rgba(2, 6, 23, 0.32) 68%);
+}
+
+.voted-player-panel__card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .voted-player-panel__loader {
