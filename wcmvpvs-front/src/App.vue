@@ -22,12 +22,21 @@
       :current-path="currentPath"
       :current-search="currentSearch"
     />
-    <LiveExperienceHome
-      v-else-if="appView === 'newui'"
-      :team-name="newUiTeamName"
-      :team-logo-url="newUiTeamLogoUrl"
-      @feature-select="handleNewUiFeatureSelect"
-    />
+    <template v-else-if="appView === 'newui'">
+      <LiveExperienceHome
+        :team-name="newUiTeamName"
+        :team-logo-url="newUiTeamLogoUrl"
+        :voted-player-image-url="newUiSelectedPlayerImageUrl"
+        :voted-player-name="newUiSelectedPlayerName"
+        @feature-select="handleNewUiFeatureSelect"
+      />
+      <NewUiVoteModal
+        v-if="showNewUiVoteModal"
+        :event-id="resolvedEventId"
+        @close="showNewUiVoteModal = false"
+        @voted="handleNewUiPlayerVoted"
+      />
+    </template>
     <VoteScreen
       v-else
       :event-id="resolvedEventId"
@@ -51,6 +60,7 @@ import ShopShell from './components/shop/ShopShell.vue';
 import ShopAdminPortal from './components/shop/ShopAdminPortal.vue';
 import PartnerPortal from './components/PartnerPortal.vue';
 import LiveExperienceHome from './views/LiveExperienceHome.vue';
+import NewUiVoteModal from './components/NewUiVoteModal.vue';
 import { apiClient } from './api';
 
 function readEventId(search) {
@@ -167,6 +177,16 @@ const newUiTeamLogoUrl = computed(() => {
   return directLogo;
 });
 
+const showNewUiVoteModal = ref(false);
+const newUiSelectedPlayer = ref(null);
+
+const newUiSelectedPlayerImageUrl = computed(() =>
+  typeof newUiSelectedPlayer.value?.avatar === 'string' ? newUiSelectedPlayer.value.avatar : '',
+);
+const newUiSelectedPlayerName = computed(() =>
+  typeof newUiSelectedPlayer.value?.name === 'string' ? newUiSelectedPlayer.value.name : '',
+);
+
 function handlePopState() {
   currentPath.value = window.location.pathname;
   currentSearch.value = window.location.search;
@@ -179,15 +199,16 @@ function handlePopState() {
 
 function handleNewUiFeatureSelect(featureId) {
   if (featureId === 'vote-mvp') {
-    const params = new URLSearchParams();
-    if (resolvedEventId.value) {
-      params.set('eventId', String(resolvedEventId.value));
-    }
-
-    const targetPath = organizationSlug.value ? `/${organizationSlug.value}` : '/';
-    const queryString = params.toString();
-    navigateTo(queryString ? `${targetPath}?${queryString}` : targetPath);
+    showNewUiVoteModal.value = true;
   }
+}
+
+function handleNewUiPlayerVoted(player) {
+  if (!player) {
+    return;
+  }
+  newUiSelectedPlayer.value = player;
+  showNewUiVoteModal.value = false;
 }
 
 async function fetchActiveEvent() {

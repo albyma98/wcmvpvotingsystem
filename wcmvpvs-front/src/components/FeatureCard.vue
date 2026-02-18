@@ -21,6 +21,17 @@
       </p>
     </div>
 
+    <div
+      v-if="previewImageUrl"
+      class="relative z-10 mt-2 overflow-hidden rounded-lg border border-white/30 bg-black/30"
+    >
+      <img
+        :src="previewImageUrl"
+        :alt="previewAlt || `MVP selezionato per ${title}`"
+        class="h-20 w-full object-cover"
+      >
+    </div>
+
     <div class="relative z-10 mt-auto rounded-md bg-black/35 px-2 py-1.5 text-[clamp(0.65rem,1.9vw,0.88rem)] font-semibold leading-tight text-white/95">
       <div class="flex items-center justify-center gap-1.5">
         <span aria-hidden="true" class="inline-flex h-4 w-4 items-center justify-center">{{ icon }}</span>
@@ -71,6 +82,14 @@ const props = defineProps({
   theme: {
     type: String,
     default: 'orange',
+  },
+  previewImageUrl: {
+    type: String,
+    default: '',
+  },
+  previewAlt: {
+    type: String,
+    default: '',
   },
 });
 
