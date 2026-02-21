@@ -20,6 +20,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admin/login", rt.wrap(rt.adminLogin))
 
 	rt.router.Get("/public/players", rt.wrap(rt.listPublicPlayers))
+	rt.router.Get("/public/events/{eventId}/live-score", rt.wrap(rt.getPublicEventLiveScore))
 	rt.router.Get("/shop/products", rt.wrap(rt.listShopProducts))
 	rt.router.Get("/shop/products/{id}", rt.wrap(rt.getShopProduct))
 	rt.router.Post("/shop/checkout", rt.wrap(rt.checkoutShopOrder))

@@ -95,6 +95,7 @@ func New(cfg Config) (Router, error) {
 		sessionTimeout:          12 * time.Hour,
 		voteRateByDevice:        map[string][]time.Time{},
 		voteRateByIP:            map[string][]time.Time{},
+		liveScoreCache:          map[int]cachedLiveScore{},
 	}, nil
 }
 
@@ -121,6 +122,9 @@ type _router struct {
 	voteRateMu       sync.Mutex
 	voteRateByDevice map[string][]time.Time
 	voteRateByIP     map[string][]time.Time
+
+	liveScoreCacheMu sync.RWMutex
+	liveScoreCache   map[int]cachedLiveScore
 }
 
 type adminSession struct {

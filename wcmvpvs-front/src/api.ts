@@ -645,3 +645,16 @@ export async function fetchEventEngagement(eventId: number) {
     return { ok: false, error };
   }
 }
+
+export async function fetchEventLiveScore(eventId: number) {
+  if (!eventId) {
+    return { ok: false, error: new Error('missing_event_id') };
+  }
+
+  try {
+    const { data } = await apiClient.get(`/public/events/${eventId}/live-score`);
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}

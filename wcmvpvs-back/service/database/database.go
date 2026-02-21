@@ -83,6 +83,8 @@ type Event struct {
 	ShowPreVoteSponsors       bool                       `json:"show_pre_vote_sponsors"`
 	ShowPreVoteBottomSponsors bool                       `json:"show_pre_vote_bottom_sponsors"`
 	ShowVoteCounter           bool                       `json:"show_vote_counter"`
+	LiveScoreURL              string                     `json:"live_score_url,omitempty"`
+	LiveScoreSource           string                     `json:"live_score_source,omitempty"`
 	Team1Name                 string                     `json:"team1_name,omitempty"`
 	Team2Name                 string                     `json:"team2_name,omitempty"`
 	Prizes                    []EventPrize               `json:"prizes,omitempty"`
@@ -692,6 +694,7 @@ type AppDatabase interface {
 	GetActiveEvent(organizationID int) (Event, error)
 	GetEventTeamIDs(eventID int) (int, int, error)
 	GetEventOrganizationID(eventID int) (int, error)
+	GetEventByID(eventID int) (Event, error)
 	ListVotes() ([]Vote, error)
 	GetVoteEventID(voteID int) (int, error)
 	ListVotesByOrganization(organizationID int) ([]Vote, error)
@@ -986,6 +989,18 @@ func New(db *sql.DB) (AppDatabase, error) {
 	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN feedback_survey_config TEXT`); err != nil {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring events feedback survey config column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN live_score_url TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events live score URL column: %w", err)
+		}
+	}
+
+	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN live_score_source TEXT NOT NULL DEFAULT 'legavolley_html'`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring events live score source column: %w", err)
 		}
 	}
 
@@ -2303,7 +2318,7 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 	e.FeedbackSurvey = &survey
 	surveyJSON := encodeEventFeedbackSurveyConfig(survey)
 
-	res, err := tx.Exec(`INSERT INTO events (organization_id, team1_id, team2_id, start_datetime, location, show_reaction_test, show_selfie, show_vote_trend, show_feedback_survey, show_pre_vote_sponsors, show_pre_vote_bottom_sponsors, show_vote_counter, feedback_survey_config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, e.OrganizationID, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowPreVoteBottomSponsors), boolToInt(e.ShowVoteCounter), surveyJSON)
+	res, err := tx.Exec(`INSERT INTO events (organization_id, team1_id, team2_id, start_datetime, location, show_reaction_test, show_selfie, show_vote_trend, show_feedback_survey, show_pre_vote_sponsors, show_pre_vote_bottom_sponsors, show_vote_counter, feedback_survey_config, live_score_url, live_score_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, e.OrganizationID, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowPreVoteBottomSponsors), boolToInt(e.ShowVoteCounter), surveyJSON, strings.TrimSpace(e.LiveScoreURL), normalizeLiveScoreSource(e.LiveScoreSource))
 	if err != nil {
 		return 0, err
 	}
@@ -2340,6 +2355,8 @@ SELECT e.id,
        e.show_pre_vote_bottom_sponsors,
        e.show_vote_counter,
        e.feedback_survey_config,
+       IFNULL(e.live_score_url, ''),
+       IFNULL(e.live_score_source, 'legavolley_html'),
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -2363,7 +2380,7 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 		var showPreVoteBottomSponsors int
 		var showVoteCounter int
 		var surveyConfig sql.NullString
-		if err := rows.Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name); err != nil {
+		if err := rows.Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.LiveScoreURL, &e.LiveScoreSource, &e.Team1Name, &e.Team2Name); err != nil {
 			return nil, err
 		}
 		e.IsActive = isActive == 1
@@ -2410,6 +2427,8 @@ SELECT e.id,
        e.show_pre_vote_bottom_sponsors,
        e.show_vote_counter,
        e.feedback_survey_config,
+       IFNULL(e.live_score_url, ''),
+       IFNULL(e.live_score_source, 'legavolley_html'),
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -2435,7 +2454,7 @@ ORDER BY e.start_datetime DESC`, organizationID)
 		var showPreVoteBottomSponsors int
 		var showVoteCounter int
 		var surveyConfig sql.NullString
-		if err := rows.Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.Team1Name, &e.Team2Name); err != nil {
+		if err := rows.Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.LiveScoreURL, &e.LiveScoreSource, &e.Team1Name, &e.Team2Name); err != nil {
 			return nil, err
 		}
 		e.IsActive = isActive == 1
@@ -2474,7 +2493,7 @@ func (db *appdbimpl) UpdateEvent(e Event) error {
 	e.FeedbackSurvey = &survey
 	surveyJSON := encodeEventFeedbackSurveyConfig(survey)
 
-	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=?, show_reaction_test=?, show_selfie=?, show_vote_trend=?, show_feedback_survey=?, show_pre_vote_sponsors=?, show_pre_vote_bottom_sponsors=?, show_vote_counter=?, feedback_survey_config=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowPreVoteBottomSponsors), boolToInt(e.ShowVoteCounter), surveyJSON, e.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=?, show_reaction_test=?, show_selfie=?, show_vote_trend=?, show_feedback_survey=?, show_pre_vote_sponsors=?, show_pre_vote_bottom_sponsors=?, show_vote_counter=?, feedback_survey_config=?, live_score_url=?, live_score_source=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowPreVoteBottomSponsors), boolToInt(e.ShowVoteCounter), surveyJSON, strings.TrimSpace(e.LiveScoreURL), normalizeLiveScoreSource(e.LiveScoreSource), e.ID); err != nil {
 		return err
 	}
 
@@ -2499,6 +2518,69 @@ func (db *appdbimpl) GetEventOrganizationID(eventID int) (int, error) {
 		return 0, err
 	}
 	return organizationID, nil
+}
+
+func normalizeLiveScoreSource(source string) string {
+	if strings.TrimSpace(source) == "" {
+		return "legavolley_html"
+	}
+	return source
+}
+
+func (db *appdbimpl) GetEventByID(eventID int) (Event, error) {
+	row := db.c.QueryRow(`
+SELECT e.id,
+       e.organization_id,
+       e.team1_id,
+       e.team2_id,
+       e.start_datetime,
+       e.location,
+       e.is_active,
+       e.votes_closed,
+       e.is_concluded,
+       e.show_reaction_test,
+       e.show_selfie,
+       e.show_vote_trend,
+       e.show_feedback_survey,
+       e.show_pre_vote_sponsors,
+       e.show_pre_vote_bottom_sponsors,
+       e.show_vote_counter,
+       e.feedback_survey_config,
+       IFNULL(e.live_score_url, ''),
+       IFNULL(e.live_score_source, 'legavolley_html'),
+       IFNULL(t1.name, ''),
+       IFNULL(t2.name, '')
+FROM events e
+LEFT JOIN teams t1 ON t1.id = e.team1_id
+LEFT JOIN teams t2 ON t2.id = e.team2_id
+WHERE e.id = ?`, eventID)
+
+	var e Event
+	var isActive, votesClosed, isConcluded int
+	var showReaction, showSelfie, showVoteTrend, showFeedback int
+	var showPreVoteSponsors, showPreVoteBottomSponsors, showVoteCounter int
+	var surveyConfig sql.NullString
+	if err := row.Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.LiveScoreURL, &e.LiveScoreSource, &e.Team1Name, &e.Team2Name); err != nil {
+		return Event{}, err
+	}
+	e.IsActive = isActive == 1
+	e.VotesClosed = votesClosed == 1
+	e.IsConcluded = isConcluded == 1
+	e.ShowReactionTest = showReaction == 1
+	e.ShowSelfie = showSelfie == 1
+	e.ShowVoteTrend = showVoteTrend == 1
+	e.ShowFeedbackSurvey = showFeedback == 1
+	e.ShowPreVoteSponsors = showPreVoteSponsors == 1
+	e.ShowPreVoteBottomSponsors = showPreVoteBottomSponsors == 1
+	e.ShowVoteCounter = showVoteCounter == 1
+	cfg := decodeEventFeedbackSurveyConfig(surveyConfig)
+	e.FeedbackSurvey = &cfg
+	prizes, err := db.ListEventPrizes(e.ID)
+	if err != nil {
+		return Event{}, err
+	}
+	e.Prizes = prizes
+	return e, nil
 }
 
 func (db *appdbimpl) DeleteEvent(id int) error {

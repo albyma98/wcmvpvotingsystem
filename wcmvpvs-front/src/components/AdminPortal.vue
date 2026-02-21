@@ -139,6 +139,16 @@
                 :disabled="!hasEnoughTeams"
               />
             </label>
+            <label>
+              Live Score URL (LegaVolley)
+              <input
+                v-model.trim="newEvent.live_score_url"
+                type="url"
+                placeholder="https://ww2.legavolley.it/tabellini_online/gara_39742.html"
+                :disabled="!hasEnoughTeams"
+              />
+              <small class="field-hint">Formato richiesto: https://ww2.legavolley.it/tabellini_online/gara_*.html</small>
+            </label>
             <div class="postvote-options new-event-prevote">
               <div class="postvote-options__header">
                 <span>Esperienze pre voto</span>
@@ -378,6 +388,16 @@
                     >{{ buildEventLink(event.id) }}</a
                   >
                 </p>
+                <label>
+                  Live Score URL (LegaVolley)
+                  <input
+                    v-model.trim="event.live_score_url"
+                    type="url"
+                    placeholder="https://ww2.legavolley.it/tabellini_online/gara_39742.html"
+                    :disabled="isSavingPrizesFor(event.id)"
+                  />
+                </label>
+                <p v-if="liveScorePreview[event.id]" class="muted small">{{ liveScorePreview[event.id] }}</p>
               </div>
               <div class="item-actions">
                 <button
@@ -399,6 +419,7 @@
                 >
                   Apri pagina voto
                 </button>
+                <button class="btn outline" type="button" @click="testLiveScore(event.id)" :disabled="isSavingPrizesFor(event.id)">Test link</button>
                 <button
                   class="btn warning"
                   type="button"
@@ -2743,6 +2764,7 @@ function createDefaultNewEventState() {
     team2_id: 0,
     start_datetime: "",
     location: "",
+    live_score_url: "",
     show_reaction_test: true,
     show_selfie: true,
     show_vote_trend: true,
@@ -2822,6 +2844,7 @@ const eventPrizeDrafts = reactive({});
 const eventPrizeErrors = reactive({});
 const eventFeedbackDrafts = reactive({});
 const eventFeedbackErrors = reactive({});
+const liveScorePreview = reactive({});
 const savingEventPrizes = ref(0);
 const portalRef = ref(null);
 const toolbarRef = ref(null);
@@ -3999,6 +4022,7 @@ function normalizeEventResponse(event) {
   );
   normalized.feedback_survey = survey;
   normalized.feedbackSurvey = survey;
+  normalized.live_score_url = typeof (event?.live_score_url ?? event?.liveScoreUrl) === "string" ? (event?.live_score_url ?? event?.liveScoreUrl).trim() : "";
   return normalized;
 }
 
@@ -4544,6 +4568,10 @@ async function savePrizesForEvent(event) {
 
   eventPrizeErrors[event.id] = "";
   eventFeedbackErrors[event.id] = "";
+  if (event.live_score_url && !isValidLiveScoreUrl(event.live_score_url)) {
+    eventPrizeErrors[event.id] = "Il Live Score URL non è valido.";
+    return;
+  }
   const surveyDraft = feedbackDraftFor(event.id);
 
   const payload = {
@@ -4551,6 +4579,7 @@ async function savePrizesForEvent(event) {
     team2_id: event.team2_id,
     start_datetime: event.start_datetime,
     location: event.location,
+    live_score_url: event.live_score_url,
     show_pre_vote_sponsors: Boolean(event.show_pre_vote_sponsors),
     show_pre_vote_bottom_sponsors: Boolean(
       event.show_pre_vote_bottom_sponsors,
@@ -5796,6 +5825,20 @@ async function loadAll() {
   resetForms();
 }
 
+
+function isValidLiveScoreUrl(url) {
+  return /^https:\/\/ww2\.legavolley\.it\/tabellini_online\/gara_\d+\.html$/i.test((url || "").trim());
+}
+
+async function testLiveScore(eventId) {
+  liveScorePreview[eventId] = "";
+  const { data } = await secureRequest(() => apiClient.get(`/public/events/${eventId}/live-score`), null);
+  if (!data) {
+    return;
+  }
+  liveScorePreview[eventId] = `Set ${data.currentSet}: ${data.homePoints}-${data.guestPoints}`;
+}
+
 async function createTeam() {
   if (!newTeamName.value) {
     return;
@@ -5834,6 +5877,10 @@ async function createEvent() {
     globalError.value = "Imposta data e ora della partita.";
     return;
   }
+  if (newEvent.live_score_url && !isValidLiveScoreUrl(newEvent.live_score_url)) {
+    globalError.value = "Il Live Score URL non è valido.";
+    return;
+  }
 
   const prizesPayload = newEventPrizes.value
     .map((prize, index) => ({
@@ -5848,6 +5895,7 @@ async function createEvent() {
     team2_id: newEvent.team2_id,
     start_datetime: newEvent.start_datetime,
     location: newEvent.location,
+    live_score_url: newEvent.live_score_url,
     show_pre_vote_sponsors: Boolean(newEvent.show_pre_vote_sponsors),
     show_pre_vote_bottom_sponsors: Boolean(
       newEvent.show_pre_vote_bottom_sponsors,
