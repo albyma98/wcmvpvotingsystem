@@ -32,11 +32,14 @@
 
       <LiveResultsBar class="animate-on-enter mt-auto" :results="results" />
     </main>
+
+    <EarnCoinsModal v-model="isEarnModalOpen" />
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import EarnCoinsModal from '../components/EarnCoinsModal.vue';
 import FeatureCard from '../components/FeatureCard.vue';
 import LiveHeader from '../components/LiveHeader.vue';
 import LiveResultsBar from '../components/LiveResultsBar.vue';
@@ -146,6 +149,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['feature-select']);
+const isEarnModalOpen = ref(false);
 
 const decoratedFeatures = computed(() =>
   props.features.map((feature) => {
@@ -184,6 +188,11 @@ const decoratedFeatures = computed(() =>
 );
 
 function onFeatureSelect(featureId) {
+  if (featureId === 'game-live') {
+    isEarnModalOpen.value = true;
+    return;
+  }
+
   emit('feature-select', featureId);
 }
 </script>
