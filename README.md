@@ -82,3 +82,37 @@ La repository include tutto il necessario per eseguire l'applicazione (backend G
    ```
 
    Assicurati che l'admin di bootstrap sia stato creato controllando i log del backend (messaggio `admin ... creato`). È possibile disabilitare la creazione automatica impostando `BOOTSTRAP_ADMIN_ENABLED=false` o lasciando vuoto `BOOTSTRAP_ADMIN_PASSWORD_HASH`.【F:wcmvpvs-back/cmd/webapi/main.go†L42-L70】
+
+## Verificare che lo scraping del live score funzioni
+
+Il backend espone il live score con l'endpoint pubblico `GET /public/events/{eventId}/live-score`, che usa il campo `live_score_url` dell'evento e fa fetch della pagina LegaVolley per estrarre set/punteggio correnti.【F:wcmvpvs-back/service/api/api-handler.go†L19-L24】【F:wcmvpvs-back/service/api/live-score.go†L56-L88】
+
+### 1) Configura un evento con URL LegaVolley valido
+
+Nel portale Admin, in sezione Eventi:
+
+- incolla un URL nel formato `https://ww2.legavolley.it/tabellini_online/gara_<id>.html`;
+- salva l'evento;
+- usa il pulsante **Test link** per vedere un'anteprima rapida (`Set X: Y-Z`).
+
+La validazione front-end accetta solo quel pattern e il bottone **Test link** chiama proprio l'endpoint pubblico del backend.【F:wcmvpvs-front/src/components/AdminPortal.vue†L392-L423】【F:wcmvpvs-front/src/components/AdminPortal.vue†L5829-L5840】
+
+### 2) Verifica da API con curl
+
+```bash
+curl -i http://localhost:3000/public/events/<EVENT_ID>/live-score
+```
+
+Se lo scraping è corretto, ricevi `200 OK` con payload JSON (es. `homeName`, `guestName`, `setsHome`, `setsGuest`, `currentSet`, `homePoints`, `guestPoints`, `updatedAt`). In caso di URL mancante o pagina non raggiungibile ottieni rispettivamente `409` o `502`.【F:wcmvpvs-back/service/api/live-score.go†L56-L88】
+
+### 3) Controlla i log backend quando fallisce
+
+Quando il fetch/parsing non riesce il backend scrive un warning `cannot fetch live score` con `event_id`, utile per capire subito quale evento ha un link errato o non più disponibile.【F:wcmvpvs-back/service/api/live-score.go†L77-L80】
+
+```bash
+docker compose logs -f backend
+```
+
+### 4) Nota sulla cache
+
+Il risultato è cache-ato per 4 secondi per evento: chiamate ripetute immediate possono restituire lo stesso snapshot. Per testare un refresh reale attendi almeno 5 secondi tra due richieste consecutive.【F:wcmvpvs-back/service/api/live-score.go†L19-L20】【F:wcmvpvs-back/service/api/live-score.go†L92-L110】
