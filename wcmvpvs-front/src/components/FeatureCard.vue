@@ -37,7 +37,7 @@
       v-else-if="centerBadge"
       class="relative z-10 mt-2 flex flex-1 items-center justify-center rounded-lg border border-white/25 bg-black/30 px-2 py-4"
     >
-      <p class="text-center text-[clamp(1.3rem,4.8vw,2.2rem)] font-black tracking-tight drop-shadow-md">
+      <p :id="centerBadgeId" class="text-center text-[clamp(1.3rem,4.8vw,2.2rem)] font-black tracking-tight drop-shadow-md">
         {{ centerBadge }}
       </p>
     </div>
@@ -106,6 +106,10 @@ const props = defineProps({
     default: 'cover',
   },
   centerBadge: {
+    type: String,
+    default: '',
+  },
+  centerBadgeId: {
     type: String,
     default: '',
   },

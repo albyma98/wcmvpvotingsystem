@@ -25,16 +25,18 @@
                   <button
                     v-if="activeView === 'game'"
                     type="button"
-                    class="inline-flex h-10 items-center justify-center rounded-full border border-white/20 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/15"
+                    class="inline-flex h-10 items-center justify-center rounded-full border border-white/20 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-60"
                     aria-label="Torna alla lista dei giochi"
+                    :disabled="isClaiming"
                     @click="goBack"
                   >
                     ← Back
                   </button>
                   <button
                     type="button"
-                    class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-2xl leading-none text-white transition hover:bg-white/15"
+                    class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-2xl leading-none text-white transition hover:bg-white/15 disabled:opacity-60"
                     aria-label="Chiudi modale Guadagna Monete"
+                    :disabled="isClaiming"
                     @click="closeModal"
                   >
                     ×
@@ -69,11 +71,11 @@
                 </div>
 
                 <div v-else key="game" class="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col">
-                  <div class="flex h-full flex-1 items-stretch rounded-2xl border border-white/10 bg-white/5 p-4 text-white md:p-6">
+                  <div ref="gameStageRef" class="flex h-full flex-1 items-stretch rounded-2xl border border-white/10 bg-white/5 p-4 text-white md:p-6">
                     <ReactionTestGame
                       v-if="activeGame?.id === 'reaction'"
                       class="h-full w-full"
-                      @done="handleDone"
+                      @claim="handleClaim"
                       @exit="goBack"
                     />
                     <div v-else-if="activeGame?.id === 'quiz'" class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
@@ -94,10 +96,13 @@
       </div>
     </Transition>
   </Teleport>
+
+  <CoinCollectAnimation ref="coinAnimationRef" />
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import CoinCollectAnimation from './CoinCollectAnimation.vue';
 import ReactionTestGame from './ReactionTestGame.vue';
 import { getEarnCooldownRemainingSeconds, startEarnCooldown } from '../utils/earnCooldown';
 
@@ -106,12 +111,19 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  walletTargetEl: {
+    type: Object,
+    default: null,
+  },
 });
 
-const emit = defineEmits(['update:modelValue', 'earned']);
+const emit = defineEmits(['update:modelValue', 'earned', 'coins-earned']);
 
 const activeView = ref('list');
 const activeGame = ref(null);
+const isClaiming = ref(false);
+const gameStageRef = ref(null);
+const coinAnimationRef = ref(null);
 
 const earnOptions = [
   { id: 'reaction', title: 'Reaction Test', description: 'Testa i riflessi e scala la classifica.', reward: 10, icon: '⚡', type: 'game', cooldownSeconds: 90 },
@@ -176,11 +188,23 @@ onBeforeUnmount(() => {
   }
 });
 
+function resolveWalletTarget() {
+  if (props.walletTargetEl && props.walletTargetEl instanceof HTMLElement) {
+    return props.walletTargetEl;
+  }
+
+  return document.getElementById('wallet-coin-target');
+}
+
 function forceTick() {
   nowTick.value = Date.now();
 }
 
 function closeModal() {
+  if (isClaiming.value) {
+    return;
+  }
+
   goBack();
   emit('update:modelValue', false);
 }
@@ -203,13 +227,42 @@ function openGame(option) {
 }
 
 function goBack() {
+  if (isClaiming.value) {
+    return;
+  }
+
   activeView.value = 'list';
   activeGame.value = null;
 }
 
-function handleDone(payload) {
-  emit('earned', payload);
-  goBack();
+async function handleClaim(payload) {
+  if (isClaiming.value) {
+    return;
+  }
+
+  isClaiming.value = true;
+  const coins = Math.max(0, Number(payload?.coins) || 0);
+
+  try {
+    const toEl = resolveWalletTarget();
+    const fromEl = gameStageRef.value;
+
+    if (coinAnimationRef.value?.play && fromEl && toEl) {
+      await coinAnimationRef.value.play({
+        fromEl,
+        toEl,
+        count: 18,
+        amount: coins,
+      });
+    }
+
+    emit('earned', payload);
+    emit('coins-earned', coins);
+    activeView.value = 'list';
+    activeGame.value = null;
+  } finally {
+    isClaiming.value = false;
+  }
 }
 
 function handleOptionClick(option) {

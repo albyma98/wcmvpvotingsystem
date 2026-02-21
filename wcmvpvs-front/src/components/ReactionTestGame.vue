@@ -38,6 +38,7 @@
           type="button"
           class="cta-primary"
           :aria-label="primaryLabel"
+          :disabled="isPrimaryDisabled"
           @click="onPrimaryAction"
         >
           {{ primaryLabel }}
@@ -58,7 +59,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
 
-const emit = defineEmits(['done', 'exit']);
+const emit = defineEmits(['claim', 'exit']);
 
 const TOTAL_ROUNDS = 3;
 const FALSTART_PENALTY_MS = 300;
@@ -72,6 +73,7 @@ const goStartTime = ref(0);
 const roundCoins = ref(0);
 const showCoinBurst = ref(false);
 const tapLocked = ref(false);
+const claimRequested = ref(false);
 
 let countdownInterval;
 let waitTimeout;
@@ -204,11 +206,13 @@ const primaryLabel = computed(() => {
   }
 
   if (phase.value === 'summary') {
-    return 'Riscatta monete';
+    return claimRequested.value ? 'Riscatto in corso…' : 'Riscatta monete';
   }
 
   return 'Attendi…';
 });
+
+const isPrimaryDisabled = computed(() => phase.value === 'summary' && claimRequested.value);
 
 function clearTimers() {
   if (typeof window === 'undefined') {
@@ -240,6 +244,7 @@ function resetGame() {
   roundResults.value = [];
   tapLocked.value = false;
   showCoinBurst.value = false;
+  claimRequested.value = false;
 }
 
 function startCountdown() {
@@ -338,7 +343,12 @@ function onPrimaryAction() {
   }
 
   if (phase.value === 'summary') {
-    emit('done', {
+    if (claimRequested.value) {
+      return;
+    }
+
+    claimRequested.value = true;
+    emit('claim', {
       gameId: 'reaction',
       coins: coins.value,
       avgMs: avgMs.value,

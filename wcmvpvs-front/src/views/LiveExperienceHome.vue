@@ -33,12 +33,16 @@
       <LiveResultsBar class="animate-on-enter mt-auto" :results="results" />
     </main>
 
-    <EarnCoinsModal v-model="isEarnModalOpen" />
+    <EarnCoinsModal
+      v-model="isEarnModalOpen"
+      :wallet-target-el="walletTargetEl"
+      @coins-earned="addCoins"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import EarnCoinsModal from '../components/EarnCoinsModal.vue';
 import FeatureCard from '../components/FeatureCard.vue';
 import LiveHeader from '../components/LiveHeader.vue';
@@ -150,6 +154,39 @@ const props = defineProps({
 
 const emit = defineEmits(['feature-select']);
 const isEarnModalOpen = ref(false);
+const totalCoins = ref(0);
+const walletTargetEl = ref(null);
+
+function syncWalletTargetEl() {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  walletTargetEl.value = document.getElementById('wallet-coin-target');
+}
+
+onMounted(async () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const stored = Number.parseInt(window.localStorage.getItem('wallet:coins') || '0', 10);
+  totalCoins.value = Number.isFinite(stored) && stored > 0 ? stored : 0;
+  await nextTick();
+  syncWalletTargetEl();
+});
+
+async function addCoins(amount) {
+  const parsed = Math.max(0, Number(amount) || 0);
+  totalCoins.value += parsed;
+
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem('wallet:coins', String(totalCoins.value));
+  }
+
+  await nextTick();
+  syncWalletTargetEl();
+}
 
 const decoratedFeatures = computed(() =>
   props.features.map((feature) => {
@@ -160,7 +197,8 @@ const decoratedFeatures = computed(() =>
 
       return {
         ...feature,
-        centerBadge: `🪙 ${Math.max(0, Number(props.gainedCoins) || 0)}`,
+        centerBadge: `🪙 ${totalCoins.value}`,
+        centerBadgeId: 'wallet-coin-target',
       };
     }
 
