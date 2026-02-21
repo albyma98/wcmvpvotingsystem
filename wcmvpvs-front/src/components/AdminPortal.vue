@@ -2356,6 +2356,38 @@
           </ul>
         </section>
         <div
+          v-if="liveScoreDialog.visible"
+          class="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Dettaglio live score"
+        >
+          <div class="modal-card">
+            <h3>Dettaglio live score evento #{{ liveScoreDialog.eventId }}</h3>
+            <p v-if="liveScoreDialog.loading" class="muted">Recupero dati live score…</p>
+            <p v-else-if="liveScoreDialog.error" class="error">{{ liveScoreDialog.error }}</p>
+            <template v-else-if="liveScoreDialog.data">
+              <p><strong>Sorgente:</strong> {{ liveScoreDialog.data.source || '-' }}</p>
+              <p><strong>URL:</strong> {{ liveScoreDialog.data.liveScoreUrl || '-' }}</p>
+              <p><strong>Squadre:</strong> {{ liveScoreDialog.data.homeName || '-' }} vs {{ liveScoreDialog.data.guestName || '-' }}</p>
+              <p><strong>Set:</strong> {{ liveScoreDialog.data.setsHome }} - {{ liveScoreDialog.data.setsGuest }}</p>
+              <p><strong>Set corrente:</strong> {{ liveScoreDialog.data.currentSet }}</p>
+              <p><strong>Punteggio set corrente:</strong> {{ liveScoreDialog.data.homePoints }} - {{ liveScoreDialog.data.guestPoints }}</p>
+              <p><strong>Set concluso:</strong> {{ liveScoreDialog.data.isSetFinished ? 'Sì' : 'No' }}</p>
+              <p><strong>Aggiornato alle:</strong> {{ liveScoreDialog.data.updatedAt || '-' }}</p>
+            </template>
+            <div class="modal-actions">
+              <button
+                class="btn primary"
+                type="button"
+                @click="closeLiveScoreDialog"
+              >
+                Chiudi
+              </button>
+            </div>
+          </div>
+        </div>
+        <div
           v-if="purgeDialog.visible"
           class="modal-backdrop"
           role="dialog"
@@ -2716,6 +2748,13 @@ const purgeDialog = reactive({
   password: "",
   error: "",
   isSubmitting: false,
+});
+const liveScoreDialog = reactive({
+  visible: false,
+  loading: false,
+  error: "",
+  eventId: 0,
+  data: null,
 });
 const updatingEventId = ref(0);
 const concludingEventId = ref(0);
@@ -5830,13 +5869,38 @@ function isValidLiveScoreUrl(url) {
   return /^https:\/\/ww2\.legavolley\.it\/tabellini_online\/gara_\d+\.html$/i.test((url || "").trim());
 }
 
+function closeLiveScoreDialog() {
+  liveScoreDialog.visible = false;
+  liveScoreDialog.loading = false;
+  liveScoreDialog.error = "";
+  liveScoreDialog.eventId = 0;
+  liveScoreDialog.data = null;
+}
+
 async function testLiveScore(eventId) {
   liveScorePreview[eventId] = "";
-  const { data } = await secureRequest(() => apiClient.get(`/public/events/${eventId}/live-score`), null);
-  if (!data) {
-    return;
+  liveScoreDialog.visible = true;
+  liveScoreDialog.loading = true;
+  liveScoreDialog.error = "";
+  liveScoreDialog.eventId = eventId;
+  liveScoreDialog.data = null;
+  try {
+    const { data } = await secureRequest(() =>
+      apiClient.get(`/public/events/${eventId}/live-score`),
+    );
+    if (!data) {
+      liveScoreDialog.error = "Nessun dato disponibile per questo evento.";
+      return;
+    }
+    liveScoreDialog.data = data;
+    liveScorePreview[eventId] = `Set ${data.currentSet}: ${data.homePoints}-${data.guestPoints}`;
+  } catch (error) {
+    liveScoreDialog.error =
+      error?.response?.data?.error ||
+      "Impossibile recuperare il live score per questo link.";
+  } finally {
+    liveScoreDialog.loading = false;
   }
-  liveScorePreview[eventId] = `Set ${data.currentSet}: ${data.homePoints}-${data.guestPoints}`;
 }
 
 async function createTeam() {
