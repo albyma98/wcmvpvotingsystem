@@ -43,7 +43,7 @@
               </div>
             </header>
 
-            <div class="flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
+            <div class="flex-1 px-4 pb-8 pt-5 md:px-6" :class="activeView === 'game' ? 'overflow-hidden' : 'overflow-y-auto'">
               <Transition name="slide" mode="out-in">
                 <div v-if="activeView === 'list'" key="list" class="mx-auto grid max-w-6xl grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <button
@@ -68,11 +68,14 @@
                   </button>
                 </div>
 
-                <div v-else key="game" class="mx-auto flex h-full w-full max-w-6xl flex-col">
+                <div v-else key="game" class="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col">
                   <div class="flex h-full flex-1 items-stretch rounded-2xl border border-white/10 bg-white/5 p-4 text-white md:p-6">
-                    <div v-if="activeGame?.id === 'reaction'" class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
-                      Game coming soon
-                    </div>
+                    <ReactionTestGame
+                      v-if="activeGame?.id === 'reaction'"
+                      class="h-full w-full"
+                      @done="handleDone"
+                      @exit="goBack"
+                    />
                     <div v-else-if="activeGame?.id === 'quiz'" class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
                       Game coming soon
                     </div>
@@ -95,6 +98,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import ReactionTestGame from './ReactionTestGame.vue';
 import { getEarnCooldownRemainingSeconds, startEarnCooldown } from '../utils/earnCooldown';
 
 const props = defineProps({
@@ -104,7 +108,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'earned']);
 
 const activeView = ref('list');
 const activeGame = ref(null);
@@ -201,6 +205,11 @@ function openGame(option) {
 function goBack() {
   activeView.value = 'list';
   activeGame.value = null;
+}
+
+function handleDone(payload) {
+  emit('earned', payload);
+  goBack();
 }
 
 function handleOptionClick(option) {
