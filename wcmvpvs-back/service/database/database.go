@@ -612,6 +612,27 @@ type ReactionTestStats struct {
 	Average  float64 `json:"average_ms"`
 }
 
+type EventQuizConfig struct {
+	EventID             int    `json:"event_id"`
+	Enabled             bool   `json:"enabled"`
+	QuestionsPerSession int    `json:"questions_per_session"`
+	SecondsPerQuestion  int    `json:"seconds_per_question"`
+	BaseReward          int    `json:"base_reward"`
+	CompletionBonus     int    `json:"completion_bonus"`
+	StreakBonus         int    `json:"streak_bonus"`
+	ActiveFrom          string `json:"active_from,omitempty"`
+	ActiveTo            string `json:"active_to,omitempty"`
+}
+
+type EventQuizQuestion struct {
+	ID           int      `json:"id"`
+	QuizID       int      `json:"quiz_id"`
+	QuestionText string   `json:"question_text"`
+	Answers      []string `json:"answers"`
+	CorrectIndex int      `json:"correct_index"`
+	OrderIndex   int      `json:"order_index"`
+}
+
 type ContactSubmission struct {
 	ID               int    `json:"id"`
 	EventID          int    `json:"event_id"`
@@ -720,6 +741,13 @@ type AppDatabase interface {
 	RecordReactionTestAttempt(eventID int, deviceID string, reactionMs int) (ReactionTestAttempt, error)
 	GetLatestReactionTestAttempt(eventID int, deviceID string) (ReactionTestAttempt, error)
 	GetReactionTestStats(eventID int) (ReactionTestStats, error)
+	GetEventQuizConfig(eventID int) (EventQuizConfig, error)
+	UpsertEventQuizConfig(config EventQuizConfig) (EventQuizConfig, error)
+	ListEventQuizQuestions(eventID int) ([]EventQuizQuestion, error)
+	CreateEventQuizQuestion(eventID int, question EventQuizQuestion) (EventQuizQuestion, error)
+	UpdateEventQuizQuestion(eventID int, questionID int, question EventQuizQuestion) (EventQuizQuestion, error)
+	DeleteEventQuizQuestion(eventID int, questionID int) error
+	GetEventQuizQuestion(eventID int, questionID int) (EventQuizQuestion, error)
 	CreateAdmin(a Admin) (int, error)
 	ListAdmins(organizationID int) ([]Admin, error)
 	UpdateAdmin(a Admin) error
@@ -1131,6 +1159,51 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_reaction_tests_device ON reaction_tests(event_id, device_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring reaction_tests device index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='event_quiz';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE event_quiz (
+        event_id INTEGER PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        questions_per_session INTEGER NOT NULL DEFAULT 5,
+        seconds_per_question INTEGER NOT NULL DEFAULT 8,
+        base_reward INTEGER NOT NULL DEFAULT 3,
+        completion_bonus INTEGER NOT NULL DEFAULT 5,
+        streak_bonus INTEGER NOT NULL DEFAULT 1,
+        active_from TEXT,
+        active_to TEXT,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating event_quiz table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying event_quiz table: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='event_quiz_questions';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE event_quiz_questions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        quiz_id INTEGER NOT NULL,
+        question_text TEXT NOT NULL,
+        answers_json TEXT NOT NULL,
+        correct_index INTEGER NOT NULL,
+        order_index INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (quiz_id) REFERENCES event_quiz(event_id) ON DELETE CASCADE
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating event_quiz_questions table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying event_quiz_questions table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_event_quiz_questions_quiz ON event_quiz_questions(quiz_id, order_index)`); err != nil {
+		return nil, fmt.Errorf("error ensuring event_quiz_questions quiz index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='page_engagements';`).Scan(&tableName)
@@ -2085,6 +2158,89 @@ func (db *appdbimpl) GetReactionTestStats(eventID int) (ReactionTestStats, error
 		stats.Average = avg.Float64
 	}
 	return stats, nil
+}
+
+func (db *appdbimpl) GetEventQuizConfig(eventID int) (EventQuizConfig, error) {
+	var cfg EventQuizConfig
+	var enabled int
+	var from sql.NullString
+	var to sql.NullString
+	err := db.c.QueryRow(`SELECT event_id, enabled, questions_per_session, seconds_per_question, base_reward, completion_bonus, streak_bonus, active_from, active_to FROM event_quiz WHERE event_id = ?`, eventID).Scan(&cfg.EventID, &enabled, &cfg.QuestionsPerSession, &cfg.SecondsPerQuestion, &cfg.BaseReward, &cfg.CompletionBonus, &cfg.StreakBonus, &from, &to)
+	if err != nil {
+		return EventQuizConfig{}, err
+	}
+	cfg.Enabled = enabled != 0
+	if from.Valid {
+		cfg.ActiveFrom = from.String
+	}
+	if to.Valid {
+		cfg.ActiveTo = to.String
+	}
+	return cfg, nil
+}
+
+func (db *appdbimpl) UpsertEventQuizConfig(config EventQuizConfig) (EventQuizConfig, error) {
+	_, err := db.c.Exec(`INSERT INTO event_quiz (event_id, enabled, questions_per_session, seconds_per_question, base_reward, completion_bonus, streak_bonus, active_from, active_to)
+VALUES (?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''))
+ON CONFLICT(event_id) DO UPDATE SET enabled=excluded.enabled, questions_per_session=excluded.questions_per_session, seconds_per_question=excluded.seconds_per_question, base_reward=excluded.base_reward, completion_bonus=excluded.completion_bonus, streak_bonus=excluded.streak_bonus, active_from=excluded.active_from, active_to=excluded.active_to`, config.EventID, boolToInt(config.Enabled), config.QuestionsPerSession, config.SecondsPerQuestion, config.BaseReward, config.CompletionBonus, config.StreakBonus, strings.TrimSpace(config.ActiveFrom), strings.TrimSpace(config.ActiveTo))
+	if err != nil {
+		return EventQuizConfig{}, err
+	}
+	return db.GetEventQuizConfig(config.EventID)
+}
+
+func (db *appdbimpl) ListEventQuizQuestions(eventID int) ([]EventQuizQuestion, error) {
+	rows, err := db.c.Query(`SELECT id, quiz_id, question_text, answers_json, correct_index, order_index FROM event_quiz_questions WHERE quiz_id = ? ORDER BY order_index ASC, id ASC`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]EventQuizQuestion, 0)
+	for rows.Next() {
+		var q EventQuizQuestion
+		var answersJSON string
+		if err := rows.Scan(&q.ID, &q.QuizID, &q.QuestionText, &answersJSON, &q.CorrectIndex, &q.OrderIndex); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(answersJSON), &q.Answers)
+		out = append(out, q)
+	}
+	return out, rows.Err()
+}
+
+func (db *appdbimpl) CreateEventQuizQuestion(eventID int, question EventQuizQuestion) (EventQuizQuestion, error) {
+	b, _ := json.Marshal(question.Answers)
+	res, err := db.c.Exec(`INSERT INTO event_quiz_questions (quiz_id, question_text, answers_json, correct_index, order_index) VALUES (?, ?, ?, ?, ?)`, eventID, strings.TrimSpace(question.QuestionText), string(b), question.CorrectIndex, question.OrderIndex)
+	if err != nil {
+		return EventQuizQuestion{}, err
+	}
+	id, _ := res.LastInsertId()
+	return db.GetEventQuizQuestion(eventID, int(id))
+}
+
+func (db *appdbimpl) UpdateEventQuizQuestion(eventID int, questionID int, question EventQuizQuestion) (EventQuizQuestion, error) {
+	b, _ := json.Marshal(question.Answers)
+	_, err := db.c.Exec(`UPDATE event_quiz_questions SET question_text=?, answers_json=?, correct_index=?, order_index=? WHERE id=? AND quiz_id=?`, strings.TrimSpace(question.QuestionText), string(b), question.CorrectIndex, question.OrderIndex, questionID, eventID)
+	if err != nil {
+		return EventQuizQuestion{}, err
+	}
+	return db.GetEventQuizQuestion(eventID, questionID)
+}
+
+func (db *appdbimpl) DeleteEventQuizQuestion(eventID int, questionID int) error {
+	_, err := db.c.Exec(`DELETE FROM event_quiz_questions WHERE id = ? AND quiz_id = ?`, questionID, eventID)
+	return err
+}
+
+func (db *appdbimpl) GetEventQuizQuestion(eventID int, questionID int) (EventQuizQuestion, error) {
+	var q EventQuizQuestion
+	var answersJSON string
+	err := db.c.QueryRow(`SELECT id, quiz_id, question_text, answers_json, correct_index, order_index FROM event_quiz_questions WHERE id = ? AND quiz_id = ?`, questionID, eventID).Scan(&q.ID, &q.QuizID, &q.QuestionText, &answersJSON, &q.CorrectIndex, &q.OrderIndex)
+	if err != nil {
+		return EventQuizQuestion{}, err
+	}
+	_ = json.Unmarshal([]byte(answersJSON), &q.Answers)
+	return q, nil
 }
 
 // Team operations

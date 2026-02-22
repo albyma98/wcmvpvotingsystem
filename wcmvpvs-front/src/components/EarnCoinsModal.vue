@@ -78,9 +78,13 @@
                       @claim="handleClaim"
                       @exit="goBack"
                     />
-                    <div v-else-if="activeGame?.id === 'quiz'" class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
-                      Game coming soon
-                    </div>
+                    <QuickQuizGame
+                      v-else-if="activeGame?.id === 'quiz'"
+                      class="h-full w-full"
+                      :event-id="eventId"
+                      @claim="handleClaim"
+                      @exit="goBack"
+                    />
                     <div v-else-if="activeGame?.id === 'tap'" class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
                       Game coming soon
                     </div>
@@ -104,6 +108,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import CoinCollectAnimation from './CoinCollectAnimation.vue';
 import ReactionTestGame from './ReactionTestGame.vue';
+import QuickQuizGame from './QuickQuizGame.vue';
 import { getEarnCooldownRemainingSeconds, startEarnCooldown } from '../utils/earnCooldown';
 
 const props = defineProps({
@@ -114,6 +119,10 @@ const props = defineProps({
   walletTargetEl: {
     type: Object,
     default: null,
+  },
+  eventId: {
+    type: Number,
+    default: 0,
   },
 });
 

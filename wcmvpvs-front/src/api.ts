@@ -446,6 +446,35 @@ export async function submitReactionTestResult(eventId: number, reactionTimeMs: 
   }
 }
 
+
+export async function fetchQuickQuiz(eventId: number) {
+  if (!eventId) {
+    return { ok: false, error: new Error('missing_event_id') };
+  }
+  try {
+    const { data } = await apiClient.get(`/public/events/${eventId}/quiz`);
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export async function submitQuickQuizAnswer(eventId: number, payload: { questionId: number; selectedIndex: number; responseMs: number; deviceId: string; }) {
+  if (!eventId) {
+    return { ok: false, error: new Error('missing_event_id') };
+  }
+  try {
+    const { data } = await apiClient.post(`/public/events/${eventId}/quiz/answer`, {
+      questionId: payload.questionId,
+      selectedIndex: payload.selectedIndex,
+      responseMs: payload.responseMs,
+      deviceId: payload.deviceId,
+    });
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
 export async function completeMission(
   missionId: string,
   payload: Record<string, unknown> = {},
