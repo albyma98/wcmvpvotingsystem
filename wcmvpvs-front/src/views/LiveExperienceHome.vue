@@ -35,6 +35,7 @@
 
     <EarnCoinsModal
       v-model="isEarnModalOpen"
+      :event-id="eventId"
       :wallet-target-el="walletTargetEl"
       @coins-earned="addCoins"
     />
@@ -68,6 +69,10 @@ const anonymousAvatarSvg = encodeURIComponent(
 const anonymousAvatarDataUrl = `data:image/svg+xml,${anonymousAvatarSvg}`;
 
 const props = defineProps({
+  eventId: {
+    type: Number,
+    default: 0,
+  },
   teamName: {
     type: String,
     default: 'TEAM',
