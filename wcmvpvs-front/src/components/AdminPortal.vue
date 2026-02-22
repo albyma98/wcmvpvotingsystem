@@ -639,13 +639,24 @@
                   <strong>Mini-games · Quiz Lampo</strong>
                 </div>
                 <div class="postvote-options__grid">
-                  <label class="postvote-toggle">
-                    <span class="postvote-toggle__label">Abilita quiz</span>
-                    <input
-                      type="checkbox"
-                      v-model="quizDraftFor(event.id).enabled"
-                    />
-                  </label>
+                  <div class="quiz-toggle-actions">
+                    <button
+                      class="btn"
+                      :class="quizDraftFor(event.id).enabled ? 'primary' : 'secondary'"
+                      type="button"
+                      @click="quizDraftFor(event.id).enabled = true"
+                    >
+                      Abilita quiz
+                    </button>
+                    <button
+                      class="btn"
+                      :class="quizDraftFor(event.id).enabled ? 'secondary' : 'danger'"
+                      type="button"
+                      @click="quizDraftFor(event.id).enabled = false"
+                    >
+                      Disabilita quiz
+                    </button>
+                  </div>
                 </div>
                 <div class="prize-editor__actions">
                   <button class="btn secondary" type="button" @click="loadQuizForEvent(event.id)">Ricarica Quiz</button>
@@ -6716,6 +6727,17 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 0.75rem;
+}
+
+.quiz-toggle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.quiz-toggle-actions .btn {
+  flex: 1;
+  min-width: 160px;
 }
 
 .postvote-toggle {
