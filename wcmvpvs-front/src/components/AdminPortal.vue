@@ -639,12 +639,13 @@
                   <strong>Mini-games · Quiz Lampo</strong>
                 </div>
                 <div class="postvote-options__grid">
-                  <label class="postvote-toggle"><span class="postvote-toggle__label">Abilitato</span><input type="checkbox" v-model="quizDraftFor(event.id).enabled" /></label>
-                  <label>Domande/sessione<input type="number" min="1" max="20" v-model.number="quizDraftFor(event.id).questions_per_session" /></label>
-                  <label>Sec/domanda<input type="number" min="3" max="60" v-model.number="quizDraftFor(event.id).seconds_per_question" /></label>
-                  <label>Base reward<input type="number" min="0" max="100" v-model.number="quizDraftFor(event.id).base_reward" /></label>
-                  <label>Bonus completamento<input type="number" min="0" max="300" v-model.number="quizDraftFor(event.id).completion_bonus" /></label>
-                  <label>Streak bonus<input type="number" min="0" max="50" v-model.number="quizDraftFor(event.id).streak_bonus" /></label>
+                  <label class="postvote-toggle">
+                    <span class="postvote-toggle__label">Abilita quiz</span>
+                    <input
+                      type="checkbox"
+                      v-model="quizDraftFor(event.id).enabled"
+                    />
+                  </label>
                 </div>
                 <div class="prize-editor__actions">
                   <button class="btn secondary" type="button" @click="loadQuizForEvent(event.id)">Ricarica Quiz</button>
