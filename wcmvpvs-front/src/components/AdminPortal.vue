@@ -634,6 +634,42 @@
                   {{ eventFeedbackErrors[event.id] }}
                 </p>
               </div>
+              <div class="postvote-options">
+                <div class="postvote-options__header">
+                  <strong>Mini-games · Quiz Lampo</strong>
+                </div>
+                <div class="postvote-options__grid">
+                  <label class="postvote-toggle"><span class="postvote-toggle__label">Abilitato</span><input type="checkbox" v-model="quizDraftFor(event.id).enabled" /></label>
+                  <label>Domande/sessione<input type="number" min="1" max="20" v-model.number="quizDraftFor(event.id).questions_per_session" /></label>
+                  <label>Sec/domanda<input type="number" min="3" max="60" v-model.number="quizDraftFor(event.id).seconds_per_question" /></label>
+                  <label>Base reward<input type="number" min="0" max="100" v-model.number="quizDraftFor(event.id).base_reward" /></label>
+                  <label>Bonus completamento<input type="number" min="0" max="300" v-model.number="quizDraftFor(event.id).completion_bonus" /></label>
+                  <label>Streak bonus<input type="number" min="0" max="50" v-model.number="quizDraftFor(event.id).streak_bonus" /></label>
+                </div>
+                <div class="prize-editor__actions">
+                  <button class="btn secondary" type="button" @click="loadQuizForEvent(event.id)">Ricarica Quiz</button>
+                  <button class="btn primary" type="button" @click="saveQuizConfig(event.id)">Salva Config</button>
+                </div>
+                <div class="prize-editor__list">
+                  <div v-for="(q, qIndex) in quizQuestionsFor(event.id)" :key="`quiz-${event.id}-${q.id || qIndex}`" class="prize-editor__row">
+                    <input v-model="q.question_text" type="text" placeholder="Testo domanda" />
+                    <div class="feedback-editor__answers">
+                      <label v-for="aIdx in q.answers.length" :key="`qa-${aIdx}`" class="feedback-editor__answer">
+                        <input v-model="q.answers[aIdx-1]" type="text" :placeholder="`Risposta ${aIdx}`" />
+                      </label>
+                    </div>
+                    <label>Corretta idx<input type="number" min="0" :max="q.answers.length-1" v-model.number="q.correct_index" /></label>
+                    <label>Ordine<input type="number" min="0" v-model.number="q.order_index" /></label>
+                    <div class="prize-editor__actions">
+                      <button class="btn outline" type="button" @click="addAnswerToQuestion(event.id, qIndex)" :disabled="q.answers.length>=4">+ Risposta</button>
+                      <button class="btn outline" type="button" @click="removeAnswerFromQuestion(event.id, qIndex)" :disabled="q.answers.length<=2">- Risposta</button>
+                      <button class="btn primary" type="button" @click="saveQuizQuestion(event.id, q)">Salva domanda</button>
+                      <button class="btn danger" type="button" @click="deleteQuizQuestion(event.id, q)">Elimina</button>
+                    </div>
+                  </div>
+                  <button class="btn secondary" type="button" @click="addQuizQuestionDraft(event.id)">Aggiungi domanda</button>
+                </div>
+              </div>
             </li>
           </ul>
         </section>
@@ -2818,6 +2854,8 @@ const couponSuccess = ref("");
 const lastCreatedEventLink = ref("");
 const isClosingVotes = ref(false);
 const closeVotesMessage = ref("");
+const quizConfigsByEvent = reactive({});
+const quizQuestionsByEvent = reactive({});
 const eventPrizeDrafts = reactive({});
 const eventPrizeErrors = reactive({});
 const eventFeedbackDrafts = reactive({});
@@ -4846,9 +4884,92 @@ async function loadEvents() {
     ? data.map((event) => normalizeEventResponse(event)).filter(Boolean)
     : [];
   events.value = normalized;
+  for (const event of normalized) {
+    quizDraftFor(event.id);
+    if (!quizQuestionsByEvent[event.id]) {
+      loadQuizForEvent(event.id).catch(() => {});
+    }
+  }
   hasLoadedEventHistory.value = false;
 }
 
+
+function createDefaultQuizDraft(eventId = 0) {
+  return {
+    event_id: eventId,
+    enabled: false,
+    questions_per_session: 5,
+    seconds_per_question: 8,
+    base_reward: 3,
+    completion_bonus: 5,
+    streak_bonus: 1,
+    active_from: "",
+    active_to: "",
+  };
+}
+
+function quizDraftFor(eventId) {
+  if (!quizConfigsByEvent[eventId]) {
+    quizConfigsByEvent[eventId] = createDefaultQuizDraft(eventId);
+  }
+  return quizConfigsByEvent[eventId];
+}
+
+function quizQuestionsFor(eventId) {
+  if (!quizQuestionsByEvent[eventId]) {
+    quizQuestionsByEvent[eventId] = [];
+  }
+  return quizQuestionsByEvent[eventId];
+}
+
+function addQuizQuestionDraft(eventId) {
+  quizQuestionsFor(eventId).push({ id: 0, question_text: "", answers: ["", ""], correct_index: 0, order_index: quizQuestionsFor(eventId).length });
+}
+
+function addAnswerToQuestion(eventId, index) {
+  const q = quizQuestionsFor(eventId)[index];
+  if (q && q.answers.length < 4) q.answers.push("");
+}
+
+function removeAnswerFromQuestion(eventId, index) {
+  const q = quizQuestionsFor(eventId)[index];
+  if (q && q.answers.length > 2) q.answers.pop();
+}
+
+async function loadQuizForEvent(eventId) {
+  const { data } = await secureRequest(() => apiClient.get(`/admin/events/${eventId}/quiz`, authHeaders.value));
+  quizConfigsByEvent[eventId] = { ...createDefaultQuizDraft(eventId), ...(data?.config || {}) };
+  const questions = await secureRequest(() => apiClient.get(`/admin/events/${eventId}/quiz/questions`, authHeaders.value));
+  quizQuestionsByEvent[eventId] = Array.isArray(questions?.data) ? questions.data.map((q) => ({ ...q, answers: Array.isArray(q.answers) ? q.answers : ["", ""] })) : [];
+}
+
+async function saveQuizConfig(eventId) {
+  await secureRequest(() => apiClient.put(`/admin/events/${eventId}/quiz`, quizDraftFor(eventId), authHeaders.value));
+}
+
+async function saveQuizQuestion(eventId, q) {
+  const payload = {
+    question_text: q.question_text,
+    answers: q.answers,
+    correct_index: Number(q.correct_index) || 0,
+    order_index: Number(q.order_index) || 0,
+  };
+  if (q.id) {
+    await secureRequest(() => apiClient.put(`/admin/events/${eventId}/quiz/questions/${q.id}`, payload, authHeaders.value));
+  } else {
+    await secureRequest(() => apiClient.post(`/admin/events/${eventId}/quiz/questions`, payload, authHeaders.value));
+  }
+  await loadQuizForEvent(eventId);
+}
+
+async function deleteQuizQuestion(eventId, q) {
+  if (!q?.id) {
+    quizQuestionsByEvent[eventId] = quizQuestionsFor(eventId).filter((item) => item !== q);
+    return;
+  }
+  await secureRequest(() => apiClient.delete(`/admin/events/${eventId}/quiz/questions/${q.id}`, authHeaders.value));
+  await loadQuizForEvent(eventId);
+}
 async function loadAdmins() {
   const { data } = await secureRequest(() =>
     apiClient.get("/admins", authHeaders.value),
