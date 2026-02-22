@@ -24,6 +24,7 @@
     />
     <template v-else-if="appView === 'newui'">
       <LiveExperienceHome
+        :event-id="resolvedEventId"
         :team-name="newUiTeamName"
         :team-logo-url="newUiTeamLogoUrl"
         :match-label="newUiMatchLabel"
