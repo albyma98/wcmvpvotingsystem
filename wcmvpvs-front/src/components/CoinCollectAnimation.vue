@@ -77,8 +77,8 @@ async function play({ fromEl, toEl, count = 18, amount = 0 }) {
         '--fly-x': `${to.x - from.x + driftX}px`,
         '--fly-y': `${to.y - from.y + driftY}px`,
         '--rot': `${rotate}deg`,
-        '--delay': `${Math.random() * 140}ms`,
-        '--dur': `${560 + Math.random() * 220}ms`,
+        '--delay': `${Math.random() * 220}ms`,
+        '--dur': `${900 + Math.random() * 320}ms`,
       },
     };
   });
@@ -91,14 +91,14 @@ async function play({ fromEl, toEl, count = 18, amount = 0 }) {
 
   visible.value = true;
 
-  await wait(210);
+  await wait(320);
 
   coins.value = coins.value.map((coin) => ({
     ...coin,
     phase: 'fly',
   }));
 
-  await wait(860);
+  await wait(1400);
 
   amountLabel.value = 0;
   coins.value = [];
@@ -125,7 +125,7 @@ defineExpose({ play });
 }
 
 .coin.burst {
-  animation: coin-burst 220ms ease-out forwards;
+  animation: coin-burst 320ms ease-out forwards;
 }
 
 .coin.fly {
@@ -138,7 +138,7 @@ defineExpose({ play });
   font-weight: 800;
   color: #fde047;
   text-shadow: 0 2px 8px rgba(2, 6, 23, 0.42);
-  animation: reward-float 640ms ease-out forwards;
+  animation: reward-float 980ms ease-out forwards;
 }
 
 @keyframes coin-burst {
