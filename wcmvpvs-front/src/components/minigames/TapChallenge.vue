@@ -33,6 +33,7 @@
         </h3>
         <p v-if="status === 'ready'" class="mt-2 text-sm text-slate-200">Tappa la palla più volte possibile in 10 secondi.</p>
         <p v-else class="mt-2 text-sm text-slate-200">Totale tap validi: {{ tapCount }}</p>
+        <div v-if="status === 'finished'" class="sparkles" aria-hidden="true" />
       </div>
     </main>
 
@@ -77,6 +78,7 @@ const tapCount = ref(0);
 const cooldownUntil = ref(0);
 const errorMessage = ref('');
 const isSubmitting = ref(false);
+const claimRequested = ref(false);
 const nowTs = ref(Date.now());
 
 const gameAreaRef = ref(null);
@@ -112,24 +114,27 @@ const primaryLabel = computed(() => {
   if (status.value === 'playing') {
     return 'In corso…';
   }
-  if (isSubmitting.value) {
+  if (isSubmitting.value || claimRequested.value) {
     return 'Accredito…';
   }
   if (status.value === 'finished' && errorMessage.value) {
     return 'Riprova accredito';
   }
+  if (status.value === 'finished') {
+    return 'Riscatta monete';
+  }
   if (isCooldownActive.value) {
     return `In cooldown ${formatCooldown(cooldownRemainingMs.value)}`;
   }
-  return status.value === 'finished' ? 'Rigioca' : 'Inizia';
+  return 'Inizia';
 });
 
 const isPrimaryDisabled = computed(() => {
-  if (status.value === 'playing' || isSubmitting.value) {
+  if (status.value === 'playing' || isSubmitting.value || claimRequested.value) {
     return true;
   }
 
-  if (status.value === 'finished' && errorMessage.value) {
+  if (status.value === 'finished') {
     return false;
   }
 
@@ -188,11 +193,11 @@ function scheduleBallMovement() {
 }
 
 function onPrimaryAction() {
-  if (status.value === 'playing' || isSubmitting.value) {
+  if (status.value === 'playing' || isSubmitting.value || claimRequested.value) {
     return;
   }
 
-  if (status.value === 'finished' && errorMessage.value) {
+  if (status.value === 'finished') {
     claimReward();
     return;
   }
@@ -207,6 +212,7 @@ async function startGame() {
   stopTimer();
   stopBallMovement();
   errorMessage.value = '';
+  claimRequested.value = false;
   status.value = 'playing';
   tapCount.value = 0;
   timeLeftMs.value = ROUND_DURATION_MS;
@@ -272,7 +278,7 @@ function onTap() {
   scheduleBallMovement();
 }
 
-async function finishGame() {
+function finishGame() {
   if (status.value !== 'playing') {
     return;
   }
@@ -288,14 +294,18 @@ async function finishGame() {
     window.localStorage.setItem('tap_challenge_cooldown_until', String(nextCooldown));
   }
 
-  await claimReward();
 }
 
 async function claimReward() {
-  if (isSubmitting.value || earnedCoins.value <= 0) {
-    if (earnedCoins.value <= 0) {
-      emit('claim', { coins: 0 });
-    }
+  if (isSubmitting.value || claimRequested.value || status.value !== 'finished') {
+    return;
+  }
+
+  claimRequested.value = true;
+
+  if (earnedCoins.value <= 0) {
+    claimRequested.value = false;
+    emit('claim', { coins: 0 });
     return;
   }
 
@@ -317,6 +327,7 @@ async function claimReward() {
 
   if (!result.ok) {
     errorMessage.value = 'Errore accredito, riprova.';
+    claimRequested.value = false;
     return;
   }
 
@@ -385,6 +396,50 @@ if (typeof window !== 'undefined') {
   justify-content: center;
   text-align: center;
   padding: 1rem;
+  position: relative;
+}
+
+
+.sparkles,
+.sparkles::before,
+.sparkles::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: rgba(250, 204, 21, 0.8);
+  filter: blur(0.2px);
+}
+
+.sparkles {
+  top: 18%;
+  left: 26%;
+  animation: twinkle 1.2s infinite;
+}
+
+.sparkles::before {
+  top: 170%;
+  left: 240%;
+  animation: twinkle 1s infinite 0.2s;
+}
+
+.sparkles::after {
+  top: 110%;
+  left: 480%;
+  animation: twinkle 1.4s infinite 0.1s;
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
 }
 
 .cta-primary,
