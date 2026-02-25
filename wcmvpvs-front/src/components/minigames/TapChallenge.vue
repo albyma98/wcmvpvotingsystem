@@ -67,6 +67,9 @@ const emit = defineEmits(['claim', 'exit']);
 const ROUND_DURATION_MS = 10_000;
 const TICK_MS = 100;
 const MIN_DISTANCE_PX = 30;
+const BASE_MOVE_INTERVAL_MS = 850;
+const MIN_MOVE_INTERVAL_MS = 220;
+const SPEED_GAIN_PER_TAP = 0.92;
 
 const status = ref('ready');
 const timeLeftMs = ref(ROUND_DURATION_MS);
@@ -82,8 +85,10 @@ const ballX = ref(0);
 const ballY = ref(0);
 const lastBallX = ref(0);
 const lastBallY = ref(0);
+const moveIntervalMs = ref(BASE_MOVE_INTERVAL_MS);
 
 let timerId;
+let moveTimerId;
 let gameEndsAt = 0;
 let cooldownTickId;
 
@@ -137,6 +142,7 @@ const ballStyle = computed(() => ({
 
 onBeforeUnmount(() => {
   stopTimer();
+  stopBallMovement();
   if (cooldownTickId && typeof window !== 'undefined') {
     window.clearInterval(cooldownTickId);
     cooldownTickId = undefined;
@@ -157,6 +163,30 @@ function stopTimer() {
   timerId = undefined;
 }
 
+function stopBallMovement() {
+  if (!moveTimerId || typeof window === 'undefined') {
+    return;
+  }
+  window.clearTimeout(moveTimerId);
+  moveTimerId = undefined;
+}
+
+function scheduleBallMovement() {
+  stopBallMovement();
+
+  if (typeof window === 'undefined' || status.value !== 'playing') {
+    return;
+  }
+
+  moveTimerId = window.setTimeout(() => {
+    if (status.value !== 'playing') {
+      return;
+    }
+    repositionBall();
+    scheduleBallMovement();
+  }, moveIntervalMs.value);
+}
+
 function onPrimaryAction() {
   if (status.value === 'playing' || isSubmitting.value) {
     return;
@@ -175,14 +205,17 @@ function onPrimaryAction() {
 
 async function startGame() {
   stopTimer();
+  stopBallMovement();
   errorMessage.value = '';
   status.value = 'playing';
   tapCount.value = 0;
   timeLeftMs.value = ROUND_DURATION_MS;
+  moveIntervalMs.value = BASE_MOVE_INTERVAL_MS;
   gameEndsAt = Date.now() + ROUND_DURATION_MS;
 
   await nextTick();
   repositionBall(true);
+  scheduleBallMovement();
 
   if (typeof window === 'undefined') {
     return;
@@ -231,10 +264,12 @@ function onTap() {
   }
 
   tapCount.value += 1;
+  moveIntervalMs.value = Math.max(MIN_MOVE_INTERVAL_MS, moveIntervalMs.value * SPEED_GAIN_PER_TAP);
   if (typeof navigator !== 'undefined') {
     navigator.vibrate?.(10);
   }
   repositionBall();
+  scheduleBallMovement();
 }
 
 async function finishGame() {
@@ -243,6 +278,7 @@ async function finishGame() {
   }
 
   stopTimer();
+  stopBallMovement();
   status.value = 'finished';
   timeLeftMs.value = 0;
 
