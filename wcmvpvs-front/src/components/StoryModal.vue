@@ -12,6 +12,7 @@
         ref="videoRef"
         class="story-player"
         :src="currentStory.video_url"
+        autoplay
         playsinline
         preload="metadata"
         @ended="emit('next')"
@@ -63,7 +64,9 @@ async function playVideo() {
   }
 
   try {
+    el.muted = true;
     await el.play();
+    el.muted = false;
     showTapHint.value = false;
   } catch (error) {
     showTapHint.value = true;
