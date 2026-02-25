@@ -29,7 +29,7 @@ const props = defineProps({
   },
   showName: {
     type: Boolean,
-    default: true,
+    default: false,
   },
 });
 
@@ -73,15 +73,18 @@ function compactName(label) {
 }
 
 .story-item {
-  min-width: 4rem;
+  min-width: 4.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
 }
 
 .story-avatar {
   border: 0;
   border-radius: 999px;
-  height: 3.5rem;
-  width: 3.5rem;
+  height: 4.1rem;
+  width: 4.1rem;
   padding: 2px;
   background: transparent;
 }
