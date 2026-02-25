@@ -695,10 +695,27 @@
                 </div>
                 <div class="prize-editor__list">
                   <div v-for="(story, storyIndex) in storiesForEvent(event.id)" :key="`story-${event.id}-${story.id || storyIndex}`" class="prize-editor__row">
-                    <input v-model="story.player_name" type="text" placeholder="Nome giocatore" />
+                    <input v-model="story.player_name" type="text" placeholder="Nome giocatore (opzionale)" />
                     <input v-model="story.title" type="text" placeholder="Titolo breve (opzionale)" />
                     <input v-model="story.thumbnail_url" type="url" placeholder="Thumbnail URL" />
                     <input v-model="story.video_url" type="url" placeholder="Video verticale URL" />
+                    <input
+                      :id="`story-video-${event.id}-${storyIndex}`"
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime"
+                      style="display: none"
+                      @change="uploadStoryVideo(event.id, story, storyIndex, $event)"
+                    />
+                    <div class="prize-editor__actions">
+                      <button
+                        class="btn outline"
+                        type="button"
+                        @click="triggerStoryVideoPicker(event.id, storyIndex)"
+                        :disabled="isStoryVideoUploading(event.id, storyIndex) || isStoriesSaving(event.id)"
+                      >
+                        {{ isStoryVideoUploading(event.id, storyIndex) ? 'Upload video…' : 'Carica video dal dispositivo' }}
+                      </button>
+                    </div>
                     <label class="postvote-toggle">
                       <input v-model="story.is_active" type="checkbox" />
                       <span class="postvote-toggle__label">Attiva</span>
@@ -706,7 +723,7 @@
                     <div class="prize-editor__actions">
                       <button class="btn outline" type="button" @click="moveStory(event.id, storyIndex, -1)" :disabled="storyIndex === 0">↑</button>
                       <button class="btn outline" type="button" @click="moveStory(event.id, storyIndex, 1)" :disabled="storyIndex === storiesForEvent(event.id).length - 1">↓</button>
-                      <button class="btn primary" type="button" @click="saveStory(event.id, story, storyIndex)" :disabled="isStoriesSaving(event.id)">Salva</button>
+                      <button class="btn primary" type="button" @click="saveStory(event.id, story, storyIndex)" :disabled="isStoriesSaving(event.id) || isStoryVideoUploading(event.id, storyIndex)">Salva</button>
                       <button class="btn danger" type="button" @click="deleteStory(event.id, story, storyIndex)" :disabled="isStoriesSaving(event.id)">Elimina</button>
                     </div>
                   </div>
@@ -2901,6 +2918,7 @@ const quizQuestionsByEvent = reactive({});
 const eventStoriesById = reactive({});
 const eventStoriesLoading = reactive({});
 const eventStoriesSaving = reactive({});
+const eventStoriesUploading = reactive({});
 const eventPrizeDrafts = reactive({});
 const eventPrizeErrors = reactive({});
 const eventFeedbackDrafts = reactive({});
@@ -3751,6 +3769,9 @@ function clearCollections() {
   });
   Object.keys(eventStoriesSaving).forEach((key) => {
     delete eventStoriesSaving[key];
+  });
+  Object.keys(eventStoriesUploading).forEach((key) => {
+    delete eventStoriesUploading[key];
   });
   Object.keys(selfieBusyState).forEach((key) => {
     delete selfieBusyState[key];
@@ -5008,6 +5029,52 @@ function isStoriesSaving(eventId) {
   return eventStoriesSaving[eventId] === true;
 }
 
+function storyUploadKey(eventId, index) {
+  return `${eventId}-${index}`;
+}
+
+function isStoryVideoUploading(eventId, index) {
+  return eventStoriesUploading[storyUploadKey(eventId, index)] === true;
+}
+
+function triggerStoryVideoPicker(eventId, index) {
+  const inputId = `story-video-${eventId}-${index}`;
+  const input = typeof document !== 'undefined' ? document.getElementById(inputId) : null;
+  if (input) {
+    input.click();
+  }
+}
+
+async function uploadStoryVideo(eventId, story, index, event) {
+  const file = event?.target?.files?.[0];
+  if (!file) {
+    return;
+  }
+  const uploadKey = storyUploadKey(eventId, index);
+  eventStoriesUploading[uploadKey] = true;
+  globalError.value = '';
+  try {
+    const formData = new FormData();
+    formData.append('video', file);
+    const config = {
+      ...authHeaders.value,
+      headers: {
+        ...(authHeaders.value?.headers || {}),
+        'Content-Type': 'multipart/form-data',
+      },
+    };
+    const { data } = await secureRequest(() =>
+      apiClient.post(`/admin/events/${eventId}/stories/upload-video`, formData, config),
+    );
+    story.video_url = String(data?.video_url || '').trim();
+  } finally {
+    eventStoriesUploading[uploadKey] = false;
+    if (event?.target) {
+      event.target.value = '';
+    }
+  }
+}
+
 async function loadStoriesForEvent(eventId) {
   eventStoriesLoading[eventId] = true;
   try {
@@ -5058,8 +5125,8 @@ function moveStory(eventId, index, direction) {
 }
 
 async function saveStory(eventId, story, index) {
-  if (!story.player_name.trim() || !story.thumbnail_url.trim() || !story.video_url.trim()) {
-    globalError.value = 'Compila nome giocatore, thumbnail e video URL per salvare la story.';
+  if (!story.thumbnail_url.trim() || !story.video_url.trim()) {
+    globalError.value = 'Compila thumbnail e video URL per salvare la story.';
     return;
   }
   eventStoriesSaving[eventId] = true;
