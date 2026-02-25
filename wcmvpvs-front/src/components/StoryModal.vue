@@ -13,12 +13,15 @@
         class="story-player"
         :src="currentStory.video_url"
         autoplay
+        muted
         playsinline
+        webkit-playsinline="true"
         preload="metadata"
         @ended="emit('next')"
-        @click="playVideo"
+        @loadedmetadata="autoplayVideo"
+        @click="playVideoWithSound"
       />
-      <button v-if="showTapHint" class="story-tap-hint" type="button" @click="playVideo">
+      <button v-if="showTapHint" class="story-tap-hint" type="button" @click="playVideoWithSound">
         Tocca per avviare
       </button>
     </div>
@@ -66,10 +69,35 @@ async function playVideo() {
   try {
     el.muted = true;
     await el.play();
-    el.muted = false;
     showTapHint.value = false;
   } catch (error) {
     showTapHint.value = true;
+  }
+}
+
+async function autoplayVideo() {
+  const el = videoRef.value;
+  if (!el) {
+    return;
+  }
+
+  el.pause();
+  el.currentTime = 0;
+  await playVideo();
+}
+
+async function playVideoWithSound() {
+  const el = videoRef.value;
+  if (!el) {
+    return;
+  }
+
+  try {
+    el.muted = false;
+    await el.play();
+    showTapHint.value = false;
+  } catch (error) {
+    await playVideo();
   }
 }
 
@@ -91,7 +119,7 @@ watch(
       return;
     }
     await nextTick();
-    playVideo();
+    autoplayVideo();
   },
 );
 
