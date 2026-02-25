@@ -304,10 +304,6 @@ function handleOptionClick(option) {
   }
 
   startEarnCooldown(option.id, option.cooldownSeconds);
-  if (option.id === 'tap' && typeof window !== 'undefined') {
-    const cooldownUntil = Date.now() + Math.max(0, Number(option.cooldownSeconds) || 0) * 1000;
-    window.localStorage.setItem('tap_challenge_cooldown_until', String(cooldownUntil));
-  }
   forceTick();
 
   if (option.type === 'game') {
