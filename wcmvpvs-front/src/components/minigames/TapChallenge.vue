@@ -312,10 +312,10 @@ async function claimReward() {
   isSubmitting.value = true;
   errorMessage.value = '';
 
-  const eventId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `tap_${Date.now()}`;
+  const requestId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `tap_${Date.now()}`;
   const result = await awardTapChallengeCoins({
     amount: earnedCoins.value,
-    eventId,
+    requestId,
     eventContextId: props.eventId,
     meta: {
       taps: tapCount.value,

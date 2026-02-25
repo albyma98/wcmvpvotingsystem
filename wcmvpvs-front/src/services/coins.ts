@@ -3,7 +3,7 @@ import { apiClient, getDeviceHeaders } from '../api';
 
 type AwardTapChallengePayload = {
   amount: number;
-  eventId: string;
+  requestId: string;
   eventContextId?: number;
   meta?: Record<string, unknown>;
 };
@@ -17,13 +17,20 @@ export async function awardTapChallengeCoins(payload: AwardTapChallengePayload) 
   const headers = getDeviceHeaders();
 
   try {
+    const eventContextId = Math.max(0, Number(payload.eventContextId) || 0);
+
     const { data } = await apiClient.post(
       '/coins/earn',
       {
         source: 'tap_challenge',
         amount,
-        eventId: payload.eventId,
-        eventContextId: payload.eventContextId || 0,
+        // Keep both naming styles while backend contracts are being aligned.
+        request_id: payload.requestId,
+        requestId: payload.requestId,
+        event_id: eventContextId || undefined,
+        eventId: eventContextId || undefined,
+        event_context_id: eventContextId,
+        eventContextId: eventContextId,
         meta: payload.meta || {},
       },
       { headers },
