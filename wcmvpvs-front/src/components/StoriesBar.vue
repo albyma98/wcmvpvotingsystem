@@ -4,12 +4,17 @@
       <li v-for="(story, index) in stories" :key="story.id" class="story-item">
         <button
           class="story-avatar"
-          :class="isSeen(story.id) ? 'story-avatar--seen' : 'story-avatar--unseen'"
+          :class="[
+            isSeen(story.id) ? 'story-avatar--seen' : 'story-avatar--unseen',
+            loadingStoryId === story.id ? 'story-avatar--loading' : '',
+          ]"
           type="button"
           :aria-label="`Apri story di ${story.player_name}`"
+          :disabled="Boolean(loadingStoryId)"
           @click="$emit('open', index)"
         >
           <img :src="story.thumbnail_url" :alt="story.player_name" loading="lazy" />
+          <span v-if="loadingStoryId === story.id" class="story-avatar-loader" aria-hidden="true" />
         </button>
         <span v-if="showName" class="story-name">{{ compactName(story.player_name) }}</span>
       </li>
@@ -30,6 +35,10 @@ const props = defineProps({
   showName: {
     type: Boolean,
     default: false,
+  },
+  loadingStoryId: {
+    type: Number,
+    default: 0,
   },
 });
 
@@ -81,12 +90,17 @@ function compactName(label) {
 }
 
 .story-avatar {
+  position: relative;
   border: 0;
   border-radius: 999px;
   height: 4.1rem;
   width: 4.1rem;
   padding: 2px;
   background: transparent;
+}
+
+.story-avatar:disabled {
+  cursor: wait;
 }
 
 .story-avatar img {
@@ -103,6 +117,24 @@ function compactName(label) {
 
 .story-avatar--seen {
   background: linear-gradient(140deg, #64748b, #475569);
+}
+
+.story-avatar-loader {
+  position: absolute;
+  inset: 0.35rem;
+  border-radius: 999px;
+  border: 2px solid rgba(226, 232, 240, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  animation: story-avatar-spin 0.85s linear infinite;
+}
+
+@keyframes story-avatar-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .story-name {

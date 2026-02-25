@@ -14,6 +14,7 @@
           v-if="activeStories.length"
           :stories="activeStories"
           :seen-ids="seenStoryIds"
+          :loading-story-id="loadingStoryId"
           @open="openStory"
         />
         <template v-else>
@@ -234,6 +235,10 @@ const eventStories = ref([]);
 const seenStoryIds = ref([]);
 const isStoryModalOpen = ref(false);
 const activeStoryIndex = ref(0);
+const loadingStoryId = ref(0);
+
+const preloadedStoryUrls = new Set();
+const preloadPromises = new Map();
 
 const activeStories = computed(() =>
   eventStories.value
@@ -274,8 +279,81 @@ async function loadEventStories() {
 }
 
 function openStory(index) {
-  activeStoryIndex.value = Math.max(0, Math.min(index, activeStories.value.length - 1));
+  preloadAndOpenStory(index);
+}
+
+function preloadStoryVideo(url) {
+  const targetUrl = String(url || '').trim();
+  if (!targetUrl) {
+    return Promise.resolve();
+  }
+
+  if (preloadedStoryUrls.has(targetUrl)) {
+    return Promise.resolve();
+  }
+
+  if (preloadPromises.has(targetUrl)) {
+    return preloadPromises.get(targetUrl);
+  }
+
+  const preloadPromise = new Promise((resolve) => {
+    if (typeof document === 'undefined') {
+      preloadedStoryUrls.add(targetUrl);
+      resolve();
+      return;
+    }
+
+    const preloader = document.createElement('video');
+    preloader.preload = 'auto';
+    preloader.src = targetUrl;
+
+    const cleanup = () => {
+      preloader.removeEventListener('canplaythrough', onReady);
+      preloader.removeEventListener('loadeddata', onReady);
+      preloader.removeEventListener('error', onReady);
+      preloader.removeAttribute('src');
+      preloader.load();
+    };
+
+    const onReady = () => {
+      preloadedStoryUrls.add(targetUrl);
+      preloadPromises.delete(targetUrl);
+      cleanup();
+      resolve();
+    };
+
+    preloader.addEventListener('canplaythrough', onReady, { once: true });
+    preloader.addEventListener('loadeddata', onReady, { once: true });
+    preloader.addEventListener('error', onReady, { once: true });
+    preloader.load();
+  });
+
+  preloadPromises.set(targetUrl, preloadPromise);
+  return preloadPromise;
+}
+
+function preloadOtherStories(excludeIndex) {
+  activeStories.value.forEach((story, index) => {
+    if (!story || index === excludeIndex) {
+      return;
+    }
+    preloadStoryVideo(story.video_url);
+  });
+}
+
+async function preloadAndOpenStory(index) {
+  const safeIndex = Math.max(0, Math.min(index, activeStories.value.length - 1));
+  const selectedStory = activeStories.value[safeIndex];
+  if (!selectedStory) {
+    return;
+  }
+
+  loadingStoryId.value = Number(selectedStory.id) || 0;
+  await preloadStoryVideo(selectedStory.video_url);
+  activeStoryIndex.value = safeIndex;
   isStoryModalOpen.value = true;
+  loadingStoryId.value = 0;
+  preloadOtherStories(safeIndex);
 }
 
 function closeStoryModal() {
