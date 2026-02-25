@@ -5045,6 +5045,17 @@ function triggerStoryVideoPicker(eventId, index) {
   }
 }
 
+function extractErrorMessage(error) {
+  const payload = error?.response?.data;
+  if (typeof payload?.message === 'string' && payload.message.trim()) {
+    return payload.message.trim();
+  }
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload.trim();
+  }
+  return '';
+}
+
 async function uploadStoryVideo(eventId, story, index, event) {
   const file = event?.target?.files?.[0];
   if (!file) {
@@ -5067,6 +5078,11 @@ async function uploadStoryVideo(eventId, story, index, event) {
       apiClient.post(`/admin/events/${eventId}/stories/upload-video`, formData, config),
     );
     story.video_url = String(data?.video_url || '').trim();
+  } catch (error) {
+    const reason = extractErrorMessage(error);
+    globalError.value = reason
+      ? `Upload video fallito: ${reason}`
+      : 'Upload video fallito. Riprova.';
   } finally {
     eventStoriesUploading[uploadKey] = false;
     if (event?.target) {
