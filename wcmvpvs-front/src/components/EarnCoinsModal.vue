@@ -65,7 +65,7 @@
                     <h3 class="mt-3 text-lg font-extrabold text-white">{{ option.title }}</h3>
                     <p class="mt-1 text-sm text-slate-300">{{ option.description }}</p>
                     <p class="mt-4 text-xs font-semibold uppercase tracking-wide" :class="cooldowns[option.id] > 0 ? 'text-orange-300' : 'text-emerald-300'">
-                      {{ cooldowns[option.id] > 0 ? `In cooldown ${formatCooldown(cooldowns[option.id])}` : 'Disponibile' }}
+                      {{ cooldowns[option.id] > 0 ? `${option.id === 'tap' ? 'IN COOLDOWN' : 'In cooldown'} ${formatCooldown(cooldowns[option.id])}` : 'Disponibile' }}
                     </p>
                   </button>
                 </div>
@@ -85,9 +85,14 @@
                       @claim="handleClaim"
                       @exit="goBack"
                     />
-                    <div v-else-if="activeGame?.id === 'tap'" class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
-                      Game coming soon
-                    </div>
+                    <TapChallenge
+                      v-else-if="activeGame?.id === 'tap'"
+                      class="h-full w-full"
+                      :event-id="eventId"
+                      :cooldown-seconds="activeGame?.cooldownSeconds || 60"
+                      @claim="handleClaim"
+                      @exit="goBack"
+                    />
                     <div v-else class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
                       Game coming soon
                     </div>
@@ -109,6 +114,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import CoinCollectAnimation from './CoinCollectAnimation.vue';
 import ReactionTestGame from './ReactionTestGame.vue';
 import QuickQuizGame from './QuickQuizGame.vue';
+import TapChallenge from './minigames/TapChallenge.vue';
 import { getEarnCooldownRemainingSeconds, startEarnCooldown } from '../utils/earnCooldown';
 
 const props = defineProps({
@@ -146,7 +152,12 @@ const earnOptions = [
 const nowTick = ref(Date.now());
 const cooldowns = computed(() =>
   earnOptions.reduce((accumulator, option) => {
-    accumulator[option.id] = getEarnCooldownRemainingSeconds(option.id, nowTick.value);
+    const defaultCooldown = getEarnCooldownRemainingSeconds(option.id, nowTick.value);
+    if (option.id === 'tap') {
+      accumulator[option.id] = Math.max(defaultCooldown, getTapChallengeCooldownSeconds(nowTick.value));
+      return accumulator;
+    }
+    accumulator[option.id] = defaultCooldown;
     return accumulator;
   }, {}),
 );
@@ -230,6 +241,19 @@ function formatCooldown(totalSeconds) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function getTapChallengeCooldownSeconds(now = Date.now()) {
+  if (typeof window === 'undefined') {
+    return 0;
+  }
+
+  const cooldownUntil = Number.parseInt(window.localStorage.getItem('tap_challenge_cooldown_until') || '', 10);
+  if (!Number.isFinite(cooldownUntil)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
+}
+
 function openGame(option) {
   activeGame.value = option;
   activeView.value = 'game';
@@ -280,6 +304,10 @@ function handleOptionClick(option) {
   }
 
   startEarnCooldown(option.id, option.cooldownSeconds);
+  if (option.id === 'tap' && typeof window !== 'undefined') {
+    const cooldownUntil = Date.now() + Math.max(0, Number(option.cooldownSeconds) || 0) * 1000;
+    window.localStorage.setItem('tap_challenge_cooldown_until', String(cooldownUntil));
+  }
   forceTick();
 
   if (option.type === 'game') {
