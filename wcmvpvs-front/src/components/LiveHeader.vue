@@ -13,13 +13,15 @@
       <span v-else>{{ teamName }}</span>
     </div>
 
-    <div class="min-w-0 flex-1 text-center leading-tight">
-      <p class="truncate text-[clamp(0.86rem,2.8vw,1.16rem)] font-extrabold tracking-tight text-white">
-        LIVE EXPERIENCE UFFICIALE
-      </p>
-      <p class="mt-1 truncate text-[clamp(0.62rem,2.1vw,0.84rem)] text-slate-200/90">
-        {{ sponsorLine }}
-      </p>
+    <div class="min-w-0 flex-1 leading-tight">
+      <slot>
+        <p class="truncate text-center text-[clamp(0.86rem,2.8vw,1.16rem)] font-extrabold tracking-tight text-white">
+          LIVE EXPERIENCE UFFICIALE
+        </p>
+        <p class="mt-1 truncate text-center text-[clamp(0.62rem,2.1vw,0.84rem)] text-slate-200/90">
+          {{ sponsorLine }}
+        </p>
+      </slot>
     </div>
 
     <div

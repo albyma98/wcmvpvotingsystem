@@ -682,6 +682,36 @@
                   <button class="btn secondary" type="button" @click="addQuizQuestionDraft(event.id)">Aggiungi domanda</button>
                 </div>
               </div>
+              <div class="postvote-options">
+                <div class="postvote-options__header">
+                  <strong>Stories</strong>
+                  <p class="field-hint">Gestisci stories giocatori mostrate nella live experience.</p>
+                </div>
+                <div class="prize-editor__actions">
+                  <button class="btn secondary" type="button" @click="loadStoriesForEvent(event.id)">
+                    {{ isStoriesLoading(event.id) ? 'Caricamento…' : 'Ricarica Stories' }}
+                  </button>
+                  <button class="btn secondary" type="button" @click="addStoryDraft(event.id)">Aggiungi story</button>
+                </div>
+                <div class="prize-editor__list">
+                  <div v-for="(story, storyIndex) in storiesForEvent(event.id)" :key="`story-${event.id}-${story.id || storyIndex}`" class="prize-editor__row">
+                    <input v-model="story.player_name" type="text" placeholder="Nome giocatore" />
+                    <input v-model="story.title" type="text" placeholder="Titolo breve (opzionale)" />
+                    <input v-model="story.thumbnail_url" type="url" placeholder="Thumbnail URL" />
+                    <input v-model="story.video_url" type="url" placeholder="Video verticale URL" />
+                    <label class="postvote-toggle">
+                      <input v-model="story.is_active" type="checkbox" />
+                      <span class="postvote-toggle__label">Attiva</span>
+                    </label>
+                    <div class="prize-editor__actions">
+                      <button class="btn outline" type="button" @click="moveStory(event.id, storyIndex, -1)" :disabled="storyIndex === 0">↑</button>
+                      <button class="btn outline" type="button" @click="moveStory(event.id, storyIndex, 1)" :disabled="storyIndex === storiesForEvent(event.id).length - 1">↓</button>
+                      <button class="btn primary" type="button" @click="saveStory(event.id, story, storyIndex)" :disabled="isStoriesSaving(event.id)">Salva</button>
+                      <button class="btn danger" type="button" @click="deleteStory(event.id, story, storyIndex)" :disabled="isStoriesSaving(event.id)">Elimina</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </li>
           </ul>
         </section>
@@ -2868,6 +2898,9 @@ const isClosingVotes = ref(false);
 const closeVotesMessage = ref("");
 const quizConfigsByEvent = reactive({});
 const quizQuestionsByEvent = reactive({});
+const eventStoriesById = reactive({});
+const eventStoriesLoading = reactive({});
+const eventStoriesSaving = reactive({});
 const eventPrizeDrafts = reactive({});
 const eventPrizeErrors = reactive({});
 const eventFeedbackDrafts = reactive({});
@@ -3709,6 +3742,15 @@ function clearCollections() {
   });
   Object.keys(eventPrizeErrors).forEach((key) => {
     delete eventPrizeErrors[key];
+  });
+  Object.keys(eventStoriesById).forEach((key) => {
+    delete eventStoriesById[key];
+  });
+  Object.keys(eventStoriesLoading).forEach((key) => {
+    delete eventStoriesLoading[key];
+  });
+  Object.keys(eventStoriesSaving).forEach((key) => {
+    delete eventStoriesSaving[key];
   });
   Object.keys(selfieBusyState).forEach((key) => {
     delete selfieBusyState[key];
@@ -4901,6 +4943,9 @@ async function loadEvents() {
     if (!quizQuestionsByEvent[event.id]) {
       loadQuizForEvent(event.id).catch(() => {});
     }
+    if (!eventStoriesById[event.id]) {
+      loadStoriesForEvent(event.id).catch(() => {});
+    }
   }
   hasLoadedEventHistory.value = false;
 }
@@ -4946,6 +4991,116 @@ function addAnswerToQuestion(eventId, index) {
 function removeAnswerFromQuestion(eventId, index) {
   const q = quizQuestionsFor(eventId)[index];
   if (q && q.answers.length > 2) q.answers.pop();
+}
+
+function storiesForEvent(eventId) {
+  if (!eventStoriesById[eventId]) {
+    eventStoriesById[eventId] = [];
+  }
+  return eventStoriesById[eventId];
+}
+
+function isStoriesLoading(eventId) {
+  return eventStoriesLoading[eventId] === true;
+}
+
+function isStoriesSaving(eventId) {
+  return eventStoriesSaving[eventId] === true;
+}
+
+async function loadStoriesForEvent(eventId) {
+  eventStoriesLoading[eventId] = true;
+  try {
+    const { data } = await secureRequest(() =>
+      apiClient.get(`/admin/events/${eventId}/stories`, authHeaders.value),
+    );
+    eventStoriesById[eventId] = Array.isArray(data)
+      ? data.map((story) => ({
+          id: Number(story.id) || 0,
+          player_name: String(story.player_name || ''),
+          thumbnail_url: String(story.thumbnail_url || ''),
+          video_url: String(story.video_url || ''),
+          title: String(story.title || ''),
+          is_active: story.is_active !== false,
+          order_index: Number(story.order_index) || 0,
+        }))
+      : [];
+  } finally {
+    eventStoriesLoading[eventId] = false;
+  }
+}
+
+function addStoryDraft(eventId) {
+  const rows = storiesForEvent(eventId);
+  rows.push({
+    id: 0,
+    player_name: '',
+    thumbnail_url: '',
+    video_url: '',
+    title: '',
+    is_active: true,
+    order_index: rows.length,
+  });
+}
+
+function moveStory(eventId, index, direction) {
+  const rows = [...storiesForEvent(eventId)];
+  const target = index + direction;
+  if (target < 0 || target >= rows.length) {
+    return;
+  }
+  const [item] = rows.splice(index, 1);
+  rows.splice(target, 0, item);
+  rows.forEach((story, order) => {
+    story.order_index = order;
+  });
+  eventStoriesById[eventId] = rows;
+}
+
+async function saveStory(eventId, story, index) {
+  if (!story.player_name.trim() || !story.thumbnail_url.trim() || !story.video_url.trim()) {
+    globalError.value = 'Compila nome giocatore, thumbnail e video URL per salvare la story.';
+    return;
+  }
+  eventStoriesSaving[eventId] = true;
+  try {
+    const payload = {
+      player_name: story.player_name.trim(),
+      thumbnail_url: story.thumbnail_url.trim(),
+      video_url: story.video_url.trim(),
+      title: story.title.trim(),
+      is_active: Boolean(story.is_active),
+      order_index: Number.isFinite(Number(story.order_index)) ? Number(story.order_index) : index,
+    };
+    if (story.id) {
+      await secureRequest(() =>
+        apiClient.put(`/admin/events/${eventId}/stories/${story.id}`, payload, authHeaders.value),
+      );
+    } else {
+      await secureRequest(() =>
+        apiClient.post(`/admin/events/${eventId}/stories`, payload, authHeaders.value),
+      );
+    }
+    await loadStoriesForEvent(eventId);
+  } finally {
+    eventStoriesSaving[eventId] = false;
+  }
+}
+
+async function deleteStory(eventId, story, index) {
+  if (!story?.id) {
+    eventStoriesById[eventId] = storiesForEvent(eventId).filter((_, idx) => idx !== index);
+    return;
+  }
+  eventStoriesSaving[eventId] = true;
+  try {
+    await secureRequest(() =>
+      apiClient.delete(`/admin/events/${eventId}/stories/${story.id}`, authHeaders.value),
+    );
+    await loadStoriesForEvent(eventId);
+  } finally {
+    eventStoriesSaving[eventId] = false;
+  }
 }
 
 async function loadQuizForEvent(eventId) {
