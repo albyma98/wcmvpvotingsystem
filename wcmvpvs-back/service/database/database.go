@@ -633,6 +633,17 @@ type EventQuizQuestion struct {
 	OrderIndex   int      `json:"order_index"`
 }
 
+type EventStory struct {
+	ID           int    `json:"id"`
+	EventID      int    `json:"event_id"`
+	PlayerName   string `json:"player_name"`
+	ThumbnailURL string `json:"thumbnail_url"`
+	VideoURL     string `json:"video_url"`
+	Title        string `json:"title,omitempty"`
+	IsActive     bool   `json:"is_active"`
+	OrderIndex   int    `json:"order_index"`
+}
+
 type ContactSubmission struct {
 	ID               int    `json:"id"`
 	EventID          int    `json:"event_id"`
@@ -748,6 +759,10 @@ type AppDatabase interface {
 	UpdateEventQuizQuestion(eventID int, questionID int, question EventQuizQuestion) (EventQuizQuestion, error)
 	DeleteEventQuizQuestion(eventID int, questionID int) error
 	GetEventQuizQuestion(eventID int, questionID int) (EventQuizQuestion, error)
+	ListEventStories(eventID int, includeInactive bool) ([]EventStory, error)
+	CreateEventStory(eventID int, story EventStory) (EventStory, error)
+	UpdateEventStory(eventID int, storyID int, story EventStory) (EventStory, error)
+	DeleteEventStory(eventID int, storyID int) error
 	CreateAdmin(a Admin) (int, error)
 	ListAdmins(organizationID int) ([]Admin, error)
 	UpdateAdmin(a Admin) error
@@ -1204,6 +1219,33 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_event_quiz_questions_quiz ON event_quiz_questions(quiz_id, order_index)`); err != nil {
 		return nil, fmt.Errorf("error ensuring event_quiz_questions quiz index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='event_stories';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE event_stories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        player_name TEXT NOT NULL,
+        thumbnail_url TEXT NOT NULL,
+        video_url TEXT NOT NULL,
+        title TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        order_index INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating event_stories table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying event_stories table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_event_stories_event ON event_stories(event_id, order_index, id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring event_stories event index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='page_engagements';`).Scan(&tableName)
@@ -2350,6 +2392,116 @@ func (db *appdbimpl) DeletePlayer(id int) error {
 }
 
 // Event operations
+func (db *appdbimpl) ListEventStories(eventID int, includeInactive bool) ([]EventStory, error) {
+	query := `SELECT id, event_id, player_name, thumbnail_url, video_url, IFNULL(title, ''), is_active, order_index
+		FROM event_stories WHERE event_id = ?`
+	if !includeInactive {
+		query += ` AND is_active = 1`
+	}
+	query += ` ORDER BY order_index ASC, id ASC`
+
+	rows, err := db.c.Query(query, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stories := make([]EventStory, 0)
+	for rows.Next() {
+		var story EventStory
+		var active int
+		if err := rows.Scan(&story.ID, &story.EventID, &story.PlayerName, &story.ThumbnailURL, &story.VideoURL, &story.Title, &active, &story.OrderIndex); err != nil {
+			return nil, err
+		}
+		story.IsActive = active == 1
+		stories = append(stories, story)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return stories, nil
+}
+
+func (db *appdbimpl) CreateEventStory(eventID int, story EventStory) (EventStory, error) {
+	res, err := db.c.Exec(`INSERT INTO event_stories (event_id, player_name, thumbnail_url, video_url, title, is_active, order_index)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		eventID,
+		strings.TrimSpace(story.PlayerName),
+		strings.TrimSpace(story.ThumbnailURL),
+		strings.TrimSpace(story.VideoURL),
+		strings.TrimSpace(story.Title),
+		boolToInt(story.IsActive),
+		story.OrderIndex,
+	)
+	if err != nil {
+		return EventStory{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return EventStory{}, err
+	}
+	items, err := db.ListEventStories(eventID, true)
+	if err != nil {
+		return EventStory{}, err
+	}
+	for _, item := range items {
+		if item.ID == int(id) {
+			return item, nil
+		}
+	}
+	return EventStory{}, sql.ErrNoRows
+}
+
+func (db *appdbimpl) UpdateEventStory(eventID int, storyID int, story EventStory) (EventStory, error) {
+	res, err := db.c.Exec(`UPDATE event_stories
+		SET player_name = ?, thumbnail_url = ?, video_url = ?, title = ?, is_active = ?, order_index = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND event_id = ?`,
+		strings.TrimSpace(story.PlayerName),
+		strings.TrimSpace(story.ThumbnailURL),
+		strings.TrimSpace(story.VideoURL),
+		strings.TrimSpace(story.Title),
+		boolToInt(story.IsActive),
+		story.OrderIndex,
+		storyID,
+		eventID,
+	)
+	if err != nil {
+		return EventStory{}, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return EventStory{}, err
+	}
+	if affected == 0 {
+		return EventStory{}, sql.ErrNoRows
+	}
+	items, err := db.ListEventStories(eventID, true)
+	if err != nil {
+		return EventStory{}, err
+	}
+	for _, item := range items {
+		if item.ID == storyID {
+			return item, nil
+		}
+	}
+	return EventStory{}, sql.ErrNoRows
+}
+
+func (db *appdbimpl) DeleteEventStory(eventID int, storyID int) error {
+	res, err := db.c.Exec(`DELETE FROM event_stories WHERE id = ? AND event_id = ?`, storyID, eventID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func sanitizePrizeInputs(prizes []EventPrize) []EventPrize {
 	cleaned := make([]EventPrize, 0, len(prizes))
 	for _, prize := range prizes {

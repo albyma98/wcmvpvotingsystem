@@ -9,7 +9,22 @@
         :team-logo-url="teamLogoUrl"
         :is-live="isLive"
         :sponsor-line="sponsorLine"
-      />
+      >
+        <StoriesBar
+          v-if="activeStories.length"
+          :stories="activeStories"
+          :seen-ids="seenStoryIds"
+          @open="openStory"
+        />
+        <template v-else>
+          <p class="truncate text-center text-[clamp(0.86rem,2.8vw,1.16rem)] font-extrabold tracking-tight text-white">
+            LIVE EXPERIENCE UFFICIALE
+          </p>
+          <p class="mt-1 truncate text-center text-[clamp(0.62rem,2.1vw,0.84rem)] text-slate-200/90">
+            {{ sponsorLine }}
+          </p>
+        </template>
+      </LiveHeader>
 
       <section class="hero animate-on-enter mt-[3.2vh] text-center">
         <h1 class="font-black uppercase leading-[0.92] tracking-tight drop-shadow-[0_4px_14px_rgba(0,0,0,0.85)]">
@@ -33,6 +48,15 @@
       <LiveResultsBar class="animate-on-enter mt-auto" :results="results" />
     </main>
 
+    <StoryModal
+      :open="isStoryModalOpen"
+      :current-story="currentStory"
+      :show-prev="activeStoryIndex > 0"
+      @close="closeStoryModal"
+      @next="goToNextStory"
+      @prev="goToPrevStory"
+    />
+
     <EarnCoinsModal
       v-model="isEarnModalOpen"
       :event-id="eventId"
@@ -43,11 +67,14 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EarnCoinsModal from '../components/EarnCoinsModal.vue';
 import FeatureCard from '../components/FeatureCard.vue';
 import LiveHeader from '../components/LiveHeader.vue';
 import LiveResultsBar from '../components/LiveResultsBar.vue';
+import StoriesBar from '../components/StoriesBar.vue';
+import StoryModal from '../components/StoryModal.vue';
+import { apiClient } from '../api';
 
 const anonymousAvatarSvg = encodeURIComponent(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 220'>
@@ -179,6 +206,15 @@ onMounted(async () => {
   totalCoins.value = Number.isFinite(stored) && stored > 0 ? stored : 0;
   await nextTick();
   syncWalletTargetEl();
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(storyStorageKey.value) || '[]');
+    seenStoryIds.value = Array.isArray(parsed) ? parsed.filter((id) => Number.isFinite(Number(id))).map((id) => Number(id)) : [];
+  } catch (error) {
+    seenStoryIds.value = [];
+  }
+
+  loadEventStories();
 });
 
 async function addCoins(amount) {
@@ -191,6 +227,74 @@ async function addCoins(amount) {
 
   await nextTick();
   syncWalletTargetEl();
+}
+
+
+const eventStories = ref([]);
+const seenStoryIds = ref([]);
+const isStoryModalOpen = ref(false);
+const activeStoryIndex = ref(0);
+
+const activeStories = computed(() =>
+  eventStories.value
+    .filter((story) => story && story.is_active !== false)
+    .sort((a, b) => (Number(a.order_index) || 0) - (Number(b.order_index) || 0)),
+);
+
+const currentStory = computed(() => activeStories.value[activeStoryIndex.value] || null);
+
+const storyStorageKey = computed(() => `mvp:stories:seen:event:${props.eventId || 0}`);
+
+function persistSeenStories() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.localStorage.setItem(storyStorageKey.value, JSON.stringify(Array.from(new Set(seenStoryIds.value))));
+}
+
+function markStorySeen(storyId) {
+  if (!storyId || seenStoryIds.value.includes(storyId)) {
+    return;
+  }
+  seenStoryIds.value = [...seenStoryIds.value, storyId];
+  persistSeenStories();
+}
+
+async function loadEventStories() {
+  if (!props.eventId) {
+    eventStories.value = [];
+    return;
+  }
+  try {
+    const { data } = await apiClient.get(`/events/${props.eventId}/stories`);
+    eventStories.value = Array.isArray(data) ? data : [];
+  } catch (error) {
+    eventStories.value = [];
+  }
+}
+
+function openStory(index) {
+  activeStoryIndex.value = Math.max(0, Math.min(index, activeStories.value.length - 1));
+  isStoryModalOpen.value = true;
+}
+
+function closeStoryModal() {
+  isStoryModalOpen.value = false;
+}
+
+function goToNextStory() {
+  if (activeStoryIndex.value >= activeStories.value.length - 1) {
+    closeStoryModal();
+    return;
+  }
+  activeStoryIndex.value += 1;
+}
+
+function goToPrevStory() {
+  if (activeStoryIndex.value <= 0) {
+    return;
+  }
+  activeStoryIndex.value -= 1;
 }
 
 const decoratedFeatures = computed(() =>
@@ -229,6 +333,43 @@ const decoratedFeatures = computed(() =>
     };
   }),
 );
+
+
+watch(
+  () => props.eventId,
+  () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(storyStorageKey.value) || '[]');
+      seenStoryIds.value = Array.isArray(parsed) ? parsed.filter((id) => Number.isFinite(Number(id))).map((id) => Number(id)) : [];
+    } catch (error) {
+      seenStoryIds.value = [];
+    }
+    loadEventStories();
+  },
+);
+
+watch(currentStory, (story) => {
+  if (!story) {
+    return;
+  }
+  markStorySeen(Number(story.id));
+});
+
+watch(isStoryModalOpen, (open) => {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  document.body.style.overflow = open ? 'hidden' : '';
+});
+
+onBeforeUnmount(() => {
+  if (typeof document !== 'undefined') {
+    document.body.style.overflow = '';
+  }
+});
 
 function onFeatureSelect(featureId) {
   if (featureId === 'game-live') {
