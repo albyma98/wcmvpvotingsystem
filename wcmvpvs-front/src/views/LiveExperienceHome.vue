@@ -37,7 +37,7 @@
         </p>
       </section>
 
-      <section class="animate-on-enter mt-[3.2vh] grid grid-cols-3 gap-2.5">
+      <section ref="topCardsRef" class="animate-on-enter mt-[3.2vh] grid grid-cols-3 gap-2.5">
         <FeatureCard
           v-for="feature in decoratedFeatures"
           :key="feature.id"
@@ -46,7 +46,20 @@
         />
       </section>
 
-      <LiveResultsBar class="animate-on-enter mt-auto" :results="results" />
+      <SponsorsMarquee
+        v-if="showSponsorsBox"
+        ref="sponsorBoxRef"
+        class="animate-on-enter mt-2"
+        :sponsors="sponsors"
+        :height-px="sponsorHeight"
+        :event-id="eventId"
+        @image-loaded="queueSponsorGapMeasure"
+        @sponsor-click="handleSponsorClick"
+      />
+
+      <div ref="liveResultsRef" class="animate-on-enter mt-auto">
+        <LiveResultsBar :results="results" />
+      </div>
     </main>
 
     <StoryModal
@@ -73,9 +86,11 @@ import EarnCoinsModal from '../components/EarnCoinsModal.vue';
 import FeatureCard from '../components/FeatureCard.vue';
 import LiveHeader from '../components/LiveHeader.vue';
 import LiveResultsBar from '../components/LiveResultsBar.vue';
+import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
 import StoryModal from '../components/StoryModal.vue';
 import { apiClient } from '../api';
+import { getOrCreateDeviceId } from '../deviceId';
 
 const anonymousAvatarSvg = encodeURIComponent(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 220'>
@@ -189,6 +204,18 @@ const emit = defineEmits(['feature-select']);
 const isEarnModalOpen = ref(false);
 const totalCoins = ref(0);
 const walletTargetEl = ref(null);
+const topCardsRef = ref(null);
+const sponsorBoxRef = ref(null);
+const liveResultsRef = ref(null);
+const sponsorHeight = ref(0);
+const sponsors = ref([]);
+let sponsorMeasureRaf = 0;
+
+const MIN_SPONSOR_HEIGHT = 48;
+const HARD_HIDE_THRESHOLD = 24;
+const GAP_BUFFER_PX = 8;
+
+const showSponsorsBox = computed(() => sponsors.value.length > 0 && sponsorHeight.value >= HARD_HIDE_THRESHOLD);
 
 function syncWalletTargetEl() {
   if (typeof document === 'undefined') {
@@ -216,6 +243,11 @@ onMounted(async () => {
   }
 
   loadEventStories();
+  loadSponsors();
+  queueSponsorGapMeasure();
+
+  window.addEventListener('resize', queueSponsorGapMeasure, { passive: true });
+  window.addEventListener('orientationchange', queueSponsorGapMeasure, { passive: true });
 });
 
 async function addCoins(amount) {
@@ -228,6 +260,96 @@ async function addCoins(amount) {
 
   await nextTick();
   syncWalletTargetEl();
+}
+
+function queueSponsorGapMeasure() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (sponsorMeasureRaf) {
+    window.cancelAnimationFrame(sponsorMeasureRaf);
+  }
+  sponsorMeasureRaf = window.requestAnimationFrame(() => {
+    sponsorMeasureRaf = 0;
+    measureSponsorGap();
+  });
+}
+
+function measureSponsorGap() {
+  const topCardsEl = topCardsRef.value;
+  const liveResultsEl = liveResultsRef.value;
+  if (!topCardsEl || !liveResultsEl) {
+    sponsorHeight.value = 0;
+    return;
+  }
+
+  const topCardsBottom = topCardsEl.getBoundingClientRect().bottom;
+  const liveResultsTop = liveResultsEl.getBoundingClientRect().top;
+  const availableGapPx = Math.floor(liveResultsTop - topCardsBottom);
+
+  if (availableGapPx <= 0) {
+    sponsorHeight.value = 0;
+    return;
+  }
+
+  const targetHeight = Math.floor(availableGapPx * 0.5);
+  const maxSafeHeight = Math.max(0, availableGapPx - GAP_BUFFER_PX);
+  const resolvedHeight = Math.min(Math.max(targetHeight, MIN_SPONSOR_HEIGHT), maxSafeHeight);
+  sponsorHeight.value = resolvedHeight < HARD_HIDE_THRESHOLD ? 0 : resolvedHeight;
+}
+
+function normalizeSponsor(item, index) {
+  const imageUrl = String(item?.logo_data || item?.image_url || item?.imageUrl || '').trim();
+  if (!imageUrl) {
+    return null;
+  }
+
+  const priorityRaw = Number(item?.priority ?? item?.order_index ?? item?.order ?? item?.display_order);
+
+  return {
+    id: Number(item?.id) || index + 1,
+    name: String(item?.name || '').trim(),
+    imageUrl,
+    linkUrl: String(item?.link_url || item?.linkUrl || '').trim(),
+    priority: Number.isFinite(priorityRaw) ? priorityRaw : Number.POSITIVE_INFINITY,
+    insertedIndex: index,
+  };
+}
+
+async function loadSponsors() {
+  try {
+    const { data } = await apiClient.get('/sponsors');
+    sponsors.value = Array.isArray(data)
+      ? data
+          .map((item, index) => normalizeSponsor(item, index))
+          .filter(Boolean)
+          .sort((a, b) => {
+            if (a.priority !== b.priority) {
+              return a.priority - b.priority;
+            }
+            return a.insertedIndex - b.insertedIndex;
+          })
+      : [];
+  } catch (error) {
+    sponsors.value = [];
+  } finally {
+    nextTick(() => {
+      queueSponsorGapMeasure();
+    });
+  }
+}
+
+function handleSponsorClick(sponsor) {
+  const eventId = Number(props.eventId) || 0;
+  const sponsorId = Number(sponsor?.id) || 0;
+  if (!eventId || !sponsorId) {
+    return;
+  }
+
+  apiClient.post(`/events/${eventId}/sponsors/${sponsorId}/click`, {
+    device_id: getOrCreateDeviceId(),
+    at: new Date().toISOString(),
+  }).catch(() => {});
 }
 
 
@@ -426,8 +548,18 @@ watch(
       seenStoryIds.value = [];
     }
     loadEventStories();
+    loadSponsors();
+    nextTick(() => {
+      queueSponsorGapMeasure();
+    });
   },
 );
+
+watch(showSponsorsBox, () => {
+  nextTick(() => {
+    queueSponsorGapMeasure();
+  });
+});
 
 watch(currentStory, (story) => {
   if (!story) {
@@ -444,6 +576,14 @@ watch(isStoryModalOpen, (open) => {
 });
 
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', queueSponsorGapMeasure);
+    window.removeEventListener('orientationchange', queueSponsorGapMeasure);
+    if (sponsorMeasureRaf) {
+      window.cancelAnimationFrame(sponsorMeasureRaf);
+    }
+  }
+
   if (typeof document !== 'undefined') {
     document.body.style.overflow = '';
   }
