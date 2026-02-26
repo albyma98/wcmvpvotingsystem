@@ -46,7 +46,7 @@
         />
       </section>
 
-      <section class="animate-on-enter mt-[2.2vh] grid flex-1 grid-cols-2 grid-rows-2 gap-2.5">
+      <section class="animate-on-enter sponsor-grid mt-[2.2vh] grid min-h-0 grid-cols-2 grid-rows-2 gap-2.5">
         <a
           v-for="(sponsor, index) in sponsorGridItems"
           :key="`${sponsor.id || 'fallback'}-${index}`"
@@ -570,6 +570,10 @@ function onFeatureSelect(featureId) {
   transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
+.sponsor-grid {
+  flex: 0 0 clamp(168px, 30vh, 260px);
+}
+
 .sponsor-box[href] {
   cursor: pointer;
 }
@@ -582,7 +586,8 @@ function onFeatureSelect(featureId) {
 .sponsor-box__image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  padding: clamp(0.28rem, 1.2vw, 0.5rem);
+  object-fit: contain;
 }
 
 .sponsor-box--placeholder {
@@ -616,6 +621,10 @@ function onFeatureSelect(featureId) {
     min-height: 196px;
     padding-top: 0.5rem;
     padding-bottom: 0.5rem;
+  }
+
+  .sponsor-grid {
+    flex-basis: clamp(148px, 26vh, 220px);
   }
 }
 
