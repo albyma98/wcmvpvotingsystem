@@ -22,6 +22,7 @@
       :current-path="currentPath"
       :current-search="currentSearch"
     />
+    <SlugSocietaScrapeTest v-else-if="appView === 'slug-societa-test'" />
     <template v-else-if="appView === 'newui'">
       <LiveExperienceHome
         :event-id="resolvedEventId"
@@ -65,6 +66,7 @@ import ShopAdminPortal from './components/shop/ShopAdminPortal.vue';
 import PartnerPortal from './components/PartnerPortal.vue';
 import LiveExperienceHome from './views/LiveExperienceHome.vue';
 import NewUiVoteModal from './components/NewUiVoteModal.vue';
+import SlugSocietaScrapeTest from './views/SlugSocietaScrapeTest.vue';
 import { apiClient } from './api';
 
 function readEventId(search) {
@@ -122,6 +124,15 @@ const organizationSlug = computed(() => {
   return fromQuery.trim();
 });
 
+
+const decodedCurrentPath = computed(() => {
+  try {
+    return decodeURIComponent(currentPath.value || '');
+  } catch (_error) {
+    return currentPath.value || '';
+  }
+});
+
 const appView = computed(() => {
   if (currentPath.value.startsWith('/admin/master')) {
     return 'master';
@@ -153,6 +164,9 @@ const appView = computed(() => {
   }
   if (currentPath.value.includes('/partner')) {
     return 'partner';
+  }
+  if (decodedCurrentPath.value.startsWith('/test/slug-società')) {
+    return 'slug-societa-test';
   }
   if (isNewUiPath.value) {
     return 'newui';
