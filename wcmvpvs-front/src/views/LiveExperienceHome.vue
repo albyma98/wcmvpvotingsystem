@@ -46,6 +46,33 @@
         />
       </section>
 
+      <section
+        v-if="hasSponsors"
+        class="sponsor-section sponsor-fade-in mt-[2.2vh] rounded-[1.4rem] border border-white/20 bg-slate-950/30 p-3 backdrop-blur-[1px]"
+        aria-label="Sponsor"
+      >
+        <div class="grid gap-2.5" :class="sponsorGridClass">
+          <a
+            v-for="sponsor in homeSponsors"
+            :key="sponsor.id"
+            class="sponsor-logo-card flex min-h-[76px] items-center justify-center rounded-2xl border border-white/15 bg-slate-900/35 px-2 py-2"
+            :class="{ 'col-span-2 mx-auto w-full max-w-[210px]': homeSponsors.length === 1 }"
+            :href="sponsor.link"
+            target="_blank"
+            rel="noopener noreferrer"
+            :aria-label="sponsor.name || 'Sponsor'"
+          >
+            <img
+              :src="sponsor.image"
+              :alt="sponsor.name || 'Sponsor'"
+              class="h-[52px] w-full object-contain"
+              loading="lazy"
+              decoding="async"
+            >
+          </a>
+        </div>
+      </section>
+
       <LiveResultsBar class="animate-on-enter mt-auto" :results="results" />
     </main>
 
@@ -189,6 +216,19 @@ const emit = defineEmits(['feature-select']);
 const isEarnModalOpen = ref(false);
 const totalCoins = ref(0);
 const walletTargetEl = ref(null);
+const homeSponsors = ref([]);
+
+const hasSponsors = computed(() => homeSponsors.value.length > 0);
+const sponsorGridClass = computed(() => {
+  const count = homeSponsors.value.length;
+  if (count === 1) {
+    return 'grid-cols-2';
+  }
+  if (count === 2) {
+    return 'grid-cols-2';
+  }
+  return 'grid-cols-2';
+});
 
 function syncWalletTargetEl() {
   if (typeof document === 'undefined') {
@@ -216,7 +256,37 @@ onMounted(async () => {
   }
 
   loadEventStories();
+  loadHomeSponsors();
 });
+
+async function loadHomeSponsors() {
+  try {
+    const { data } = await apiClient.get('/sponsors');
+    if (!Array.isArray(data)) {
+      homeSponsors.value = [];
+      return;
+    }
+
+    homeSponsors.value = data
+      .map((item, index) => {
+        const image = typeof item?.logo_data === 'string' ? item.logo_data.trim() : '';
+        const link = typeof item?.link_url === 'string' ? item.link_url.trim() : '';
+        if (!image || !link) {
+          return null;
+        }
+
+        return {
+          id: Number(item?.id) || index + 1,
+          image,
+          link,
+          name: typeof item?.name === 'string' ? item.name.trim() : '',
+        };
+      })
+      .filter(Boolean);
+  } catch (error) {
+    homeSponsors.value = [];
+  }
+}
 
 async function addCoins(amount) {
   const parsed = Math.max(0, Number(amount) || 0);
@@ -426,6 +496,7 @@ watch(
       seenStoryIds.value = [];
     }
     loadEventStories();
+    loadHomeSponsors();
   },
 );
 
@@ -485,6 +556,19 @@ function onFeatureSelect(featureId) {
   animation: fade-slide-up 0.6s ease both;
 }
 
+.sponsor-fade-in {
+  animation: sponsor-fade-in 0.45s ease both;
+}
+
+@keyframes sponsor-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes fade-slide-up {
   from {
     opacity: 0;
@@ -510,6 +594,10 @@ function onFeatureSelect(featureId) {
 
 @media (prefers-reduced-motion: reduce) {
   .animate-on-enter {
+    animation: none;
+  }
+
+  .sponsor-fade-in {
     animation: none;
   }
 }
