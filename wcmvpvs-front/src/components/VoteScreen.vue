@@ -1903,18 +1903,19 @@ const showSponsorSection = computed(
   () => preVoteSettings.value.showBottomSponsors && sponsors.value.length > 0,
 );
 
-const sponsorGridClass = computed(() => {
-  const count = sponsors.value.length;
-  if (count <= 1) {
-    return ["grid-cols-1"];
+const sponsorGridItems = computed(() => {
+  if (!sponsors.value.length) {
+    return [];
   }
-  if (count === 2) {
-    return ["grid-cols-2", "grid-rows-1"];
+
+  const selectedSponsors = sponsors.value.slice(0, 4);
+  const fallbackSponsor = selectedSponsors[0];
+
+  while (selectedSponsors.length < 4) {
+    selectedSponsors.push(fallbackSponsor);
   }
-  if (count === 3) {
-    return ["grid-cols-2", "md:grid-cols-3"];
-  }
-  return ["grid-cols-2", "md:grid-cols-3"];
+
+  return selectedSponsors;
 });
 
 const showVoteCounterSection = computed(
@@ -3818,8 +3819,11 @@ const submitContactBonus = async () => {
               </header>
 
               <div class="flex-1 px-6 pb-6">
-                <div class="grid auto-rows-fr gap-4" :class="sponsorGridClass">
-                  <template v-for="sponsor in sponsors" :key="sponsor.id">
+                <div class="grid grid-cols-2 grid-rows-2 gap-4">
+                  <template
+                    v-for="(sponsor, sponsorIndex) in sponsorGridItems"
+                    :key="`${sponsor.id}-${sponsorIndex}`"
+                  >
                     <a
                       v-if="sponsor.link"
                       class="group relative flex items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-[0_16px_32px_rgba(8,15,28,0.45)]"
@@ -3837,15 +3841,6 @@ const submitContactBonus = async () => {
                         :alt="sponsor.name"
                         class="relative h-full w-full object-cover"
                       />
-                      <div
-                        class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8"
-                      >
-                        <p
-                          class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center"
-                        >
-                          {{ sponsor.name }}
-                        </p>
-                      </div>
                     </a>
                     <div
                       v-else
@@ -3860,15 +3855,6 @@ const submitContactBonus = async () => {
                         :alt="sponsor.name"
                         class="relative h-full w-full object-cover"
                       />
-                      <div
-                        class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent px-4 pb-4 pt-8"
-                      >
-                        <p
-                          class="text-xs font-medium uppercase tracking-[0.25em] text-slate-200 text-center"
-                        >
-                          {{ sponsor.name }}
-                        </p>
-                      </div>
                     </div>
                   </template>
                 </div>
