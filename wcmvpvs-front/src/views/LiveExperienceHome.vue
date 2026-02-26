@@ -46,7 +46,28 @@
         />
       </section>
 
-      <LiveResultsBar class="animate-on-enter mt-auto" :results="results" />
+      <section class="animate-on-enter mt-[2.2vh] grid flex-1 grid-cols-2 grid-rows-2 gap-2.5">
+        <a
+          v-for="(sponsor, index) in sponsorGridItems"
+          :key="`${sponsor.id || 'fallback'}-${index}`"
+          :href="sponsor.link || undefined"
+          :target="sponsor.link ? '_blank' : undefined"
+          :rel="sponsor.link ? 'noopener noreferrer' : undefined"
+          :aria-label="sponsor.name || `Sponsor ${index + 1}`"
+          :class="['sponsor-box', { 'sponsor-box--placeholder': !sponsor.image }]"
+        >
+          <img
+            v-if="sponsor.image"
+            :src="sponsor.image"
+            :alt="sponsor.name || `Sponsor ${index + 1}`"
+            class="sponsor-box__image"
+            loading="lazy"
+          >
+          <span v-else class="sponsor-box__placeholder">SPONSOR</span>
+        </a>
+      </section>
+
+      <LiveResultsBar class="animate-on-enter mt-3" :results="results" />
     </main>
 
     <StoryModal
@@ -232,6 +253,7 @@ async function addCoins(amount) {
 
 
 const eventStories = ref([]);
+const sponsors = ref([]);
 const seenStoryIds = ref([]);
 const isStoryModalOpen = ref(false);
 const activeStoryIndex = ref(0);
@@ -247,6 +269,24 @@ const activeStories = computed(() =>
 );
 
 const currentStory = computed(() => activeStories.value[activeStoryIndex.value] || null);
+
+const sponsorGridItems = computed(() => {
+  if (!sponsors.value.length) {
+    return Array.from({ length: 4 }, (_, index) => ({
+      id: `placeholder-${index + 1}`,
+      name: '',
+      image: '',
+      link: '',
+    }));
+  }
+
+  const baseSponsors = sponsors.value.slice(0, 4);
+  const firstSponsor = baseSponsors[0];
+  while (baseSponsors.length < 4) {
+    baseSponsors.push(firstSponsor);
+  }
+  return baseSponsors;
+});
 
 const storyStorageKey = computed(() => `mvp:stories:seen:event:${props.eventId || 0}`);
 
@@ -275,6 +315,34 @@ async function loadEventStories() {
     eventStories.value = Array.isArray(data) ? data : [];
   } catch (error) {
     eventStories.value = [];
+  }
+}
+
+async function loadSponsors() {
+  try {
+    const { data } = await apiClient.get('/sponsors');
+    if (!Array.isArray(data)) {
+      sponsors.value = [];
+      return;
+    }
+
+    sponsors.value = data
+      .map((item, index) => {
+        const image = typeof item?.logo_data === 'string' ? item.logo_data : '';
+        if (!image) {
+          return null;
+        }
+
+        return {
+          id: Number(item?.id) || index + 1,
+          name: typeof item?.name === 'string' ? item.name.trim() : '',
+          image,
+          link: typeof item?.link_url === 'string' ? item.link_url.trim() : '',
+        };
+      })
+      .filter(Boolean);
+  } catch (error) {
+    sponsors.value = [];
   }
 }
 
@@ -426,6 +494,7 @@ watch(
       seenStoryIds.value = [];
     }
     loadEventStories();
+    loadSponsors();
   },
 );
 
@@ -447,6 +516,10 @@ onBeforeUnmount(() => {
   if (typeof document !== 'undefined') {
     document.body.style.overflow = '';
   }
+});
+
+onMounted(() => {
+  loadSponsors();
 });
 
 function onFeatureSelect(featureId) {
@@ -483,6 +556,44 @@ function onFeatureSelect(featureId) {
 
 .animate-on-enter {
   animation: fade-slide-up 0.6s ease both;
+}
+
+.sponsor-box {
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.82) 0%, rgba(2, 6, 23, 0.86) 100%);
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.sponsor-box[href] {
+  cursor: pointer;
+}
+
+.sponsor-box[href]:hover {
+  transform: translateY(-1px);
+  border-color: rgba(251, 191, 36, 0.65);
+}
+
+.sponsor-box__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sponsor-box--placeholder {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.66) 0%, rgba(15, 23, 42, 0.86) 100%);
+}
+
+.sponsor-box__placeholder {
+  font-size: clamp(0.7rem, 2.4vw, 1rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: rgba(203, 213, 225, 0.92);
 }
 
 @keyframes fade-slide-up {
