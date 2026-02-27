@@ -5,10 +5,6 @@
     :style="containerStyle"
     aria-label="Sponsor"
   >
-    <p class="mb-1 pl-1 text-[0.62rem] font-black uppercase tracking-[0.22em] text-slate-300/85">
-      Sponsor
-    </p>
-
     <div ref="viewportRef" class="sponsor-viewport">
       <div
         class="sponsor-track"
@@ -197,7 +193,7 @@ onBeforeUnmount(() => {
 }
 
 .sponsor-viewport {
-  height: calc(100% - 1rem);
+  height: 100%;
   overflow: hidden;
   display: flex;
   align-items: center;
