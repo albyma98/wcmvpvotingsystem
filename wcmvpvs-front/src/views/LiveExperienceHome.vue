@@ -149,14 +149,59 @@
     />
 
     <Teleport to="body">
-      <div v-if="isSpendPreviewOpen" class="fixed inset-0 z-[120] flex items-end bg-slate-950/80 p-2 sm:items-center sm:justify-center">
-        <div class="w-full max-w-md rounded-2xl border border-white/20 bg-slate-900 p-4">
-          <h3 class="text-lg font-black">Premi e coupon</h3>
-          <p class="text-sm text-slate-200">Preview catalogo: i guest possono vedere, ma per riscattare serve il profilo tifoso.</p>
-          <button class="mt-3 w-full rounded bg-emerald-500 px-3 py-2 text-xs font-black text-slate-950" @click="attemptRedeem('coupon-match', 30)">Riscatta coupon (30 🪙)</button>
-          <button class="mt-2 w-full rounded border border-white/30 px-3 py-2 text-xs font-bold" @click="isSpendPreviewOpen=false">CHIUDI</button>
+      <Transition name="earn-modal-fade">
+        <div
+          v-if="isSpendPreviewOpen"
+          class="fixed inset-0 z-[120] flex"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Spendi monete"
+          @click.self="closeSpendPreview"
+        >
+          <div class="absolute inset-0 bg-slate-950/90 backdrop-blur-sm" aria-hidden="true" />
+
+          <div class="relative flex h-full w-full flex-col overflow-hidden">
+            <header class="sticky top-0 z-10 border-b border-white/10 bg-slate-950/85 px-4 py-4 backdrop-blur md:px-6">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <h2 class="text-2xl font-black text-white md:text-3xl">Spendi Monete</h2>
+                  <p class="mt-1 text-sm text-slate-300 md:text-base">I guest possono vedere il catalogo, ma per riscattare serve il profilo tifoso.</p>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-2xl leading-none text-white transition hover:bg-white/15"
+                  aria-label="Chiudi modale Spendi Monete"
+                  @click="closeSpendPreview"
+                >
+                  ×
+                </button>
+              </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
+              <div class="mx-auto grid max-w-6xl grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <button
+                  v-for="coupon in spendCouponPreview"
+                  :key="coupon.id"
+                  type="button"
+                  class="group rounded-2xl border border-white/15 bg-white/10 p-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.45)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/15"
+                  @click="attemptRedeem(coupon.id, coupon.cost, coupon.label)"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <span class="text-2xl" aria-hidden="true">🎟️</span>
+                    <span class="rounded-full border border-amber-300/40 bg-amber-300/15 px-2 py-0.5 text-xs font-bold text-amber-200">
+                      {{ coupon.cost }} 🪙
+                    </span>
+                  </div>
+                  <h3 class="mt-3 text-lg font-extrabold text-white">{{ coupon.label }}</h3>
+                  <p class="mt-1 text-sm text-slate-300">{{ coupon.description }}</p>
+                  <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-emerald-300">Riscatta</p>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </Transition>
     </Teleport>
 
   </div>
@@ -301,6 +346,12 @@ const fanId = ref(0);
 const lastEarnedCoins = ref(0);
 const isSpendPreviewOpen = ref(false);
 const selectedRewardLabel = ref('Coupon Match Day · 30 🪙');
+const spendCouponPreview = [
+  { id: 'coupon-match', label: 'Coupon Match Day', description: 'Bibita + snack al bar partner.', cost: 30 },
+  { id: 'coupon-merch', label: 'Sconto Merch 20%', description: 'Sconto valido nello store ufficiale.', cost: 45 },
+  { id: 'coupon-upgrade', label: 'Upgrade posto', description: 'Prova a passare al settore premium.', cost: 60 },
+  { id: 'coupon-photo', label: 'Foto Team Edition', description: 'Scatto ricordo con layout personalizzato.', cost: 20 },
+];
 const totalCoins = ref(0);
 const walletTargetEl = ref(null);
 const topCardsRef = ref(null);
@@ -736,6 +787,11 @@ function markPromptDismissed(trigger) {
 
 function openRegistrationPrompt(trigger) {
   if (isRegisteredFan.value || typeof window === 'undefined') return;
+  if (trigger === 'spend_redeem') {
+    registrationTrigger.value = trigger;
+    isRegistrationPromptOpen.value = true;
+    return;
+  }
   const key = `fan:prompt:${trigger}`;
   if (window.sessionStorage.getItem(key) === '1') return;
   registrationTrigger.value = trigger;
@@ -788,10 +844,13 @@ function openSpendPreview() {
   isSpendPreviewOpen.value = true;
 }
 
-async function attemptRedeem(rewardKey, costCoins) {
+function closeSpendPreview() {
+  isSpendPreviewOpen.value = false;
+}
+
+async function attemptRedeem(rewardKey, costCoins, rewardLabel) {
   if (!isRegisteredFan.value) {
-    isSpendPreviewOpen.value = false;
-    selectedRewardLabel.value = `${String(rewardKey).replace('-', ' ').toUpperCase()} · ${costCoins} 🪙`;
+    selectedRewardLabel.value = rewardLabel || `${String(rewardKey).replace('-', ' ').toUpperCase()} · ${costCoins} 🪙`;
     openRegistrationPrompt('spend_redeem');
     return;
   }
