@@ -56,6 +56,12 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/events/{eventId}/contacts", rt.wrap(rt.listContactBonuses))
 	rt.router.Post("/events/{eventId}/contacts", rt.wrap(rt.submitContact))
 
+	rt.router.Post("/fan/register", rt.wrap(rt.postRegisterFan))
+	rt.router.Get("/fan/me", rt.wrap(rt.getFanMe))
+	rt.router.Post("/events/{eventId}/guest-coins", rt.wrap(rt.postGuestCoins))
+	rt.router.Get("/events/{eventId}/coins-leaderboard", rt.wrap(rt.getCoinsLeaderboard))
+	rt.router.Post("/events/{eventId}/rewards/redeem", rt.wrap(rt.postFanRewardRedeem))
+
 	rt.router.Get("/events", rt.wrapAdmin(rt.listEvents))
 	rt.router.Post("/events", rt.wrapAdmin(rt.createEvent))
 	rt.router.Post("/events/deactivate", rt.wrapAdmin(rt.deactivateEvents))
