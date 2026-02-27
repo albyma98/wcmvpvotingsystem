@@ -39,11 +39,65 @@
 
       <section ref="topCardsRef" class="animate-on-enter mt-[3.2vh] grid grid-cols-3 gap-2.5">
         <FeatureCard
-          v-for="feature in decoratedFeatures"
-          :key="feature.id"
-          v-bind="feature"
+          v-bind="voteFeature"
           @select="onFeatureSelect"
         />
+
+        <div class="flex min-h-[220px] flex-col gap-2">
+          <article
+            class="mini-feature mini-feature--earn"
+            role="button"
+            tabindex="0"
+            aria-label="Apri guadagna monete"
+            @click="onFeatureSelect('game-live')"
+            @keydown.enter.prevent="onFeatureSelect('game-live')"
+            @keydown.space.prevent="onFeatureSelect('game-live')"
+          >
+            <div class="mini-feature__content">
+              <p id="wallet-coin-target" class="mini-feature__coins">🪙 {{ totalCoins }}</p>
+            </div>
+            <button type="button" class="mini-feature__cta mini-feature__cta--earn" @click.stop="onFeatureSelect('game-live')">
+              GUADAGNA
+            </button>
+          </article>
+
+          <article
+            class="mini-feature mini-feature--spend"
+            role="button"
+            tabindex="0"
+            aria-label="Apri premi e utilizza monete"
+            @click="onFeatureSelect('lottery-live')"
+            @keydown.enter.prevent="onFeatureSelect('lottery-live')"
+            @keydown.space.prevent="onFeatureSelect('lottery-live')"
+          >
+            <div class="mini-feature__content">
+              <p class="mini-feature__icons" aria-hidden="true">🎁 🏷️ ⚡</p>
+            </div>
+            <button type="button" class="mini-feature__cta mini-feature__cta--spend" @click.stop="onFeatureSelect('lottery-live')">
+              SPENDI
+            </button>
+          </article>
+        </div>
+
+        <article
+          class="leaderboard-preview"
+          role="button"
+          tabindex="0"
+          aria-label="Apri classifica tifosi"
+          @click="openLeaderboard"
+          @keydown.enter.prevent="openLeaderboard"
+          @keydown.space.prevent="openLeaderboard"
+        >
+          <p class="leaderboard-preview__title">CLASSIFICA TIFOSI</p>
+          <ul class="leaderboard-preview__list">
+            <li v-for="(entry, index) in leaderboardTop3" :key="`${entry.name}-${index}`" class="leaderboard-preview__item">
+              <span>{{ medals[index] }} {{ entry.name }}</span>
+              <strong>{{ entry.coins }} 🪙</strong>
+            </li>
+          </ul>
+          <p v-if="leaderboardUser" class="leaderboard-preview__you">Tu: #{{ leaderboardUser.rank }} • {{ leaderboardUser.coins }} 🪙</p>
+          <button type="button" class="leaderboard-preview__cta" @click.stop="openLeaderboard">CLASSIFICA</button>
+        </article>
       </section>
 
       <SponsorsMarquee
@@ -77,12 +131,19 @@
       :wallet-target-el="walletTargetEl"
       @coins-earned="addCoins"
     />
+
+    <FansLeaderboardModal
+      v-model="isLeaderboardModalOpen"
+      :top-list="leaderboardTop3"
+      :user-rank="leaderboardUser"
+    />
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EarnCoinsModal from '../components/EarnCoinsModal.vue';
+import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
 import FeatureCard from '../components/FeatureCard.vue';
 import LiveHeader from '../components/LiveHeader.vue';
 import LiveResultsBar from '../components/LiveResultsBar.vue';
@@ -110,6 +171,7 @@ const anonymousAvatarSvg = encodeURIComponent(
   </svg>`,
 );
 const anonymousAvatarDataUrl = `data:image/svg+xml,${anonymousAvatarSvg}`;
+const medals = ['🥇', '🥈', '🥉'];
 
 const props = defineProps({
   eventId: {
@@ -202,6 +264,7 @@ const props = defineProps({
 
 const emit = defineEmits(['feature-select']);
 const isEarnModalOpen = ref(false);
+const isLeaderboardModalOpen = ref(false);
 const totalCoins = ref(0);
 const walletTargetEl = ref(null);
 const topCardsRef = ref(null);
@@ -209,13 +272,46 @@ const sponsorBoxRef = ref(null);
 const liveResultsRef = ref(null);
 const sponsorHeight = ref(0);
 const sponsors = ref([]);
+const leaderboardTop3 = ref([
+  { name: 'TIFO1', coins: 320 },
+  { name: 'TIFO2', coins: 275 },
+  { name: 'TIFO3', coins: 249 },
+]);
+const leaderboardUser = ref({ rank: 12, coins: 92 });
 let sponsorMeasureRaf = 0;
 
 const MIN_SPONSOR_HEIGHT = 48;
 const HARD_HIDE_THRESHOLD = 24;
 const GAP_BUFFER_PX = 8;
-
 const showSponsorsBox = computed(() => sponsors.value.length > 0 && sponsorHeight.value >= HARD_HIDE_THRESHOLD);
+
+const voteFeature = computed(() => {
+  const baseFeature = props.features.find((feature) => feature.id === 'vote-mvp') || props.features[0];
+  const hasVotedPlayer = Boolean(props.votedPlayerImageUrl);
+  const playerLastName = String(props.votedPlayerLastName || '').trim();
+  const fallbackName = String(props.votedPlayerName || '').trim();
+  const titleLabel = hasVotedPlayer ? (playerLastName || fallbackName || baseFeature.title) : baseFeature.title;
+  const hasPlayerNumber = String(props.votedPlayerNumber || '').trim() !== '';
+  const subtitleLabel = hasVotedPlayer
+    ? (hasPlayerNumber ? `#${String(props.votedPlayerNumber).trim()}` : '')
+    : baseFeature.subtitle;
+
+  return {
+    ...baseFeature,
+    title: titleLabel,
+    subtitle: subtitleLabel,
+    actionLabel: hasVotedPlayer ? 'MODIFICA' : baseFeature.actionLabel,
+    previewImageUrl: hasVotedPlayer ? props.votedPlayerImageUrl : anonymousAvatarDataUrl,
+    previewImageFit: hasVotedPlayer ? 'contain' : 'cover',
+    previewAlt: props.votedPlayerName
+      ? `MVP selezionato: ${props.votedPlayerName}`
+      : 'Avatar anonimo MVP',
+  };
+});
+
+function openLeaderboard() {
+  isLeaderboardModalOpen.value = true;
+}
 
 function syncWalletTargetEl() {
   if (typeof document === 'undefined') {
@@ -244,6 +340,7 @@ onMounted(async () => {
 
   loadEventStories();
   loadSponsors();
+  loadLeaderboardPreview();
   queueSponsorGapMeasure();
 
   window.addEventListener('resize', queueSponsorGapMeasure, { passive: true });
@@ -260,6 +357,31 @@ async function addCoins(amount) {
 
   await nextTick();
   syncWalletTargetEl();
+}
+
+async function loadLeaderboardPreview() {
+  if (!props.eventId) {
+    return;
+  }
+
+  try {
+    // TODO: sostituire endpoint placeholder con leaderboard ufficiale quando disponibile.
+    const { data } = await apiClient.get(`/events/${props.eventId}/coins-leaderboard`);
+    const top = Array.isArray(data?.top3) ? data.top3 : Array.isArray(data?.top) ? data.top : [];
+    leaderboardTop3.value = top.slice(0, 3).map((entry, index) => ({
+      name: String(entry?.name || `TIFO${index + 1}`).slice(0, 10).toUpperCase(),
+      coins: Math.max(0, Number(entry?.coins) || 0),
+    }));
+
+    if (Number.isFinite(Number(data?.userRank?.rank))) {
+      leaderboardUser.value = {
+        rank: Number(data.userRank.rank),
+        coins: Math.max(0, Number(data.userRank.coins) || 0),
+      };
+    }
+  } catch (error) {
+    // placeholder fallback, keep static UI preview
+  }
 }
 
 function queueSponsorGapMeasure() {
@@ -497,44 +619,6 @@ function goToPrevStory() {
   activeStoryIndex.value -= 1;
 }
 
-const decoratedFeatures = computed(() =>
-  props.features.map((feature) => {
-    if (feature.id !== 'vote-mvp') {
-      if (feature.id !== 'game-live') {
-        return feature;
-      }
-
-      return {
-        ...feature,
-        centerBadge: `🪙 ${totalCoins.value}`,
-        centerBadgeId: 'wallet-coin-target',
-      };
-    }
-
-    const hasVotedPlayer = Boolean(props.votedPlayerImageUrl);
-    const playerLastName = String(props.votedPlayerLastName || '').trim();
-    const fallbackName = String(props.votedPlayerName || '').trim();
-    const titleLabel = hasVotedPlayer ? (playerLastName || fallbackName || feature.title) : feature.title;
-    const hasPlayerNumber = String(props.votedPlayerNumber || '').trim() !== '';
-    const subtitleLabel = hasVotedPlayer
-      ? (hasPlayerNumber ? `#${String(props.votedPlayerNumber).trim()}` : '')
-      : feature.subtitle;
-
-    return {
-      ...feature,
-      title: titleLabel,
-      subtitle: subtitleLabel,
-      actionLabel: hasVotedPlayer ? 'MODIFICA' : feature.actionLabel,
-      previewImageUrl: hasVotedPlayer ? props.votedPlayerImageUrl : anonymousAvatarDataUrl,
-      previewImageFit: hasVotedPlayer ? 'contain' : 'cover',
-      previewAlt: props.votedPlayerName
-        ? `MVP selezionato: ${props.votedPlayerName}`
-        : 'Avatar anonimo MVP',
-    };
-  }),
-);
-
-
 watch(
   () => props.eventId,
   () => {
@@ -549,6 +633,7 @@ watch(
     }
     loadEventStories();
     loadSponsors();
+    loadLeaderboardPreview();
     nextTick(() => {
       queueSponsorGapMeasure();
     });
@@ -595,6 +680,11 @@ function onFeatureSelect(featureId) {
     return;
   }
 
+  if (featureId === 'leaderboard-live') {
+    openLeaderboard();
+    return;
+  }
+
   emit('feature-select', featureId);
 }
 </script>
@@ -618,39 +708,133 @@ function onFeatureSelect(featureId) {
 }
 
 .vignette {
-  background: radial-gradient(circle at center, rgba(2, 6, 23, 0) 44%, rgba(2, 6, 23, 0.8) 100%);
+  background: radial-gradient(circle at center, transparent 45%, rgba(2, 6, 23, 0.8) 100%);
 }
 
-.animate-on-enter {
-  animation: fade-slide-up 0.6s ease both;
+.mini-feature {
+  position: relative;
+  display: flex;
+  min-height: 106px;
+  flex: 1;
+  cursor: pointer;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  padding: 0.5rem;
+  transition: transform 0.15s ease;
 }
 
-@keyframes fade-slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.mini-feature:active {
+  transform: scale(0.99);
 }
 
-@media (max-height: 760px) {
-  .hero {
-    margin-top: 2vh;
-  }
-
-  :deep(article) {
-    min-height: 196px;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-  }
+.mini-feature--earn {
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.26), rgba(23, 37, 84, 0.9));
+  box-shadow: 0 0 22px rgba(59, 130, 246, 0.44);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .animate-on-enter {
-    animation: none;
-  }
+.mini-feature--spend {
+  background: linear-gradient(180deg, rgba(110, 231, 183, 0.24), rgba(20, 83, 45, 0.9));
+  box-shadow: 0 0 22px rgba(34, 197, 94, 0.35);
+}
+
+.mini-feature__content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.22);
+  margin-bottom: 0.45rem;
+}
+
+.mini-feature__coins {
+  font-size: clamp(1.3rem, 5vw, 2rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.mini-feature__icons {
+  font-size: clamp(1.2rem, 4.5vw, 1.7rem);
+  letter-spacing: 0.2rem;
+}
+
+.mini-feature__cta {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 0.38rem 0.5rem;
+  font-size: clamp(0.72rem, 2.2vw, 0.88rem);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+
+.mini-feature__cta--earn {
+  background: linear-gradient(180deg, #60a5fa, #1d4ed8);
+}
+
+.mini-feature__cta--spend {
+  background: linear-gradient(180deg, #a3e635, #15803d);
+}
+
+.leaderboard-preview {
+  display: flex;
+  min-height: 220px;
+  cursor: pointer;
+  flex-direction: column;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: linear-gradient(180deg, rgba(250, 204, 21, 0.18), rgba(120, 53, 15, 0.84));
+  padding: 0.55rem;
+  box-shadow: 0 0 22px rgba(245, 158, 11, 0.35);
+}
+
+.leaderboard-preview__title {
+  text-align: center;
+  font-size: clamp(0.7rem, 2vw, 0.9rem);
+  font-weight: 900;
+}
+
+.leaderboard-preview__list {
+  margin-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.33rem;
+}
+
+.leaderboard-preview__item {
+  display: flex;
+  justify-content: space-between;
+  border-radius: 0.4rem;
+  background: rgba(2, 6, 23, 0.4);
+  padding: 0.24rem 0.34rem;
+  font-size: clamp(0.65rem, 1.95vw, 0.8rem);
+  font-weight: 700;
+}
+
+.leaderboard-preview__you {
+  margin-top: auto;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(2, 6, 23, 0.35);
+  padding: 0.28rem;
+  text-align: center;
+  font-size: clamp(0.62rem, 1.8vw, 0.74rem);
+  font-weight: 700;
+}
+
+.leaderboard-preview__cta {
+  margin-top: 0.4rem;
+  width: 100%;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: linear-gradient(180deg, #f59e0b, #b45309);
+  padding: 0.36rem 0.45rem;
+  font-size: clamp(0.66rem, 1.9vw, 0.78rem);
+  font-weight: 900;
 }
 </style>
