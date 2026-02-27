@@ -142,6 +142,8 @@
       v-model="isRegistrationPromptOpen"
       :trigger="registrationTrigger"
       :earned-coins="lastEarnedCoins"
+      :wallet-coins="totalCoins"
+      :reward-label="selectedRewardLabel"
       :on-submit="handleRegistrationSubmit"
       @dismissed="markPromptDismissed"
     />
@@ -298,6 +300,7 @@ const fanNickname = ref('');
 const fanId = ref(0);
 const lastEarnedCoins = ref(0);
 const isSpendPreviewOpen = ref(false);
+const selectedRewardLabel = ref('Coupon Match Day · 30 🪙');
 const totalCoins = ref(0);
 const walletTargetEl = ref(null);
 const topCardsRef = ref(null);
@@ -778,7 +781,7 @@ async function handleRegistrationSubmit(form) {
   totalCoins.value = Math.max(0, Number(response.data?.wallet) || totalCoins.value);
   isRegistrationPromptOpen.value = false;
   await loadLeaderboardPreview();
-  return { ok: true };
+  return { ok: true, wallet: totalCoins.value };
 }
 
 function openSpendPreview() {
@@ -788,6 +791,7 @@ function openSpendPreview() {
 async function attemptRedeem(rewardKey, costCoins) {
   if (!isRegisteredFan.value) {
     isSpendPreviewOpen.value = false;
+    selectedRewardLabel.value = `${String(rewardKey).replace('-', ' ').toUpperCase()} · ${costCoins} 🪙`;
     openRegistrationPrompt('spend_redeem');
     return;
   }
