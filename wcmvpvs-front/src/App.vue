@@ -32,6 +32,7 @@
         :voted-player-name="newUiSelectedPlayerName"
         :voted-player-last-name="newUiSelectedPlayerLastName"
         :voted-player-number="newUiSelectedPlayerNumber"
+        :registration-prompt-signal="newUiRegistrationPromptSignal"
         @feature-select="handleNewUiFeatureSelect"
       />
       <NewUiVoteModal
@@ -193,6 +194,7 @@ const newUiMatchLabel = computed(() => {
 
 const showNewUiVoteModal = ref(false);
 const newUiSelectedPlayer = ref(null);
+const newUiRegistrationPromptSignal = ref(0);
 
 const newUiSelectedPlayerImageUrl = computed(() =>
   typeof newUiSelectedPlayer.value?.avatar === 'string' ? newUiSelectedPlayer.value.avatar : '',
@@ -229,6 +231,7 @@ function handleNewUiPlayerVoted(player) {
   }
   newUiSelectedPlayer.value = player;
   showNewUiVoteModal.value = false;
+  newUiRegistrationPromptSignal.value += 1;
 }
 
 async function fetchActiveEvent() {

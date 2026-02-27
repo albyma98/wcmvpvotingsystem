@@ -674,3 +674,63 @@ export async function fetchEventEngagement(eventId: number) {
     return { ok: false, error };
   }
 }
+
+
+export function getFanSessionToken() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  return String(window.localStorage.getItem('fan:session_token') || '').trim();
+}
+
+export function getFanSessionHeaders() {
+  const token = getFanSessionToken();
+  return token ? { 'X-Fan-Session': token } : {};
+}
+
+export async function fetchFanProfile(eventId) {
+  try {
+    const { data } = await apiClient.get('/fan/me', {
+      params: { event_id: eventId },
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export async function registerFanProfile(payload) {
+  try {
+    const { data } = await apiClient.post('/fan/register', payload, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    if (data?.session_token && typeof window !== 'undefined') {
+      window.localStorage.setItem('fan:session_token', data.session_token);
+    }
+    return { ok: true, data };
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, error, message };
+  }
+}
+
+export async function syncGuestCoins(eventId, coins) {
+  try {
+    await apiClient.post(`/events/${eventId}/guest-coins`, { coins }, { headers: getDeviceHeaders() });
+  } catch (error) {
+    // ignore
+  }
+}
+
+export async function redeemFanReward(eventId, rewardKey, costCoins) {
+  try {
+    const { data } = await apiClient.post(`/events/${eventId}/rewards/redeem`, { reward_key: rewardKey, cost_coins: costCoins }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, error, message };
+  }
+}

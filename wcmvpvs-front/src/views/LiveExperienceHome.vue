@@ -66,14 +66,14 @@
             role="button"
             tabindex="0"
             aria-label="Apri premi e utilizza monete"
-            @click="onFeatureSelect('lottery-live')"
-            @keydown.enter.prevent="onFeatureSelect('lottery-live')"
-            @keydown.space.prevent="onFeatureSelect('lottery-live')"
+            @click="openSpendPreview"
+            @keydown.enter.prevent="openSpendPreview"
+            @keydown.space.prevent="openSpendPreview"
           >
             <div class="mini-feature__content">
               <p class="mini-feature__icons" aria-hidden="true">🎁 🏷️ ⚡</p>
             </div>
-            <button type="button" class="mini-feature__cta mini-feature__cta--spend" @click.stop="onFeatureSelect('lottery-live')">
+            <button type="button" class="mini-feature__cta mini-feature__cta--spend" @click.stop="openSpendPreview">
               SPENDI
             </button>
           </article>
@@ -95,7 +95,7 @@
               <strong>{{ entry.coins }} 🪙</strong>
             </li>
           </ul>
-          <p v-if="leaderboardUser" class="leaderboard-preview__you">Tu: #{{ leaderboardUser.rank }} • {{ leaderboardUser.coins }} 🪙</p>
+          <p v-if="isRegisteredFan && leaderboardUser" class="leaderboard-preview__you">Tu: #{{ leaderboardUser.rank }} • {{ leaderboardUser.coins }} 🪙</p>
           <button type="button" class="leaderboard-preview__cta" @click.stop="openLeaderboard">CLASSIFICA</button>
         </article>
       </section>
@@ -137,6 +137,26 @@
       :top-list="leaderboardTop3"
       :user-rank="leaderboardUser"
     />
+
+    <FanRegistrationPromptModal
+      v-model="isRegistrationPromptOpen"
+      :trigger="registrationTrigger"
+      :earned-coins="lastEarnedCoins"
+      :on-submit="handleRegistrationSubmit"
+      @dismissed="markPromptDismissed"
+    />
+
+    <Teleport to="body">
+      <div v-if="isSpendPreviewOpen" class="fixed inset-0 z-[120] flex items-end bg-slate-950/80 p-2 sm:items-center sm:justify-center">
+        <div class="w-full max-w-md rounded-2xl border border-white/20 bg-slate-900 p-4">
+          <h3 class="text-lg font-black">Premi e coupon</h3>
+          <p class="text-sm text-slate-200">Preview catalogo: i guest possono vedere, ma per riscattare serve il profilo tifoso.</p>
+          <button class="mt-3 w-full rounded bg-emerald-500 px-3 py-2 text-xs font-black text-slate-950" @click="attemptRedeem('coupon-match', 30)">Riscatta coupon (30 🪙)</button>
+          <button class="mt-2 w-full rounded border border-white/30 px-3 py-2 text-xs font-bold" @click="isSpendPreviewOpen=false">CHIUDI</button>
+        </div>
+      </div>
+    </Teleport>
+
   </div>
 </template>
 
@@ -145,12 +165,13 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import EarnCoinsModal from '../components/EarnCoinsModal.vue';
 import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
 import FeatureCard from '../components/FeatureCard.vue';
+import FanRegistrationPromptModal from '../components/FanRegistrationPromptModal.vue';
 import LiveHeader from '../components/LiveHeader.vue';
 import LiveResultsBar from '../components/LiveResultsBar.vue';
 import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
 import StoryModal from '../components/StoryModal.vue';
-import { apiClient } from '../api';
+import { apiClient, fetchFanProfile, redeemFanReward, registerFanProfile, syncGuestCoins } from '../api';
 import { getOrCreateDeviceId } from '../deviceId';
 
 const anonymousAvatarSvg = encodeURIComponent(
@@ -260,11 +281,23 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
+  registrationPromptSignal: {
+    type: Number,
+    default: 0,
+  },
 });
 
 const emit = defineEmits(['feature-select']);
 const isEarnModalOpen = ref(false);
 const isLeaderboardModalOpen = ref(false);
+const isRegistrationPromptOpen = ref(false);
+const registrationTrigger = ref('after_vote');
+const isRegisteredFan = ref(false);
+const fanSessionToken = ref('');
+const fanNickname = ref('');
+const fanId = ref(0);
+const lastEarnedCoins = ref(0);
+const isSpendPreviewOpen = ref(false);
 const totalCoins = ref(0);
 const walletTargetEl = ref(null);
 const topCardsRef = ref(null);
@@ -277,7 +310,7 @@ const leaderboardTop3 = ref([
   { name: 'TIFO2', coins: 275 },
   { name: 'TIFO3', coins: 249 },
 ]);
-const leaderboardUser = ref({ rank: 12, coins: 92 });
+const leaderboardUser = ref(null);
 let sponsorMeasureRaf = 0;
 
 const MIN_SPONSOR_HEIGHT = 48;
@@ -311,6 +344,9 @@ const voteFeature = computed(() => {
 
 function openLeaderboard() {
   isLeaderboardModalOpen.value = true;
+  if (!isRegisteredFan.value) {
+    openRegistrationPrompt('leaderboard');
+  }
 }
 
 function syncWalletTargetEl() {
@@ -338,6 +374,7 @@ onMounted(async () => {
     seenStoryIds.value = [];
   }
 
+  await loadFanProfile();
   loadEventStories();
   loadSponsors();
   loadLeaderboardPreview();
@@ -357,6 +394,11 @@ async function addCoins(amount) {
 
   await nextTick();
   syncWalletTargetEl();
+  if (!isRegisteredFan.value && props.eventId) {
+    syncGuestCoins(props.eventId, totalCoins.value);
+    lastEarnedCoins.value = parsed;
+    openRegistrationPrompt('after_earn');
+  }
 }
 
 async function loadLeaderboardPreview() {
@@ -373,7 +415,7 @@ async function loadLeaderboardPreview() {
       coins: Math.max(0, Number(entry?.coins) || 0),
     }));
 
-    if (Number.isFinite(Number(data?.userRank?.rank))) {
+    if (isRegisteredFan.value && Number.isFinite(Number(data?.userRank?.rank))) {
       leaderboardUser.value = {
         rank: Number(data.userRank.rank),
         coins: Math.max(0, Number(data.userRank.coins) || 0),
@@ -631,7 +673,8 @@ watch(
     } catch (error) {
       seenStoryIds.value = [];
     }
-    loadEventStories();
+    loadFanProfile();
+  loadEventStories();
     loadSponsors();
     loadLeaderboardPreview();
     nextTick(() => {
@@ -639,6 +682,13 @@ watch(
     });
   },
 );
+
+
+watch(() => props.registrationPromptSignal, (value, previous) => {
+  if (value !== previous) {
+    openRegistrationPrompt('after_vote');
+  }
+});
 
 watch(showSponsorsBox, () => {
   nextTick(() => {
@@ -673,6 +723,79 @@ onBeforeUnmount(() => {
     document.body.style.overflow = '';
   }
 });
+
+
+
+function markPromptDismissed(trigger) {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(`fan:prompt:${trigger}`, '1');
+}
+
+function openRegistrationPrompt(trigger) {
+  if (isRegisteredFan.value || typeof window === 'undefined') return;
+  const key = `fan:prompt:${trigger}`;
+  if (window.sessionStorage.getItem(key) === '1') return;
+  registrationTrigger.value = trigger;
+  isRegistrationPromptOpen.value = true;
+  window.sessionStorage.setItem(key, '1');
+}
+
+async function loadFanProfile() {
+  if (!props.eventId) return;
+  const response = await fetchFanProfile(props.eventId);
+  if (!response?.ok) return;
+  const data = response.data || {};
+  isRegisteredFan.value = Boolean(data.registered);
+  if (data.session_token) {
+    fanSessionToken.value = data.session_token;
+  }
+  if (data.registered) {
+    fanId.value = Number(data.user?.id) || 0;
+    fanNickname.value = data.user?.nickname || '';
+    totalCoins.value = Math.max(0, Number(data.wallet) || 0);
+    leaderboardUser.value = data.user_rank || null;
+  } else if (Number.isFinite(Number(data.guest_coins))) {
+    totalCoins.value = Math.max(totalCoins.value, Number(data.guest_coins) || 0);
+  }
+}
+
+async function handleRegistrationSubmit(form) {
+  const response = await registerFanProfile({
+    event_id: props.eventId,
+    nickname: form.nickname,
+    gender: form.gender,
+    phone: form.phone,
+    accepted_terms: form.acceptedTerms,
+    guest_coins: totalCoins.value,
+    enter_lottery: form.trigger === 'after_vote',
+  });
+  if (!response?.ok) {
+    return { ok: false, message: response.message };
+  }
+  isRegisteredFan.value = true;
+  fanId.value = Number(response.data?.user?.id) || 0;
+  fanNickname.value = response.data?.user?.nickname || '';
+  totalCoins.value = Math.max(0, Number(response.data?.wallet) || totalCoins.value);
+  isRegistrationPromptOpen.value = false;
+  await loadLeaderboardPreview();
+  return { ok: true };
+}
+
+function openSpendPreview() {
+  isSpendPreviewOpen.value = true;
+}
+
+async function attemptRedeem(rewardKey, costCoins) {
+  if (!isRegisteredFan.value) {
+    isSpendPreviewOpen.value = false;
+    openRegistrationPrompt('spend_redeem');
+    return;
+  }
+  const response = await redeemFanReward(props.eventId, rewardKey, costCoins);
+  if (response?.ok) {
+    totalCoins.value = Number(response.data?.wallet) || totalCoins.value;
+  }
+}
 
 function onFeatureSelect(featureId) {
   if (featureId === 'game-live') {
