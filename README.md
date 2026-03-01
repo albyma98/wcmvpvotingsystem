@@ -82,3 +82,29 @@ La repository include tutto il necessario per eseguire l'applicazione (backend G
    ```
 
    Assicurati che l'admin di bootstrap sia stato creato controllando i log del backend (messaggio `admin ... creato`). È possibile disabilitare la creazione automatica impostando `BOOTSTRAP_ADMIN_ENABLED=false` o lasciando vuoto `BOOTSTRAP_ADMIN_PASSWORD_HASH`.【F:wcmvpvs-back/cmd/webapi/main.go†L42-L70】
+
+## OTP SMS (Twilio Verify) - API examples
+
+Il backend espone gli endpoint OTP sotto `/api/auth/*` (proxy frontend) / `/auth/*` (backend diretto).
+
+```bash
+# Start register (crea utente pending + invia OTP)
+curl -i -X POST http://localhost:3000/auth/start \
+  -H 'Content-Type: application/json' \
+  -d '{"phone":"+393331234567","mode":"register"}'
+
+# Start login (utente già esistente + invia OTP)
+curl -i -X POST http://localhost:3000/auth/start \
+  -H 'Content-Type: application/json' \
+  -d '{"phone":"+393331234567","mode":"login"}'
+
+# Verify code (approva OTP e ritorna token sessione)
+curl -i -X POST http://localhost:3000/auth/verify \
+  -H 'Content-Type: application/json' \
+  -d '{"phone":"+393331234567","code":"123456"}'
+
+# Resend OTP
+curl -i -X POST http://localhost:3000/auth/resend \
+  -H 'Content-Type: application/json' \
+  -d '{"phone":"+393331234567"}'
+```

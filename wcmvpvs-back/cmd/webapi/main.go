@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -99,6 +100,8 @@ func main() {
 // * closes the principal web server
 func run() error {
 	rand.Seed(globaltime.Now().UnixNano())
+	loadDotEnv(filepath.Join("..", ".env"))
+	loadDotEnv(".env")
 	// Load Configuration and defaults
 	cfg, err := loadConfiguration()
 	if err != nil {
@@ -172,6 +175,9 @@ func run() error {
 		Database:                db,
 		VoteSecret:              cfg.Vote.Secret,
 		TicketValidationBaseURL: cfg.Tickets.ValidationBaseURL,
+		TwilioAccountSID:        firstNonEmpty(cfg.Twilio.AccountSID, os.Getenv("ACCOUNT_SID")),
+		TwilioAuthToken:         firstNonEmpty(cfg.Twilio.AuthToken, os.Getenv("AUTH_TOKEN")),
+		TwilioVerifySID:         firstNonEmpty(cfg.Twilio.VerifyServiceSID, os.Getenv("VERIFY_SERVICE_SID")),
 	})
 	if err != nil {
 		logger.WithError(err).Error("error creating the API server instance")
@@ -237,4 +243,36 @@ func run() error {
 	}
 
 	return nil
+}
+
+func loadDotEnv(path string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.Trim(strings.TrimSpace(parts[1]), "\"")
+		if key == "" || os.Getenv(key) != "" {
+			continue
+		}
+		_ = os.Setenv(key, val)
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
