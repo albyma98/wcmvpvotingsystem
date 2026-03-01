@@ -527,6 +527,18 @@ const voteFeature = computed(() => {
   };
 });
 
+function normalizeLeaderboardUser(entry) {
+  const rank = Number(entry?.rank ?? entry?.position ?? entry?.user_rank);
+  if (!Number.isFinite(rank)) {
+    return null;
+  }
+
+  return {
+    rank,
+    coins: Math.max(0, Number(entry?.coins ?? entry?.wallet ?? entry?.score) || 0),
+  };
+}
+
 function openLeaderboard() {
   isLeaderboardModalOpen.value = true;
   if (!isRegisteredFan.value) {
@@ -621,11 +633,8 @@ async function loadLeaderboardPreview() {
       coins: Math.max(0, Number(entry?.coins) || 0),
     }));
 
-    if (isRegisteredFan.value && Number.isFinite(Number(data?.userRank?.rank))) {
-      leaderboardUser.value = {
-        rank: Number(data.userRank.rank),
-        coins: Math.max(0, Number(data.userRank.coins) || 0),
-      };
+    if (isRegisteredFan.value) {
+      leaderboardUser.value = normalizeLeaderboardUser(data?.userRank ?? data?.user_rank);
     }
   } catch (error) {
     // placeholder fallback, keep static UI preview
@@ -975,7 +984,7 @@ async function loadFanProfile() {
     fanId.value = Number(data.user?.id) || 0;
     fanNickname.value = data.user?.nickname || '';
     totalCoins.value = Math.max(0, Number(data.wallet) || 0);
-    leaderboardUser.value = data.user_rank || null;
+    leaderboardUser.value = normalizeLeaderboardUser(data.user_rank ?? data.userRank);
     fanRewardRedemptions.value = Array.isArray(data.reward_redemptions) ? data.reward_redemptions : [];
     fanLotteryTicket.value = data.lottery_ticket || null;
   } else if (Number.isFinite(Number(data.guest_coins))) {
