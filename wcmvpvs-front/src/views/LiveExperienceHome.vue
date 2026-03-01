@@ -463,6 +463,8 @@ const leaderboardTop3 = ref([
   { name: 'TIFO3', coins: 249 },
 ]);
 const leaderboardUser = ref(null);
+let leaderboardPollingTimer = null;
+let isLeaderboardRequestInFlight = false;
 const hasSponsors = computed(() => sponsors.value.length > 0);
 const showSponsorsBox = computed(() => hasSponsors.value);
 const showFeedbackCta = computed(() => hasFeedbackSurvey.value);
@@ -561,7 +563,8 @@ onMounted(async () => {
   await loadFanProfile();
   loadEventStories();
   loadSponsors();
-  loadLeaderboardPreview();
+  await loadLeaderboardPreview();
+  startLeaderboardPolling();
 });
 
 async function addCoins(amount) {
@@ -585,9 +588,11 @@ async function addCoins(amount) {
 }
 
 async function loadLeaderboardPreview() {
-  if (!props.eventId) {
+  if (!props.eventId || isLeaderboardRequestInFlight) {
     return;
   }
+
+  isLeaderboardRequestInFlight = true;
 
   try {
     // TODO: sostituire endpoint placeholder con leaderboard ufficiale quando disponibile.
@@ -606,7 +611,27 @@ async function loadLeaderboardPreview() {
     }
   } catch (error) {
     // placeholder fallback, keep static UI preview
+  } finally {
+    isLeaderboardRequestInFlight = false;
   }
+}
+
+function stopLeaderboardPolling() {
+  if (leaderboardPollingTimer !== null && typeof window !== 'undefined') {
+    window.clearInterval(leaderboardPollingTimer);
+  }
+  leaderboardPollingTimer = null;
+}
+
+function startLeaderboardPolling() {
+  stopLeaderboardPolling();
+  if (typeof window === 'undefined' || !props.eventId) {
+    return;
+  }
+
+  leaderboardPollingTimer = window.setInterval(() => {
+    loadLeaderboardPreview();
+  }, 5000);
 }
 
 function openFeedbackModal() {
@@ -834,6 +859,7 @@ watch(
     loadEventStories();
     loadSponsors();
     loadLeaderboardPreview();
+    startLeaderboardPolling();
   },
 );
 
@@ -861,6 +887,7 @@ watch([isStoryModalOpen, isProfileOverlayOpen], ([storyOpen, profileOpen]) => {
 });
 
 onBeforeUnmount(() => {
+  stopLeaderboardPolling();
   if (typeof document !== 'undefined') {
     document.body.style.overflow = '';
   }
