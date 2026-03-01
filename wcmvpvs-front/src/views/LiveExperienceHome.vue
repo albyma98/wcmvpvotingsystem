@@ -471,10 +471,7 @@ const hasFeedbackSurvey = computed(() => {
 });
 
 const profileAvatarUrl = computed(() => {
-  if (props.votedPlayerImageUrl) {
-    return props.votedPlayerImageUrl;
-  }
-  return '';
+  return anonymousAvatarDataUrl;
 });
 
 const profileNickname = computed(() => {

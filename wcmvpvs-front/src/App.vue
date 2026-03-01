@@ -67,7 +67,7 @@ import ShopAdminPortal from './components/shop/ShopAdminPortal.vue';
 import PartnerPortal from './components/PartnerPortal.vue';
 import LiveExperienceHome from './views/LiveExperienceHome.vue';
 import NewUiVoteModal from './components/NewUiVoteModal.vue';
-import { apiClient } from './api';
+import { apiClient, fetchVoteStatus } from './api';
 
 function readEventId(search) {
   const params = new URLSearchParams(search || '');
@@ -197,6 +197,60 @@ const showNewUiVoteModal = ref(false);
 const newUiSelectedPlayer = ref(null);
 const newUiRegistrationPromptSignal = ref(0);
 
+const NEW_UI_VOTE_STORAGE_KEY = 'newui:voted-player';
+
+function sanitizeStoredPlayer(candidate) {
+  if (!candidate || typeof candidate !== 'object') {
+    return null;
+  }
+
+  const id = Number(candidate.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    return null;
+  }
+
+  return {
+    id,
+    name: typeof candidate.name === 'string' ? candidate.name : '',
+    lastName: typeof candidate.lastName === 'string' ? candidate.lastName : '',
+    number: candidate.number == null ? '' : String(candidate.number),
+    avatar: typeof candidate.avatar === 'string' ? candidate.avatar : '',
+  };
+}
+
+function readStoredVotedPlayer(eventId) {
+  if (typeof window === 'undefined' || !eventId) {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(`${NEW_UI_VOTE_STORAGE_KEY}:${eventId}`);
+    if (!raw) {
+      return null;
+    }
+    return sanitizeStoredPlayer(JSON.parse(raw));
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeStoredVotedPlayer(eventId, player) {
+  if (typeof window === 'undefined' || !eventId) {
+    return;
+  }
+
+  if (!player) {
+    window.localStorage.removeItem(`${NEW_UI_VOTE_STORAGE_KEY}:${eventId}`);
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(`${NEW_UI_VOTE_STORAGE_KEY}:${eventId}`, JSON.stringify(player));
+  } catch (error) {
+    // no-op: localStorage may be unavailable on some browsers
+  }
+}
+
 const newUiSelectedPlayerImageUrl = computed(() =>
   typeof newUiSelectedPlayer.value?.avatar === 'string' ? newUiSelectedPlayer.value.avatar : '',
 );
@@ -230,9 +284,72 @@ function handleNewUiPlayerVoted(player) {
   if (!player) {
     return;
   }
-  newUiSelectedPlayer.value = player;
+  newUiSelectedPlayer.value = sanitizeStoredPlayer(player) || player;
+  writeStoredVotedPlayer(resolvedEventId.value, newUiSelectedPlayer.value);
   showNewUiVoteModal.value = false;
   newUiRegistrationPromptSignal.value += 1;
+}
+
+async function fetchNewUiPlayerById(playerId) {
+  if (!playerId) {
+    return null;
+  }
+
+  try {
+    const { data } = await apiClient.get('/public/players');
+    const players = Array.isArray(data?.players) ? data.players : Array.isArray(data) ? data : [];
+    const selected = players.find((player) => Number(player?.id) === Number(playerId));
+    if (!selected) {
+      return null;
+    }
+
+    const fullName = [String(selected?.first_name || '').trim(), String(selected?.last_name || '').trim()]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    return sanitizeStoredPlayer({
+      id: Number(selected.id),
+      name: fullName,
+      lastName: String(selected?.last_name || '').trim(),
+      number: selected?.jersey_number == null ? '' : String(selected.jersey_number),
+      avatar: String(selected?.image_url || '').trim(),
+    });
+  } catch (error) {
+    console.error('Impossibile caricare il giocatore votato per newui', error);
+    return null;
+  }
+}
+
+async function hydrateNewUiVote() {
+  if (appView.value !== 'newui' || !resolvedEventId.value) {
+    newUiSelectedPlayer.value = null;
+    return;
+  }
+
+  const eventId = resolvedEventId.value;
+  const storedPlayer = readStoredVotedPlayer(eventId);
+  if (storedPlayer) {
+    newUiSelectedPlayer.value = storedPlayer;
+  }
+
+  const voteStatus = await fetchVoteStatus(eventId);
+  if (!voteStatus?.ok || !voteStatus.hasVoted || !voteStatus.playerId) {
+    if (!voteStatus?.hasVoted) {
+      newUiSelectedPlayer.value = null;
+      writeStoredVotedPlayer(eventId, null);
+    }
+    return;
+  }
+
+  if (storedPlayer?.id === voteStatus.playerId) {
+    return;
+  }
+
+  const playerFromApi = await fetchNewUiPlayerById(voteStatus.playerId);
+  if (playerFromApi) {
+    newUiSelectedPlayer.value = playerFromApi;
+    writeStoredVotedPlayer(eventId, playerFromApi);
+  }
 }
 
 async function fetchActiveEvent() {
@@ -308,6 +425,14 @@ watch(appView, (view) => {
     hasCheckedActiveEvent.value = false;
   }
 });
+
+watch(
+  [appView, resolvedEventId],
+  async () => {
+    await hydrateNewUiVote();
+  },
+  { immediate: true },
+);
 </script>
 
 <style scoped>
