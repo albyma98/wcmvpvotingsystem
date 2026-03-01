@@ -38,9 +38,10 @@ type WebAPIConfiguration struct {
 	}
 
 	Twilio struct {
-		AccountSID       string
-		AuthToken        string
-		VerifyServiceSID string
+		AccountSID          string
+		AuthToken           string
+		VerifyServiceSID    string
+		MessagingServiceSID string
 	}
 	BootstrapAdmin struct {
 		Enabled      bool   `conf:"default:true"`

@@ -76,6 +76,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/events/{id}/tickets", rt.wrapAdmin(rt.listEventTickets))
 	rt.router.Post("/events/{id}/validate-ticket", rt.wrapAdmin(rt.validateTicket))
 	rt.router.Post("/events/{eventId}/prizes/{prizeId}/assign", rt.wrapAdmin(rt.assignPrizeWinner))
+	rt.router.Post("/notifications/test-sms", rt.wrapAdmin(rt.sendTestWinnerSMS))
 	rt.router.Delete("/events/{eventId}/prizes/{prizeId}/winner", rt.wrapAdmin(rt.clearPrizeWinner))
 	rt.router.Get("/events/{id}/results", rt.wrap(rt.getEventResults))
 	rt.router.Get("/events/{id}/votes/count", rt.wrap(rt.getEventVoteCount))
