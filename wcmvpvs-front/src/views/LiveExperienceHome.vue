@@ -492,19 +492,11 @@ const accountRedemptions = computed(() =>
 );
 
 const lotteryTicketCode = computed(() => String(fanLotteryTicket.value?.ticket_code || '').trim());
-const fallbackLotteryCode = computed(() => {
-  if (!hasVotedMvp.value || !props.eventId) {
-    return '';
-  }
-
-  const fanSegment = fanId.value ? String(fanId.value).padStart(5, '0') : 'GUEST';
-  const deviceSegment = getOrCreateDeviceId().replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase() || 'DEVICE';
-  return `MVP-${props.eventId}-${fanSegment}-${deviceSegment}`;
-});
-const displayLotteryCode = computed(() => lotteryTicketCode.value || fallbackLotteryCode.value);
+const lotteryQrData = computed(() => String(fanLotteryTicket.value?.qr_data || '').trim());
+const displayLotteryCode = computed(() => lotteryTicketCode.value);
 const displayLotteryQrUrl = computed(() =>
-  displayLotteryCode.value
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(displayLotteryCode.value)}`
+  lotteryQrData.value
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(lotteryQrData.value)}`
     : '',
 );
 
