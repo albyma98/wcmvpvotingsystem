@@ -715,6 +715,36 @@ export async function registerFanProfile(payload) {
   }
 }
 
+export async function startPhoneAuth(phone: string, mode: 'register' | 'login' = 'register') {
+  try {
+    await apiClient.post('/auth/start', { phone, mode }, { headers: getDeviceHeaders() });
+    return { ok: true };
+  } catch (error) {
+    const code = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
+    return { ok: false, error, code };
+  }
+}
+
+export async function verifyPhoneAuth(phone: string, code: string) {
+  try {
+    const { data } = await apiClient.post('/auth/verify', { phone, code }, { headers: getDeviceHeaders() });
+    return { ok: true, data };
+  } catch (error) {
+    const errCode = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
+    return { ok: false, error, code: errCode };
+  }
+}
+
+export async function resendPhoneAuth(phone: string) {
+  try {
+    await apiClient.post('/auth/resend', { phone }, { headers: getDeviceHeaders() });
+    return { ok: true };
+  } catch (error) {
+    const code = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
+    return { ok: false, error, code };
+  }
+}
+
 export async function syncGuestCoins(eventId, coins) {
   try {
     await apiClient.post(`/events/${eventId}/guest-coins`, { coins }, { headers: getDeviceHeaders() });
