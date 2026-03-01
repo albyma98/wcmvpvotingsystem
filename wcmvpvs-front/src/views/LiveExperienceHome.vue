@@ -591,8 +591,12 @@ async function addCoins(amount) {
 
   await nextTick();
   syncWalletTargetEl();
+
+  if (props.eventId) {
+    await syncGuestCoins(props.eventId, totalCoins.value);
+  }
+
   if (!isRegisteredFan.value && props.eventId) {
-    syncGuestCoins(props.eventId, totalCoins.value);
     lastEarnedCoins.value = parsed;
     openRegistrationPrompt('after_earn');
   }
