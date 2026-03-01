@@ -289,7 +289,10 @@
 
                   <div ref="mysteryBoxEl" class="mystery-box__chest" :class="mysteryBoxAnimationClass" aria-hidden="true">📦</div>
 
-                  <p v-if="!canOpenMysteryBox" class="mt-2 text-sm font-semibold text-rose-200">Monete insufficienti per aprire il box.</p>
+                  <p v-if="isMysteryBoxCooldownActive" class="mt-2 text-sm font-semibold text-amber-200">
+                    Potrai aprire un'altra mystery box tra {{ mysteryBoxCooldownLabel }}.
+                  </p>
+                  <p v-else-if="totalCoins < MYSTERY_BOX_COST" class="mt-2 text-sm font-semibold text-rose-200">Monete insufficienti per aprire il box.</p>
                   <p v-if="mysteryBoxStatusText" class="mt-3 text-sm text-slate-200">{{ mysteryBoxStatusText }}</p>
 
                   <Transition name="reveal-fade">
@@ -382,12 +385,14 @@ const rewardLabelMap = {
 };
 
 const MYSTERY_BOX_COST = 10;
+const MYSTERY_BOX_COOLDOWN_MS = 2 * 60 * 1000;
 const COIN_BOOST_DURATION_MS = 10 * 60 * 1000;
 const storageKeys = {
   wallet: 'wallet:coins',
   coinBoostActive: 'coinBoostActive',
   coinBoostEndTime: 'coinBoostEndTime',
   freeRetry: 'freeRetry',
+  mysteryBoxCooldownEndTime: 'mysteryBoxCooldownEndTime',
 };
 const mysteryRewards = [
   { id: 'coins-6', type: 'coins', amount: 6, label: '+6 monete' },
@@ -519,6 +524,7 @@ const isOpeningMysteryBox = ref(false);
 const mysteryBoxStep = ref('idle');
 const mysteryBoxStatusText = ref('');
 const mysteryBoxReward = ref(null);
+const mysteryBoxCooldownEndTime = ref(0);
 const coinBoostActive = ref(false);
 const coinBoostEndTime = ref(0);
 const boostTick = ref(Date.now());
@@ -552,10 +558,19 @@ const coinBoostCountdownLabel = computed(() => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 });
 
-const canOpenMysteryBox = computed(() => totalCoins.value >= MYSTERY_BOX_COST);
+const mysteryBoxCooldownRemainingMs = computed(() => Math.max(0, mysteryBoxCooldownEndTime.value - boostTick.value));
+const isMysteryBoxCooldownActive = computed(() => mysteryBoxCooldownRemainingMs.value > 0);
+const canOpenMysteryBox = computed(() => totalCoins.value >= MYSTERY_BOX_COST && !isMysteryBoxCooldownActive.value);
+const mysteryBoxCooldownLabel = computed(() => {
+  const totalSeconds = Math.ceil(mysteryBoxCooldownRemainingMs.value / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+});
 const mysteryBoxAnimationClass = computed(() => `mystery-box__chest--${mysteryBoxStep.value}`);
 const mysteryBoxButtonLabel = computed(() => {
   if (isOpeningMysteryBox.value) return 'Apertura...';
+  if (isMysteryBoxCooldownActive.value) return `Attendi ${mysteryBoxCooldownLabel.value}`;
   if (!canOpenMysteryBox.value) return `Servono ${MYSTERY_BOX_COST} 🪙`;
   return 'APRI';
 });
@@ -647,6 +662,7 @@ function persistPowerUps() {
   window.localStorage.setItem(storageKeys.coinBoostActive, coinBoostActive.value ? '1' : '0');
   window.localStorage.setItem(storageKeys.coinBoostEndTime, String(coinBoostEndTime.value || 0));
   window.localStorage.setItem(storageKeys.freeRetry, String(Math.max(0, freeRetry.value)));
+  window.localStorage.setItem(storageKeys.mysteryBoxCooldownEndTime, String(mysteryBoxCooldownEndTime.value || 0));
 }
 
 function hydratePowerUps() {
@@ -657,6 +673,7 @@ function hydratePowerUps() {
   const storedBoostActive = window.localStorage.getItem(storageKeys.coinBoostActive) === '1';
   const storedBoostEndTime = Number.parseInt(window.localStorage.getItem(storageKeys.coinBoostEndTime) || '0', 10);
   const storedFreeRetry = Number.parseInt(window.localStorage.getItem(storageKeys.freeRetry) || '0', 10);
+  const storedMysteryBoxCooldownEndTime = Number.parseInt(window.localStorage.getItem(storageKeys.mysteryBoxCooldownEndTime) || '0', 10);
 
   coinBoostEndTime.value = Number.isFinite(storedBoostEndTime) ? storedBoostEndTime : 0;
   coinBoostActive.value = storedBoostActive && coinBoostEndTime.value > Date.now();
@@ -665,6 +682,12 @@ function hydratePowerUps() {
   }
 
   freeRetry.value = Math.max(0, Number.isFinite(storedFreeRetry) ? storedFreeRetry : 0);
+  mysteryBoxCooldownEndTime.value = Number.isFinite(storedMysteryBoxCooldownEndTime)
+    ? Math.max(Date.now(), storedMysteryBoxCooldownEndTime)
+    : 0;
+  if (mysteryBoxCooldownEndTime.value <= Date.now()) {
+    mysteryBoxCooldownEndTime.value = 0;
+  }
   persistPowerUps();
 }
 
@@ -1278,6 +1301,9 @@ async function openMysteryBox() {
   mysteryBoxStatusText.value = '';
 
   await executeMysteryReward(reward);
+
+  mysteryBoxCooldownEndTime.value = Date.now() + MYSTERY_BOX_COOLDOWN_MS;
+  persistPowerUps();
 
   mysteryBoxStep.value = 'idle';
   isOpeningMysteryBox.value = false;
