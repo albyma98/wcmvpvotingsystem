@@ -58,9 +58,6 @@
                   >
                     <div class="flex items-start justify-between gap-2">
                       <span class="text-2xl" aria-hidden="true">{{ option.icon }}</span>
-                      <span class="rounded-full border border-amber-300/40 bg-amber-300/15 px-2 py-0.5 text-xs font-bold text-amber-200">
-                        +{{ option.reward }}
-                      </span>
                     </div>
                     <h3 class="mt-3 text-lg font-extrabold text-white">{{ option.title }}</h3>
                     <p class="mt-1 text-sm text-slate-300">{{ option.description }}</p>
@@ -158,9 +155,6 @@ const earnOptions = [
   { id: 'quiz', title: 'Quiz Lampo', description: 'Rispondi veloce a domande a tema match.', reward: 15, icon: '🧠', type: 'game', cooldownSeconds: 120 },
   { id: 'tap', title: 'Tap Challenge', description: 'Tappa più forte che puoi in 10 secondi.', reward: 8, icon: '👆', type: 'game', cooldownSeconds: 60 },
   { id: 'memory-flash', title: 'Memory Flash', description: 'Memorizza le coppie e chiudi il board prima del tempo.', reward: 8, icon: '🧩', type: 'game', cooldownSeconds: 60 },
-  { id: 'pronostico-set', title: 'Pronostico Set', description: 'Indovina il risultato del prossimo set.', reward: 12, icon: '🎯', type: 'game', cooldownSeconds: 180 },
-  { id: 'codice-sponsor', title: 'Codice Sponsor', description: 'Inserisci il codice mostrato sul maxischermo.', reward: 20, icon: '🏷️', type: 'action', cooldownSeconds: 300 },
-  { id: 'condividi-torna', title: 'Condividi & Torna', description: 'Condividi l’evento e torna per riscattare.', reward: 5, icon: '📣', type: 'action', cooldownSeconds: 150 },
 ];
 
 const nowTick = ref(Date.now());
