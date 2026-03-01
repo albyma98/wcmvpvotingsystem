@@ -33,6 +33,7 @@
         :voted-player-last-name="newUiSelectedPlayerLastName"
         :voted-player-number="newUiSelectedPlayerNumber"
         :registration-prompt-signal="newUiRegistrationPromptSignal"
+        :active-event="activeEvent"
         @feature-select="handleNewUiFeatureSelect"
       />
       <NewUiVoteModal
