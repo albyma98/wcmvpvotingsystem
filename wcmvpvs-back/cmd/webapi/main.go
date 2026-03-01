@@ -171,13 +171,14 @@ func run() error {
 
 	// Create the API router
 	apirouter, err := api.New(api.Config{
-		Logger:                  logger,
-		Database:                db,
-		VoteSecret:              cfg.Vote.Secret,
-		TicketValidationBaseURL: cfg.Tickets.ValidationBaseURL,
-		TwilioAccountSID:        firstNonEmpty(cfg.Twilio.AccountSID, os.Getenv("ACCOUNT_SID")),
-		TwilioAuthToken:         firstNonEmpty(cfg.Twilio.AuthToken, os.Getenv("AUTH_TOKEN")),
-		TwilioVerifySID:         firstNonEmpty(cfg.Twilio.VerifyServiceSID, os.Getenv("VERIFY_SERVICE_SID")),
+		Logger:                    logger,
+		Database:                  db,
+		VoteSecret:                cfg.Vote.Secret,
+		TicketValidationBaseURL:   cfg.Tickets.ValidationBaseURL,
+		TwilioAccountSID:          firstNonEmpty(cfg.Twilio.AccountSID, os.Getenv("ACCOUNT_SID")),
+		TwilioAuthToken:           firstNonEmpty(cfg.Twilio.AuthToken, os.Getenv("AUTH_TOKEN")),
+		TwilioVerifySID:           firstNonEmpty(cfg.Twilio.VerifyServiceSID, os.Getenv("VERIFY_SERVICE_SID")),
+		TwilioMessagingServiceSID: firstNonEmpty(cfg.Twilio.MessagingServiceSID, os.Getenv("MESSAGING_SERVICE_SID")),
 	})
 	if err != nil {
 		logger.WithError(err).Error("error creating the API server instance")

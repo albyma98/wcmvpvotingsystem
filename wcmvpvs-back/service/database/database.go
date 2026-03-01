@@ -785,6 +785,7 @@ type AppDatabase interface {
 	ListEventPrizes(eventID int) ([]EventPrize, error)
 	AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize, error)
 	ClearPrizeWinner(eventID, prizeID int) error
+	GetEligibleWinnerPhoneByVote(eventID, voteID int) (string, error)
 	GetEventResults(eventID int) ([]EventVoteResult, error)
 	GetEventVoteLeaderboard(eventID, limit int) ([]EventVoteLeaderboardEntry, error)
 	GetEventVoteCount(eventID int) (int, error)
@@ -3145,9 +3146,14 @@ func (db *appdbimpl) ListEventTickets(eventID int) ([]EventTicket, error) {
 	rows, err := db.c.Query(`
 SELECT v.id, v.ticket_code, v.ticket_signature, v.player_id, IFNULL(p.first_name, ''), IFNULL(p.last_name, ''), v.created_at
 FROM votes v
+JOIN fan_profiles fp ON fp.id = v.user_id
+JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id
 LEFT JOIN players p ON p.id = v.player_id
 LEFT JOIN event_prizes ep ON ep.winner_vote_id = v.id AND ep.event_id = ?
-WHERE v.event_id = ? AND ep.id IS NULL
+WHERE v.event_id = ?
+  AND ep.id IS NULL
+  AND fp.phone_verified_at IS NOT NULL
+  AND TRIM(fp.phone_verified_at) <> ''
 ORDER BY v.created_at ASC
 `, eventID, eventID)
 	if err != nil {
@@ -3380,6 +3386,21 @@ func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize
 		return EventPrize{}, ErrPrizeVoteMismatch
 	}
 
+	var eligibleCount int
+	if err := tx.QueryRow(`SELECT COUNT(1)
+	FROM votes v
+	JOIN fan_profiles fp ON fp.id = v.user_id
+	JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id
+	WHERE v.id = ?
+	  AND v.event_id = ?
+	  AND fp.phone_verified_at IS NOT NULL
+	  AND TRIM(fp.phone_verified_at) <> ''`, voteID, eventID).Scan(&eligibleCount); err != nil {
+		return EventPrize{}, err
+	}
+	if eligibleCount == 0 {
+		return EventPrize{}, ErrPrizeVoteMismatch
+	}
+
 	var alreadyAssigned int
 	if err := tx.QueryRow(`SELECT COUNT(1) FROM event_prizes WHERE event_id = ? AND winner_vote_id = ?`, eventID, voteID).Scan(&alreadyAssigned); err != nil {
 		return EventPrize{}, err
@@ -3415,6 +3436,24 @@ func (db *appdbimpl) ClearPrizeWinner(eventID, prizeID int) error {
 }
 
 // GetEventResults returns aggregated vote results for an event
+func (db *appdbimpl) GetEligibleWinnerPhoneByVote(eventID, voteID int) (string, error) {
+	var phone string
+	err := db.c.QueryRow(`SELECT fp.phone_e164
+	FROM votes v
+	JOIN fan_profiles fp ON fp.id = v.user_id
+	JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id
+	WHERE v.event_id = ?
+	  AND v.id = ?
+	  AND fp.phone_verified_at IS NOT NULL
+	  AND TRIM(fp.phone_verified_at) <> ''
+	  AND TRIM(fp.phone_e164) <> ''
+	LIMIT 1`, eventID, voteID).Scan(&phone)
+	if err != nil {
+		return "", err
+	}
+	return phone, nil
+}
+
 func (db *appdbimpl) GetEventResults(eventID int) ([]EventVoteResult, error) {
 	var exists int
 	if err := db.c.QueryRow(`SELECT COUNT(1) FROM events WHERE id = ?`, eventID).Scan(&exists); err != nil {

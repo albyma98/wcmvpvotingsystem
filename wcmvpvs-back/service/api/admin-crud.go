@@ -581,6 +581,15 @@ func (rt *_router) assignPrizeWinner(w http.ResponseWriter, r *http.Request, ctx
 		return
 	}
 
+	phone, phoneErr := rt.db.GetEligibleWinnerPhoneByVote(eventID, payload.VoteID)
+	if phoneErr != nil {
+		ctx.Logger.WithError(phoneErr).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "vote_id": payload.VoteID}).Warn("winner assigned but phone is not eligible for sms notification")
+	} else if err := rt.twilioMessaging.SendSMS(phone, winnerExtractedSMSMessage); err != nil {
+		ctx.Logger.WithError(err).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "vote_id": payload.VoteID, "phone": maskPhone(phone)}).Warn("winner assigned but sms notification failed")
+	} else {
+		ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "vote_id": payload.VoteID, "phone": maskPhone(phone)}).Info("winner sms notification sent")
+	}
+
 	_ = json.NewEncoder(w).Encode(prize)
 	ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "vote_id": payload.VoteID}).Info("prize winner assigned")
 }

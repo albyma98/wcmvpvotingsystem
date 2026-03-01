@@ -60,9 +60,10 @@ type Config struct {
 	// TicketValidationBaseURL is the public base URL used to generate ticket validation links
 	TicketValidationBaseURL string
 
-	TwilioAccountSID string
-	TwilioAuthToken  string
-	TwilioVerifySID  string
+	TwilioAccountSID          string
+	TwilioAuthToken           string
+	TwilioVerifySID           string
+	TwilioMessagingServiceSID string
 }
 
 // Router is the package API interface representing an API handler builder
@@ -106,6 +107,11 @@ func New(cfg Config) (Router, error) {
 			AuthToken:  cfg.TwilioAuthToken,
 			ServiceSID: cfg.TwilioVerifySID,
 		}),
+		twilioMessaging: newTwilioMessagingClient(twilioMessagingConfig{
+			AccountSID:          cfg.TwilioAccountSID,
+			AuthToken:           cfg.TwilioAuthToken,
+			MessagingServiceSID: cfg.TwilioMessagingServiceSID,
+		}),
 	}, nil
 }
 
@@ -137,7 +143,8 @@ type _router struct {
 	authRateByPhone map[string][]time.Time
 	authRateByIP    map[string][]time.Time
 
-	twilioVerify *twilioVerifyClient
+	twilioVerify    *twilioVerifyClient
+	twilioMessaging *twilioMessagingClient
 }
 
 type adminSession struct {
