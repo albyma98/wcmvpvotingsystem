@@ -5758,16 +5758,45 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec(`INSERT INTO fan_profiles (organization_id, nickname, gender, phone, phone_e164, accepted_terms)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(organization_id, phone) DO UPDATE SET nickname=excluded.nickname, gender=excluded.gender, phone_e164=excluded.phone_e164, accepted_terms=excluded.accepted_terms`,
-		input.OrganizationID, input.Nickname, input.Gender, input.Phone, input.Phone, boolToInt(input.AcceptedTerms)); err != nil {
-		return FanProfileSummary{}, err
+	profileID := 0
+	if input.SessionToken != "" {
+		err = tx.QueryRow(`SELECT fan_id FROM fan_sessions WHERE token = ?`, input.SessionToken).Scan(&profileID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return FanProfileSummary{}, err
+		}
+	}
+
+	if profileID == 0 {
+		err = tx.QueryRow(`SELECT id FROM fan_profiles WHERE phone_e164 = ? OR phone = ? LIMIT 1`, input.Phone, input.Phone).Scan(&profileID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return FanProfileSummary{}, err
+		}
+	}
+
+	if profileID > 0 {
+		if _, err = tx.Exec(`UPDATE fan_profiles
+			SET organization_id = ?, nickname = ?, gender = ?, phone = ?, phone_e164 = ?, accepted_terms = ?, updated_at = CURRENT_TIMESTAMP
+			WHERE id = ?`,
+			input.OrganizationID, input.Nickname, input.Gender, input.Phone, input.Phone, boolToInt(input.AcceptedTerms), profileID); err != nil {
+			return FanProfileSummary{}, err
+		}
+	} else {
+		res, execErr := tx.Exec(`INSERT INTO fan_profiles (organization_id, nickname, gender, phone, phone_e164, accepted_terms)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			input.OrganizationID, input.Nickname, input.Gender, input.Phone, input.Phone, boolToInt(input.AcceptedTerms))
+		if execErr != nil {
+			return FanProfileSummary{}, execErr
+		}
+		id, idErr := res.LastInsertId()
+		if idErr != nil || id <= 0 {
+			return FanProfileSummary{}, fmt.Errorf("unable to fetch inserted fan id: %w", idErr)
+		}
+		profileID = int(id)
 	}
 
 	var profile FanProfile
 	var acceptedTerms int
-	err = tx.QueryRow(`SELECT id, organization_id, nickname, gender, phone, accepted_terms, created_at, updated_at FROM fan_profiles WHERE organization_id = ? AND phone = ?`, input.OrganizationID, input.Phone).
+	err = tx.QueryRow(`SELECT id, organization_id, nickname, gender, phone, accepted_terms, created_at, updated_at FROM fan_profiles WHERE id = ?`, profileID).
 		Scan(&profile.ID, &profile.OrganizationID, &profile.Nickname, &profile.Gender, &profile.Phone, &acceptedTerms, &profile.CreatedAt, &profile.UpdatedAt)
 	if err != nil {
 		return FanProfileSummary{}, err
