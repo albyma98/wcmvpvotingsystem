@@ -509,13 +509,8 @@ const shouldOpenProfileAfterAuth = ref(false);
 const lastEarnedCoins = ref(0);
 const isSpendPreviewOpen = ref(false);
 const experienceFormStorageKey = 'experienceFormSubmitted';
-const selectedRewardLabel = ref('Coupon Match Day · 30 🪙');
-const spendCouponPreview = [
-  { id: 'coupon-match', label: 'Coupon Match Day', description: 'Bibita + snack al bar partner.', cost: 30 },
-  { id: 'coupon-merch', label: 'Sconto Merch 20%', description: 'Sconto valido nello store ufficiale.', cost: 45 },
-  { id: 'coupon-upgrade', label: 'Upgrade posto', description: 'Prova a passare al settore premium.', cost: 60 },
-  { id: 'coupon-photo', label: 'Foto Team Edition', description: 'Scatto ricordo con layout personalizzato.', cost: 20 },
-];
+const selectedRewardLabel = ref('Premio riscattato');
+const spendCouponPreview = [];
 const totalCoins = ref(0);
 const walletTargetEl = ref(null);
 const coinAnimationRef = ref(null);
