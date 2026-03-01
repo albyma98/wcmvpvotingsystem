@@ -93,6 +93,14 @@
                       @claim="handleClaim"
                       @exit="goBack"
                     />
+                    <MemoryFlashGame
+                      v-else-if="activeGame?.id === 'memory-flash'"
+                      class="h-full w-full"
+                      :wallet-coins="walletCoins"
+                      @claim="handleClaim"
+                      @spend="handleSpend"
+                      @exit="goBack"
+                    />
                     <div v-else class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
                       Game coming soon
                     </div>
@@ -115,6 +123,7 @@ import CoinCollectAnimation from './CoinCollectAnimation.vue';
 import ReactionTestGame from './ReactionTestGame.vue';
 import QuickQuizGame from './QuickQuizGame.vue';
 import TapChallenge from './minigames/TapChallenge.vue';
+import MemoryFlashGame from './minigames/MemoryFlashGame.vue';
 import { getEarnCooldownRemainingSeconds, startEarnCooldown } from '../utils/earnCooldown';
 
 const props = defineProps({
@@ -127,6 +136,10 @@ const props = defineProps({
     default: null,
   },
   eventId: {
+    type: Number,
+    default: 0,
+  },
+  walletCoins: {
     type: Number,
     default: 0,
   },
@@ -144,6 +157,7 @@ const earnOptions = [
   { id: 'reaction', title: 'Reaction Test', description: 'Testa i riflessi e scala la classifica.', reward: 10, icon: '⚡', type: 'game', cooldownSeconds: 90 },
   { id: 'quiz', title: 'Quiz Lampo', description: 'Rispondi veloce a domande a tema match.', reward: 15, icon: '🧠', type: 'game', cooldownSeconds: 120 },
   { id: 'tap', title: 'Tap Challenge', description: 'Tappa più forte che puoi in 10 secondi.', reward: 8, icon: '👆', type: 'game', cooldownSeconds: 60 },
+  { id: 'memory-flash', title: 'Memory Flash', description: 'Memorizza le coppie e chiudi il board prima del tempo.', reward: 8, icon: '🧩', type: 'game', cooldownSeconds: 60 },
   { id: 'pronostico-set', title: 'Pronostico Set', description: 'Indovina il risultato del prossimo set.', reward: 12, icon: '🎯', type: 'game', cooldownSeconds: 180 },
   { id: 'codice-sponsor', title: 'Codice Sponsor', description: 'Inserisci il codice mostrato sul maxischermo.', reward: 20, icon: '🏷️', type: 'action', cooldownSeconds: 300 },
   { id: 'condividi-torna', title: 'Condividi & Torna', description: 'Condividi l’evento e torna per riscattare.', reward: 5, icon: '📣', type: 'action', cooldownSeconds: 150 },
@@ -296,6 +310,15 @@ async function handleClaim(payload) {
   } finally {
     isClaiming.value = false;
   }
+}
+
+function handleSpend(payload) {
+  const coins = Math.max(0, Number(payload?.coins) || 0);
+  if (!coins) {
+    return;
+  }
+
+  emit('coins-earned', -coins);
 }
 
 function handleOptionClick(option) {
