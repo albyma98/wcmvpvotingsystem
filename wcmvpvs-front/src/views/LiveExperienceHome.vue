@@ -465,6 +465,7 @@ const leaderboardTop3 = ref([
 const leaderboardUser = ref(null);
 let leaderboardPollingTimer = null;
 let isLeaderboardRequestInFlight = false;
+let hasPendingLeaderboardRefresh = false;
 const hasSponsors = computed(() => sponsors.value.length > 0);
 const showSponsorsBox = computed(() => hasSponsors.value);
 const showFeedbackCta = computed(() => hasFeedbackSurvey.value);
@@ -585,6 +586,23 @@ async function addCoins(amount) {
   if (!isRegisteredFan.value && props.eventId && parsed > 0) {
     lastEarnedCoins.value = parsed;
   }
+
+  if (props.eventId) {
+    await refreshLeaderboardPreview();
+  }
+}
+
+async function refreshLeaderboardPreview() {
+  if (!props.eventId) {
+    return;
+  }
+
+  if (isLeaderboardRequestInFlight) {
+    hasPendingLeaderboardRefresh = true;
+    return;
+  }
+
+  await loadLeaderboardPreview();
 }
 
 async function loadLeaderboardPreview() {
@@ -613,6 +631,11 @@ async function loadLeaderboardPreview() {
     // placeholder fallback, keep static UI preview
   } finally {
     isLeaderboardRequestInFlight = false;
+
+    if (hasPendingLeaderboardRefresh) {
+      hasPendingLeaderboardRefresh = false;
+      await loadLeaderboardPreview();
+    }
   }
 }
 
@@ -630,7 +653,7 @@ function startLeaderboardPolling() {
   }
 
   leaderboardPollingTimer = window.setInterval(() => {
-    loadLeaderboardPreview();
+    refreshLeaderboardPreview();
   }, 5000);
 }
 
