@@ -27,6 +27,55 @@
             <button class="fan-primary-cta flex-1 rounded-xl px-4 py-3 text-xs font-black tracking-wide text-slate-950" @click="startForm">{{ content.primaryCta }}</button>
             <button class="rounded-xl border border-white/30 px-4 py-3 text-xs font-bold text-slate-100" @click="closeAsLater">{{ content.secondaryCta }}</button>
           </div>
+          <button
+            type="button"
+            class="mt-2 w-full rounded-xl border border-cyan-300/45 bg-cyan-400/10 px-4 py-3 text-xs font-black tracking-wide text-cyan-100"
+            @click="startLogin"
+          >
+            ACCEDI
+          </button>
+          <p class="mt-2 text-center text-[11px] text-slate-300">Hai già un profilo? Accedi con il numero di telefono registrato.</p>
+        </template>
+
+        <template v-else-if="stage === 'login'">
+          <p class="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200/80">ACCESSO PROFILO</p>
+          <h3 class="mt-3 text-center text-xl font-black tracking-tight">Inserisci il tuo numero</h3>
+          <p class="mt-2 text-center text-xs text-slate-300">Ti inviamo un codice OTP per recuperare l'accesso.</p>
+          <form class="mt-4 space-y-3" @submit.prevent="submitLoginOtp">
+            <FormInputCard icon="📱" label="TELEFONO" helper="Numero usato in fase di registrazione" :is-valid="isPhoneValid">
+              <template #default="fieldControl">
+                <div class="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-3">
+                  <span class="rounded-lg bg-white/10 px-2 py-1 text-sm font-bold text-slate-200">+39</span>
+                  <input
+                    ref="phoneInputRef"
+                    v-model.trim="form.phone"
+                    required
+                    type="tel"
+                    inputmode="numeric"
+                    autocomplete="tel-national"
+                    class="w-full bg-transparent text-base font-semibold text-white outline-none placeholder:text-slate-400"
+                    placeholder="3331234567"
+                    @focus="fieldControl.onFocus"
+                    @blur="fieldControl.onBlur"
+                  />
+                </div>
+              </template>
+            </FormInputCard>
+
+            <p v-if="errorMessage" class="text-xs text-red-300">{{ errorMessage }}</p>
+            <div class="flex gap-2">
+              <button
+                :disabled="loading || !isPhoneValid"
+                class="fan-primary-cta fan-primary-cta-step2 flex-1 rounded-xl px-4 py-3 text-xs font-black tracking-wide text-slate-950"
+                :class="isPhoneValid ? 'fan-primary-cta-active' : 'opacity-50 saturate-75'"
+              >
+                {{ loading ? 'INVIO...' : 'RICEVI CODICE OTP' }}
+              </button>
+              <button type="button" class="rounded-xl border border-white/30 px-4 py-3 text-xs font-bold" :disabled="loading" @click="goPrompt">
+                Indietro
+              </button>
+            </div>
+          </form>
         </template>
 
         <template v-else-if="stage === 'step1'">
@@ -176,10 +225,12 @@ const props = defineProps({
   walletCoins: { type: Number, default: 0 },
   rewardLabel: { type: String, default: 'Coupon Match Day' },
   onSubmit: { type: Function, default: null },
+  onLogin: { type: Function, default: null },
 });
 const emit = defineEmits(['update:modelValue', 'dismissed']);
 
 const stage = ref('prompt');
+const authMode = ref('register');
 const loading = ref(false);
 const errorMessage = ref('');
 const form = reactive({ nickname: '', gender: '', phone: '', acceptedTerms: false });
@@ -249,6 +300,7 @@ const content = computed(() => copyMap[props.trigger] || copyMap.after_vote);
 watch(() => props.modelValue, (open) => {
   if (!open) {
     stage.value = 'prompt';
+    authMode.value = 'register';
     errorMessage.value = '';
     loading.value = false;
     savedCoins.value = 0;
@@ -268,7 +320,20 @@ watch(() => stage.value, async (nextStage) => {
 });
 
 function startForm() {
+  authMode.value = 'register';
   stage.value = 'step1';
+}
+
+function startLogin() {
+  authMode.value = 'login';
+  errorMessage.value = '';
+  stage.value = 'login';
+}
+
+function goPrompt() {
+  stage.value = 'prompt';
+  errorMessage.value = '';
+  loading.value = false;
 }
 
 function goStep2() {
@@ -299,6 +364,8 @@ function mapOtpError(code) {
       return 'Troppi tentativi. Riprova tra qualche minuto.';
     case 'PHONE_ALREADY_EXISTS':
       return 'Numero già registrato. Usa un altro numero.';
+    case 'USER_NOT_FOUND':
+      return 'Profilo non trovato. Verifica il numero o registrati.';
     case 'OTP_SEND_FAILED':
       return 'Invio OTP non riuscito. Riprova tra poco.';
     case 'INVALID_OTP':
@@ -318,7 +385,7 @@ async function sendOtp(isResend) {
     errorMessage.value = 'Inserisci un numero di telefono valido.';
     return;
   }
-  const response = await startPhoneAuth(e164Phone.value, 'register');
+  const response = await startPhoneAuth(e164Phone.value, authMode.value);
   loading.value = false;
   if (!response.ok) {
     errorMessage.value = mapOtpError(response.code);
@@ -330,6 +397,10 @@ async function sendOtp(isResend) {
   }
 }
 
+async function submitLoginOtp() {
+  await sendOtp(false);
+}
+
 async function verifyOtpAndSubmit() {
   loading.value = true;
   errorMessage.value = '';
@@ -337,6 +408,18 @@ async function verifyOtpAndSubmit() {
   if (!verification.ok) {
     loading.value = false;
     errorMessage.value = mapOtpError(verification.code);
+    return;
+  }
+
+  if (authMode.value === 'login') {
+    const result = props.onLogin ? await props.onLogin({ phone: e164Phone.value, trigger: props.trigger }) : { ok: true };
+    loading.value = false;
+    if (result?.ok === false) {
+      errorMessage.value = result.message || 'Accesso non riuscito.';
+      return;
+    }
+    emit('update:modelValue', false);
+    stage.value = 'prompt';
     return;
   }
 
