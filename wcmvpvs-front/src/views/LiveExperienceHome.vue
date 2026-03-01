@@ -102,15 +102,16 @@
         </article>
       </section>
 
-      <div ref="feedbackAreaRef" class="animate-on-enter mt-[2.8vh] mb-[1.2vh] flex min-h-0 flex-1 flex-col justify-end">
-        <ExperienceFeedbackCta
-          v-if="showFeedbackCta"
-          :height-px="feedbackCtaHeight"
-          :disabled="!hasFeedbackSurvey"
-          @select="openFeedbackModal"
-        />
+      <div ref="feedbackAreaRef" class="feedback-area animate-on-enter mt-[2.8vh] mb-[1.2vh] flex min-h-0 flex-1 flex-col justify-end">
+        <div v-if="showFeedbackCta" class="feedback-area__cta-slot">
+          <ExperienceFeedbackCta
+            :height-px="feedbackCtaHeight"
+            :disabled="!hasFeedbackSurvey"
+            @select="openFeedbackModal"
+          />
+        </div>
 
-        <div ref="liveResultsRef">
+        <div ref="liveResultsRef" class="feedback-area__sponsors-slot">
           <SponsorsMarquee
             v-if="showSponsorsBox"
             ref="sponsorBoxRef"
@@ -486,7 +487,9 @@ let sponsorMeasureRaf = 0;
 
 const MIN_SPONSOR_HEIGHT = 48;
 const HARD_HIDE_THRESHOLD = 24;
-const GAP_BUFFER_PX = 8;
+const FEEDBACK_TOP_SPACING = 10;
+const FEEDBACK_BOTTOM_SPACING = 10;
+const CTA_SPONSOR_SPACING = 10;
 const hasSponsors = computed(() => sponsors.value.length > 0);
 const showSponsorsBox = computed(() => hasSponsors.value && sponsorHeight.value >= HARD_HIDE_THRESHOLD);
 const showFeedbackCta = computed(() => !hasSubmittedFeedback.value);
@@ -676,16 +679,22 @@ function measureSponsorGap() {
     return;
   }
 
-  const ctaTargetHeight = Math.floor(availableGapPx * 0.5);
-  const availableAfterCta = Math.max(0, availableGapPx - ctaTargetHeight - GAP_BUFFER_PX);
+  const availableInnerGap = Math.max(0, availableGapPx - FEEDBACK_TOP_SPACING - FEEDBACK_BOTTOM_SPACING);
+  const sponsorMinHeight = hasSponsors.value ? MIN_SPONSOR_HEIGHT : 0;
+  const maxCtaHeight = Math.max(0, availableInnerGap - sponsorMinHeight - CTA_SPONSOR_SPACING);
+  const ctaTargetHeight = Math.min(Math.floor(availableInnerGap * 0.48), maxCtaHeight);
 
-  feedbackCtaHeight.value = showFeedbackCta.value ? ctaTargetHeight : 0;
+  feedbackCtaHeight.value = showFeedbackCta.value ? Math.max(0, ctaTargetHeight) : 0;
 
   if (!hasSponsors.value) {
     sponsorHeight.value = 0;
     return;
   }
 
+  const availableAfterCta = Math.max(
+    0,
+    availableInnerGap - feedbackCtaHeight.value - (showFeedbackCta.value ? CTA_SPONSOR_SPACING : 0),
+  );
   const resolvedHeight = Math.min(Math.max(Math.floor(availableAfterCta * 0.9), MIN_SPONSOR_HEIGHT), availableAfterCta);
   sponsorHeight.value = resolvedHeight < HARD_HIDE_THRESHOLD ? 0 : resolvedHeight;
 }
@@ -1120,6 +1129,17 @@ function onFeatureSelect(featureId) {
 
 .vignette {
   background: radial-gradient(circle at center, transparent 45%, rgba(2, 6, 23, 0.8) 100%);
+}
+
+.feedback-area {
+  padding-top: clamp(0.5rem, 1.5vh, 0.8rem);
+  padding-bottom: clamp(0.5rem, 1.5vh, 0.8rem);
+  gap: clamp(0.5rem, 1.5vh, 0.8rem);
+}
+
+.feedback-area__cta-slot,
+.feedback-area__sponsors-slot {
+  width: 100%;
 }
 
 .mini-feature {
