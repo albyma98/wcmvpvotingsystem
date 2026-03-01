@@ -78,7 +78,16 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 	var (
 		code      string
 		signature string
+		fanID     *int
 	)
+
+	if token := rt.fanSessionTokenFromRequest(r); token != "" {
+		if me, fanErr := rt.db.GetFanBySessionToken(token); fanErr == nil {
+			fanID = &me.Profile.ID
+		} else if !errors.Is(fanErr, sql.ErrNoRows) {
+			ctx.Logger.WithError(fanErr).Warn("cannot resolve fan session while casting vote")
+		}
+	}
 
 	for attempt := 0; attempt < maxCodeGenerationAttempts; attempt++ {
 		var err error
@@ -90,7 +99,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		}
 		signature = signCode(rt.VoteSecret, code)
 
-		if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID); err != nil {
+		if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID, fanID); err != nil {
 			switch {
 			case isVoteCodeCollision(err):
 				ctx.Logger.WithError(err).Warn("duplicate vote code detected, retrying")
