@@ -24,33 +24,41 @@
       </slot>
     </div>
 
-    <div
-      class="flex shrink-0 items-center gap-2"
-      :aria-label="isLive ? 'Stato live attivo' : 'Stato offline'"
-      role="status"
+    <button
+      type="button"
+      class="group relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/35 bg-slate-900/80 text-white shadow-[0_8px_20px_rgba(2,6,23,0.5)] transition hover:-translate-y-0.5 hover:border-amber-300/70"
+      aria-label="Apri il profilo utente"
+      @click="emit('profile-click')"
     >
-      <span
-        class="text-xs font-extrabold uppercase tracking-wide"
-        :class="isLive ? 'text-red-300' : 'text-slate-400'"
+      <img
+        v-if="profileAvatarUrl"
+        :src="profileAvatarUrl"
+        alt="Avatar utente"
+        class="h-full w-full object-cover"
       >
-        {{ isLive ? 'LIVE' : 'OFFLINE' }}
-      </span>
+      <span v-else class="text-lg" aria-hidden="true">👤</span>
       <span
-        class="h-2.5 w-2.5 rounded-full"
-        :class="isLive ? 'bg-red-500 live-dot' : 'bg-slate-500'"
+        v-if="isLive"
+        class="pointer-events-none absolute -bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-950"
         aria-hidden="true"
       />
-    </div>
+    </button>
   </header>
 </template>
 
 <script setup>
+const emit = defineEmits(['profile-click']);
+
 defineProps({
   teamName: {
     type: String,
     default: 'TEAM',
   },
   teamLogoUrl: {
+    type: String,
+    default: '',
+  },
+  profileAvatarUrl: {
     type: String,
     default: '',
   },
@@ -64,31 +72,3 @@ defineProps({
   },
 });
 </script>
-
-<style scoped>
-.live-dot {
-  animation: pulse-dot 1.2s ease-in-out infinite;
-  box-shadow: 0 0 0 rgba(239, 68, 68, 0.55);
-}
-
-@keyframes pulse-dot {
-  0% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
-  }
-  70% {
-    transform: scale(1.08);
-    box-shadow: 0 0 0 9px rgba(239, 68, 68, 0);
-  }
-  100% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .live-dot {
-    animation: none;
-  }
-}
-</style>

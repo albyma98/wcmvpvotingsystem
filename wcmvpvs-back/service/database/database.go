@@ -692,6 +692,15 @@ type FanProfileSummary struct {
 	Wallet  int        `json:"wallet"`
 }
 
+type FanRewardRedemption struct {
+	ID        int    `json:"id"`
+	EventID   int    `json:"event_id"`
+	FanID     int    `json:"fan_id"`
+	RewardKey string `json:"reward_key"`
+	CostCoins int    `json:"cost_coins"`
+	CreatedAt string `json:"created_at"`
+}
+
 type FanLeaderboardEntry struct {
 	FanID     int    `json:"fan_id"`
 	Nickname  string `json:"nickname"`
@@ -850,6 +859,8 @@ type AppDatabase interface {
 	UpsertGuestCoins(eventID int, organizationID int, deviceID string, coins int) error
 	GetFanLeaderboard(eventID int, organizationID int, limit int) ([]FanLeaderboardEntry, error)
 	GetFanRank(eventID int, organizationID int, fanID int) (FanLeaderboardEntry, error)
+	ListFanRewardRedemptions(eventID int, fanID int) ([]FanRewardRedemption, error)
+	GetFanLotteryTicket(eventID int, fanID int) (EventTicket, error)
 	RecordFanLotteryEntry(eventID int, fanID int, source string) error
 	RecordFanRewardRedemption(eventID int, fanID int, rewardKey string, costCoins int) error
 	PurgeEventData(eventID int) error
@@ -6014,6 +6025,54 @@ func (db *appdbimpl) GetFanRank(eventID int, organizationID int, fanID int) (Fan
 		rank++
 	}
 	return FanLeaderboardEntry{}, sql.ErrNoRows
+}
+
+func (db *appdbimpl) ListFanRewardRedemptions(eventID int, fanID int) ([]FanRewardRedemption, error) {
+	rows, err := db.c.Query(`SELECT id, event_id, fan_id, reward_key, cost_coins, created_at
+	FROM fan_reward_redemptions
+	WHERE fan_id = ? AND (? = 0 OR event_id = ?)
+	ORDER BY id DESC`, fanID, eventID, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []FanRewardRedemption{}
+	for rows.Next() {
+		var redemption FanRewardRedemption
+		if err := rows.Scan(&redemption.ID, &redemption.EventID, &redemption.FanID, &redemption.RewardKey, &redemption.CostCoins, &redemption.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, redemption)
+	}
+
+	return out, rows.Err()
+}
+
+func (db *appdbimpl) GetFanLotteryTicket(eventID int, fanID int) (EventTicket, error) {
+	var ticket EventTicket
+	err := db.c.QueryRow(`SELECT v.id, v.ticket_code, v.ticket_signature, v.player_id,
+		IFNULL(p.first_name, ''), IFNULL(p.last_name, ''), v.created_at
+	FROM votes v
+	LEFT JOIN players p ON p.id = v.player_id
+	WHERE v.event_id = ? AND v.user_id = ?
+	ORDER BY v.id DESC
+	LIMIT 1`, eventID, fanID).
+		Scan(
+			&ticket.VoteID,
+			&ticket.TicketCode,
+			&ticket.TicketSignature,
+			&ticket.PlayerID,
+			&ticket.PlayerFirstName,
+			&ticket.PlayerLastName,
+			&ticket.CreatedAt,
+		)
+
+	if err != nil {
+		return EventTicket{}, err
+	}
+
+	return ticket, nil
 }
 
 func (db *appdbimpl) RecordFanLotteryEntry(eventID int, fanID int, source string) error {
