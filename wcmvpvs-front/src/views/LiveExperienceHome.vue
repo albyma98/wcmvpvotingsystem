@@ -186,7 +186,7 @@
             </header>
 
             <div class="flex-1 overflow-y-auto px-4 pb-10 pt-5 md:px-6">
-              <div class="mx-auto grid w-full max-w-5xl gap-4 lg:grid-cols-3">
+              <div class="mx-auto grid w-full max-w-5xl gap-4 lg:grid-cols-2">
                 <section class="rounded-2xl border border-white/15 bg-white/10 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.4)] lg:col-span-1">
                   <div class="flex items-center gap-3">
                     <div class="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-amber-300/60 bg-slate-800 text-2xl">
@@ -203,19 +203,6 @@
                     <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/90">Saldo monete</p>
                     <p class="mt-1 text-3xl font-black text-emerald-300">{{ totalCoins }} 🪙</p>
                   </div>
-                </section>
-
-                <section class="rounded-2xl border border-white/15 bg-white/10 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.4)] lg:col-span-1">
-                  <h3 class="text-lg font-extrabold text-white">Coupon acquistati</h3>
-                  <ul v-if="accountRedemptions.length" class="mt-3 space-y-2">
-                    <li v-for="entry in accountRedemptions" :key="`${entry.id}-${entry.createdAt}`" class="rounded-xl border border-white/10 bg-slate-900/50 px-3 py-2">
-                      <p class="text-sm font-semibold text-white">{{ entry.label }}</p>
-                      <p class="mt-0.5 text-xs text-slate-300">{{ entry.costCoins }} 🪙 • {{ entry.createdAt }}</p>
-                    </li>
-                  </ul>
-                  <p v-else class="mt-3 rounded-xl border border-dashed border-white/20 bg-slate-900/35 px-3 py-4 text-sm text-slate-300">
-                    Non hai ancora acquistato coupon.
-                  </p>
                 </section>
 
                 <section class="rounded-2xl border border-white/15 bg-white/10 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.4)] lg:col-span-1">
