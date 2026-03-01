@@ -56,7 +56,10 @@
             @keydown.space.prevent="onFeatureSelect('game-live')"
           >
             <div class="mini-feature__content">
-              <p id="wallet-coin-target" class="mini-feature__coins">🪙 {{ totalCoins }}</p>
+              <div class="text-center">
+                <p id="wallet-coin-target" class="mini-feature__coins">🪙 {{ totalCoins }}</p>
+                <p v-if="coinBoostActive" class="mini-feature__boost">BOOST x2 · {{ coinBoostCountdownLabel }}</p>
+              </div>
             </div>
             <button type="button" class="mini-feature__cta mini-feature__cta--earn" @click.stop="onFeatureSelect('game-live')">
               GUADAGNA
@@ -134,8 +137,12 @@
       :event-id="eventId"
       :wallet-target-el="walletTargetEl"
       :wallet-coins="totalCoins"
-      @coins-earned="addCoins"
+      :free-retry="freeRetry"
+      @coins-earned="addCoinsFromMinigame"
+      @consume-free-retry="consumeFreeRetry"
     />
+
+    <CoinCollectAnimation ref="coinAnimationRef" />
 
     <FansLeaderboardModal
       v-model="isLeaderboardModalOpen"
@@ -262,24 +269,59 @@
             </header>
 
             <div class="flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
-              <div class="mx-auto grid max-w-6xl grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <button
-                  v-for="coupon in spendCouponPreview"
-                  :key="coupon.id"
-                  type="button"
-                  class="group rounded-2xl border border-white/15 bg-white/10 p-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.45)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/15"
-                  @click="attemptRedeem(coupon.id, coupon.cost, coupon.label)"
-                >
-                  <div class="flex items-start justify-between gap-2">
-                    <span class="text-2xl" aria-hidden="true">🎟️</span>
-                    <span class="rounded-full border border-amber-300/40 bg-amber-300/15 px-2 py-0.5 text-xs font-bold text-amber-200">
-                      {{ coupon.cost }} 🪙
-                    </span>
+              <div class="mx-auto max-w-6xl">
+                <section class="mystery-box rounded-2xl border border-violet-200/25 bg-violet-500/10 p-4 shadow-[0_10px_28px_rgba(76,29,149,0.35)]">
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p class="text-xs font-bold uppercase tracking-[0.2em] text-violet-200">NUOVO</p>
+                      <h3 class="mt-1 text-2xl font-black text-white">Mystery Box</h3>
+                      <p class="mt-1 text-sm text-slate-200">Costo apertura: {{ MYSTERY_BOX_COST }} 🪙</p>
+                    </div>
+                    <button
+                      type="button"
+                      class="mystery-box__open-btn"
+                      :disabled="isOpeningMysteryBox || !canOpenMysteryBox"
+                      @click="openMysteryBox"
+                    >
+                      {{ mysteryBoxButtonLabel }}
+                    </button>
                   </div>
-                  <h3 class="mt-3 text-lg font-extrabold text-white">{{ coupon.label }}</h3>
-                  <p class="mt-1 text-sm text-slate-300">{{ coupon.description }}</p>
-                  <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-emerald-300">Riscatta</p>
-                </button>
+
+                  <div ref="mysteryBoxEl" class="mystery-box__chest" :class="mysteryBoxAnimationClass" aria-hidden="true">📦</div>
+
+                  <p v-if="!canOpenMysteryBox" class="mt-2 text-sm font-semibold text-rose-200">Monete insufficienti per aprire il box.</p>
+                  <p v-if="mysteryBoxStatusText" class="mt-3 text-sm text-slate-200">{{ mysteryBoxStatusText }}</p>
+
+                  <Transition name="reveal-fade">
+                    <div v-if="mysteryBoxReward" class="mystery-box__reward">
+                      <p class="text-xs font-bold uppercase tracking-[0.2em] text-violet-200">Hai trovato</p>
+                      <p class="mt-1 text-xl font-black text-white">{{ mysteryBoxReward.label }}</p>
+                      <button type="button" class="mt-3 rounded-full border border-violet-200/40 bg-violet-400/20 px-4 py-2 text-sm font-bold text-white" :disabled="isOpeningMysteryBox || !canOpenMysteryBox" @click="openMysteryBox">
+                        Apri un’altra
+                      </button>
+                    </div>
+                  </Transition>
+                </section>
+
+                <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <button
+                    v-for="coupon in spendCouponPreview"
+                    :key="coupon.id"
+                    type="button"
+                    class="group rounded-2xl border border-white/15 bg-white/10 p-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.45)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/15"
+                    @click="attemptRedeem(coupon.id, coupon.cost, coupon.label)"
+                  >
+                    <div class="flex items-start justify-between gap-2">
+                      <span class="text-2xl" aria-hidden="true">🎟️</span>
+                      <span class="rounded-full border border-amber-300/40 bg-amber-300/15 px-2 py-0.5 text-xs font-bold text-amber-200">
+                        {{ coupon.cost }} 🪙
+                      </span>
+                    </div>
+                    <h3 class="mt-3 text-lg font-extrabold text-white">{{ coupon.label }}</h3>
+                    <p class="mt-1 text-sm text-slate-300">{{ coupon.description }}</p>
+                    <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-emerald-300">Riscatta</p>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -300,6 +342,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EarnCoinsModal from '../components/EarnCoinsModal.vue';
+import CoinCollectAnimation from '../components/CoinCollectAnimation.vue';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import ExperienceFeedbackCta from '../components/ExperienceFeedbackCta.vue';
 import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
@@ -337,6 +380,22 @@ const rewardLabelMap = {
   'coupon-upgrade': 'Upgrade posto',
   'coupon-photo': 'Foto Team Edition',
 };
+
+const MYSTERY_BOX_COST = 10;
+const COIN_BOOST_DURATION_MS = 10 * 60 * 1000;
+const storageKeys = {
+  wallet: 'wallet:coins',
+  coinBoostActive: 'coinBoostActive',
+  coinBoostEndTime: 'coinBoostEndTime',
+  freeRetry: 'freeRetry',
+};
+const mysteryRewards = [
+  { id: 'coins-6', type: 'coins', amount: 6, label: '+6 monete' },
+  { id: 'coins-12', type: 'coins', amount: 12, label: '+12 monete' },
+  { id: 'coins-20', type: 'coins', amount: 20, label: '+20 monete' },
+  { id: 'boost', type: 'boost', label: 'BOOST MONETE 10 MINUTI' },
+  { id: 'free-retry', type: 'freeRetry', label: 'RETRY GRATIS MINIGIOCO' },
+];
 
 const props = defineProps({
   eventId: {
@@ -454,6 +513,16 @@ const spendCouponPreview = [
 ];
 const totalCoins = ref(0);
 const walletTargetEl = ref(null);
+const coinAnimationRef = ref(null);
+const mysteryBoxEl = ref(null);
+const isOpeningMysteryBox = ref(false);
+const mysteryBoxStep = ref('idle');
+const mysteryBoxStatusText = ref('');
+const mysteryBoxReward = ref(null);
+const coinBoostActive = ref(false);
+const coinBoostEndTime = ref(0);
+const boostTick = ref(Date.now());
+const freeRetry = ref(0);
 const isFeedbackModalOpen = ref(false);
 const hasSubmittedFeedback = ref(false);
 const sponsors = ref([]);
@@ -464,6 +533,7 @@ const leaderboardTop3 = ref([
 ]);
 const leaderboardUser = ref(null);
 let leaderboardPollingTimer = null;
+let boostCountdownTimer = null;
 let isLeaderboardRequestInFlight = false;
 let hasPendingLeaderboardRefresh = false;
 const hasSponsors = computed(() => sponsors.value.length > 0);
@@ -472,6 +542,22 @@ const showFeedbackCta = computed(() => hasFeedbackSurvey.value);
 const hasFeedbackSurvey = computed(() => {
   const survey = props.activeEvent?.feedback_survey ?? props.activeEvent?.feedbackSurvey;
   return Array.isArray(survey?.questions) && survey.questions.length > 0;
+});
+
+const boostRemainingMs = computed(() => Math.max(0, coinBoostEndTime.value - boostTick.value));
+const coinBoostCountdownLabel = computed(() => {
+  const totalSeconds = Math.ceil(boostRemainingMs.value / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+});
+
+const canOpenMysteryBox = computed(() => totalCoins.value >= MYSTERY_BOX_COST);
+const mysteryBoxAnimationClass = computed(() => `mystery-box__chest--${mysteryBoxStep.value}`);
+const mysteryBoxButtonLabel = computed(() => {
+  if (isOpeningMysteryBox.value) return 'Apertura...';
+  if (!canOpenMysteryBox.value) return `Servono ${MYSTERY_BOX_COST} 🪙`;
+  return 'APRI';
 });
 
 const profileAvatarUrl = computed(() => {
@@ -554,13 +640,51 @@ function syncWalletTargetEl() {
   walletTargetEl.value = document.getElementById('wallet-coin-target');
 }
 
+function persistPowerUps() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.localStorage.setItem(storageKeys.coinBoostActive, coinBoostActive.value ? '1' : '0');
+  window.localStorage.setItem(storageKeys.coinBoostEndTime, String(coinBoostEndTime.value || 0));
+  window.localStorage.setItem(storageKeys.freeRetry, String(Math.max(0, freeRetry.value)));
+}
+
+function hydratePowerUps() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const storedBoostActive = window.localStorage.getItem(storageKeys.coinBoostActive) === '1';
+  const storedBoostEndTime = Number.parseInt(window.localStorage.getItem(storageKeys.coinBoostEndTime) || '0', 10);
+  const storedFreeRetry = Number.parseInt(window.localStorage.getItem(storageKeys.freeRetry) || '0', 10);
+
+  coinBoostEndTime.value = Number.isFinite(storedBoostEndTime) ? storedBoostEndTime : 0;
+  coinBoostActive.value = storedBoostActive && coinBoostEndTime.value > Date.now();
+  if (!coinBoostActive.value) {
+    coinBoostEndTime.value = 0;
+  }
+
+  freeRetry.value = Math.max(0, Number.isFinite(storedFreeRetry) ? storedFreeRetry : 0);
+  persistPowerUps();
+}
+
+function tickBoostState() {
+  boostTick.value = Date.now();
+  if (coinBoostActive.value && boostRemainingMs.value <= 0) {
+    coinBoostActive.value = false;
+    coinBoostEndTime.value = 0;
+    persistPowerUps();
+  }
+}
+
 onMounted(async () => {
   if (typeof window === 'undefined') {
     return;
   }
 
-  const stored = Number.parseInt(window.localStorage.getItem('wallet:coins') || '0', 10);
+  const stored = Number.parseInt(window.localStorage.getItem(storageKeys.wallet) || '0', 10);
   totalCoins.value = Number.isFinite(stored) && stored > 0 ? stored : 0;
+  hydratePowerUps();
   await nextTick();
   syncWalletTargetEl();
 
@@ -578,14 +702,24 @@ onMounted(async () => {
   loadSponsors();
   await loadLeaderboardPreview();
   startLeaderboardPolling();
+
+  if (boostCountdownTimer === null) {
+    boostCountdownTimer = window.setInterval(() => {
+      tickBoostState();
+    }, 1000);
+  }
 });
 
-async function addCoins(amount) {
+async function addCoins(amount, options = {}) {
   const parsed = Number(amount) || 0;
-  totalCoins.value = Math.max(0, totalCoins.value + parsed);
+  const source = options.source || 'generic';
+  const shouldBoost = parsed > 0 && source === 'minigame' && coinBoostActive.value && boostRemainingMs.value > 0;
+  const finalAmount = shouldBoost ? parsed * 2 : parsed;
+
+  totalCoins.value = Math.max(0, totalCoins.value + finalAmount);
 
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem('wallet:coins', String(totalCoins.value));
+    window.localStorage.setItem(storageKeys.wallet, String(totalCoins.value));
   }
 
   await nextTick();
@@ -595,13 +729,17 @@ async function addCoins(amount) {
     await syncGuestCoins(props.eventId, totalCoins.value);
   }
 
-  if (!isRegisteredFan.value && props.eventId && parsed > 0) {
-    lastEarnedCoins.value = parsed;
+  if (!isRegisteredFan.value && props.eventId && finalAmount > 0) {
+    lastEarnedCoins.value = finalAmount;
   }
 
   if (props.eventId) {
     await refreshLeaderboardPreview();
   }
+}
+
+function addCoinsFromMinigame(amount) {
+  return addCoins(amount, { source: 'minigame' });
 }
 
 async function refreshLeaderboardPreview() {
@@ -920,6 +1058,10 @@ watch([isStoryModalOpen, isProfileOverlayOpen], ([storyOpen, profileOpen]) => {
 
 onBeforeUnmount(() => {
   stopLeaderboardPolling();
+  if (typeof window !== 'undefined' && boostCountdownTimer !== null) {
+    window.clearInterval(boostCountdownTimer);
+    boostCountdownTimer = null;
+  }
   if (typeof document !== 'undefined') {
     document.body.style.overflow = '';
   }
@@ -1046,8 +1188,105 @@ function closeProfileOverlay() {
   isProfileOverlayOpen.value = false;
 }
 
+function randomMysteryReward() {
+  const index = Math.floor(Math.random() * mysteryRewards.length);
+  return mysteryRewards[index];
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve();
+      return;
+    }
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function creditMysteryCoins(amount) {
+  await addCoins(amount, { source: 'mystery-box' });
+
+  if (coinAnimationRef.value?.play && mysteryBoxEl.value && walletTargetEl.value) {
+    await coinAnimationRef.value.play({
+      fromEl: mysteryBoxEl.value,
+      toEl: walletTargetEl.value,
+      count: 16,
+      amount,
+    });
+  }
+}
+
+function activateCoinBoost() {
+  coinBoostActive.value = true;
+  coinBoostEndTime.value = Date.now() + COIN_BOOST_DURATION_MS;
+  boostTick.value = Date.now();
+  persistPowerUps();
+}
+
+function grantFreeRetry() {
+  freeRetry.value = 1;
+  persistPowerUps();
+}
+
+function consumeFreeRetry() {
+  if (freeRetry.value <= 0) {
+    return;
+  }
+  freeRetry.value = 0;
+  persistPowerUps();
+}
+
+async function executeMysteryReward(reward) {
+  if (!reward) {
+    return;
+  }
+
+  if (reward.type === 'coins') {
+    await creditMysteryCoins(reward.amount || 0);
+    return;
+  }
+
+  if (reward.type === 'boost') {
+    activateCoinBoost();
+    return;
+  }
+
+  if (reward.type === 'freeRetry') {
+    grantFreeRetry();
+  }
+}
+
+async function openMysteryBox() {
+  if (isOpeningMysteryBox.value || !canOpenMysteryBox.value) {
+    return;
+  }
+
+  isOpeningMysteryBox.value = true;
+  mysteryBoxReward.value = null;
+  mysteryBoxStep.value = 'opening';
+  mysteryBoxStatusText.value = 'Apertura in corso...';
+
+  await addCoins(-MYSTERY_BOX_COST, { source: 'mystery-box' });
+  await wait(900);
+
+  mysteryBoxStep.value = 'revealing';
+  mysteryBoxStatusText.value = 'Rivelazione premio...';
+  await wait(850);
+
+  const reward = randomMysteryReward();
+  mysteryBoxReward.value = reward;
+  mysteryBoxStatusText.value = '';
+
+  await executeMysteryReward(reward);
+
+  mysteryBoxStep.value = 'idle';
+  isOpeningMysteryBox.value = false;
+}
+
 function openSpendPreview() {
   isSpendPreviewOpen.value = true;
+  mysteryBoxStep.value = 'idle';
+  mysteryBoxStatusText.value = '';
 }
 
 function closeSpendPreview() {
@@ -1158,6 +1397,85 @@ function onFeatureSelect(featureId) {
   font-size: clamp(1.3rem, 5vw, 2rem);
   font-weight: 900;
   letter-spacing: -0.02em;
+}
+
+.mini-feature__boost {
+  margin-top: 0.2rem;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #fde047;
+}
+
+.mystery-box__open-btn {
+  border-radius: 9999px;
+  border: 1px solid rgba(196, 181, 253, 0.45);
+  background: linear-gradient(180deg, rgba(167, 139, 250, 0.4), rgba(126, 34, 206, 0.5));
+  padding: 0.5rem 1.1rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+.mystery-box__open-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.mystery-box__chest {
+  margin-top: 0.9rem;
+  display: flex;
+  justify-content: center;
+  font-size: clamp(3rem, 8vw, 4.4rem);
+  transform-origin: center;
+}
+
+.mystery-box__chest--idle {
+  animation: mystery-idle 2.1s ease-in-out infinite;
+}
+
+.mystery-box__chest--opening {
+  animation: mystery-opening 0.6s ease-in-out infinite;
+}
+
+.mystery-box__chest--revealing {
+  animation: mystery-reveal 0.45s ease forwards;
+}
+
+.mystery-box__reward {
+  margin-top: 0.8rem;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(221, 214, 254, 0.35);
+  background: rgba(46, 16, 101, 0.35);
+  padding: 0.9rem;
+  text-align: center;
+}
+
+@keyframes mystery-idle {
+  0%,
+  100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes mystery-opening {
+  0%,
+  100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-8deg) scale(1.02); }
+  75% { transform: rotate(8deg) scale(1.02); }
+}
+
+@keyframes mystery-reveal {
+  from { transform: scale(0.88); opacity: 0.65; }
+  to { transform: scale(1.08); opacity: 1; }
+}
+
+.reveal-fade-enter-active,
+.reveal-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.reveal-fade-enter-from,
+.reveal-fade-leave-to {
+  opacity: 0;
 }
 
 .mini-feature__icons {
