@@ -751,9 +751,12 @@ export async function resendPhoneAuth(phone: string) {
 
 export async function syncGuestCoins(eventId, coins) {
   try {
-    await apiClient.post(`/events/${eventId}/guest-coins`, { coins }, { headers: getDeviceHeaders() });
+    await apiClient.post(`/events/${eventId}/guest-coins`, { coins }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true };
   } catch (error) {
-    // ignore
+    return { ok: false, error };
   }
 }
 

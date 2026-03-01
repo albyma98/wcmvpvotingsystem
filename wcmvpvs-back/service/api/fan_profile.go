@@ -126,12 +126,31 @@ func (rt *_router) postGuestCoins(w http.ResponseWriter, r *http.Request, ctx re
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta non valida")
 		return
 	}
+
+	token := rt.fanSessionTokenFromRequest(r)
+	if token != "" {
+		me, err := rt.db.GetFanBySessionToken(token)
+		if err == nil {
+			if me.Profile.OrganizationID != 0 && me.Profile.OrganizationID != ctx.OrganizationID {
+				_ = writeJSONMessage(w, http.StatusForbidden, "Profilo non valido per questa organizzazione")
+				return
+			}
+			if err := rt.db.SetFanWalletCoins(me.Profile.ID, payload.Coins); err != nil {
+				ctx.Logger.WithError(err).Error("set fan wallet coins")
+				_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore salvataggio monete")
+				return
+			}
+			_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": payload.Coins, "registered": true})
+			return
+		}
+	}
+
 	if err := rt.db.UpsertGuestCoins(eventID, ctx.OrganizationID, deviceID, payload.Coins); err != nil {
 		ctx.Logger.WithError(err).Error("upsert guest coins")
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore salvataggio monete")
 		return
 	}
-	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": payload.Coins, "registered": false})
 }
 
 func (rt *_router) getCoinsLeaderboard(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

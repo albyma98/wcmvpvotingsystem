@@ -855,6 +855,7 @@ type AppDatabase interface {
 	UpsertFanSession(token string, fanID int, deviceID string) error
 	GetFanBySessionToken(token string) (FanProfileSummary, error)
 	GetFanByDevice(eventID int, organizationID int, deviceID string) (FanProfileSummary, error)
+	SetFanWalletCoins(fanID int, coins int) error
 	GetGuestCoins(eventID int, organizationID int, deviceID string) (int, error)
 	UpsertGuestCoins(eventID int, organizationID int, deviceID string, coins int) error
 	GetFanLeaderboard(eventID int, organizationID int, limit int) ([]FanLeaderboardEntry, error)
@@ -5966,6 +5967,15 @@ func (db *appdbimpl) GetGuestCoins(eventID int, organizationID int, deviceID str
 		return 0, nil
 	}
 	return nonNegativeInt(coins), err
+}
+
+func (db *appdbimpl) SetFanWalletCoins(fanID int, coins int) error {
+	if fanID <= 0 {
+		return ErrInvalidSponsorData
+	}
+	_, err := db.c.Exec(`INSERT INTO fan_wallets (fan_id, coins) VALUES (?, ?)
+	ON CONFLICT(fan_id) DO UPDATE SET coins = excluded.coins, updated_at=CURRENT_TIMESTAMP`, fanID, nonNegativeInt(coins))
+	return err
 }
 
 func (db *appdbimpl) UpsertGuestCoins(eventID int, organizationID int, deviceID string, coins int) error {
