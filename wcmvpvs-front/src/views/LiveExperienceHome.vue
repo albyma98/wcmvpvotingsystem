@@ -267,7 +267,7 @@
                   :key="coupon.id"
                   type="button"
                   class="group rounded-2xl border border-white/15 bg-white/10 p-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.45)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/15"
-                  @click="attemptRedeem(coupon.id, coupon.cost, coupon.label)"
+                  @click="attemptRedeem(coupon.id, coupon.cost)"
                 >
                   <div class="flex items-start justify-between gap-2">
                     <span class="text-2xl" aria-hidden="true">🎟️</span>
@@ -995,10 +995,11 @@ function closeSpendPreview() {
   isSpendPreviewOpen.value = false;
 }
 
-async function attemptRedeem(rewardKey, costCoins, rewardLabel) {
+async function attemptRedeem(rewardKey, costCoins) {
   if (!isRegisteredFan.value) {
-    selectedRewardLabel.value = rewardLabel || `${String(rewardKey).replace('-', ' ').toUpperCase()} · ${costCoins} 🪙`;
-    openRegistrationPrompt('spend_redeem');
+    // Temporarily keep the guest experience passive here:
+    // when a user is not logged in and tries to redeem, do not show
+    // the "Salva le tue monete" registration modal.
     return;
   }
   const response = await redeemFanReward(props.eventId, rewardKey, costCoins);
