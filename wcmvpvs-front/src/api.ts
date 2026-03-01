@@ -688,6 +688,34 @@ export function getFanSessionHeaders() {
   return token ? { 'X-Fan-Session': token } : {};
 }
 
+
+export async function startFanPhoneVerification(phone) {
+  try {
+    const { data } = await apiClient.post('/fan/phone/start-verification', { phone }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, error, message };
+  }
+}
+
+export async function checkFanPhoneVerification(phone, code) {
+  try {
+    const { data } = await apiClient.post('/fan/phone/check-verification', { phone, code }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    if (data?.session_token && typeof window !== 'undefined') {
+      window.localStorage.setItem('fan:session_token', data.session_token);
+    }
+    return { ok: true, data };
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, error, message };
+  }
+}
+
 export async function fetchFanProfile(eventId) {
   try {
     const { data } = await apiClient.get('/fan/me', {

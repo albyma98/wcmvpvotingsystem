@@ -43,6 +43,13 @@ type WebAPIConfiguration struct {
 		PasswordHash string `conf:"default:4bdbc215d8dc3c571e802a69bced0c3071cc4a1f129ad97e15b357018aac6cd4"`
 		Role         string `conf:"default:superadmin"`
 	}
+
+	Twilio struct {
+		AccountSID    string `conf:"default:"`
+		AuthToken     string `conf:"default:"`
+		VerifySID     string `conf:"default:"`
+		VerifyChannel string `conf:"default:sms"`
+	}
 }
 
 // loadConfiguration creates a WebAPIConfiguration starting from flags, environment variables and configuration file.

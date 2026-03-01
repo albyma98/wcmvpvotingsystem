@@ -2,8 +2,8 @@ package api
 
 import (
 	"database/sql"
-	"errors"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,13 +15,14 @@ import (
 )
 
 type fanRegisterPayload struct {
-	EventID       int    `json:"event_id"`
-	Nickname      string `json:"nickname"`
-	Gender        string `json:"gender"`
-	Phone         string `json:"phone"`
-	AcceptedTerms bool   `json:"accepted_terms"`
-	GuestCoins    int    `json:"guest_coins"`
-	EnterLottery  bool   `json:"enter_lottery"`
+	EventID                int    `json:"event_id"`
+	Nickname               string `json:"nickname"`
+	Gender                 string `json:"gender"`
+	Phone                  string `json:"phone"`
+	AcceptedTerms          bool   `json:"accepted_terms"`
+	PhoneVerificationToken string `json:"phone_verification_token"`
+	GuestCoins             int    `json:"guest_coins"`
+	EnterLottery           bool   `json:"enter_lottery"`
 }
 
 func (rt *_router) fanSessionTokenFromRequest(r *http.Request) string {
@@ -49,16 +50,17 @@ func (rt *_router) postRegisterFan(w http.ResponseWriter, r *http.Request, ctx r
 	}
 
 	summary, err := rt.db.RegisterFan(database.FanRegisterInput{
-		OrganizationID: ctx.OrganizationID,
-		EventID:        payload.EventID,
-		DeviceID:       deviceID,
-		SessionToken:   sessionToken,
-		Nickname:       payload.Nickname,
-		Gender:         payload.Gender,
-		Phone:          payload.Phone,
-		AcceptedTerms:  payload.AcceptedTerms,
-		GuestCoins:     payload.GuestCoins,
-		EnterLottery:   payload.EnterLottery,
+		OrganizationID:         ctx.OrganizationID,
+		EventID:                payload.EventID,
+		DeviceID:               deviceID,
+		SessionToken:           sessionToken,
+		Nickname:               payload.Nickname,
+		Gender:                 payload.Gender,
+		Phone:                  normalizeFanPhone(payload.Phone),
+		PhoneVerificationToken: payload.PhoneVerificationToken,
+		AcceptedTerms:          payload.AcceptedTerms,
+		GuestCoins:             payload.GuestCoins,
+		EnterLottery:           payload.EnterLottery,
 	})
 	if err != nil {
 		ctx.Logger.WithError(err).Error("register fan failed")
@@ -115,7 +117,9 @@ func (rt *_router) postGuestCoins(w http.ResponseWriter, r *http.Request, ctx re
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Dispositivo non valido")
 		return
 	}
-	var payload struct{ Coins int `json:"coins"` }
+	var payload struct {
+		Coins int `json:"coins"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta non valida")
 		return

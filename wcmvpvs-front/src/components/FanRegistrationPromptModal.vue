@@ -117,6 +117,30 @@
           </form>
         </template>
 
+
+        <template v-else-if="stage === 'otp'">
+          <p class="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200/80">VERIFICA OTP</p>
+          <h3 class="mt-3 text-center text-xl font-black tracking-tight">Inserisci il codice ricevuto via SMS</h3>
+          <p class="mt-2 text-center text-xs text-slate-300">Numero: {{ normalizedPhonePreview }}</p>
+          <form class="mt-4 space-y-3" @submit.prevent="verifyOtpAndSubmit">
+            <input
+              v-model.trim="otpCode"
+              required
+              maxlength="6"
+              inputmode="numeric"
+              class="w-full rounded-2xl border border-white/25 bg-slate-900/80 px-4 py-3 text-center text-2xl font-black tracking-[0.35em] outline-none ring-amber-300/45 transition focus:ring"
+              placeholder="123456"
+            />
+            <p v-if="errorMessage" class="text-xs text-red-300">{{ errorMessage }}</p>
+            <div class="flex gap-2">
+              <button :disabled="loading || otpCode.length < 4" class="fan-primary-cta flex-1 rounded-xl px-4 py-3 text-xs font-black tracking-wide text-slate-950">
+                {{ loading ? 'VERIFICA...' : 'VERIFICA E CONTINUA' }}
+              </button>
+              <button type="button" class="rounded-xl border border-white/30 px-4 py-3 text-xs font-bold" @click="stage = 'step2'">Indietro</button>
+            </div>
+          </form>
+        </template>
+
         <template v-else>
           <div class="coin-glow text-center">
             <p class="text-5xl leading-none">✨🪙</p>
@@ -152,7 +176,9 @@ const form = reactive({ nickname: '', gender: '', phone: '', acceptedTerms: fals
 const savedCoins = ref(0);
 const phoneInputRef = ref(null);
 const nicknameSuggestions = ['MuroTotale', 'VolleyKing', 'AceHunter', 'CurvaNord'];
+const otpCode = ref('');
 const isPhoneValid = computed(() => /^\d{8,15}$/.test((form.phone || '').replace(/\s+/g, '')));
+const normalizedPhonePreview = computed(() => `+39${(form.phone || '').replace(/\D+/g, '')}`);
 
 const copyMap = {
   after_vote: {
@@ -213,6 +239,7 @@ watch(() => props.modelValue, (open) => {
     errorMessage.value = '';
     loading.value = false;
     savedCoins.value = 0;
+    otpCode.value = '';
   }
 });
 
@@ -247,10 +274,25 @@ function closeSuccess() {
 async function submit() {
   loading.value = true;
   errorMessage.value = '';
-  const result = props.onSubmit ? await props.onSubmit({ ...form, trigger: props.trigger }) : { ok: false };
+  const result = props.onSubmit ? await props.onSubmit({ ...form, trigger: props.trigger, mode: 'start_verification' }) : { ok: false };
   loading.value = false;
   if (result?.ok === false) {
-    errorMessage.value = result.message || 'Errore salvataggio profilo';
+    errorMessage.value = result.message || 'Errore invio OTP';
+    return;
+  }
+  otpCode.value = '';
+  stage.value = 'otp';
+}
+
+async function verifyOtpAndSubmit() {
+  loading.value = true;
+  errorMessage.value = '';
+  const result = props.onSubmit
+    ? await props.onSubmit({ ...form, trigger: props.trigger, mode: 'verify_otp', otpCode: otpCode.value })
+    : { ok: false };
+  loading.value = false;
+  if (result?.ok === false) {
+    errorMessage.value = result.message || 'Errore verifica OTP';
     return;
   }
   savedCoins.value = Math.max(0, Number(result?.wallet ?? props.walletCoins ?? props.earnedCoins) || 0);

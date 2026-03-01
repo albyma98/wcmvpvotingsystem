@@ -218,7 +218,7 @@ import LiveResultsBar from '../components/LiveResultsBar.vue';
 import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
 import StoryModal from '../components/StoryModal.vue';
-import { apiClient, fetchFanProfile, redeemFanReward, registerFanProfile, syncGuestCoins } from '../api';
+import { apiClient, checkFanPhoneVerification, fetchFanProfile, redeemFanReward, registerFanProfile, startFanPhoneVerification, syncGuestCoins } from '../api';
 import { getOrCreateDeviceId } from '../deviceId';
 
 const anonymousAvatarSvg = encodeURIComponent(
@@ -819,12 +819,40 @@ async function loadFanProfile() {
 }
 
 async function handleRegistrationSubmit(form) {
+  if (form.mode === 'start_verification') {
+    const startResponse = await startFanPhoneVerification(form.phone);
+    if (!startResponse?.ok) {
+      return { ok: false, message: startResponse.message || 'Invio OTP fallito' };
+    }
+    return { ok: true, otpSent: true };
+  }
+
+  if (form.mode !== 'verify_otp') {
+    return { ok: false, message: 'Operazione non valida' };
+  }
+
+  const verifyResponse = await checkFanPhoneVerification(form.phone, form.otpCode);
+  if (!verifyResponse?.ok) {
+    return { ok: false, message: verifyResponse.message || 'OTP non valido' };
+  }
+
+  if (verifyResponse.data?.registered) {
+    isRegisteredFan.value = true;
+    fanId.value = Number(verifyResponse.data?.user?.id) || 0;
+    fanNickname.value = verifyResponse.data?.user?.nickname || '';
+    totalCoins.value = Math.max(0, Number(verifyResponse.data?.wallet) || totalCoins.value);
+    isRegistrationPromptOpen.value = false;
+    await loadLeaderboardPreview();
+    return { ok: true, wallet: totalCoins.value };
+  }
+
   const response = await registerFanProfile({
     event_id: props.eventId,
     nickname: form.nickname,
     gender: form.gender,
     phone: form.phone,
     accepted_terms: form.acceptedTerms,
+    phone_verification_token: verifyResponse.data?.verification_token,
     guest_coins: totalCoins.value,
     enter_lottery: form.trigger === 'after_vote',
   });

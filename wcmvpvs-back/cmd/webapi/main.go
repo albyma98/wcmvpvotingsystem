@@ -172,6 +172,10 @@ func run() error {
 		Database:                db,
 		VoteSecret:              cfg.Vote.Secret,
 		TicketValidationBaseURL: cfg.Tickets.ValidationBaseURL,
+		TwilioAccountSID:        cfg.Twilio.AccountSID,
+		TwilioAuthToken:         cfg.Twilio.AuthToken,
+		TwilioVerifySID:         cfg.Twilio.VerifySID,
+		TwilioVerifyChannel:     cfg.Twilio.VerifyChannel,
 	})
 	if err != nil {
 		logger.WithError(err).Error("error creating the API server instance")
