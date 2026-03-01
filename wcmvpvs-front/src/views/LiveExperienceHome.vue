@@ -750,8 +750,8 @@ watch(showSponsorsBox, () => {
   });
 });
 
-watch(currentStory, (story) => {
-  if (!story) {
+watch([currentStory, isStoryModalOpen], ([story, isOpen]) => {
+  if (!isOpen || !story) {
     return;
   }
   markStorySeen(Number(story.id));
