@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -27,6 +28,13 @@ var allowedStoryVideoTypes = map[string]string{
 	"video/mp4":       ".mp4",
 	"video/webm":      ".webm",
 	"video/quicktime": ".mov",
+}
+
+var allowedStoryVideoExtensions = map[string]string{
+	".mp4":  ".mp4",
+	".m4v":  ".mp4",
+	".webm": ".webm",
+	".mov":  ".mov",
 }
 
 func parseStoryPayload(r *http.Request) (database.EventStory, error) {
@@ -63,9 +71,24 @@ func detectStoryVideoContentType(data []byte, fallback string) string {
 	return strings.ToLower(strings.TrimSpace(fallback))
 }
 
-func validateStoryVideoType(contentType string) (string, error) {
+func normalizeStoryVideoContentType(contentType string) string {
 	normalized := strings.ToLower(strings.TrimSpace(contentType))
+	if normalized == "" {
+		return ""
+	}
+	parsed, _, err := mime.ParseMediaType(normalized)
+	if err == nil {
+		return parsed
+	}
+	return strings.TrimSpace(strings.SplitN(normalized, ";", 2)[0])
+}
+
+func validateStoryVideoType(contentType string, filename string) (string, error) {
+	normalized := normalizeStoryVideoContentType(contentType)
 	if ext, ok := allowedStoryVideoTypes[normalized]; ok {
+		return ext, nil
+	}
+	if ext, ok := allowedStoryVideoExtensions[strings.ToLower(filepath.Ext(strings.TrimSpace(filename)))]; ok {
 		return ext, nil
 	}
 	return "", errors.New("unsupported file type")
@@ -221,7 +244,7 @@ func (rt *_router) uploadAdminStoryVideo(w http.ResponseWriter, r *http.Request,
 	}
 
 	contentType := detectStoryVideoContentType(data, header.Header.Get("Content-Type"))
-	ext, err := validateStoryVideoType(contentType)
+	ext, err := validateStoryVideoType(contentType, header.Filename)
 	if err != nil {
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Formato video non supportato (usa MP4, WEBM o MOV).")
 		return
