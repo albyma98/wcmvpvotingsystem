@@ -110,10 +110,43 @@
                 class="fan-primary-cta fan-primary-cta-step2 flex-1 rounded-xl px-4 py-3 text-xs font-black tracking-wide text-slate-950"
                 :class="isPhoneValid ? 'fan-primary-cta-active' : 'opacity-50 saturate-75'"
               >
-                {{ loading ? 'ATTIVAZIONE...' : 'ATTIVA PROFILO' }}
+                {{ loading ? 'INVIO CODICE...' : 'CONTINUA' }}
               </button>
               <button type="button" class="rounded-xl border border-white/30 px-4 py-3 text-xs font-bold" @click="stage = 'step1'">Indietro</button>
             </div>
+          </form>
+        </template>
+
+        <template v-else-if="stage === 'otp'">
+          <p class="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200/80">VERIFICA TELEFONO</p>
+          <h3 class="mt-3 text-center text-xl font-black tracking-tight">Inserisci il codice OTP</h3>
+          <p class="mt-2 text-center text-xs text-slate-300">Codice inviato a {{ prettyPhone }}</p>
+          <form class="mt-4 space-y-3" @submit.prevent="verifyOtpAndSubmit">
+            <input
+              ref="otpInputRef"
+              v-model.trim="otpCode"
+              required
+              maxlength="6"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              autocomplete="one-time-code"
+              class="w-full rounded-2xl border border-white/25 bg-slate-900/80 px-4 py-3 text-center text-lg font-black tracking-[0.4em] outline-none ring-amber-300/45 transition focus:ring"
+              placeholder="000000"
+            />
+            <p v-if="errorMessage" class="text-xs text-red-300">{{ errorMessage }}</p>
+            <div class="flex gap-2">
+              <button
+                :disabled="loading || !isOtpValid"
+                class="fan-primary-cta fan-primary-cta-step2 flex-1 rounded-xl px-4 py-3 text-xs font-black tracking-wide text-slate-950"
+                :class="isOtpValid ? 'fan-primary-cta-active' : 'opacity-50 saturate-75'"
+              >
+                {{ loading ? 'VERIFICA...' : 'VERIFICA E ATTIVA' }}
+              </button>
+              <button type="button" class="rounded-xl border border-white/30 px-4 py-3 text-xs font-bold" :disabled="loading" @click="sendOtp(true)">Reinvia</button>
+            </div>
+            <button type="button" class="w-full text-xs text-slate-300 underline underline-offset-2" :disabled="loading" @click="stage = 'step2'">
+              Modifica numero
+            </button>
           </form>
         </template>
 
@@ -134,6 +167,7 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import FormInputCard from './FormInputCard.vue';
+import { startPhoneAuth, verifyPhoneAuth } from '../api';
 
 const props = defineProps({
   modelValue: Boolean,
@@ -151,8 +185,13 @@ const errorMessage = ref('');
 const form = reactive({ nickname: '', gender: '', phone: '', acceptedTerms: false });
 const savedCoins = ref(0);
 const phoneInputRef = ref(null);
+const otpInputRef = ref(null);
+const otpCode = ref('');
 const nicknameSuggestions = ['MuroTotale', 'VolleyKing', 'AceHunter', 'CurvaNord'];
 const isPhoneValid = computed(() => /^\d{8,15}$/.test((form.phone || '').replace(/\s+/g, '')));
+const isOtpValid = computed(() => /^\d{6}$/.test((otpCode.value || '').trim()));
+const e164Phone = computed(() => `+39${(form.phone || '').replace(/\D+/g, '')}`);
+const prettyPhone = computed(() => `+39 ${(form.phone || '').replace(/\D+/g, '')}`.trim());
 
 const copyMap = {
   after_vote: {
@@ -217,11 +256,15 @@ watch(() => props.modelValue, (open) => {
 });
 
 watch(() => stage.value, async (nextStage) => {
-  if (nextStage !== 'step2') {
+  if (nextStage === 'step2') {
+    await nextTick();
+    phoneInputRef.value?.focus();
     return;
   }
-  await nextTick();
-  phoneInputRef.value?.focus();
+  if (nextStage === 'otp') {
+    await nextTick();
+    otpInputRef.value?.focus();
+  }
 });
 
 function startForm() {
@@ -245,9 +288,61 @@ function closeSuccess() {
 }
 
 async function submit() {
+  await sendOtp(false);
+}
+
+function mapOtpError(code) {
+  switch (code) {
+    case 'INVALID_PHONE':
+      return 'Numero non valido. Controlla e riprova.';
+    case 'RATE_LIMITED':
+      return 'Troppi tentativi. Riprova tra qualche minuto.';
+    case 'PHONE_ALREADY_EXISTS':
+      return 'Numero già registrato. Usa un altro numero.';
+    case 'OTP_SEND_FAILED':
+      return 'Invio OTP non riuscito. Riprova tra poco.';
+    case 'INVALID_OTP':
+      return 'Codice OTP non valido.';
+    case 'OTP_CHECK_FAILED':
+      return 'Verifica OTP non riuscita. Riprova.';
+    default:
+      return 'Errore nella verifica del telefono.';
+  }
+}
+
+async function sendOtp(isResend) {
   loading.value = true;
   errorMessage.value = '';
-  const result = props.onSubmit ? await props.onSubmit({ ...form, trigger: props.trigger }) : { ok: false };
+  if (!isPhoneValid.value) {
+    loading.value = false;
+    errorMessage.value = 'Inserisci un numero di telefono valido.';
+    return;
+  }
+  const response = await startPhoneAuth(e164Phone.value, 'register');
+  loading.value = false;
+  if (!response.ok) {
+    errorMessage.value = mapOtpError(response.code);
+    return;
+  }
+  if (!isResend) {
+    otpCode.value = '';
+    stage.value = 'otp';
+  }
+}
+
+async function verifyOtpAndSubmit() {
+  loading.value = true;
+  errorMessage.value = '';
+  const verification = await verifyPhoneAuth(e164Phone.value, otpCode.value);
+  if (!verification.ok) {
+    loading.value = false;
+    errorMessage.value = mapOtpError(verification.code);
+    return;
+  }
+
+  const result = props.onSubmit
+    ? await props.onSubmit({ ...form, phone: e164Phone.value, trigger: props.trigger })
+    : { ok: false };
   loading.value = false;
   if (result?.ok === false) {
     errorMessage.value = result.message || 'Errore salvataggio profilo';
