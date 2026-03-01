@@ -751,7 +751,7 @@ type QRRedirect struct {
 type AppDatabase interface {
 	GetName() (string, error)
 	SetName(name string) error
-	AddVote(eventID, playerID int, code, signature, deviceID string) error
+	AddVote(eventID, playerID int, code, signature, deviceID string, userID *int) error
 	CreateTeam(name, championship string) (int, error)
 	ListTeams() ([]Team, error)
 	UpdateTeam(id int, name, championship string) error
@@ -1918,14 +1918,15 @@ func (db *appdbimpl) Ping() error {
 
 // AddVote stores a vote in the database. If the device already voted for the event,
 // the latest choice replaces the previous one (including the ticket data).
-func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string) error {
-	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id)
-VALUES (?, ?, ?, ?, ?)
+func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string, userID *int) error {
+	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id, user_id)
+VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(event_id, device_id) DO UPDATE SET
 player_id = excluded.player_id,
 ticket_code = excluded.ticket_code,
 ticket_signature = excluded.ticket_signature,
-created_at = CURRENT_TIMESTAMP`, eventID, playerID, code, signature, deviceID)
+user_id = excluded.user_id,
+created_at = CURRENT_TIMESTAMP`, eventID, playerID, code, signature, deviceID, userID)
 	return err
 }
 
@@ -3151,6 +3152,7 @@ JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id
 LEFT JOIN players p ON p.id = v.player_id
 LEFT JOIN event_prizes ep ON ep.winner_vote_id = v.id AND ep.event_id = ?
 WHERE v.event_id = ?
+  AND v.user_id IS NOT NULL
   AND ep.id IS NULL
   AND fp.phone_verified_at IS NOT NULL
   AND TRIM(fp.phone_verified_at) <> ''
@@ -3393,6 +3395,7 @@ func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize
 	JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id
 	WHERE v.id = ?
 	  AND v.event_id = ?
+	  AND v.user_id IS NOT NULL
 	  AND fp.phone_verified_at IS NOT NULL
 	  AND TRIM(fp.phone_verified_at) <> ''`, voteID, eventID).Scan(&eligibleCount); err != nil {
 		return EventPrize{}, err
@@ -3444,6 +3447,7 @@ func (db *appdbimpl) GetEligibleWinnerPhoneByVote(eventID, voteID int) (string, 
 	JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id
 	WHERE v.event_id = ?
 	  AND v.id = ?
+	  AND v.user_id IS NOT NULL
 	  AND fp.phone_verified_at IS NOT NULL
 	  AND TRIM(fp.phone_verified_at) <> ''
 	  AND TRIM(fp.phone_e164) <> ''
