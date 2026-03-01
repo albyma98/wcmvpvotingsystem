@@ -88,6 +88,12 @@ func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqconte
 			resp["user"] = summary.Profile
 			resp["wallet"] = summary.Wallet
 			if eventID > 0 {
+				if redemptions, redemptionsErr := rt.db.ListFanRewardRedemptions(eventID, summary.Profile.ID); redemptionsErr == nil {
+					resp["reward_redemptions"] = redemptions
+				}
+				if ticket, ticketErr := rt.db.GetFanLotteryTicket(eventID, summary.Profile.ID); ticketErr == nil {
+					resp["lottery_ticket"] = ticket
+				}
 				if rank, rankErr := rt.db.GetFanRank(eventID, ctx.OrganizationID, summary.Profile.ID); rankErr == nil {
 					resp["user_rank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins}
 				}

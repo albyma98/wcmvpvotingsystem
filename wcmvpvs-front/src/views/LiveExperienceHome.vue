@@ -8,7 +8,9 @@
         :team-name="teamName"
         :team-logo-url="teamLogoUrl"
         :is-live="isLive"
+        :profile-avatar-url="profileAvatarUrl"
         :sponsor-line="sponsorLine"
+        @profile-click="openProfileOverlay"
       >
         <StoriesBar
           v-if="activeStories.length"
@@ -148,6 +150,93 @@
       @dismissed="markPromptDismissed"
     />
 
+
+
+    <Teleport to="body">
+      <Transition name="earn-modal-fade">
+        <div
+          v-if="isProfileOverlayOpen"
+          class="fixed inset-0 z-[130] flex"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Profilo tifoso"
+          @click.self="closeProfileOverlay"
+        >
+          <div class="absolute inset-0 bg-slate-950/95 backdrop-blur-md" aria-hidden="true" />
+
+          <div class="relative flex h-full w-full flex-col overflow-hidden">
+            <header class="sticky top-0 z-10 border-b border-white/10 bg-slate-950/85 px-4 py-4 backdrop-blur md:px-6">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="text-xs font-bold uppercase tracking-[0.2em] text-amber-300/90">Profilo utente</p>
+                  <h2 class="mt-1 text-2xl font-black text-white md:text-3xl">Il tuo account</h2>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-2xl leading-none text-white transition hover:bg-white/15"
+                  aria-label="Chiudi profilo"
+                  @click="closeProfileOverlay"
+                >
+                  ×
+                </button>
+              </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto px-4 pb-10 pt-5 md:px-6">
+              <div class="mx-auto grid w-full max-w-5xl gap-4 lg:grid-cols-3">
+                <section class="rounded-2xl border border-white/15 bg-white/10 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.4)] lg:col-span-1">
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-amber-300/60 bg-slate-800 text-2xl">
+                      <img v-if="profileAvatarUrl" :src="profileAvatarUrl" alt="Avatar profilo" class="h-full w-full object-cover">
+                      <span v-else aria-hidden="true">👤</span>
+                    </div>
+                    <div>
+                      <p class="text-xs uppercase tracking-[0.18em] text-slate-300">Nickname</p>
+                      <p class="text-xl font-extrabold text-white">{{ profileNickname }}</p>
+                    </div>
+                  </div>
+
+                  <div class="mt-5 rounded-xl border border-emerald-300/25 bg-emerald-400/10 p-4">
+                    <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/90">Saldo monete</p>
+                    <p class="mt-1 text-3xl font-black text-emerald-300">{{ totalCoins }} 🪙</p>
+                  </div>
+                </section>
+
+                <section class="rounded-2xl border border-white/15 bg-white/10 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.4)] lg:col-span-1">
+                  <h3 class="text-lg font-extrabold text-white">Coupon acquistati</h3>
+                  <ul v-if="accountRedemptions.length" class="mt-3 space-y-2">
+                    <li v-for="entry in accountRedemptions" :key="`${entry.id}-${entry.createdAt}`" class="rounded-xl border border-white/10 bg-slate-900/50 px-3 py-2">
+                      <p class="text-sm font-semibold text-white">{{ entry.label }}</p>
+                      <p class="mt-0.5 text-xs text-slate-300">{{ entry.costCoins }} 🪙 • {{ entry.createdAt }}</p>
+                    </li>
+                  </ul>
+                  <p v-else class="mt-3 rounded-xl border border-dashed border-white/20 bg-slate-900/35 px-3 py-4 text-sm text-slate-300">
+                    Non hai ancora acquistato coupon.
+                  </p>
+                </section>
+
+                <section class="rounded-2xl border border-white/15 bg-white/10 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.4)] lg:col-span-1">
+                  <h3 class="text-lg font-extrabold text-white">QR Lotteria MVP</h3>
+                  <div v-if="lotteryTicketCode" class="mt-3">
+                    <p class="text-sm text-slate-300">Codice lotteria:</p>
+                    <p class="text-base font-black tracking-wider text-amber-300">{{ lotteryTicketCode }}</p>
+                    <img
+                      :src="lotteryTicketQrUrl"
+                      alt="QR lotteria utente"
+                      class="mt-3 h-44 w-44 rounded-xl border border-white/20 bg-white p-2"
+                    >
+                  </div>
+                  <p v-else class="mt-3 rounded-xl border border-dashed border-white/20 bg-slate-900/35 px-3 py-4 text-sm text-slate-300">
+                    Vota l'MVP per ottenere il tuo QR lotteria personale.
+                  </p>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <Teleport to="body">
       <Transition name="earn-modal-fade">
         <div
@@ -240,6 +329,12 @@ const anonymousAvatarSvg = encodeURIComponent(
 );
 const anonymousAvatarDataUrl = `data:image/svg+xml,${anonymousAvatarSvg}`;
 const medals = ['🥇', '🥈', '🥉'];
+const rewardLabelMap = {
+  'coupon-match': 'Coupon Match Day',
+  'coupon-merch': 'Sconto Merch 20%',
+  'coupon-upgrade': 'Upgrade posto',
+  'coupon-photo': 'Foto Team Edition',
+};
 
 const props = defineProps({
   eventId: {
@@ -343,6 +438,9 @@ const isRegisteredFan = ref(false);
 const fanSessionToken = ref('');
 const fanNickname = ref('');
 const fanId = ref(0);
+const isProfileOverlayOpen = ref(false);
+const fanRewardRedemptions = ref([]);
+const fanLotteryTicket = ref(null);
 const lastEarnedCoins = ref(0);
 const isSpendPreviewOpen = ref(false);
 const selectedRewardLabel = ref('Coupon Match Day · 30 🪙');
@@ -371,6 +469,36 @@ const MIN_SPONSOR_HEIGHT = 48;
 const HARD_HIDE_THRESHOLD = 24;
 const GAP_BUFFER_PX = 8;
 const showSponsorsBox = computed(() => sponsors.value.length > 0 && sponsorHeight.value >= HARD_HIDE_THRESHOLD);
+
+const profileAvatarUrl = computed(() => {
+  if (props.votedPlayerImageUrl) {
+    return props.votedPlayerImageUrl;
+  }
+  return '';
+});
+
+const profileNickname = computed(() => {
+  if (fanNickname.value.trim()) {
+    return fanNickname.value.trim();
+  }
+  return isRegisteredFan.value ? 'Tifoso' : 'Guest';
+});
+
+const accountRedemptions = computed(() =>
+  fanRewardRedemptions.value.map((entry, index) => ({
+    id: Number(entry?.id) || index + 1,
+    label: rewardLabelMap[String(entry?.reward_key || '').trim()] || String(entry?.reward_key || 'Reward').replace(/-/g, ' '),
+    costCoins: Math.max(0, Number(entry?.cost_coins) || 0),
+    createdAt: String(entry?.created_at || '').replace('T', ' ').slice(0, 16) || 'Data non disponibile',
+  })),
+);
+
+const lotteryTicketCode = computed(() => String(fanLotteryTicket.value?.ticket_code || '').trim());
+const lotteryTicketQrUrl = computed(() =>
+  lotteryTicketCode.value
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(lotteryTicketCode.value)}`
+    : '',
+);
 
 const voteFeature = computed(() => {
   const baseFeature = props.features.find((feature) => feature.id === 'vote-mvp') || props.features[0];
@@ -728,7 +856,7 @@ watch(
       seenStoryIds.value = [];
     }
     loadFanProfile();
-  loadEventStories();
+    loadEventStories();
     loadSponsors();
     loadLeaderboardPreview();
     nextTick(() => {
@@ -757,11 +885,11 @@ watch([currentStory, isStoryModalOpen], ([story, isOpen]) => {
   markStorySeen(Number(story.id));
 });
 
-watch(isStoryModalOpen, (open) => {
+watch([isStoryModalOpen, isProfileOverlayOpen], ([storyOpen, profileOpen]) => {
   if (typeof document === 'undefined') {
     return;
   }
-  document.body.style.overflow = open ? 'hidden' : '';
+  document.body.style.overflow = storyOpen || profileOpen ? 'hidden' : '';
 });
 
 onBeforeUnmount(() => {
@@ -776,6 +904,7 @@ onBeforeUnmount(() => {
   if (typeof document !== 'undefined') {
     document.body.style.overflow = '';
   }
+  isProfileOverlayOpen.value = false;
 });
 
 
@@ -813,8 +942,12 @@ async function loadFanProfile() {
     fanNickname.value = data.user?.nickname || '';
     totalCoins.value = Math.max(0, Number(data.wallet) || 0);
     leaderboardUser.value = data.user_rank || null;
+    fanRewardRedemptions.value = Array.isArray(data.reward_redemptions) ? data.reward_redemptions : [];
+    fanLotteryTicket.value = data.lottery_ticket || null;
   } else if (Number.isFinite(Number(data.guest_coins))) {
     totalCoins.value = Math.max(totalCoins.value, Number(data.guest_coins) || 0);
+    fanRewardRedemptions.value = [];
+    fanLotteryTicket.value = null;
   }
 }
 
@@ -837,7 +970,20 @@ async function handleRegistrationSubmit(form) {
   totalCoins.value = Math.max(0, Number(response.data?.wallet) || totalCoins.value);
   isRegistrationPromptOpen.value = false;
   await loadLeaderboardPreview();
+  await loadFanProfile();
   return { ok: true, wallet: totalCoins.value };
+}
+
+function openProfileOverlay() {
+  if (!isRegisteredFan.value) {
+    openRegistrationPrompt('profile_overlay');
+    return;
+  }
+  isProfileOverlayOpen.value = true;
+}
+
+function closeProfileOverlay() {
+  isProfileOverlayOpen.value = false;
 }
 
 function openSpendPreview() {
