@@ -56,8 +56,8 @@
           </div>
 
           <div v-else class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button type="button" class="cta-primary" :disabled="liveCoins < RETRY_COST" @click="retryNow">
-              Riprova subito – 4 monete
+            <button type="button" class="cta-primary" :disabled="!canRetry" @click="retryNow">
+              {{ retryLabel }}
             </button>
             <button type="button" class="cta-secondary" @click="emit('exit')">Esci</button>
           </div>
@@ -91,6 +91,10 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
+  freeRetry: {
+    type: Number,
+    default: 0,
+  },
 });
 
 const EMOJIS = ['🏐', '⚡', '🔥', '💎', '👑'];
@@ -118,6 +122,8 @@ let rewarded = false;
 
 const timeLabel = computed(() => `${Math.ceil(Math.max(0, timeLeftMs.value) / 1000)}s`);
 const timerProgress = computed(() => (Math.max(0, timeLeftMs.value) / TOTAL_TIME_MS) * 100);
+const canRetry = computed(() => Number(props.freeRetry) > 0 || liveCoins.value >= RETRY_COST);
+const retryLabel = computed(() => (Number(props.freeRetry) > 0 ? 'Riprova subito – GRATIS' : `Riprova subito – ${RETRY_COST} monete`));
 const statusLabel = computed(() => {
   if (state.value === 'preview') return 'Preview';
   if (state.value === 'playing') return 'Playing';
@@ -281,9 +287,16 @@ function onLose() {
 }
 
 function retryNow() {
-  if (liveCoins.value < RETRY_COST) {
+  if (!canRetry.value) {
     return;
   }
+
+  if (Number(props.freeRetry) > 0) {
+    emit('consume-free-retry');
+    startRound(false);
+    return;
+  }
+
   startRound(true);
 }
 
