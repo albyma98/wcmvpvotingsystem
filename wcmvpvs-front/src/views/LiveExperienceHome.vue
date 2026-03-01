@@ -133,6 +133,7 @@
       v-model="isEarnModalOpen"
       :event-id="eventId"
       :wallet-target-el="walletTargetEl"
+      :wallet-coins="totalCoins"
       @coins-earned="addCoins"
     />
 
@@ -564,8 +565,8 @@ onMounted(async () => {
 });
 
 async function addCoins(amount) {
-  const parsed = Math.max(0, Number(amount) || 0);
-  totalCoins.value += parsed;
+  const parsed = Number(amount) || 0;
+  totalCoins.value = Math.max(0, totalCoins.value + parsed);
 
   if (typeof window !== 'undefined') {
     window.localStorage.setItem('wallet:coins', String(totalCoins.value));
@@ -578,7 +579,7 @@ async function addCoins(amount) {
     await syncGuestCoins(props.eventId, totalCoins.value);
   }
 
-  if (!isRegisteredFan.value && props.eventId) {
+  if (!isRegisteredFan.value && props.eventId && parsed > 0) {
     lastEarnedCoins.value = parsed;
   }
 }
