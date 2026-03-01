@@ -92,19 +92,19 @@ func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqconte
 					resp["reward_redemptions"] = redemptions
 				}
 				if ticket, ticketErr := rt.db.GetFanLotteryTicket(eventID, summary.Profile.ID); ticketErr == nil {
-					lotteryTicket := map[string]interface{}{
-						"vote_id":          ticket.VoteID,
-						"ticket_code":      ticket.TicketCode,
-						"ticket_signature": ticket.TicketSignature,
-						"player_id":        ticket.PlayerID,
-						"player_first_name": ticket.PlayerFirstName,
-						"player_last_name":  ticket.PlayerLastName,
-						"created_at":        ticket.CreatedAt,
+					resp["lottery_ticket"] = rt.serializeLotteryTicket(eventID, ticket)
+				} else if deviceID != "" {
+					// Fallback: if the vote was cast from this device but user_id linkage is not yet persisted,
+					// expose the current device ticket so the QR appears immediately in fan profile.
+					if vote, voteErr := rt.db.GetDeviceVote(eventID, deviceID); voteErr == nil {
+						resp["lottery_ticket"] = rt.serializeLotteryTicket(eventID, database.EventTicket{
+							VoteID:          vote.ID,
+							TicketCode:      vote.TicketCode,
+							TicketSignature: vote.TicketSignature,
+							PlayerID:        vote.PlayerID,
+							CreatedAt:       vote.CreatedAt,
+						})
 					}
-					if validationURL, buildErr := rt.buildTicketValidationURL(eventID, ticket.TicketCode, ticket.TicketSignature); buildErr == nil {
-						lotteryTicket["qr_data"] = validationURL
-					}
-					resp["lottery_ticket"] = lotteryTicket
 				}
 				if rank, rankErr := rt.db.GetFanRank(eventID, ctx.OrganizationID, summary.Profile.ID); rankErr == nil {
 					resp["user_rank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins}
@@ -163,6 +163,22 @@ func (rt *_router) postGuestCoins(w http.ResponseWriter, r *http.Request, ctx re
 		return
 	}
 	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": payload.Coins, "registered": false})
+}
+
+func (rt *_router) serializeLotteryTicket(eventID int, ticket database.EventTicket) map[string]interface{} {
+	lotteryTicket := map[string]interface{}{
+		"vote_id":           ticket.VoteID,
+		"ticket_code":       ticket.TicketCode,
+		"ticket_signature":  ticket.TicketSignature,
+		"player_id":         ticket.PlayerID,
+		"player_first_name": ticket.PlayerFirstName,
+		"player_last_name":  ticket.PlayerLastName,
+		"created_at":        ticket.CreatedAt,
+	}
+	if validationURL, buildErr := rt.buildTicketValidationURL(eventID, ticket.TicketCode, ticket.TicketSignature); buildErr == nil {
+		lotteryTicket["qr_data"] = validationURL
+	}
+	return lotteryTicket
 }
 
 func (rt *_router) getCoinsLeaderboard(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
