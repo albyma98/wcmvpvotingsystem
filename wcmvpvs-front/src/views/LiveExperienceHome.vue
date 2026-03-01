@@ -102,19 +102,16 @@
         </article>
       </section>
 
-      <SponsorsMarquee
-        v-if="showSponsorsBox"
-        ref="sponsorBoxRef"
-        class="animate-on-enter mt-2"
-        :sponsors="sponsors"
-        :height-px="sponsorHeight"
-        :event-id="eventId"
-        @image-loaded="queueSponsorGapMeasure"
-        @sponsor-click="handleSponsorClick"
-      />
-
       <div ref="liveResultsRef" class="animate-on-enter mt-auto">
-        <LiveResultsBar :results="results" />
+        <SponsorsMarquee
+          v-if="showSponsorsBox"
+          ref="sponsorBoxRef"
+          :sponsors="sponsors"
+          :height-px="sponsorHeight"
+          :event-id="eventId"
+          @image-loaded="queueSponsorGapMeasure"
+          @sponsor-click="handleSponsorClick"
+        />
       </div>
     </main>
 
@@ -307,7 +304,6 @@ import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
 import FeatureCard from '../components/FeatureCard.vue';
 import FanRegistrationPromptModal from '../components/FanRegistrationPromptModal.vue';
 import LiveHeader from '../components/LiveHeader.vue';
-import LiveResultsBar from '../components/LiveResultsBar.vue';
 import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
 import StoryModal from '../components/StoryModal.vue';
@@ -397,14 +393,6 @@ const props = defineProps({
         icon: '🎁',
         theme: 'green',
       },
-    ],
-  },
-  results: {
-    type: Array,
-    default: () => [
-      { name: 'ROSSI', value: 42 },
-      { name: 'BIANCHI', value: 37 },
-      { name: 'VERDI', value: 21 },
     ],
   },
   votedPlayerImageUrl: {
