@@ -5067,15 +5067,8 @@ async function uploadStoryVideo(eventId, story, index, event) {
   try {
     const formData = new FormData();
     formData.append('video', file);
-    const config = {
-      ...authHeaders.value,
-      headers: {
-        ...(authHeaders.value?.headers || {}),
-        'Content-Type': 'multipart/form-data',
-      },
-    };
     const { data } = await secureRequest(() =>
-      apiClient.post(`/admin/events/${eventId}/stories/upload-video`, formData, config),
+      apiClient.post(`/admin/events/${eventId}/stories/upload-video`, formData, authHeaders.value),
     );
     story.video_url = String(data?.video_url || '').trim();
   } catch (error) {
