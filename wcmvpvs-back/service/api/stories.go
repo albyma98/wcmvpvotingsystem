@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	storyVideoMaxUploadSize = 40 << 20 // 40 MiB
+	storyVideoMaxUploadSize = 150 << 20 // 150 MiB
 )
 
 var allowedStoryVideoTypes = map[string]string{
