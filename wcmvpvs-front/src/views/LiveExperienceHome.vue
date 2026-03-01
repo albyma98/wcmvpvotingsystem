@@ -217,14 +217,17 @@
 
                 <section class="rounded-2xl border border-white/15 bg-white/10 p-5 shadow-[0_10px_30px_rgba(15,23,42,0.4)] lg:col-span-1">
                   <h3 class="text-lg font-extrabold text-white">QR Lotteria MVP</h3>
-                  <div v-if="lotteryTicketCode" class="mt-3">
+                  <div v-if="displayLotteryCode" class="mt-3">
                     <p class="text-sm text-slate-300">Codice lotteria:</p>
-                    <p class="text-base font-black tracking-wider text-amber-300">{{ lotteryTicketCode }}</p>
+                    <p class="text-base font-black tracking-wider text-amber-300">{{ displayLotteryCode }}</p>
                     <img
-                      :src="lotteryTicketQrUrl"
+                      :src="displayLotteryQrUrl"
                       alt="QR lotteria utente"
                       class="mt-3 h-44 w-44 rounded-xl border border-white/20 bg-white p-2"
                     >
+                    <p class="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">
+                      Resta fino a fine partita per ritirare il premio.
+                    </p>
                   </div>
                   <p v-else class="mt-3 rounded-xl border border-dashed border-white/20 bg-slate-900/35 px-3 py-4 text-sm text-slate-300">
                     Vota l'MVP per ottenere il tuo QR lotteria personale.
@@ -307,7 +310,7 @@ import LiveResultsBar from '../components/LiveResultsBar.vue';
 import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
 import StoryModal from '../components/StoryModal.vue';
-import { apiClient, fetchFanProfile, redeemFanReward, registerFanProfile, syncGuestCoins } from '../api';
+import { apiClient, fetchFanProfile, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins } from '../api';
 import { getOrCreateDeviceId } from '../deviceId';
 
 const anonymousAvatarSvg = encodeURIComponent(
@@ -441,6 +444,7 @@ const fanId = ref(0);
 const isProfileOverlayOpen = ref(false);
 const fanRewardRedemptions = ref([]);
 const fanLotteryTicket = ref(null);
+const hasVotedMvp = ref(false);
 const lastEarnedCoins = ref(0);
 const isSpendPreviewOpen = ref(false);
 const selectedRewardLabel = ref('Coupon Match Day · 30 🪙');
@@ -494,9 +498,19 @@ const accountRedemptions = computed(() =>
 );
 
 const lotteryTicketCode = computed(() => String(fanLotteryTicket.value?.ticket_code || '').trim());
-const lotteryTicketQrUrl = computed(() =>
-  lotteryTicketCode.value
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(lotteryTicketCode.value)}`
+const fallbackLotteryCode = computed(() => {
+  if (!hasVotedMvp.value || !props.eventId) {
+    return '';
+  }
+
+  const fanSegment = fanId.value ? String(fanId.value).padStart(5, '0') : 'GUEST';
+  const deviceSegment = getOrCreateDeviceId().replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase() || 'DEVICE';
+  return `MVP-${props.eventId}-${fanSegment}-${deviceSegment}`;
+});
+const displayLotteryCode = computed(() => lotteryTicketCode.value || fallbackLotteryCode.value);
+const displayLotteryQrUrl = computed(() =>
+  displayLotteryCode.value
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(displayLotteryCode.value)}`
     : '',
 );
 
@@ -930,6 +944,10 @@ function openRegistrationPrompt(trigger) {
 
 async function loadFanProfile() {
   if (!props.eventId) return;
+
+  const voteStatus = await fetchVoteStatus(props.eventId);
+  hasVotedMvp.value = Boolean(voteStatus?.ok && voteStatus.hasVoted);
+
   const response = await fetchFanProfile(props.eventId);
   if (!response?.ok) return;
   const data = response.data || {};
