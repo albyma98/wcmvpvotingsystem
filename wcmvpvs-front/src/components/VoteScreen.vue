@@ -894,6 +894,7 @@ const normalizedEventCoupons = computed(() =>
   eventCoupons.value
     .map((item) => normalizeEventCoupon(item))
     .filter((coupon) => coupon !== null)
+    .filter((coupon) => /mystery\s*box/i.test(coupon.title))
     .sort((a, b) => {
       if (a.highlight !== b.highlight) {
         return Number(b.highlight) - Number(a.highlight);
