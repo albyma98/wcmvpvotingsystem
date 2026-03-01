@@ -439,6 +439,8 @@ const isProfileOverlayOpen = ref(false);
 const fanRewardRedemptions = ref([]);
 const fanLotteryTicket = ref(null);
 const hasVotedMvp = ref(false);
+const hasHandledFirstVoteFlow = ref(false);
+const shouldOpenProfileAfterAuth = ref(false);
 const lastEarnedCoins = ref(0);
 const isSpendPreviewOpen = ref(false);
 const experienceFormStorageKey = 'experienceFormSubmitted';
@@ -841,7 +843,9 @@ watch(
 
 watch(() => props.registrationPromptSignal, (value, previous) => {
   if (value !== previous) {
-    openRegistrationPrompt('after_vote');
+    loadFanProfile().finally(() => {
+      handleAfterVoteLotteryFlow();
+    });
   }
 });
 
@@ -887,11 +891,31 @@ function openRegistrationPrompt(trigger) {
   window.sessionStorage.setItem(key, '1');
 }
 
+function handleAfterVoteLotteryFlow() {
+  if (!hasVotedMvp.value || hasHandledFirstVoteFlow.value) {
+    return;
+  }
+
+  hasHandledFirstVoteFlow.value = true;
+  if (isRegisteredFan.value) {
+    loadFanProfile().finally(() => {
+      isProfileOverlayOpen.value = true;
+    });
+    return;
+  }
+
+  shouldOpenProfileAfterAuth.value = true;
+  openRegistrationPrompt('after_vote');
+}
+
 async function loadFanProfile() {
   if (!props.eventId) return;
 
   const voteStatus = await fetchVoteStatus(props.eventId);
   hasVotedMvp.value = Boolean(voteStatus?.ok && voteStatus.hasVoted);
+  if (!hasVotedMvp.value) {
+    hasHandledFirstVoteFlow.value = false;
+  }
 
   const response = await fetchFanProfile(props.eventId);
   if (!response?.ok) return;
@@ -920,6 +944,10 @@ async function handleExistingFanLogin() {
   if (!isRegisteredFan.value) {
     return { ok: false, message: 'Impossibile trovare un profilo associato a questo numero.' };
   }
+  if (shouldOpenProfileAfterAuth.value) {
+    shouldOpenProfileAfterAuth.value = false;
+    isProfileOverlayOpen.value = true;
+  }
   return { ok: true };
 }
 
@@ -943,6 +971,10 @@ async function handleRegistrationSubmit(form) {
   isRegistrationPromptOpen.value = false;
   await loadLeaderboardPreview();
   await loadFanProfile();
+  if (shouldOpenProfileAfterAuth.value) {
+    shouldOpenProfileAfterAuth.value = false;
+    isProfileOverlayOpen.value = true;
+  }
   return { ok: true, wallet: totalCoins.value };
 }
 
