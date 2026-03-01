@@ -580,7 +580,6 @@ async function addCoins(amount) {
 
   if (!isRegisteredFan.value && props.eventId) {
     lastEarnedCoins.value = parsed;
-    openRegistrationPrompt('after_earn');
   }
 }
 
