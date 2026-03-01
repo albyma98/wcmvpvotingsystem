@@ -98,11 +98,7 @@ func (rt *_router) postStartFanPhoneVerification(w http.ResponseWriter, r *http.
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Numero di telefono non valido")
 		return
 	}
-	channel := strings.TrimSpace(rt.twilioVerifyChannel)
-	if channel == "" {
-		channel = "sms"
-	}
-	_, err := rt.callTwilioVerify("Verifications", url.Values{"To": {phone}, "Channel": {channel}})
+	_, err := rt.callTwilioVerify("Verifications", url.Values{"To": {phone}, "Channel": {"sms"}})
 	if err != nil {
 		ctx.Logger.WithError(err).Error("twilio start verification failed")
 		_ = writeJSONMessage(w, http.StatusBadGateway, "Invio OTP non riuscito")

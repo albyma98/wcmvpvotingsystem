@@ -45,10 +45,9 @@ type WebAPIConfiguration struct {
 	}
 
 	Twilio struct {
-		AccountSID    string `conf:"default:"`
-		AuthToken     string `conf:"default:"`
-		VerifySID     string `conf:"default:"`
-		VerifyChannel string `conf:"default:sms"`
+		AccountSID string `conf:"default:"`
+		AuthToken  string `conf:"default:"`
+		VerifySID  string `conf:"default:"`
 	}
 }
 

@@ -119,6 +119,16 @@ func run() error {
 
 	logger.Infof("application initializing")
 
+	if cfg.Twilio.AccountSID == "" {
+		cfg.Twilio.AccountSID = strings.TrimSpace(os.Getenv("ACCOUNT_SID"))
+	}
+	if cfg.Twilio.AuthToken == "" {
+		cfg.Twilio.AuthToken = strings.TrimSpace(os.Getenv("AUTH_TOKEN"))
+	}
+	if cfg.Twilio.VerifySID == "" {
+		cfg.Twilio.VerifySID = strings.TrimSpace(os.Getenv("VERIFY_SERVICE_SID"))
+	}
+
 	// Start Database
 	logger.Println("initializing database support")
 	dbconn, err := sql.Open("sqlite3", cfg.DB.Filename)
@@ -175,7 +185,6 @@ func run() error {
 		TwilioAccountSID:        cfg.Twilio.AccountSID,
 		TwilioAuthToken:         cfg.Twilio.AuthToken,
 		TwilioVerifySID:         cfg.Twilio.VerifySID,
-		TwilioVerifyChannel:     cfg.Twilio.VerifyChannel,
 	})
 	if err != nil {
 		logger.WithError(err).Error("error creating the API server instance")

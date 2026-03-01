@@ -61,10 +61,9 @@ type Config struct {
 	TicketValidationBaseURL string
 
 	// Twilio credentials for phone verification flows.
-	TwilioAccountSID    string
-	TwilioAuthToken     string
-	TwilioVerifySID     string
-	TwilioVerifyChannel string
+	TwilioAccountSID string
+	TwilioAuthToken  string
+	TwilioVerifySID  string
 }
 
 // Router is the package API interface representing an API handler builder
@@ -102,7 +101,6 @@ func New(cfg Config) (Router, error) {
 		twilioAccountSID:        cfg.TwilioAccountSID,
 		twilioAuthToken:         cfg.TwilioAuthToken,
 		twilioVerifySID:         cfg.TwilioVerifySID,
-		twilioVerifyChannel:     cfg.TwilioVerifyChannel,
 		voteRateByDevice:        map[string][]time.Time{},
 		voteRateByIP:            map[string][]time.Time{},
 	}, nil
@@ -128,10 +126,9 @@ type _router struct {
 	partnerSessionsMu sync.RWMutex
 	partnerSessions   map[string]adminSession
 
-	twilioAccountSID    string
-	twilioAuthToken     string
-	twilioVerifySID     string
-	twilioVerifyChannel string
+	twilioAccountSID string
+	twilioAuthToken  string
+	twilioVerifySID  string
 
 	voteRateMu       sync.Mutex
 	voteRateByDevice map[string][]time.Time
