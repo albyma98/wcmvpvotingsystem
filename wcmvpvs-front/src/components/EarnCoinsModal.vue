@@ -53,7 +53,7 @@
                     :key="option.id"
                     type="button"
                     class="group rounded-2xl border border-white/15 bg-white/10 p-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.45)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="cooldowns[option.id] > 0"
+                    :disabled="!option.isAvailable || cooldowns[option.id] > 0"
                     @click="handleOptionClick(option)"
                   >
                     <div class="flex items-start justify-between gap-2">
@@ -61,8 +61,8 @@
                     </div>
                     <h3 class="mt-3 text-lg font-extrabold text-white">{{ option.title }}</h3>
                     <p class="mt-1 text-sm text-slate-300">{{ option.description }}</p>
-                    <p class="mt-4 text-xs font-semibold uppercase tracking-wide" :class="cooldowns[option.id] > 0 ? 'text-orange-300' : 'text-emerald-300'">
-                      {{ cooldowns[option.id] > 0 ? `${option.id === 'tap' ? 'IN COOLDOWN' : 'In cooldown'} ${formatCooldown(cooldowns[option.id])}` : 'Disponibile' }}
+                    <p class="mt-4 text-xs font-semibold uppercase tracking-wide" :class="!option.isAvailable ? 'text-slate-400' : cooldowns[option.id] > 0 ? 'text-orange-300' : 'text-emerald-300'">
+                      {{ !option.isAvailable ? 'Temporaneamente non disponibile' : cooldowns[option.id] > 0 ? `${option.id === 'tap' ? 'IN COOLDOWN' : 'In cooldown'} ${formatCooldown(cooldowns[option.id])}` : 'Disponibile' }}
                     </p>
                   </button>
                 </div>
@@ -157,10 +157,10 @@ const gameStageRef = ref(null);
 const coinAnimationRef = ref(null);
 
 const earnOptions = [
-  { id: 'reaction', title: 'Reaction Test', description: 'Testa i riflessi e scala la classifica.', reward: 10, icon: '⚡', type: 'game', cooldownSeconds: 90 },
-  { id: 'quiz', title: 'Quiz Lampo', description: 'Rispondi veloce a domande a tema match.', reward: 15, icon: '🧠', type: 'game', cooldownSeconds: 120 },
-  { id: 'tap', title: 'Tap Challenge', description: 'Tappa più forte che puoi in 10 secondi.', reward: 8, icon: '👆', type: 'game', cooldownSeconds: 60 },
-  { id: 'memory-flash', title: 'Memory Flash', description: 'Memorizza le coppie e chiudi il board prima del tempo.', reward: 8, icon: '🧩', type: 'game', cooldownSeconds: 60 },
+  { id: 'reaction', title: 'Reaction Test', description: 'Testa i riflessi e scala la classifica.', reward: 10, icon: '⚡', type: 'game', cooldownSeconds: 90, isAvailable: true },
+  { id: 'quiz', title: 'Quiz Lampo', description: 'Rispondi veloce a domande a tema match.', reward: 15, icon: '🧠', type: 'game', cooldownSeconds: 120, isAvailable: false },
+  { id: 'tap', title: 'Tap Challenge', description: 'Tappa più forte che puoi in 10 secondi.', reward: 8, icon: '👆', type: 'game', cooldownSeconds: 60, isAvailable: true },
+  { id: 'memory-flash', title: 'Memory Flash', description: 'Memorizza le coppie e chiudi il board prima del tempo.', reward: 8, icon: '🧩', type: 'game', cooldownSeconds: 60, isAvailable: true },
 ];
 
 const nowTick = ref(Date.now());
@@ -326,6 +326,10 @@ function consumeFreeRetry() {
 }
 
 function handleOptionClick(option) {
+  if (!option.isAvailable) {
+    return;
+  }
+
   if (cooldowns.value[option.id] > 0) {
     return;
   }
