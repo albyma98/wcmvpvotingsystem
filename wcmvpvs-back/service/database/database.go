@@ -5863,6 +5863,13 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 		if _, err = tx.Exec(`UPDATE votes SET user_id = ? WHERE device_id = ? AND (? = 0 OR event_id = ?)`, profile.ID, input.DeviceID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
+		if _, err = tx.Exec(`INSERT OR IGNORE INTO fan_lottery_entries (event_id, fan_id, source)
+			SELECT DISTINCT v.event_id, ?, 'after_vote'
+			FROM votes v
+			WHERE v.user_id = ? AND v.device_id = ? AND (? = 0 OR v.event_id = ?)`,
+			profile.ID, profile.ID, input.DeviceID, input.EventID, input.EventID); err != nil {
+			return FanProfileSummary{}, err
+		}
 		if _, err = tx.Exec(`DELETE FROM guest_wallets WHERE device_id = ? AND (? = 0 OR event_id = ?)`, input.DeviceID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
