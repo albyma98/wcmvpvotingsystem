@@ -863,7 +863,7 @@ type AppDatabase interface {
 	GetFanRank(eventID int, organizationID int, fanID int) (FanLeaderboardEntry, error)
 	ListFanRewardRedemptions(eventID int, fanID int) ([]FanRewardRedemption, error)
 	GetFanLotteryTicket(eventID int, fanID int) (EventTicket, error)
-	RecordFanLotteryEntry(eventID int, fanID int, source string) error
+	RecordFanLotteryEntry(eventID int, fanID int, ticketCode string, source string) error
 	RecordFanRewardRedemption(eventID int, fanID int, rewardKey string, costCoins int) error
 	PurgeEventData(eventID int) error
 	RecordEventFeedback(feedback EventFeedback) error
@@ -3148,7 +3148,7 @@ func (db *appdbimpl) ListEventTickets(eventID int) ([]EventTicket, error) {
 SELECT v.id, v.ticket_code, v.ticket_signature, v.player_id, IFNULL(p.first_name, ''), IFNULL(p.last_name, ''), v.created_at
 FROM votes v
 JOIN fan_profiles fp ON fp.id = v.user_id
-JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id
+JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id AND fle.ticket_code = v.ticket_code
 LEFT JOIN players p ON p.id = v.player_id
 LEFT JOIN event_prizes ep ON ep.winner_vote_id = v.id AND ep.event_id = ?
 WHERE v.event_id = ?
@@ -3392,7 +3392,7 @@ func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize
 	if err := tx.QueryRow(`SELECT COUNT(1)
 	FROM votes v
 	JOIN fan_profiles fp ON fp.id = v.user_id
-	JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id
+	JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id AND fle.ticket_code = v.ticket_code
 	WHERE v.id = ?
 	  AND v.event_id = ?
 	  AND v.user_id IS NOT NULL
@@ -3444,7 +3444,7 @@ func (db *appdbimpl) GetEligibleWinnerPhoneByVote(eventID, voteID int) (string, 
 	err := db.c.QueryRow(`SELECT fp.phone_e164
 	FROM votes v
 	JOIN fan_profiles fp ON fp.id = v.user_id
-	JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id
+	JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id AND fle.ticket_code = v.ticket_code
 	WHERE v.event_id = ?
 	  AND v.id = ?
 	  AND v.user_id IS NOT NULL
@@ -5761,6 +5761,7 @@ func ensureFanProfileTables(db *sql.DB) error {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			event_id INTEGER NOT NULL,
 			fan_id INTEGER NOT NULL,
+			ticket_code TEXT NOT NULL DEFAULT '',
 			source TEXT NOT NULL DEFAULT 'manual',
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(event_id, fan_id),
@@ -5779,6 +5780,17 @@ func ensureFanProfileTables(db *sql.DB) error {
 		`ALTER TABLE fan_profiles ADD COLUMN phone_verified_at TEXT;`,
 		`UPDATE fan_profiles SET phone_e164 = phone WHERE phone_e164 IS NULL OR TRIM(phone_e164) = '';`,
 		`ALTER TABLE votes ADD COLUMN user_id INTEGER REFERENCES fan_profiles(id);`,
+		`ALTER TABLE fan_lottery_entries ADD COLUMN ticket_code TEXT NOT NULL DEFAULT '';`,
+		`UPDATE fan_lottery_entries
+		SET ticket_code = IFNULL((
+			SELECT v.ticket_code
+			FROM votes v
+			WHERE v.event_id = fan_lottery_entries.event_id
+			  AND v.user_id = fan_lottery_entries.fan_id
+			ORDER BY v.id DESC
+			LIMIT 1
+		), '')
+		WHERE TRIM(IFNULL(ticket_code, '')) = '';`,
 		`CREATE INDEX IF NOT EXISTS idx_fan_sessions_fan ON fan_sessions(fan_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_guest_wallets_device ON guest_wallets(event_id, organization_id, device_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_fan_wallets_coins ON fan_wallets(coins DESC);`,
@@ -5867,8 +5879,8 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 		if _, err = tx.Exec(`UPDATE votes SET user_id = ? WHERE device_id = ? AND (? = 0 OR event_id = ?)`, profile.ID, input.DeviceID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
-		if _, err = tx.Exec(`INSERT OR IGNORE INTO fan_lottery_entries (event_id, fan_id, source)
-			SELECT DISTINCT v.event_id, ?, 'after_vote'
+		if _, err = tx.Exec(`INSERT OR IGNORE INTO fan_lottery_entries (event_id, fan_id, ticket_code, source)
+			SELECT DISTINCT v.event_id, ?, v.ticket_code, 'after_vote'
 			FROM votes v
 			WHERE v.user_id = ? AND v.device_id = ? AND (? = 0 OR v.event_id = ?)`,
 			profile.ID, profile.ID, input.DeviceID, input.EventID, input.EventID); err != nil {
@@ -5887,7 +5899,15 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 	}
 
 	if input.EnterLottery && input.EventID > 0 {
-		if _, err = tx.Exec(`INSERT OR IGNORE INTO fan_lottery_entries (event_id, fan_id, source) VALUES (?, ?, 'after_vote')`, input.EventID, profile.ID); err != nil {
+		if _, err = tx.Exec(`INSERT OR IGNORE INTO fan_lottery_entries (event_id, fan_id, ticket_code, source)
+			VALUES (?, ?, IFNULL((
+				SELECT v.ticket_code
+				FROM votes v
+				WHERE v.event_id = ?
+				  AND v.user_id = ?
+				ORDER BY v.id DESC
+				LIMIT 1
+			), ''), 'after_vote')`, input.EventID, profile.ID, input.EventID, profile.ID); err != nil {
 			return FanProfileSummary{}, err
 		}
 	}
@@ -6135,8 +6155,8 @@ func (db *appdbimpl) GetFanLotteryTicket(eventID int, fanID int) (EventTicket, e
 	return ticket, nil
 }
 
-func (db *appdbimpl) RecordFanLotteryEntry(eventID int, fanID int, source string) error {
-	_, err := db.c.Exec(`INSERT OR IGNORE INTO fan_lottery_entries (event_id, fan_id, source) VALUES (?, ?, ?)`, eventID, fanID, strings.TrimSpace(source))
+func (db *appdbimpl) RecordFanLotteryEntry(eventID int, fanID int, ticketCode string, source string) error {
+	_, err := db.c.Exec(`INSERT OR IGNORE INTO fan_lottery_entries (event_id, fan_id, ticket_code, source) VALUES (?, ?, ?, ?)`, eventID, fanID, strings.TrimSpace(ticketCode), strings.TrimSpace(source))
 	return err
 }
 
