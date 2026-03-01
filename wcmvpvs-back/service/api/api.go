@@ -59,6 +59,10 @@ type Config struct {
 
 	// TicketValidationBaseURL is the public base URL used to generate ticket validation links
 	TicketValidationBaseURL string
+
+	TwilioAccountSID string
+	TwilioAuthToken  string
+	TwilioVerifySID  string
 }
 
 // Router is the package API interface representing an API handler builder
@@ -95,6 +99,13 @@ func New(cfg Config) (Router, error) {
 		sessionTimeout:          12 * time.Hour,
 		voteRateByDevice:        map[string][]time.Time{},
 		voteRateByIP:            map[string][]time.Time{},
+		authRateByPhone:         map[string][]time.Time{},
+		authRateByIP:            map[string][]time.Time{},
+		twilioVerify: newTwilioVerifyClient(twilioVerifyConfig{
+			AccountSID: cfg.TwilioAccountSID,
+			AuthToken:  cfg.TwilioAuthToken,
+			ServiceSID: cfg.TwilioVerifySID,
+		}),
 	}, nil
 }
 
@@ -121,6 +132,12 @@ type _router struct {
 	voteRateMu       sync.Mutex
 	voteRateByDevice map[string][]time.Time
 	voteRateByIP     map[string][]time.Time
+
+	authRateMu      sync.Mutex
+	authRateByPhone map[string][]time.Time
+	authRateByIP    map[string][]time.Time
+
+	twilioVerify *twilioVerifyClient
 }
 
 type adminSession struct {

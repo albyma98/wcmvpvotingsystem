@@ -840,6 +840,10 @@ type AppDatabase interface {
 	ListContactBonuses(eventID int, deviceID string) ([]ContactSubmission, error)
 	RecordContactEvent(eventID int, deviceID, name string) error
 	RegisterFan(input FanRegisterInput) (FanProfileSummary, error)
+	GetFanByPhoneE164(phone string) (FanProfile, error)
+	CreateFanWithPhoneE164(phone string) (FanProfile, error)
+	MarkFanPhoneVerified(phone string, verifiedAt time.Time) error
+	UpsertFanSession(token string, fanID int, deviceID string) error
 	GetFanBySessionToken(token string) (FanProfileSummary, error)
 	GetFanByDevice(eventID int, organizationID int, deviceID string) (FanProfileSummary, error)
 	GetGuestCoins(eventID int, organizationID int, deviceID string) (int, error)
@@ -1775,7 +1779,6 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if err = ensureFanProfileTables(db); err != nil {
 		return nil, err
 	}
-
 
 	return &appdbimpl{
 		c: db,
@@ -5669,6 +5672,8 @@ func ensureFanProfileTables(db *sql.DB) error {
 			nickname TEXT NOT NULL,
 			gender TEXT,
 			phone TEXT NOT NULL,
+			phone_e164 TEXT,
+			phone_verified_at TEXT,
 			accepted_terms INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -5715,10 +5720,14 @@ func ensureFanProfileTables(db *sql.DB) error {
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (fan_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
 		);`,
+		`ALTER TABLE fan_profiles ADD COLUMN phone_e164 TEXT;`,
+		`ALTER TABLE fan_profiles ADD COLUMN phone_verified_at TEXT;`,
+		`UPDATE fan_profiles SET phone_e164 = phone WHERE phone_e164 IS NULL OR TRIM(phone_e164) = '';`,
 		`ALTER TABLE votes ADD COLUMN user_id INTEGER REFERENCES fan_profiles(id);`,
 		`CREATE INDEX IF NOT EXISTS idx_fan_sessions_fan ON fan_sessions(fan_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_guest_wallets_device ON guest_wallets(event_id, organization_id, device_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_fan_wallets_coins ON fan_wallets(coins DESC);`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_fan_profiles_phone_e164_unique ON fan_profiles(phone_e164);`,
 	}
 
 	for _, stmt := range statements {
@@ -5749,10 +5758,10 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.Exec(`INSERT INTO fan_profiles (organization_id, nickname, gender, phone, accepted_terms)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(organization_id, phone) DO UPDATE SET nickname=excluded.nickname, gender=excluded.gender, accepted_terms=excluded.accepted_terms`,
-		input.OrganizationID, input.Nickname, input.Gender, input.Phone, boolToInt(input.AcceptedTerms)); err != nil {
+	if _, err = tx.Exec(`INSERT INTO fan_profiles (organization_id, nickname, gender, phone, phone_e164, accepted_terms)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(organization_id, phone) DO UPDATE SET nickname=excluded.nickname, gender=excluded.gender, phone_e164=excluded.phone_e164, accepted_terms=excluded.accepted_terms`,
+		input.OrganizationID, input.Nickname, input.Gender, input.Phone, input.Phone, boolToInt(input.AcceptedTerms)); err != nil {
 		return FanProfileSummary{}, err
 	}
 
@@ -5827,6 +5836,65 @@ func (db *appdbimpl) getFanSummaryByWhere(clause string, args ...interface{}) (F
 	}
 	out.Wallet = wallet
 	return out, nil
+}
+
+func (db *appdbimpl) GetFanByPhoneE164(phone string) (FanProfile, error) {
+	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return FanProfile{}, sql.ErrNoRows
+	}
+	var out FanProfile
+	var accepted int
+	err := db.c.QueryRow(`SELECT id, organization_id, nickname, gender, phone, accepted_terms, created_at, updated_at
+		FROM fan_profiles WHERE phone_e164 = ?`, phone).
+		Scan(&out.ID, &out.OrganizationID, &out.Nickname, &out.Gender, &out.Phone, &accepted, &out.CreatedAt, &out.UpdatedAt)
+	if err != nil {
+		return FanProfile{}, err
+	}
+	out.AcceptedTerms = accepted == 1
+	return out, nil
+}
+
+func (db *appdbimpl) CreateFanWithPhoneE164(phone string) (FanProfile, error) {
+	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return FanProfile{}, ErrInvalidSponsorData
+	}
+	nickname := fmt.Sprintf("user_%s", strings.TrimPrefix(phone, "+"))
+	if len(nickname) > 50 {
+		nickname = nickname[:50]
+	}
+	_, err := db.c.Exec(`INSERT INTO fan_profiles (organization_id, nickname, gender, phone, phone_e164, accepted_terms)
+		VALUES (0, ?, '', ?, ?, 0)`, nickname, phone, phone)
+	if err != nil {
+		return FanProfile{}, err
+	}
+	return db.GetFanByPhoneE164(phone)
+}
+
+func (db *appdbimpl) MarkFanPhoneVerified(phone string, verifiedAt time.Time) error {
+	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return sql.ErrNoRows
+	}
+	res, err := db.c.Exec(`UPDATE fan_profiles SET phone_verified_at = ?, updated_at = CURRENT_TIMESTAMP WHERE phone_e164 = ?`, verifiedAt.UTC().Format(time.RFC3339), phone)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (db *appdbimpl) UpsertFanSession(token string, fanID int, deviceID string) error {
+	token = strings.TrimSpace(token)
+	if token == "" || fanID <= 0 {
+		return ErrInvalidSponsorData
+	}
+	_, err := db.c.Exec(`INSERT INTO fan_sessions (token, fan_id, device_id) VALUES (?, ?, ?)
+		ON CONFLICT(token) DO UPDATE SET fan_id=excluded.fan_id, device_id=excluded.device_id, last_seen_at=CURRENT_TIMESTAMP`, token, fanID, strings.TrimSpace(deviceID))
+	return err
 }
 
 func (db *appdbimpl) GetFanBySessionToken(token string) (FanProfileSummary, error) {

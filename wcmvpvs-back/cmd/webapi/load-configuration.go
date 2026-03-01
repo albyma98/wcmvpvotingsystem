@@ -37,6 +37,11 @@ type WebAPIConfiguration struct {
 		ValidationBaseURL string `conf:"default:https://mvp.wearingcash.it"`
 	}
 
+	Twilio struct {
+		AccountSID       string
+		AuthToken        string
+		VerifyServiceSID string
+	}
 	BootstrapAdmin struct {
 		Enabled      bool   `conf:"default:true"`
 		Username     string `conf:"default:Albyma"`
