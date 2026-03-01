@@ -102,16 +102,25 @@
         </article>
       </section>
 
-      <div ref="liveResultsRef" class="animate-on-enter mt-auto">
-        <SponsorsMarquee
-          v-if="showSponsorsBox"
-          ref="sponsorBoxRef"
-          :sponsors="sponsors"
-          :height-px="sponsorHeight"
-          :event-id="eventId"
-          @image-loaded="queueSponsorGapMeasure"
-          @sponsor-click="handleSponsorClick"
+      <div ref="feedbackAreaRef" class="animate-on-enter mt-[2.8vh] mb-[1.2vh] flex min-h-0 flex-1 flex-col justify-end">
+        <ExperienceFeedbackCta
+          v-if="showFeedbackCta"
+          :height-px="feedbackCtaHeight"
+          :disabled="!hasFeedbackSurvey"
+          @select="openFeedbackModal"
         />
+
+        <div ref="liveResultsRef">
+          <SponsorsMarquee
+            v-if="showSponsorsBox"
+            ref="sponsorBoxRef"
+            :sponsors="sponsors"
+            :height-px="sponsorHeight"
+            :event-id="eventId"
+            @image-loaded="queueSponsorGapMeasure"
+            @sponsor-click="handleSponsorClick"
+          />
+        </div>
       </div>
     </main>
 
@@ -294,12 +303,21 @@
       </Transition>
     </Teleport>
 
+    <EventFeedbackModal
+      v-model="isFeedbackModalOpen"
+      :event-id="props.eventId"
+      :feedback-survey="props.activeEvent?.feedback_survey ?? props.activeEvent?.feedbackSurvey"
+      @submitted="handleFeedbackSubmitted"
+    />
+
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EarnCoinsModal from '../components/EarnCoinsModal.vue';
+import EventFeedbackModal from '../components/EventFeedbackModal.vue';
+import ExperienceFeedbackCta from '../components/ExperienceFeedbackCta.vue';
 import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
 import FeatureCard from '../components/FeatureCard.vue';
 import FanRegistrationPromptModal from '../components/FanRegistrationPromptModal.vue';
@@ -360,6 +378,10 @@ const props = defineProps({
   matchLabel: {
     type: String,
     default: 'Vota • Gioca • Vinci • Partecipa',
+  },
+  activeEvent: {
+    type: Object,
+    default: null,
   },
   features: {
     type: Array,
@@ -448,6 +470,10 @@ const walletTargetEl = ref(null);
 const topCardsRef = ref(null);
 const sponsorBoxRef = ref(null);
 const liveResultsRef = ref(null);
+const feedbackAreaRef = ref(null);
+const isFeedbackModalOpen = ref(false);
+const hasSubmittedFeedback = ref(false);
+const feedbackCtaHeight = ref(0);
 const sponsorHeight = ref(0);
 const sponsors = ref([]);
 const leaderboardTop3 = ref([
@@ -461,7 +487,13 @@ let sponsorMeasureRaf = 0;
 const MIN_SPONSOR_HEIGHT = 48;
 const HARD_HIDE_THRESHOLD = 24;
 const GAP_BUFFER_PX = 8;
-const showSponsorsBox = computed(() => sponsors.value.length > 0 && sponsorHeight.value >= HARD_HIDE_THRESHOLD);
+const hasSponsors = computed(() => sponsors.value.length > 0);
+const showSponsorsBox = computed(() => hasSponsors.value && sponsorHeight.value >= HARD_HIDE_THRESHOLD);
+const showFeedbackCta = computed(() => !hasSubmittedFeedback.value);
+const hasFeedbackSurvey = computed(() => {
+  const survey = props.activeEvent?.feedback_survey ?? props.activeEvent?.feedbackSurvey;
+  return Array.isArray(survey?.questions) && survey.questions.length > 0;
+});
 
 const profileAvatarUrl = computed(() => {
   if (props.votedPlayerImageUrl) {
@@ -629,26 +661,47 @@ function queueSponsorGapMeasure() {
 }
 
 function measureSponsorGap() {
-  const topCardsEl = topCardsRef.value;
-  const liveResultsEl = liveResultsRef.value;
-  if (!topCardsEl || !liveResultsEl) {
+  const feedbackAreaEl = feedbackAreaRef.value;
+  if (!feedbackAreaEl) {
+    feedbackCtaHeight.value = 0;
     sponsorHeight.value = 0;
     return;
   }
 
-  const topCardsBottom = topCardsEl.getBoundingClientRect().bottom;
-  const liveResultsTop = liveResultsEl.getBoundingClientRect().top;
-  const availableGapPx = Math.floor(liveResultsTop - topCardsBottom);
+  const availableGapPx = Math.floor(feedbackAreaEl.getBoundingClientRect().height);
 
   if (availableGapPx <= 0) {
+    feedbackCtaHeight.value = 0;
     sponsorHeight.value = 0;
     return;
   }
 
-  const targetHeight = Math.floor(availableGapPx * 0.5);
-  const maxSafeHeight = Math.max(0, availableGapPx - GAP_BUFFER_PX);
-  const resolvedHeight = Math.min(Math.max(targetHeight, MIN_SPONSOR_HEIGHT), maxSafeHeight);
+  const ctaTargetHeight = Math.floor(availableGapPx * 0.5);
+  const availableAfterCta = Math.max(0, availableGapPx - ctaTargetHeight - GAP_BUFFER_PX);
+
+  feedbackCtaHeight.value = showFeedbackCta.value ? ctaTargetHeight : 0;
+
+  if (!hasSponsors.value) {
+    sponsorHeight.value = 0;
+    return;
+  }
+
+  const resolvedHeight = Math.min(Math.max(Math.floor(availableAfterCta * 0.9), MIN_SPONSOR_HEIGHT), availableAfterCta);
   sponsorHeight.value = resolvedHeight < HARD_HIDE_THRESHOLD ? 0 : resolvedHeight;
+}
+
+function openFeedbackModal() {
+  if (!hasFeedbackSurvey.value || hasSubmittedFeedback.value) {
+    return;
+  }
+  isFeedbackModalOpen.value = true;
+}
+
+function handleFeedbackSubmitted() {
+  hasSubmittedFeedback.value = true;
+  nextTick(() => {
+    queueSponsorGapMeasure();
+  });
 }
 
 function normalizeSponsor(item, index) {
@@ -880,6 +933,12 @@ watch(() => props.registrationPromptSignal, (value, previous) => {
 });
 
 watch(showSponsorsBox, () => {
+  nextTick(() => {
+    queueSponsorGapMeasure();
+  });
+});
+
+watch(showFeedbackCta, () => {
   nextTick(() => {
     queueSponsorGapMeasure();
   });
