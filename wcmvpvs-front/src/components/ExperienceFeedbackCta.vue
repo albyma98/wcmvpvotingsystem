@@ -2,13 +2,14 @@
   <button
     type="button"
     class="experience-feedback-cta"
+    :class="{ 'experience-feedback-cta--submitted': submitted }"
     :style="ctaStyle"
     :disabled="disabled"
     :aria-disabled="disabled"
     @click="emit('select')"
   >
     <span class="experience-feedback-cta__title">Migliora la tua esperienza</span>
-    <span class="experience-feedback-cta__subtitle">(sono solo 15 secondi)</span>
+    <span class="experience-feedback-cta__subtitle">{{ subtitleText }}</span>
   </button>
 </template>
 
@@ -24,14 +25,22 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  submitted: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['select']);
 
 const ctaStyle = computed(() => ({
-  minHeight: 'clamp(8.5rem, 24vh, 18rem)',
+  minHeight: 'clamp(80px, 12vh, 140px)',
   height: props.heightPx > 0 ? `${props.heightPx}px` : 'auto',
 }));
+
+const subtitleText = computed(() => (
+  props.submitted ? '✅ Fatto! Grazie' : '(sono solo 15 secondi)'
+));
 </script>
 
 <style scoped>
@@ -69,6 +78,15 @@ const ctaStyle = computed(() => ({
   cursor: default;
   opacity: 0.72;
   filter: grayscale(0.2);
+}
+
+.experience-feedback-cta--submitted {
+  border-color: rgba(110, 231, 183, 0.8);
+  background:
+    radial-gradient(circle at 22% 18%, rgba(16, 185, 129, 0.42), transparent 42%),
+    radial-gradient(circle at 80% 84%, rgba(134, 239, 172, 0.28), transparent 38%),
+    linear-gradient(155deg, rgba(6, 95, 70, 0.94), rgba(5, 150, 105, 0.9));
+  box-shadow: 0 0 28px rgba(16, 185, 129, 0.32), 0 14px 32px rgba(6, 78, 59, 0.42);
 }
 
 .experience-feedback-cta__title {

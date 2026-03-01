@@ -39,7 +39,7 @@
         </p>
       </section>
 
-      <section ref="topCardsRef" class="animate-on-enter mt-[3.2vh] grid grid-cols-3 gap-2.5">
+      <section class="animate-on-enter mt-[3.2vh] grid grid-cols-3 gap-2.5">
         <FeatureCard
           v-bind="voteFeature"
           @select="onFeatureSelect"
@@ -102,27 +102,22 @@
         </article>
       </section>
 
-      <div ref="feedbackAreaRef" class="feedback-area animate-on-enter mt-[2.8vh] mb-[1.2vh] flex min-h-0 flex-1 flex-col justify-end">
-        <div v-if="showFeedbackCta" class="feedback-area__cta-slot">
-          <ExperienceFeedbackCta
-            :height-px="feedbackCtaHeight"
-            :disabled="!hasFeedbackSurvey"
-            @select="openFeedbackModal"
-          />
-        </div>
+      <section v-if="showFeedbackCta" class="feedback-area__cta-slot animate-on-enter mt-[2.8vh] mb-[2vh] w-full">
+        <ExperienceFeedbackCta
+          :disabled="!hasFeedbackSurvey || hasSubmittedFeedback"
+          :submitted="hasSubmittedFeedback"
+          @select="openFeedbackModal"
+        />
+      </section>
 
-        <div ref="liveResultsRef" class="feedback-area__sponsors-slot">
-          <SponsorsMarquee
-            v-if="showSponsorsBox"
-            ref="sponsorBoxRef"
-            :sponsors="sponsors"
-            :height-px="sponsorHeight"
-            :event-id="eventId"
-            @image-loaded="queueSponsorGapMeasure"
-            @sponsor-click="handleSponsorClick"
-          />
-        </div>
-      </div>
+      <section class="feedback-area__sponsors-slot animate-on-enter mb-[1.2vh] w-full">
+        <SponsorsMarquee
+          v-if="showSponsorsBox"
+          :sponsors="sponsors"
+          :event-id="eventId"
+          @sponsor-click="handleSponsorClick"
+        />
+      </section>
     </main>
 
     <StoryModal
@@ -459,6 +454,7 @@ const fanLotteryTicket = ref(null);
 const hasVotedMvp = ref(false);
 const lastEarnedCoins = ref(0);
 const isSpendPreviewOpen = ref(false);
+const experienceFormStorageKey = 'experienceFormSubmitted';
 const selectedRewardLabel = ref('Coupon Match Day · 30 🪙');
 const spendCouponPreview = [
   { id: 'coupon-match', label: 'Coupon Match Day', description: 'Bibita + snack al bar partner.', cost: 30 },
@@ -468,14 +464,8 @@ const spendCouponPreview = [
 ];
 const totalCoins = ref(0);
 const walletTargetEl = ref(null);
-const topCardsRef = ref(null);
-const sponsorBoxRef = ref(null);
-const liveResultsRef = ref(null);
-const feedbackAreaRef = ref(null);
 const isFeedbackModalOpen = ref(false);
 const hasSubmittedFeedback = ref(false);
-const feedbackCtaHeight = ref(0);
-const sponsorHeight = ref(0);
 const sponsors = ref([]);
 const leaderboardTop3 = ref([
   { name: 'TIFO1', coins: 320 },
@@ -483,16 +473,9 @@ const leaderboardTop3 = ref([
   { name: 'TIFO3', coins: 249 },
 ]);
 const leaderboardUser = ref(null);
-let sponsorMeasureRaf = 0;
-
-const MIN_SPONSOR_HEIGHT = 48;
-const HARD_HIDE_THRESHOLD = 24;
-const FEEDBACK_TOP_SPACING = 10;
-const FEEDBACK_BOTTOM_SPACING = 10;
-const CTA_SPONSOR_SPACING = 10;
 const hasSponsors = computed(() => sponsors.value.length > 0);
-const showSponsorsBox = computed(() => hasSponsors.value && sponsorHeight.value >= HARD_HIDE_THRESHOLD);
-const showFeedbackCta = computed(() => !hasSubmittedFeedback.value);
+const showSponsorsBox = computed(() => hasSponsors.value);
+const showFeedbackCta = computed(() => hasFeedbackSurvey.value);
 const hasFeedbackSurvey = computed(() => {
   const survey = props.activeEvent?.feedback_survey ?? props.activeEvent?.feedbackSurvey;
   return Array.isArray(survey?.questions) && survey.questions.length > 0;
@@ -594,14 +577,12 @@ onMounted(async () => {
     seenStoryIds.value = [];
   }
 
+  hasSubmittedFeedback.value = window.localStorage.getItem(experienceFormStorageKey) === '1';
+
   await loadFanProfile();
   loadEventStories();
   loadSponsors();
   loadLeaderboardPreview();
-  queueSponsorGapMeasure();
-
-  window.addEventListener('resize', queueSponsorGapMeasure, { passive: true });
-  window.addEventListener('orientationchange', queueSponsorGapMeasure, { passive: true });
 });
 
 async function addCoins(amount) {
@@ -650,55 +631,6 @@ async function loadLeaderboardPreview() {
   }
 }
 
-function queueSponsorGapMeasure() {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  if (sponsorMeasureRaf) {
-    window.cancelAnimationFrame(sponsorMeasureRaf);
-  }
-  sponsorMeasureRaf = window.requestAnimationFrame(() => {
-    sponsorMeasureRaf = 0;
-    measureSponsorGap();
-  });
-}
-
-function measureSponsorGap() {
-  const feedbackAreaEl = feedbackAreaRef.value;
-  if (!feedbackAreaEl) {
-    feedbackCtaHeight.value = 0;
-    sponsorHeight.value = 0;
-    return;
-  }
-
-  const availableGapPx = Math.floor(feedbackAreaEl.getBoundingClientRect().height);
-
-  if (availableGapPx <= 0) {
-    feedbackCtaHeight.value = 0;
-    sponsorHeight.value = 0;
-    return;
-  }
-
-  const availableInnerGap = Math.max(0, availableGapPx - FEEDBACK_TOP_SPACING - FEEDBACK_BOTTOM_SPACING);
-  const sponsorMinHeight = hasSponsors.value ? MIN_SPONSOR_HEIGHT : 0;
-  const maxCtaHeight = Math.max(0, availableInnerGap - sponsorMinHeight - CTA_SPONSOR_SPACING);
-  const ctaTargetHeight = Math.min(Math.floor(availableInnerGap * 0.48), maxCtaHeight);
-
-  feedbackCtaHeight.value = showFeedbackCta.value ? Math.max(0, ctaTargetHeight) : 0;
-
-  if (!hasSponsors.value) {
-    sponsorHeight.value = 0;
-    return;
-  }
-
-  const availableAfterCta = Math.max(
-    0,
-    availableInnerGap - feedbackCtaHeight.value - (showFeedbackCta.value ? CTA_SPONSOR_SPACING : 0),
-  );
-  const resolvedHeight = Math.min(Math.max(Math.floor(availableAfterCta * 0.9), MIN_SPONSOR_HEIGHT), availableAfterCta);
-  sponsorHeight.value = resolvedHeight < HARD_HIDE_THRESHOLD ? 0 : resolvedHeight;
-}
-
 function openFeedbackModal() {
   if (!hasFeedbackSurvey.value || hasSubmittedFeedback.value) {
     return;
@@ -708,9 +640,9 @@ function openFeedbackModal() {
 
 function handleFeedbackSubmitted() {
   hasSubmittedFeedback.value = true;
-  nextTick(() => {
-    queueSponsorGapMeasure();
-  });
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(experienceFormStorageKey, '1');
+  }
 }
 
 function normalizeSponsor(item, index) {
@@ -747,10 +679,6 @@ async function loadSponsors() {
       : [];
   } catch (error) {
     sponsors.value = [];
-  } finally {
-    nextTick(() => {
-      queueSponsorGapMeasure();
-    });
   }
 }
 
@@ -928,9 +856,6 @@ watch(
     loadEventStories();
     loadSponsors();
     loadLeaderboardPreview();
-    nextTick(() => {
-      queueSponsorGapMeasure();
-    });
   },
 );
 
@@ -939,18 +864,6 @@ watch(() => props.registrationPromptSignal, (value, previous) => {
   if (value !== previous) {
     openRegistrationPrompt('after_vote');
   }
-});
-
-watch(showSponsorsBox, () => {
-  nextTick(() => {
-    queueSponsorGapMeasure();
-  });
-});
-
-watch(showFeedbackCta, () => {
-  nextTick(() => {
-    queueSponsorGapMeasure();
-  });
 });
 
 watch([currentStory, isStoryModalOpen], ([story, isOpen]) => {
@@ -968,14 +881,6 @@ watch([isStoryModalOpen, isProfileOverlayOpen], ([storyOpen, profileOpen]) => {
 });
 
 onBeforeUnmount(() => {
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('resize', queueSponsorGapMeasure);
-    window.removeEventListener('orientationchange', queueSponsorGapMeasure);
-    if (sponsorMeasureRaf) {
-      window.cancelAnimationFrame(sponsorMeasureRaf);
-    }
-  }
-
   if (typeof document !== 'undefined') {
     document.body.style.overflow = '';
   }
