@@ -147,6 +147,7 @@
       :wallet-coins="totalCoins"
       :reward-label="selectedRewardLabel"
       :on-submit="handleRegistrationSubmit"
+      :on-login="handleExistingFanLogin"
       @dismissed="markPromptDismissed"
     />
 
@@ -967,6 +968,15 @@ async function loadFanProfile() {
     fanRewardRedemptions.value = [];
     fanLotteryTicket.value = null;
   }
+}
+
+
+async function handleExistingFanLogin() {
+  await loadFanProfile();
+  if (!isRegisteredFan.value) {
+    return { ok: false, message: 'Impossibile trovare un profilo associato a questo numero.' };
+  }
+  return { ok: true };
 }
 
 async function handleRegistrationSubmit(form) {

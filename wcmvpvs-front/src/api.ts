@@ -728,6 +728,10 @@ export async function startPhoneAuth(phone: string, mode: 'register' | 'login' =
 export async function verifyPhoneAuth(phone: string, code: string) {
   try {
     const { data } = await apiClient.post('/auth/verify', { phone, code }, { headers: getDeviceHeaders() });
+    const sessionToken = String(data?.token || data?.session_token || '').trim();
+    if (sessionToken && typeof window !== 'undefined') {
+      window.localStorage.setItem('fan:session_token', sessionToken);
+    }
     return { ok: true, data };
   } catch (error) {
     const errCode = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
