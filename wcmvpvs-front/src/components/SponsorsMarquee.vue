@@ -189,10 +189,19 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .sponsor-box {
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  height: auto !important;
+  min-height: 56px;
+  max-height: 110px !important;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
   box-shadow: none;
 }
 
 .sponsor-viewport {
+  width: 100%;
   height: 100%;
   overflow: hidden;
   display: flex;
@@ -220,16 +229,17 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.2rem 0.45rem;
+  padding: 0.2rem 0.65rem;
   border: 1px solid rgba(148, 163, 184, 0.38);
   border-radius: 0.9rem;
   background: rgba(15, 23, 42, 0.38);
 }
 
 .sponsor-image {
-  height: 78%;
+  max-height: 100%;
+  max-width: 100%;
   width: auto;
-  max-width: min(28vw, 164px);
+  height: auto;
   object-fit: contain;
 }
 
