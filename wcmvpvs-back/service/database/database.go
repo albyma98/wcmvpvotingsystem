@@ -674,6 +674,7 @@ type FanProfile struct {
 type MarketingAudienceEntry struct {
 	FanID           int    `json:"fan_id"`
 	Nickname        string `json:"nickname"`
+	Gender          string `json:"gender"`
 	Phone           string `json:"phone"`
 	CreatedAt       string `json:"created_at"`
 	LastSeenAt      string `json:"last_seen_at"`
@@ -6317,7 +6318,7 @@ func (db *appdbimpl) ListMarketingAudience(organizationID int, query string, acc
 		like := "%" + strings.ToLower(q) + "%"
 		args = append(args, like, "%"+strings.ReplaceAll(q, " ", "")+"%")
 	}
-	rows, err := db.c.Query(`SELECT p.id, p.nickname, p.phone_e164, p.created_at, IFNULL(s.last_seen_at,''), IFNULL(w.coins,0), p.accepted_terms, p.phone_verified_at
+	rows, err := db.c.Query(`SELECT p.id, p.nickname, IFNULL(p.gender,''), p.phone_e164, p.created_at, IFNULL(s.last_seen_at,''), IFNULL(w.coins,0), p.accepted_terms, p.phone_verified_at
 		FROM fan_profiles p
 		LEFT JOIN fan_sessions s ON s.fan_id = p.id
 		LEFT JOIN fan_wallets w ON w.fan_id = p.id `+where+`
@@ -6330,7 +6331,7 @@ func (db *appdbimpl) ListMarketingAudience(organizationID int, query string, acc
 	items := []MarketingAudienceEntry{}
 	for rows.Next() {
 		var it MarketingAudienceEntry
-		if err := rows.Scan(&it.FanID, &it.Nickname, &it.Phone, &it.CreatedAt, &it.LastSeenAt, &it.Coins, &it.AcceptedTerms, &it.PhoneVerifiedAt); err != nil {
+		if err := rows.Scan(&it.FanID, &it.Nickname, &it.Gender, &it.Phone, &it.CreatedAt, &it.LastSeenAt, &it.Coins, &it.AcceptedTerms, &it.PhoneVerifiedAt); err != nil {
 			return nil, err
 		}
 		it.PhoneVerified = strings.TrimSpace(it.PhoneVerifiedAt) != ""
