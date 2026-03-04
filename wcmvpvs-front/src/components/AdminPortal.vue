@@ -2415,6 +2415,9 @@
             </li>
           </ul>
         </section>
+        <section v-else-if="section === 'marketing'" class="card">
+          <MarketingSection />
+        </section>
         <div
           v-if="purgeDialog.visible"
           class="modal-backdrop"
@@ -2493,6 +2496,7 @@ import AdminSidebar from "./admin/AdminSidebar.vue";
 import AdminHeader from "./admin/AdminHeader.vue";
 import SectionHeader from "./admin/ui/SectionHeader.vue";
 import BaseSearchInput from "./admin/ui/BaseSearchInput.vue";
+import MarketingSection from "./admin/marketing/MarketingSection.vue";
 
 const props = defineProps({
   organizationSlug: {
@@ -2755,6 +2759,7 @@ const tabs = [
   { id: "coupons", label: "Coupon" },
   { id: "partners", label: "Partners" },
   { id: "admins", label: "Admin" },
+  { id: "marketing", label: "Marketing" },
 ];
 const STAFF_TAB_IDS = new Set(["dashboard", "closing", "results"]);
 
@@ -3612,7 +3617,7 @@ const navigationGroups = computed(() => {
     { label: "Contenuti", ids: ["sponsors", "coupons", "selfies"] },
     { label: "Squadra", ids: ["teams", "players"] },
     { label: "Risultati", ids: ["closing", "results", "history"] },
-    { label: "Impostazioni", ids: ["partners", "admins"] },
+    { label: "Impostazioni", ids: ["partners", "admins", "marketing"] },
   ];
   return groups
     .map((group) => ({
@@ -3635,6 +3640,7 @@ const sectionMetaMap = {
   history: { title: "Storico eventi", group: "Risultati" },
   partners: { title: "Partners", group: "Impostazioni" },
   admins: { title: "Admin", group: "Impostazioni" },
+  marketing: { title: "Marketing", group: "Impostazioni" },
 };
 
 const currentSectionMeta = computed(() => sectionMetaMap[section.value] || sectionMetaMap.dashboard);
@@ -3643,7 +3649,7 @@ const currentSectionGroup = computed(() => currentSectionMeta.value.group);
 
 const dashboardActions = computed(() =>
   availableTabs.value
-    .filter((tab) => ["events", "sponsors", "coupons", "players"].includes(tab.id))
+    .filter((tab) => ["events", "sponsors", "coupons", "players", "marketing"].includes(tab.id))
     .map((tab) => ({
       ...tab,
       description:
@@ -3653,6 +3659,8 @@ const dashboardActions = computed(() =>
             ? "Gestisci creatività e ordine sponsor."
             : tab.id === "coupons"
               ? "Configura coupon e associazioni alle partite."
+              : tab.id === "marketing"
+              ? "Gestisci audience, template e invii SMS marketing."
               : "Aggiorna roster e immagini giocatori.",
     })),
 );

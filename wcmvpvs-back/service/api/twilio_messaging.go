@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,11 @@ type twilioMessagingClient struct {
 	cfg        twilioMessagingConfig
 }
 
+type twilioMessageResult struct {
+	SID    string `json:"sid"`
+	Status string `json:"status"`
+}
+
 func newTwilioMessagingClient(cfg twilioMessagingConfig) *twilioMessagingClient {
 	return &twilioMessagingClient{httpClient: &http.Client{Timeout: 10 * time.Second}, cfg: cfg}
 }
@@ -29,20 +35,27 @@ func (c *twilioMessagingClient) enabled() bool {
 	return strings.TrimSpace(c.cfg.AccountSID) != "" && strings.TrimSpace(c.cfg.AuthToken) != "" && strings.TrimSpace(c.cfg.MessagingServiceSID) != ""
 }
 
-func (c *twilioMessagingClient) SendSMS(phone string, body string) error {
+func (c *twilioMessagingClient) SendSMS(phone string, body string) (twilioMessageResult, error) {
 	if !c.enabled() {
-		return errors.New("twilio messaging not configured")
+		return twilioMessageResult{}, errors.New("twilio messaging not configured")
 	}
 	trimmedBody := strings.TrimSpace(body)
 	if trimmedBody == "" {
-		return errors.New("sms body is empty")
+		return twilioMessageResult{}, errors.New("sms body is empty")
 	}
 	values := url.Values{}
 	values.Set("To", phone)
 	values.Set("Body", trimmedBody)
 	values.Set("MessagingServiceSid", c.cfg.MessagingServiceSID)
-	_, err := c.postForm(values)
-	return err
+	resp, err := c.postForm(values)
+	if err != nil {
+		return twilioMessageResult{}, err
+	}
+	var parsed twilioMessageResult
+	if err := json.Unmarshal(resp, &parsed); err != nil {
+		return twilioMessageResult{}, err
+	}
+	return parsed, nil
 }
 
 func (c *twilioMessagingClient) postForm(values url.Values) ([]byte, error) {
