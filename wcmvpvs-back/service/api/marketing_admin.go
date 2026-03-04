@@ -32,6 +32,24 @@ func (rt *_router) allowMarketingSend(orgID int) bool {
 	return true
 }
 
+func (rt *_router) applySMSBilling(ctx reqcontext.RequestContext, msgID int, status string) {
+	if status != "sent" {
+		return
+	}
+	if _, _, _, err := rt.db.ConsumeSMSCredit(ctx.OrganizationID, msgID); err != nil {
+		ctx.Logger.WithError(err).WithField("message_id", msgID).Error("cannot apply sms billing")
+	}
+}
+
+func (rt *_router) getSMSBillingSummary(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	summary, err := rt.db.GetSMSBillingSummary(ctx.OrganizationID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	_ = writeJSON(w, http.StatusOK, summary)
+}
+
 func (rt *_router) listMarketingAudience(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	items, err := rt.db.ListMarketingAudience(ctx.OrganizationID, r.URL.Query().Get("q"), false)
 	if err != nil {
@@ -76,6 +94,7 @@ func (rt *_router) sendSingleMarketingSMS(w http.ResponseWriter, r *http.Request
 		errText = sendErr.Error()
 	}
 	_ = rt.db.UpdateSMSMessageDelivery(msg.ID, res.SID, status, errText)
+	rt.applySMSBilling(ctx, msg.ID, status)
 	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"id": msg.ID, "status": status})
 }
 func (rt *_router) createSMSCampaign(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -114,7 +133,12 @@ func (rt *_router) createSMSCampaign(w http.ResponseWriter, r *http.Request, ctx
 	for _, t := range targets {
 		_, _ = rt.db.CreateSMSMessage(database.SMSMessage{OrganizationID: ctx.OrganizationID, CampaignID: camp.ID, FanID: t.FanID, Phone: t.Phone, Body: camp.Message, Status: "queued"})
 	}
-	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"campaign": camp, "recipients": len(targets), "estimated_cost": float64(len(targets)) * 0.08})
+	summary, _ := rt.db.GetSMSBillingSummary(ctx.OrganizationID)
+	estimatedCost := float64(len(targets)-summary.FreeSMSRemaining) * summary.SMSCost
+	if estimatedCost < 0 {
+		estimatedCost = 0
+	}
+	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"campaign": camp, "recipients": len(targets), "estimated_cost": estimatedCost})
 }
 func (rt *_router) listSMSCampaigns(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	items, err := rt.db.ListSMSCampaigns(ctx.OrganizationID)
@@ -155,6 +179,7 @@ func (rt *_router) sendSMSCampaignTest(w http.ResponseWriter, r *http.Request, c
 		errText = err.Error()
 	}
 	_ = rt.db.UpdateSMSMessageDelivery(msg.ID, res.SID, status, errText)
+	rt.applySMSBilling(ctx, msg.ID, status)
 	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"status": status})
 }
 func (rt *_router) sendSMSCampaignNow(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -181,6 +206,7 @@ func (rt *_router) sendSMSCampaignNow(w http.ResponseWriter, r *http.Request, ct
 			errText = sErr.Error()
 		}
 		_ = rt.db.UpdateSMSMessageDelivery(item.ID, res.SID, status, errText)
+		rt.applySMSBilling(ctx, item.ID, status)
 		sent++
 		time.Sleep(120 * time.Millisecond)
 	}
@@ -238,5 +264,10 @@ func (rt *_router) listSMSLogs(w http.ResponseWriter, r *http.Request, ctx reqco
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	_ = writeJSON(w, http.StatusOK, items)
+	summary, err := rt.db.GetSMSBillingSummary(ctx.OrganizationID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "summary": summary})
 }

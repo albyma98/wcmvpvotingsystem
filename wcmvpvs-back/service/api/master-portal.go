@@ -72,11 +72,13 @@ func (rt *_router) createMasterOrganization(w http.ResponseWriter, r *http.Reque
 	}
 
 	var payload struct {
-		Name     string `json:"name"`
-		Slug     string `json:"slug"`
-		City     string `json:"city"`
-		LogoURL  string `json:"logo_url"`
-		IsActive bool   `json:"is_active"`
+		Name     string  `json:"name"`
+		Slug     string  `json:"slug"`
+		City     string  `json:"city"`
+		LogoURL  string  `json:"logo_url"`
+		IsActive bool    `json:"is_active"`
+		SMSCost  float64 `json:"sms_cost"`
+		FreeSMS  int     `json:"free_sms"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while creating organization")
@@ -90,6 +92,8 @@ func (rt *_router) createMasterOrganization(w http.ResponseWriter, r *http.Reque
 		City:     payload.City,
 		LogoURL:  payload.LogoURL,
 		IsActive: payload.IsActive,
+		SMSCost:  payload.SMSCost,
+		FreeSMS:  payload.FreeSMS,
 	})
 	if err != nil {
 		if errors.Is(err, database.ErrInvalidOrganizationData) {
@@ -117,11 +121,13 @@ func (rt *_router) updateMasterOrganization(w http.ResponseWriter, r *http.Reque
 	}
 
 	var payload struct {
-		Name     string `json:"name"`
-		Slug     string `json:"slug"`
-		City     string `json:"city"`
-		LogoURL  string `json:"logo_url"`
-		IsActive bool   `json:"is_active"`
+		Name     string  `json:"name"`
+		Slug     string  `json:"slug"`
+		City     string  `json:"city"`
+		LogoURL  string  `json:"logo_url"`
+		IsActive bool    `json:"is_active"`
+		SMSCost  float64 `json:"sms_cost"`
+		FreeSMS  int     `json:"free_sms"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while updating organization")
@@ -136,6 +142,8 @@ func (rt *_router) updateMasterOrganization(w http.ResponseWriter, r *http.Reque
 		City:     payload.City,
 		LogoURL:  payload.LogoURL,
 		IsActive: payload.IsActive,
+		SMSCost:  payload.SMSCost,
+		FreeSMS:  payload.FreeSMS,
 	})
 	if err != nil {
 		switch {

@@ -107,16 +107,18 @@ type EventFeedbackAnswerConfig struct {
 }
 
 type Organization struct {
-	ID           int    `json:"id"`
-	Name         string `json:"name"`
-	Slug         string `json:"slug"`
-	City         string `json:"city,omitempty"`
-	LogoURL      string `json:"logo_url,omitempty"`
-	IsActive     bool   `json:"is_active"`
-	RosterSchema int    `json:"roster_schema,omitempty"`
-	TeamID       int    `json:"team_id,omitempty"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	ID           int     `json:"id"`
+	Name         string  `json:"name"`
+	Slug         string  `json:"slug"`
+	City         string  `json:"city,omitempty"`
+	LogoURL      string  `json:"logo_url,omitempty"`
+	IsActive     bool    `json:"is_active"`
+	RosterSchema int     `json:"roster_schema,omitempty"`
+	TeamID       int     `json:"team_id,omitempty"`
+	SMSCost      float64 `json:"sms_cost"`
+	FreeSMS      int     `json:"free_sms"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 type OrganizationStats struct {
@@ -705,17 +707,26 @@ type SMSTemplate struct {
 }
 
 type SMSMessage struct {
-	ID             int    `json:"id"`
-	OrganizationID int    `json:"organization_id"`
-	CampaignID     int    `json:"campaign_id"`
-	FanID          int    `json:"fan_id"`
-	Phone          string `json:"phone"`
-	Body           string `json:"body"`
-	TwilioSID      string `json:"twilio_sid"`
-	Status         string `json:"status"`
-	Error          string `json:"error"`
-	CreatedAt      string `json:"created_at"`
-	SentAt         string `json:"sent_at"`
+	ID             int     `json:"id"`
+	OrganizationID int     `json:"organization_id"`
+	CampaignID     int     `json:"campaign_id"`
+	FanID          int     `json:"fan_id"`
+	Phone          string  `json:"phone"`
+	Body           string  `json:"body"`
+	TwilioSID      string  `json:"twilio_sid"`
+	Status         string  `json:"status"`
+	Error          string  `json:"error"`
+	SMSCostCharged float64 `json:"sms_cost_charged"`
+	UsedFreeSMS    bool    `json:"used_free_sms"`
+	CreatedAt      string  `json:"created_at"`
+	SentAt         string  `json:"sent_at"`
+}
+
+type SMSBillingSummary struct {
+	SMSCost          float64 `json:"sms_cost"`
+	FreeSMSRemaining int     `json:"free_sms_remaining"`
+	TotalMessages    int     `json:"total_messages"`
+	TotalCostCharged float64 `json:"total_cost_charged"`
 }
 
 type FanSession struct {
@@ -934,7 +945,9 @@ type AppDatabase interface {
 	ListSMSCampaigns(organizationID int) ([]SMSCampaign, error)
 	CreateSMSMessage(msg SMSMessage) (SMSMessage, error)
 	UpdateSMSMessageDelivery(id int, twilioSID, status, errText string) error
+	ConsumeSMSCredit(organizationID int, messageID int) (SMSBillingSummary, float64, bool, error)
 	ListSMSMessages(organizationID int, campaignID int) ([]SMSMessage, error)
+	GetSMSBillingSummary(organizationID int) (SMSBillingSummary, error)
 	CreateSMSTemplate(t SMSTemplate) (SMSTemplate, error)
 	UpdateSMSTemplate(t SMSTemplate) (SMSTemplate, error)
 	DeleteSMSTemplate(organizationID int, id int) error
@@ -1192,6 +1205,8 @@ logo_url TEXT,
 is_active INTEGER NOT NULL DEFAULT 1,
 roster_schema INTEGER NOT NULL DEFAULT 13,
 team_id INTEGER,
+sms_cost REAL NOT NULL DEFAULT 0.08,
+free_sms INTEGER NOT NULL DEFAULT 0,
 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 FOREIGN KEY (team_id) REFERENCES teams(id)
@@ -1210,6 +1225,16 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN roster_schema INTEGER NOT NULL DEFAULT 13`); err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring organizations roster schema column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN sms_cost REAL NOT NULL DEFAULT 0.08`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring organizations sms cost column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN free_sms INTEGER NOT NULL DEFAULT 0`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring organizations free sms column: %w", err)
 		}
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_organizations_team ON organizations(team_id)`); err != nil {
@@ -3644,7 +3669,7 @@ func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) 
 	var isActive int
 	var rosterSchema int
 	var teamID sql.NullInt64
-	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &org.City, &org.LogoURL, &isActive, &rosterSchema, &teamID, &org.CreatedAt, &org.UpdatedAt); err != nil {
+	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &org.City, &org.LogoURL, &isActive, &rosterSchema, &teamID, &org.SMSCost, &org.FreeSMS, &org.CreatedAt, &org.UpdatedAt); err != nil {
 		return Organization{}, err
 	}
 	org.IsActive = isActive != 0
@@ -3656,7 +3681,7 @@ func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) 
 }
 
 func (db *appdbimpl) ListOrganizations() ([]Organization, error) {
-	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
+	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -3677,7 +3702,7 @@ func (db *appdbimpl) GetOrganization(id int) (Organization, error) {
 	if id <= 0 {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), created_at, updated_at FROM organizations WHERE id = ?`, id)
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), created_at, updated_at FROM organizations WHERE id = ?`, id)
 	return db.scanOrganization(row)
 }
 
@@ -3685,7 +3710,7 @@ func (db *appdbimpl) GetOrganizationBySlug(slug string) (Organization, error) {
 	if slug == "" {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
 	return db.scanOrganization(row)
 }
 
@@ -3721,7 +3746,7 @@ func (db *appdbimpl) CreateOrganization(org Organization) (Organization, error) 
 		teamID = int(newTeamID)
 	}
 
-	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, roster_schema, team_id) VALUES (?, ?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), rosterSchema, teamID)
+	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, roster_schema, team_id, sms_cost, free_sms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS))
 	if err != nil {
 		return Organization{}, err
 	}
@@ -3780,7 +3805,7 @@ func (db *appdbimpl) UpdateOrganization(org Organization) (Organization, error) 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, roster_schema=?, team_id=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), rosterSchema, teamID, org.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, roster_schema=?, team_id=?, sms_cost=?, free_sms=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), org.ID); err != nil {
 		return Organization{}, err
 	}
 
@@ -4956,6 +4981,20 @@ func normalizeRosterSchema(value int) int {
 	}
 }
 
+func normalizeSMSCost(value float64) float64 {
+	if value <= 0 {
+		return 0.08
+	}
+	return value
+}
+
+func normalizeFreeSMS(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
+}
+
 func nullableInt(v int) interface{} {
 	if v <= 0 {
 		return nil
@@ -5773,7 +5812,7 @@ func ensureMarketingTables(db *sql.DB) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS sms_campaigns (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER NOT NULL, name TEXT NOT NULL, message TEXT NOT NULL, filters_json TEXT, recipient_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'draft', scheduled_at TEXT, created_by_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
 		`CREATE TABLE IF NOT EXISTS sms_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER NOT NULL, name TEXT NOT NULL, body TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'promo', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
-		`CREATE TABLE IF NOT EXISTS sms_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER NOT NULL, campaign_id INTEGER, fan_id INTEGER, phone TEXT NOT NULL, body TEXT NOT NULL, twilio_sid TEXT, status TEXT NOT NULL DEFAULT 'queued', error TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, sent_at TEXT);`,
+		`CREATE TABLE IF NOT EXISTS sms_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER NOT NULL, campaign_id INTEGER, fan_id INTEGER, phone TEXT NOT NULL, body TEXT NOT NULL, twilio_sid TEXT, status TEXT NOT NULL DEFAULT 'queued', error TEXT, sms_cost_charged REAL NOT NULL DEFAULT 0, used_free_sms INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, sent_at TEXT);`,
 		`CREATE INDEX IF NOT EXISTS idx_sms_campaigns_org ON sms_campaigns(organization_id, id DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_sms_templates_org ON sms_templates(organization_id, id DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_sms_messages_org ON sms_messages(organization_id, id DESC);`,
@@ -5785,6 +5824,16 @@ func ensureMarketingTables(db *sql.DB) error {
 	}
 	if _, err := db.Exec(`CREATE TRIGGER IF NOT EXISTS trg_sms_templates_updated_at AFTER UPDATE ON sms_templates BEGIN UPDATE sms_templates SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;`); err != nil {
 		return fmt.Errorf("error ensuring sms template trigger: %w", err)
+	}
+	if _, err := db.Exec(`ALTER TABLE sms_messages ADD COLUMN sms_cost_charged REAL NOT NULL DEFAULT 0`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return fmt.Errorf("error ensuring sms messages cost column: %w", err)
+		}
+	}
+	if _, err := db.Exec(`ALTER TABLE sms_messages ADD COLUMN used_free_sms INTEGER NOT NULL DEFAULT 0`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return fmt.Errorf("error ensuring sms messages free flag column: %w", err)
+		}
 	}
 	return nil
 }
@@ -6330,7 +6379,7 @@ func (db *appdbimpl) ListSMSCampaigns(organizationID int) ([]SMSCampaign, error)
 	return out, rows.Err()
 }
 func (db *appdbimpl) CreateSMSMessage(msg SMSMessage) (SMSMessage, error) {
-	res, err := db.c.Exec(`INSERT INTO sms_messages (organization_id,campaign_id,fan_id,phone,body,status,error,twilio_sid,sent_at) VALUES (?,?,?,?,?,?,?,?,?)`, msg.OrganizationID, nullableInt(msg.CampaignID), nullableInt(msg.FanID), msg.Phone, msg.Body, msg.Status, msg.Error, msg.TwilioSID, msg.SentAt)
+	res, err := db.c.Exec(`INSERT INTO sms_messages (organization_id,campaign_id,fan_id,phone,body,status,error,twilio_sid,sent_at,sms_cost_charged,used_free_sms) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, msg.OrganizationID, nullableInt(msg.CampaignID), nullableInt(msg.FanID), msg.Phone, msg.Body, msg.Status, msg.Error, msg.TwilioSID, msg.SentAt, msg.SMSCostCharged, boolToInt(msg.UsedFreeSMS))
 	if err != nil {
 		return SMSMessage{}, err
 	}
@@ -6344,7 +6393,7 @@ func (db *appdbimpl) UpdateSMSMessageDelivery(id int, twilioSID, status, errText
 	return err
 }
 func (db *appdbimpl) ListSMSMessages(organizationID int, campaignID int) ([]SMSMessage, error) {
-	q := `SELECT id, organization_id, IFNULL(campaign_id,0), IFNULL(fan_id,0), phone, body, IFNULL(twilio_sid,''), status, IFNULL(error,''), created_at, IFNULL(sent_at,'') FROM sms_messages WHERE organization_id = ?`
+	q := `SELECT id, organization_id, IFNULL(campaign_id,0), IFNULL(fan_id,0), phone, body, IFNULL(twilio_sid,''), status, IFNULL(error,''), IFNULL(sms_cost_charged,0), IFNULL(used_free_sms,0), created_at, IFNULL(sent_at,'') FROM sms_messages WHERE organization_id = ?`
 	args := []interface{}{organizationID}
 	if campaignID > 0 {
 		q += ` AND campaign_id = ?`
@@ -6359,13 +6408,71 @@ func (db *appdbimpl) ListSMSMessages(organizationID int, campaignID int) ([]SMSM
 	out := []SMSMessage{}
 	for rows.Next() {
 		var m SMSMessage
-		if err := rows.Scan(&m.ID, &m.OrganizationID, &m.CampaignID, &m.FanID, &m.Phone, &m.Body, &m.TwilioSID, &m.Status, &m.Error, &m.CreatedAt, &m.SentAt); err != nil {
+		var usedFree int
+		if err := rows.Scan(&m.ID, &m.OrganizationID, &m.CampaignID, &m.FanID, &m.Phone, &m.Body, &m.TwilioSID, &m.Status, &m.Error, &m.SMSCostCharged, &usedFree, &m.CreatedAt, &m.SentAt); err != nil {
 			return nil, err
 		}
+		m.UsedFreeSMS = usedFree != 0
 		out = append(out, m)
 	}
 	return out, rows.Err()
 }
+func (db *appdbimpl) ConsumeSMSCredit(organizationID int, messageID int) (SMSBillingSummary, float64, bool, error) {
+	tx, err := db.c.Begin()
+	if err != nil {
+		return SMSBillingSummary{}, 0, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var summary SMSBillingSummary
+	if err := tx.QueryRow(`SELECT IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0) FROM organizations WHERE id = ?`, organizationID).Scan(&summary.SMSCost, &summary.FreeSMSRemaining); err != nil {
+		return SMSBillingSummary{}, 0, false, err
+	}
+	summary.SMSCost = normalizeSMSCost(summary.SMSCost)
+	if summary.FreeSMSRemaining < 0 {
+		summary.FreeSMSRemaining = 0
+	}
+
+	charged := summary.SMSCost
+	usedFree := false
+	if summary.FreeSMSRemaining > 0 {
+		usedFree = true
+		charged = 0
+		summary.FreeSMSRemaining--
+		if _, err := tx.Exec(`UPDATE organizations SET free_sms = ? WHERE id = ?`, summary.FreeSMSRemaining, organizationID); err != nil {
+			return SMSBillingSummary{}, 0, false, err
+		}
+	}
+
+	if _, err := tx.Exec(`UPDATE sms_messages SET sms_cost_charged = ?, used_free_sms = ? WHERE id = ? AND organization_id = ?`, charged, boolToInt(usedFree), messageID, organizationID); err != nil {
+		return SMSBillingSummary{}, 0, false, err
+	}
+
+	if err := tx.QueryRow(`SELECT COUNT(1), IFNULL(SUM(sms_cost_charged), 0) FROM sms_messages WHERE organization_id = ?`, organizationID).Scan(&summary.TotalMessages, &summary.TotalCostCharged); err != nil {
+		return SMSBillingSummary{}, 0, false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return SMSBillingSummary{}, 0, false, err
+	}
+	return summary, charged, usedFree, nil
+}
+
+func (db *appdbimpl) GetSMSBillingSummary(organizationID int) (SMSBillingSummary, error) {
+	var summary SMSBillingSummary
+	if err := db.c.QueryRow(`SELECT IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0) FROM organizations WHERE id = ?`, organizationID).Scan(&summary.SMSCost, &summary.FreeSMSRemaining); err != nil {
+		return SMSBillingSummary{}, err
+	}
+	summary.SMSCost = normalizeSMSCost(summary.SMSCost)
+	if summary.FreeSMSRemaining < 0 {
+		summary.FreeSMSRemaining = 0
+	}
+	if err := db.c.QueryRow(`SELECT COUNT(1), IFNULL(SUM(sms_cost_charged), 0) FROM sms_messages WHERE organization_id = ?`, organizationID).Scan(&summary.TotalMessages, &summary.TotalCostCharged); err != nil {
+		return SMSBillingSummary{}, err
+	}
+	return summary, nil
+}
+
 func (db *appdbimpl) CreateSMSTemplate(t SMSTemplate) (SMSTemplate, error) {
 	res, err := db.c.Exec(`INSERT INTO sms_templates (organization_id,name,body,category) VALUES (?,?,?,?)`, t.OrganizationID, t.Name, t.Body, t.Category)
 	if err != nil {

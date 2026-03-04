@@ -151,6 +151,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Put("/admin/marketing/templates/{id}", rt.wrapAdmin(rt.updateSMSTemplate))
 	rt.router.Delete("/admin/marketing/templates/{id}", rt.wrapAdmin(rt.deleteSMSTemplate))
 	rt.router.Get("/admin/marketing/logs", rt.wrapAdmin(rt.listSMSLogs))
+	rt.router.Get("/admin/marketing/billing", rt.wrapAdmin(rt.getSMSBillingSummary))
 	rt.router.Get("/admin/coupons", rt.wrapAdmin(rt.listAdminCoupons))
 	rt.router.Post("/admin/coupons", rt.wrapAdmin(rt.createAdminCoupon))
 	rt.router.Put("/admin/coupons/{id}", rt.wrapAdmin(rt.updateAdminCoupon))
