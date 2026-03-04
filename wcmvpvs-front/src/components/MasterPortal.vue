@@ -458,6 +458,14 @@
                 <input type="checkbox" v-model="organizationForm.is_active" />
                 <span>Società attiva</span>
               </label>
+              <label>
+                Costo SMS (€)
+                <input v-model.number="organizationForm.sms_cost" type="number" min="0" step="0.01" />
+              </label>
+              <label>
+                SMS gratuiti
+                <input v-model.number="organizationForm.free_sms" type="number" min="0" step="1" />
+              </label>
               <div class="form-actions">
                 <button class="btn outline" type="button" @click="closeOrganizationForm">Annulla</button>
                 <button class="btn primary" type="submit" :disabled="isSavingOrganization">
@@ -476,6 +484,8 @@
                   <th>Slug / URL</th>
                   <th>Città</th>
                   <th>Stato</th>
+                  <th>Costo SMS</th>
+                  <th>SMS gratuiti</th>
                   <th>Creata il</th>
                   <th></th>
                 </tr>
@@ -520,6 +530,8 @@
                       {{ org.is_active ? 'Attiva' : 'Disattiva' }}
                     </span>
                   </td>
+                  <td>€ {{ Number(org.sms_cost || 0).toFixed(2) }}</td>
+                  <td>{{ org.free_sms || 0 }}</td>
                   <td>{{ formatDate(org.created_at) }}</td>
                   <td class="actions">
                     <button class="btn ghost" type="button" @click="viewOrganization(org.id)">
@@ -531,10 +543,10 @@
                   </td>
                 </tr>
                 <tr v-if="!organizations.length && !isLoadingOrganizations">
-                  <td colspan="4" class="empty">Nessuna società registrata.</td>
+                  <td colspan="8" class="empty">Nessuna società registrata.</td>
                 </tr>
                 <tr v-if="isLoadingOrganizations">
-                  <td colspan="4" class="empty">Caricamento in corso…</td>
+                  <td colspan="8" class="empty">Caricamento in corso…</td>
                 </tr>
               </tbody>
             </table>
@@ -777,7 +789,7 @@ const selectedOrganizationId = ref(0);
 const organizationDetail = ref(null);
 const isLoadingDetail = ref(false);
 
-const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', logo_url: '', is_active: true });
+const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', logo_url: '', is_active: true, sms_cost: 0.08, free_sms: 0 });
 const organizationFormVisible = ref(false);
 const organizationFormMode = ref('create');
 const isSavingOrganization = ref(false);
@@ -803,6 +815,8 @@ function resetOrganizationForm() {
   organizationForm.city = '';
   organizationForm.logo_url = '';
   organizationForm.is_active = true;
+  organizationForm.sms_cost = 0.08;
+  organizationForm.free_sms = 0;
   organizationFormError.value = '';
 }
 
@@ -829,6 +843,8 @@ function openEditOrganization(org) {
   organizationForm.city = org.city || '';
   organizationForm.logo_url = org.logo_url || '';
   organizationForm.is_active = Boolean(org.is_active);
+  organizationForm.sms_cost = Number(org.sms_cost ?? 0.08);
+  organizationForm.free_sms = Number(org.free_sms ?? 0);
   organizationFormVisible.value = true;
 }
 
@@ -1253,6 +1269,8 @@ async function submitOrganizationForm() {
       city: organizationForm.city,
       logo_url: organizationForm.logo_url,
       is_active: organizationForm.is_active,
+      sms_cost: Number(organizationForm.sms_cost || 0),
+      free_sms: Math.max(0, Number(organizationForm.free_sms || 0)),
     };
     if (organizationFormMode.value === 'create') {
       await apiClient.post('/admin/master/organizations', payload, authHeaders.value);
