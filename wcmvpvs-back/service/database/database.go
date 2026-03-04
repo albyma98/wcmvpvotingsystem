@@ -3590,7 +3590,7 @@ func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize
 		WHERE v.id = ?
 		  AND TRIM(IFNULL(fp.phone_verified_at, '')) <> ''
 		  AND TRIM(IFNULL(fp.phone_e164, '')) <> ''
-		ORDER BY fs.last_seen_at DESC, fs.id DESC
+		ORDER BY fs.last_seen_at DESC, fs.created_at DESC, fs.token DESC
 		LIMIT 1`, voteID).Scan(&voteEventID, &winnerUserID, &ticketCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return EventPrize{}, ErrPrizeVoteMismatch
@@ -3687,7 +3687,7 @@ func (db *appdbimpl) GetEligibleWinnerPhoneByVote(eventID, voteID int) (string, 
 	  AND fp.phone_verified_at IS NOT NULL
 	  AND TRIM(fp.phone_verified_at) <> ''
 	  AND TRIM(fp.phone_e164) <> ''
-	ORDER BY fs.last_seen_at DESC, fs.id DESC
+	ORDER BY fs.last_seen_at DESC, fs.created_at DESC, fs.token DESC
 	LIMIT 1`, eventID, voteID).Scan(&phone)
 	if err != nil {
 		return "", err
