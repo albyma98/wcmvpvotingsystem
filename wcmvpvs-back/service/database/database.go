@@ -658,14 +658,64 @@ type ContactSubmission struct {
 }
 
 type FanProfile struct {
+	ID              int    `json:"id"`
+	OrganizationID  int    `json:"organization_id"`
+	Nickname        string `json:"nickname"`
+	Gender          string `json:"gender"`
+	Phone           string `json:"phone"`
+	AcceptedTerms   bool   `json:"accepted_terms"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
+	PhoneVerifiedAt string `json:"phone_verified_at,omitempty"`
+}
+
+type MarketingAudienceEntry struct {
+	FanID           int    `json:"fan_id"`
+	Nickname        string `json:"nickname"`
+	Phone           string `json:"phone"`
+	CreatedAt       string `json:"created_at"`
+	LastSeenAt      string `json:"last_seen_at"`
+	Coins           int    `json:"coins"`
+	AcceptedTerms   bool   `json:"accepted_terms"`
+	PhoneVerified   bool   `json:"phone_verified"`
+	PhoneVerifiedAt string `json:"phone_verified_at"`
+}
+
+type SMSCampaign struct {
 	ID             int    `json:"id"`
 	OrganizationID int    `json:"organization_id"`
-	Nickname       string `json:"nickname"`
-	Gender         string `json:"gender"`
-	Phone          string `json:"phone"`
-	AcceptedTerms  bool   `json:"accepted_terms"`
+	Name           string `json:"name"`
+	Message        string `json:"message"`
+	FiltersJSON    string `json:"filters_json"`
+	RecipientCount int    `json:"recipient_count"`
+	Status         string `json:"status"`
+	ScheduledAt    string `json:"scheduled_at"`
+	CreatedByAdmin int    `json:"created_by_admin"`
+	CreatedAt      string `json:"created_at"`
+}
+
+type SMSTemplate struct {
+	ID             int    `json:"id"`
+	OrganizationID int    `json:"organization_id"`
+	Name           string `json:"name"`
+	Body           string `json:"body"`
+	Category       string `json:"category"`
 	CreatedAt      string `json:"created_at"`
 	UpdatedAt      string `json:"updated_at"`
+}
+
+type SMSMessage struct {
+	ID             int    `json:"id"`
+	OrganizationID int    `json:"organization_id"`
+	CampaignID     int    `json:"campaign_id"`
+	FanID          int    `json:"fan_id"`
+	Phone          string `json:"phone"`
+	Body           string `json:"body"`
+	TwilioSID      string `json:"twilio_sid"`
+	Status         string `json:"status"`
+	Error          string `json:"error"`
+	CreatedAt      string `json:"created_at"`
+	SentAt         string `json:"sent_at"`
 }
 
 type FanSession struct {
@@ -878,6 +928,17 @@ type AppDatabase interface {
 	GetQRRedirectBySource(sourcePath string) (QRRedirect, error)
 	IncrementQRRedirectHit(id int) error
 	DeleteQRRedirect(id int) error
+	ListMarketingAudience(organizationID int, query string, acceptedTermsOnly bool) ([]MarketingAudienceEntry, error)
+	GetMarketingAudienceFan(organizationID int, fanID int) (MarketingAudienceEntry, error)
+	CreateSMSCampaign(c SMSCampaign) (SMSCampaign, error)
+	ListSMSCampaigns(organizationID int) ([]SMSCampaign, error)
+	CreateSMSMessage(msg SMSMessage) (SMSMessage, error)
+	UpdateSMSMessageDelivery(id int, twilioSID, status, errText string) error
+	ListSMSMessages(organizationID int, campaignID int) ([]SMSMessage, error)
+	CreateSMSTemplate(t SMSTemplate) (SMSTemplate, error)
+	UpdateSMSTemplate(t SMSTemplate) (SMSTemplate, error)
+	DeleteSMSTemplate(organizationID int, id int) error
+	ListSMSTemplates(organizationID int) ([]SMSTemplate, error)
 	// Coupons
 	CreateCoupon(coupon Coupon) (Coupon, error)
 	UpdateCoupon(coupon Coupon) (Coupon, error)
@@ -1790,6 +1851,9 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 
 	if err = ensureFanProfileTables(db); err != nil {
+		return nil, err
+	}
+	if err = ensureMarketingTables(db); err != nil {
 		return nil, err
 	}
 
@@ -4892,6 +4956,13 @@ func normalizeRosterSchema(value int) int {
 	}
 }
 
+func nullableInt(v int) interface{} {
+	if v <= 0 {
+		return nil
+	}
+	return v
+}
+
 func nullableOrgID(orgID int) interface{} {
 	if orgID <= 0 {
 		return nil
@@ -5698,6 +5769,26 @@ func generateCouponCode(dbConn *sql.DB) (string, error) {
 	return "", fmt.Errorf("unable to generate unique coupon code")
 }
 
+func ensureMarketingTables(db *sql.DB) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS sms_campaigns (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER NOT NULL, name TEXT NOT NULL, message TEXT NOT NULL, filters_json TEXT, recipient_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'draft', scheduled_at TEXT, created_by_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
+		`CREATE TABLE IF NOT EXISTS sms_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER NOT NULL, name TEXT NOT NULL, body TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'promo', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
+		`CREATE TABLE IF NOT EXISTS sms_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id INTEGER NOT NULL, campaign_id INTEGER, fan_id INTEGER, phone TEXT NOT NULL, body TEXT NOT NULL, twilio_sid TEXT, status TEXT NOT NULL DEFAULT 'queued', error TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, sent_at TEXT);`,
+		`CREATE INDEX IF NOT EXISTS idx_sms_campaigns_org ON sms_campaigns(organization_id, id DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_sms_templates_org ON sms_templates(organization_id, id DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_sms_messages_org ON sms_messages(organization_id, id DESC);`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("error ensuring marketing tables: %w", err)
+		}
+	}
+	if _, err := db.Exec(`CREATE TRIGGER IF NOT EXISTS trg_sms_templates_updated_at AFTER UPDATE ON sms_templates BEGIN UPDATE sms_templates SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;`); err != nil {
+		return fmt.Errorf("error ensuring sms template trigger: %w", err)
+	}
+	return nil
+}
+
 func ensureFanProfileTables(db *sql.DB) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS fan_profiles (
@@ -6164,4 +6255,152 @@ func nonNegativeInt(value int) int {
 		return 0
 	}
 	return value
+}
+
+func (db *appdbimpl) ListMarketingAudience(organizationID int, query string, acceptedTermsOnly bool) ([]MarketingAudienceEntry, error) {
+	where := `WHERE p.organization_id = ? AND TRIM(IFNULL(p.phone_e164,'')) <> '' AND TRIM(IFNULL(p.phone_verified_at,'')) <> ''`
+	args := []interface{}{organizationID}
+	if acceptedTermsOnly {
+		where += ` AND p.accepted_terms = 1`
+	}
+	if q := strings.TrimSpace(query); q != "" {
+		where += ` AND (LOWER(p.nickname) LIKE ? OR REPLACE(p.phone,' ','') LIKE ?)`
+		like := "%" + strings.ToLower(q) + "%"
+		args = append(args, like, "%"+strings.ReplaceAll(q, " ", "")+"%")
+	}
+	rows, err := db.c.Query(`SELECT p.id, p.nickname, p.phone_e164, p.created_at, IFNULL(s.last_seen_at,''), IFNULL(w.coins,0), p.accepted_terms, p.phone_verified_at
+		FROM fan_profiles p
+		LEFT JOIN fan_sessions s ON s.fan_id = p.id
+		LEFT JOIN fan_wallets w ON w.fan_id = p.id `+where+`
+		GROUP BY p.id
+		ORDER BY p.id DESC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MarketingAudienceEntry{}
+	for rows.Next() {
+		var it MarketingAudienceEntry
+		if err := rows.Scan(&it.FanID, &it.Nickname, &it.Phone, &it.CreatedAt, &it.LastSeenAt, &it.Coins, &it.AcceptedTerms, &it.PhoneVerifiedAt); err != nil {
+			return nil, err
+		}
+		it.PhoneVerified = strings.TrimSpace(it.PhoneVerifiedAt) != ""
+		items = append(items, it)
+	}
+	return items, rows.Err()
+}
+
+func (db *appdbimpl) GetMarketingAudienceFan(organizationID int, fanID int) (MarketingAudienceEntry, error) {
+	items, err := db.ListMarketingAudience(organizationID, "", false)
+	if err != nil {
+		return MarketingAudienceEntry{}, err
+	}
+	for _, it := range items {
+		if it.FanID == fanID {
+			return it, nil
+		}
+	}
+	return MarketingAudienceEntry{}, sql.ErrNoRows
+}
+
+func (db *appdbimpl) CreateSMSCampaign(c SMSCampaign) (SMSCampaign, error) {
+	res, err := db.c.Exec(`INSERT INTO sms_campaigns (organization_id,name,message,filters_json,recipient_count,status,scheduled_at,created_by_admin) VALUES (?,?,?,?,?,?,?,?)`, c.OrganizationID, c.Name, c.Message, c.FiltersJSON, c.RecipientCount, c.Status, c.ScheduledAt, c.CreatedByAdmin)
+	if err != nil {
+		return SMSCampaign{}, err
+	}
+	id, _ := res.LastInsertId()
+	c.ID = int(id)
+	_ = db.c.QueryRow(`SELECT created_at FROM sms_campaigns WHERE id = ?`, c.ID).Scan(&c.CreatedAt)
+	return c, nil
+}
+func (db *appdbimpl) ListSMSCampaigns(organizationID int) ([]SMSCampaign, error) {
+	rows, err := db.c.Query(`SELECT id, organization_id, name, message, IFNULL(filters_json,''), recipient_count, status, IFNULL(scheduled_at,''), created_by_admin, created_at FROM sms_campaigns WHERE organization_id = ? ORDER BY id DESC`, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SMSCampaign{}
+	for rows.Next() {
+		var c SMSCampaign
+		if err := rows.Scan(&c.ID, &c.OrganizationID, &c.Name, &c.Message, &c.FiltersJSON, &c.RecipientCount, &c.Status, &c.ScheduledAt, &c.CreatedByAdmin, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+func (db *appdbimpl) CreateSMSMessage(msg SMSMessage) (SMSMessage, error) {
+	res, err := db.c.Exec(`INSERT INTO sms_messages (organization_id,campaign_id,fan_id,phone,body,status,error,twilio_sid,sent_at) VALUES (?,?,?,?,?,?,?,?,?)`, msg.OrganizationID, nullableInt(msg.CampaignID), nullableInt(msg.FanID), msg.Phone, msg.Body, msg.Status, msg.Error, msg.TwilioSID, msg.SentAt)
+	if err != nil {
+		return SMSMessage{}, err
+	}
+	id, _ := res.LastInsertId()
+	msg.ID = int(id)
+	_ = db.c.QueryRow(`SELECT created_at FROM sms_messages WHERE id=?`, msg.ID).Scan(&msg.CreatedAt)
+	return msg, nil
+}
+func (db *appdbimpl) UpdateSMSMessageDelivery(id int, twilioSID, status, errText string) error {
+	_, err := db.c.Exec(`UPDATE sms_messages SET twilio_sid=?, status=?, error=?, sent_at=CASE WHEN ? <> '' THEN CURRENT_TIMESTAMP ELSE sent_at END WHERE id=?`, twilioSID, status, errText, status, id)
+	return err
+}
+func (db *appdbimpl) ListSMSMessages(organizationID int, campaignID int) ([]SMSMessage, error) {
+	q := `SELECT id, organization_id, IFNULL(campaign_id,0), IFNULL(fan_id,0), phone, body, IFNULL(twilio_sid,''), status, IFNULL(error,''), created_at, IFNULL(sent_at,'') FROM sms_messages WHERE organization_id = ?`
+	args := []interface{}{organizationID}
+	if campaignID > 0 {
+		q += ` AND campaign_id = ?`
+		args = append(args, campaignID)
+	}
+	q += ` ORDER BY id DESC`
+	rows, err := db.c.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SMSMessage{}
+	for rows.Next() {
+		var m SMSMessage
+		if err := rows.Scan(&m.ID, &m.OrganizationID, &m.CampaignID, &m.FanID, &m.Phone, &m.Body, &m.TwilioSID, &m.Status, &m.Error, &m.CreatedAt, &m.SentAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+func (db *appdbimpl) CreateSMSTemplate(t SMSTemplate) (SMSTemplate, error) {
+	res, err := db.c.Exec(`INSERT INTO sms_templates (organization_id,name,body,category) VALUES (?,?,?,?)`, t.OrganizationID, t.Name, t.Body, t.Category)
+	if err != nil {
+		return SMSTemplate{}, err
+	}
+	id, _ := res.LastInsertId()
+	t.ID = int(id)
+	_ = db.c.QueryRow(`SELECT created_at, updated_at FROM sms_templates WHERE id=?`, t.ID).Scan(&t.CreatedAt, &t.UpdatedAt)
+	return t, nil
+}
+func (db *appdbimpl) UpdateSMSTemplate(t SMSTemplate) (SMSTemplate, error) {
+	_, err := db.c.Exec(`UPDATE sms_templates SET name=?, body=?, category=? WHERE id=? AND organization_id=?`, t.Name, t.Body, t.Category, t.ID, t.OrganizationID)
+	if err != nil {
+		return SMSTemplate{}, err
+	}
+	_ = db.c.QueryRow(`SELECT created_at, updated_at FROM sms_templates WHERE id=?`, t.ID).Scan(&t.CreatedAt, &t.UpdatedAt)
+	return t, nil
+}
+func (db *appdbimpl) DeleteSMSTemplate(organizationID int, id int) error {
+	_, err := db.c.Exec(`DELETE FROM sms_templates WHERE id=? AND organization_id=?`, id, organizationID)
+	return err
+}
+func (db *appdbimpl) ListSMSTemplates(organizationID int) ([]SMSTemplate, error) {
+	rows, err := db.c.Query(`SELECT id, organization_id, name, body, category, created_at, updated_at FROM sms_templates WHERE organization_id = ? ORDER BY id DESC`, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SMSTemplate{}
+	for rows.Next() {
+		var t SMSTemplate
+		if err := rows.Scan(&t.ID, &t.OrganizationID, &t.Name, &t.Body, &t.Category, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
