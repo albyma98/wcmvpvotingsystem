@@ -298,6 +298,12 @@
                     :placeholder="`Premio ${index + 1}`"
                     :disabled="!hasEnoughTeams"
                   />
+                  <input
+                    v-model.trim="prize.winSmsText"
+                    type="text"
+                    placeholder="Testo SMS vittoria"
+                    :disabled="!hasEnoughTeams"
+                  />
                   <button
                     class="btn outline"
                     type="button"
@@ -573,6 +579,12 @@
                       v-model="prize.name"
                       type="text"
                       :placeholder="`Premio ${index + 1}`"
+                      :disabled="isSavingPrizesFor(event.id)"
+                    />
+                    <input
+                      v-model="prize.winSmsText"
+                      type="text"
+                      placeholder="Testo SMS vittoria"
                       :disabled="isSavingPrizesFor(event.id)"
                     />
                     <span v-if="prize.winner" class="prize-editor__winner"
@@ -2865,7 +2877,7 @@ function createEmptyCouponDraft() {
 
 const newEvent = reactive(createDefaultNewEventState());
 const newEventSurvey = reactive(normalizeFeedbackSurveyInput());
-const newEventPrizes = ref([{ name: "" }]);
+const newEventPrizes = ref([{ name: "", winSmsText: "" }]);
 const teamInputs = reactive({
   home: "",
   away: "",
@@ -3686,7 +3698,7 @@ const authHeaders = computed(() => {
 });
 
 function resetNewEventPrizes() {
-  newEventPrizes.value = [{ name: "" }];
+  newEventPrizes.value = [{ name: "", winSmsText: "" }];
 }
 
 function resetForms() {
@@ -4106,6 +4118,7 @@ function normalizePrizeResponse(prize, index = 0) {
     id: Number(prize.id) || 0,
     eventId: Number(prize.event_id ?? prize.eventId) || 0,
     name: typeof prize.name === "string" ? prize.name : "",
+    winSmsText: typeof (prize.win_sms_text ?? prize.winSmsText) === 'string' ? (prize.win_sms_text ?? prize.winSmsText) : '',
     position,
     winner: normalizedWinner,
   };
@@ -4635,7 +4648,7 @@ function handleTeamInput(position) {
 }
 
 function addNewEventPrize() {
-  newEventPrizes.value = [...newEventPrizes.value, { name: "" }];
+  newEventPrizes.value = [...newEventPrizes.value, { name: "", winSmsText: "" }];
 }
 
 function removeNewEventPrize(index) {
@@ -4643,14 +4656,14 @@ function removeNewEventPrize(index) {
     return;
   }
   const updated = newEventPrizes.value.filter((_, idx) => idx !== index);
-  newEventPrizes.value = updated.length ? updated : [{ name: "" }];
+  newEventPrizes.value = updated.length ? updated : [{ name: "", winSmsText: "" }];
 }
 
 function prizeDraftsFor(eventId) {
   const drafts = eventPrizeDrafts[eventId];
   if (!Array.isArray(drafts) || drafts.length === 0) {
     eventPrizeDrafts[eventId] = [
-      { id: 0, name: "", position: 1, winner: null },
+      { id: 0, name: "", position: 1, winSmsText: "", winner: null },
     ];
   }
   return eventPrizeDrafts[eventId];
@@ -4674,7 +4687,7 @@ function feedbackDraftFor(eventId) {
 function addPrizeDraft(eventId) {
   const drafts = prizeDraftsFor(eventId);
   const updated = drafts.slice();
-  updated.push({ id: 0, name: "", position: updated.length + 1, winner: null });
+  updated.push({ id: 0, name: "", position: updated.length + 1, winSmsText: "", winner: null });
   eventPrizeDrafts[eventId] = updated;
   eventPrizeErrors[eventId] = "";
 }
@@ -4696,7 +4709,7 @@ function removePrizeDraft(eventId, index) {
         ...item,
         position: positionIndex + 1,
       }))
-    : [{ id: 0, name: "", position: 1, winner: null }];
+    : [{ id: 0, name: "", position: 1, winSmsText: "", winner: null }];
 }
 
 function isSavingPrizesFor(eventId) {
@@ -4721,6 +4734,7 @@ async function savePrizesForEvent(event) {
       id: Number(prize.id) || 0,
       name: (prize.name || "").trim(),
       position: index + 1,
+      win_sms_text: (prize.winSmsText || '').trim(),
     }))
     .filter((prize) => prize.name);
 
@@ -4790,6 +4804,7 @@ function syncEventPrizeDrafts(eventList) {
             id: prize.id,
             name: prize.name || "",
             position: prize.position || index + 1,
+            winSmsText: prize.winSmsText || '',
             winner: prize.winner
               ? {
                   voteId: prize.winner.voteId,
@@ -4799,7 +4814,7 @@ function syncEventPrizeDrafts(eventList) {
                 }
               : null,
           }))
-        : [{ id: 0, name: "", position: 1, winner: null }];
+        : [{ id: 0, name: "", position: 1, winSmsText: "", winner: null }];
     eventPrizeDrafts[event.id] = drafts;
   });
 }
@@ -6273,6 +6288,7 @@ async function createEvent() {
       id: Number(prize.id) || 0,
       name: (prize.name || "").trim(),
       position: index + 1,
+      win_sms_text: (prize.winSmsText || '').trim(),
     }))
     .filter((prize) => prize.name);
 

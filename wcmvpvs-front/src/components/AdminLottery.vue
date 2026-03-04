@@ -57,7 +57,7 @@
 
       <div v-if="selectedEventId" class="lottery-status">
         <p class="muted">
-          Ticket disponibili: <strong>{{ tickets.length }}</strong>
+          Codici ammessi: <strong>{{ allowedCodesCount }}</strong><span v-if="totalCodesCount > 0"> / Totali: <strong>{{ totalCodesCount }}</strong></span>
         </p>
         <p v-if="lastWinner" class="winner-banner">
           Ultima estrazione: <strong>{{ lastWinnerDisplay }}</strong>
@@ -82,6 +82,7 @@
             <p class="muted">Estrazione n° {{ prize.position }}</p>
             <p v-if="prize.winner" class="winner-banner">
               Vincitore: <strong>{{ prize.winnerDisplay }}</strong>
+              <span v-if="prize.winner.status"> · SMS: {{ smsStatusLabel(prize.winner.status) }}</span>
             </p>
           </div>
           <div class="prize-card__actions">
@@ -155,6 +156,8 @@ const basePath = computed(() => {
 const teams = ref([]);
 const events = ref([]);
 const tickets = ref([]);
+const totalCodesCount = ref(0);
+const allowedCodesCount = computed(() => tickets.value.length);
 const selectedEventId = ref(0);
 const eventInput = ref('');
 
@@ -244,8 +247,29 @@ function eventLabel(event) {
   return `${teamName(event.team1_id)} - ${teamName(event.team2_id)}`;
 }
 
+function maskPhone(phone) {
+  const value = String(phone || "").trim();
+  if (!value) return "";
+  if (value.length <= 4) return value;
+  return `${value.slice(0, 3)}***${value.slice(-2)}`;
+}
+
 function formatTicketDisplay(ticket) {
-  return ticket.ticketCode || '';
+  const code = ticket.ticketCode || "";
+  const nickname = String(ticket.nickname || "").trim();
+  const maskedPhone = maskPhone(ticket.phone);
+  if (nickname) return `${code} · ${nickname}`;
+  if (maskedPhone) return `${code} · ${maskedPhone}`;
+  return code;
+}
+
+function smsStatusLabel(status) {
+  switch (String(status || "").trim()) {
+    case "notified": return "inviato";
+    case "notified_failed": return "errore";
+    case "assigned": return "non inviato";
+    default: return "non inviato";
+  }
 }
 
 function normalizePrize(prize, index = 0) {
@@ -272,6 +296,15 @@ function normalizePrize(prize, index = 0) {
           typeof (winner.assigned_at ?? winner.assignedAt) === 'string'
             ? (winner.assigned_at ?? winner.assignedAt)
             : '',
+        nickname: typeof (winner.nickname ?? winner.Nickname) === 'string'
+          ? (winner.nickname ?? winner.Nickname)
+          : '',
+        phone: typeof (winner.phone ?? winner.Phone) === 'string'
+          ? (winner.phone ?? winner.Phone)
+          : '',
+        status: typeof (winner.status ?? winner.Status) === 'string'
+          ? (winner.status ?? winner.Status)
+          : '',
       }
     : null;
   const position = Number(prize.position) || index + 1;
@@ -434,6 +467,7 @@ function clearTimers() {
 function resetState() {
   events.value = [];
   tickets.value = [];
+  totalCodesCount.value = 0;
   selectedEventId.value = 0;
   currentPrizeId.value = 0;
   lastWinner.value = null;
@@ -541,13 +575,17 @@ async function loadInitialData() {
 async function loadTickets(eventId) {
   if (!eventId) {
     tickets.value = [];
+    totalCodesCount.value = 0;
     return;
   }
   isLoadingTickets.value = true;
   globalError.value = '';
   drawError.value = '';
   try {
-    const { data } = await secureRequest(() => apiClient.get(`/events/${eventId}/tickets`, authHeaders.value));
+    const response = await secureRequest(() => apiClient.get(`/events/${eventId}/tickets`, authHeaders.value));
+    const { data, headers } = response;
+    const total = Number(headers?.['x-lottery-total-codes'] || 0);
+    totalCodesCount.value = Number.isFinite(total) ? total : 0;
     tickets.value = Array.isArray(data) ? data.map(normalizeTicket) : [];
     if (!tickets.value.length) {
       displayCode.value = 'Nessun ticket disponibile';

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -529,9 +530,17 @@ func (rt *_router) listEventTickets(w http.ResponseWriter, r *http.Request, ctx 
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	totalCodes, err := rt.db.CountEventTickets(eventID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot count event tickets")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("X-Lottery-Allowed-Codes", strconv.Itoa(len(tickets)))
+	w.Header().Set("X-Lottery-Total-Codes", strconv.Itoa(totalCodes))
 
 	_ = json.NewEncoder(w).Encode(tickets)
-	ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "tickets": len(tickets)}).Info("listed event tickets")
+	ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "allowed_tickets": len(tickets), "total_tickets": totalCodes}).Info("listed event tickets")
 }
 
 func (rt *_router) assignPrizeWinner(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -581,8 +590,46 @@ func (rt *_router) assignPrizeWinner(w http.ResponseWriter, r *http.Request, ctx
 		return
 	}
 
+	if prize.Winner != nil && strings.TrimSpace(prize.Winner.Phone) != "" && strings.TrimSpace(prize.Winner.NotifiedAt) == "" {
+		message := buildPrizeWinnerSMSMessage(eventID, prize)
+		res, sendErr := rt.twilioMessaging.SendSMS(prize.Winner.Phone, message)
+		if sendErr != nil {
+			_ = rt.db.MarkPrizeWinnerNotifyFailed(eventID, prizeID)
+			ctx.Logger.WithError(sendErr).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}).Warn("winner sms send failed")
+		} else {
+			if err := rt.db.MarkPrizeWinnerNotified(eventID, prizeID, res.SID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				ctx.Logger.WithError(err).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID}).Warn("cannot mark winner as notified")
+			}
+		}
+	}
+
+	updatedPrize, loadErr := rt.db.ListEventPrizes(eventID)
+	if loadErr == nil {
+		for _, p := range updatedPrize {
+			if p.ID == prizeID {
+				prize = p
+				break
+			}
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(prize)
 	ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "vote_id": payload.VoteID}).Info("prize winner assigned")
+}
+
+func buildPrizeWinnerSMSMessage(eventID int, prize database.EventPrize) string {
+	template := strings.TrimSpace(prize.WinSMSText)
+	if template == "" {
+		template = winnerExtractedSMSMessage
+	}
+	replacer := strings.NewReplacer(
+		"{NICKNAME}", strings.TrimSpace(prize.Winner.Nickname),
+		"{PREMIO}", strings.TrimSpace(prize.Name),
+		"{EVENTO}", fmt.Sprintf("Evento #%d", eventID),
+		"{CODICE}", strings.TrimSpace(prize.Winner.TicketCode),
+		"{ISTRUZIONI_RITIRO}", "Ritirare il premio allo speaker.",
+	)
+	return strings.TrimSpace(replacer.Replace(template))
 }
 
 func (rt *_router) clearPrizeWinner(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
