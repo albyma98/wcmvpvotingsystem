@@ -3288,15 +3288,16 @@ func (db *appdbimpl) ListEventTickets(eventID int) ([]EventTicket, error) {
 SELECT v.id, v.ticket_code, v.ticket_signature, v.player_id, IFNULL(p.first_name, ''), IFNULL(p.last_name, ''), v.created_at
 FROM votes v
 LEFT JOIN players p ON p.id = v.player_id
-JOIN fan_profiles fp ON fp.id = v.user_id
-JOIN fan_lottery_entries fle ON fle.fan_id = v.user_id AND fle.event_id = v.event_id AND fle.ticket_code = v.ticket_code
+JOIN fan_sessions fs ON fs.device_id = v.device_id
+JOIN fan_profiles fp ON fp.id = fs.fan_id
 LEFT JOIN event_prizes ep ON ep.winner_vote_id = v.id AND ep.event_id = v.event_id
 WHERE v.event_id = ?
-  AND v.user_id IS NOT NULL
   AND LENGTH(TRIM(IFNULL(v.ticket_code, ''))) = 4
   AND TRIM(v.ticket_code) GLOB '[0-9][0-9][0-9][0-9]'
   AND TRIM(IFNULL(fp.phone_verified_at, '')) <> ''
+  AND TRIM(IFNULL(fp.phone_e164, '')) <> ''
   AND ep.id IS NULL
+GROUP BY v.id, v.ticket_code, v.ticket_signature, v.player_id, p.first_name, p.last_name, v.created_at
 ORDER BY v.created_at ASC
 `, eventID)
 	if err != nil {
@@ -3316,7 +3317,23 @@ ORDER BY v.created_at ASC
 
 func (db *appdbimpl) CountEventTickets(eventID int) (int, error) {
 	var total int
-	err := db.c.QueryRow(`SELECT COUNT(1) FROM votes WHERE event_id = ?`, eventID).Scan(&total)
+	err := db.c.QueryRow(`
+SELECT COUNT(1)
+FROM (
+	SELECT v.id
+	FROM votes v
+	JOIN fan_sessions fs ON fs.device_id = v.device_id
+	JOIN fan_profiles fp ON fp.id = fs.fan_id
+	LEFT JOIN event_prizes ep ON ep.winner_vote_id = v.id AND ep.event_id = v.event_id
+	WHERE v.event_id = ?
+	  AND LENGTH(TRIM(IFNULL(v.ticket_code, ''))) = 4
+	  AND TRIM(v.ticket_code) GLOB '[0-9][0-9][0-9][0-9]'
+	  AND TRIM(IFNULL(fp.phone_verified_at, '')) <> ''
+	  AND TRIM(IFNULL(fp.phone_e164, '')) <> ''
+	  AND ep.id IS NULL
+	GROUP BY v.id
+)
+`, eventID).Scan(&total)
 	if err != nil {
 		return 0, err
 	}
@@ -3566,12 +3583,15 @@ func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize
 	var voteEventID int
 	var winnerUserID int
 	var ticketCode string
-	if err := tx.QueryRow(`SELECT v.event_id, IFNULL(v.user_id, 0), TRIM(IFNULL(v.ticket_code, ''))
+	if err := tx.QueryRow(`SELECT v.event_id, fs.fan_id, TRIM(IFNULL(v.ticket_code, ''))
 		FROM votes v
-		JOIN fan_profiles fp ON fp.id = v.user_id
-		JOIN fan_lottery_entries fle ON fle.fan_id = v.user_id AND fle.event_id = v.event_id AND fle.ticket_code = v.ticket_code
+		JOIN fan_sessions fs ON fs.device_id = v.device_id
+		JOIN fan_profiles fp ON fp.id = fs.fan_id
 		WHERE v.id = ?
-		  AND TRIM(IFNULL(fp.phone_verified_at, '')) <> ''`, voteID).Scan(&voteEventID, &winnerUserID, &ticketCode); err != nil {
+		  AND TRIM(IFNULL(fp.phone_verified_at, '')) <> ''
+		  AND TRIM(IFNULL(fp.phone_e164, '')) <> ''
+		ORDER BY fs.last_seen_at DESC, fs.id DESC
+		LIMIT 1`, voteID).Scan(&voteEventID, &winnerUserID, &ticketCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return EventPrize{}, ErrPrizeVoteMismatch
 		}
@@ -3660,14 +3680,14 @@ func (db *appdbimpl) GetEligibleWinnerPhoneByVote(eventID, voteID int) (string, 
 	var phone string
 	err := db.c.QueryRow(`SELECT fp.phone_e164
 	FROM votes v
-	JOIN fan_profiles fp ON fp.id = v.user_id
-	JOIN fan_lottery_entries fle ON fle.fan_id = fp.id AND fle.event_id = v.event_id AND fle.ticket_code = v.ticket_code
+	JOIN fan_sessions fs ON fs.device_id = v.device_id
+	JOIN fan_profiles fp ON fp.id = fs.fan_id
 	WHERE v.event_id = ?
 	  AND v.id = ?
-	  AND v.user_id IS NOT NULL
 	  AND fp.phone_verified_at IS NOT NULL
 	  AND TRIM(fp.phone_verified_at) <> ''
 	  AND TRIM(fp.phone_e164) <> ''
+	ORDER BY fs.last_seen_at DESC, fs.id DESC
 	LIMIT 1`, eventID, voteID).Scan(&phone)
 	if err != nil {
 		return "", err
