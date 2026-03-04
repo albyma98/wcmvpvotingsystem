@@ -6066,6 +6066,8 @@ func ensureFanProfileTables(db *sql.DB) error {
 		);`,
 		`ALTER TABLE fan_profiles ADD COLUMN phone_e164 TEXT;`,
 		`ALTER TABLE fan_profiles ADD COLUMN phone_verified_at TEXT;`,
+		`ALTER TABLE fan_sessions ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP;`,
+		`UPDATE fan_sessions SET last_seen_at = IFNULL(created_at, CURRENT_TIMESTAMP) WHERE TRIM(IFNULL(last_seen_at, '')) = '';`,
 		`UPDATE fan_profiles SET phone_e164 = phone WHERE phone_e164 IS NULL OR TRIM(phone_e164) = '';`,
 		`ALTER TABLE votes ADD COLUMN user_id INTEGER REFERENCES fan_profiles(id);`,
 		`ALTER TABLE fan_lottery_entries ADD COLUMN ticket_code TEXT NOT NULL DEFAULT '';`,
