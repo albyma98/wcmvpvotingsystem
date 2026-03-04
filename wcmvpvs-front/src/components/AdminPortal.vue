@@ -1,65 +1,55 @@
 <template>
   <div class="admin-portal">
-    <header class="admin-header">
-      <h1>Area amministratore</h1>
-      <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
-      <p v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</p>
-    </header>
-
     <section v-if="!isAuthenticated" class="card login-card">
+      <header class="admin-header login-header">
+        <h1>Area amministratore</h1>
+        <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
+        <p v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</p>
+      </header>
       <h2>Accedi</h2>
       <form @submit.prevent="login" class="form-grid">
         <label>
           Username
-          <input
-            v-model.trim="loginForm.username"
-            type="text"
-            autocomplete="username"
-            required
-          />
+          <input v-model.trim="loginForm.username" type="text" autocomplete="username" required />
         </label>
         <label>
           Password
-          <input
-            v-model="loginForm.password"
-            type="password"
-            autocomplete="current-password"
-            required
-          />
+          <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
         </label>
-        <button class="btn primary" type="submit" :disabled="isLoggingIn">
-          {{ isLoggingIn ? "Accesso in corso…" : "Entra" }}
-        </button>
+        <button class="btn primary" type="submit" :disabled="isLoggingIn">{{ isLoggingIn ? "Accesso in corso…" : "Entra" }}</button>
       </form>
       <p v-if="loginError" class="error">{{ loginError }}</p>
     </section>
 
-    <section v-else class="portal" ref="portalRef">
-      <div class="toolbar" ref="toolbarRef">
-        <div class="user-info">
-          <span
-            >Connesso come <strong>{{ activeUsername }}</strong></span
-          >
-          <button class="btn outline" type="button" @click="goToLottery">
-            Lotteria
-          </button>
-          <button
-            v-for="tab in availableTabs"
-            :key="tab.id"
-            :class="['btn outline', { active: section === tab.id }]"
-            type="button"
-            :aria-current="section === tab.id ? 'page' : undefined"
-            @click="section = tab.id"
-          >
-            {{ tab.label }}
-          </button>
-          <button class="btn secondary" type="button" @click="logout">
-            Esci
-          </button>
-        </div>
-      </div>
+    <AdminLayout v-else :mobile-open="isSidebarOpen" @close-mobile="isSidebarOpen = false">
+      <template #sidebar>
+        <AdminSidebar
+          :groups="navigationGroups"
+          :active-section="section"
+          :organization-slug="organizationSlug"
+          @select="selectSection"
+          @lottery="goToLottery"
+          @logout="logout"
+        />
+      </template>
+      <template #header>
+        <AdminHeader :title="currentSectionTitle" :section-group="currentSectionGroup" @toggle-menu="isSidebarOpen = !isSidebarOpen">
+          <template #actions>
+            <span class="header-user">{{ activeUsername }}</span>
+          </template>
+        </AdminHeader>
+      </template>
+
       <div class="portal-content">
         <p v-if="globalError" class="error">{{ globalError }}</p>
+
+        <section v-if="section === 'dashboard'" class="card dashboard-grid">
+          <article class="dashboard-card" v-for="action in dashboardActions" :key="action.id">
+            <h3>{{ action.label }}</h3>
+            <p>{{ action.description }}</p>
+            <button class="btn primary" type="button" @click="selectSection(action.id)">Apri</button>
+          </article>
+        </section>
 
         <section v-if="section === 'events'" class="card">
           <header class="section-header">
@@ -2129,8 +2119,14 @@
             </div>
             <div class="match-selector">
               <span>Associa alle partite</span>
-              <div class="match-selector__grid">
-                <label v-for="event in events" :key="event.id" class="checkbox">
+              <input
+                v-model.trim="couponEventSearch"
+                type="text"
+                class="match-search"
+                placeholder="Cerca partita per squadra o data"
+              />
+              <div class="match-selector__grid match-selector__grid--scroll">
+                <label v-for="event in filteredCouponEvents" :key="event.id" class="checkbox">
                   <input
                     type="checkbox"
                     :value="event.id"
@@ -2268,7 +2264,7 @@
                 <div class="match-selector inline">
                   <span class="muted small">Partite associate</span>
                   <div class="match-selector__grid">
-                    <label v-for="event in events" :key="event.id" class="checkbox">
+                    <label v-for="event in filteredCouponEvents" :key="event.id" class="checkbox">
                       <input
                         type="checkbox"
                         :value="event.id"
@@ -2484,7 +2480,7 @@
           </div>
         </div>
       </div>
-    </section>
+    </AdminLayout>
   </div>
 </template>
 
@@ -2502,6 +2498,9 @@ import {
 import { apiClient, resolveApiUrl } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, MAX_PLAYER_SLOTS } from "../roster";
 import VoteTrendChart from "./VoteTrendChart.vue";
+import AdminLayout from "./admin/AdminLayout.vue";
+import AdminSidebar from "./admin/AdminSidebar.vue";
+import AdminHeader from "./admin/AdminHeader.vue";
 
 const props = defineProps({
   organizationSlug: {
@@ -2749,8 +2748,10 @@ function toApiSurveyPayload(survey) {
 
 let resultsPollHandle = 0;
 
-const section = ref("events");
+const isSidebarOpen = ref(false);
+const section = ref("dashboard");
 const tabs = [
+  { id: "dashboard", label: "Dashboard" },
   { id: "events", label: "Eventi" },
   { id: "closing", label: "Chiusura votazioni" },
   { id: "results", label: "Risultati" },
@@ -2763,7 +2764,7 @@ const tabs = [
   { id: "partners", label: "Partners" },
   { id: "admins", label: "Admin" },
 ];
-const STAFF_TAB_IDS = new Set(["closing", "results"]);
+const STAFF_TAB_IDS = new Set(["dashboard", "closing", "results"]);
 
 const teams = ref([]);
 const players = ref([]);
@@ -2773,6 +2774,7 @@ const partners = ref([]);
 const sponsors = ref([]);
 const coupons = ref([]);
 const eventHistory = ref([]);
+const couponEventSearch = ref("");
 const eventSelfies = ref([]);
 const isLoadingEventHistory = ref(false);
 const eventHistoryError = ref("");
@@ -3587,6 +3589,16 @@ const lastResultsUpdateLabel = computed(() =>
     ? lastResultsUpdate.value.toLocaleString("it-IT")
     : "",
 );
+const filteredCouponEvents = computed(() => {
+  const term = couponEventSearch.value.trim().toLowerCase();
+  if (!term) {
+    return events.value;
+  }
+  return events.value.filter((event) =>
+    couponMatchLabel(event).toLowerCase().includes(term) ||
+    String(event.start_datetime || "").toLowerCase().includes(term),
+  );
+});
 
 const token = ref(localStorage.getItem("adminToken") || "");
 const activeUsername = ref(localStorage.getItem("adminUsername") || "");
@@ -3600,6 +3612,58 @@ const availableTabs = computed(() => {
   }
   return tabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
 });
+
+const navigationGroups = computed(() => {
+  const allowed = new Map(availableTabs.value.map((tab) => [tab.id, tab]));
+  const groups = [
+    { label: "Panoramica", ids: ["dashboard", "events"] },
+    { label: "Contenuti", ids: ["sponsors", "coupons", "selfies"] },
+    { label: "Squadra", ids: ["teams", "players"] },
+    { label: "Risultati", ids: ["closing", "results", "history"] },
+    { label: "Impostazioni", ids: ["partners", "admins"] },
+  ];
+  return groups
+    .map((group) => ({
+      label: group.label,
+      items: group.ids.map((id) => allowed.get(id)).filter(Boolean),
+    }))
+    .filter((group) => group.items.length);
+});
+
+const sectionMetaMap = {
+  dashboard: { title: "Dashboard", group: "Panoramica" },
+  events: { title: "Eventi", group: "Panoramica" },
+  sponsors: { title: "Sponsor", group: "Contenuti" },
+  coupons: { title: "Coupon", group: "Contenuti" },
+  selfies: { title: "Selfie MVP", group: "Contenuti" },
+  teams: { title: "Squadre", group: "Squadra" },
+  players: { title: "Giocatori", group: "Squadra" },
+  closing: { title: "Chiusura votazioni", group: "Risultati" },
+  results: { title: "Risultati", group: "Risultati" },
+  history: { title: "Storico eventi", group: "Risultati" },
+  partners: { title: "Partners", group: "Impostazioni" },
+  admins: { title: "Admin", group: "Impostazioni" },
+};
+
+const currentSectionMeta = computed(() => sectionMetaMap[section.value] || sectionMetaMap.dashboard);
+const currentSectionTitle = computed(() => currentSectionMeta.value.title);
+const currentSectionGroup = computed(() => currentSectionMeta.value.group);
+
+const dashboardActions = computed(() =>
+  availableTabs.value
+    .filter((tab) => ["events", "sponsors", "coupons", "players"].includes(tab.id))
+    .map((tab) => ({
+      ...tab,
+      description:
+        tab.id === "events"
+          ? "Crea o aggiorna partite e flussi di voto."
+          : tab.id === "sponsors"
+            ? "Gestisci creatività e ordine sponsor."
+            : tab.id === "coupons"
+              ? "Configura coupon e associazioni alle partite."
+              : "Aggiorna roster e immagini giocatori.",
+    })),
+);
 
 const loginForm = reactive({
   username: "",
@@ -3646,7 +3710,12 @@ function resetForms() {
 }
 
 function selectDefaultSection() {
-  section.value = isSuperAdmin.value ? "events" : "closing";
+  section.value = isSuperAdmin.value ? "dashboard" : "closing";
+}
+
+function selectSection(nextSection) {
+  section.value = nextSection;
+  isSidebarOpen.value = false;
 }
 
 function ensureValidTeamSelection() {
@@ -6768,27 +6837,25 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .admin-portal {
-  margin: 0 auto;
-  max-width: 960px;
-  padding: 2rem 1.5rem 3rem;
+  min-height: 100vh;
   color: #0f172a;
+  background: #f1f5f9;
 }
 
 .admin-header {
-  text-align: center;
-  margin-bottom: 2rem;
-  color: #f8fafc;
+  margin-bottom: 1.5rem;
+  color: #0f172a;
 }
 
 .admin-header h1 {
-  font-size: 2rem;
+  font-size: 1.75rem;
   margin: 0;
-  color: #f8fafc;
+  color: #0f172a;
 }
 
 .subtitle {
   margin: 0.5rem 0 0;
-  color: #cbd5f5;
+  color: #475569;
 }
 
 .context-badge {
@@ -6802,42 +6869,35 @@ onBeforeUnmount(() => {
   font-size: 0.95rem;
 }
 
-.portal {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  position: relative;
-  --toolbar-height: 0px;
-}
-
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  color: #f1f5f9;
-  top: 0;
-  z-index: 10;
-  background: rgba(15, 23, 42, 0.92);
-  border-radius: 1rem;
-  padding: 0.75rem 1rem;
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  backdrop-filter: blur(12px);
-}
-
-@media (min-width: 768px) {
-  .toolbar {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1.25rem;
-  }
-}
+.portal { display: block; }
 
 .portal-content {
   display: flex;
   flex-direction: column;
-  padding-top: 1px;
+  gap: 1rem;
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.header-user {
+  font-weight: 600;
+  color: #475569;
+}
+
+.dashboard-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.dashboard-card {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 0.9rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .user-info {
@@ -6864,8 +6924,8 @@ onBeforeUnmount(() => {
 }
 
 .login-card {
-  max-width: 480px;
-  margin: 0 auto;
+  max-width: 520px;
+  margin: 3rem auto;
 }
 
 .section-header h2 {
@@ -8191,6 +8251,16 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.5rem 1rem;
+}
+
+.match-selector__grid--scroll {
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.match-search {
+  width: 100%;
 }
 
 .match-selector.inline {
