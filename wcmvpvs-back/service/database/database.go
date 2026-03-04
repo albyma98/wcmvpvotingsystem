@@ -260,6 +260,7 @@ type MasterAnalytics struct {
 }
 
 var slugSanitizer = regexp.MustCompile(`[^a-z0-9]+`)
+var lotteryCodeSanitizer = regexp.MustCompile(`^\d{4}$`)
 
 func DefaultEventFeedbackSurveyConfig() EventFeedbackSurveyConfig {
 	return EventFeedbackSurveyConfig{
@@ -418,20 +419,27 @@ type EventFeedbackSummary struct {
 }
 
 type EventPrize struct {
-	ID       int               `json:"id"`
-	EventID  int               `json:"event_id"`
-	Name     string            `json:"name"`
-	Position int               `json:"position"`
-	Winner   *EventPrizeWinner `json:"winner,omitempty"`
+	ID         int               `json:"id"`
+	EventID    int               `json:"event_id"`
+	Name       string            `json:"name"`
+	Position   int               `json:"position"`
+	WinSMSText string            `json:"win_sms_text,omitempty"`
+	Winner     *EventPrizeWinner `json:"winner,omitempty"`
 }
 
 type EventPrizeWinner struct {
 	VoteID          int    `json:"vote_id"`
+	UserID          int    `json:"user_id"`
 	TicketCode      string `json:"ticket_code"`
 	PlayerID        int    `json:"player_id"`
 	PlayerFirstName string `json:"player_first_name"`
 	PlayerLastName  string `json:"player_last_name"`
+	Nickname        string `json:"nickname"`
+	Phone           string `json:"phone"`
+	Status          string `json:"status"`
 	AssignedAt      string `json:"assigned_at"`
+	NotifiedAt      string `json:"notified_at,omitempty"`
+	SMSSID          string `json:"sms_sid,omitempty"`
 }
 
 type Vote struct {
@@ -842,11 +850,14 @@ type AppDatabase interface {
 	GetVoteEventID(voteID int) (int, error)
 	ListVotesByOrganization(organizationID int) ([]Vote, error)
 	ListEventTickets(eventID int) ([]EventTicket, error)
+	CountEventTickets(eventID int) (int, error)
 	ValidateTicket(eventID int, code string) (TicketValidationResult, error)
 	RedeemTicket(eventID int, code, signature string) (bool, error)
 	ListEventPrizes(eventID int) ([]EventPrize, error)
 	AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize, error)
 	ClearPrizeWinner(eventID, prizeID int) error
+	MarkPrizeWinnerNotified(eventID, prizeID int, smsSID string) error
+	MarkPrizeWinnerNotifyFailed(eventID, prizeID int) error
 	GetEligibleWinnerPhoneByVote(eventID, voteID int) (string, error)
 	GetEventResults(eventID int) ([]EventVoteResult, error)
 	GetEventVoteLeaderboard(eventID, limit int) ([]EventVoteLeaderboardEntry, error)
@@ -1088,9 +1099,16 @@ func New(db *sql.DB) (AppDatabase, error) {
         name TEXT NOT NULL,
         position INTEGER NOT NULL DEFAULT 1,
         winner_vote_id INTEGER,
+        winner_user_id INTEGER,
+        winner_lottery_code TEXT,
+        winner_status TEXT NOT NULL DEFAULT '',
+        winner_notified_at TEXT,
+        winner_sms_sid TEXT,
         winner_assigned_at TEXT,
+        win_sms_text TEXT,
         FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
-        FOREIGN KEY (winner_vote_id) REFERENCES votes(id)
+        FOREIGN KEY (winner_vote_id) REFERENCES votes(id),
+        FOREIGN KEY (winner_user_id) REFERENCES fan_profiles(id)
 );`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
@@ -1108,6 +1126,37 @@ func New(db *sql.DB) (AppDatabase, error) {
 
 	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_prizes_winner_vote ON event_prizes(winner_vote_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring event_prizes winner index: %w", err)
+	}
+
+	if _, err = db.Exec(`ALTER TABLE event_prizes ADD COLUMN winner_user_id INTEGER REFERENCES fan_profiles(id)`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring event_prizes winner user column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE event_prizes ADD COLUMN winner_lottery_code TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring event_prizes winner code column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE event_prizes ADD COLUMN winner_status TEXT NOT NULL DEFAULT ''`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring event_prizes winner status column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE event_prizes ADD COLUMN winner_notified_at TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring event_prizes winner notified_at column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE event_prizes ADD COLUMN winner_sms_sid TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring event_prizes winner sms sid column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE event_prizes ADD COLUMN win_sms_text TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring event_prizes win sms text column: %w", err)
+		}
 	}
 
 	if _, err = db.Exec(`ALTER TABLE events ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0`); err != nil {
@@ -2674,10 +2723,11 @@ func sanitizePrizeInputs(prizes []EventPrize) []EventPrize {
 			continue
 		}
 		cleaned = append(cleaned, EventPrize{
-			ID:       prize.ID,
-			EventID:  prize.EventID,
-			Name:     name,
-			Position: prize.Position,
+			ID:         prize.ID,
+			EventID:    prize.EventID,
+			Name:       name,
+			Position:   prize.Position,
+			WinSMSText: strings.TrimSpace(prize.WinSMSText),
 		})
 	}
 	if len(cleaned) == 0 {
@@ -2737,14 +2787,14 @@ func (db *appdbimpl) syncEventPrizesTx(tx *sql.Tx, eventID int, prizes []EventPr
 	for _, prize := range cleaned {
 		if prize.ID > 0 {
 			if _, ok := existing[prize.ID]; ok {
-				if _, err := tx.Exec(`UPDATE event_prizes SET name = ?, position = ? WHERE id = ?`, prize.Name, prize.Position, prize.ID); err != nil {
+				if _, err := tx.Exec(`UPDATE event_prizes SET name = ?, position = ?, win_sms_text = ? WHERE id = ?`, prize.Name, prize.Position, prize.WinSMSText, prize.ID); err != nil {
 					return err
 				}
 				processed[prize.ID] = struct{}{}
 				continue
 			}
 		}
-		if _, err := tx.Exec(`INSERT INTO event_prizes (event_id, name, position) VALUES (?, ?, ?)`, eventID, prize.Name, prize.Position); err != nil {
+		if _, err := tx.Exec(`INSERT INTO event_prizes (event_id, name, position, win_sms_text) VALUES (?, ?, ?, ?)`, eventID, prize.Name, prize.Position, prize.WinSMSText); err != nil {
 			return err
 		}
 	}
@@ -2988,7 +3038,7 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`UPDATE event_prizes SET winner_vote_id = NULL, winner_assigned_at = NULL WHERE event_id = ?`, eventID); err != nil {
+	if _, err := tx.Exec(`UPDATE event_prizes SET winner_vote_id = NULL, winner_user_id = NULL, winner_lottery_code = NULL, winner_status = '', winner_notified_at = NULL, winner_sms_sid = NULL, winner_assigned_at = NULL WHERE event_id = ?`, eventID); err != nil {
 		return err
 	}
 
@@ -3238,11 +3288,17 @@ func (db *appdbimpl) ListEventTickets(eventID int) ([]EventTicket, error) {
 SELECT v.id, v.ticket_code, v.ticket_signature, v.player_id, IFNULL(p.first_name, ''), IFNULL(p.last_name, ''), v.created_at
 FROM votes v
 LEFT JOIN players p ON p.id = v.player_id
-LEFT JOIN event_prizes ep ON ep.winner_vote_id = v.id AND ep.event_id = ?
+JOIN fan_profiles fp ON fp.id = v.user_id
+JOIN fan_lottery_entries fle ON fle.fan_id = v.user_id AND fle.event_id = v.event_id AND fle.ticket_code = v.ticket_code
+LEFT JOIN event_prizes ep ON ep.winner_vote_id = v.id AND ep.event_id = v.event_id
 WHERE v.event_id = ?
+  AND v.user_id IS NOT NULL
+  AND LENGTH(TRIM(IFNULL(v.ticket_code, ''))) = 4
+  AND TRIM(v.ticket_code) GLOB '[0-9][0-9][0-9][0-9]'
+  AND TRIM(IFNULL(fp.phone_verified_at, '')) <> ''
   AND ep.id IS NULL
 ORDER BY v.created_at ASC
-`, eventID, eventID)
+`, eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -3256,6 +3312,15 @@ ORDER BY v.created_at ASC
 		tickets = append(tickets, t)
 	}
 	return tickets, nil
+}
+
+func (db *appdbimpl) CountEventTickets(eventID int) (int, error) {
+	var total int
+	err := db.c.QueryRow(`SELECT COUNT(1) FROM votes WHERE event_id = ?`, eventID).Scan(&total)
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 func (db *appdbimpl) ValidateTicket(eventID int, code string) (TicketValidationResult, error) {
@@ -3354,16 +3419,24 @@ func (db *appdbimpl) ListEventPrizes(eventID int) ([]EventPrize, error) {
 SELECT p.id,
        p.event_id,
        p.name,
-        p.position,
+       p.position,
+       IFNULL(p.win_sms_text, ''),
        p.winner_vote_id,
+       IFNULL(p.winner_user_id, 0),
+       IFNULL(p.winner_lottery_code, ''),
+       IFNULL(p.winner_status, ''),
        IFNULL(p.winner_assigned_at, ''),
-       IFNULL(v.ticket_code, ''),
+       IFNULL(p.winner_notified_at, ''),
+       IFNULL(p.winner_sms_sid, ''),
        IFNULL(v.player_id, 0),
        IFNULL(pl.first_name, ''),
-       IFNULL(pl.last_name, '')
+       IFNULL(pl.last_name, ''),
+       IFNULL(fp.nickname, ''),
+       IFNULL(fp.phone_e164, '')
 FROM event_prizes p
 LEFT JOIN votes v ON v.id = p.winner_vote_id
 LEFT JOIN players pl ON pl.id = v.player_id
+LEFT JOIN fan_profiles fp ON fp.id = p.winner_user_id
 WHERE p.event_id = ?
 ORDER BY p.position ASC, p.id ASC
 `, eventID)
@@ -3376,22 +3449,34 @@ ORDER BY p.position ASC, p.id ASC
 	for rows.Next() {
 		var p EventPrize
 		var winnerID sql.NullInt64
-		var assignedAt sql.NullString
+		var winnerUserID int
 		var ticketCode string
+		var status string
+		var assignedAt string
+		var notifiedAt string
+		var smsSID string
 		var playerID int
 		var playerFirstName string
 		var playerLastName string
-		if err := rows.Scan(&p.ID, &p.EventID, &p.Name, &p.Position, &winnerID, &assignedAt, &ticketCode, &playerID, &playerFirstName, &playerLastName); err != nil {
+		var nickname string
+		var phone string
+		if err := rows.Scan(&p.ID, &p.EventID, &p.Name, &p.Position, &p.WinSMSText, &winnerID, &winnerUserID, &ticketCode, &status, &assignedAt, &notifiedAt, &smsSID, &playerID, &playerFirstName, &playerLastName, &nickname, &phone); err != nil {
 			return nil, err
 		}
 		if winnerID.Valid {
 			p.Winner = &EventPrizeWinner{
 				VoteID:          int(winnerID.Int64),
+				UserID:          winnerUserID,
 				TicketCode:      ticketCode,
 				PlayerID:        playerID,
 				PlayerFirstName: playerFirstName,
 				PlayerLastName:  playerLastName,
-				AssignedAt:      assignedAt.String,
+				Nickname:        nickname,
+				Phone:           phone,
+				Status:          status,
+				AssignedAt:      assignedAt,
+				NotifiedAt:      notifiedAt,
+				SMSSID:          smsSID,
 			}
 		}
 		prizes = append(prizes, p)
@@ -3405,39 +3490,59 @@ ORDER BY p.position ASC, p.id ASC
 func (db *appdbimpl) getEventPrize(prizeID int) (EventPrize, error) {
 	var p EventPrize
 	var winnerID sql.NullInt64
-	var assignedAt sql.NullString
+	var winnerUserID int
 	var ticketCode string
+	var status string
+	var assignedAt string
+	var notifiedAt string
+	var smsSID string
 	var playerID int
 	var playerFirstName string
 	var playerLastName string
+	var nickname string
+	var phone string
 
 	err := db.c.QueryRow(`
 SELECT p.id,
        p.event_id,
        p.name,
        p.position,
+       IFNULL(p.win_sms_text, ''),
        p.winner_vote_id,
+       IFNULL(p.winner_user_id, 0),
+       IFNULL(p.winner_lottery_code, ''),
+       IFNULL(p.winner_status, ''),
        IFNULL(p.winner_assigned_at, ''),
-       IFNULL(v.ticket_code, ''),
+       IFNULL(p.winner_notified_at, ''),
+       IFNULL(p.winner_sms_sid, ''),
        IFNULL(v.player_id, 0),
        IFNULL(pl.first_name, ''),
-       IFNULL(pl.last_name, '')
+       IFNULL(pl.last_name, ''),
+       IFNULL(fp.nickname, ''),
+       IFNULL(fp.phone_e164, '')
 FROM event_prizes p
 LEFT JOIN votes v ON v.id = p.winner_vote_id
 LEFT JOIN players pl ON pl.id = v.player_id
+LEFT JOIN fan_profiles fp ON fp.id = p.winner_user_id
 WHERE p.id = ?
-`, prizeID).Scan(&p.ID, &p.EventID, &p.Name, &p.Position, &winnerID, &assignedAt, &ticketCode, &playerID, &playerFirstName, &playerLastName)
+`, prizeID).Scan(&p.ID, &p.EventID, &p.Name, &p.Position, &p.WinSMSText, &winnerID, &winnerUserID, &ticketCode, &status, &assignedAt, &notifiedAt, &smsSID, &playerID, &playerFirstName, &playerLastName, &nickname, &phone)
 	if err != nil {
 		return EventPrize{}, err
 	}
 	if winnerID.Valid {
 		p.Winner = &EventPrizeWinner{
 			VoteID:          int(winnerID.Int64),
+			UserID:          winnerUserID,
 			TicketCode:      ticketCode,
 			PlayerID:        playerID,
 			PlayerFirstName: playerFirstName,
 			PlayerLastName:  playerLastName,
-			AssignedAt:      assignedAt.String,
+			Nickname:        nickname,
+			Phone:           phone,
+			Status:          status,
+			AssignedAt:      assignedAt,
+			NotifiedAt:      notifiedAt,
+			SMSSID:          smsSID,
 		}
 	}
 	return p, nil
@@ -3451,25 +3556,28 @@ func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize
 	defer tx.Rollback()
 
 	var prizeEventID int
-	var winnerID sql.NullInt64
-	if err := tx.QueryRow(`SELECT event_id, winner_vote_id FROM event_prizes WHERE id = ?`, prizeID).Scan(&prizeEventID, &winnerID); err != nil {
+	if err := tx.QueryRow(`SELECT event_id FROM event_prizes WHERE id = ?`, prizeID).Scan(&prizeEventID); err != nil {
 		return EventPrize{}, err
 	}
 	if prizeEventID != eventID {
 		return EventPrize{}, sql.ErrNoRows
 	}
-	if winnerID.Valid && winnerID.Int64 > 0 {
-		return EventPrize{}, ErrPrizeAlreadyAssigned
-	}
 
 	var voteEventID int
-	if err := tx.QueryRow(`SELECT event_id FROM votes WHERE id = ?`, voteID).Scan(&voteEventID); err != nil {
+	var winnerUserID int
+	var ticketCode string
+	if err := tx.QueryRow(`SELECT v.event_id, IFNULL(v.user_id, 0), TRIM(IFNULL(v.ticket_code, ''))
+		FROM votes v
+		JOIN fan_profiles fp ON fp.id = v.user_id
+		JOIN fan_lottery_entries fle ON fle.fan_id = v.user_id AND fle.event_id = v.event_id AND fle.ticket_code = v.ticket_code
+		WHERE v.id = ?
+		  AND TRIM(IFNULL(fp.phone_verified_at, '')) <> ''`, voteID).Scan(&voteEventID, &winnerUserID, &ticketCode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return EventPrize{}, ErrPrizeVoteMismatch
 		}
 		return EventPrize{}, err
 	}
-	if voteEventID != eventID {
+	if voteEventID != eventID || winnerUserID <= 0 || len(ticketCode) != 4 || !lotteryCodeSanitizer.MatchString(ticketCode) {
 		return EventPrize{}, ErrPrizeVoteMismatch
 	}
 
@@ -3481,8 +3589,21 @@ func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize
 		return EventPrize{}, ErrPrizeWinnerConflict
 	}
 
-	if _, err := tx.Exec(`UPDATE event_prizes SET winner_vote_id = ?, winner_assigned_at = CURRENT_TIMESTAMP WHERE id = ?`, voteID, prizeID); err != nil {
+	res, err := tx.Exec(`UPDATE event_prizes
+		SET winner_vote_id = ?,
+		    winner_user_id = ?,
+		    winner_lottery_code = ?,
+		    winner_status = 'assigned',
+		    winner_notified_at = NULL,
+		    winner_sms_sid = NULL,
+		    winner_assigned_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND event_id = ? AND winner_vote_id IS NULL`, voteID, winnerUserID, ticketCode, prizeID, eventID)
+	if err != nil {
 		return EventPrize{}, err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return EventPrize{}, ErrPrizeAlreadyAssigned
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -3493,7 +3614,15 @@ func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize
 }
 
 func (db *appdbimpl) ClearPrizeWinner(eventID, prizeID int) error {
-	res, err := db.c.Exec(`UPDATE event_prizes SET winner_vote_id = NULL, winner_assigned_at = NULL WHERE id = ? AND event_id = ?`, prizeID, eventID)
+	res, err := db.c.Exec(`UPDATE event_prizes
+		SET winner_vote_id = NULL,
+		    winner_user_id = NULL,
+		    winner_lottery_code = NULL,
+		    winner_status = '',
+		    winner_notified_at = NULL,
+		    winner_sms_sid = NULL,
+		    winner_assigned_at = NULL
+		WHERE id = ? AND event_id = ?`, prizeID, eventID)
 	if err != nil {
 		return err
 	}
@@ -3505,6 +3634,25 @@ func (db *appdbimpl) ClearPrizeWinner(eventID, prizeID int) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (db *appdbimpl) MarkPrizeWinnerNotified(eventID, prizeID int, smsSID string) error {
+	res, err := db.c.Exec(`UPDATE event_prizes
+	SET winner_status = 'notified', winner_notified_at = CURRENT_TIMESTAMP, winner_sms_sid = ?
+	WHERE id = ? AND event_id = ? AND winner_vote_id IS NOT NULL AND IFNULL(winner_notified_at, '') = ''`, strings.TrimSpace(smsSID), prizeID, eventID)
+	if err != nil {
+		return err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (db *appdbimpl) MarkPrizeWinnerNotifyFailed(eventID, prizeID int) error {
+	_, err := db.c.Exec(`UPDATE event_prizes SET winner_status = 'notified_failed' WHERE id = ? AND event_id = ? AND winner_vote_id IS NOT NULL`, prizeID, eventID)
+	return err
 }
 
 // GetEventResults returns aggregated vote results for an event
