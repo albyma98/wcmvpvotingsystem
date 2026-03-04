@@ -52,10 +52,14 @@
         </section>
 
         <section v-if="section === 'events'" class="card">
-          <header class="section-header">
-            <h2>Eventi</h2>
-            <p>Crea una nuova partita per abilitare il voto pubblico.</p>
-          </header>
+          <SectionHeader
+            title="Eventi"
+            description="Crea una nuova partita per abilitare il voto pubblico."
+          >
+            <template #actions>
+              <button class="btn primary" type="submit" form="event-create-form" :disabled="!hasEnoughTeams">Crea evento</button>
+            </template>
+          </SectionHeader>
           <div class="actions-row">
             <button
               class="btn outline"
@@ -70,7 +74,7 @@
             Aggiungi almeno due squadre dalla sezione "Squadre" per abilitare la
             creazione di un evento.
           </p>
-          <form @submit.prevent="createEvent" class="form-grid">
+          <form id="event-create-form" @submit.prevent="createEvent" class="form-grid modern-form-grid">
             <label>
               Squadra di casa
               <input
@@ -315,13 +319,6 @@
                 </button>
               </div>
             </div>
-            <button
-              class="btn primary"
-              type="submit"
-              :disabled="!hasEnoughTeams"
-            >
-              Crea evento
-            </button>
           </form>
 
           <div v-if="lastCreatedEventLink" class="hint">
@@ -1667,13 +1664,10 @@
         </section>
 
         <section v-else-if="section === 'players'" class="card">
-          <header class="section-header">
-            <h2>Giocatori</h2>
-            <p>
-              Gestisci fino a {{ playerSlotCount }} giocatori da mostrare nella
-              pagina di voto.
-            </p>
-          </header>
+          <SectionHeader
+            title="Giocatori"
+            :description="`Gestisci fino a ${playerSlotCount} giocatori da mostrare nella pagina di voto.`"
+          />
 
           <p v-if="!teams.length" class="info-banner">
             Aggiungi almeno una squadra per assegnare correttamente i giocatori
@@ -1991,13 +1985,10 @@
         </section>
 
         <section v-else-if="section === 'coupons'" class="card">
-          <header class="section-header">
-            <h2>Coupon</h2>
-            <p>
-              Crea e gestisci i coupon promozionali collegati agli sponsor e
-              alle partite.
-            </p>
-          </header>
+          <SectionHeader
+            title="Coupon"
+            description="Crea e gestisci i coupon promozionali collegati agli sponsor e alle partite."
+          />
 
           <form @submit.prevent="createCoupon" class="form-grid coupon-form">
             <label>
@@ -2119,9 +2110,8 @@
             </div>
             <div class="match-selector">
               <span>Associa alle partite</span>
-              <input
-                v-model.trim="couponEventSearch"
-                type="text"
+              <BaseSearchInput
+                v-model="couponEventSearch"
                 class="match-search"
                 placeholder="Cerca partita per squadra o data"
               />
@@ -2501,6 +2491,8 @@ import VoteTrendChart from "./VoteTrendChart.vue";
 import AdminLayout from "./admin/AdminLayout.vue";
 import AdminSidebar from "./admin/AdminSidebar.vue";
 import AdminHeader from "./admin/AdminHeader.vue";
+import SectionHeader from "./admin/ui/SectionHeader.vue";
+import BaseSearchInput from "./admin/ui/BaseSearchInput.vue";
 
 const props = defineProps({
   organizationSlug: {
@@ -6837,6 +6829,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .admin-portal {
+  --radius: 12px;
+  --gap-md: 16px;
+  --gap-lg: 24px;
+  --control-height: 44px;
+  --ui-border: rgba(148, 163, 184, 0.35);
   min-height: 100vh;
   color: #0f172a;
   background: #f1f5f9;
@@ -6917,7 +6914,7 @@ onBeforeUnmount(() => {
 
 .card {
   background: #ffffff;
-  border-radius: 1rem;
+  border-radius: var(--radius);
   padding: 1.5rem;
   box-shadow: 0 15px 35px rgba(15, 23, 42, 0.1);
   border: 1px solid rgba(148, 163, 184, 0.18);
@@ -6965,9 +6962,13 @@ onBeforeUnmount(() => {
 
 .form-grid {
   display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--gap-md);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   margin-bottom: 1.5rem;
+}
+
+.modern-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .form-inline {
@@ -7045,10 +7046,35 @@ onBeforeUnmount(() => {
 }
 
 .postvote-toggle input[type="checkbox"] {
-  width: 1.25rem;
-  height: 1.25rem;
-  accent-color: #2563eb;
+  width: 2.5rem;
+  height: 1.5rem;
+  appearance: none;
+  border-radius: 999px;
+  position: relative;
+  background: #cbd5e1;
+  transition: background 0.2s ease;
   cursor: pointer;
+}
+
+.postvote-toggle input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 0.13rem;
+  left: 0.16rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+
+.postvote-toggle input[type="checkbox"]:checked {
+  background: #2563eb;
+}
+
+.postvote-toggle input[type="checkbox"]:checked::before {
+  transform: translateX(0.95rem);
 }
 
 .postvote-toggle__label {
@@ -7327,12 +7353,18 @@ onBeforeUnmount(() => {
 input,
 select,
 textarea {
-  border-radius: 0.75rem;
-  border: 1px solid #cbd5f5;
+  border-radius: var(--radius);
+  border: 1px solid var(--ui-border);
   padding: 0.65rem 0.85rem;
   font-size: 0.95rem;
-  background: #f8fafc;
+  min-height: var(--control-height);
+  background: #fff;
   color: #0f172a;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8;
 }
 
 .field-hint {
@@ -7416,6 +7448,13 @@ textarea:focus {
   box-shadow: none;
 }
 
+.checkbox-inline input[type="checkbox"],
+.checkbox input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: #2563eb;
+}
+
 .btn:not(:disabled):hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
@@ -7492,6 +7531,12 @@ textarea:focus {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+  }
+}
+
+@media (max-width: 900px) {
+  .modern-form-grid {
+    grid-template-columns: 1fr;
   }
 }
 
