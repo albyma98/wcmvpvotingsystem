@@ -43,6 +43,12 @@ type WebAPIConfiguration struct {
 		VerifyServiceSID    string
 		MessagingServiceSID string
 	}
+
+	Stripe struct {
+		SecretKey       string
+		WebhookSecret   string
+		SuccessRedirect string `conf:"default:/newui"`
+	}
 	BootstrapAdmin struct {
 		Enabled      bool   `conf:"default:true"`
 		Username     string `conf:"default:Albyma"`

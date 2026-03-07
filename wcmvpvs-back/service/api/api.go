@@ -64,6 +64,10 @@ type Config struct {
 	TwilioAuthToken           string
 	TwilioVerifySID           string
 	TwilioMessagingServiceSID string
+
+	StripeSecretKey     string
+	StripeWebhookSecret string
+	StripeSuccessURL    string
 }
 
 // Router is the package API interface representing an API handler builder
@@ -113,6 +117,9 @@ func New(cfg Config) (Router, error) {
 			AuthToken:           cfg.TwilioAuthToken,
 			MessagingServiceSID: cfg.TwilioMessagingServiceSID,
 		}),
+		stripeSecretKey:     cfg.StripeSecretKey,
+		stripeWebhookSecret: cfg.StripeWebhookSecret,
+		stripeSuccessURL:    cfg.StripeSuccessURL,
 	}, nil
 }
 
@@ -149,6 +156,10 @@ type _router struct {
 
 	twilioVerify    *twilioVerifyClient
 	twilioMessaging *twilioMessagingClient
+
+	stripeSecretKey     string
+	stripeWebhookSecret string
+	stripeSuccessURL    string
 }
 
 type adminSession struct {

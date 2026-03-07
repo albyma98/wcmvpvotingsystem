@@ -179,6 +179,9 @@ func run() error {
 		TwilioAuthToken:           firstNonEmpty(cfg.Twilio.AuthToken, os.Getenv("AUTH_TOKEN")),
 		TwilioVerifySID:           firstNonEmpty(cfg.Twilio.VerifyServiceSID, os.Getenv("VERIFY_SERVICE_SID")),
 		TwilioMessagingServiceSID: firstNonEmpty(cfg.Twilio.MessagingServiceSID, os.Getenv("MESSAGING_SERVICE_SID")),
+		StripeSecretKey:           firstNonEmpty(cfg.Stripe.SecretKey, os.Getenv("STRIPE_SECRET_KEY")),
+		StripeWebhookSecret:       firstNonEmpty(cfg.Stripe.WebhookSecret, os.Getenv("STRIPE_WEBHOOK_SECRET")),
+		StripeSuccessURL:          firstNonEmpty(cfg.Stripe.SuccessRedirect, os.Getenv("STRIPE_SUCCESS_REDIRECT")),
 	})
 	if err != nil {
 		logger.WithError(err).Error("error creating the API server instance")
