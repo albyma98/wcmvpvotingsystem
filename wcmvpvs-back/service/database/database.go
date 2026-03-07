@@ -808,6 +808,22 @@ type ShopOrderItem struct {
 	ProductImageURL string `json:"product_image_url,omitempty"`
 }
 
+type BarOrder struct {
+	ID              int    `json:"id"`
+	ProductsJSON    string `json:"products"`
+	QuantitiesJSON  string `json:"quantities"`
+	TotalCents      int    `json:"total_cents"`
+	Sector          string `json:"sector"`
+	Row             string `json:"row"`
+	Seat            string `json:"seat"`
+	Notes           string `json:"notes"`
+	OrderStatus     string `json:"order_status"`
+	PaymentStatus   string `json:"payment_status"`
+	StripeReference string `json:"stripe_reference"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
+}
+
 type QRRedirect struct {
 	ID         int    `json:"id"`
 	SourcePath string `json:"source_path"`
@@ -946,6 +962,9 @@ type AppDatabase interface {
 	CreateShopProduct(product ShopProduct) (ShopProduct, error)
 	ListShopOrders() ([]ShopOrder, error)
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
+	CreateBarOrder(order BarOrder) (BarOrder, error)
+	GetBarOrder(id int) (BarOrder, error)
+	UpdateBarOrderPaymentByStripeReference(stripeReference, paymentStatus, orderStatus string) error
 	UpsertQRRedirect(sourcePath, targetPath string) (QRRedirect, error)
 	ListQRRedirects() ([]QRRedirect, error)
 	GetQRRedirectBySource(sourcePath string) (QRRedirect, error)
@@ -1877,6 +1896,37 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_order_items_product ON shop_order_items(product_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring shop_order_items product index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_orders';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE bar_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        products_json TEXT NOT NULL,
+        quantities_json TEXT NOT NULL,
+        total_cents INTEGER NOT NULL,
+        sector TEXT NOT NULL,
+        row_label TEXT NOT NULL,
+        seat TEXT NOT NULL,
+        notes TEXT,
+        order_status TEXT NOT NULL DEFAULT 'pending',
+        payment_status TEXT NOT NULL DEFAULT 'pending',
+        stripe_reference TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating bar_orders table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying bar_orders table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_bar_orders_stripe_reference ON bar_orders(stripe_reference)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_orders stripe index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_orders_payment_status ON bar_orders(payment_status)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_orders payment status index: %w", err)
 	}
 
 	var shopProductCount int
@@ -5519,6 +5569,78 @@ func (db *appdbimpl) CreateShopOrder(order ShopOrder, items []ShopOrderItem) (Sh
 	order.Items = storedItems
 
 	return order, nil
+}
+
+func (db *appdbimpl) CreateBarOrder(order BarOrder) (BarOrder, error) {
+	productsJSON := strings.TrimSpace(order.ProductsJSON)
+	quantitiesJSON := strings.TrimSpace(order.QuantitiesJSON)
+	sector := strings.TrimSpace(order.Sector)
+	row := strings.TrimSpace(order.Row)
+	seat := strings.TrimSpace(order.Seat)
+	notes := strings.TrimSpace(order.Notes)
+	orderStatus := strings.TrimSpace(order.OrderStatus)
+	paymentStatus := strings.TrimSpace(order.PaymentStatus)
+	stripeReference := strings.TrimSpace(order.StripeReference)
+
+	if productsJSON == "" || quantitiesJSON == "" || sector == "" || row == "" || seat == "" || stripeReference == "" {
+		return BarOrder{}, fmt.Errorf("missing bar order fields")
+	}
+	if order.TotalCents <= 0 {
+		return BarOrder{}, fmt.Errorf("invalid bar order total")
+	}
+	if orderStatus == "" {
+		orderStatus = "pending"
+	}
+	if paymentStatus == "" {
+		paymentStatus = "pending"
+	}
+
+	res, err := db.c.Exec(`INSERT INTO bar_orders (products_json, quantities_json, total_cents, sector, row_label, seat, notes, order_status, payment_status, stripe_reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		productsJSON, quantitiesJSON, order.TotalCents, sector, row, seat, notes, orderStatus, paymentStatus, stripeReference)
+	if err != nil {
+		return BarOrder{}, err
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return BarOrder{}, err
+	}
+
+	return db.GetBarOrder(int(id))
+}
+
+func (db *appdbimpl) GetBarOrder(id int) (BarOrder, error) {
+	if id <= 0 {
+		return BarOrder{}, sql.ErrNoRows
+	}
+	var order BarOrder
+	err := db.c.QueryRow(`SELECT id, products_json, quantities_json, total_cents, sector, row_label, seat, IFNULL(notes, ''), order_status, payment_status, stripe_reference, IFNULL(created_at, ''), IFNULL(updated_at, '') FROM bar_orders WHERE id = ?`, id).
+		Scan(&order.ID, &order.ProductsJSON, &order.QuantitiesJSON, &order.TotalCents, &order.Sector, &order.Row, &order.Seat, &order.Notes, &order.OrderStatus, &order.PaymentStatus, &order.StripeReference, &order.CreatedAt, &order.UpdatedAt)
+	if err != nil {
+		return BarOrder{}, err
+	}
+	return order, nil
+}
+
+func (db *appdbimpl) UpdateBarOrderPaymentByStripeReference(stripeReference, paymentStatus, orderStatus string) error {
+	ref := strings.TrimSpace(stripeReference)
+	pay := strings.TrimSpace(paymentStatus)
+	ord := strings.TrimSpace(orderStatus)
+	if ref == "" || pay == "" || ord == "" {
+		return fmt.Errorf("invalid bar order update payload")
+	}
+	res, err := db.c.Exec(`UPDATE bar_orders SET payment_status = ?, order_status = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_reference = ?`, pay, ord, ref)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // QR redirect management

@@ -123,6 +123,69 @@
       </section>
     </main>
 
+    <button
+      type="button"
+      class="fixed bottom-5 right-4 z-[140] inline-flex items-center gap-2 rounded-full border border-amber-200/60 bg-amber-400 px-4 py-3 text-sm font-black uppercase tracking-wide text-slate-950 shadow-[0_12px_30px_rgba(251,191,36,0.45)]"
+      @click="isBarModalOpen = true"
+    >
+      🍺 Bar
+    </button>
+
+    <Teleport to="body">
+      <Transition name="earn-modal-fade">
+        <div v-if="isBarModalOpen" class="fixed inset-0 z-[220]" @click.self="isBarModalOpen = false">
+          <div class="absolute inset-0 bg-slate-950/85 backdrop-blur-sm" />
+          <div class="absolute inset-x-0 bottom-0 max-h-[92dvh] overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-4 text-white">
+            <div class="mb-3 flex items-center justify-between">
+              <h3 class="text-xl font-black uppercase">Bar</h3>
+              <button type="button" class="rounded-md border border-white/20 px-3 py-1 text-xs font-bold" @click="isBarModalOpen = false">Chiudi</button>
+            </div>
+
+            <div v-if="barOrderConfirmed" class="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-center">
+              <p class="text-lg font-black text-emerald-300">Ordine confermato ✅</p>
+              <p class="mt-2 text-sm text-emerald-100">Il tuo ordine è stato pagato e inviato al bar.</p>
+            </div>
+
+            <template v-else>
+              <div class="space-y-2">
+                <article v-for="product in barProducts" :key="product.id" class="rounded-xl border border-white/15 bg-white/5 p-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-lg">{{ product.image_emoji }} <strong>{{ product.name }}</strong></p>
+                      <p class="text-sm text-amber-200">€ {{ (product.price_cents / 100).toFixed(2) }}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button type="button" class="h-8 w-8 rounded-full border border-white/25" @click="decreaseBarQty(product.id)">-</button>
+                      <span class="w-6 text-center font-bold">{{ barCart[product.id] || 0 }}</span>
+                      <button type="button" class="h-8 w-8 rounded-full border border-white/25" @click="increaseBarQty(product.id)">+</button>
+                    </div>
+                  </div>
+                </article>
+              </div>
+
+              <div class="mt-4 rounded-xl border border-white/15 bg-white/5 p-3 text-sm">
+                <p><strong>Riepilogo ordine:</strong> {{ barOrderSummaryLabel }}</p>
+                <p class="mt-1 text-base font-black">Totale: € {{ barOrderTotalLabel }}</p>
+              </div>
+
+              <div class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                <input v-model.trim="barDelivery.sector" class="rounded-lg border border-white/20 bg-slate-800 px-3 py-2" placeholder="Settore">
+                <input v-model.trim="barDelivery.row" class="rounded-lg border border-white/20 bg-slate-800 px-3 py-2" placeholder="Fila">
+                <input v-model.trim="barDelivery.seat" class="rounded-lg border border-white/20 bg-slate-800 px-3 py-2" placeholder="Posto">
+                <input v-model.trim="barDelivery.notes" class="rounded-lg border border-white/20 bg-slate-800 px-3 py-2" placeholder="Note (opzionale)">
+              </div>
+
+              <p v-if="barCheckoutError" class="mt-2 text-sm text-rose-300">{{ barCheckoutError }}</p>
+
+              <button type="button" class="mt-4 w-full rounded-xl bg-amber-400 px-4 py-3 font-black text-slate-950 disabled:opacity-60" :disabled="isBarCheckoutLoading || barTotalCents <= 0" @click="startBarCheckout">
+                {{ isBarCheckoutLoading ? 'Caricamento checkout...' : 'Paga con Stripe (Apple Pay / Google Pay / Carta)' }}
+              </button>
+            </template>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <StoryModal
       :open="isStoryModalOpen"
       :current-story="currentStory"
@@ -508,6 +571,40 @@ const hasHandledFirstVoteFlow = ref(false);
 const shouldOpenProfileAfterAuth = ref(false);
 const lastEarnedCoins = ref(0);
 const isSpendPreviewOpen = ref(false);
+const isBarModalOpen = ref(false);
+const isBarCheckoutLoading = ref(false);
+const barCheckoutError = ref('');
+const barOrderConfirmed = ref(false);
+const barProducts = ref([]);
+const barCart = ref({});
+const barDelivery = ref({ sector: '', row: '', seat: '', notes: '' });
+
+let stripeClientPromise;
+
+function ensureStripeClient() {
+  const key = String(import.meta.env.VITE_STRIPE_PUBLIC_KEY || '').trim();
+  if (!key || typeof window === 'undefined') {
+    return Promise.resolve(null);
+  }
+  if (stripeClientPromise) {
+    return stripeClientPromise;
+  }
+  stripeClientPromise = new Promise((resolve) => {
+    if (window.Stripe) {
+      resolve(window.Stripe(key));
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://js.stripe.com/v3/';
+    script.async = true;
+    script.onload = () => resolve(window.Stripe ? window.Stripe(key) : null);
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+
+  return stripeClientPromise;
+}
 const experienceFormStorageKey = 'experienceFormSubmitted';
 const selectedRewardLabel = ref('Premio riscattato');
 const spendCouponPreview = [];
@@ -696,6 +793,8 @@ function tickBoostState() {
 }
 
 onMounted(async () => {
+  await loadBarProducts();
+  await confirmBarOrderFromQuery();
   if (typeof window === 'undefined') {
     return;
   }
@@ -1323,6 +1422,134 @@ async function attemptRedeem(rewardKey, costCoins, rewardLabel) {
   const response = await redeemFanReward(props.eventId, rewardKey, costCoins);
   if (response?.ok) {
     totalCoins.value = Number(response.data?.wallet) || totalCoins.value;
+  }
+}
+
+
+const barTotalCents = computed(() => {
+  return barProducts.value.reduce((sum, product) => {
+    const qty = Number(barCart.value?.[product.id] || 0);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return sum;
+    }
+    return sum + qty * Number(product.price_cents || 0);
+  }, 0);
+});
+
+const barOrderTotalLabel = computed(() => (barTotalCents.value / 100).toFixed(2));
+
+const barOrderSummaryLabel = computed(() => {
+  const labels = [];
+  for (const product of barProducts.value) {
+    const qty = Number(barCart.value?.[product.id] || 0);
+    if (qty > 0) {
+      labels.push(`${product.name} x${qty}`);
+    }
+  }
+  return labels.length ? labels.join(' · ') : 'Nessun prodotto selezionato';
+});
+
+function increaseBarQty(productId) {
+  const current = Number(barCart.value?.[productId] || 0);
+  barCart.value = { ...barCart.value, [productId]: current + 1 };
+}
+
+function decreaseBarQty(productId) {
+  const current = Number(barCart.value?.[productId] || 0);
+  if (current <= 0) {
+    return;
+  }
+  barCart.value = { ...barCart.value, [productId]: current - 1 };
+}
+
+async function loadBarProducts() {
+  try {
+    const { data } = await apiClient.get('/bar/products');
+    barProducts.value = Array.isArray(data) ? data : [];
+  } catch (error) {
+    barProducts.value = [];
+  }
+}
+
+async function startBarCheckout() {
+  barCheckoutError.value = '';
+  if (!barDelivery.value.sector || !barDelivery.value.row || !barDelivery.value.seat) {
+    barCheckoutError.value = 'Inserisci settore, fila e posto.';
+    return;
+  }
+
+  const items = Object.entries(barCart.value)
+    .map(([product_id, quantity]) => ({ product_id, quantity: Number(quantity) }))
+    .filter((entry) => entry.quantity > 0);
+
+  if (!items.length) {
+    barCheckoutError.value = 'Seleziona almeno un prodotto.';
+    return;
+  }
+
+  isBarCheckoutLoading.value = true;
+  try {
+    const { data } = await apiClient.post('/bar/checkout/session', {
+      items,
+      sector: barDelivery.value.sector,
+      row: barDelivery.value.row,
+      seat: barDelivery.value.seat,
+      notes: barDelivery.value.notes,
+    });
+
+    if (!data?.checkout_url || !data?.session_id) {
+      barCheckoutError.value = 'Checkout non disponibile.';
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('bar:last_session_id', String(data.session_id));
+    }
+
+    const stripe = await ensureStripeClient();
+    if (stripe && data?.session_id) {
+      const result = await stripe.redirectToCheckout({ sessionId: data.session_id });
+      if (result?.error?.message) {
+        barCheckoutError.value = result.error.message;
+      }
+      return;
+    }
+
+    if (typeof window !== 'undefined' && data?.checkout_url) {
+      window.location.href = data.checkout_url;
+    }
+  } catch (error) {
+    barCheckoutError.value = error?.response?.data?.message || 'Errore durante la creazione del pagamento.';
+  } finally {
+    isBarCheckoutLoading.value = false;
+  }
+}
+
+async function confirmBarOrderFromQuery() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search || '');
+  const success = params.get('barOrderSuccess');
+  const sessionFromQuery = params.get('session_id');
+  const storedSession = window.localStorage.getItem('bar:last_session_id') || '';
+  const sessionId = sessionFromQuery || storedSession;
+
+  if (success !== '1' || !sessionId) {
+    return;
+  }
+
+  try {
+    const { data } = await apiClient.post('/bar/checkout/confirm', { session_id: sessionId });
+    if (data?.confirmed) {
+      barOrderConfirmed.value = true;
+      isBarModalOpen.value = true;
+      barCart.value = {};
+      barDelivery.value = { sector: '', row: '', seat: '', notes: '' };
+    }
+  } catch (error) {
+    // silent
   }
 }
 
