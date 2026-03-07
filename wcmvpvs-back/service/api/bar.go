@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -118,10 +119,7 @@ func (rt *_router) createBarCheckoutSession(w http.ResponseWriter, r *http.Reque
 
 	form := url.Values{}
 	form.Set("mode", "payment")
-	base := strings.TrimRight(strings.TrimSpace(rt.stripeSuccessURL), "/")
-	if base == "" {
-		base = "http://localhost:5173/newui"
-	}
+	base := resolveCheckoutRedirectBase(rt.stripeSuccessURL, r)
 	form.Set("success_url", base+"?barOrderSuccess=1&session_id={CHECKOUT_SESSION_ID}")
 	form.Set("cancel_url", base+"?barOrderCancelled=1")
 	form.Set("payment_method_types[0]", "card")
@@ -341,4 +339,83 @@ func verifyStripeWebhookSignature(payload []byte, signatureHeader string, secret
 	_, _ = mac.Write([]byte(signedPayload))
 	expected := hex.EncodeToString(mac.Sum(nil))
 	return hmac.Equal([]byte(expected), []byte(sig))
+}
+
+func resolveCheckoutRedirectBase(configured string, r *http.Request) string {
+	if normalized, ok := normalizeAbsoluteURL(configured); ok {
+		return normalized
+	}
+
+	if r != nil {
+		if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" {
+			if normalized, ok := normalizeAbsoluteURL(origin); ok {
+				return normalized
+			}
+		}
+
+		if referer := strings.TrimSpace(r.Header.Get("Referer")); referer != "" {
+			if parsed, err := url.Parse(referer); err == nil {
+				if normalized, ok := normalizeAbsoluteURL(parsed.Scheme + "://" + parsed.Host); ok {
+					return normalized
+				}
+			}
+		}
+
+		host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host"))
+		if host == "" {
+			host = strings.TrimSpace(r.Host)
+		}
+		host = sanitizeHost(host)
+		if host != "" {
+			scheme := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
+			if scheme != "http" && scheme != "https" {
+				scheme = "https"
+			}
+			if normalized, ok := normalizeAbsoluteURL(scheme + "://" + host); ok {
+				return normalized
+			}
+		}
+	}
+
+	return "https://mvp.wearingcash.it/newui"
+}
+
+func normalizeAbsoluteURL(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", false
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	if parsed.Path == "" {
+		parsed.Path = "/newui"
+	}
+	return parsed.String(), true
+}
+
+func sanitizeHost(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.Contains(raw, ",") {
+		raw = strings.TrimSpace(strings.Split(raw, ",")[0])
+	}
+	if strings.Contains(raw, "://") {
+		if parsed, err := url.Parse(raw); err == nil {
+			raw = parsed.Host
+		}
+	}
+	if host, _, err := net.SplitHostPort(raw); err == nil {
+		raw = host
+	}
+	return strings.TrimSpace(raw)
 }
