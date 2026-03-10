@@ -857,14 +857,15 @@ func (rt *_router) listPartners(w http.ResponseWriter, r *http.Request, ctx reqc
 	}
 
 	type partnerResponse struct {
-		ID        int    `json:"id"`
-		Username  string `json:"username"`
-		CreatedAt string `json:"created_at"`
+		ID          int    `json:"id"`
+		DisplayName string `json:"display_name"`
+		Username    string `json:"username"`
+		CreatedAt   string `json:"created_at"`
 	}
 
 	resp := make([]partnerResponse, 0, len(partners))
 	for _, p := range partners {
-		resp = append(resp, partnerResponse{ID: p.ID, Username: p.Username, CreatedAt: p.CreatedAt})
+		resp = append(resp, partnerResponse{ID: p.ID, DisplayName: p.DisplayName, Username: p.Username, CreatedAt: p.CreatedAt})
 	}
 
 	_ = json.NewEncoder(w).Encode(resp)
@@ -872,6 +873,7 @@ func (rt *_router) listPartners(w http.ResponseWriter, r *http.Request, ctx reqc
 
 func (rt *_router) createPartner(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var payload struct {
+		Name     string `json:"name"`
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
@@ -880,12 +882,12 @@ func (rt *_router) createPartner(w http.ResponseWriter, r *http.Request, ctx req
 		return
 	}
 
-	if payload.Username == "" || payload.Password == "" || ctx.OrganizationID == 0 {
+	if strings.TrimSpace(payload.Name) == "" || payload.Username == "" || payload.Password == "" || ctx.OrganizationID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	admin := database.Admin{Username: payload.Username, PasswordHash: hashAdminPassword(payload.Password), Role: "partner", OrganizationID: ctx.OrganizationID}
+	admin := database.Admin{DisplayName: strings.TrimSpace(payload.Name), Username: payload.Username, PasswordHash: hashAdminPassword(payload.Password), Role: "partner", OrganizationID: ctx.OrganizationID}
 	id, err := rt.db.CreateAdmin(admin)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot create partner")
@@ -1186,13 +1188,14 @@ func (rt *_router) partnerLogin(w http.ResponseWriter, r *http.Request, ctx reqc
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+	isBar := strings.HasPrefix(strings.ToUpper(strings.TrimSpace(admin.DisplayName)), "BAR")
 	if !adminPasswordMatches(admin.PasswordHash, payload.Password) {
 		ctx.Logger.WithField("username", payload.Username).Warn("partner login failed: wrong password")
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	token, err := rt.createPartnerSession(admin.ID, admin.Username, ctx.OrganizationID, ctx.OrganizationSlug)
+	token, err := rt.createPartnerSession(admin.ID, admin.Username, admin.DisplayName, ctx.OrganizationID, ctx.OrganizationSlug, isBar)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot create partner session")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1200,9 +1203,11 @@ func (rt *_router) partnerLogin(w http.ResponseWriter, r *http.Request, ctx reqc
 	}
 
 	_ = json.NewEncoder(w).Encode(struct {
-		Token    string `json:"token"`
-		Username string `json:"username"`
-	}{Token: token, Username: admin.Username})
+		Token       string `json:"token"`
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
+		IsBar       bool   `json:"is_bar"`
+	}{Token: token, Username: admin.Username, DisplayName: admin.DisplayName, IsBar: isBar})
 	ctx.Logger.WithField("username", admin.Username).Info("partner logged in")
 }
 
