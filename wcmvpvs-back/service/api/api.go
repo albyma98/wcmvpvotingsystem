@@ -165,6 +165,8 @@ type _router struct {
 type adminSession struct {
 	AdminID            int
 	Username           string
+	DisplayName        string
+	IsBar              bool
 	Role               string
 	ExpiresAt          time.Time
 	OrganizationID     int

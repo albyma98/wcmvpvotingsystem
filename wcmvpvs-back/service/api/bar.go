@@ -40,11 +40,12 @@ type barCheckoutItemPayload struct {
 }
 
 type barCheckoutRequestPayload struct {
-	Items  []barCheckoutItemPayload `json:"items"`
-	Sector string                   `json:"sector"`
-	Row    string                   `json:"row"`
-	Seat   string                   `json:"seat"`
-	Notes  string                   `json:"notes"`
+	Items      []barCheckoutItemPayload `json:"items"`
+	MerchantID int                      `json:"merchant_id"`
+	Sector     string                   `json:"sector"`
+	Row        string                   `json:"row"`
+	Seat       string                   `json:"seat"`
+	Notes      string                   `json:"notes"`
 }
 
 type barCheckoutResponse struct {
@@ -160,6 +161,8 @@ func (rt *_router) createBarCheckoutSession(w http.ResponseWriter, r *http.Reque
 	quantitiesJSON, _ := json.Marshal(quantitiesSnapshot)
 
 	createdOrder, err := rt.db.CreateBarOrder(database.BarOrder{
+		MerchantID:      payload.MerchantID,
+		OrganizationID:  ctx.OrganizationID,
 		ProductsJSON:    string(productsJSON),
 		QuantitiesJSON:  string(quantitiesJSON),
 		TotalCents:      int(totalCents),

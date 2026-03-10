@@ -22,6 +22,7 @@
       :current-path="currentPath"
       :current-search="currentSearch"
     />
+    <MerchantPortal v-else-if="appView === 'merchant'" />
     <template v-else-if="appView === 'newui'">
       <LiveExperienceHome
         :event-id="resolvedEventId"
@@ -65,6 +66,7 @@ import VoteScreen from './components/VoteScreen.vue';
 import ShopShell from './components/shop/ShopShell.vue';
 import ShopAdminPortal from './components/shop/ShopAdminPortal.vue';
 import PartnerPortal from './components/PartnerPortal.vue';
+import MerchantPortal from './components/MerchantPortal.vue';
 import LiveExperienceHome from './views/LiveExperienceHome.vue';
 import NewUiVoteModal from './components/NewUiVoteModal.vue';
 import { apiClient, fetchVoteStatus } from './api';
@@ -155,6 +157,9 @@ const appView = computed(() => {
   }
   if (currentPath.value.includes('/partner')) {
     return 'partner';
+  }
+  if (currentPath.value.includes('/merchant')) {
+    return 'merchant';
   }
   if (isNewUiPath.value) {
     return 'newui';

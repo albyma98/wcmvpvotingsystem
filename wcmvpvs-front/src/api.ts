@@ -58,7 +58,7 @@ const resolveApiBaseUrl = () => {
 };
 
 function detectOrganizationSlug(pathname: string | undefined, search?: string) {
-  const reservedPrefixes = new Set(['admin', 'shop', 'lottery', 'welcome', 'partner']);
+  const reservedPrefixes = new Set(['admin', 'shop', 'lottery', 'welcome', 'partner', 'merchant']);
 
   if (pathname) {
     const segments = pathname
