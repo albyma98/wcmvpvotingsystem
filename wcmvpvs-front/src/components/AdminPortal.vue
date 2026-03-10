@@ -5314,7 +5314,7 @@ function normalizePartnerResponse(item) {
   return {
     id: Number(item.id) || 0,
     username: item.username || "",
-    displayName: item.username || "",
+    displayName: item.display_name || item.username || "",
     createdAtLabel: createdAt ? createdAt.toLocaleString("it-IT") : "",
     newPassword: "",
     isUpdating: false,
@@ -6465,7 +6465,7 @@ async function createPartner() {
   await secureRequest(() =>
     apiClient.post(
       "/admin/partners",
-      { username, password },
+      { name: (newPartner.name || username).trim(), username, password },
       authHeaders.value,
     ),
   );

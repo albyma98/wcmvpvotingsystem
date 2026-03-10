@@ -497,6 +497,7 @@ type TicketValidationResult struct {
 
 type Admin struct {
 	ID             int    `json:"id"`
+	DisplayName    string `json:"display_name"`
 	Username       string `json:"username"`
 	PasswordHash   string `json:"password_hash"`
 	Role           string `json:"role"`
@@ -810,6 +811,8 @@ type ShopOrderItem struct {
 
 type BarOrder struct {
 	ID              int    `json:"id"`
+	MerchantID      int    `json:"merchant_id"`
+	OrganizationID  int    `json:"organization_id"`
 	ProductsJSON    string `json:"products"`
 	QuantitiesJSON  string `json:"quantities"`
 	TotalCents      int    `json:"total_cents"`
@@ -822,6 +825,18 @@ type BarOrder struct {
 	StripeReference string `json:"stripe_reference"`
 	CreatedAt       string `json:"created_at"`
 	UpdatedAt       string `json:"updated_at"`
+}
+
+type MerchantProduct struct {
+	ID             int    `json:"id"`
+	MerchantID     int    `json:"merchant_id"`
+	OrganizationID int    `json:"organization_id"`
+	Name           string `json:"name"`
+	PriceCents     int    `json:"price_cents"`
+	IsActive       bool   `json:"is_active"`
+	IsAvailable    bool   `json:"is_available"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
 }
 
 type QRRedirect struct {
@@ -964,7 +979,12 @@ type AppDatabase interface {
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
 	CreateBarOrder(order BarOrder) (BarOrder, error)
 	GetBarOrder(id int) (BarOrder, error)
+	ListMerchantBarOrders(merchantID int, statuses []string, dateFrom, dateTo string) ([]BarOrder, error)
+	UpdateMerchantBarOrderStatus(orderID, merchantID int, status string) error
 	UpdateBarOrderPaymentByStripeReference(stripeReference, paymentStatus, orderStatus string) error
+	ListMerchantProducts(merchantID int) ([]MerchantProduct, error)
+	UpsertMerchantProduct(product MerchantProduct) (MerchantProduct, error)
+	UpdateMerchantProductFlags(productID, merchantID int, isActive, isAvailable bool) error
 	UpsertQRRedirect(sourcePath, targetPath string) (QRRedirect, error)
 	ListQRRedirects() ([]QRRedirect, error)
 	GetQRRedirectBySource(sourcePath string) (QRRedirect, error)
@@ -1902,6 +1922,8 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if errors.Is(err, sql.ErrNoRows) {
 		sqlStmt := `CREATE TABLE bar_orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        merchant_id INTEGER NOT NULL DEFAULT 0,
+        organization_id INTEGER NOT NULL DEFAULT 0,
         products_json TEXT NOT NULL,
         quantities_json TEXT NOT NULL,
         total_cents INTEGER NOT NULL,
@@ -1927,6 +1949,47 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_orders_payment_status ON bar_orders(payment_status)`); err != nil {
 		return nil, fmt.Errorf("error ensuring bar_orders payment status index: %w", err)
+	}
+	if _, err = db.Exec(`ALTER TABLE bar_orders ADD COLUMN merchant_id INTEGER NOT NULL DEFAULT 0`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring bar_orders merchant_id column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE bar_orders ADD COLUMN organization_id INTEGER NOT NULL DEFAULT 0`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring bar_orders organization_id column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_orders_merchant ON bar_orders(merchant_id, created_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_orders merchant index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_orders_org ON bar_orders(organization_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_orders org index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='merchant_products';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE merchant_products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        merchant_id INTEGER NOT NULL,
+        organization_id INTEGER NOT NULL DEFAULT 0,
+        name TEXT NOT NULL,
+        price_cents INTEGER NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        is_available INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(merchant_id, name)
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating merchant_products table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying merchant_products table: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_merchant_products_merchant ON merchant_products(merchant_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring merchant_products merchant index: %w", err)
 	}
 
 	var shopProductCount int
@@ -2031,6 +2094,12 @@ func ensureAdminsTable(db *sql.DB) error {
 		return fmt.Errorf("error ensuring admins organization index: %w", err)
 	}
 
+	if _, err = db.Exec(`ALTER TABLE admins ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("error ensuring admins display_name column: %w", err)
+		}
+	}
+
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS qr_redirects (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 source_path TEXT NOT NULL,
@@ -2051,6 +2120,7 @@ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 func createAdminsTable(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE TABLE admins (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
+display_name TEXT NOT NULL DEFAULT '',
 username TEXT NOT NULL,
 password_hash TEXT NOT NULL,
 role TEXT NOT NULL DEFAULT 'staff',
@@ -2076,7 +2146,7 @@ func recreateAdminsTable(db *sql.DB) error {
 		return err
 	}
 
-	if _, err := db.Exec(`INSERT INTO admins (id, username, password_hash, role, organization_id, created_at) SELECT id, username, password_hash, role, NULL, created_at FROM admins_old;`); err != nil {
+	if _, err := db.Exec(`INSERT INTO admins (id, display_name, username, password_hash, role, organization_id, created_at) SELECT id, '', username, password_hash, role, NULL, created_at FROM admins_old;`); err != nil {
 		return fmt.Errorf("error copying data into admins table: %w", err)
 	}
 
@@ -3789,7 +3859,7 @@ func (db *appdbimpl) DeleteVote(id int) error {
 
 // Admin operations
 func (db *appdbimpl) CreateAdmin(a Admin) (int, error) {
-	res, err := db.c.Exec(`INSERT INTO admins (username, password_hash, role, organization_id) VALUES (?, ?, ?, ?)`, a.Username, a.PasswordHash, a.Role, nullableOrgID(a.OrganizationID))
+	res, err := db.c.Exec(`INSERT INTO admins (display_name, username, password_hash, role, organization_id) VALUES (?, ?, ?, ?, ?)`, strings.TrimSpace(a.DisplayName), a.Username, a.PasswordHash, a.Role, nullableOrgID(a.OrganizationID))
 	if err != nil {
 		return 0, err
 	}
@@ -3798,7 +3868,7 @@ func (db *appdbimpl) CreateAdmin(a Admin) (int, error) {
 }
 
 func (db *appdbimpl) ListAdmins(organizationID int) ([]Admin, error) {
-	query := `SELECT id, username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins`
+	query := `SELECT id, IFNULL(display_name, ''), username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins`
 	var args []interface{}
 	if organizationID > 0 {
 		query += ` WHERE organization_id = ?`
@@ -3813,7 +3883,7 @@ func (db *appdbimpl) ListAdmins(organizationID int) ([]Admin, error) {
 	var as []Admin
 	for rows.Next() {
 		var a Admin
-		if err := rows.Scan(&a.ID, &a.Username, &a.PasswordHash, &a.Role, &a.CreatedAt, &a.OrganizationID); err != nil {
+		if err := rows.Scan(&a.ID, &a.DisplayName, &a.Username, &a.PasswordHash, &a.Role, &a.CreatedAt, &a.OrganizationID); err != nil {
 			return nil, err
 		}
 		as = append(as, a)
@@ -3822,7 +3892,7 @@ func (db *appdbimpl) ListAdmins(organizationID int) ([]Admin, error) {
 }
 
 func (db *appdbimpl) ListPartners(organizationID int) ([]Admin, error) {
-	query := `SELECT id, username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins WHERE LOWER(role) = 'partner'`
+	query := `SELECT id, IFNULL(display_name, ''), username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins WHERE LOWER(role) = 'partner'`
 	var args []interface{}
 	if organizationID > 0 {
 		query += ` AND organization_id = ?`
@@ -3838,7 +3908,7 @@ func (db *appdbimpl) ListPartners(organizationID int) ([]Admin, error) {
 	var partners []Admin
 	for rows.Next() {
 		var a Admin
-		if err := rows.Scan(&a.ID, &a.Username, &a.PasswordHash, &a.Role, &a.CreatedAt, &a.OrganizationID); err != nil {
+		if err := rows.Scan(&a.ID, &a.DisplayName, &a.Username, &a.PasswordHash, &a.Role, &a.CreatedAt, &a.OrganizationID); err != nil {
 			return nil, err
 		}
 		partners = append(partners, a)
@@ -3847,7 +3917,7 @@ func (db *appdbimpl) ListPartners(organizationID int) ([]Admin, error) {
 }
 
 func (db *appdbimpl) UpdateAdmin(a Admin) error {
-	_, err := db.c.Exec(`UPDATE admins SET username=?, password_hash=?, role=?, organization_id=? WHERE id=?`, a.Username, a.PasswordHash, a.Role, nullableOrgID(a.OrganizationID), a.ID)
+	_, err := db.c.Exec(`UPDATE admins SET display_name=?, username=?, password_hash=?, role=?, organization_id=? WHERE id=?`, strings.TrimSpace(a.DisplayName), a.Username, a.PasswordHash, a.Role, nullableOrgID(a.OrganizationID), a.ID)
 	return err
 }
 
@@ -3858,7 +3928,7 @@ func (db *appdbimpl) DeleteAdmin(id int) error {
 
 func (db *appdbimpl) GetAdminByUsername(username string, organizationID int) (Admin, error) {
 	var admin Admin
-	query := `SELECT id, username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins WHERE username = ?`
+	query := `SELECT id, IFNULL(display_name, ''), username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins WHERE username = ?`
 	args := []interface{}{username}
 	if organizationID > 0 {
 		query += ` AND organization_id = ?`
@@ -3867,7 +3937,7 @@ func (db *appdbimpl) GetAdminByUsername(username string, organizationID int) (Ad
 		query += ` AND (organization_id IS NULL OR organization_id = 0)`
 	}
 
-	err := db.c.QueryRow(query, args...).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.Role, &admin.CreatedAt, &admin.OrganizationID)
+	err := db.c.QueryRow(query, args...).Scan(&admin.ID, &admin.DisplayName, &admin.Username, &admin.PasswordHash, &admin.Role, &admin.CreatedAt, &admin.OrganizationID)
 	if err != nil {
 		return Admin{}, err
 	}
@@ -3876,7 +3946,7 @@ func (db *appdbimpl) GetAdminByUsername(username string, organizationID int) (Ad
 
 func (db *appdbimpl) GetAdminByID(id int) (Admin, error) {
 	var admin Admin
-	err := db.c.QueryRow(`SELECT id, username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins WHERE id = ?`, id).Scan(&admin.ID, &admin.Username, &admin.PasswordHash, &admin.Role, &admin.CreatedAt, &admin.OrganizationID)
+	err := db.c.QueryRow(`SELECT id, IFNULL(display_name, ''), username, password_hash, role, created_at, IFNULL(organization_id, 0) FROM admins WHERE id = ?`, id).Scan(&admin.ID, &admin.DisplayName, &admin.Username, &admin.PasswordHash, &admin.Role, &admin.CreatedAt, &admin.OrganizationID)
 	if err != nil {
 		return Admin{}, err
 	}
@@ -5595,8 +5665,8 @@ func (db *appdbimpl) CreateBarOrder(order BarOrder) (BarOrder, error) {
 		paymentStatus = "pending"
 	}
 
-	res, err := db.c.Exec(`INSERT INTO bar_orders (products_json, quantities_json, total_cents, sector, row_label, seat, notes, order_status, payment_status, stripe_reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		productsJSON, quantitiesJSON, order.TotalCents, sector, row, seat, notes, orderStatus, paymentStatus, stripeReference)
+	res, err := db.c.Exec(`INSERT INTO bar_orders (merchant_id, organization_id, products_json, quantities_json, total_cents, sector, row_label, seat, notes, order_status, payment_status, stripe_reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		order.MerchantID, order.OrganizationID, productsJSON, quantitiesJSON, order.TotalCents, sector, row, seat, notes, orderStatus, paymentStatus, stripeReference)
 	if err != nil {
 		return BarOrder{}, err
 	}
@@ -5614,12 +5684,150 @@ func (db *appdbimpl) GetBarOrder(id int) (BarOrder, error) {
 		return BarOrder{}, sql.ErrNoRows
 	}
 	var order BarOrder
-	err := db.c.QueryRow(`SELECT id, products_json, quantities_json, total_cents, sector, row_label, seat, IFNULL(notes, ''), order_status, payment_status, stripe_reference, IFNULL(created_at, ''), IFNULL(updated_at, '') FROM bar_orders WHERE id = ?`, id).
-		Scan(&order.ID, &order.ProductsJSON, &order.QuantitiesJSON, &order.TotalCents, &order.Sector, &order.Row, &order.Seat, &order.Notes, &order.OrderStatus, &order.PaymentStatus, &order.StripeReference, &order.CreatedAt, &order.UpdatedAt)
+	err := db.c.QueryRow(`SELECT id, IFNULL(merchant_id,0), IFNULL(organization_id,0), products_json, quantities_json, total_cents, sector, row_label, seat, IFNULL(notes, ''), order_status, payment_status, stripe_reference, IFNULL(created_at, ''), IFNULL(updated_at, '') FROM bar_orders WHERE id = ?`, id).
+		Scan(&order.ID, &order.MerchantID, &order.OrganizationID, &order.ProductsJSON, &order.QuantitiesJSON, &order.TotalCents, &order.Sector, &order.Row, &order.Seat, &order.Notes, &order.OrderStatus, &order.PaymentStatus, &order.StripeReference, &order.CreatedAt, &order.UpdatedAt)
 	if err != nil {
 		return BarOrder{}, err
 	}
 	return order, nil
+}
+
+func (db *appdbimpl) ListMerchantBarOrders(merchantID int, statuses []string, dateFrom, dateTo string) ([]BarOrder, error) {
+	if merchantID <= 0 {
+		return []BarOrder{}, nil
+	}
+	query := `SELECT id, IFNULL(merchant_id,0), IFNULL(organization_id,0), products_json, quantities_json, total_cents, sector, row_label, seat, IFNULL(notes, ''), order_status, payment_status, stripe_reference, IFNULL(created_at, ''), IFNULL(updated_at, '') FROM bar_orders WHERE merchant_id = ?`
+	args := []interface{}{merchantID}
+	if strings.TrimSpace(dateFrom) != "" {
+		query += ` AND DATE(created_at) >= DATE(?)`
+		args = append(args, strings.TrimSpace(dateFrom))
+	}
+	if strings.TrimSpace(dateTo) != "" {
+		query += ` AND DATE(created_at) <= DATE(?)`
+		args = append(args, strings.TrimSpace(dateTo))
+	}
+	if len(statuses) > 0 {
+		clean := make([]string, 0, len(statuses))
+		for _, st := range statuses {
+			st = strings.TrimSpace(strings.ToLower(st))
+			if st != "" {
+				clean = append(clean, st)
+			}
+		}
+		if len(clean) > 0 {
+			query += ` AND LOWER(order_status) IN (` + strings.TrimRight(strings.Repeat("?,", len(clean)), ",") + `)`
+			for _, st := range clean {
+				args = append(args, st)
+			}
+		}
+	}
+	query += ` ORDER BY datetime(created_at) DESC, id DESC`
+	rows, err := db.c.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	orders := make([]BarOrder, 0)
+	for rows.Next() {
+		var order BarOrder
+		if err := rows.Scan(&order.ID, &order.MerchantID, &order.OrganizationID, &order.ProductsJSON, &order.QuantitiesJSON, &order.TotalCents, &order.Sector, &order.Row, &order.Seat, &order.Notes, &order.OrderStatus, &order.PaymentStatus, &order.StripeReference, &order.CreatedAt, &order.UpdatedAt); err != nil {
+			return nil, err
+		}
+		orders = append(orders, order)
+	}
+	return orders, rows.Err()
+}
+
+func (db *appdbimpl) UpdateMerchantBarOrderStatus(orderID, merchantID int, status string) error {
+	if orderID <= 0 || merchantID <= 0 {
+		return fmt.Errorf("invalid bar order update payload")
+	}
+	cleanStatus := strings.TrimSpace(strings.ToLower(status))
+	if cleanStatus == "" {
+		return fmt.Errorf("invalid bar order status")
+	}
+	res, err := db.c.Exec(`UPDATE bar_orders SET order_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND merchant_id = ?`, cleanStatus, orderID, merchantID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (db *appdbimpl) ListMerchantProducts(merchantID int) ([]MerchantProduct, error) {
+	if merchantID <= 0 {
+		return []MerchantProduct{}, nil
+	}
+	rows, err := db.c.Query(`SELECT id, merchant_id, IFNULL(organization_id,0), name, price_cents, is_active, is_available, IFNULL(created_at,''), IFNULL(updated_at,'') FROM merchant_products WHERE merchant_id = ? ORDER BY id ASC`, merchantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]MerchantProduct, 0)
+	for rows.Next() {
+		var it MerchantProduct
+		var active, avail int
+		if err := rows.Scan(&it.ID, &it.MerchantID, &it.OrganizationID, &it.Name, &it.PriceCents, &active, &avail, &it.CreatedAt, &it.UpdatedAt); err != nil {
+			return nil, err
+		}
+		it.IsActive = active != 0
+		it.IsAvailable = avail != 0
+		items = append(items, it)
+	}
+	return items, rows.Err()
+}
+
+func (db *appdbimpl) UpsertMerchantProduct(product MerchantProduct) (MerchantProduct, error) {
+	name := strings.TrimSpace(product.Name)
+	if product.MerchantID <= 0 || name == "" || product.PriceCents < 0 {
+		return MerchantProduct{}, fmt.Errorf("invalid merchant product payload")
+	}
+	if product.ID > 0 {
+		_, err := db.c.Exec(`UPDATE merchant_products SET name=?, price_cents=?, is_active=?, is_available=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND merchant_id=?`, name, product.PriceCents, boolToInt(product.IsActive), boolToInt(product.IsAvailable), product.ID, product.MerchantID)
+		if err != nil {
+			return MerchantProduct{}, err
+		}
+	} else {
+		res, err := db.c.Exec(`INSERT INTO merchant_products (merchant_id, organization_id, name, price_cents, is_active, is_available) VALUES (?, ?, ?, ?, ?, ?)`, product.MerchantID, product.OrganizationID, name, product.PriceCents, boolToInt(product.IsActive), boolToInt(product.IsAvailable))
+		if err != nil {
+			return MerchantProduct{}, err
+		}
+		id, _ := res.LastInsertId()
+		product.ID = int(id)
+	}
+	var out MerchantProduct
+	var active, avail int
+	err := db.c.QueryRow(`SELECT id, merchant_id, IFNULL(organization_id,0), name, price_cents, is_active, is_available, IFNULL(created_at,''), IFNULL(updated_at,'') FROM merchant_products WHERE id = ? AND merchant_id = ?`, product.ID, product.MerchantID).Scan(&out.ID, &out.MerchantID, &out.OrganizationID, &out.Name, &out.PriceCents, &active, &avail, &out.CreatedAt, &out.UpdatedAt)
+	if err != nil {
+		return MerchantProduct{}, err
+	}
+	out.IsActive = active != 0
+	out.IsAvailable = avail != 0
+	return out, nil
+}
+
+func (db *appdbimpl) UpdateMerchantProductFlags(productID, merchantID int, isActive, isAvailable bool) error {
+	if productID <= 0 || merchantID <= 0 {
+		return fmt.Errorf("invalid merchant product update payload")
+	}
+	res, err := db.c.Exec(`UPDATE merchant_products SET is_active=?, is_available=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND merchant_id=?`, boolToInt(isActive), boolToInt(isAvailable), productID, merchantID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (db *appdbimpl) UpdateBarOrderPaymentByStripeReference(stripeReference, paymentStatus, orderStatus string) error {

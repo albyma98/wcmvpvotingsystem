@@ -131,7 +131,7 @@ func (rt *_router) getPartnerSession(token string) (adminSession, bool) {
 	return session, true
 }
 
-func (rt *_router) createPartnerSession(adminID int, username string, orgID int, orgSlug string) (string, error) {
+func (rt *_router) createPartnerSession(adminID int, username, displayName string, orgID int, orgSlug string, isBar bool) (string, error) {
 	token, err := generateSessionToken()
 	if err != nil {
 		return "", err
@@ -141,6 +141,8 @@ func (rt *_router) createPartnerSession(adminID int, username string, orgID int,
 	rt.partnerSessions[token] = adminSession{
 		AdminID:          adminID,
 		Username:         username,
+		DisplayName:      displayName,
+		IsBar:            isBar,
 		Role:             "partner",
 		OrganizationID:   orgID,
 		OrganizationSlug: orgSlug,
@@ -189,4 +191,36 @@ func generateSessionToken() (string, error) {
 		return "", errors.New("empty session token")
 	}
 	return token, nil
+}
+
+func (rt *_router) wrapMerchant(fn httpRouterHandler) http.HandlerFunc {
+	return rt.wrap(func(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+		token := parseBearerToken(r.Header.Get("Authorization"))
+		session, ok := rt.getPartnerSession(token)
+		if !ok {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		if !session.IsBar {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		if ctx.OrganizationID == 0 || ctx.OrganizationSlug == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if session.OrganizationID != ctx.OrganizationID {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		ctx.MerchantID = session.AdminID
+		ctx.MerchantUsername = session.Username
+		ctx.OrganizationID = session.OrganizationID
+		ctx.OrganizationSlug = session.OrganizationSlug
+
+		fn(w, r, ctx)
+	})
 }
