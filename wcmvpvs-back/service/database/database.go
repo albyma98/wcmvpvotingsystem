@@ -810,6 +810,8 @@ type ShopOrderItem struct {
 
 type BarOrder struct {
 	ID              int    `json:"id"`
+	OrganizationID  int    `json:"organization_id"`
+	PartnerID       int    `json:"partner_id"`
 	ProductsJSON    string `json:"products"`
 	QuantitiesJSON  string `json:"quantities"`
 	TotalCents      int    `json:"total_cents"`
@@ -965,6 +967,8 @@ type AppDatabase interface {
 	CreateBarOrder(order BarOrder) (BarOrder, error)
 	GetBarOrder(id int) (BarOrder, error)
 	UpdateBarOrderPaymentByStripeReference(stripeReference, paymentStatus, orderStatus string) error
+	ListBarOrders(organizationID, partnerID int, status string) ([]BarOrder, error)
+	UpdateBarOrderStatus(id int, status string) error
 	UpsertQRRedirect(sourcePath, targetPath string) (QRRedirect, error)
 	ListQRRedirects() ([]QRRedirect, error)
 	GetQRRedirectBySource(sourcePath string) (QRRedirect, error)
@@ -1927,6 +1931,14 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_orders_payment_status ON bar_orders(payment_status)`); err != nil {
 		return nil, fmt.Errorf("error ensuring bar_orders payment status index: %w", err)
+	}
+	_, _ = db.Exec(`ALTER TABLE bar_orders ADD COLUMN organization_id INTEGER NOT NULL DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE bar_orders ADD COLUMN partner_id INTEGER NOT NULL DEFAULT 0`)
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_orders_org ON bar_orders(organization_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_orders organization index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_orders_partner ON bar_orders(partner_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_orders partner index: %w", err)
 	}
 
 	var shopProductCount int
@@ -5595,8 +5607,8 @@ func (db *appdbimpl) CreateBarOrder(order BarOrder) (BarOrder, error) {
 		paymentStatus = "pending"
 	}
 
-	res, err := db.c.Exec(`INSERT INTO bar_orders (products_json, quantities_json, total_cents, sector, row_label, seat, notes, order_status, payment_status, stripe_reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		productsJSON, quantitiesJSON, order.TotalCents, sector, row, seat, notes, orderStatus, paymentStatus, stripeReference)
+	res, err := db.c.Exec(`INSERT INTO bar_orders (organization_id, partner_id, products_json, quantities_json, total_cents, sector, row_label, seat, notes, order_status, payment_status, stripe_reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		order.OrganizationID, order.PartnerID, productsJSON, quantitiesJSON, order.TotalCents, sector, row, seat, notes, orderStatus, paymentStatus, stripeReference)
 	if err != nil {
 		return BarOrder{}, err
 	}
@@ -5614,8 +5626,8 @@ func (db *appdbimpl) GetBarOrder(id int) (BarOrder, error) {
 		return BarOrder{}, sql.ErrNoRows
 	}
 	var order BarOrder
-	err := db.c.QueryRow(`SELECT id, products_json, quantities_json, total_cents, sector, row_label, seat, IFNULL(notes, ''), order_status, payment_status, stripe_reference, IFNULL(created_at, ''), IFNULL(updated_at, '') FROM bar_orders WHERE id = ?`, id).
-		Scan(&order.ID, &order.ProductsJSON, &order.QuantitiesJSON, &order.TotalCents, &order.Sector, &order.Row, &order.Seat, &order.Notes, &order.OrderStatus, &order.PaymentStatus, &order.StripeReference, &order.CreatedAt, &order.UpdatedAt)
+	err := db.c.QueryRow(`SELECT id, IFNULL(organization_id, 0), IFNULL(partner_id, 0), products_json, quantities_json, total_cents, sector, row_label, seat, IFNULL(notes, ''), order_status, payment_status, stripe_reference, IFNULL(created_at, ''), IFNULL(updated_at, '') FROM bar_orders WHERE id = ?`, id).
+		Scan(&order.ID, &order.OrganizationID, &order.PartnerID, &order.ProductsJSON, &order.QuantitiesJSON, &order.TotalCents, &order.Sector, &order.Row, &order.Seat, &order.Notes, &order.OrderStatus, &order.PaymentStatus, &order.StripeReference, &order.CreatedAt, &order.UpdatedAt)
 	if err != nil {
 		return BarOrder{}, err
 	}
@@ -5630,6 +5642,56 @@ func (db *appdbimpl) UpdateBarOrderPaymentByStripeReference(stripeReference, pay
 		return fmt.Errorf("invalid bar order update payload")
 	}
 	res, err := db.c.Exec(`UPDATE bar_orders SET payment_status = ?, order_status = ?, updated_at = CURRENT_TIMESTAMP WHERE stripe_reference = ?`, pay, ord, ref)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (db *appdbimpl) ListBarOrders(organizationID, partnerID int, status string) ([]BarOrder, error) {
+	query := `SELECT id, IFNULL(organization_id,0), IFNULL(partner_id,0), products_json, quantities_json, total_cents, sector, row_label, seat, IFNULL(notes,''), order_status, payment_status, stripe_reference, IFNULL(created_at,''), IFNULL(updated_at,'') FROM bar_orders WHERE 1=1`
+	args := make([]interface{}, 0, 3)
+	if organizationID > 0 {
+		query += ` AND IFNULL(organization_id,0) = ?`
+		args = append(args, organizationID)
+	}
+	if partnerID > 0 {
+		query += ` AND IFNULL(partner_id,0) = ?`
+		args = append(args, partnerID)
+	}
+	if strings.TrimSpace(status) != "" {
+		query += ` AND LOWER(order_status) = ?`
+		args = append(args, strings.ToLower(strings.TrimSpace(status)))
+	}
+	query += ` ORDER BY datetime(created_at) DESC, id DESC`
+	rows, err := db.c.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]BarOrder, 0)
+	for rows.Next() {
+		var order BarOrder
+		if err := rows.Scan(&order.ID, &order.OrganizationID, &order.PartnerID, &order.ProductsJSON, &order.QuantitiesJSON, &order.TotalCents, &order.Sector, &order.Row, &order.Seat, &order.Notes, &order.OrderStatus, &order.PaymentStatus, &order.StripeReference, &order.CreatedAt, &order.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, order)
+	}
+	return out, rows.Err()
+}
+
+func (db *appdbimpl) UpdateBarOrderStatus(id int, status string) error {
+	if id <= 0 || strings.TrimSpace(status) == "" {
+		return fmt.Errorf("invalid bar order status update")
+	}
+	res, err := db.c.Exec(`UPDATE bar_orders SET order_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, strings.ToLower(strings.TrimSpace(status)), id)
 	if err != nil {
 		return err
 	}

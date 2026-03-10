@@ -2306,6 +2306,8 @@
           <p v-else class="muted text-center">Nessun coupon configurato.</p>
         </section>
 
+        <AdminBarSection v-else-if="section === 'bar'" :auth-headers="authHeaders" :is-super-admin="isSuperAdmin" />
+
         <section v-else-if="section === 'partners'" class="card">
           <header class="section-header">
             <h2>Partners</h2>
@@ -2506,6 +2508,7 @@ import VoteTrendChart from "./VoteTrendChart.vue";
 import AdminLayout from "./admin/AdminLayout.vue";
 import AdminSidebar from "./admin/AdminSidebar.vue";
 import AdminHeader from "./admin/AdminHeader.vue";
+import AdminBarSection from "./AdminBarSection.vue";
 import SectionHeader from "./admin/ui/SectionHeader.vue";
 import BaseSearchInput from "./admin/ui/BaseSearchInput.vue";
 import MarketingSection from "./admin/marketing/MarketingSection.vue";
@@ -2769,11 +2772,13 @@ const tabs = [
   { id: "players", label: "Giocatori" },
   { id: "sponsors", label: "Sponsor" },
   { id: "coupons", label: "Coupon" },
+  { id: "bar", label: "BAR" },
   { id: "partners", label: "Partners" },
   { id: "admins", label: "Admin" },
   { id: "marketing", label: "Marketing" },
 ];
 const STAFF_TAB_IDS = new Set(["dashboard", "closing", "results"]);
+const BAR_TAB_IDS = new Set(["bar"]);
 
 const teams = ref([]);
 const players = ref([]);
@@ -3615,9 +3620,13 @@ const activeRole = ref(localStorage.getItem("adminRole") || "");
 const isAuthenticated = computed(() => Boolean(token.value));
 const isSuperAdmin = computed(() => activeRole.value === "superadmin");
 const isStaff = computed(() => activeRole.value === "staff");
+const isBarAdmin = computed(() => activeRole.value === "bar");
 const availableTabs = computed(() => {
   if (isSuperAdmin.value) {
     return tabs;
+  }
+  if (isBarAdmin.value) {
+    return tabs.filter((tab) => BAR_TAB_IDS.has(tab.id));
   }
   return tabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
 });
@@ -3629,6 +3638,7 @@ const navigationGroups = computed(() => {
     { label: "Contenuti", ids: ["sponsors", "coupons", "selfies"] },
     { label: "Squadra", ids: ["teams", "players"] },
     { label: "Risultati", ids: ["closing", "results", "history"] },
+    { label: "BAR", ids: ["bar"] },
     { label: "Impostazioni", ids: ["partners", "admins", "marketing"] },
   ];
   return groups
@@ -3650,6 +3660,7 @@ const sectionMetaMap = {
   closing: { title: "Chiusura votazioni", group: "Risultati" },
   results: { title: "Risultati", group: "Risultati" },
   history: { title: "Storico eventi", group: "Risultati" },
+  bar: { title: "BAR", group: "BAR" },
   partners: { title: "Partners", group: "Impostazioni" },
   admins: { title: "Admin", group: "Impostazioni" },
   marketing: { title: "Marketing", group: "Impostazioni" },
