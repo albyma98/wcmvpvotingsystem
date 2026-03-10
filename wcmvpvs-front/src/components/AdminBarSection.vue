@@ -302,7 +302,7 @@ function parseDate(raw) {
 
 function normalizeStatus(status) {
   const s = String(status || '').toLowerCase().trim();
-  if (s === 'pending') {
+  if (s === 'pending' || s === 'paid') {
     return 'new';
   }
   return s || 'new';
