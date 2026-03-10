@@ -22,6 +22,8 @@ func (rt *_router) merchantLogin(w http.ResponseWriter, r *http.Request, ctx req
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	payload.Username = strings.TrimSpace(payload.Username)
+	payload.Password = strings.TrimSpace(payload.Password)
 	if payload.Username == "" || payload.Password == "" || ctx.OrganizationID == 0 || ctx.OrganizationSlug == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -35,12 +37,12 @@ func (rt *_router) merchantLogin(w http.ResponseWriter, r *http.Request, ctx req
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	isBar := strings.HasPrefix(strings.ToUpper(strings.TrimSpace(admin.DisplayName)), "BAR")
-	if !strings.EqualFold(admin.Role, "partner") || !isBar || !adminPasswordMatches(admin.PasswordHash, payload.Password) {
+	if !adminPasswordMatches(admin.PasswordHash, payload.Password) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	token, err := rt.createPartnerSession(admin.ID, admin.Username, admin.DisplayName, ctx.OrganizationID, ctx.OrganizationSlug, true)
+	displayName := "BAR " + admin.Username
+	token, err := rt.createPartnerSession(admin.ID, admin.Username, displayName, ctx.OrganizationID, ctx.OrganizationSlug, true)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -49,7 +51,7 @@ func (rt *_router) merchantLogin(w http.ResponseWriter, r *http.Request, ctx req
 		Token       string `json:"token"`
 		Username    string `json:"username"`
 		DisplayName string `json:"display_name"`
-	}{Token: token, Username: admin.Username, DisplayName: admin.DisplayName})
+	}{Token: token, Username: admin.Username, DisplayName: displayName})
 }
 
 func (rt *_router) merchantDashboardSummary(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
