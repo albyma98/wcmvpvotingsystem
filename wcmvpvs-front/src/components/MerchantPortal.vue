@@ -2,8 +2,9 @@
   <div class="merchant-shell">
     <section v-if="!token" class="card auth-card">
       <h1>Portale BAR</h1>
-      <p>Accesso merchant con conferma password super admin.</p>
+      <p>Accedi con username e password dell'admin BAR (display name: "bar").</p>
       <form @submit.prevent="login" class="form-grid">
+        <input v-model.trim="form.username" type="text" placeholder="Username" autocomplete="username" required />
         <input v-model="form.password" type="password" placeholder="Password" required />
         <button class="btn primary" :disabled="loading">{{ loading ? 'Accesso…' : 'Entra' }}</button>
       </form>
@@ -61,7 +62,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiClient } from '../api';
-const form = reactive({ password:'' });
 const token = ref(localStorage.getItem('merchantToken')||'');
 const profile = reactive({ username: localStorage.getItem('merchantUsername')||'', displayName: localStorage.getItem('merchantDisplayName')||'', organizationSlug: window.location.pathname.split('/').filter(Boolean)[0] || '' });
 const loading=ref(false), error=ref(''), section=ref('dashboard');
@@ -74,7 +74,8 @@ const sections=[{id:'dashboard',label:'Dashboard'},{id:'live',label:'Ordini Live
 const authHeaders=computed(()=>({headers:{Authorization:`Bearer ${token.value}`}}));
 const summaryCards=computed(()=>[{label:'Ordini ricevuti',value:summary.value.orders_received},{label:'In attesa',value:summary.value.orders_pending},{label:'In preparazione',value:summary.value.orders_preparing},{label:'Pronti',value:summary.value.orders_ready},{label:'Completati',value:summary.value.orders_completed},{label:'Incasso totale',value:`€ ${(summary.value.total_revenue_cents/100).toFixed(2)}`}]);
 const pathPrefix=()=>{const a=window.location.pathname.split('/').filter(Boolean); return a.length>1?`/${a[0]}`:''};
-async function login(){loading.value=true;error.value='';try{const{data}=await apiClient.post(`${pathPrefix()}/merchant/login`,{password:form.password});token.value=data.token;profile.username=data.username;profile.displayName=data.display_name;localStorage.setItem('merchantToken',token.value);localStorage.setItem('merchantUsername',profile.username);localStorage.setItem('merchantDisplayName',profile.displayName);form.password='';await bootstrap();}catch(e){error.value='Password super admin non valida o merchant BAR non configurato.'}finally{loading.value=false;}}
+const form = reactive({ username:'', password:'' });
+async function login(){loading.value=true;error.value='';try{const{data}=await apiClient.post(`${pathPrefix()}/merchant/login`,{username:form.username,password:form.password});token.value=data.token;profile.username=data.username;profile.displayName=data.display_name;localStorage.setItem('merchantToken',token.value);localStorage.setItem('merchantUsername',profile.username);localStorage.setItem('merchantDisplayName',profile.displayName);form.username='';form.password='';await bootstrap();}catch(e){error.value='Credenziali non valide o admin BAR (display name "bar") non configurato.'}finally{loading.value=false;}}
 function logout(){token.value='';localStorage.removeItem('merchantToken');localStorage.removeItem('merchantUsername');localStorage.removeItem('merchantDisplayName');}
 async function loadSummary(){const {data}=await apiClient.get(`${pathPrefix()}/merchant/dashboard/summary`,authHeaders.value);summary.value=data||summary.value;}
 async function loadOrders(){const {data}=await apiClient.get(`${pathPrefix()}/merchant/orders`,{...authHeaders.value,params:filters});orders.value=(data||[]).map(o=>({...o,products:o.products||o.products_json}));}

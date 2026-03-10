@@ -15,39 +15,21 @@ import (
 
 func (rt *_router) merchantLogin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var payload struct {
+		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	payload.Username = strings.TrimSpace(payload.Username)
 	payload.Password = strings.TrimSpace(payload.Password)
-	if payload.Password == "" || ctx.OrganizationID == 0 || ctx.OrganizationSlug == "" {
+	if payload.Username == "" || payload.Password == "" || ctx.OrganizationID == 0 || ctx.OrganizationSlug == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	admins, err := rt.db.ListAdmins(0)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	var superAdmin database.Admin
-	foundSuperAdmin := false
-	for _, admin := range admins {
-		if strings.EqualFold(strings.TrimSpace(admin.Role), "superadmin") {
-			superAdmin = admin
-			foundSuperAdmin = true
-			break
-		}
-	}
-	if !foundSuperAdmin || !adminPasswordMatches(superAdmin.PasswordHash, payload.Password) {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	partners, err := rt.db.ListPartners(ctx.OrganizationID)
+	admins, err := rt.db.ListAdmins(ctx.OrganizationID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -55,18 +37,14 @@ func (rt *_router) merchantLogin(w http.ResponseWriter, r *http.Request, ctx req
 
 	var merchantAdmin database.Admin
 	foundMerchant := false
-	for _, partner := range partners {
-		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(partner.DisplayName)), "BAR") {
-			merchantAdmin = partner
+	for _, admin := range admins {
+		if strings.TrimSpace(admin.DisplayName) == "bar" && admin.Username == payload.Username {
+			merchantAdmin = admin
 			foundMerchant = true
 			break
 		}
 	}
-	if !foundMerchant && len(partners) > 0 {
-		merchantAdmin = partners[0]
-		foundMerchant = true
-	}
-	if !foundMerchant {
+	if !foundMerchant || !adminPasswordMatches(merchantAdmin.PasswordHash, payload.Password) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
