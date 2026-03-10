@@ -15,34 +15,63 @@ import (
 
 func (rt *_router) merchantLogin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	var payload struct {
-		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	payload.Username = strings.TrimSpace(payload.Username)
 	payload.Password = strings.TrimSpace(payload.Password)
-	if payload.Username == "" || payload.Password == "" || ctx.OrganizationID == 0 || ctx.OrganizationSlug == "" {
+	if payload.Password == "" || ctx.OrganizationID == 0 || ctx.OrganizationSlug == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	admin, err := rt.db.GetAdminByUsername(payload.Username, ctx.OrganizationID)
+
+	admins, err := rt.db.ListAdmins(0)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if !adminPasswordMatches(admin.PasswordHash, payload.Password) {
+
+	var superAdmin database.Admin
+	foundSuperAdmin := false
+	for _, admin := range admins {
+		if strings.EqualFold(strings.TrimSpace(admin.Role), "superadmin") {
+			superAdmin = admin
+			foundSuperAdmin = true
+			break
+		}
+	}
+	if !foundSuperAdmin || !adminPasswordMatches(superAdmin.PasswordHash, payload.Password) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	displayName := "BAR " + admin.Username
-	token, err := rt.createPartnerSession(admin.ID, admin.Username, displayName, ctx.OrganizationID, ctx.OrganizationSlug, true)
+
+	partners, err := rt.db.ListPartners(ctx.OrganizationID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	var merchantAdmin database.Admin
+	foundMerchant := false
+	for _, partner := range partners {
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(partner.DisplayName)), "BAR") {
+			merchantAdmin = partner
+			foundMerchant = true
+			break
+		}
+	}
+	if !foundMerchant && len(partners) > 0 {
+		merchantAdmin = partners[0]
+		foundMerchant = true
+	}
+	if !foundMerchant {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	token, err := rt.createPartnerSession(merchantAdmin.ID, merchantAdmin.Username, merchantAdmin.DisplayName, ctx.OrganizationID, ctx.OrganizationSlug, true)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -51,7 +80,7 @@ func (rt *_router) merchantLogin(w http.ResponseWriter, r *http.Request, ctx req
 		Token       string `json:"token"`
 		Username    string `json:"username"`
 		DisplayName string `json:"display_name"`
-	}{Token: token, Username: admin.Username, DisplayName: displayName})
+	}{Token: token, Username: merchantAdmin.Username, DisplayName: merchantAdmin.DisplayName})
 }
 
 func (rt *_router) merchantDashboardSummary(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
