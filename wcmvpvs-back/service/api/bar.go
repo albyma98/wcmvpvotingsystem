@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 )
@@ -160,6 +162,8 @@ func (rt *_router) createBarCheckoutSession(w http.ResponseWriter, r *http.Reque
 	quantitiesJSON, _ := json.Marshal(quantitiesSnapshot)
 
 	createdOrder, err := rt.db.CreateBarOrder(database.BarOrder{
+		OrganizationID:  ctx.OrganizationID,
+		PartnerID:       0,
 		ProductsJSON:    string(productsJSON),
 		QuantitiesJSON:  string(quantitiesJSON),
 		TotalCents:      int(totalCents),
@@ -418,4 +422,171 @@ func sanitizeHost(raw string) string {
 		raw = host
 	}
 	return strings.TrimSpace(raw)
+}
+
+type barOverviewResponse struct {
+	OrdersReceived int                      `json:"orders_received"`
+	OrdersPending  int                      `json:"orders_pending"`
+	OrdersPrep     int                      `json:"orders_in_preparation"`
+	OrdersReady    int                      `json:"orders_ready"`
+	OrdersDone     int                      `json:"orders_completed"`
+	RevenueCents   int                      `json:"revenue_cents"`
+	AvgTicketCents int                      `json:"avg_ticket_cents"`
+	LatestOrders   []database.BarOrder      `json:"latest_orders"`
+	TopProducts    []map[string]interface{} `json:"top_products"`
+}
+
+func isBarStatusAllowed(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "nuovo", "new", "pending", "in preparazione", "in_preparazione", "preparing", "ready", "pronto", "completato", "completed", "annullato", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeBarStatus(status string) string {
+	s := strings.ToLower(strings.TrimSpace(status))
+	switch s {
+	case "nuovo", "new", "pending":
+		return "new"
+	case "in preparazione", "in_preparazione", "preparing":
+		return "in_preparazione"
+	case "pronto", "ready":
+		return "pronto"
+	case "completato", "completed":
+		return "completato"
+	case "annullato", "cancelled":
+		return "annullato"
+	default:
+		return s
+	}
+}
+
+func (rt *_router) resolveBarPartnerScope(ctx reqcontext.RequestContext, r *http.Request) int {
+	if strings.EqualFold(ctx.AdminRole, "superadmin") {
+		pid, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("partner_id")))
+		if pid > 0 {
+			return pid
+		}
+		return 0
+	}
+	if !strings.EqualFold(ctx.AdminRole, "bar") {
+		return -1
+	}
+	partners, err := rt.db.ListPartners(ctx.OrganizationID)
+	if err != nil {
+		return -1
+	}
+	for _, p := range partners {
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(p.Username)), "BAR") && strings.EqualFold(strings.TrimSpace(p.Username), strings.TrimSpace(ctx.AdminUsername)) {
+			return p.ID
+		}
+	}
+	for _, p := range partners {
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(p.Username)), "BAR") {
+			return p.ID
+		}
+	}
+	return -1
+}
+
+func (rt *_router) listAdminBarOrders(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	partnerID := rt.resolveBarPartnerScope(ctx, r)
+	if partnerID < 0 {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	status := normalizeBarStatus(r.URL.Query().Get("status"))
+	orders, err := rt.db.ListBarOrders(ctx.OrganizationID, partnerID, status)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(orders)
+}
+
+func (rt *_router) updateAdminBarOrderStatus(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	partnerID := rt.resolveBarPartnerScope(ctx, r)
+	if partnerID < 0 {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	order, err := rt.db.GetBarOrder(id)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if ctx.OrganizationID > 0 && order.OrganizationID != 0 && order.OrganizationID != ctx.OrganizationID {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if partnerID > 0 && order.PartnerID > 0 && order.PartnerID != partnerID {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	var payload struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || !isBarStatusAllowed(payload.Status) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err := rt.db.UpdateBarOrderStatus(id, normalizeBarStatus(payload.Status)); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (rt *_router) getAdminBarOverview(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	partnerID := rt.resolveBarPartnerScope(ctx, r)
+	if partnerID < 0 {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	orders, err := rt.db.ListBarOrders(ctx.OrganizationID, partnerID, "")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	resp := barOverviewResponse{}
+	productQty := map[string]int{}
+	for _, o := range orders {
+		resp.OrdersReceived++
+		resp.RevenueCents += o.TotalCents
+		s := normalizeBarStatus(o.OrderStatus)
+		switch s {
+		case "new", "pending":
+			resp.OrdersPending++
+		case "in_preparazione":
+			resp.OrdersPrep++
+		case "pronto":
+			resp.OrdersReady++
+		case "completato":
+			resp.OrdersDone++
+		}
+		var qtyRows []map[string]interface{}
+		_ = json.Unmarshal([]byte(o.QuantitiesJSON), &qtyRows)
+		for _, q := range qtyRows {
+			id, _ := q["id"].(string)
+			v, _ := q["quantity"].(float64)
+			productQty[id] += int(v)
+		}
+	}
+	if resp.OrdersReceived > 0 {
+		resp.AvgTicketCents = resp.RevenueCents / resp.OrdersReceived
+	}
+	if len(orders) > 8 {
+		resp.LatestOrders = orders[:8]
+	} else {
+		resp.LatestOrders = orders
+	}
+	for _, p := range barProductsCatalog {
+		if qty := productQty[p.ID]; qty > 0 {
+			resp.TopProducts = append(resp.TopProducts, map[string]interface{}{"id": p.ID, "name": p.Name, "qty": qty})
+		}
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }

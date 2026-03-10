@@ -24,6 +24,10 @@ func (rt *_router) wrapAdmin(fn httpRouterHandler) http.HandlerFunc {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
+		if strings.EqualFold(session.Role, "bar") && !strings.HasPrefix(r.URL.Path, "/admin/bar") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 
 		ctx.AdminID = session.AdminID
 		ctx.AdminRole = session.Role
