@@ -538,22 +538,6 @@
                   </button>
                 </div>
 
-                <section class="mt-4 rounded-2xl border border-white/15 bg-white/10 p-4">
-                  <h3 class="text-base font-extrabold text-white">I miei premi</h3>
-                  <p v-if="!digitalRewards.length" class="mt-2 text-sm text-slate-300">Nessun premio digitale ancora disponibile.</p>
-                  <div v-else class="mt-3 space-y-2">
-                    <button
-                      v-for="reward in digitalRewards"
-                      :key="reward.id"
-                      type="button"
-                      class="w-full rounded-xl border border-emerald-300/30 bg-emerald-400/10 p-3 text-left"
-                      @click="openDigitalReward(reward)"
-                    >
-                      <p class="text-xs font-bold uppercase tracking-wide text-emerald-200">{{ reward.typeLabel }}</p>
-                      <p class="mt-1 font-bold text-white">{{ reward.title }}</p>
-                    </button>
-                  </div>
-                </section>
               </div>
             </div>
           </div>
@@ -581,26 +565,6 @@
       </Transition>
     </Teleport>
 
-    <Teleport to="body">
-      <Transition name="earn-modal-fade">
-        <div
-          v-if="sponsorCouponModalReward"
-          class="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 px-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div class="w-full max-w-md rounded-2xl border border-emerald-300/35 bg-slate-900 p-5">
-            <p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300">Coupon sponsor</p>
-            <h3 class="mt-2 text-2xl font-black text-white">{{ sponsorCouponModalReward.title }}</h3>
-            <p class="mt-2 text-sm text-slate-200">{{ sponsorCouponModalReward.description }}</p>
-            <div class="mt-4 grid grid-cols-2 gap-2">
-              <button type="button" class="rounded-xl bg-emerald-400 px-3 py-2 font-bold text-slate-900" @click="closeSponsorCouponModal">Usa ora</button>
-              <button type="button" class="rounded-xl border border-white/20 px-3 py-2 font-bold text-white" @click="closeSponsorCouponModal">Usa dopo</button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
 
     <EventFeedbackModal
       v-model="isFeedbackModalOpen"
@@ -667,7 +631,6 @@ const storageKeys = {
   freeRetry: 'freeRetry',
   nextGameMultiplier: 'nextGameMultiplier',
   mysteryBoxCooldownEndTime: 'mysteryBoxCooldownEndTime',
-  digitalRewards: 'digitalRewards',
 };
 const mysteryRewards = [
   { id: 'coins-6', type: 'coins', amount: 6, label: '+6 monete' },
@@ -683,7 +646,6 @@ const wheelSegments = [
   { id: 'coins-12', type: 'coins', amount: 12, label: '+12 monete', shortLabel: '+12', weight: 11 },
   { id: 'x2-next-win', type: 'nextMultiplier', amount: 2, label: 'x2 prossima vincita minigioco', shortLabel: 'x2', weight: 10 },
   { id: 'free-retry-wheel', type: 'freeRetry', label: 'Retry gratis minigioco', shortLabel: 'Retry', weight: 8 },
-  { id: 'coupon-sponsor', type: 'coupon', label: 'Coupon sponsor', shortLabel: 'Coupon', weight: 8 },
   { id: 'jackpot-25', type: 'jackpot', amount: 25, label: 'JACKPOT +25 monete', shortLabel: 'JACKPOT', weight: 3 },
 ];
 
@@ -870,8 +832,6 @@ const wheelStatusText = ref('');
 const wheelResult = ref(null);
 const isWheelResultModalOpen = ref(false);
 const wheelJackpotBanner = ref(false);
-const digitalRewards = ref([]);
-const sponsorCouponModalReward = ref(null);
 const isFeedbackModalOpen = ref(false);
 const hasSubmittedFeedback = ref(false);
 const sponsors = ref([]);
@@ -923,7 +883,6 @@ const wheelResultMessage = computed(() => {
   if (wheelResult.value.type === 'coins' || wheelResult.value.type === 'jackpot') return 'Monete accreditate subito nel wallet.';
   if (wheelResult.value.type === 'nextMultiplier') return 'Badge attivo: bonus valido per la prossima vittoria minigioco.';
   if (wheelResult.value.type === 'freeRetry') return 'Il prossimo retry dopo una sconfitta sarà gratuito.';
-  if (wheelResult.value.type === 'coupon') return 'Coupon salvato in “I miei premi”.';
   return '';
 });
 
@@ -1016,7 +975,6 @@ function persistPowerUps() {
   window.localStorage.setItem(storageKeys.freeRetry, String(Math.max(0, freeRetry.value)));
   window.localStorage.setItem(storageKeys.nextGameMultiplier, String(Math.max(1, nextGameMultiplier.value)));
   window.localStorage.setItem(storageKeys.mysteryBoxCooldownEndTime, String(mysteryBoxCooldownEndTime.value || 0));
-  window.localStorage.setItem(storageKeys.digitalRewards, JSON.stringify(digitalRewards.value));
 }
 
 function hydratePowerUps() {
@@ -1029,12 +987,6 @@ function hydratePowerUps() {
   const storedFreeRetry = Number.parseInt(window.localStorage.getItem(storageKeys.freeRetry) || '0', 10);
   const storedMultiplier = Number.parseInt(window.localStorage.getItem(storageKeys.nextGameMultiplier) || '1', 10);
   const storedMysteryBoxCooldownEndTime = Number.parseInt(window.localStorage.getItem(storageKeys.mysteryBoxCooldownEndTime) || '0', 10);
-  let storedRewards = [];
-  try {
-    storedRewards = JSON.parse(window.localStorage.getItem(storageKeys.digitalRewards) || '[]');
-  } catch (error) {
-    storedRewards = [];
-  }
 
   coinBoostEndTime.value = Number.isFinite(storedBoostEndTime) ? storedBoostEndTime : 0;
   coinBoostActive.value = storedBoostActive && coinBoostEndTime.value > Date.now();
@@ -1044,7 +996,6 @@ function hydratePowerUps() {
 
   freeRetry.value = Math.max(0, Number.isFinite(storedFreeRetry) ? storedFreeRetry : 0);
   nextGameMultiplier.value = Math.max(1, Number.isFinite(storedMultiplier) ? storedMultiplier : 1);
-  digitalRewards.value = Array.isArray(storedRewards) ? storedRewards : [];
   mysteryBoxCooldownEndTime.value = Number.isFinite(storedMysteryBoxCooldownEndTime)
     ? Math.max(Date.now(), storedMysteryBoxCooldownEndTime)
     : 0;
@@ -1710,15 +1661,6 @@ async function creditWheelCoins(amount) {
   }
 }
 
-function createSponsorCouponReward() {
-  return {
-    id: `coupon-${Date.now()}`,
-    typeLabel: 'Coupon sponsor',
-    title: 'Coupon partner matchday',
-    description: 'Mostra questo coupon allo stand sponsor per attivare il benefit dedicato.',
-    createdAt: new Date().toISOString(),
-  };
-}
 
 function triggerJackpotEffects() {
   wheelJackpotBanner.value = true;
@@ -1752,12 +1694,6 @@ async function executeWheelReward(segment) {
     return;
   }
 
-  if (segment.type === 'coupon') {
-    const reward = createSponsorCouponReward();
-    digitalRewards.value = [reward, ...digitalRewards.value].slice(0, 20);
-    sponsorCouponModalReward.value = reward;
-    persistPowerUps();
-  }
 }
 
 async function spinFortuneWheel() {
@@ -1790,13 +1726,7 @@ function closeWheelResultModal() {
   isWheelResultModalOpen.value = false;
 }
 
-function openDigitalReward(reward) {
-  sponsorCouponModalReward.value = reward;
-}
 
-function closeSponsorCouponModal() {
-  sponsorCouponModalReward.value = null;
-}
 
 function openSpendPreview() {
   isSpendPreviewOpen.value = true;
