@@ -23,6 +23,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/shop/products", rt.wrap(rt.listShopProducts))
 	rt.router.Get("/shop/products/{id}", rt.wrap(rt.getShopProduct))
 	rt.router.Post("/shop/checkout", rt.wrap(rt.checkoutShopOrder))
+	rt.router.Get("/bar/categories", rt.wrap(rt.listBarCategories))
 	rt.router.Get("/bar/products", rt.wrap(rt.listBarProducts))
 	rt.router.Post("/bar/checkout/session", rt.wrap(rt.createBarCheckoutSession))
 	rt.router.Post("/bar/checkout/confirm", rt.wrap(rt.confirmBarCheckoutSession))

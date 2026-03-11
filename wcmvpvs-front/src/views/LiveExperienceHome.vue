@@ -688,6 +688,7 @@ const isBarCheckoutLoading = ref(false);
 const barCheckoutError = ref('');
 const barOrderConfirmed = ref(false);
 const barProducts = ref([]);
+const barCategoriesData = ref([]);
 const barCart = ref({});
 const barDelivery = ref({ sector: '', row: '', seat: '', notes: '' });
 const barStep = ref('start');
@@ -924,7 +925,7 @@ function tickBoostState() {
 }
 
 onMounted(async () => {
-  await loadBarProducts();
+  await Promise.all([loadBarProducts(), loadBarCategories()]);
   await confirmBarOrderFromQuery();
   if (typeof window === 'undefined') {
     return;
@@ -1589,6 +1590,14 @@ const normalizedBarProducts = computed(() => {
 });
 
 const barCategories = computed(() => {
+  if (barCategoriesData.value.length) {
+    return barCategoriesData.value.map((category) => ({
+      id: String(category.id),
+      name: String(category.name || 'Categoria BAR'),
+      image: String(category.image_url || productImageFallback),
+    }));
+  }
+
   const map = new Map();
   for (const p of normalizedBarProducts.value) {
     if (!map.has(p.category)) {
@@ -1598,8 +1607,16 @@ const barCategories = computed(() => {
   return Array.from(map.values());
 });
 
+const selectedBarCategory = computed(() => barCategories.value.find((category) => String(category.id) === String(selectedCategoryId.value)) || null);
+
 const barProductsByCategory = computed(() => {
-  return normalizedBarProducts.value.filter((p) => selectedCategoryId.value === 'all' || p.category === selectedCategoryId.value);
+  return normalizedBarProducts.value.filter((p) => {
+    if (selectedCategoryId.value === 'all') return true;
+    if (p.category_id !== undefined && p.category_id !== null && Number(p.category_id) > 0) {
+      return String(p.category_id) === String(selectedCategoryId.value);
+    }
+    return p.category === selectedCategoryId.value;
+  });
 });
 
 const selectedBarProduct = computed(() => normalizedBarProducts.value.find((p) => String(p.id) === String(selectedBarProductId.value)) || null);
@@ -1625,7 +1642,7 @@ const barOrderModeLabel = computed(() => (barOrderMode.value === 'seat' ? 'Conse
 const barStepTitle = computed(() => ({
   start: 'Inizio ordine',
   categories: 'Categorie',
-  products: selectedCategoryId.value || 'Prodotti',
+  products: selectedBarCategory.value?.name || selectedCategoryId.value || 'Prodotti',
   detail: 'Dettaglio prodotto',
   upsell: 'Suggerimenti',
   cart: 'Carrello',
@@ -1660,11 +1677,13 @@ function openBarOrdering() {
   barCheckoutError.value = '';
   barStep.value = 'start';
   barStepHistory.value = [];
+  selectedCategoryId.value = 'all';
+  void Promise.all([loadBarProducts(), loadBarCategories()]);
   isBarModalOpen.value = true;
 }
 
 function openBarCategory(categoryId) {
-  selectedCategoryId.value = categoryId;
+  selectedCategoryId.value = String(categoryId);
   goBarStep('products');
 }
 
@@ -1711,6 +1730,15 @@ function addProductFromDetail() {
 function addUpsellProduct() {
   if (barUpsellProduct.value) increaseBarQty(barUpsellProduct.value.id);
   goBarStep('products');
+}
+
+async function loadBarCategories() {
+  try {
+    const { data } = await apiClient.get('/bar/categories');
+    barCategoriesData.value = Array.isArray(data) ? data : [];
+  } catch (error) {
+    barCategoriesData.value = [];
+  }
 }
 
 async function loadBarProducts() {
