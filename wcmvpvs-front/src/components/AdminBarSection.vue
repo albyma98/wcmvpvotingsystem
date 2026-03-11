@@ -148,12 +148,14 @@
           <label>Nome<input v-model="newProduct.name" class="input" type="text" /></label>
           <label>Prezzo (€)<input v-model.number="newProduct.priceEuro" class="input" type="number" min="0" step="0.01" /></label>
           <label>Descrizione<input v-model="newProduct.description" class="input" type="text" /></label>
-          <label>Categoria
-            <select v-model.number="newProduct.categoryId" class="input">
-              <option :value="0">Seleziona categoria</option>
-              <option v-for="category in barCategories" :key="`product-category-${category.id}`" :value="category.id">{{ category.name }}</option>
-            </select>
-          </label>
+          <fieldset class="category-radio-group">
+            <legend>Categoria</legend>
+            <p v-if="!barCategories.length" class="muted">Nessuna categoria disponibile. Crea prima una categoria.</p>
+            <label v-for="category in barCategories" :key="`product-category-${category.id}`" class="category-radio-option">
+              <input v-model.number="newProduct.categoryId" type="radio" name="new-product-category" :value="category.id" />
+              <span>{{ category.name }}</span>
+            </label>
+          </fieldset>
         </div>
         <button class="btn primary" type="button" @click="createProduct">Crea prodotto</button>
       </article>
@@ -954,6 +956,10 @@ onBeforeUnmount(() => {
 .simple-header h3{margin-bottom:.2rem}
 .filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem}
 .input{width:100%;border:1px solid #d0d9e5;border-radius:10px;padding:.6rem .7rem;background:#fff;margin-top:.3rem}
+.category-radio-group{border:1px solid #d0d9e5;border-radius:10px;padding:.6rem .7rem;background:#fff;display:grid;gap:.45rem}
+.category-radio-group legend{font-weight:600;padding:0 .25rem}
+.category-radio-option{display:flex;align-items:center;gap:.5rem}
+.category-radio-option input{margin:0}
 .simple-list{display:grid;gap:.5rem}
 .simple-list__row{display:grid;grid-template-columns:1fr repeat(5,minmax(80px,auto));gap:.5rem;align-items:center;border:1px solid #dbe2ea;background:#fff;border-radius:12px;padding:.8rem;text-align:left}
 .menu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
