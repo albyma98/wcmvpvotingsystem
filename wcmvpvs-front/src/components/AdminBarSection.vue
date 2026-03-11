@@ -255,14 +255,22 @@
               <strong>{{ product.name }}</strong>
               <p class="muted">{{ product.category || 'Senza categoria' }}</p>
             </div>
-            <label><input type="checkbox" :checked="productSuggestionState(product.id).enabled" @change="setProductSuggestionEnabled(product.id, $event.target.checked)" /> Attivi</label>
+            <label class="suggestion-toggle" :class="{ 'is-checked': productSuggestionState(product.id).enabled }">
+              <input type="checkbox" :checked="productSuggestionState(product.id).enabled" @change="setProductSuggestionEnabled(product.id, $event.target.checked)" />
+              Attivi
+            </label>
             <input class="input" type="text" placeholder="Titolo box" :value="productSuggestionState(product.id).title" @input="setProductSuggestionTitle(product.id, $event.target.value)" style="min-width:220px" />
             <select class="input" :value="productSuggestionState(product.id).max_items" @change="setProductSuggestionMax(product.id, $event.target.value)">
               <option :value="2">2</option>
               <option :value="3">3</option>
             </select>
             <div>
-              <label v-for="candidate in productCards.filter((p) => p.id !== product.id)" :key="`ps-${product.id}-${candidate.id}`" style="display:block; font-size:12px;">
+              <label
+                v-for="candidate in productCards.filter((p) => p.id !== product.id)"
+                :key="`ps-${product.id}-${candidate.id}`"
+                class="suggestion-choice"
+                :class="{ 'is-checked': productSuggestionState(product.id).suggestion_ids.includes(candidate.id) }"
+              >
                 <input type="checkbox" :checked="productSuggestionState(product.id).suggestion_ids.includes(candidate.id)" @change="toggleProductSuggestion(product.id, candidate.id, $event.target.checked)" />
                 {{ candidate.name }}
               </label>
@@ -277,14 +285,22 @@
         <div class="simple-list">
           <div v-for="category in barCategories" :key="`sugg-cat-${category.id}`" class="simple-list__row" style="align-items:flex-start;">
             <div style="min-width: 220px;"><strong>{{ category.name }}</strong></div>
-            <label><input type="checkbox" :checked="categorySuggestionState(category.id).enabled" @change="setCategorySuggestionEnabled(category.id, $event.target.checked)" /> Attivi</label>
+            <label class="suggestion-toggle" :class="{ 'is-checked': categorySuggestionState(category.id).enabled }">
+              <input type="checkbox" :checked="categorySuggestionState(category.id).enabled" @change="setCategorySuggestionEnabled(category.id, $event.target.checked)" />
+              Attivi
+            </label>
             <input class="input" type="text" placeholder="Titolo fallback" :value="categorySuggestionState(category.id).title" @input="setCategorySuggestionTitle(category.id, $event.target.value)" style="min-width:220px" />
             <select class="input" :value="categorySuggestionState(category.id).max_items" @change="setCategorySuggestionMax(category.id, $event.target.value)">
               <option :value="2">2</option>
               <option :value="3">3</option>
             </select>
             <div>
-              <label v-for="candidate in productCards" :key="`cs-${category.id}-${candidate.id}`" style="display:block; font-size:12px;">
+              <label
+                v-for="candidate in productCards"
+                :key="`cs-${category.id}-${candidate.id}`"
+                class="suggestion-choice"
+                :class="{ 'is-checked': categorySuggestionState(category.id).suggestion_ids.includes(candidate.id) }"
+              >
                 <input type="checkbox" :checked="categorySuggestionState(category.id).suggestion_ids.includes(candidate.id)" @change="toggleCategorySuggestion(category.id, candidate.id, $event.target.checked)" />
                 {{ candidate.name }}
               </label>
@@ -1122,6 +1138,10 @@ onBeforeUnmount(() => {
 .clients-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:.8rem}
 .settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.8rem}
 .setting-row{display:flex;gap:.5rem;align-items:center;padding:.35rem 0}
+.suggestion-toggle{display:inline-flex;align-items:center;gap:.45rem;padding:.3rem .6rem;border:1px solid #cbd5e1;border-radius:999px;background:#f8fafc;font-weight:600;color:#475569;transition:all .15s ease}
+.suggestion-toggle.is-checked{background:#dcfce7;border-color:#22c55e;color:#166534;box-shadow:0 0 0 2px rgba(34,197,94,.14)}
+.suggestion-choice{display:block;font-size:12px;padding:.25rem .45rem;border:1px solid transparent;border-radius:8px;transition:all .15s ease;color:#334155}
+.suggestion-choice.is-checked{background:#eff6ff;border-color:#93c5fd;color:#1e40af;font-weight:600}
 .link-btn{border:none;background:none;color:#1d4ed8;padding:0;text-decoration:underline;cursor:pointer}
 .live-board-wrap { display: grid; gap: 1rem; }
 .live-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
