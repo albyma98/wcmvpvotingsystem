@@ -61,6 +61,13 @@ type barConfirmCheckoutResponse struct {
 	Confirmed bool `json:"confirmed"`
 }
 
+type barSuggestionsResponse struct {
+	Title   string       `json:"title"`
+	Items   []barProduct `json:"items"`
+	Source  string       `json:"source"`
+	Enabled bool         `json:"enabled"`
+}
+
 type stripeCheckoutSessionResponse struct {
 	ID            string `json:"id"`
 	URL           string `json:"url"`
@@ -97,6 +104,87 @@ func (rt *_router) listBarProducts(w http.ResponseWriter, _ *http.Request, _ req
 	}
 	w.Header().Set("content-type", "application/json")
 	_ = json.NewEncoder(w).Encode(result)
+}
+
+func (rt *_router) getBarSuggestions(w http.ResponseWriter, r *http.Request, _ reqcontext.RequestContext) {
+	productID, err := strconv.Atoi(chi.URLParam(r, "productID"))
+	if err != nil || productID <= 0 {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "identificativo prodotto non valido")
+		return
+	}
+	products, err := rt.db.ListShopProducts()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	productByID := make(map[int]database.ShopProduct, len(products))
+	for _, product := range products {
+		productByID[product.ID] = product
+	}
+	base, ok := productByID[productID]
+	if !ok {
+		_ = writeJSONMessage(w, http.StatusNotFound, "prodotto non disponibile")
+		return
+	}
+	productConfigs, err := rt.db.ListBarSuggestionConfigs()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	categoryConfigs, err := rt.db.ListBarCategorySuggestionConfigs()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	response := barSuggestionsResponse{Items: []barProduct{}, Source: "none", Enabled: false}
+	for _, cfg := range productConfigs {
+		if cfg.ProductID != productID || !cfg.Enabled {
+			continue
+		}
+		response.Title = cfg.Title
+		response.Source = "product"
+		response.Enabled = true
+		for _, suggestedID := range cfg.SuggestionIDs {
+			if suggestedID == productID {
+				continue
+			}
+			suggested, exists := productByID[suggestedID]
+			if !exists {
+				continue
+			}
+			response.Items = append(response.Items, barProduct{ID: "product:" + strconv.Itoa(suggested.ID), Name: suggested.Name, PriceCents: int64(suggested.PriceCents), Description: suggested.Description, ImageURL: suggested.ImageURL, Category: suggested.Category, CategoryImageURL: suggested.CategoryImageURL})
+			if len(response.Items) >= cfg.MaxItems {
+				break
+			}
+		}
+		break
+	}
+	if !response.Enabled {
+		for _, cfg := range categoryConfigs {
+			if cfg.CategoryID != base.CategoryID || !cfg.Enabled {
+				continue
+			}
+			response.Title = cfg.Title
+			response.Source = "category"
+			response.Enabled = true
+			for _, suggestedID := range cfg.SuggestionIDs {
+				if suggestedID == productID {
+					continue
+				}
+				suggested, exists := productByID[suggestedID]
+				if !exists {
+					continue
+				}
+				response.Items = append(response.Items, barProduct{ID: "product:" + strconv.Itoa(suggested.ID), Name: suggested.Name, PriceCents: int64(suggested.PriceCents), Description: suggested.Description, ImageURL: suggested.ImageURL, Category: suggested.Category, CategoryImageURL: suggested.CategoryImageURL})
+				if len(response.Items) >= cfg.MaxItems {
+					break
+				}
+			}
+			break
+		}
+	}
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func (rt *_router) createBarCheckoutSession(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

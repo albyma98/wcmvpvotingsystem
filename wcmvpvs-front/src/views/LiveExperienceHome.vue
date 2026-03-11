@@ -209,15 +209,15 @@
               </section>
 
               <section v-else-if="barStep === 'upsell'" class="space-y-4">
-                <h4 class="text-2xl font-black">Vuoi aggiungere patatine?</h4>
-                <article v-if="barUpsellProduct" class="rounded-3xl border border-slate-200 bg-white p-4">
-                  <img :src="barUpsellProduct.image" :alt="barUpsellProduct.name" class="h-48 w-full rounded-2xl object-cover">
+                <h4 class="text-2xl font-black">{{ barSuggestionTitle }}</h4>
+                <article v-for="suggestion in barSuggestionItems" :key="`s-${suggestion.id}`" class="rounded-3xl border border-slate-200 bg-white p-4">
+                  <img :src="suggestion.image" :alt="suggestion.name" class="h-48 w-full rounded-2xl object-cover">
                   <div class="mt-3 flex items-center justify-between">
                     <div>
-                      <p class="text-xl font-black">{{ barUpsellProduct.name }}</p>
-                      <p class="text-sm text-slate-500">€ {{ (barUpsellProduct.price_cents / 100).toFixed(2) }}</p>
+                      <p class="text-xl font-black">{{ suggestion.name }}</p>
+                      <p class="text-sm text-slate-500">€ {{ (suggestion.price_cents / 100).toFixed(2) }}</p>
                     </div>
-                    <button type="button" class="rounded-xl bg-amber-400 px-4 py-2 font-black" @click="addUpsellProduct">Aggiungi</button>
+                    <button type="button" class="rounded-xl bg-amber-400 px-4 py-2 font-black" @click="addSuggestedProduct(suggestion.id)">Aggiungi</button>
                   </div>
                 </article>
                 <button type="button" class="w-full rounded-2xl border border-slate-300 bg-white py-3 font-bold" @click="goBarStep('products')">Salta e continua</button>
@@ -1623,7 +1623,12 @@ const barProductsByCategory = computed(() => {
 });
 
 const selectedBarProduct = computed(() => normalizedBarProducts.value.find((p) => String(p.id) === String(selectedBarProductId.value)) || null);
-const barUpsellProduct = computed(() => normalizedBarProducts.value.find((p) => p.category === 'Patatine') || normalizedBarProducts.value[0] || null);
+const barSuggestionsPayload = ref({ title: '', items: [], source: 'none', enabled: false });
+const barSuggestionItems = computed(() => (Array.isArray(barSuggestionsPayload.value?.items) ? barSuggestionsPayload.value.items : []).map((item) => {
+  const normalized = normalizedBarProducts.value.find((product) => String(product.id) === String(item.id));
+  return normalized || item;
+}).slice(0, 3));
+const barSuggestionTitle = computed(() => String(barSuggestionsPayload.value?.title || 'Completa il tuo ordine'));
 
 const barCartCount = computed(() => Object.values(barCart.value).reduce((sum, q) => sum + Math.max(0, Number(q) || 0), 0));
 const barCartItems = computed(() => {
@@ -1722,17 +1727,33 @@ function removeBarProduct(productId) {
   barCart.value = { ...barCart.value, [productId]: 0 };
 }
 
-function addProductFromDetail() {
+async function addProductFromDetail() {
   if (!selectedBarProduct.value) return;
   const productId = selectedBarProduct.value.id;
   const current = Number(barCart.value?.[productId] || 0);
   barCart.value = { ...barCart.value, [productId]: current + barDetailQty.value };
+  await loadBarSuggestionsForProduct(productId);
   goBarStep('upsell');
 }
 
-function addUpsellProduct() {
-  if (barUpsellProduct.value) increaseBarQty(barUpsellProduct.value.id);
+function addSuggestedProduct(productId) {
+  if (productId) increaseBarQty(productId);
   goBarStep('products');
+}
+
+
+async function loadBarSuggestionsForProduct(productID) {
+  const numericId = Number(String(productID || '').replace('product:', ''));
+  if (!numericId) {
+    barSuggestionsPayload.value = { title: '', items: [], source: 'none', enabled: false };
+    return;
+  }
+  try {
+    const { data } = await apiClient.get(`/bar/suggestions/${numericId}`);
+    barSuggestionsPayload.value = data && typeof data === 'object' ? data : { title: '', items: [], source: 'none', enabled: false };
+  } catch (error) {
+    barSuggestionsPayload.value = { title: '', items: [], source: 'none', enabled: false };
+  }
 }
 
 async function loadBarCategories() {

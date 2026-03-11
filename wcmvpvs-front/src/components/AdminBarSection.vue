@@ -241,6 +241,61 @@
       </div>
     </div>
 
+    <div v-else-if="activeTab==='suggestions'" class="stacked-section">
+      <header class="simple-header">
+        <h3>Suggerimenti post-aggiunta</h3>
+        <p class="muted">Priorità prodotto, fallback categoria. Max 3 suggerimenti.</p>
+      </header>
+
+      <article class="info-card">
+        <h4>Suggerimenti per prodotto</h4>
+        <div class="simple-list">
+          <div v-for="product in productCards" :key="`sugg-prod-${product.id}`" class="simple-list__row" style="align-items:flex-start;">
+            <div style="min-width: 220px;">
+              <strong>{{ product.name }}</strong>
+              <p class="muted">{{ product.category || 'Senza categoria' }}</p>
+            </div>
+            <label><input type="checkbox" :checked="productSuggestionState(product.id).enabled" @change="setProductSuggestionEnabled(product.id, $event.target.checked)" /> Attivi</label>
+            <input class="input" type="text" placeholder="Titolo box" :value="productSuggestionState(product.id).title" @input="setProductSuggestionTitle(product.id, $event.target.value)" style="min-width:220px" />
+            <select class="input" :value="productSuggestionState(product.id).max_items" @change="setProductSuggestionMax(product.id, $event.target.value)">
+              <option :value="2">2</option>
+              <option :value="3">3</option>
+            </select>
+            <div>
+              <label v-for="candidate in productCards.filter((p) => p.id !== product.id)" :key="`ps-${product.id}-${candidate.id}`" style="display:block; font-size:12px;">
+                <input type="checkbox" :checked="productSuggestionState(product.id).suggestion_ids.includes(candidate.id)" @change="toggleProductSuggestion(product.id, candidate.id, $event.target.checked)" />
+                {{ candidate.name }}
+              </label>
+            </div>
+            <button class="btn primary" type="button" @click="saveProductSuggestion(product.id)">Salva</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="info-card">
+        <h4>Fallback per categoria</h4>
+        <div class="simple-list">
+          <div v-for="category in barCategories" :key="`sugg-cat-${category.id}`" class="simple-list__row" style="align-items:flex-start;">
+            <div style="min-width: 220px;"><strong>{{ category.name }}</strong></div>
+            <label><input type="checkbox" :checked="categorySuggestionState(category.id).enabled" @change="setCategorySuggestionEnabled(category.id, $event.target.checked)" /> Attivi</label>
+            <input class="input" type="text" placeholder="Titolo fallback" :value="categorySuggestionState(category.id).title" @input="setCategorySuggestionTitle(category.id, $event.target.value)" style="min-width:220px" />
+            <select class="input" :value="categorySuggestionState(category.id).max_items" @change="setCategorySuggestionMax(category.id, $event.target.value)">
+              <option :value="2">2</option>
+              <option :value="3">3</option>
+            </select>
+            <div>
+              <label v-for="candidate in productCards" :key="`cs-${category.id}-${candidate.id}`" style="display:block; font-size:12px;">
+                <input type="checkbox" :checked="categorySuggestionState(category.id).suggestion_ids.includes(candidate.id)" @change="toggleCategorySuggestion(category.id, candidate.id, $event.target.checked)" />
+                {{ candidate.name }}
+              </label>
+            </div>
+            <button class="btn primary" type="button" @click="saveCategorySuggestion(category.id)">Salva</button>
+          </div>
+        </div>
+      </article>
+    </div>
+
+
     <div v-else-if="activeTab==='quick'" class="stacked-section">
       <header class="simple-header">
         <h3>Disponibilità rapida</h3>
@@ -448,6 +503,8 @@ const editingCategoryId = ref(0);
 const newCategory = ref({ name: '', image_url: '' });
 const newProduct = ref({ name: '', description: '', priceEuro: 0, categoryId: 0, image_url: '' });
 const newMenu = ref({ name: '', description: '', priceEuro: 0, items: {} });
+const productSuggestions = ref({});
+const categorySuggestions = ref({});
 const historyDate = ref('');
 const historyStatus = ref('');
 const historySearch = ref('');
@@ -470,6 +527,7 @@ const tabs = [
   { id: 'history', label: 'Storico ordini' },
   { id: 'menu', label: 'Menu' },
   { id: 'categories', label: 'Categorie' },
+  { id: 'suggestions', label: 'Suggerimenti' },
   { id: 'quick', label: 'Disponibilità rapida' },
   { id: 'stats', label: 'Statistiche' },
   { id: 'clients', label: 'Clienti' },
@@ -646,6 +704,85 @@ async function loadCategories() {
 async function loadMenus() {
   const { data } = await apiClient.get('/admin/bar/menus', props.authHeaders);
   barMenus.value = Array.isArray(data) ? data : [];
+}
+
+function normalizeSuggestionState(raw = {}) {
+  return {
+    enabled: Boolean(raw.enabled),
+    title: String(raw.title || ''),
+    max_items: [2, 3].includes(Number(raw.max_items)) ? Number(raw.max_items) : 2,
+    suggestion_ids: Array.isArray(raw.suggestion_ids) ? raw.suggestion_ids.map((id) => Number(id)).filter((id) => id > 0).slice(0, 3) : [],
+  };
+}
+
+async function loadSuggestions() {
+  const [productResponse, categoryResponse] = await Promise.all([
+    apiClient.get('/admin/bar/suggestions/products', props.authHeaders),
+    apiClient.get('/admin/bar/suggestions/categories', props.authHeaders),
+  ]);
+  const nextProduct = {};
+  for (const item of (Array.isArray(productResponse.data) ? productResponse.data : [])) {
+    nextProduct[Number(item.product_id)] = normalizeSuggestionState(item);
+  }
+  productSuggestions.value = nextProduct;
+
+  const nextCategory = {};
+  for (const item of (Array.isArray(categoryResponse.data) ? categoryResponse.data : [])) {
+    nextCategory[Number(item.category_id)] = normalizeSuggestionState(item);
+  }
+  categorySuggestions.value = nextCategory;
+}
+
+function productSuggestionState(productId) {
+  return productSuggestions.value[productId] || { enabled: false, title: '', max_items: 2, suggestion_ids: [] };
+}
+
+function categorySuggestionState(categoryId) {
+  return categorySuggestions.value[categoryId] || { enabled: false, title: '', max_items: 2, suggestion_ids: [] };
+}
+
+function patchProductSuggestion(productId, patch) {
+  productSuggestions.value = {
+    ...productSuggestions.value,
+    [productId]: { ...productSuggestionState(productId), ...patch },
+  };
+}
+
+function patchCategorySuggestion(categoryId, patch) {
+  categorySuggestions.value = {
+    ...categorySuggestions.value,
+    [categoryId]: { ...categorySuggestionState(categoryId), ...patch },
+  };
+}
+
+function setProductSuggestionEnabled(productId, value) { patchProductSuggestion(productId, { enabled: Boolean(value) }); }
+function setProductSuggestionTitle(productId, value) { patchProductSuggestion(productId, { title: String(value || '') }); }
+function setProductSuggestionMax(productId, value) { patchProductSuggestion(productId, { max_items: Number(value) === 3 ? 3 : 2 }); }
+
+function setCategorySuggestionEnabled(categoryId, value) { patchCategorySuggestion(categoryId, { enabled: Boolean(value) }); }
+function setCategorySuggestionTitle(categoryId, value) { patchCategorySuggestion(categoryId, { title: String(value || '') }); }
+function setCategorySuggestionMax(categoryId, value) { patchCategorySuggestion(categoryId, { max_items: Number(value) === 3 ? 3 : 2 }); }
+
+function toggleProductSuggestion(productId, suggestionId, checked) {
+  const current = productSuggestionState(productId).suggestion_ids;
+  const next = checked ? [...new Set([...current, suggestionId])].slice(0, 3) : current.filter((id) => id !== suggestionId);
+  patchProductSuggestion(productId, { suggestion_ids: next });
+}
+
+function toggleCategorySuggestion(categoryId, suggestionId, checked) {
+  const current = categorySuggestionState(categoryId).suggestion_ids;
+  const next = checked ? [...new Set([...current, suggestionId])].slice(0, 3) : current.filter((id) => id !== suggestionId);
+  patchCategorySuggestion(categoryId, { suggestion_ids: next });
+}
+
+async function saveProductSuggestion(productId) {
+  await apiClient.put(`/admin/bar/suggestions/products/${productId}`, productSuggestionState(productId), props.authHeaders);
+  await loadSuggestions();
+}
+
+async function saveCategorySuggestion(categoryId) {
+  await apiClient.put(`/admin/bar/suggestions/categories/${categoryId}`, categorySuggestionState(categoryId), props.authHeaders);
+  await loadSuggestions();
 }
 
 async function load() {
@@ -946,7 +1083,7 @@ function closeOrderDetail() {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadCategories(), loadProducts(), loadMenus()]);
+  await Promise.all([load(), loadCategories(), loadProducts(), loadMenus(), loadSuggestions()]);
   refreshTimer = window.setInterval(() => {
     if (settings.value.autoRefreshLive) {
       load();

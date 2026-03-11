@@ -817,6 +817,22 @@ type BarMenuItem struct {
 	Quantity  int `json:"quantity"`
 }
 
+type BarSuggestionConfig struct {
+	ProductID     int    `json:"product_id"`
+	Enabled       bool   `json:"enabled"`
+	Title         string `json:"title"`
+	MaxItems      int    `json:"max_items"`
+	SuggestionIDs []int  `json:"suggestion_ids"`
+}
+
+type BarCategorySuggestionConfig struct {
+	CategoryID    int    `json:"category_id"`
+	Enabled       bool   `json:"enabled"`
+	Title         string `json:"title"`
+	MaxItems      int    `json:"max_items"`
+	SuggestionIDs []int  `json:"suggestion_ids"`
+}
+
 type ShopOrder struct {
 	ID            int             `json:"id"`
 	CustomerName  string          `json:"customer_name"`
@@ -1000,6 +1016,10 @@ type AppDatabase interface {
 	CreateBarMenu(menu BarMenu) (BarMenu, error)
 	ListBarMenus(includeDeleted bool) ([]BarMenu, error)
 	SoftDeleteBarMenu(id int) error
+	ListBarSuggestionConfigs() ([]BarSuggestionConfig, error)
+	UpsertBarSuggestionConfig(config BarSuggestionConfig) (BarSuggestionConfig, error)
+	ListBarCategorySuggestionConfigs() ([]BarCategorySuggestionConfig, error)
+	UpsertBarCategorySuggestionConfig(config BarCategorySuggestionConfig) (BarCategorySuggestionConfig, error)
 	ListShopOrders() ([]ShopOrder, error)
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
 	CreateBarOrder(order BarOrder) (BarOrder, error)
@@ -2012,6 +2032,96 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_menu_items_product ON bar_menu_items(product_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring bar_menu_items product index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_product_suggestions';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE bar_product_suggestions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL UNIQUE,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        title TEXT NOT NULL DEFAULT '',
+        max_items INTEGER NOT NULL DEFAULT 2,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES shop_products(id) ON DELETE CASCADE
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating bar_product_suggestions table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying bar_product_suggestions table: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_product_suggestion_items';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE bar_product_suggestion_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        suggestion_id INTEGER NOT NULL,
+        suggested_product_id INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (suggestion_id) REFERENCES bar_product_suggestions(id) ON DELETE CASCADE,
+        FOREIGN KEY (suggested_product_id) REFERENCES shop_products(id)
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating bar_product_suggestion_items table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying bar_product_suggestion_items table: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_category_suggestions';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE bar_category_suggestions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category_id INTEGER NOT NULL UNIQUE,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        title TEXT NOT NULL DEFAULT '',
+        max_items INTEGER NOT NULL DEFAULT 2,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (category_id) REFERENCES bar_categories(id) ON DELETE CASCADE
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating bar_category_suggestions table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying bar_category_suggestions table: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_category_suggestion_items';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE bar_category_suggestion_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        suggestion_id INTEGER NOT NULL,
+        suggested_product_id INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (suggestion_id) REFERENCES bar_category_suggestions(id) ON DELETE CASCADE,
+        FOREIGN KEY (suggested_product_id) REFERENCES shop_products(id)
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating bar_category_suggestion_items table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying bar_category_suggestion_items table: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_product_suggestions_product ON bar_product_suggestions(product_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_product_suggestions product index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_product_suggestion_items_suggestion ON bar_product_suggestion_items(suggestion_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_product_suggestion_items suggestion index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_product_suggestion_items_product ON bar_product_suggestion_items(suggested_product_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_product_suggestion_items product index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_category_suggestions_category ON bar_category_suggestions(category_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_category_suggestions category index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_category_suggestion_items_suggestion ON bar_category_suggestion_items(suggestion_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_category_suggestion_items suggestion index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_category_suggestion_items_product ON bar_category_suggestion_items(suggested_product_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_category_suggestion_items product index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_orders';`).Scan(&tableName)
@@ -5799,6 +5909,216 @@ func (db *appdbimpl) SoftDeleteBarMenu(id int) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func clampSuggestionLimit(limit int) int {
+	if limit < 1 {
+		return 2
+	}
+	if limit > 3 {
+		return 3
+	}
+	return limit
+}
+
+func (db *appdbimpl) ListBarSuggestionConfigs() ([]BarSuggestionConfig, error) {
+	rows, err := db.c.Query(`SELECT product_id, enabled, IFNULL(title, ''), max_items FROM bar_product_suggestions ORDER BY product_id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BarSuggestionConfig{}
+	for rows.Next() {
+		var cfg BarSuggestionConfig
+		var enabled int
+		if err := rows.Scan(&cfg.ProductID, &enabled, &cfg.Title, &cfg.MaxItems); err != nil {
+			return nil, err
+		}
+		cfg.Enabled = enabled == 1
+		cfg.MaxItems = clampSuggestionLimit(cfg.MaxItems)
+		itemRows, err := db.c.Query(`SELECT suggested_product_id FROM bar_product_suggestion_items WHERE suggestion_id = (SELECT id FROM bar_product_suggestions WHERE product_id = ?) ORDER BY sort_order ASC, id ASC`, cfg.ProductID)
+		if err != nil {
+			return nil, err
+		}
+		for itemRows.Next() {
+			var id int
+			if err := itemRows.Scan(&id); err != nil {
+				itemRows.Close()
+				return nil, err
+			}
+			cfg.SuggestionIDs = append(cfg.SuggestionIDs, id)
+		}
+		if err := itemRows.Err(); err != nil {
+			itemRows.Close()
+			return nil, err
+		}
+		itemRows.Close()
+		items = append(items, cfg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (db *appdbimpl) UpsertBarSuggestionConfig(config BarSuggestionConfig) (BarSuggestionConfig, error) {
+	if config.ProductID <= 0 {
+		return BarSuggestionConfig{}, sql.ErrNoRows
+	}
+	if _, err := db.GetShopProduct(config.ProductID); err != nil {
+		return BarSuggestionConfig{}, err
+	}
+	config.Title = strings.TrimSpace(config.Title)
+	config.MaxItems = clampSuggestionLimit(config.MaxItems)
+	tx, err := db.c.Begin()
+	if err != nil {
+		return BarSuggestionConfig{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err := tx.Exec(`INSERT INTO bar_product_suggestions (product_id, enabled, title, max_items) VALUES (?, ?, ?, ?) ON CONFLICT(product_id) DO UPDATE SET enabled = excluded.enabled, title = excluded.title, max_items = excluded.max_items, updated_at = CURRENT_TIMESTAMP`, config.ProductID, boolToInt(config.Enabled), config.Title, config.MaxItems); err != nil {
+		return BarSuggestionConfig{}, err
+	}
+	var suggestionID int
+	if err := tx.QueryRow(`SELECT id FROM bar_product_suggestions WHERE product_id = ?`, config.ProductID).Scan(&suggestionID); err != nil {
+		return BarSuggestionConfig{}, err
+	}
+	if _, err := tx.Exec(`DELETE FROM bar_product_suggestion_items WHERE suggestion_id = ?`, suggestionID); err != nil {
+		return BarSuggestionConfig{}, err
+	}
+	inserted := make([]int, 0, len(config.SuggestionIDs))
+	seen := map[int]struct{}{}
+	order := 1
+	for _, suggestedProductID := range config.SuggestionIDs {
+		if suggestedProductID <= 0 || suggestedProductID == config.ProductID {
+			continue
+		}
+		if _, ok := seen[suggestedProductID]; ok {
+			continue
+		}
+		if _, err := db.GetShopProduct(suggestedProductID); err != nil {
+			continue
+		}
+		if _, err := tx.Exec(`INSERT INTO bar_product_suggestion_items (suggestion_id, suggested_product_id, sort_order) VALUES (?, ?, ?)`, suggestionID, suggestedProductID, order); err != nil {
+			return BarSuggestionConfig{}, err
+		}
+		seen[suggestedProductID] = struct{}{}
+		inserted = append(inserted, suggestedProductID)
+		order++
+		if order > 6 {
+			break
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return BarSuggestionConfig{}, err
+	}
+	committed = true
+	config.SuggestionIDs = inserted
+	return config, nil
+}
+
+func (db *appdbimpl) ListBarCategorySuggestionConfigs() ([]BarCategorySuggestionConfig, error) {
+	rows, err := db.c.Query(`SELECT category_id, enabled, IFNULL(title, ''), max_items FROM bar_category_suggestions ORDER BY category_id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BarCategorySuggestionConfig{}
+	for rows.Next() {
+		var cfg BarCategorySuggestionConfig
+		var enabled int
+		if err := rows.Scan(&cfg.CategoryID, &enabled, &cfg.Title, &cfg.MaxItems); err != nil {
+			return nil, err
+		}
+		cfg.Enabled = enabled == 1
+		cfg.MaxItems = clampSuggestionLimit(cfg.MaxItems)
+		itemRows, err := db.c.Query(`SELECT suggested_product_id FROM bar_category_suggestion_items WHERE suggestion_id = (SELECT id FROM bar_category_suggestions WHERE category_id = ?) ORDER BY sort_order ASC, id ASC`, cfg.CategoryID)
+		if err != nil {
+			return nil, err
+		}
+		for itemRows.Next() {
+			var id int
+			if err := itemRows.Scan(&id); err != nil {
+				itemRows.Close()
+				return nil, err
+			}
+			cfg.SuggestionIDs = append(cfg.SuggestionIDs, id)
+		}
+		if err := itemRows.Err(); err != nil {
+			itemRows.Close()
+			return nil, err
+		}
+		itemRows.Close()
+		items = append(items, cfg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (db *appdbimpl) UpsertBarCategorySuggestionConfig(config BarCategorySuggestionConfig) (BarCategorySuggestionConfig, error) {
+	if config.CategoryID <= 0 {
+		return BarCategorySuggestionConfig{}, sql.ErrNoRows
+	}
+	if _, err := db.GetBarCategory(config.CategoryID); err != nil {
+		return BarCategorySuggestionConfig{}, err
+	}
+	config.Title = strings.TrimSpace(config.Title)
+	config.MaxItems = clampSuggestionLimit(config.MaxItems)
+	tx, err := db.c.Begin()
+	if err != nil {
+		return BarCategorySuggestionConfig{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err := tx.Exec(`INSERT INTO bar_category_suggestions (category_id, enabled, title, max_items) VALUES (?, ?, ?, ?) ON CONFLICT(category_id) DO UPDATE SET enabled = excluded.enabled, title = excluded.title, max_items = excluded.max_items, updated_at = CURRENT_TIMESTAMP`, config.CategoryID, boolToInt(config.Enabled), config.Title, config.MaxItems); err != nil {
+		return BarCategorySuggestionConfig{}, err
+	}
+	var suggestionID int
+	if err := tx.QueryRow(`SELECT id FROM bar_category_suggestions WHERE category_id = ?`, config.CategoryID).Scan(&suggestionID); err != nil {
+		return BarCategorySuggestionConfig{}, err
+	}
+	if _, err := tx.Exec(`DELETE FROM bar_category_suggestion_items WHERE suggestion_id = ?`, suggestionID); err != nil {
+		return BarCategorySuggestionConfig{}, err
+	}
+	inserted := []int{}
+	seen := map[int]struct{}{}
+	order := 1
+	for _, pid := range config.SuggestionIDs {
+		if pid <= 0 {
+			continue
+		}
+		if _, ok := seen[pid]; ok {
+			continue
+		}
+		if _, err := db.GetShopProduct(pid); err != nil {
+			continue
+		}
+		if _, err := tx.Exec(`INSERT INTO bar_category_suggestion_items (suggestion_id, suggested_product_id, sort_order) VALUES (?, ?, ?)`, suggestionID, pid, order); err != nil {
+			return BarCategorySuggestionConfig{}, err
+		}
+		seen[pid] = struct{}{}
+		inserted = append(inserted, pid)
+		order++
+		if order > 6 {
+			break
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return BarCategorySuggestionConfig{}, err
+	}
+	committed = true
+	config.SuggestionIDs = inserted
+	return config, nil
 }
 
 func (db *appdbimpl) ListShopOrders() ([]ShopOrder, error) {
