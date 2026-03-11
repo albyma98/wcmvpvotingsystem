@@ -22,18 +22,13 @@ import (
 )
 
 type barProduct struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	PriceCents  int64  `json:"price_cents"`
-	ImageEmoji  string `json:"image_emoji"`
-	Description string `json:"description"`
-}
-
-var barProductsCatalog = []barProduct{
-	{ID: "beer_40", Name: "Birra 40cl", PriceCents: 500, ImageEmoji: "🍺", Description: "Birra fresca 40cl"},
-	{ID: "coca_cola", Name: "Coca-Cola", PriceCents: 300, ImageEmoji: "🥤", Description: "Lattina Coca-Cola"},
-	{ID: "chips", Name: "Patatine", PriceCents: 250, ImageEmoji: "🍟", Description: "Porzione patatine"},
-	{ID: "sandwich", Name: "Panino", PriceCents: 650, ImageEmoji: "🥪", Description: "Panino farcito"},
+	ID          string        `json:"id"`
+	Name        string        `json:"name"`
+	PriceCents  int64         `json:"price_cents"`
+	ImageEmoji  string        `json:"image_emoji"`
+	Description string        `json:"description"`
+	IsMenu      bool          `json:"is_menu,omitempty"`
+	Items       []interface{} `json:"items,omitempty"`
 }
 
 type barCheckoutItemPayload struct {
@@ -69,17 +64,26 @@ type stripeCheckoutSessionResponse struct {
 	PaymentStatus string `json:"payment_status"`
 }
 
-func mapBarProducts() map[string]barProduct {
-	mapped := make(map[string]barProduct, len(barProductsCatalog))
-	for _, p := range barProductsCatalog {
-		mapped[p.ID] = p
-	}
-	return mapped
-}
-
 func (rt *_router) listBarProducts(w http.ResponseWriter, _ *http.Request, _ reqcontext.RequestContext) {
+	products, err := rt.db.ListShopProducts()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	menus, err := rt.db.ListBarMenus(false)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	result := make([]barProduct, 0, len(products)+len(menus))
+	for _, p := range products {
+		result = append(result, barProduct{ID: "product:" + strconv.Itoa(p.ID), Name: p.Name, PriceCents: int64(p.PriceCents), Description: p.Description})
+	}
+	for _, m := range menus {
+		result = append(result, barProduct{ID: "menu:" + strconv.Itoa(m.ID), Name: m.Name, PriceCents: int64(m.PriceCents), Description: m.Description, IsMenu: true})
+	}
 	w.Header().Set("content-type", "application/json")
-	_ = json.NewEncoder(w).Encode(barProductsCatalog)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 func (rt *_router) createBarCheckoutSession(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -108,11 +112,10 @@ func (rt *_router) createBarCheckoutSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	catalog := mapBarProducts()
 	qtyMap := map[string]int64{}
 	for _, item := range payload.Items {
 		id := strings.TrimSpace(item.ProductID)
-		if _, ok := catalog[id]; !ok || item.Quantity <= 0 {
+		if id == "" || item.Quantity <= 0 {
 			_ = writeJSONMessage(w, http.StatusBadRequest, "elementi ordine non validi")
 			return
 		}
@@ -130,19 +133,61 @@ func (rt *_router) createBarCheckoutSession(w http.ResponseWriter, r *http.Reque
 	productsSnapshot := make([]map[string]interface{}, 0, len(qtyMap))
 	quantitiesSnapshot := make([]map[string]interface{}, 0, len(qtyMap))
 	lineIndex := 0
-	for _, product := range barProductsCatalog {
-		qty := qtyMap[product.ID]
+	for id, qty := range qtyMap {
 		if qty <= 0 {
 			continue
+		}
+		var name string
+		var priceCents int64
+		if strings.HasPrefix(id, "product:") {
+			pid, err := strconv.Atoi(strings.TrimPrefix(id, "product:"))
+			if err != nil || pid <= 0 {
+				_ = writeJSONMessage(w, http.StatusBadRequest, "elementi ordine non validi")
+				return
+			}
+			product, err := rt.db.GetShopProduct(pid)
+			if err != nil {
+				_ = writeJSONMessage(w, http.StatusBadRequest, "uno dei prodotti selezionati non è disponibile")
+				return
+			}
+			name = product.Name
+			priceCents = int64(product.PriceCents)
+		} else if strings.HasPrefix(id, "menu:") {
+			mid, err := strconv.Atoi(strings.TrimPrefix(id, "menu:"))
+			if err != nil || mid <= 0 {
+				_ = writeJSONMessage(w, http.StatusBadRequest, "elementi ordine non validi")
+				return
+			}
+			menus, err := rt.db.ListBarMenus(false)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			found := false
+			for _, m := range menus {
+				if m.ID == mid {
+					name = m.Name
+					priceCents = int64(m.PriceCents)
+					found = true
+					break
+				}
+			}
+			if !found {
+				_ = writeJSONMessage(w, http.StatusBadRequest, "uno dei menu selezionati non è disponibile")
+				return
+			}
+		} else {
+			_ = writeJSONMessage(w, http.StatusBadRequest, "elementi ordine non validi")
+			return
 		}
 		prefix := "line_items[" + strconv.Itoa(lineIndex) + "]"
 		form.Set(prefix+"[quantity]", strconv.FormatInt(qty, 10))
 		form.Set(prefix+"[price_data][currency]", "eur")
-		form.Set(prefix+"[price_data][unit_amount]", strconv.FormatInt(product.PriceCents, 10))
-		form.Set(prefix+"[price_data][product_data][name]", product.Name)
-		totalCents += product.PriceCents * qty
-		productsSnapshot = append(productsSnapshot, map[string]interface{}{"id": product.ID, "name": product.Name, "price_cents": product.PriceCents})
-		quantitiesSnapshot = append(quantitiesSnapshot, map[string]interface{}{"id": product.ID, "quantity": qty})
+		form.Set(prefix+"[price_data][unit_amount]", strconv.FormatInt(priceCents, 10))
+		form.Set(prefix+"[price_data][product_data][name]", name)
+		totalCents += priceCents * qty
+		productsSnapshot = append(productsSnapshot, map[string]interface{}{"id": id, "name": name, "price_cents": priceCents})
+		quantitiesSnapshot = append(quantitiesSnapshot, map[string]interface{}{"id": id, "quantity": qty})
 		lineIndex++
 	}
 
@@ -583,9 +628,21 @@ func (rt *_router) getAdminBarOverview(w http.ResponseWriter, r *http.Request, c
 	} else {
 		resp.LatestOrders = orders
 	}
-	for _, p := range barProductsCatalog {
-		if qty := productQty[p.ID]; qty > 0 {
-			resp.TopProducts = append(resp.TopProducts, map[string]interface{}{"id": p.ID, "name": p.Name, "qty": qty})
+	productNames := map[string]string{}
+	for _, o := range orders {
+		var productRows []map[string]interface{}
+		_ = json.Unmarshal([]byte(o.ProductsJSON), &productRows)
+		for _, row := range productRows {
+			id, _ := row["id"].(string)
+			name, _ := row["name"].(string)
+			if strings.TrimSpace(id) != "" && strings.TrimSpace(name) != "" {
+				productNames[id] = name
+			}
+		}
+	}
+	for id, qty := range productQty {
+		if qty > 0 {
+			resp.TopProducts = append(resp.TopProducts, map[string]interface{}{"id": id, "name": productNames[id], "qty": qty})
 		}
 	}
 	_ = json.NewEncoder(w).Encode(resp)

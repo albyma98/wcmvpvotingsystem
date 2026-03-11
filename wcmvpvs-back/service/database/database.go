@@ -786,6 +786,24 @@ type ShopProduct struct {
 	PriceCents  int    `json:"price_cents"`
 	ImageURL    string `json:"image_url"`
 	CreatedAt   string `json:"created_at"`
+	DeletedAt   string `json:"deleted_at,omitempty"`
+}
+
+type BarMenu struct {
+	ID          int           `json:"id"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	PriceCents  int           `json:"price_cents"`
+	CreatedAt   string        `json:"created_at"`
+	DeletedAt   string        `json:"deleted_at,omitempty"`
+	Items       []BarMenuItem `json:"items,omitempty"`
+}
+
+type BarMenuItem struct {
+	ID        int `json:"id"`
+	MenuID    int `json:"menu_id"`
+	ProductID int `json:"product_id"`
+	Quantity  int `json:"quantity"`
 }
 
 type ShopOrder struct {
@@ -962,6 +980,10 @@ type AppDatabase interface {
 	ListShopProducts() ([]ShopProduct, error)
 	GetShopProduct(id int) (ShopProduct, error)
 	CreateShopProduct(product ShopProduct) (ShopProduct, error)
+	SoftDeleteShopProduct(id int) error
+	CreateBarMenu(menu BarMenu) (BarMenu, error)
+	ListBarMenus(includeDeleted bool) ([]BarMenu, error)
+	SoftDeleteBarMenu(id int) error
 	ListShopOrders() ([]ShopOrder, error)
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
 	CreateBarOrder(order BarOrder) (BarOrder, error)
@@ -1854,8 +1876,12 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 		return nil, fmt.Errorf("error verifying shop_products table: %w", err)
 	}
 
+	_, _ = db.Exec(`ALTER TABLE shop_products ADD COLUMN deleted_at TEXT`)
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_products_name ON shop_products(name)`); err != nil {
 		return nil, fmt.Errorf("error ensuring shop_products name index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_products_deleted_at ON shop_products(deleted_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring shop_products deleted_at index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_orders';`).Scan(&tableName)
@@ -1900,6 +1926,52 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_order_items_product ON shop_order_items(product_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring shop_order_items product index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_menus';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE bar_menus (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        price_cents INTEGER NOT NULL,
+        deleted_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating bar_menus table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying bar_menus table: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_menus_name ON bar_menus(name)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_menus name index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_menus_deleted_at ON bar_menus(deleted_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_menus deleted_at index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_menu_items';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE bar_menu_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        menu_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY (menu_id) REFERENCES bar_menus(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES shop_products(id)
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating bar_menu_items table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying bar_menu_items table: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_menu_items_menu ON bar_menu_items(menu_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_menu_items menu index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_menu_items_product ON bar_menu_items(product_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_menu_items product index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_orders';`).Scan(&tableName)
@@ -5379,7 +5451,7 @@ func (db *appdbimpl) loadFeedbackCounts(eventID int, query string, counts map[st
 }
 
 func (db *appdbimpl) ListShopProducts() ([]ShopProduct, error) {
-	rows, err := db.c.Query(`SELECT id, name, description, price_cents, image_url, IFNULL(created_at, '') FROM shop_products ORDER BY id ASC`)
+	rows, err := db.c.Query(`SELECT id, name, description, price_cents, image_url, IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM shop_products WHERE deleted_at IS NULL OR TRIM(deleted_at) = '' ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -5388,7 +5460,7 @@ func (db *appdbimpl) ListShopProducts() ([]ShopProduct, error) {
 	var products []ShopProduct
 	for rows.Next() {
 		var product ShopProduct
-		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &product.PriceCents, &product.ImageURL, &product.CreatedAt); err != nil {
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &product.PriceCents, &product.ImageURL, &product.CreatedAt, &product.DeletedAt); err != nil {
 			return nil, err
 		}
 		products = append(products, product)
@@ -5407,8 +5479,8 @@ func (db *appdbimpl) GetShopProduct(id int) (ShopProduct, error) {
 	}
 
 	var product ShopProduct
-	err := db.c.QueryRow(`SELECT id, name, description, price_cents, image_url, IFNULL(created_at, '') FROM shop_products WHERE id = ?`, id).
-		Scan(&product.ID, &product.Name, &product.Description, &product.PriceCents, &product.ImageURL, &product.CreatedAt)
+	err := db.c.QueryRow(`SELECT id, name, description, price_cents, image_url, IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM shop_products WHERE id = ? AND (deleted_at IS NULL OR TRIM(deleted_at) = '')`, id).
+		Scan(&product.ID, &product.Name, &product.Description, &product.PriceCents, &product.ImageURL, &product.CreatedAt, &product.DeletedAt)
 	if err != nil {
 		return ShopProduct{}, err
 	}
@@ -5447,11 +5519,141 @@ func (db *appdbimpl) CreateShopProduct(product ShopProduct) (ShopProduct, error)
 		ImageURL:    imageURL,
 	}
 
-	if err := db.c.QueryRow(`SELECT IFNULL(created_at, '') FROM shop_products WHERE id = ?`, created.ID).Scan(&created.CreatedAt); err != nil {
+	if err := db.c.QueryRow(`SELECT IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM shop_products WHERE id = ?`, created.ID).Scan(&created.CreatedAt, &created.DeletedAt); err != nil {
 		return ShopProduct{}, err
 	}
 
 	return created, nil
+}
+
+func (db *appdbimpl) SoftDeleteShopProduct(id int) error {
+	if id <= 0 {
+		return sql.ErrNoRows
+	}
+	res, err := db.c.Exec(`UPDATE shop_products SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND (deleted_at IS NULL OR TRIM(deleted_at) = '')`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (db *appdbimpl) CreateBarMenu(menu BarMenu) (BarMenu, error) {
+	name := strings.TrimSpace(menu.Name)
+	if name == "" {
+		return BarMenu{}, fmt.Errorf("menu name is required")
+	}
+	if menu.PriceCents <= 0 {
+		return BarMenu{}, fmt.Errorf("menu price must be greater than zero")
+	}
+	if len(menu.Items) == 0 {
+		return BarMenu{}, fmt.Errorf("menu must contain at least one item")
+	}
+	tx, err := db.c.Begin()
+	if err != nil {
+		return BarMenu{}, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`INSERT INTO bar_menus (name, description, price_cents) VALUES (?, ?, ?)`, name, strings.TrimSpace(menu.Description), menu.PriceCents)
+	if err != nil {
+		return BarMenu{}, err
+	}
+	menuID64, err := res.LastInsertId()
+	if err != nil {
+		return BarMenu{}, err
+	}
+	menuID := int(menuID64)
+	createdItems := make([]BarMenuItem, 0, len(menu.Items))
+	for _, item := range menu.Items {
+		if item.ProductID <= 0 || item.Quantity <= 0 {
+			return BarMenu{}, fmt.Errorf("invalid menu item")
+		}
+		var exists int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM shop_products WHERE id = ? AND (deleted_at IS NULL OR TRIM(deleted_at) = '')`, item.ProductID).Scan(&exists); err != nil {
+			return BarMenu{}, err
+		}
+		if exists == 0 {
+			return BarMenu{}, sql.ErrNoRows
+		}
+		itemRes, err := tx.Exec(`INSERT INTO bar_menu_items (menu_id, product_id, quantity) VALUES (?, ?, ?)`, menuID, item.ProductID, item.Quantity)
+		if err != nil {
+			return BarMenu{}, err
+		}
+		itemID, _ := itemRes.LastInsertId()
+		createdItems = append(createdItems, BarMenuItem{ID: int(itemID), MenuID: menuID, ProductID: item.ProductID, Quantity: item.Quantity})
+	}
+	if err := tx.Commit(); err != nil {
+		return BarMenu{}, err
+	}
+	created := BarMenu{ID: menuID, Name: name, Description: strings.TrimSpace(menu.Description), PriceCents: menu.PriceCents, Items: createdItems}
+	_ = db.c.QueryRow(`SELECT IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM bar_menus WHERE id = ?`, menuID).Scan(&created.CreatedAt, &created.DeletedAt)
+	return created, nil
+}
+
+func (db *appdbimpl) ListBarMenus(includeDeleted bool) ([]BarMenu, error) {
+	query := `SELECT id, name, IFNULL(description, ''), price_cents, IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM bar_menus`
+	if !includeDeleted {
+		query += ` WHERE deleted_at IS NULL OR TRIM(deleted_at) = ''`
+	}
+	query += ` ORDER BY id ASC`
+	rows, err := db.c.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	menus := []BarMenu{}
+	for rows.Next() {
+		var m BarMenu
+		if err := rows.Scan(&m.ID, &m.Name, &m.Description, &m.PriceCents, &m.CreatedAt, &m.DeletedAt); err != nil {
+			return nil, err
+		}
+		itemRows, err := db.c.Query(`SELECT id, menu_id, product_id, quantity FROM bar_menu_items WHERE menu_id = ? ORDER BY id ASC`, m.ID)
+		if err != nil {
+			return nil, err
+		}
+		for itemRows.Next() {
+			var it BarMenuItem
+			if err := itemRows.Scan(&it.ID, &it.MenuID, &it.ProductID, &it.Quantity); err != nil {
+				itemRows.Close()
+				return nil, err
+			}
+			m.Items = append(m.Items, it)
+		}
+		if err := itemRows.Err(); err != nil {
+			itemRows.Close()
+			return nil, err
+		}
+		itemRows.Close()
+		menus = append(menus, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return menus, nil
+}
+
+func (db *appdbimpl) SoftDeleteBarMenu(id int) error {
+	if id <= 0 {
+		return sql.ErrNoRows
+	}
+	res, err := db.c.Exec(`UPDATE bar_menus SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND (deleted_at IS NULL OR TRIM(deleted_at) = '')`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (db *appdbimpl) ListShopOrders() ([]ShopOrder, error) {
