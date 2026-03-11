@@ -139,26 +139,59 @@
     <div v-else-if="activeTab==='menu'" class="stacked-section">
       <header class="simple-header">
         <h3>Menu bar</h3>
-        <p class="muted">Gestisci in modo rapido i prodotti venduti al banco.</p>
+        <p class="muted">Crea/elimina prodotti e crea pacchetti menù scontati.</p>
       </header>
+
+      <article class="info-card">
+        <h4>Nuovo prodotto</h4>
+        <div class="filter-grid">
+          <label>Nome<input v-model="newProduct.name" class="input" type="text" /></label>
+          <label>Prezzo (€)<input v-model.number="newProduct.priceEuro" class="input" type="number" min="0" step="0.01" /></label>
+          <label>Descrizione<input v-model="newProduct.description" class="input" type="text" /></label>
+        </div>
+        <button class="btn primary" type="button" @click="createProduct">Crea prodotto</button>
+      </article>
 
       <div class="menu-grid">
         <article v-for="product in productCards" :key="product.id" class="menu-card">
           <h4>{{ product.name }}</h4>
           <p class="menu-card__price">€ {{ euro(product.price_cents) }}</p>
-          <div class="menu-card__badges">
-            <span class="badge" :class="product.active ? 'badge--ok' : 'badge--alert'">{{ product.active ? 'Attivo' : 'Non attivo' }}</span>
-            <span class="badge" :class="product.available ? 'badge--ok' : 'badge--wait'">{{ product.available ? 'Disponibile' : 'Esaurito' }}</span>
-          </div>
           <p class="muted">{{ product.description || 'Prodotto bar' }}</p>
           <div class="menu-card__actions">
-            <button class="btn outline" type="button" @click="toggleProductActive(product.id)">{{ product.active ? 'Disattiva' : 'Attiva' }}</button>
-            <button class="btn" :class="product.available ? 'danger' : 'primary'" type="button" @click="setProductAvailability(product.id, !product.available)">
-              {{ product.available ? 'Segna esaurito' : 'Rendi disponibile' }}
-            </button>
+            <button class="btn danger" type="button" @click="deleteProduct(product.id)">Elimina definitivamente</button>
           </div>
         </article>
       </div>
+
+      <article class="info-card">
+        <h4>Nuovo menù (pacchetto)</h4>
+        <div class="filter-grid">
+          <label>Nome<input v-model="newMenu.name" class="input" type="text" /></label>
+          <label>Prezzo menù (€)<input v-model.number="newMenu.priceEuro" class="input" type="number" min="0" step="0.01" /></label>
+          <label>Descrizione<input v-model="newMenu.description" class="input" type="text" /></label>
+        </div>
+        <div class="simple-list">
+          <label v-for="product in productCards" :key="`menu-item-${product.id}`" class="setting-row">
+            <input type="checkbox" :checked="isMenuProductSelected(product.id)" @change="toggleMenuProduct(product.id, $event.target.checked)" />
+            {{ product.name }}
+            <input class="input" type="number" min="1" style="max-width:90px" :disabled="!isMenuProductSelected(product.id)" :value="menuQty(product.id)" @input="setMenuQty(product.id, $event.target.value)" />
+          </label>
+        </div>
+        <button class="btn primary" type="button" @click="createMenu">Crea menù</button>
+      </article>
+
+      <article class="info-card">
+        <h4>Menù esistenti</h4>
+        <div class="simple-list">
+          <div v-for="menu in barMenus" :key="`bar-menu-${menu.id}`" class="simple-list__row">
+            <strong>{{ menu.name }}</strong>
+            <span>€ {{ euro(menu.price_cents) }}</span>
+            <span>{{ menu.description || '—' }}</span>
+            <span>{{ (menu.items || []).length }} prodotti</span>
+            <button class="btn danger" type="button" @click="deleteMenu(menu.id)">Elimina definitivamente</button>
+          </div>
+        </div>
+      </article>
     </div>
 
     <div v-else-if="activeTab==='quick'" class="stacked-section">
@@ -362,6 +395,9 @@ const selectedOrder = ref(null);
 const lastRefreshAt = ref(null);
 const productsCatalog = ref([]);
 const productState = ref({});
+const barMenus = ref([]);
+const newProduct = ref({ name: '', description: '', priceEuro: 0 });
+const newMenu = ref({ name: '', description: '', priceEuro: 0, items: {} });
 const historyDate = ref('');
 const historyStatus = ref('');
 const historySearch = ref('');
@@ -542,13 +578,18 @@ const lastRefreshLabel = computed(() => {
 });
 
 async function loadProducts() {
-  const { data } = await apiClient.get('/bar/products');
+  const { data } = await apiClient.get('/admin/bar/products', props.authHeaders);
   productsCatalog.value = Array.isArray(data) ? data : [];
   const next = {};
   productsCatalog.value.forEach((product) => {
     next[product.id] = productState.value[product.id] || { active: true, available: true };
   });
   productState.value = next;
+}
+
+async function loadMenus() {
+  const { data } = await apiClient.get('/admin/bar/menus', props.authHeaders);
+  barMenus.value = Array.isArray(data) ? data : [];
 }
 
 async function load() {
@@ -577,12 +618,63 @@ async function setStatus(orderId, status) {
   await load();
 }
 
-function toggleProductActive(productId) {
-  const prev = productState.value[productId] || { active: true, available: true };
-  productState.value = {
-    ...productState.value,
-    [productId]: { ...prev, active: !prev.active },
+async function createProduct() {
+  const payload = {
+    name: String(newProduct.value.name || '').trim(),
+    description: String(newProduct.value.description || '').trim(),
+    price_cents: Math.round(Number(newProduct.value.priceEuro || 0) * 100),
+    image_url: '',
   };
+  if (!payload.name || payload.price_cents <= 0) return;
+  await apiClient.post('/admin/bar/products', payload, props.authHeaders);
+  newProduct.value = { name: '', description: '', priceEuro: 0 };
+  await loadProducts();
+}
+
+async function deleteProduct(productId) {
+  await apiClient.delete(`/admin/bar/products/${productId}`, props.authHeaders);
+  await Promise.all([loadProducts(), loadMenus()]);
+}
+
+function isMenuProductSelected(productId) {
+  return Number(newMenu.value.items[productId] || 0) > 0;
+}
+
+function toggleMenuProduct(productId, checked) {
+  newMenu.value.items = {
+    ...newMenu.value.items,
+    [productId]: checked ? Math.max(1, Number(newMenu.value.items[productId] || 1)) : 0,
+  };
+}
+
+function setMenuQty(productId, value) {
+  const qty = Math.max(1, Number(value || 1));
+  newMenu.value.items = { ...newMenu.value.items, [productId]: qty };
+}
+
+function menuQty(productId) {
+  return Math.max(1, Number(newMenu.value.items[productId] || 1));
+}
+
+async function createMenu() {
+  const items = Object.entries(newMenu.value.items)
+    .filter(([, qty]) => Number(qty) > 0)
+    .map(([productId, qty]) => ({ product_id: Number(productId), quantity: Number(qty) }));
+  const payload = {
+    name: String(newMenu.value.name || '').trim(),
+    description: String(newMenu.value.description || '').trim(),
+    price_cents: Math.round(Number(newMenu.value.priceEuro || 0) * 100),
+    items,
+  };
+  if (!payload.name || payload.price_cents <= 0 || !payload.items.length) return;
+  await apiClient.post('/admin/bar/menus', payload, props.authHeaders);
+  newMenu.value = { name: '', description: '', priceEuro: 0, items: {} };
+  await loadMenus();
+}
+
+async function deleteMenu(menuId) {
+  await apiClient.delete(`/admin/bar/menus/${menuId}`, props.authHeaders);
+  await loadMenus();
 }
 
 function setProductAvailability(productId, available) {
@@ -748,7 +840,7 @@ function closeOrderDetail() {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadProducts()]);
+  await Promise.all([load(), loadProducts(), loadMenus()]);
   refreshTimer = window.setInterval(() => {
     if (settings.value.autoRefreshLive) {
       load();
