@@ -59,6 +59,7 @@
               <div class="text-center">
                 <p id="wallet-coin-target" class="mini-feature__coins">🪙 {{ totalCoins }}</p>
                 <p v-if="coinBoostActive" class="mini-feature__boost">BOOST x2 · {{ coinBoostCountdownLabel }}</p>
+                <p v-if="nextGameMultiplier > 1" class="mini-feature__boost mini-feature__boost--next">x{{ nextGameMultiplier }} prossima vincita</p>
               </div>
             </div>
             <button type="button" class="mini-feature__cta mini-feature__cta--earn" @click.stop="onFeatureSelect('game-live')">
@@ -445,6 +446,10 @@
 
             <div class="flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
               <div class="mx-auto max-w-6xl">
+                <div v-if="isWheelSpinning" class="mb-4 rounded-xl border border-amber-300/40 bg-amber-300/15 px-4 py-2 text-center text-sm font-bold text-amber-100">
+                  Spin in corso... input bloccato
+                </div>
+
                 <section class="mystery-box rounded-2xl border border-violet-200/25 bg-violet-500/10 p-4 shadow-[0_10px_28px_rgba(76,29,149,0.35)]">
                   <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -455,7 +460,7 @@
                     <button
                       type="button"
                       class="mystery-box__open-btn"
-                      :disabled="isOpeningMysteryBox || !canOpenMysteryBox"
+                      :disabled="isWheelSpinning || isOpeningMysteryBox || !canOpenMysteryBox"
                       @click="openMysteryBox"
                     >
                       {{ mysteryBoxButtonLabel }}
@@ -474,11 +479,42 @@
                     <div v-if="mysteryBoxReward" class="mystery-box__reward">
                       <p class="text-xs font-bold uppercase tracking-[0.2em] text-violet-200">Hai trovato</p>
                       <p class="mt-1 text-xl font-black text-white">{{ mysteryBoxReward.label }}</p>
-                      <button type="button" class="mt-3 rounded-full border border-violet-200/40 bg-violet-400/20 px-4 py-2 text-sm font-bold text-white" :disabled="isOpeningMysteryBox || !canOpenMysteryBox" @click="openMysteryBox">
+                      <button type="button" class="mt-3 rounded-full border border-violet-200/40 bg-violet-400/20 px-4 py-2 text-sm font-bold text-white" :disabled="isWheelSpinning || isOpeningMysteryBox || !canOpenMysteryBox" @click="openMysteryBox">
                         Apri un’altra
                       </button>
                     </div>
                   </Transition>
+                </section>
+
+                <section class="wheel-card mt-4 rounded-2xl border border-amber-200/30 bg-amber-500/10 p-4 shadow-[0_10px_28px_rgba(146,64,14,0.35)]">
+                  <p class="text-center text-xs font-bold uppercase tracking-[0.2em] text-amber-200">Ruota della fortuna</p>
+                  <p class="mt-1 text-center text-sm text-amber-100">Costo spin: {{ FORTUNE_WHEEL_COST }} 🪙 · Saldo live: {{ totalCoins }} 🪙</p>
+                  <p v-if="wheelJackpotBanner" class="wheel-jackpot mt-2 text-center">JACKPOT +25 🪙</p>
+
+                  <div class="wheel-wrap mt-3">
+                    <div class="wheel-pointer" aria-hidden="true">▼</div>
+                    <div
+                      class="fortune-wheel"
+                      :class="{ 'fortune-wheel--spinning': isWheelSpinning, 'fortune-wheel--jackpot': wheelResult?.type === 'jackpot' }"
+                      :style="{ transform: `rotate(${wheelRotationDeg}deg)` }"
+                    >
+                      <span v-for="(segment, index) in wheelSegments" :key="segment.id" class="fortune-wheel__label" :style="segmentLabelStyle(index)">
+                        {{ segment.shortLabel }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="mt-4 flex justify-center">
+                    <button
+                      type="button"
+                      class="mystery-box__open-btn"
+                      :disabled="isWheelSpinning || !canSpinWheel"
+                      @click="spinFortuneWheel"
+                    >
+                      {{ isWheelSpinning ? 'Giro...' : canSpinWheel ? 'GIRA' : `Servono ${FORTUNE_WHEEL_COST} 🪙` }}
+                    </button>
+                  </div>
+                  <p v-if="wheelStatusText" class="mt-2 text-center text-sm text-slate-200">{{ wheelStatusText }}</p>
                 </section>
 
                 <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -487,6 +523,7 @@
                     :key="coupon.id"
                     type="button"
                     class="group rounded-2xl border border-white/15 bg-white/10 p-4 text-left shadow-[0_10px_28px_rgba(15,23,42,0.45)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/15"
+                    :disabled="isWheelSpinning"
                     @click="attemptRedeem(coupon.id, coupon.cost, coupon.label)"
                   >
                     <div class="flex items-start justify-between gap-2">
@@ -500,12 +537,34 @@
                     <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-emerald-300">Riscatta</p>
                   </button>
                 </div>
+
               </div>
             </div>
           </div>
         </div>
       </Transition>
     </Teleport>
+
+    <Teleport to="body">
+      <Transition name="earn-modal-fade">
+        <div
+          v-if="isWheelResultModalOpen"
+          class="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 px-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div class="w-full max-w-md rounded-2xl border border-white/20 bg-slate-900 p-5 text-center">
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-amber-200">Risultato spin</p>
+            <h3 class="mt-2 text-2xl font-black text-white">{{ wheelResult?.label }}</h3>
+            <p class="mt-2 text-sm text-slate-300">{{ wheelResultMessage }}</p>
+            <button type="button" class="mt-4 w-full rounded-full bg-amber-400 px-4 py-3 font-black text-slate-900" @click="closeWheelResultModal">
+              Gira ancora
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
 
     <EventFeedbackModal
       v-model="isFeedbackModalOpen"
@@ -562,11 +621,15 @@ const rewardLabelMap = {
 const MYSTERY_BOX_COST = 10;
 const MYSTERY_BOX_COOLDOWN_MS = 2 * 60 * 1000;
 const COIN_BOOST_DURATION_MS = 10 * 60 * 1000;
+const FORTUNE_WHEEL_COST = 6;
+const WHEEL_SEGMENT_DEG = 45;
+const WHEEL_SPINS = 5;
 const storageKeys = {
   wallet: 'wallet:coins',
   coinBoostActive: 'coinBoostActive',
   coinBoostEndTime: 'coinBoostEndTime',
   freeRetry: 'freeRetry',
+  nextGameMultiplier: 'nextGameMultiplier',
   mysteryBoxCooldownEndTime: 'mysteryBoxCooldownEndTime',
 };
 const mysteryRewards = [
@@ -575,6 +638,15 @@ const mysteryRewards = [
   { id: 'coins-20', type: 'coins', amount: 20, label: '+20 monete' },
   { id: 'boost', type: 'boost', label: 'BOOST MONETE 10 MINUTI' },
   { id: 'free-retry', type: 'freeRetry', label: 'RETRY GRATIS MINIGIOCO' },
+];
+const wheelSegments = [
+  { id: 'coins-3', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '+3', weight: 24 },
+  { id: 'coins-5', type: 'coins', amount: 5, label: '+5 monete', shortLabel: '+5', weight: 20 },
+  { id: 'coins-8', type: 'coins', amount: 8, label: '+8 monete', shortLabel: '+8', weight: 16 },
+  { id: 'coins-12', type: 'coins', amount: 12, label: '+12 monete', shortLabel: '+12', weight: 11 },
+  { id: 'x2-next-win', type: 'nextMultiplier', amount: 2, label: 'x2 prossima vincita minigioco', shortLabel: 'x2', weight: 10 },
+  { id: 'free-retry-wheel', type: 'freeRetry', label: 'Retry gratis minigioco', shortLabel: 'Retry', weight: 8 },
+  { id: 'jackpot-25', type: 'jackpot', amount: 25, label: 'JACKPOT +25 monete', shortLabel: 'JACKPOT', weight: 3 },
 ];
 
 const props = defineProps({
@@ -753,6 +825,13 @@ const coinBoostActive = ref(false);
 const coinBoostEndTime = ref(0);
 const boostTick = ref(Date.now());
 const freeRetry = ref(0);
+const nextGameMultiplier = ref(1);
+const isWheelSpinning = ref(false);
+const wheelRotationDeg = ref(0);
+const wheelStatusText = ref('');
+const wheelResult = ref(null);
+const isWheelResultModalOpen = ref(false);
+const wheelJackpotBanner = ref(false);
 const isFeedbackModalOpen = ref(false);
 const hasSubmittedFeedback = ref(false);
 const sponsors = ref([]);
@@ -792,11 +871,19 @@ const mysteryBoxCooldownLabel = computed(() => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 });
 const mysteryBoxAnimationClass = computed(() => `mystery-box__chest--${mysteryBoxStep.value}`);
+const canSpinWheel = computed(() => totalCoins.value >= FORTUNE_WHEEL_COST);
 const mysteryBoxButtonLabel = computed(() => {
   if (isOpeningMysteryBox.value) return 'Apertura...';
   if (isMysteryBoxCooldownActive.value) return `Attendi ${mysteryBoxCooldownLabel.value}`;
   if (!canOpenMysteryBox.value) return `Servono ${MYSTERY_BOX_COST} 🪙`;
   return 'APRI';
+});
+const wheelResultMessage = computed(() => {
+  if (!wheelResult.value) return '';
+  if (wheelResult.value.type === 'coins' || wheelResult.value.type === 'jackpot') return 'Monete accreditate subito nel wallet.';
+  if (wheelResult.value.type === 'nextMultiplier') return 'Badge attivo: bonus valido per la prossima vittoria minigioco.';
+  if (wheelResult.value.type === 'freeRetry') return 'Il prossimo retry dopo una sconfitta sarà gratuito.';
+  return '';
 });
 
 const profileAvatarUrl = computed(() => {
@@ -886,6 +973,7 @@ function persistPowerUps() {
   window.localStorage.setItem(storageKeys.coinBoostActive, coinBoostActive.value ? '1' : '0');
   window.localStorage.setItem(storageKeys.coinBoostEndTime, String(coinBoostEndTime.value || 0));
   window.localStorage.setItem(storageKeys.freeRetry, String(Math.max(0, freeRetry.value)));
+  window.localStorage.setItem(storageKeys.nextGameMultiplier, String(Math.max(1, nextGameMultiplier.value)));
   window.localStorage.setItem(storageKeys.mysteryBoxCooldownEndTime, String(mysteryBoxCooldownEndTime.value || 0));
 }
 
@@ -897,6 +985,7 @@ function hydratePowerUps() {
   const storedBoostActive = window.localStorage.getItem(storageKeys.coinBoostActive) === '1';
   const storedBoostEndTime = Number.parseInt(window.localStorage.getItem(storageKeys.coinBoostEndTime) || '0', 10);
   const storedFreeRetry = Number.parseInt(window.localStorage.getItem(storageKeys.freeRetry) || '0', 10);
+  const storedMultiplier = Number.parseInt(window.localStorage.getItem(storageKeys.nextGameMultiplier) || '1', 10);
   const storedMysteryBoxCooldownEndTime = Number.parseInt(window.localStorage.getItem(storageKeys.mysteryBoxCooldownEndTime) || '0', 10);
 
   coinBoostEndTime.value = Number.isFinite(storedBoostEndTime) ? storedBoostEndTime : 0;
@@ -906,6 +995,7 @@ function hydratePowerUps() {
   }
 
   freeRetry.value = Math.max(0, Number.isFinite(storedFreeRetry) ? storedFreeRetry : 0);
+  nextGameMultiplier.value = Math.max(1, Number.isFinite(storedMultiplier) ? storedMultiplier : 1);
   mysteryBoxCooldownEndTime.value = Number.isFinite(storedMysteryBoxCooldownEndTime)
     ? Math.max(Date.now(), storedMysteryBoxCooldownEndTime)
     : 0;
@@ -963,7 +1053,8 @@ async function addCoins(amount, options = {}) {
   const parsed = Number(amount) || 0;
   const source = options.source || 'generic';
   const shouldBoost = parsed > 0 && source === 'minigame' && coinBoostActive.value && boostRemainingMs.value > 0;
-  const finalAmount = shouldBoost ? parsed * 2 : parsed;
+  const nextMultiplier = parsed > 0 && source === 'minigame' ? Math.max(1, Number(nextGameMultiplier.value) || 1) : 1;
+  const finalAmount = parsed * (shouldBoost ? 2 : 1) * nextMultiplier;
 
   totalCoins.value = Math.max(0, totalCoins.value + finalAmount);
 
@@ -980,6 +1071,11 @@ async function addCoins(amount, options = {}) {
 
   if (!isRegisteredFan.value && props.eventId && finalAmount > 0) {
     lastEarnedCoins.value = finalAmount;
+  }
+
+  if (source === 'minigame' && parsed > 0 && nextMultiplier > 1) {
+    nextGameMultiplier.value = 1;
+    persistPowerUps();
   }
 
   if (props.eventId) {
@@ -1535,6 +1631,103 @@ async function openMysteryBox() {
   isOpeningMysteryBox.value = false;
 }
 
+function segmentLabelStyle(index) {
+  const angle = index * WHEEL_SEGMENT_DEG + WHEEL_SEGMENT_DEG / 2;
+  return {
+    transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-86px) rotate(${-angle}deg)`,
+  };
+}
+
+function pickWheelSegment() {
+  const totalWeight = wheelSegments.reduce((sum, segment) => sum + (segment.weight || 1), 0);
+  let random = Math.random() * totalWeight;
+  for (const segment of wheelSegments) {
+    random -= segment.weight || 1;
+    if (random <= 0) return segment;
+  }
+  return wheelSegments[0];
+}
+
+async function creditWheelCoins(amount) {
+  await addCoins(amount, { source: 'wheel' });
+
+  if (coinAnimationRef.value?.play && walletTargetEl.value) {
+    await coinAnimationRef.value.play({
+      fromEl: mysteryBoxEl.value || walletTargetEl.value,
+      toEl: walletTargetEl.value,
+      count: 18,
+      amount,
+    });
+  }
+}
+
+
+function triggerJackpotEffects() {
+  wheelJackpotBanner.value = true;
+  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    navigator.vibrate(600);
+  }
+  if (typeof window !== 'undefined') {
+    window.setTimeout(() => {
+      wheelJackpotBanner.value = false;
+    }, 2800);
+  }
+}
+
+async function executeWheelReward(segment) {
+  if (segment.type === 'coins' || segment.type === 'jackpot') {
+    await creditWheelCoins(segment.amount || 0);
+    if (segment.type === 'jackpot') {
+      triggerJackpotEffects();
+    }
+    return;
+  }
+
+  if (segment.type === 'nextMultiplier') {
+    nextGameMultiplier.value = 2;
+    persistPowerUps();
+    return;
+  }
+
+  if (segment.type === 'freeRetry') {
+    grantFreeRetry();
+    return;
+  }
+
+}
+
+async function spinFortuneWheel() {
+  if (isWheelSpinning.value || !canSpinWheel.value) {
+    return;
+  }
+
+  isWheelSpinning.value = true;
+  wheelStatusText.value = 'Scalo 6 monete...';
+  await addCoins(-FORTUNE_WHEEL_COST, { source: 'wheel' });
+
+  const winningSegment = pickWheelSegment();
+  const targetIndex = wheelSegments.findIndex((segment) => segment.id === winningSegment.id);
+  const targetCenter = targetIndex * WHEEL_SEGMENT_DEG + WHEEL_SEGMENT_DEG / 2;
+  const landingRotation = (360 - targetCenter) % 360;
+
+  wheelStatusText.value = 'Spin in corso...';
+  wheelRotationDeg.value += WHEEL_SPINS * 360 + landingRotation + Math.random() * 8;
+  await wait(3600);
+
+  wheelStatusText.value = 'Premio in arrivo...';
+  wheelResult.value = winningSegment;
+  await executeWheelReward(winningSegment);
+  isWheelResultModalOpen.value = true;
+  wheelStatusText.value = '';
+  isWheelSpinning.value = false;
+}
+
+function closeWheelResultModal() {
+  isWheelResultModalOpen.value = false;
+}
+
+
+
 function openSpendPreview() {
   isSpendPreviewOpen.value = true;
   mysteryBoxStep.value = 'idle';
@@ -1542,6 +1735,9 @@ function openSpendPreview() {
 }
 
 function closeSpendPreview() {
+  if (isWheelSpinning.value) {
+    return;
+  }
   isSpendPreviewOpen.value = false;
 }
 
@@ -1952,6 +2148,71 @@ function onFeatureSelect(featureId) {
   font-weight: 900;
   letter-spacing: 0.06em;
   color: #fde047;
+}
+
+.mini-feature__boost--next {
+  color: #86efac;
+}
+
+.wheel-card {
+  position: relative;
+}
+
+.wheel-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.wheel-pointer {
+  position: absolute;
+  top: -0.4rem;
+  z-index: 2;
+  color: #facc15;
+  font-size: 1.2rem;
+}
+
+.fortune-wheel {
+  position: relative;
+  height: 230px;
+  width: 230px;
+  border-radius: 9999px;
+  border: 8px solid rgba(255, 255, 255, 0.65);
+  background: conic-gradient(
+    #f59e0b 0deg 45deg,
+    #a855f7 45deg 90deg,
+    #22c55e 90deg 135deg,
+    #ef4444 135deg 180deg,
+    #14b8a6 180deg 225deg,
+    #3b82f6 225deg 270deg,
+    #f97316 270deg 315deg,
+    #eab308 315deg 360deg
+  );
+  box-shadow: 0 0 28px rgba(251, 191, 36, 0.35);
+  transition: transform 3.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fortune-wheel--jackpot {
+  box-shadow: 0 0 44px rgba(250, 204, 21, 0.95);
+}
+
+.fortune-wheel__label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  font-size: 0.7rem;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.7);
+}
+
+.wheel-jackpot {
+  border-radius: 9999px;
+  border: 1px solid rgba(252, 211, 77, 0.5);
+  background: rgba(250, 204, 21, 0.2);
+  padding: 0.25rem 0.5rem;
+  color: #fde68a;
+  font-weight: 900;
 }
 
 .mystery-box__open-btn {
