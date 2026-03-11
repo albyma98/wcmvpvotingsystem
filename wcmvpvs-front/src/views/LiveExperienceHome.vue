@@ -169,15 +169,15 @@
 
               <section v-else-if="barStep === 'products'" class="space-y-4">
                 <article v-for="product in barProductsByCategory" :key="product.id" class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <img :src="product.image" :alt="product.name" class="h-40 w-full rounded-2xl object-cover">
-                  <div class="mt-3 flex items-start justify-between gap-3">
-                    <div>
+                  <div class="flex items-start gap-3">
+                    <img :src="product.image" :alt="product.name" class="h-24 w-24 shrink-0 rounded-2xl object-cover">
+                    <div class="min-w-0 flex-1">
                       <p class="text-xl font-black">{{ product.name }}</p>
                       <p class="text-sm text-slate-500">{{ product.description || 'Ricetta del bar.' }}</p>
                       <p class="mt-2 text-lg font-bold">€ {{ (product.price_cents / 100).toFixed(2) }}</p>
                       <span v-if="product.badge" class="mt-2 inline-block rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-700">{{ product.badge }}</span>
                     </div>
-                    <button type="button" class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white" @click="openProductDetail(product.id)">Vedi</button>
+                    <button type="button" class="self-start rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white" @click="openProductDetail(product.id)">Vedi</button>
                   </div>
                 </article>
               </section>
