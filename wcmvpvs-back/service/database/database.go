@@ -780,13 +780,24 @@ type FanLeaderboardEntry struct {
 }
 
 type ShopProduct struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	PriceCents  int    `json:"price_cents"`
-	ImageURL    string `json:"image_url"`
-	CreatedAt   string `json:"created_at"`
-	DeletedAt   string `json:"deleted_at,omitempty"`
+	ID               int    `json:"id"`
+	Name             string `json:"name"`
+	Description      string `json:"description"`
+	PriceCents       int    `json:"price_cents"`
+	ImageURL         string `json:"image_url"`
+	CategoryID       int    `json:"category_id,omitempty"`
+	Category         string `json:"category,omitempty"`
+	CategoryImageURL string `json:"category_image_url,omitempty"`
+	CreatedAt        string `json:"created_at"`
+	DeletedAt        string `json:"deleted_at,omitempty"`
+}
+
+type BarCategory struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	ImageURL  string `json:"image_url"`
+	CreatedAt string `json:"created_at"`
+	DeletedAt string `json:"deleted_at,omitempty"`
 }
 
 type BarMenu struct {
@@ -980,6 +991,11 @@ type AppDatabase interface {
 	ListShopProducts() ([]ShopProduct, error)
 	GetShopProduct(id int) (ShopProduct, error)
 	CreateShopProduct(product ShopProduct) (ShopProduct, error)
+	ListBarCategories(includeDeleted bool) ([]BarCategory, error)
+	GetBarCategory(id int) (BarCategory, error)
+	CreateBarCategory(category BarCategory) (BarCategory, error)
+	UpdateBarCategory(category BarCategory) (BarCategory, error)
+	SoftDeleteBarCategory(id int) error
 	SoftDeleteShopProduct(id int) error
 	CreateBarMenu(menu BarMenu) (BarMenu, error)
 	ListBarMenus(includeDeleted bool) ([]BarMenu, error)
@@ -1883,6 +1899,30 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_products_deleted_at ON shop_products(deleted_at)`); err != nil {
 		return nil, fmt.Errorf("error ensuring shop_products deleted_at index: %w", err)
 	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_categories';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE bar_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        image_url TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TEXT
+);`
+		if _, err = db.Exec(sqlStmt); err != nil {
+			return nil, fmt.Errorf("error creating bar_categories table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying bar_categories table: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_categories_name ON bar_categories(name)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_categories name index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_categories_deleted_at ON bar_categories(deleted_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring bar_categories deleted_at index: %w", err)
+	}
+
+	_, _ = db.Exec(`ALTER TABLE shop_products ADD COLUMN category_id INTEGER`)
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_orders';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -5451,7 +5491,7 @@ func (db *appdbimpl) loadFeedbackCounts(eventID int, query string, counts map[st
 }
 
 func (db *appdbimpl) ListShopProducts() ([]ShopProduct, error) {
-	rows, err := db.c.Query(`SELECT id, name, description, price_cents, image_url, IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM shop_products WHERE deleted_at IS NULL OR TRIM(deleted_at) = '' ORDER BY id ASC`)
+	rows, err := db.c.Query(`SELECT p.id, p.name, p.description, p.price_cents, p.image_url, IFNULL(p.category_id,0), IFNULL(c.name,''), IFNULL(c.image_url,''), IFNULL(p.created_at, ''), IFNULL(p.deleted_at, '') FROM shop_products p LEFT JOIN bar_categories c ON c.id = p.category_id WHERE p.deleted_at IS NULL OR TRIM(p.deleted_at) = '' ORDER BY p.id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -5460,7 +5500,7 @@ func (db *appdbimpl) ListShopProducts() ([]ShopProduct, error) {
 	var products []ShopProduct
 	for rows.Next() {
 		var product ShopProduct
-		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &product.PriceCents, &product.ImageURL, &product.CreatedAt, &product.DeletedAt); err != nil {
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &product.PriceCents, &product.ImageURL, &product.CategoryID, &product.Category, &product.CategoryImageURL, &product.CreatedAt, &product.DeletedAt); err != nil {
 			return nil, err
 		}
 		products = append(products, product)
@@ -5479,8 +5519,8 @@ func (db *appdbimpl) GetShopProduct(id int) (ShopProduct, error) {
 	}
 
 	var product ShopProduct
-	err := db.c.QueryRow(`SELECT id, name, description, price_cents, image_url, IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM shop_products WHERE id = ? AND (deleted_at IS NULL OR TRIM(deleted_at) = '')`, id).
-		Scan(&product.ID, &product.Name, &product.Description, &product.PriceCents, &product.ImageURL, &product.CreatedAt, &product.DeletedAt)
+	err := db.c.QueryRow(`SELECT p.id, p.name, p.description, p.price_cents, p.image_url, IFNULL(p.category_id,0), IFNULL(c.name,''), IFNULL(c.image_url,''), IFNULL(p.created_at, ''), IFNULL(p.deleted_at, '') FROM shop_products p LEFT JOIN bar_categories c ON c.id = p.category_id WHERE p.id = ? AND (p.deleted_at IS NULL OR TRIM(p.deleted_at) = '')`, id).
+		Scan(&product.ID, &product.Name, &product.Description, &product.PriceCents, &product.ImageURL, &product.CategoryID, &product.Category, &product.CategoryImageURL, &product.CreatedAt, &product.DeletedAt)
 	if err != nil {
 		return ShopProduct{}, err
 	}
@@ -5500,8 +5540,13 @@ func (db *appdbimpl) CreateShopProduct(product ShopProduct) (ShopProduct, error)
 	if price <= 0 {
 		return ShopProduct{}, fmt.Errorf("product price must be greater than zero")
 	}
+	if product.CategoryID > 0 {
+		if _, err := db.GetBarCategory(product.CategoryID); err != nil {
+			return ShopProduct{}, err
+		}
+	}
 
-	res, err := db.c.Exec(`INSERT INTO shop_products (name, description, price_cents, image_url) VALUES (?, ?, ?, ?)`, name, description, price, imageURL)
+	res, err := db.c.Exec(`INSERT INTO shop_products (name, description, price_cents, image_url, category_id) VALUES (?, ?, ?, ?, ?)`, name, description, price, imageURL, product.CategoryID)
 	if err != nil {
 		return ShopProduct{}, err
 	}
@@ -5517,6 +5562,7 @@ func (db *appdbimpl) CreateShopProduct(product ShopProduct) (ShopProduct, error)
 		Description: description,
 		PriceCents:  price,
 		ImageURL:    imageURL,
+		CategoryID:  product.CategoryID,
 	}
 
 	if err := db.c.QueryRow(`SELECT IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM shop_products WHERE id = ?`, created.ID).Scan(&created.CreatedAt, &created.DeletedAt); err != nil {
@@ -5524,6 +5570,105 @@ func (db *appdbimpl) CreateShopProduct(product ShopProduct) (ShopProduct, error)
 	}
 
 	return created, nil
+}
+
+func (db *appdbimpl) ListBarCategories(includeDeleted bool) ([]BarCategory, error) {
+	query := `SELECT id, name, image_url, IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM bar_categories`
+	if !includeDeleted {
+		query += ` WHERE deleted_at IS NULL OR TRIM(deleted_at) = ''`
+	}
+	query += ` ORDER BY name ASC`
+	rows, err := db.c.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BarCategory{}
+	for rows.Next() {
+		var c BarCategory
+		if err := rows.Scan(&c.ID, &c.Name, &c.ImageURL, &c.CreatedAt, &c.DeletedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (db *appdbimpl) GetBarCategory(id int) (BarCategory, error) {
+	if id <= 0 {
+		return BarCategory{}, sql.ErrNoRows
+	}
+	var c BarCategory
+	err := db.c.QueryRow(`SELECT id, name, image_url, IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM bar_categories WHERE id = ? AND (deleted_at IS NULL OR TRIM(deleted_at) = '')`, id).Scan(&c.ID, &c.Name, &c.ImageURL, &c.CreatedAt, &c.DeletedAt)
+	if err != nil {
+		return BarCategory{}, err
+	}
+	return c, nil
+}
+
+func (db *appdbimpl) CreateBarCategory(category BarCategory) (BarCategory, error) {
+	name := strings.TrimSpace(category.Name)
+	image := strings.TrimSpace(category.ImageURL)
+	if name == "" || image == "" {
+		return BarCategory{}, fmt.Errorf("category name and image are required")
+	}
+	res, err := db.c.Exec(`INSERT INTO bar_categories (name, image_url) VALUES (?, ?)`, name, image)
+	if err != nil {
+		return BarCategory{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return BarCategory{}, err
+	}
+	created := BarCategory{ID: int(id), Name: name, ImageURL: image}
+	if err := db.c.QueryRow(`SELECT IFNULL(created_at, ''), IFNULL(deleted_at, '') FROM bar_categories WHERE id = ?`, created.ID).Scan(&created.CreatedAt, &created.DeletedAt); err != nil {
+		return BarCategory{}, err
+	}
+	return created, nil
+}
+
+func (db *appdbimpl) UpdateBarCategory(category BarCategory) (BarCategory, error) {
+	if category.ID <= 0 {
+		return BarCategory{}, sql.ErrNoRows
+	}
+	name := strings.TrimSpace(category.Name)
+	image := strings.TrimSpace(category.ImageURL)
+	if name == "" || image == "" {
+		return BarCategory{}, fmt.Errorf("category name and image are required")
+	}
+	res, err := db.c.Exec(`UPDATE bar_categories SET name = ?, image_url = ? WHERE id = ? AND (deleted_at IS NULL OR TRIM(deleted_at) = '')`, name, image, category.ID)
+	if err != nil {
+		return BarCategory{}, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return BarCategory{}, err
+	}
+	if affected == 0 {
+		return BarCategory{}, sql.ErrNoRows
+	}
+	return db.GetBarCategory(category.ID)
+}
+
+func (db *appdbimpl) SoftDeleteBarCategory(id int) error {
+	if id <= 0 {
+		return sql.ErrNoRows
+	}
+	res, err := db.c.Exec(`UPDATE bar_categories SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND (deleted_at IS NULL OR TRIM(deleted_at) = '')`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (db *appdbimpl) SoftDeleteShopProduct(id int) error {

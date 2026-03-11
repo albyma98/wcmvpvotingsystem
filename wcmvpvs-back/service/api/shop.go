@@ -34,6 +34,7 @@ type createShopProductPayload struct {
 	Description string `json:"description"`
 	PriceCents  int    `json:"price_cents"`
 	ImageURL    string `json:"image_url"`
+	CategoryID  int    `json:"category_id"`
 }
 
 func (rt *_router) listShopProducts(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
