@@ -487,34 +487,22 @@
                 </section>
 
                 <section class="wheel-card mt-4 rounded-2xl border border-amber-200/30 bg-amber-500/10 p-4 shadow-[0_10px_28px_rgba(146,64,14,0.35)]">
-                  <p class="text-center text-xs font-bold uppercase tracking-[0.2em] text-amber-200">Ruota della fortuna</p>
-                  <p class="mt-1 text-center text-sm text-amber-100">Costo spin: {{ FORTUNE_WHEEL_COST }} 🪙 · Saldo live: {{ totalCoins }} 🪙</p>
-                  <p v-if="wheelJackpotBanner" class="wheel-jackpot mt-2 text-center">JACKPOT +25 🪙</p>
-
-                  <div class="wheel-wrap mt-3">
-                    <div class="wheel-pointer" aria-hidden="true">▼</div>
-                    <div
-                      class="fortune-wheel"
-                      :class="{ 'fortune-wheel--spinning': isWheelSpinning, 'fortune-wheel--jackpot': wheelResult?.type === 'jackpot' }"
-                      :style="{ transform: `rotate(${wheelRotationDeg}deg)` }"
-                    >
-                      <span v-for="(segment, index) in wheelSegments" :key="segment.id" class="fortune-wheel__label" :style="segmentLabelStyle(index)">
-                        {{ segment.shortLabel }}
-                      </span>
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p class="text-xs font-bold uppercase tracking-[0.2em] text-amber-200">Ruota della Fortuna</p>
+                      <h3 class="mt-1 text-2xl font-black text-white">Ruota della Fortuna</h3>
+                      <p class="mt-1 text-sm text-slate-200">Gira la ruota e vinci premi.</p>
+                      <p class="mt-1 text-sm text-amber-100">Costo: {{ FORTUNE_WHEEL_COST }} monete</p>
                     </div>
-                  </div>
-
-                  <div class="mt-4 flex justify-center">
                     <button
                       type="button"
-                      class="mystery-box__open-btn"
+                      class="wheel-card__spin-btn"
                       :disabled="isWheelSpinning || !canSpinWheel"
-                      @click="spinFortuneWheel"
+                      @click="openWheelModal"
                     >
-                      {{ isWheelSpinning ? 'Giro...' : canSpinWheel ? 'GIRA' : `Servono ${FORTUNE_WHEEL_COST} 🪙` }}
+                      {{ canSpinWheel ? 'GIRA' : `Servono ${FORTUNE_WHEEL_COST} 🪙` }}
                     </button>
                   </div>
-                  <p v-if="wheelStatusText" class="mt-2 text-center text-sm text-slate-200">{{ wheelStatusText }}</p>
                 </section>
 
                 <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -548,18 +536,49 @@
     <Teleport to="body">
       <Transition name="earn-modal-fade">
         <div
-          v-if="isWheelResultModalOpen"
-          class="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 px-4"
+          v-if="isWheelModalOpen"
+          class="wheel-modal fixed inset-0 z-[160] flex items-center justify-center"
           role="dialog"
           aria-modal="true"
         >
-          <div class="w-full max-w-md rounded-2xl border border-white/20 bg-slate-900 p-5 text-center">
-            <p class="text-xs font-bold uppercase tracking-[0.2em] text-amber-200">Risultato spin</p>
-            <h3 class="mt-2 text-2xl font-black text-white">{{ wheelResult?.label }}</h3>
-            <p class="mt-2 text-sm text-slate-300">{{ wheelResultMessage }}</p>
-            <button type="button" class="mt-4 w-full rounded-full bg-amber-400 px-4 py-3 font-black text-slate-900" @click="closeWheelResultModal">
-              Gira ancora
-            </button>
+          <div class="wheel-modal__content w-full h-full px-4 py-6">
+            <div class="mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center">
+              <p class="mb-4 rounded-full border border-amber-300/40 bg-amber-300/15 px-4 py-2 text-sm font-black text-amber-100">Saldo: {{ totalCoins }} 🪙</p>
+              <div class="wheel-wrap wheel-wrap--modal" :class="{ 'wheel-wrap--result': Boolean(wheelResult) }">
+                <div class="wheel-pointer" aria-hidden="true">▼</div>
+                <div
+                  ref="wheelEl"
+                  class="fortune-wheel fortune-wheel--modal"
+                  :class="{ 'fortune-wheel--spinning': isWheelSpinning, 'fortune-wheel--jackpot': wheelResult?.type === 'jackpot' }"
+                  :style="{ transform: `rotate(${wheelRotationDeg}deg)` }"
+                >
+                  <span
+                    v-for="(segment, index) in wheelSegments"
+                    :key="segment.id"
+                    class="fortune-wheel__label"
+                    :class="{ 'fortune-wheel__label--winner': wheelWinningIndex === index }"
+                    :style="segmentLabelStyle(index)"
+                  >
+                    {{ segment.shortLabel }}
+                  </span>
+                </div>
+              </div>
+
+              <Transition name="reveal-fade">
+                <div v-if="wheelResult" class="wheel-reveal mt-6 text-center" :class="{ 'wheel-reveal--jackpot': wheelResult.type === 'jackpot' }">
+                  <p class="wheel-reveal__text">{{ wheelResultRevealLabel }}</p>
+                </div>
+              </Transition>
+
+              <div v-if="wheelResult" class="mt-6 flex w-full max-w-sm gap-3">
+                <button v-if="canSpinWheel" type="button" class="wheel-card__spin-btn flex-1" @click="spinFortuneWheel">
+                  GIRA ANCORA
+                </button>
+                <button type="button" class="wheel-modal__close-btn flex-1" @click="closeWheelModal">
+                  CHIUDI
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </Transition>
@@ -640,12 +659,13 @@ const mysteryRewards = [
   { id: 'free-retry', type: 'freeRetry', label: 'RETRY GRATIS MINIGIOCO' },
 ];
 const wheelSegments = [
-  { id: 'coins-3', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '+3', weight: 24 },
+  { id: 'coins-3-a', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '+3', weight: 24 },
   { id: 'coins-5', type: 'coins', amount: 5, label: '+5 monete', shortLabel: '+5', weight: 20 },
   { id: 'coins-8', type: 'coins', amount: 8, label: '+8 monete', shortLabel: '+8', weight: 16 },
   { id: 'coins-12', type: 'coins', amount: 12, label: '+12 monete', shortLabel: '+12', weight: 11 },
+  { id: 'free-retry-wheel', type: 'freeRetry', label: 'Retry minigioco', shortLabel: 'Retry', weight: 8 },
   { id: 'x2-next-win', type: 'nextMultiplier', amount: 2, label: 'x2 prossima vincita minigioco', shortLabel: 'x2', weight: 10 },
-  { id: 'free-retry-wheel', type: 'freeRetry', label: 'Retry gratis minigioco', shortLabel: 'Retry', weight: 8 },
+  { id: 'coins-3-b', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '+3', weight: 24 },
   { id: 'jackpot-25', type: 'jackpot', amount: 25, label: 'JACKPOT +25 monete', shortLabel: 'JACKPOT', weight: 3 },
 ];
 
@@ -784,6 +804,8 @@ const barOrderModes = [
 ];
 
 let stripeClientPromise;
+let wheelTickTimer = null;
+let wheelAudioContext = null;
 
 function ensureStripeClient() {
   const key = String(import.meta.env.VITE_STRIPE_PUBLIC_KEY || '').trim();
@@ -816,6 +838,7 @@ const totalCoins = ref(0);
 const walletTargetEl = ref(null);
 const coinAnimationRef = ref(null);
 const mysteryBoxEl = ref(null);
+const wheelEl = ref(null);
 const isOpeningMysteryBox = ref(false);
 const mysteryBoxStep = ref('idle');
 const mysteryBoxStatusText = ref('');
@@ -828,10 +851,9 @@ const freeRetry = ref(0);
 const nextGameMultiplier = ref(1);
 const isWheelSpinning = ref(false);
 const wheelRotationDeg = ref(0);
-const wheelStatusText = ref('');
 const wheelResult = ref(null);
-const isWheelResultModalOpen = ref(false);
-const wheelJackpotBanner = ref(false);
+const isWheelModalOpen = ref(false);
+const wheelWinningIndex = ref(-1);
 const isFeedbackModalOpen = ref(false);
 const hasSubmittedFeedback = ref(false);
 const sponsors = ref([]);
@@ -878,12 +900,13 @@ const mysteryBoxButtonLabel = computed(() => {
   if (!canOpenMysteryBox.value) return `Servono ${MYSTERY_BOX_COST} 🪙`;
   return 'APRI';
 });
-const wheelResultMessage = computed(() => {
+const wheelResultRevealLabel = computed(() => {
   if (!wheelResult.value) return '';
-  if (wheelResult.value.type === 'coins' || wheelResult.value.type === 'jackpot') return 'Monete accreditate subito nel wallet.';
-  if (wheelResult.value.type === 'nextMultiplier') return 'Badge attivo: bonus valido per la prossima vittoria minigioco.';
-  if (wheelResult.value.type === 'freeRetry') return 'Il prossimo retry dopo una sconfitta sarà gratuito.';
-  return '';
+  if (wheelResult.value.type === 'jackpot') return 'JACKPOT';
+  if (wheelResult.value.type === 'coins') return `+${wheelResult.value.amount || 0} MONETE`;
+  if (wheelResult.value.type === 'freeRetry') return 'RETRY MINIGIOCO';
+  if (wheelResult.value.type === 'nextMultiplier') return 'X2 PROSSIMA VINCITA';
+  return wheelResult.value.label.toUpperCase();
 });
 
 const profileAvatarUrl = computed(() => {
@@ -1403,6 +1426,7 @@ watch([isStoryModalOpen, isProfileOverlayOpen], ([storyOpen, profileOpen]) => {
 
 onBeforeUnmount(() => {
   stopLeaderboardPolling();
+  stopWheelTickLoop();
   if (typeof window !== 'undefined' && boostCountdownTimer !== null) {
     window.clearInterval(boostCountdownTimer);
     boostCountdownTimer = null;
@@ -1653,7 +1677,7 @@ async function creditWheelCoins(amount) {
 
   if (coinAnimationRef.value?.play && walletTargetEl.value) {
     await coinAnimationRef.value.play({
-      fromEl: mysteryBoxEl.value || walletTargetEl.value,
+      fromEl: wheelEl.value || walletTargetEl.value,
       toEl: walletTargetEl.value,
       count: 18,
       amount,
@@ -1662,24 +1686,50 @@ async function creditWheelCoins(amount) {
 }
 
 
-function triggerJackpotEffects() {
-  wheelJackpotBanner.value = true;
+function triggerWheelStopVibration() {
   if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-    navigator.vibrate(600);
+    navigator.vibrate(120);
   }
-  if (typeof window !== 'undefined') {
-    window.setTimeout(() => {
-      wheelJackpotBanner.value = false;
-    }, 2800);
+}
+
+
+function playWheelTick() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) {
+    return;
+  }
+  wheelAudioContext = wheelAudioContext || new AudioCtx();
+  const oscillator = wheelAudioContext.createOscillator();
+  const gain = wheelAudioContext.createGain();
+  oscillator.type = 'square';
+  oscillator.frequency.value = 920;
+  gain.gain.value = 0.02;
+  oscillator.connect(gain);
+  gain.connect(wheelAudioContext.destination);
+  oscillator.start();
+  oscillator.stop(wheelAudioContext.currentTime + 0.03);
+}
+
+function startWheelTickLoop() {
+  stopWheelTickLoop();
+  wheelTickTimer = window.setInterval(() => {
+    playWheelTick();
+  }, 120);
+}
+
+function stopWheelTickLoop() {
+  if (wheelTickTimer) {
+    window.clearInterval(wheelTickTimer);
+    wheelTickTimer = null;
   }
 }
 
 async function executeWheelReward(segment) {
   if (segment.type === 'coins' || segment.type === 'jackpot') {
     await creditWheelCoins(segment.amount || 0);
-    if (segment.type === 'jackpot') {
-      triggerJackpotEffects();
-    }
     return;
   }
 
@@ -1697,12 +1747,14 @@ async function executeWheelReward(segment) {
 }
 
 async function spinFortuneWheel() {
-  if (isWheelSpinning.value || !canSpinWheel.value) {
+  if (isWheelSpinning.value || !isWheelModalOpen.value || !canSpinWheel.value) {
     return;
   }
 
   isWheelSpinning.value = true;
-  wheelStatusText.value = 'Scalo 6 monete...';
+  wheelResult.value = null;
+  wheelWinningIndex.value = -1;
+
   await addCoins(-FORTUNE_WHEEL_COST, { source: 'wheel' });
 
   const winningSegment = pickWheelSegment();
@@ -1710,20 +1762,35 @@ async function spinFortuneWheel() {
   const targetCenter = targetIndex * WHEEL_SEGMENT_DEG + WHEEL_SEGMENT_DEG / 2;
   const landingRotation = (360 - targetCenter) % 360;
 
-  wheelStatusText.value = 'Spin in corso...';
+  startWheelTickLoop();
   wheelRotationDeg.value += WHEEL_SPINS * 360 + landingRotation + Math.random() * 8;
-  await wait(3600);
+  await wait(3800);
+  stopWheelTickLoop();
 
-  wheelStatusText.value = 'Premio in arrivo...';
+  wheelWinningIndex.value = targetIndex;
   wheelResult.value = winningSegment;
+  triggerWheelStopVibration();
   await executeWheelReward(winningSegment);
-  isWheelResultModalOpen.value = true;
-  wheelStatusText.value = '';
   isWheelSpinning.value = false;
 }
 
-function closeWheelResultModal() {
-  isWheelResultModalOpen.value = false;
+function closeWheelModal() {
+  if (isWheelSpinning.value) {
+    return;
+  }
+  isWheelModalOpen.value = false;
+}
+
+function openWheelModal() {
+  if (isWheelSpinning.value || !canSpinWheel.value) {
+    return;
+  }
+  isWheelModalOpen.value = true;
+  wheelResult.value = null;
+  wheelWinningIndex.value = -1;
+  nextTick(() => {
+    spinFortuneWheel();
+  });
 }
 
 
@@ -2158,24 +2225,52 @@ function onFeatureSelect(featureId) {
   position: relative;
 }
 
+.wheel-card__spin-btn {
+  border-radius: 9999px;
+  border: 1px solid rgba(252, 211, 77, 0.45);
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.45), rgba(180, 83, 9, 0.55));
+  padding: 0.6rem 1.25rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+.wheel-card__spin-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wheel-modal {
+  background: radial-gradient(circle at top, rgba(71, 85, 105, 0.3), rgba(2, 6, 23, 0.96) 70%);
+}
+
+.wheel-modal__content {
+  backdrop-filter: blur(2px);
+}
+
 .wheel-wrap {
   position: relative;
   display: flex;
   justify-content: center;
 }
 
+.wheel-wrap--modal {
+  height: min(70vh, 420px);
+  width: min(70vh, 420px);
+  align-items: center;
+}
+
 .wheel-pointer {
   position: absolute;
-  top: -0.4rem;
+  top: -0.5rem;
   z-index: 2;
   color: #facc15;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
 }
 
 .fortune-wheel {
   position: relative;
-  height: 230px;
-  width: 230px;
+  height: 100%;
+  width: 100%;
   border-radius: 9999px;
   border: 8px solid rgba(255, 255, 255, 0.65);
   background: conic-gradient(
@@ -2189,30 +2284,54 @@ function onFeatureSelect(featureId) {
     #eab308 315deg 360deg
   );
   box-shadow: 0 0 28px rgba(251, 191, 36, 0.35);
-  transition: transform 3.6s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 3.8s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .fortune-wheel--jackpot {
-  box-shadow: 0 0 44px rgba(250, 204, 21, 0.95);
+  box-shadow: 0 0 52px rgba(250, 204, 21, 0.95);
 }
 
 .fortune-wheel__label {
   position: absolute;
   left: 50%;
   top: 50%;
-  font-size: 0.7rem;
+  font-size: clamp(0.7rem, 2.4vw, 0.9rem);
   font-weight: 900;
   color: #fff;
   text-shadow: 0 1px 5px rgba(0, 0, 0, 0.7);
 }
 
-.wheel-jackpot {
-  border-radius: 9999px;
-  border: 1px solid rgba(252, 211, 77, 0.5);
-  background: rgba(250, 204, 21, 0.2);
-  padding: 0.25rem 0.5rem;
+.fortune-wheel__label--winner {
   color: #fde68a;
+  text-shadow: 0 0 14px rgba(250, 204, 21, 0.95);
+}
+
+.wheel-reveal {
+  border-radius: 1rem;
+  border: 1px solid rgba(252, 211, 77, 0.5);
+  background: rgba(15, 23, 42, 0.75);
+  padding: 0.8rem 1.2rem;
+  box-shadow: 0 0 20px rgba(250, 204, 21, 0.28);
+}
+
+.wheel-reveal--jackpot {
+  box-shadow: 0 0 30px rgba(250, 204, 21, 0.9);
+}
+
+.wheel-reveal__text {
+  font-size: clamp(1.5rem, 6vw, 2.5rem);
   font-weight: 900;
+  color: #fff;
+  animation: prize-bounce 0.65s ease;
+}
+
+.wheel-modal__close-btn {
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: rgba(15, 23, 42, 0.85);
+  padding: 0.6rem 1.25rem;
+  font-weight: 900;
+  color: #e2e8f0;
 }
 
 .mystery-box__open-btn {
@@ -2274,6 +2393,12 @@ function onFeatureSelect(featureId) {
 @keyframes mystery-reveal {
   from { transform: scale(0.88); opacity: 0.65; }
   to { transform: scale(1.08); opacity: 1; }
+}
+
+@keyframes prize-bounce {
+  0% { transform: scale(0.75); }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); }
 }
 
 .reveal-fade-enter-active,
@@ -2365,5 +2490,11 @@ function onFeatureSelect(featureId) {
   padding: 0.36rem 0.45rem;
   font-size: clamp(0.66rem, 1.9vw, 0.78rem);
   font-weight: 900;
+}
+@media (max-width: 640px) {
+  .wheel-wrap--modal {
+    height: min(70vh, 88vw);
+    width: min(70vh, 88vw);
+  }
 }
 </style>
