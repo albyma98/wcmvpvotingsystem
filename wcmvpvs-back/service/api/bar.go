@@ -67,6 +67,16 @@ type stripeCheckoutSessionResponse struct {
 	PaymentStatus string `json:"payment_status"`
 }
 
+func (rt *_router) listBarCategories(w http.ResponseWriter, _ *http.Request, _ reqcontext.RequestContext) {
+	categories, err := rt.db.ListBarCategories(false)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(categories)
+}
+
 func (rt *_router) listBarProducts(w http.ResponseWriter, _ *http.Request, _ reqcontext.RequestContext) {
 	products, err := rt.db.ListShopProducts()
 	if err != nil {
