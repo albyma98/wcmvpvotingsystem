@@ -1615,6 +1615,9 @@ const barProductsByCategory = computed(() => {
     if (p.category_id !== undefined && p.category_id !== null && Number(p.category_id) > 0) {
       return String(p.category_id) === String(selectedCategoryId.value);
     }
+    if (selectedBarCategory.value?.name) {
+      return String(p.category || '').trim().toLowerCase() === String(selectedBarCategory.value.name || '').trim().toLowerCase();
+    }
     return p.category === selectedCategoryId.value;
   });
 });

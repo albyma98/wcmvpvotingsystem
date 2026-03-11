@@ -148,6 +148,9 @@
           <label>Nome<input v-model="newProduct.name" class="input" type="text" /></label>
           <label>Prezzo (€)<input v-model.number="newProduct.priceEuro" class="input" type="number" min="0" step="0.01" /></label>
           <label>Descrizione<input v-model="newProduct.description" class="input" type="text" /></label>
+          <label>Immagine prodotto
+            <input class="input" type="file" accept="image/*" @change="onProductImageSelect" />
+          </label>
           <fieldset class="category-radio-group">
             <legend>Categoria</legend>
             <p v-if="!barCategories.length" class="muted">Nessuna categoria disponibile. Crea prima una categoria.</p>
@@ -157,6 +160,7 @@
             </label>
           </fieldset>
         </div>
+        <p v-if="newProduct.image_url" class="muted">Immagine prodotto selezionata ✅</p>
         <button class="btn primary" type="button" @click="createProduct">Crea prodotto</button>
       </article>
 
@@ -165,6 +169,7 @@
           <h4>{{ product.name }}</h4>
           <p class="menu-card__price">€ {{ euro(product.price_cents) }}</p>
           <p class="muted">{{ product.description || 'Prodotto bar' }}</p>
+          <img v-if="product.image_url" :src="product.image_url" :alt="product.name" class="h-24 w-full rounded object-cover" />
           <p class="muted"><strong>Categoria:</strong> {{ product.category || 'Non assegnata' }}</p>
           <div class="menu-card__actions">
             <button class="btn danger" type="button" @click="deleteProduct(product.id)">Elimina definitivamente</button>
@@ -441,7 +446,7 @@ const barMenus = ref([]);
 const barCategories = ref([]);
 const editingCategoryId = ref(0);
 const newCategory = ref({ name: '', image_url: '' });
-const newProduct = ref({ name: '', description: '', priceEuro: 0, categoryId: 0 });
+const newProduct = ref({ name: '', description: '', priceEuro: 0, categoryId: 0, image_url: '' });
 const newMenu = ref({ name: '', description: '', priceEuro: 0, items: {} });
 const historyDate = ref('');
 const historyStatus = ref('');
@@ -674,13 +679,19 @@ async function createProduct() {
     name: String(newProduct.value.name || '').trim(),
     description: String(newProduct.value.description || '').trim(),
     price_cents: Math.round(Number(newProduct.value.priceEuro || 0) * 100),
-    image_url: '',
+    image_url: String(newProduct.value.image_url || '').trim(),
     category_id: Number(newProduct.value.categoryId || 0),
   };
   if (!payload.name || payload.price_cents <= 0 || payload.category_id <= 0) return;
   await apiClient.post('/admin/bar/products', payload, props.authHeaders);
-  newProduct.value = { name: '', description: '', priceEuro: 0, categoryId: 0 };
+  newProduct.value = { name: '', description: '', priceEuro: 0, categoryId: 0, image_url: '' };
   await loadProducts();
+}
+
+async function onProductImageSelect(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  newProduct.value.image_url = await fileToDataUrl(file);
 }
 
 async function deleteProduct(productId) {
