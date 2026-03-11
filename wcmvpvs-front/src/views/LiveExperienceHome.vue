@@ -126,61 +126,173 @@
     <button
       type="button"
       class="fixed bottom-5 right-4 z-[140] inline-flex items-center gap-2 rounded-full border border-amber-200/60 bg-amber-400 px-4 py-3 text-sm font-black uppercase tracking-wide text-slate-950 shadow-[0_12px_30px_rgba(251,191,36,0.45)]"
-      @click="isBarModalOpen = true"
+      @click="openBarOrdering"
     >
       🍺 Bar
     </button>
 
     <Teleport to="body">
       <Transition name="earn-modal-fade">
-        <div v-if="isBarModalOpen" class="fixed inset-0 z-[220]" @click.self="isBarModalOpen = false">
-          <div class="absolute inset-0 bg-slate-950/85 backdrop-blur-sm" />
-          <div class="absolute inset-x-0 bottom-0 max-h-[92dvh] overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-900 p-4 text-white">
-            <div class="mb-3 flex items-center justify-between">
-              <h3 class="text-xl font-black uppercase">Bar</h3>
-              <button type="button" class="rounded-md border border-white/20 px-3 py-1 text-xs font-bold" @click="isBarModalOpen = false">Chiudi</button>
-            </div>
+        <div v-if="isBarModalOpen" class="fixed inset-0 z-[220] bg-slate-100 text-slate-900">
+          <div class="mx-auto flex h-full w-full max-w-3xl flex-col">
+            <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+              <div class="flex items-center justify-between gap-3">
+                <button v-if="barCanGoBack" type="button" class="rounded-full border border-slate-300 px-3 py-1 text-xs font-bold uppercase" @click="goBackBarStep">Indietro</button>
+                <span v-else class="w-16" />
+                <div class="text-center">
+                  <p class="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-slate-500">Bar ordering</p>
+                  <h3 class="text-base font-black sm:text-lg">{{ barStepTitle }}</h3>
+                </div>
+                <button type="button" class="rounded-full border border-slate-300 px-3 py-1 text-xs font-bold uppercase" @click="isBarModalOpen = false">Chiudi</button>
+              </div>
+            </header>
 
-            <div v-if="barOrderConfirmed" class="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-center">
-              <p class="text-lg font-black text-emerald-300">Ordine confermato ✅</p>
-              <p class="mt-2 text-sm text-emerald-100">Il tuo ordine è stato pagato e inviato al bar.</p>
-            </div>
+            <div class="flex-1 overflow-y-auto px-4 pb-28 pt-4">
+              <section v-if="barStep === 'start'" class="space-y-4">
+                <div class="text-center">
+                  <h2 class="text-4xl font-black leading-tight text-slate-900">Ordina dal BAR</h2>
+                  <p class="mt-2 text-sm text-slate-600">Ritira al banco o ricevi istruzioni per il ritiro.</p>
+                </div>
+                <article v-for="mode in barOrderModes" :key="mode.id" class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm" :class="barOrderMode === mode.id ? 'ring-2 ring-amber-400' : ''" @click="barOrderMode = mode.id">
+                  <p class="text-xs font-bold uppercase text-slate-500">{{ mode.label }}</p>
+                  <p class="mt-2 text-3xl">{{ mode.emoji }}</p>
+                </article>
+                <button type="button" class="w-full rounded-2xl bg-slate-900 py-4 text-lg font-black text-white" @click="goBarStep('categories')">Inizia ordine</button>
+              </section>
 
-            <template v-else>
-              <div class="space-y-2">
-                <article v-for="product in barProducts" :key="product.id" class="rounded-xl border border-white/15 bg-white/5 p-3">
-                  <div class="flex items-center justify-between gap-3">
+              <section v-else-if="barStep === 'categories'" class="space-y-4">
+                <article v-for="category in barCategories" :key="category.id" class="overflow-hidden rounded-3xl border border-slate-200 bg-white" @click="openBarCategory(category.id)">
+                  <div class="p-4"><p class="text-lg font-black">{{ category.name }}</p></div>
+                  <img :src="category.image" :alt="category.name" class="h-40 w-full object-cover">
+                </article>
+              </section>
+
+              <section v-else-if="barStep === 'products'" class="space-y-4">
+                <article v-for="product in barProductsByCategory" :key="product.id" class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <img :src="product.image" :alt="product.name" class="h-40 w-full rounded-2xl object-cover">
+                  <div class="mt-3 flex items-start justify-between gap-3">
                     <div>
-                      <p class="text-lg">{{ product.image_emoji }} <strong>{{ product.name }}</strong></p>
-                      <p class="text-sm text-amber-200">€ {{ (product.price_cents / 100).toFixed(2) }}</p>
+                      <p class="text-xl font-black">{{ product.name }}</p>
+                      <p class="text-sm text-slate-500">{{ product.description || 'Ricetta del bar.' }}</p>
+                      <p class="mt-2 text-lg font-bold">€ {{ (product.price_cents / 100).toFixed(2) }}</p>
+                      <span v-if="product.badge" class="mt-2 inline-block rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-700">{{ product.badge }}</span>
+                    </div>
+                    <button type="button" class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white" @click="openProductDetail(product.id)">Vedi</button>
+                  </div>
+                </article>
+              </section>
+
+              <section v-else-if="barStep === 'detail' && selectedBarProduct" class="space-y-4">
+                <img :src="selectedBarProduct.image" :alt="selectedBarProduct.name" class="h-52 w-full rounded-3xl object-cover">
+                <div class="rounded-3xl bg-white p-5">
+                  <h4 class="text-2xl font-black">{{ selectedBarProduct.name }}</h4>
+                  <p class="mt-2 text-sm text-slate-600">{{ selectedBarProduct.description || 'Seleziona varianti ed extra per completare il tuo ordine.' }}</p>
+                  <p class="mt-3 text-xl font-black">€ {{ (selectedBarProduct.price_cents / 100).toFixed(2) }}</p>
+                </div>
+                <div class="rounded-3xl bg-white p-5">
+                  <p class="text-sm font-bold uppercase text-slate-500">Extra</p>
+                  <div class="mt-3 space-y-2">
+                    <div v-for="extra in barExtras" :key="extra.id" class="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
+                      <p class="font-semibold">{{ extra.label }} (+€ {{ extra.price.toFixed(2) }})</p>
+                      <button type="button" class="rounded-lg border border-slate-300 px-3 py-1 text-xs font-bold" @click="toggleBarExtra(extra.id)">{{ selectedBarExtras.includes(extra.id) ? 'Rimuovi' : 'Aggiungi' }}</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between rounded-3xl bg-white p-5">
+                  <div class="flex items-center gap-3">
+                    <button type="button" class="h-10 w-10 rounded-full border border-slate-300 text-xl" @click="changeDetailQty(-1)">-</button>
+                    <span class="w-8 text-center text-xl font-black">{{ barDetailQty }}</span>
+                    <button type="button" class="h-10 w-10 rounded-full border border-slate-300 text-xl" @click="changeDetailQty(1)">+</button>
+                  </div>
+                  <button type="button" class="rounded-2xl bg-slate-900 px-4 py-3 font-black text-white" @click="addProductFromDetail">Aggiungi al carrello</button>
+                </div>
+              </section>
+
+              <section v-else-if="barStep === 'upsell'" class="space-y-4">
+                <h4 class="text-2xl font-black">Vuoi aggiungere patatine?</h4>
+                <article v-if="barUpsellProduct" class="rounded-3xl border border-slate-200 bg-white p-4">
+                  <img :src="barUpsellProduct.image" :alt="barUpsellProduct.name" class="h-48 w-full rounded-2xl object-cover">
+                  <div class="mt-3 flex items-center justify-between">
+                    <div>
+                      <p class="text-xl font-black">{{ barUpsellProduct.name }}</p>
+                      <p class="text-sm text-slate-500">€ {{ (barUpsellProduct.price_cents / 100).toFixed(2) }}</p>
+                    </div>
+                    <button type="button" class="rounded-xl bg-amber-400 px-4 py-2 font-black" @click="addUpsellProduct">Aggiungi</button>
+                  </div>
+                </article>
+                <button type="button" class="w-full rounded-2xl border border-slate-300 bg-white py-3 font-bold" @click="goBarStep('products')">Salta e continua</button>
+              </section>
+
+              <section v-else-if="barStep === 'cart'" class="space-y-4">
+                <article v-for="item in barCartItems" :key="item.id" class="rounded-3xl bg-white p-4">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <p class="text-lg font-black">{{ item.name }}</p>
+                      <p class="text-sm text-slate-500">€ {{ (item.price_cents / 100).toFixed(2) }}</p>
                     </div>
                     <div class="flex items-center gap-2">
-                      <button type="button" class="h-8 w-8 rounded-full border border-white/25" @click="decreaseBarQty(product.id)">-</button>
-                      <span class="w-6 text-center font-bold">{{ barCart[product.id] || 0 }}</span>
-                      <button type="button" class="h-8 w-8 rounded-full border border-white/25" @click="increaseBarQty(product.id)">+</button>
+                      <button type="button" class="h-9 w-9 rounded-full border" @click="decreaseBarQty(item.id)">-</button>
+                      <span class="w-6 text-center font-bold">{{ item.qty }}</span>
+                      <button type="button" class="h-9 w-9 rounded-full border" @click="increaseBarQty(item.id)">+</button>
+                      <button type="button" class="rounded-lg border px-2 py-1 text-xs" @click="removeBarProduct(item.id)">Rimuovi</button>
                     </div>
                   </div>
                 </article>
-              </div>
+                <div class="rounded-3xl bg-white p-4">
+                  <p class="font-semibold">Totale ordine</p>
+                  <p class="text-2xl font-black">€ {{ barOrderTotalLabel }}</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <button type="button" class="rounded-xl border border-slate-300 bg-white py-3 font-bold" @click="goBarStep('categories')">Torna al menu</button>
+                  <button type="button" class="rounded-xl bg-slate-900 py-3 font-bold text-white" @click="goBarStep('checkout')">Vai al checkout</button>
+                </div>
+              </section>
 
-              <div class="mt-4 rounded-xl border border-white/15 bg-white/5 p-3 text-sm">
-                <p><strong>Riepilogo ordine:</strong> {{ barOrderSummaryLabel }}</p>
-                <p class="mt-1 text-base font-black">Totale: € {{ barOrderTotalLabel }}</p>
-              </div>
+              <section v-else-if="barStep === 'checkout'" class="space-y-3">
+                <div class="rounded-3xl bg-white p-4">
+                  <p class="text-sm text-slate-500">Riepilogo ordine</p>
+                  <p class="mt-1 font-semibold">{{ barOrderSummaryLabel }}</p>
+                  <p class="mt-2 text-2xl font-black">€ {{ barOrderTotalLabel }}</p>
+                  <p class="mt-2 text-sm">Modalità: <strong>{{ barOrderModeLabel }}</strong></p>
+                </div>
+                <div v-if="barOrderMode === 'seat'" class="grid grid-cols-2 gap-2 text-sm">
+                  <input v-model.trim="barDelivery.sector" class="rounded-xl border border-slate-300 bg-white px-3 py-3" placeholder="Settore">
+                  <input v-model.trim="barDelivery.row" class="rounded-xl border border-slate-300 bg-white px-3 py-3" placeholder="Fila">
+                  <input v-model.trim="barDelivery.seat" class="rounded-xl border border-slate-300 bg-white px-3 py-3" placeholder="Posto">
+                  <input v-model.trim="barDelivery.notes" class="rounded-xl border border-slate-300 bg-white px-3 py-3" placeholder="Note">
+                </div>
+                <textarea v-else v-model.trim="barDelivery.notes" rows="3" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm" placeholder="Note (opzionale)"></textarea>
+                <button type="button" class="w-full rounded-2xl bg-slate-900 py-4 text-lg font-black text-white" @click="goBarStep('payment')">Vai al pagamento</button>
+              </section>
 
-              <div class="mt-4 grid grid-cols-2 gap-2 text-sm">
-                <input v-model.trim="barDelivery.sector" class="rounded-lg border border-white/20 bg-slate-800 px-3 py-2" placeholder="Settore">
-                <input v-model.trim="barDelivery.row" class="rounded-lg border border-white/20 bg-slate-800 px-3 py-2" placeholder="Fila">
-                <input v-model.trim="barDelivery.seat" class="rounded-lg border border-white/20 bg-slate-800 px-3 py-2" placeholder="Posto">
-                <input v-model.trim="barDelivery.notes" class="rounded-lg border border-white/20 bg-slate-800 px-3 py-2" placeholder="Note (opzionale)">
-              </div>
+              <section v-else-if="barStep === 'payment'" class="space-y-4">
+                <div class="rounded-3xl bg-white p-4">
+                  <p class="text-sm text-slate-500">Riepilogo ordine</p>
+                  <p class="mt-2 font-semibold">{{ barOrderSummaryLabel }}</p>
+                  <p class="mt-2 text-2xl font-black">Totale € {{ barOrderTotalLabel }}</p>
+                </div>
+                <p v-if="barCheckoutError" class="text-sm text-rose-600">{{ barCheckoutError }}</p>
+                <button type="button" class="w-full rounded-2xl bg-emerald-500 py-4 text-lg font-black text-white disabled:opacity-60" :disabled="isBarCheckoutLoading || barTotalCents <= 0" @click="startBarCheckout">
+                  {{ isBarCheckoutLoading ? 'Caricamento checkout...' : 'Conferma e paga' }}
+                </button>
+              </section>
 
-              <p v-if="barCheckoutError" class="mt-2 text-sm text-rose-300">{{ barCheckoutError }}</p>
+              <section v-else-if="barStep === 'confirmation'" class="space-y-3 rounded-3xl bg-white p-5 text-center">
+                <p class="text-2xl font-black text-emerald-600">Ordine ricevuto ✅</p>
+                <p class="text-sm">Numero ordine: <strong>#{{ barConfirmedOrderNumber }}</strong></p>
+                <p class="text-sm">Prodotti: {{ barOrderSummaryLabel }}</p>
+                <p class="text-sm">Stato ordine: <strong>Ricevuto</strong></p>
+                <p class="text-sm text-slate-600">Il tuo ordine è stato ricevuto. Ti avviseremo quando sarà pronto.</p>
+              </section>
+            </div>
 
-              <button type="button" class="mt-4 w-full rounded-xl bg-amber-400 px-4 py-3 font-black text-slate-950 disabled:opacity-60" :disabled="isBarCheckoutLoading || barTotalCents <= 0" @click="startBarCheckout">
-                {{ isBarCheckoutLoading ? 'Caricamento checkout...' : 'Paga con Stripe (Apple Pay / Google Pay / Carta)' }}
+            <div v-if="barShowCartBar" class="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white p-3">
+              <button type="button" class="mx-auto flex w-full max-w-3xl items-center justify-between rounded-2xl bg-slate-900 px-4 py-4 text-white" @click="goBarStep('cart')">
+                <span>{{ barCartCount }} articoli</span>
+                <strong>€ {{ barOrderTotalLabel }}</strong>
+                <span class="text-sm font-bold">Vai al carrello</span>
               </button>
-            </template>
+            </div>
           </div>
         </div>
       </Transition>
@@ -578,6 +690,25 @@ const barOrderConfirmed = ref(false);
 const barProducts = ref([]);
 const barCart = ref({});
 const barDelivery = ref({ sector: '', row: '', seat: '', notes: '' });
+const barStep = ref('start');
+const barStepHistory = ref([]);
+const barOrderMode = ref('counter');
+const selectedCategoryId = ref('all');
+const selectedBarProductId = ref(null);
+const barDetailQty = ref(1);
+const selectedBarExtras = ref([]);
+const barConfirmedOrderNumber = ref('—');
+
+const barExtras = [
+  { id: 'fries', label: 'Aggiungi patatine', price: 2.5 },
+  { id: 'drink', label: 'Aggiungi bibita', price: 2 },
+  { id: 'sauce', label: 'Aggiungi salsa', price: 0.5 },
+];
+
+const barOrderModes = [
+  { id: 'counter', label: 'Ritiro al banco', emoji: '🥤' },
+  { id: 'seat', label: 'Consegna al posto', emoji: '🪑' },
+];
 
 let stripeClientPromise;
 
@@ -1426,28 +1557,137 @@ async function attemptRedeem(rewardKey, costCoins, rewardLabel) {
 }
 
 
-const barTotalCents = computed(() => {
-  return barProducts.value.reduce((sum, product) => {
-    const qty = Number(barCart.value?.[product.id] || 0);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      return sum;
+const barCategoryImageMap = {
+  Panini: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=1000&q=80',
+  Bibite: 'https://images.unsplash.com/photo-1596803244618-8ea0578f81f0?auto=format&fit=crop&w=1000&q=80',
+  Patatine: 'https://images.unsplash.com/photo-1576107232684-1279f390859f?auto=format&fit=crop&w=1000&q=80',
+  Snack: 'https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1000&q=80',
+  Dolci: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=1000&q=80',
+  'Menu combo': 'https://images.unsplash.com/photo-1561758033-d89a9ad46330?auto=format&fit=crop&w=1000&q=80',
+};
+
+const productImageFallback = 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1000&q=80';
+
+const normalizedBarProducts = computed(() => {
+  return barProducts.value.map((product) => {
+    const name = String(product?.name || 'Prodotto BAR');
+    const lower = name.toLowerCase();
+    let category = 'Snack';
+    if (lower.includes('panin') || lower.includes('burger') || lower.includes('hot dog')) category = 'Panini';
+    else if (lower.includes('cola') || lower.includes('bibita') || lower.includes('acqua') || lower.includes('drink')) category = 'Bibite';
+    else if (lower.includes('patatin')) category = 'Patatine';
+    else if (lower.includes('dolc') || lower.includes('cookie') || lower.includes('torta')) category = 'Dolci';
+    else if (lower.includes('menu') || lower.includes('combo')) category = 'Menu combo';
+
+    const image = product?.image_url || product?.image || barCategoryImageMap[category] || productImageFallback;
+    const badge = Number(product?.is_best_seller) ? 'Più venduto' : (lower.includes('menu') ? 'Combo' : 'Più venduto');
+    return { ...product, category, image, badge };
+  });
+});
+
+const barCategories = computed(() => {
+  const map = new Map();
+  for (const p of normalizedBarProducts.value) {
+    if (!map.has(p.category)) {
+      map.set(p.category, { id: p.category, name: p.category, image: barCategoryImageMap[p.category] || p.image || productImageFallback });
     }
+  }
+  return map.size ? Array.from(map.values()) : [
+    { id: 'Panini', name: 'Panini', image: barCategoryImageMap.Panini },
+    { id: 'Bibite', name: 'Bibite', image: barCategoryImageMap.Bibite },
+    { id: 'Patatine', name: 'Patatine', image: barCategoryImageMap.Patatine },
+    { id: 'Snack', name: 'Snack', image: barCategoryImageMap.Snack },
+    { id: 'Dolci', name: 'Dolci', image: barCategoryImageMap.Dolci },
+    { id: 'Menu combo', name: 'Menu combo', image: barCategoryImageMap['Menu combo'] },
+  ];
+});
+
+const barProductsByCategory = computed(() => {
+  return normalizedBarProducts.value.filter((p) => selectedCategoryId.value === 'all' || p.category === selectedCategoryId.value);
+});
+
+const selectedBarProduct = computed(() => normalizedBarProducts.value.find((p) => String(p.id) === String(selectedBarProductId.value)) || null);
+const barUpsellProduct = computed(() => normalizedBarProducts.value.find((p) => p.category === 'Patatine') || normalizedBarProducts.value[0] || null);
+
+const barCartCount = computed(() => Object.values(barCart.value).reduce((sum, q) => sum + Math.max(0, Number(q) || 0), 0));
+const barCartItems = computed(() => {
+  return normalizedBarProducts.value
+    .map((p) => ({ ...p, qty: Math.max(0, Number(barCart.value?.[p.id] || 0)) }))
+    .filter((p) => p.qty > 0);
+});
+
+const barTotalCents = computed(() => {
+  return normalizedBarProducts.value.reduce((sum, product) => {
+    const qty = Number(barCart.value?.[product.id] || 0);
+    if (!Number.isFinite(qty) || qty <= 0) return sum;
     return sum + qty * Number(product.price_cents || 0);
   }, 0);
 });
 
 const barOrderTotalLabel = computed(() => (barTotalCents.value / 100).toFixed(2));
+const barOrderModeLabel = computed(() => (barOrderMode.value === 'seat' ? 'Consegna al posto' : 'Ritiro al banco'));
+const barStepTitle = computed(() => ({
+  start: 'Inizio ordine',
+  categories: 'Categorie',
+  products: selectedCategoryId.value || 'Prodotti',
+  detail: 'Dettaglio prodotto',
+  upsell: 'Suggerimenti',
+  cart: 'Carrello',
+  checkout: 'Checkout',
+  payment: 'Pagamento',
+  confirmation: 'Conferma ordine',
+}[barStep.value] || 'Ordina dal BAR'));
+const barCanGoBack = computed(() => !['start', 'confirmation'].includes(barStep.value));
+const barShowCartBar = computed(() => !['start', 'confirmation', 'cart', 'checkout', 'payment'].includes(barStep.value) && barCartCount.value > 0);
 
 const barOrderSummaryLabel = computed(() => {
   const labels = [];
-  for (const product of barProducts.value) {
+  for (const product of normalizedBarProducts.value) {
     const qty = Number(barCart.value?.[product.id] || 0);
-    if (qty > 0) {
-      labels.push(`${product.name} x${qty}`);
-    }
+    if (qty > 0) labels.push(`${product.name} x${qty}`);
   }
   return labels.length ? labels.join(' · ') : 'Nessun prodotto selezionato';
 });
+
+function goBarStep(nextStep) {
+  if (barStep.value !== nextStep) barStepHistory.value.push(barStep.value);
+  barStep.value = nextStep;
+}
+
+function goBackBarStep() {
+  const prev = barStepHistory.value.pop();
+  barStep.value = prev || 'start';
+}
+
+function openBarOrdering() {
+  barOrderConfirmed.value = false;
+  barCheckoutError.value = '';
+  barStep.value = 'start';
+  barStepHistory.value = [];
+  isBarModalOpen.value = true;
+}
+
+function openBarCategory(categoryId) {
+  selectedCategoryId.value = categoryId;
+  goBarStep('products');
+}
+
+function openProductDetail(productId) {
+  selectedBarProductId.value = productId;
+  barDetailQty.value = 1;
+  selectedBarExtras.value = [];
+  goBarStep('detail');
+}
+
+function toggleBarExtra(extraId) {
+  selectedBarExtras.value = selectedBarExtras.value.includes(extraId)
+    ? selectedBarExtras.value.filter((id) => id !== extraId)
+    : [...selectedBarExtras.value, extraId];
+}
+
+function changeDetailQty(delta) {
+  barDetailQty.value = Math.max(1, barDetailQty.value + delta);
+}
 
 function increaseBarQty(productId) {
   const current = Number(barCart.value?.[productId] || 0);
@@ -1456,10 +1696,25 @@ function increaseBarQty(productId) {
 
 function decreaseBarQty(productId) {
   const current = Number(barCart.value?.[productId] || 0);
-  if (current <= 0) {
-    return;
-  }
+  if (current <= 0) return;
   barCart.value = { ...barCart.value, [productId]: current - 1 };
+}
+
+function removeBarProduct(productId) {
+  barCart.value = { ...barCart.value, [productId]: 0 };
+}
+
+function addProductFromDetail() {
+  if (!selectedBarProduct.value) return;
+  const productId = selectedBarProduct.value.id;
+  const current = Number(barCart.value?.[productId] || 0);
+  barCart.value = { ...barCart.value, [productId]: current + barDetailQty.value };
+  goBarStep('upsell');
+}
+
+function addUpsellProduct() {
+  if (barUpsellProduct.value) increaseBarQty(barUpsellProduct.value.id);
+  goBarStep('products');
 }
 
 async function loadBarProducts() {
@@ -1473,7 +1728,7 @@ async function loadBarProducts() {
 
 async function startBarCheckout() {
   barCheckoutError.value = '';
-  if (!barDelivery.value.sector || !barDelivery.value.row || !barDelivery.value.seat) {
+  if (barOrderMode.value === 'seat' && (!barDelivery.value.sector || !barDelivery.value.row || !barDelivery.value.seat)) {
     barCheckoutError.value = 'Inserisci settore, fila e posto.';
     return;
   }
@@ -1491,9 +1746,9 @@ async function startBarCheckout() {
   try {
     const { data } = await apiClient.post('/bar/checkout/session', {
       items,
-      sector: barDelivery.value.sector,
-      row: barDelivery.value.row,
-      seat: barDelivery.value.seat,
+      sector: barOrderMode.value === 'seat' ? barDelivery.value.sector : '',
+      row: barOrderMode.value === 'seat' ? barDelivery.value.row : '',
+      seat: barOrderMode.value === 'seat' ? barDelivery.value.seat : '',
       notes: barDelivery.value.notes,
     });
 
@@ -1509,9 +1764,7 @@ async function startBarCheckout() {
     const stripe = await ensureStripeClient();
     if (stripe && data?.session_id) {
       const result = await stripe.redirectToCheckout({ sessionId: data.session_id });
-      if (result?.error?.message) {
-        barCheckoutError.value = result.error.message;
-      }
+      if (result?.error?.message) barCheckoutError.value = result.error.message;
       return;
     }
 
@@ -1526,9 +1779,7 @@ async function startBarCheckout() {
 }
 
 async function confirmBarOrderFromQuery() {
-  if (typeof window === 'undefined') {
-    return;
-  }
+  if (typeof window === 'undefined') return;
 
   const params = new URLSearchParams(window.location.search || '');
   const success = params.get('barOrderSuccess');
@@ -1536,15 +1787,15 @@ async function confirmBarOrderFromQuery() {
   const storedSession = window.localStorage.getItem('bar:last_session_id') || '';
   const sessionId = sessionFromQuery || storedSession;
 
-  if (success !== '1' || !sessionId) {
-    return;
-  }
+  if (success !== '1' || !sessionId) return;
 
   try {
     const { data } = await apiClient.post('/bar/checkout/confirm', { session_id: sessionId });
     if (data?.confirmed) {
       barOrderConfirmed.value = true;
+      barConfirmedOrderNumber.value = String(data?.order_id || sessionId).slice(-6);
       isBarModalOpen.value = true;
+      barStep.value = 'confirmation';
       barCart.value = {};
       barDelivery.value = { sector: '', row: '', seat: '', notes: '' };
     }
