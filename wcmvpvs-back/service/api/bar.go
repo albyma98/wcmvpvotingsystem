@@ -22,13 +22,16 @@ import (
 )
 
 type barProduct struct {
-	ID          string        `json:"id"`
-	Name        string        `json:"name"`
-	PriceCents  int64         `json:"price_cents"`
-	ImageEmoji  string        `json:"image_emoji"`
-	Description string        `json:"description"`
-	IsMenu      bool          `json:"is_menu,omitempty"`
-	Items       []interface{} `json:"items,omitempty"`
+	ID               string        `json:"id"`
+	Name             string        `json:"name"`
+	PriceCents       int64         `json:"price_cents"`
+	ImageEmoji       string        `json:"image_emoji"`
+	ImageURL         string        `json:"image_url,omitempty"`
+	Description      string        `json:"description"`
+	Category         string        `json:"category,omitempty"`
+	CategoryImageURL string        `json:"category_image_url,omitempty"`
+	IsMenu           bool          `json:"is_menu,omitempty"`
+	Items            []interface{} `json:"items,omitempty"`
 }
 
 type barCheckoutItemPayload struct {
@@ -77,7 +80,7 @@ func (rt *_router) listBarProducts(w http.ResponseWriter, _ *http.Request, _ req
 	}
 	result := make([]barProduct, 0, len(products)+len(menus))
 	for _, p := range products {
-		result = append(result, barProduct{ID: "product:" + strconv.Itoa(p.ID), Name: p.Name, PriceCents: int64(p.PriceCents), Description: p.Description})
+		result = append(result, barProduct{ID: "product:" + strconv.Itoa(p.ID), Name: p.Name, PriceCents: int64(p.PriceCents), Description: p.Description, ImageURL: p.ImageURL, Category: p.Category, CategoryImageURL: p.CategoryImageURL})
 	}
 	for _, m := range menus {
 		result = append(result, barProduct{ID: "menu:" + strconv.Itoa(m.ID), Name: m.Name, PriceCents: int64(m.PriceCents), Description: m.Description, IsMenu: true})

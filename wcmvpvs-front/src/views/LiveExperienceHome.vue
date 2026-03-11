@@ -1572,16 +1572,19 @@ const normalizedBarProducts = computed(() => {
   return barProducts.value.map((product) => {
     const name = String(product?.name || 'Prodotto BAR');
     const lower = name.toLowerCase();
-    let category = 'Snack';
-    if (lower.includes('panin') || lower.includes('burger') || lower.includes('hot dog')) category = 'Panini';
-    else if (lower.includes('cola') || lower.includes('bibita') || lower.includes('acqua') || lower.includes('drink')) category = 'Bibite';
-    else if (lower.includes('patatin')) category = 'Patatine';
-    else if (lower.includes('dolc') || lower.includes('cookie') || lower.includes('torta')) category = 'Dolci';
-    else if (lower.includes('menu') || lower.includes('combo')) category = 'Menu combo';
+    let category = String(product?.category || '').trim();
+    if (!category) {
+      category = 'Snack';
+      if (lower.includes('panin') || lower.includes('burger') || lower.includes('hot dog')) category = 'Panini';
+      else if (lower.includes('cola') || lower.includes('bibita') || lower.includes('acqua') || lower.includes('drink')) category = 'Bibite';
+      else if (lower.includes('patatin')) category = 'Patatine';
+      else if (lower.includes('dolc') || lower.includes('cookie') || lower.includes('torta')) category = 'Dolci';
+      else if (lower.includes('menu') || lower.includes('combo')) category = 'Menu combo';
+    }
 
-    const image = product?.image_url || product?.image || barCategoryImageMap[category] || productImageFallback;
+    const image = product?.image_url || product?.image || product?.category_image_url || barCategoryImageMap[category] || productImageFallback;
     const badge = Number(product?.is_best_seller) ? 'Più venduto' : (lower.includes('menu') ? 'Combo' : 'Più venduto');
-    return { ...product, category, image, badge };
+    return { ...product, category, image, categoryImage: product?.category_image_url || barCategoryImageMap[category] || image, badge };
   });
 });
 
@@ -1589,17 +1592,10 @@ const barCategories = computed(() => {
   const map = new Map();
   for (const p of normalizedBarProducts.value) {
     if (!map.has(p.category)) {
-      map.set(p.category, { id: p.category, name: p.category, image: barCategoryImageMap[p.category] || p.image || productImageFallback });
+      map.set(p.category, { id: p.category, name: p.category, image: p.categoryImage || p.image || productImageFallback });
     }
   }
-  return map.size ? Array.from(map.values()) : [
-    { id: 'Panini', name: 'Panini', image: barCategoryImageMap.Panini },
-    { id: 'Bibite', name: 'Bibite', image: barCategoryImageMap.Bibite },
-    { id: 'Patatine', name: 'Patatine', image: barCategoryImageMap.Patatine },
-    { id: 'Snack', name: 'Snack', image: barCategoryImageMap.Snack },
-    { id: 'Dolci', name: 'Dolci', image: barCategoryImageMap.Dolci },
-    { id: 'Menu combo', name: 'Menu combo', image: barCategoryImageMap['Menu combo'] },
-  ];
+  return Array.from(map.values());
 });
 
 const barProductsByCategory = computed(() => {

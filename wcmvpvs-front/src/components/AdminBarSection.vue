@@ -148,6 +148,12 @@
           <label>Nome<input v-model="newProduct.name" class="input" type="text" /></label>
           <label>Prezzo (€)<input v-model.number="newProduct.priceEuro" class="input" type="number" min="0" step="0.01" /></label>
           <label>Descrizione<input v-model="newProduct.description" class="input" type="text" /></label>
+          <label>Categoria
+            <select v-model.number="newProduct.categoryId" class="input">
+              <option :value="0">Seleziona categoria</option>
+              <option v-for="category in barCategories" :key="`product-category-${category.id}`" :value="category.id">{{ category.name }}</option>
+            </select>
+          </label>
         </div>
         <button class="btn primary" type="button" @click="createProduct">Crea prodotto</button>
       </article>
@@ -157,6 +163,7 @@
           <h4>{{ product.name }}</h4>
           <p class="menu-card__price">€ {{ euro(product.price_cents) }}</p>
           <p class="muted">{{ product.description || 'Prodotto bar' }}</p>
+          <p class="muted"><strong>Categoria:</strong> {{ product.category || 'Non assegnata' }}</p>
           <div class="menu-card__actions">
             <button class="btn danger" type="button" @click="deleteProduct(product.id)">Elimina definitivamente</button>
           </div>
@@ -192,6 +199,39 @@
           </div>
         </div>
       </article>
+    </div>
+
+
+    <div v-else-if="activeTab==='categories'" class="stacked-section">
+      <header class="simple-header">
+        <h3>Categorie</h3>
+        <p class="muted">CRUD categorie prodotti BAR con immagine obbligatoria.</p>
+      </header>
+
+      <article class="info-card">
+        <h4>{{ editingCategoryId ? 'Modifica categoria' : 'Nuova categoria' }}</h4>
+        <div class="filter-grid">
+          <label>Nome<input v-model="newCategory.name" class="input" type="text" /></label>
+          <label>Immagine categoria (obbligatoria)
+            <input class="input" type="file" accept="image/*" @change="onCategoryImageSelect" />
+          </label>
+        </div>
+        <p v-if="newCategory.image_url" class="muted">Immagine selezionata ✅</p>
+        <div class="menu-card__actions">
+          <button class="btn primary" type="button" @click="saveCategory">{{ editingCategoryId ? 'Salva modifiche' : 'Crea categoria' }}</button>
+          <button v-if="editingCategoryId" class="btn outline" type="button" @click="resetCategoryForm">Annulla modifica</button>
+        </div>
+      </article>
+
+      <div class="simple-list">
+        <div v-for="category in barCategories" :key="`bar-category-${category.id}`" class="simple-list__row">
+          <strong>{{ category.name }}</strong>
+          <img :src="category.image_url" :alt="category.name" class="h-12 w-16 rounded object-cover" />
+          <button class="btn outline" type="button" @click="editCategory(category)">Modifica</button>
+          <button class="btn danger" type="button" @click="deleteCategory(category.id)">Elimina</button>
+        </div>
+        <p v-if="!barCategories.length" class="muted">Nessuna categoria disponibile.</p>
+      </div>
     </div>
 
     <div v-else-if="activeTab==='quick'" class="stacked-section">
@@ -396,7 +436,10 @@ const lastRefreshAt = ref(null);
 const productsCatalog = ref([]);
 const productState = ref({});
 const barMenus = ref([]);
-const newProduct = ref({ name: '', description: '', priceEuro: 0 });
+const barCategories = ref([]);
+const editingCategoryId = ref(0);
+const newCategory = ref({ name: '', image_url: '' });
+const newProduct = ref({ name: '', description: '', priceEuro: 0, categoryId: 0 });
 const newMenu = ref({ name: '', description: '', priceEuro: 0, items: {} });
 const historyDate = ref('');
 const historyStatus = ref('');
@@ -419,6 +462,7 @@ const tabs = [
   { id: 'live', label: 'Ordini live' },
   { id: 'history', label: 'Storico ordini' },
   { id: 'menu', label: 'Menu' },
+  { id: 'categories', label: 'Categorie' },
   { id: 'quick', label: 'Disponibilità rapida' },
   { id: 'stats', label: 'Statistiche' },
   { id: 'clients', label: 'Clienti' },
@@ -587,6 +631,11 @@ async function loadProducts() {
   productState.value = next;
 }
 
+async function loadCategories() {
+  const { data } = await apiClient.get('/admin/bar/categories', props.authHeaders);
+  barCategories.value = Array.isArray(data) ? data : [];
+}
+
 async function loadMenus() {
   const { data } = await apiClient.get('/admin/bar/menus', props.authHeaders);
   barMenus.value = Array.isArray(data) ? data : [];
@@ -624,10 +673,11 @@ async function createProduct() {
     description: String(newProduct.value.description || '').trim(),
     price_cents: Math.round(Number(newProduct.value.priceEuro || 0) * 100),
     image_url: '',
+    category_id: Number(newProduct.value.categoryId || 0),
   };
-  if (!payload.name || payload.price_cents <= 0) return;
+  if (!payload.name || payload.price_cents <= 0 || payload.category_id <= 0) return;
   await apiClient.post('/admin/bar/products', payload, props.authHeaders);
-  newProduct.value = { name: '', description: '', priceEuro: 0 };
+  newProduct.value = { name: '', description: '', priceEuro: 0, categoryId: 0 };
   await loadProducts();
 }
 
@@ -670,6 +720,49 @@ async function createMenu() {
   await apiClient.post('/admin/bar/menus', payload, props.authHeaders);
   newMenu.value = { name: '', description: '', priceEuro: 0, items: {} };
   await loadMenus();
+}
+
+
+async function onCategoryImageSelect(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  newCategory.value.image_url = await fileToDataUrl(file);
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function editCategory(category) {
+  editingCategoryId.value = Number(category.id || 0);
+  newCategory.value = { name: String(category.name || ''), image_url: String(category.image_url || '') };
+}
+
+function resetCategoryForm() {
+  editingCategoryId.value = 0;
+  newCategory.value = { name: '', image_url: '' };
+}
+
+async function saveCategory() {
+  const payload = { name: String(newCategory.value.name || '').trim(), image_url: String(newCategory.value.image_url || '').trim() };
+  if (!payload.name || !payload.image_url) return;
+  if (editingCategoryId.value > 0) {
+    await apiClient.put(`/admin/bar/categories/${editingCategoryId.value}`, payload, props.authHeaders);
+  } else {
+    await apiClient.post('/admin/bar/categories', payload, props.authHeaders);
+  }
+  resetCategoryForm();
+  await loadCategories();
+}
+
+async function deleteCategory(categoryId) {
+  await apiClient.delete(`/admin/bar/categories/${categoryId}`, props.authHeaders);
+  await Promise.all([loadCategories(), loadProducts()]);
 }
 
 async function deleteMenu(menuId) {
@@ -840,7 +933,7 @@ function closeOrderDetail() {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadProducts(), loadMenus()]);
+  await Promise.all([load(), loadCategories(), loadProducts(), loadMenus()]);
   refreshTimer = window.setInterval(() => {
     if (settings.value.autoRefreshLive) {
       load();
