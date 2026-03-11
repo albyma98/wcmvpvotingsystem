@@ -95,7 +95,202 @@
       </div>
     </div>
 
-    <div v-else class="muted">{{ tabText }}</div>
+    <div v-else-if="activeTab==='history'" class="stacked-section">
+      <header class="simple-header">
+        <h3>Storico ordini</h3>
+        <p class="muted">Controlla gli ordini passati con filtri rapidi.</p>
+      </header>
+
+      <div class="filter-grid">
+        <label>
+          Data
+          <input v-model="historyDate" class="input" type="date" />
+        </label>
+        <label>
+          Stato ordine
+          <select v-model="historyStatus" class="input">
+            <option value="">Tutti</option>
+            <option value="new">Nuovo</option>
+            <option value="in_preparazione">In preparazione</option>
+            <option value="pronto">Pronto</option>
+            <option value="completato">Completato</option>
+            <option value="annullato">Annullato</option>
+          </select>
+        </label>
+        <label>
+          Cerca ordine
+          <input v-model="historySearch" class="input" type="search" placeholder="Es: 1042" />
+        </label>
+      </div>
+
+      <div class="simple-list">
+        <button v-for="order in historyOrders" :key="`history-${order.id}`" class="simple-list__row" type="button" @click="openOrderDetail(order)">
+          <strong>#{{ order.id }}</strong>
+          <span>{{ formatOrderTime(order.created_at, true) }}</span>
+          <span>€ {{ euro(order.total_cents) }}</span>
+          <span>{{ statusLabel(order.order_status) }}</span>
+          <span>{{ paymentLabel(order.payment_status) }}</span>
+          <span>{{ customerLabel(order) }}</span>
+        </button>
+        <p v-if="!historyOrders.length" class="muted">Nessun ordine trovato con i filtri selezionati.</p>
+      </div>
+    </div>
+
+    <div v-else-if="activeTab==='menu'" class="stacked-section">
+      <header class="simple-header">
+        <h3>Menu bar</h3>
+        <p class="muted">Gestisci in modo rapido i prodotti venduti al banco.</p>
+      </header>
+
+      <div class="menu-grid">
+        <article v-for="product in productCards" :key="product.id" class="menu-card">
+          <h4>{{ product.name }}</h4>
+          <p class="menu-card__price">€ {{ euro(product.price_cents) }}</p>
+          <div class="menu-card__badges">
+            <span class="badge" :class="product.active ? 'badge--ok' : 'badge--alert'">{{ product.active ? 'Attivo' : 'Non attivo' }}</span>
+            <span class="badge" :class="product.available ? 'badge--ok' : 'badge--wait'">{{ product.available ? 'Disponibile' : 'Esaurito' }}</span>
+          </div>
+          <p class="muted">{{ product.description || 'Prodotto bar' }}</p>
+          <div class="menu-card__actions">
+            <button class="btn outline" type="button" @click="toggleProductActive(product.id)">{{ product.active ? 'Disattiva' : 'Attiva' }}</button>
+            <button class="btn" :class="product.available ? 'danger' : 'primary'" type="button" @click="setProductAvailability(product.id, !product.available)">
+              {{ product.available ? 'Segna esaurito' : 'Rendi disponibile' }}
+            </button>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div v-else-if="activeTab==='quick'" class="stacked-section">
+      <header class="simple-header">
+        <h3>Disponibilità rapida</h3>
+        <p class="muted">Aggiorna la disponibilità in pochi secondi durante la partita.</p>
+      </header>
+
+      <div class="quick-list">
+        <article v-for="product in productCards" :key="`quick-${product.id}`" class="quick-card">
+          <div>
+            <h4>{{ product.name }}</h4>
+            <p class="muted">Stato attuale: <strong>{{ product.available ? 'Disponibile' : 'Esaurito' }}</strong></p>
+          </div>
+          <div class="quick-card__actions">
+            <button class="btn quick-btn" :class="product.available ? 'primary' : 'outline'" type="button" @click="setProductAvailability(product.id, true)">Disponibile</button>
+            <button class="btn quick-btn" :class="!product.available ? 'danger' : 'outline'" type="button" @click="setProductAvailability(product.id, false)">Esaurito</button>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div v-else-if="activeTab==='stats'" class="stacked-section">
+      <header class="simple-header">
+        <h3>Statistiche</h3>
+        <p class="muted">Panoramica rapida vendite bar per evento.</p>
+      </header>
+
+      <div class="kpi-grid">
+        <article class="kpi" v-for="card in statsCards" :key="card.label">
+          <h3>{{ card.label }}</h3>
+          <p>{{ card.value }}</p>
+        </article>
+      </div>
+
+      <article class="info-card">
+        <h4>Prodotti più venduti</h4>
+        <ul class="item-list compact">
+          <li v-for="item in topProducts" :key="item.id">{{ item.name }} • {{ item.qty }} pz</li>
+          <li v-if="!topProducts.length" class="muted">Ancora nessun dato disponibile.</li>
+        </ul>
+      </article>
+    </div>
+
+    <div v-else-if="activeTab==='clients'" class="stacked-section clients-layout">
+      <header class="simple-header">
+        <h3>Clienti</h3>
+        <p class="muted">Riepilogo clienti e storico ordini.</p>
+      </header>
+
+      <div class="clients-grid">
+        <article class="info-card">
+          <h4>Lista clienti</h4>
+          <button
+            v-for="client in clientRows"
+            :key="client.id"
+            class="simple-list__row"
+            type="button"
+            @click="selectedClientId = client.id"
+          >
+            <strong>{{ client.name }}</strong>
+            <span>{{ client.orders }} ordini</span>
+            <span>€ {{ euro(client.totalCents) }}</span>
+            <span>Ultimo: {{ formatOrderTime(client.lastOrderAt, true) }}</span>
+          </button>
+          <p v-if="!clientRows.length" class="muted">Nessun cliente disponibile.</p>
+        </article>
+
+        <article class="info-card">
+          <h4>Storico cliente</h4>
+          <p v-if="!selectedClient" class="muted">Seleziona un cliente per vedere gli ordini.</p>
+          <template v-else>
+            <p><strong>{{ selectedClient.name }}</strong> • {{ selectedClient.orders }} ordini • € {{ euro(selectedClient.totalCents) }}</p>
+            <ul class="item-list compact">
+              <li v-for="order in selectedClientOrders" :key="`client-order-${order.id}`">
+                <button type="button" class="link-btn" @click="openOrderDetail(order)">
+                  #{{ order.id }} • {{ formatOrderTime(order.created_at, true) }} • {{ statusLabel(order.order_status) }} • € {{ euro(order.total_cents) }}
+                </button>
+              </li>
+            </ul>
+          </template>
+        </article>
+      </div>
+    </div>
+
+    <div v-else-if="activeTab==='cash'" class="stacked-section">
+      <header class="simple-header">
+        <h3>Cassa</h3>
+        <p class="muted">Riepilogo chiusura giornata o evento.</p>
+      </header>
+
+      <div class="kpi-grid">
+        <article class="kpi" v-for="card in cashCards" :key="card.label">
+          <h3>{{ card.label }}</h3>
+          <p>{{ card.value }}</p>
+        </article>
+      </div>
+    </div>
+
+    <div v-else-if="activeTab==='settings'" class="stacked-section">
+      <header class="simple-header">
+        <h3>Impostazioni BAR</h3>
+        <p class="muted">Configura preferenze operative del bar.</p>
+      </header>
+
+      <div class="settings-grid">
+        <article class="info-card">
+          <h4>Dati bar</h4>
+          <p><strong>Partner BAR:</strong> {{ settings.partnerName }}</p>
+          <p><strong>Società associata:</strong> {{ settings.companyName }}</p>
+          <p class="muted">Accesso dati: ruolo BAR vede solo il proprio bar, super admin vede tutti i bar.</p>
+        </article>
+
+        <article class="info-card">
+          <h4>Preferenze operative</h4>
+          <label class="setting-row">
+            <input v-model="settings.notifyNewOrders" type="checkbox" />
+            Notifiche nuovi ordini
+          </label>
+          <label class="setting-row">
+            <input v-model="settings.soundAlerts" type="checkbox" />
+            Avvisi sonori priorità ordini
+          </label>
+          <label class="setting-row">
+            <input v-model="settings.autoRefreshLive" type="checkbox" />
+            Aggiornamento automatico ordini live
+          </label>
+        </article>
+      </div>
+    </div>
+
+    <div v-else class="muted">Sezione non disponibile.</div>
 
     <div v-if="selectedOrder" class="order-modal" role="dialog" aria-modal="true" aria-label="Dettaglio ordine">
       <div class="order-modal__backdrop" @click="closeOrderDetail"></div>
@@ -121,7 +316,7 @@
           <h4>Prodotti</h4>
           <ul class="order-modal__items">
             <li v-for="item in selectedOrder.parsedItems" :key="`detail-${selectedOrder.id}-${item.id}`">
-              <span>{{ item.name }}</span>
+              <span>{{ item.name }} • € {{ euro(item.priceCents) }}</span>
               <strong>x{{ item.quantity }}</strong>
             </li>
           </ul>
@@ -165,6 +360,20 @@ const orders = ref([]);
 const isLoading = ref(false);
 const selectedOrder = ref(null);
 const lastRefreshAt = ref(null);
+const productsCatalog = ref([]);
+const productState = ref({});
+const historyDate = ref('');
+const historyStatus = ref('');
+const historySearch = ref('');
+const selectedClientId = ref('');
+const settings = ref({
+  partnerName: 'BAR Partner',
+  companyName: 'Società evento',
+  notifyNewOrders: true,
+  soundAlerts: true,
+  autoRefreshLive: true,
+});
+
 const RECENT_CANCELLED_MINUTES = 20;
 const refreshEveryMs = 15000;
 let refreshTimer = null;
@@ -181,7 +390,6 @@ const tabs = [
   { id: 'settings', label: 'Impostazioni' },
 ];
 
-const tabText = computed(() => 'Sezione operativa pronta. Integra qui i flussi specifici del bar.');
 const kpis = computed(() => {
   const o = overview.value || {};
   return [
@@ -206,8 +414,24 @@ const parsedOrders = computed(() => {
       elapsedMinutes,
       parsedItems: parseItems(order),
     };
-  });
+  }).sort((a, b) => parseDate(b.created_at) - parseDate(a.created_at));
 });
+
+const historyOrders = computed(() => parsedOrders.value.filter((order) => {
+  if (historyStatus.value && order.order_status !== historyStatus.value) {
+    return false;
+  }
+  if (historyDate.value) {
+    const day = parseDate(order.created_at).toISOString().slice(0, 10);
+    if (day !== historyDate.value) {
+      return false;
+    }
+  }
+  if (historySearch.value) {
+    return String(order.id).includes(historySearch.value.trim());
+  }
+  return true;
+}));
 
 const liveColumns = computed(() => {
   const active = parsedOrders.value.filter((order) => {
@@ -232,12 +456,100 @@ const liveColumns = computed(() => {
   ];
 });
 
+const productCards = computed(() => productsCatalog.value.map((product) => {
+  const state = productState.value[product.id] || { active: true, available: true };
+  return { ...product, ...state };
+}));
+
+const topProducts = computed(() => {
+  const map = new Map();
+  parsedOrders.value.forEach((order) => {
+    order.parsedItems.forEach((item) => {
+      map.set(item.id, { id: item.id, name: item.name, qty: (map.get(item.id)?.qty || 0) + item.quantity });
+    });
+  });
+  return Array.from(map.values()).sort((a, b) => b.qty - a.qty).slice(0, 5);
+});
+
+const busiestHour = computed(() => {
+  const byHour = new Map();
+  parsedOrders.value.forEach((order) => {
+    const hour = parseDate(order.created_at).getHours();
+    byHour.set(hour, (byHour.get(hour) || 0) + 1);
+  });
+  const sorted = Array.from(byHour.entries()).sort((a, b) => b[1] - a[1]);
+  if (!sorted.length) return 'N/D';
+  const [hour, count] = sorted[0];
+  return `${String(hour).padStart(2, '0')}:00 • ${count} ordini`;
+});
+
+const statsCards = computed(() => {
+  const total = parsedOrders.value.reduce((acc, order) => acc + Number(order.total_cents || 0), 0);
+  const count = parsedOrders.value.length;
+  return [
+    { label: 'Incasso totale evento', value: `€ ${euro(total)}` },
+    { label: 'Numero totale ordini', value: count },
+    { label: 'Ticket medio', value: `€ ${count ? euro(total / count) : '0.00'}` },
+    { label: 'Fascia oraria con più ordini', value: busiestHour.value },
+  ];
+});
+
+const clientRows = computed(() => {
+  const map = new Map();
+  parsedOrders.value.forEach((order) => {
+    const id = customerId(order);
+    const current = map.get(id) || {
+      id,
+      name: customerLabel(order),
+      orders: 0,
+      totalCents: 0,
+      lastOrderAt: order.created_at,
+    };
+    current.orders += 1;
+    current.totalCents += Number(order.total_cents || 0);
+    if (parseDate(order.created_at) > parseDate(current.lastOrderAt)) {
+      current.lastOrderAt = order.created_at;
+    }
+    map.set(id, current);
+  });
+  return Array.from(map.values()).sort((a, b) => b.orders - a.orders);
+});
+
+const selectedClient = computed(() => clientRows.value.find((client) => client.id === selectedClientId.value) || null);
+const selectedClientOrders = computed(() => {
+  if (!selectedClient.value) return [];
+  return parsedOrders.value.filter((order) => customerId(order) === selectedClient.value.id);
+});
+
+const cashCards = computed(() => {
+  const completed = parsedOrders.value.filter((order) => order.order_status === 'completato').length;
+  const cancelled = parsedOrders.value.filter((order) => order.order_status === 'annullato').length;
+  const soldProducts = parsedOrders.value.reduce((acc, order) => acc + order.parsedItems.reduce((inner, item) => inner + item.quantity, 0), 0);
+  const total = parsedOrders.value.reduce((acc, order) => acc + Number(order.total_cents || 0), 0);
+  return [
+    { label: 'Incasso totale', value: `€ ${euro(total)}` },
+    { label: 'Ordini completati', value: completed },
+    { label: 'Ordini annullati', value: cancelled },
+    { label: 'Prodotti venduti', value: soldProducts },
+  ];
+});
+
 const lastRefreshLabel = computed(() => {
   if (!lastRefreshAt.value) {
     return 'mai';
   }
   return new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(lastRefreshAt.value);
 });
+
+async function loadProducts() {
+  const { data } = await apiClient.get('/bar/products');
+  productsCatalog.value = Array.isArray(data) ? data : [];
+  const next = {};
+  productsCatalog.value.forEach((product) => {
+    next[product.id] = productState.value[product.id] || { active: true, available: true };
+  });
+  productState.value = next;
+}
 
 async function load() {
   isLoading.value = true;
@@ -252,6 +564,9 @@ async function load() {
     if (selectedOrder.value) {
       selectedOrder.value = parsedOrders.value.find((order) => order.id === selectedOrder.value.id) || null;
     }
+    if (!selectedClientId.value && clientRows.value.length) {
+      selectedClientId.value = clientRows.value[0].id;
+    }
   } finally {
     isLoading.value = false;
   }
@@ -260,6 +575,22 @@ async function load() {
 async function setStatus(orderId, status) {
   await apiClient.put(`/admin/bar/orders/${orderId}/status`, { status }, props.authHeaders);
   await load();
+}
+
+function toggleProductActive(productId) {
+  const prev = productState.value[productId] || { active: true, available: true };
+  productState.value = {
+    ...productState.value,
+    [productId]: { ...prev, active: !prev.active },
+  };
+}
+
+function setProductAvailability(productId, available) {
+  const prev = productState.value[productId] || { active: true, available: true };
+  productState.value = {
+    ...productState.value,
+    [productId]: { ...prev, available },
+  };
 }
 
 function parseItems(order) {
@@ -275,10 +606,14 @@ function parseItems(order) {
 
   return products.map((product) => {
     const id = String(product.id || product.name || Math.random());
+    const priceCents = Number(product.price_cents || product.priceCents || 0);
+    const quantity = Math.max(1, quantityMap.get(id) || 1);
     return {
       id,
       name: product.name || product.id || 'Prodotto',
-      quantity: Math.max(1, quantityMap.get(id) || 1),
+      quantity,
+      priceCents,
+      lineTotalCents: priceCents * quantity,
     };
   });
 }
@@ -355,6 +690,10 @@ function formatOrderTime(raw, withDate = false) {
   }).format(date);
 }
 
+function customerId(order) {
+  return String(order.customer_name || order.stripe_reference || `ordine-${order.id}`);
+}
+
 function customerLabel(order) {
   if (order.customer_name) {
     return order.customer_name;
@@ -409,8 +748,12 @@ function closeOrderDetail() {
 }
 
 onMounted(async () => {
-  await load();
-  refreshTimer = window.setInterval(load, refreshEveryMs);
+  await Promise.all([load(), loadProducts()]);
+  refreshTimer = window.setInterval(() => {
+    if (settings.value.autoRefreshLive) {
+      load();
+    }
+  }, refreshEveryMs);
 });
 
 onBeforeUnmount(() => {
@@ -421,7 +764,26 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.bar-tabs{display:flex;gap:.5rem;flex-wrap:wrap}.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem}.kpi{padding:1rem;border:1px solid #e5e7eb;border-radius:12px}.status-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem}
+.bar-tabs{display:flex;gap:.5rem;flex-wrap:wrap}.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem}.kpi{padding:1rem;border:1px solid #e5e7eb;border-radius:12px;background:#fff}.kpi h3{margin:0 0 .3rem}.kpi p{margin:0;font-size:1.25rem;font-weight:700}
+.stacked-section{display:grid;gap:1rem}
+.simple-header h3{margin-bottom:.2rem}
+.filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem}
+.input{width:100%;border:1px solid #d0d9e5;border-radius:10px;padding:.6rem .7rem;background:#fff;margin-top:.3rem}
+.simple-list{display:grid;gap:.5rem}
+.simple-list__row{display:grid;grid-template-columns:1fr repeat(5,minmax(80px,auto));gap:.5rem;align-items:center;border:1px solid #dbe2ea;background:#fff;border-radius:12px;padding:.8rem;text-align:left}
+.menu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
+.menu-card{border:1px solid #dbe2ea;border-radius:14px;padding:1rem;background:#fff;display:grid;gap:.6rem}
+.menu-card__price{font-size:1.2rem;font-weight:700;margin:0}
+.menu-card__badges,.menu-card__actions{display:flex;gap:.45rem;flex-wrap:wrap}
+.quick-list{display:grid;gap:.6rem}
+.quick-card{border:1px solid #dbe2ea;border-radius:14px;padding:1rem;background:#fff;display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap}
+.quick-card__actions{display:flex;gap:.5rem}
+.quick-btn{font-size:1.05rem;min-width:140px;min-height:44px}
+.info-card{border:1px solid #dbe2ea;border-radius:14px;background:#fff;padding:1rem}
+.clients-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:.8rem}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:.8rem}
+.setting-row{display:flex;gap:.5rem;align-items:center;padding:.35rem 0}
+.link-btn{border:none;background:none;color:#1d4ed8;padding:0;text-decoration:underline;cursor:pointer}
 .live-board-wrap { display: grid; gap: 1rem; }
 .live-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .live-toolbar__actions { display: flex; align-items: center; gap: .65rem; }
@@ -467,5 +829,9 @@ onBeforeUnmount(() => {
 .order-modal__timeline li { display: flex; justify-content: space-between; border-bottom: 1px dashed #dbe2ea; padding-bottom: .35rem; }
 @media (max-width: 1100px) {
   .live-columns { grid-template-columns: repeat(4, minmax(290px, 1fr)); }
+}
+@media (max-width: 900px) {
+  .simple-list__row { grid-template-columns: 1fr; }
+  .clients-grid { grid-template-columns: 1fr; }
 }
 </style>
