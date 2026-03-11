@@ -222,3 +222,90 @@ func (rt *_router) deleteAdminBarMenu(w http.ResponseWriter, r *http.Request, _ 
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+type adminBarSuggestionPayload struct {
+	Enabled       bool   `json:"enabled"`
+	Title         string `json:"title"`
+	MaxItems      int    `json:"max_items"`
+	SuggestionIDs []int  `json:"suggestion_ids"`
+}
+
+func (rt *_router) listAdminBarProductSuggestions(w http.ResponseWriter, _ *http.Request, _ reqcontext.RequestContext) {
+	items, err := rt.db.ListBarSuggestionConfigs()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(items)
+}
+
+func (rt *_router) upsertAdminBarProductSuggestions(w http.ResponseWriter, r *http.Request, _ reqcontext.RequestContext) {
+	productID, err := strconv.Atoi(chi.URLParam(r, "productID"))
+	if err != nil || productID <= 0 {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "identificativo prodotto non valido")
+		return
+	}
+	var payload adminBarSuggestionPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "payload non valido")
+		return
+	}
+	updated, err := rt.db.UpsertBarSuggestionConfig(database.BarSuggestionConfig{
+		ProductID:     productID,
+		Enabled:       payload.Enabled,
+		Title:         strings.TrimSpace(payload.Title),
+		MaxItems:      payload.MaxItems,
+		SuggestionIDs: payload.SuggestionIDs,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			_ = writeJSONMessage(w, http.StatusBadRequest, "prodotto non valido")
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(updated)
+}
+
+func (rt *_router) listAdminBarCategorySuggestions(w http.ResponseWriter, _ *http.Request, _ reqcontext.RequestContext) {
+	items, err := rt.db.ListBarCategorySuggestionConfigs()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(items)
+}
+
+func (rt *_router) upsertAdminBarCategorySuggestions(w http.ResponseWriter, r *http.Request, _ reqcontext.RequestContext) {
+	categoryID, err := strconv.Atoi(chi.URLParam(r, "categoryID"))
+	if err != nil || categoryID <= 0 {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "identificativo categoria non valido")
+		return
+	}
+	var payload adminBarSuggestionPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "payload non valido")
+		return
+	}
+	updated, err := rt.db.UpsertBarCategorySuggestionConfig(database.BarCategorySuggestionConfig{
+		CategoryID:    categoryID,
+		Enabled:       payload.Enabled,
+		Title:         strings.TrimSpace(payload.Title),
+		MaxItems:      payload.MaxItems,
+		SuggestionIDs: payload.SuggestionIDs,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			_ = writeJSONMessage(w, http.StatusBadRequest, "categoria non valida")
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("content-type", "application/json")
+	_ = json.NewEncoder(w).Encode(updated)
+}
