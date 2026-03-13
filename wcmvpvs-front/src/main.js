@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
 import './style.css';
+import './assets/admin-theme.css';
 import App from './App.vue';
 import { QrcodeStream, QrcodeDropZone, QrcodeCapture } from 'vue-qrcode-reader'
 

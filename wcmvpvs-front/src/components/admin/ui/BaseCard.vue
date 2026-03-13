@@ -1,27 +1,20 @@
 <template>
-  <section class="base-card" :class="[`base-card--${variant}`]">
+  <div class="base-card" :class="{ 'base-card--dark': dark }">
     <slot />
-  </section>
+  </div>
 </template>
-
 <script setup>
-defineProps({
-  variant: {
-    type: String,
-    default: 'default',
-  },
-});
+defineProps({ dark: { type: Boolean, default: false } });
 </script>
-
 <style scoped>
 .base-card {
-  background: #fff;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+  background: #111827;
+  border: 1px solid rgba(56, 189, 248, 0.08);
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
 }
-.base-card--muted {
-  background: #f8fafc;
+.base-card--dark {
+  background: #0d1424;
 }
 </style>
