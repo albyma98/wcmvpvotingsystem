@@ -31,62 +31,49 @@ defineEmits(['toggle-menu']);
   justify-content: space-between;
   gap: 1rem;
   padding: 0.85rem 2rem;
-  background: rgba(13, 20, 36, 0.85);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(56, 189, 248, 0.08);
-  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid #f1f5f9;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
 }
 
-.admin-header__left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
+.admin-header__left { display: flex; align-items: center; gap: 1rem; }
 
 .admin-header__burger {
   display: none;
   flex-direction: column;
   justify-content: center;
   gap: 4px;
-  width: 36px;
-  height: 36px;
+  width: 36px; height: 36px;
   padding: 0;
-  border: 1px solid rgba(56, 189, 248, 0.2);
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
-  background: rgba(56, 189, 248, 0.07);
+  background: #f8fafc;
   cursor: pointer;
   align-items: center;
 }
 
 .admin-header__burger span {
   display: block;
-  width: 16px;
-  height: 2px;
-  background: #94a3b8;
+  width: 16px; height: 2px;
+  background: #64748b;
   border-radius: 2px;
   transition: background 0.2s;
 }
 
-.admin-header__burger:hover span { background: #38bdf8; }
+.admin-header__burger:hover span { background: #0284c7; }
 
-.admin-header__breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
+.admin-header__breadcrumb { display: flex; align-items: center; gap: 0.5rem; }
 
 .admin-header__group {
   font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(148, 163, 184, 0.55);
+  color: #94a3b8;
 }
 
-.admin-header__sep {
-  color: rgba(56, 189, 248, 0.35);
-  font-weight: 300;
-}
+.admin-header__sep { color: #cbd5e1; font-weight: 300; }
 
 .admin-header__title {
   margin: 0;
@@ -95,17 +82,10 @@ defineEmits(['toggle-menu']);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  background: linear-gradient(135deg, #e2eaf6, #38bdf8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #0f172a;
 }
 
-.admin-header__right {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
+.admin-header__right { display: flex; align-items: center; gap: 0.75rem; }
 
 @media (max-width: 1023px) {
   .admin-header__burger { display: flex; }

@@ -43,11 +43,11 @@ defineProps({
 .base-btn--primary:hover { box-shadow: 0 6px 28px rgba(2,132,199,0.5); transform: translateY(-1px); }
 
 .base-btn--secondary {
-  background: rgba(56,189,248,0.1);
-  color: #38bdf8;
-  border: 1px solid rgba(56,189,248,0.2);
+  background: rgba(2,132,199,0.1);
+  color: #0284c7;
+  border: 1px solid rgba(2,132,199,0.2);
 }
-.base-btn--secondary:hover { background: rgba(56,189,248,0.18); }
+.base-btn--secondary:hover { background: rgba(2,132,199,0.18); }
 
 .base-btn--danger {
   background: rgba(239,68,68,0.15);
@@ -72,11 +72,11 @@ defineProps({
   color: #94a3b8;
   border: 1px solid rgba(148,163,184,0.25);
 }
-.base-btn--outline:hover { border-color: rgba(56,189,248,0.4); color: #38bdf8; }
+.base-btn--outline:hover { border-color: rgba(56,189,248,0.4); color: #0284c7; }
 
 .base-btn--link {
   background: transparent;
-  color: #38bdf8;
+  color: #0284c7;
   padding: 0.2rem 0.4rem;
 }
 .base-btn--link:hover { color: #7dd3fc; }

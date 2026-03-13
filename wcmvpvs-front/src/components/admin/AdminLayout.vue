@@ -29,7 +29,7 @@ defineEmits(['close-mobile']);
   min-height: 100vh;
   display: grid;
   grid-template-columns: 260px 1fr;
-  background: var(--bg-base, #070b14);
+  background: var(--bg-base, #f0f4f8);
 }
 
 .admin-layout__sidebar {
@@ -38,10 +38,10 @@ defineEmits(['close-mobile']);
   height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--sidebar-bg, #0d1424);
-  border-right: 1px solid rgba(56, 189, 248, 0.08);
+  background: var(--sidebar-bg, #ffffff);
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
   scrollbar-width: thin;
-  scrollbar-color: rgba(56, 189, 248, 0.2) transparent;
+  scrollbar-color: #cbd5e1 transparent;
   z-index: 50;
 }
 
@@ -69,7 +69,7 @@ defineEmits(['close-mobile']);
     transform: translateX(-101%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 60;
-    box-shadow: 8px 0 48px rgba(0,0,0,0.7);
+    box-shadow: 8px 0 48px rgba(15, 23, 42, 0.15);
   }
   .admin-layout.sidebar-open .admin-layout__sidebar { transform: translateX(0); }
   .admin-layout__content { padding: 1rem; }
@@ -79,7 +79,7 @@ defineEmits(['close-mobile']);
     inset: 0;
     z-index: 55;
     border: 0;
-    background: rgba(7,11,20,0.75);
+    background: rgba(15, 23, 42, 0.35);
     backdrop-filter: blur(4px);
     cursor: pointer;
   }

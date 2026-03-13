@@ -28,7 +28,7 @@ defineProps({ title: String, description: String });
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #e2eaf6;
+  color: #0f172a;
 }
 .section-header__desc {
   margin: 0;
