@@ -51,685 +51,405 @@
           </article>
         </section>
 
-        <section v-if="section === 'events'" class="card">
-          <SectionHeader
-            title="Eventi"
-            description="Crea una nuova partita per abilitare il voto pubblico."
-          >
-            <template #actions>
-              <button class="btn primary" type="submit" form="event-create-form" :disabled="!hasEnoughTeams">Crea evento</button>
-            </template>
-          </SectionHeader>
-          <div class="actions-row">
-            <button
-              class="btn outline"
-              type="button"
-              @click="deactivateEvents"
-              :disabled="!activeEventId || isDisablingEvents"
-            >
-              {{ isDisablingEvents ? "Disattivazione…" : "Disattiva eventi" }}
-            </button>
-          </div>
-          <p v-if="!hasEnoughTeams" class="info-banner">
-            Aggiungi almeno due squadre dalla sezione "Squadre" per abilitare la
-            creazione di un evento.
-          </p>
-          <form id="event-create-form" @submit.prevent="createEvent" class="form-grid modern-form-grid">
-            <label>
-              Squadra di casa
-              <input
-                v-model="teamInputs.home"
-                type="text"
-                list="admin-team-options"
-                :disabled="!hasEnoughTeams"
-                placeholder="Digita il nome della squadra"
-                required
-                @change="handleTeamInput('home')"
-                @blur="handleTeamInput('home')"
-              />
-              <small class="field-hint" v-if="hasEnoughTeams">
-                Scegli dalla lista oppure digita per filtrare le squadre
-                disponibili.
-              </small>
-            </label>
-            <label>
-              Squadra ospite
-              <input
-                v-model="teamInputs.away"
-                type="text"
-                list="admin-team-options"
-                :disabled="!hasEnoughTeams"
-                placeholder="Digita il nome della squadra"
-                required
-                @change="handleTeamInput('away')"
-                @blur="handleTeamInput('away')"
-              />
-              <small class="field-hint" v-if="hasEnoughTeams">
-                Seleziona una squadra diversa da quella di casa.
-              </small>
-            </label>
-            <datalist id="admin-team-options">
-              <option
-                v-for="team in teams"
-                :key="team.id"
-                :value="teamOptionValue(team)"
-              ></option>
-            </datalist>
-            <label>
-              Data e ora
-              <input
-                v-model="newEvent.start_datetime"
-                type="datetime-local"
-                :disabled="!hasEnoughTeams"
-                required
-              />
-            </label>
-            <label>
-              Location
-              <input
-                v-model.trim="newEvent.location"
-                type="text"
-                placeholder="Es. Palazzetto dello Sport"
-                :disabled="!hasEnoughTeams"
-              />
-            </label>
-            <div class="postvote-options new-event-prevote">
-              <div class="postvote-options__header">
-                <span>Esperienze pre voto</span>
-                <p class="field-hint">
-                  Decidi quali contenuti mostrare prima della votazione.
-                </p>
+        <section v-if="section === 'events'" class="ev-section">
+
+          <!-- ══ CREATE PANEL ══════════════════════════════════════════ -->
+          <div class="ev-create-panel">
+            <div class="ev-create-panel__hd" @click="createFormOpen = !createFormOpen">
+              <div class="ev-create-panel__title">
+                <span class="ev-create-panel__icon">＋</span>
+                <span>Crea nuovo evento</span>
               </div>
-              <div class="postvote-options__grid">
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="newEvent.show_pre_vote_sponsors"
-                    :disabled="!hasEnoughTeams"
-                  />
-                  <span class="postvote-toggle__label"
-                    >Sponsor a bordo campo</span
-                  >
-                </label>
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="newEvent.show_pre_vote_bottom_sponsors"
-                    :disabled="!hasEnoughTeams"
-                  />
-                  <span class="postvote-toggle__label"
-                    >Sponsor a fondo campo</span
-                  >
-                </label>
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="newEvent.show_vote_counter"
-                    :disabled="!hasEnoughTeams"
-                  />
-                  <span class="postvote-toggle__label"
-                    >Totale voti in tempo reale</span
-                  >
-                </label>
+              <div class="ev-create-panel__meta">
+                <span v-if="!hasEnoughTeams" class="ev-badge-warn">Aggiungi squadre prima</span>
+                <span class="ev-chevron" :class="{ open: createFormOpen }">›</span>
               </div>
             </div>
-            <div class="postvote-options new-event-postvote">
-              <div class="postvote-options__header">
-                <span>Esperienze post voto</span>
-                <p class="field-hint">
-                  Scegli quali contenuti mostrare ai tifosi dopo aver votato.
+
+            <transition name="ev-slide">
+              <div v-if="createFormOpen" class="ev-create-panel__body">
+                <p v-if="!hasEnoughTeams" class="ev-alert-info">
+                  Aggiungi almeno due squadre dalla sezione "Squadre" per abilitare la creazione di un evento.
                 </p>
-              </div>
-              <div class="postvote-options__grid">
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="newEvent.show_vote_trend"
-                    :disabled="!hasEnoughTeams"
-                  />
-                  <span class="postvote-toggle__label">Andamento dei voti</span>
-                </label>
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="newEvent.show_selfie"
-                    :disabled="!hasEnoughTeams"
-                  />
-                  <span class="postvote-toggle__label">Selfie MVP</span>
-                </label>
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="newEvent.show_reaction_test"
-                    :disabled="!hasEnoughTeams"
-                  />
-                  <span class="postvote-toggle__label"
-                    >Mini-gioco riflessi</span
-                  >
-                </label>
-                <label class="postvote-toggle">
-                  <input
-                    type="checkbox"
-                    v-model="newEvent.show_feedback_survey"
-                    :disabled="!hasEnoughTeams"
-                  />
-                  <span class="postvote-toggle__label">Sondaggio feedback</span>
-                </label>
-              </div>
-            </div>
-            <div class="feedback-editor new-event-feedback">
-              <div class="feedback-editor__header">
-                <span>Sondaggio feedback</span>
-                <p class="field-hint">
-                  Personalizza le domande e le risposte mostrate nel sondaggio
-                  post voto.
-                </p>
-              </div>
-              <div class="feedback-editor__content">
-                <div
-                  v-for="question in newEventSurvey.questions"
-                  :key="`new-event-feedback-${question.id}`"
-                  class="feedback-editor__question"
-                >
-                  <label class="feedback-editor__question-title">
-                    Testo domanda
-                    <input
-                      v-model="question.title"
-                      type="text"
-                      :placeholder="`Domanda: ${question.id}`"
-                      :disabled="!hasEnoughTeams"
-                    />
-                  </label>
-                  <div class="feedback-editor__answers">
-                    <label
-                      v-for="answer in question.answers"
-                      :key="`new-event-feedback-${question.id}-${answer.value}`"
-                      class="feedback-editor__answer"
-                    >
-                      <span class="feedback-editor__answer-meta">
-                        <span
-                          v-if="answer.icon"
-                          class="feedback-editor__answer-icon"
-                          aria-hidden="true"
-                        >
-                          {{ answer.icon }}
-                        </span>
-                        <code class="feedback-editor__answer-code">{{
-                          answer.value
-                        }}</code>
-                      </span>
-                      <input
-                        v-model="answer.label"
-                        type="text"
-                        :placeholder="`Risposta per ${question.id}`"
-                        :disabled="!hasEnoughTeams"
-                      />
-                    </label>
+                <form id="event-create-form" @submit.prevent="createEvent" class="ev-cform">
+
+                  <!-- Teams + match info -->
+                  <div class="ev-cform__teams">
+                    <div class="ev-field">
+                      <label class="ev-label">Squadra di casa</label>
+                      <input v-model="teamInputs.home" type="text" list="admin-team-options" :disabled="!hasEnoughTeams" placeholder="Digita o seleziona…" required class="ev-input" @change="handleTeamInput('home')" @blur="handleTeamInput('home')" />
+                    </div>
+                    <div class="ev-vs">VS</div>
+                    <div class="ev-field">
+                      <label class="ev-label">Squadra ospite</label>
+                      <input v-model="teamInputs.away" type="text" list="admin-team-options" :disabled="!hasEnoughTeams" placeholder="Digita o seleziona…" required class="ev-input" @change="handleTeamInput('away')" @blur="handleTeamInput('away')" />
+                    </div>
+                    <datalist id="admin-team-options">
+                      <option v-for="team in teams" :key="team.id" :value="teamOptionValue(team)" />
+                    </datalist>
                   </div>
-                </div>
-              </div>
-              <label class="feedback-editor__suggestion">
-                Domanda suggerimenti (opzionale)
-                <textarea
-                  v-model="newEventSurvey.suggestionPrompt"
-                  rows="2"
-                  maxlength="120"
-                  :disabled="!hasEnoughTeams"
-                  placeholder="Testo mostrato per la domanda aperta"
-                ></textarea>
-              </label>
-            </div>
-            <div class="prize-editor new-event-prizes">
-              <div class="prize-editor__header">
-                <span>Premi in palio</span>
-                <p class="field-hint">
-                  Aggiungi i premi disponibili per la lotteria dell'evento.
-                </p>
-              </div>
-              <div class="prize-editor__list">
-                <div
-                  v-for="(prize, index) in newEventPrizes"
-                  :key="`new-event-prize-${index}`"
-                  class="prize-editor__row"
-                >
-                  <input
-                    v-model.trim="prize.name"
-                    type="text"
-                    :placeholder="`Premio ${index + 1}`"
-                    :disabled="!hasEnoughTeams"
-                  />
-                  <input
-                    v-model.trim="prize.winSmsText"
-                    type="text"
-                    placeholder="Testo SMS vittoria"
-                    :disabled="!hasEnoughTeams"
-                  />
-                  <button
-                    class="btn outline"
-                    type="button"
-                    @click="removeNewEventPrize(index)"
-                    :disabled="newEventPrizes.length <= 1"
-                  >
-                    Rimuovi
-                  </button>
-                </div>
-              </div>
-              <div class="prize-editor__actions">
-                <button
-                  class="btn secondary"
-                  type="button"
-                  @click="addNewEventPrize"
-                  :disabled="!hasEnoughTeams"
-                >
-                  Aggiungi premio
-                </button>
-              </div>
-            </div>
-          </form>
 
-          <div v-if="lastCreatedEventLink" class="hint">
-            Nuovo evento creato! Link pubblico:
-            <a :href="lastCreatedEventLink" target="_blank" rel="noopener">{{
-              lastCreatedEventLink
-            }}</a>
-            <button
-              class="btn link"
-              type="button"
-              @click="copyLink(lastCreatedEventLink)"
-            >
-              Copia
-            </button>
-          </div>
+                  <div class="ev-cform__row2">
+                    <div class="ev-field">
+                      <label class="ev-label">Data e ora</label>
+                      <input v-model="newEvent.start_datetime" type="datetime-local" :disabled="!hasEnoughTeams" required class="ev-input" />
+                    </div>
+                    <div class="ev-field">
+                      <label class="ev-label">Location</label>
+                      <input v-model.trim="newEvent.location" type="text" placeholder="Es. Palazzetto dello Sport" :disabled="!hasEnoughTeams" class="ev-input" />
+                    </div>
+                  </div>
 
-          <ul class="item-list">
-            <li
-              v-for="event in visibleEvents"
-              :key="event.id"
-              :class="['item', { active: event.is_active }]"
-            >
-              <div class="item-body">
-                <h3>
-                  {{ eventLabel(event) }}
-                  <span v-if="event.is_active" class="badge">Attivo</span>
-                  <span
-                    v-if="event.is_active && event.votes_closed"
-                    class="badge badge-closed"
-                  >
-                    Votazioni chiuse
-                  </span>
-                </h3>
-                <p class="muted">
-                  {{ formatEventDate(event.start_datetime) }} •
-                  {{ event.location || "Location da definire" }}
-                </p>
-                <p class="muted">
-                  Link voto:
-                  <a
-                    :href="buildEventLink(event.id)"
-                    target="_blank"
-                    rel="noopener"
-                    >{{ buildEventLink(event.id) }}</a
-                  >
-                </p>
-              </div>
-              <div class="item-actions">
-                <button
-                  class="btn success"
-                  type="button"
-                  @click="activateEvent(event.id)"
-                  :disabled="event.is_active || updatingEventId === event.id"
-                >
-                  <span v-if="event.is_active">Evento attivo</span>
-                  <span v-else-if="updatingEventId === event.id"
-                    >Attivazione…</span
-                  >
-                  <span v-else>Attiva</span>
-                </button>
-                <button
-                  class="btn secondary"
-                  type="button"
-                  @click="openVote(event.id)"
-                >
-                  Apri pagina voto
-                </button>
-                <button
-                  class="btn warning"
-                  type="button"
-                  @click="concludeEvent(event.id)"
-                  :disabled="concludingEventId === event.id"
-                >
-                  <span v-if="concludingEventId === event.id"
-                    >Conclusione…</span
-                  >
-                  <span v-else>Evento terminato</span>
-                </button>
-                <button
-                  class="btn danger"
-                  type="button"
-                  @click="deleteEvent(event.id)"
-                >
-                  Elimina
-                </button>
-              </div>
-              <div class="postvote-options">
-                <div class="postvote-options__header">
-                  <strong>Esperienze pre voto</strong>
-                  <p class="field-hint">
-                    Controlla le sezioni visibili prima della votazione.
-                  </p>
-                </div>
-                <div class="postvote-options__grid">
-                  <label class="postvote-toggle">
-                    <input
-                      type="checkbox"
-                      v-model="event.show_pre_vote_sponsors"
-                      :disabled="isSavingPrizesFor(event.id)"
-                    />
-                    <span class="postvote-toggle__label"
-                      >Sponsor a bordo campo</span
-                    >
-                  </label>
-                  <label class="postvote-toggle">
-                    <input
-                      type="checkbox"
-                      v-model="event.show_pre_vote_bottom_sponsors"
-                      :disabled="isSavingPrizesFor(event.id)"
-                    />
-                    <span class="postvote-toggle__label"
-                      >Sponsor a fondo campo</span
-                    >
-                  </label>
-                  <label class="postvote-toggle">
-                    <input
-                      type="checkbox"
-                      v-model="event.show_vote_counter"
-                      :disabled="isSavingPrizesFor(event.id)"
-                    />
-                    <span class="postvote-toggle__label"
-                      >Totale voti in tempo reale</span
-                    >
-                  </label>
-                </div>
-              </div>
-              <div class="postvote-options">
-                <div class="postvote-options__header">
-                  <strong>Esperienze post voto</strong>
-                  <p class="field-hint">
-                    Attiva i contenuti che vuoi offrire dopo la votazione.
-                  </p>
-                </div>
-                <div class="postvote-options__grid">
-                  <label class="postvote-toggle">
-                    <input
-                      type="checkbox"
-                      v-model="event.show_vote_trend"
-                      :disabled="isSavingPrizesFor(event.id)"
-                    />
-                    <span class="postvote-toggle__label"
-                      >Andamento dei voti</span
-                    >
-                  </label>
-                  <label class="postvote-toggle">
-                    <input
-                      type="checkbox"
-                      v-model="event.show_selfie"
-                      :disabled="isSavingPrizesFor(event.id)"
-                    />
-                    <span class="postvote-toggle__label">Selfie MVP</span>
-                  </label>
-                  <label class="postvote-toggle">
-                    <input
-                      type="checkbox"
-                      v-model="event.show_reaction_test"
-                      :disabled="isSavingPrizesFor(event.id)"
-                    />
-                    <span class="postvote-toggle__label"
-                      >Mini-gioco riflessi</span
-                    >
-                  </label>
-                  <label class="postvote-toggle">
-                    <input
-                      type="checkbox"
-                      v-model="event.show_feedback_survey"
-                      :disabled="isSavingPrizesFor(event.id)"
-                    />
-                    <span class="postvote-toggle__label"
-                      >Sondaggio feedback</span
-                    >
-                  </label>
-                </div>
-              </div>
-              <div class="feedback-editor existing-feedback">
-                <div class="feedback-editor__header">
-                  <strong>Sondaggio feedback</strong>
-                  <p class="field-hint">
-                    Modifica le domande e le risposte mostrate nel sondaggio di
-                    questo evento.
-                  </p>
-                </div>
-                <div class="feedback-editor__content">
-                  <div
-                    v-for="question in feedbackDraftFor(event.id).questions"
-                    :key="`event-${event.id}-feedback-${question.id}`"
-                    class="feedback-editor__question"
-                  >
-                    <label class="feedback-editor__question-title">
-                      Testo domanda
-                      <input
-                        v-model="question.title"
-                        type="text"
-                        :placeholder="`Domanda: ${question.id}`"
-                        :disabled="isSavingPrizesFor(event.id)"
-                      />
-                    </label>
-                    <div class="feedback-editor__answers">
-                      <label
-                        v-for="answer in question.answers"
-                        :key="`event-${event.id}-feedback-${question.id}-${answer.value}`"
-                        class="feedback-editor__answer"
-                      >
-                        <span class="feedback-editor__answer-meta">
-                          <span
-                            v-if="answer.icon"
-                            class="feedback-editor__answer-icon"
-                            aria-hidden="true"
-                          >
-                            {{ answer.icon }}
-                          </span>
-                          <code class="feedback-editor__answer-code">{{
-                            answer.value
-                          }}</code>
-                        </span>
-                        <input
-                          v-model="answer.label"
-                          type="text"
-                          :placeholder="`Risposta per ${question.id}`"
-                          :disabled="isSavingPrizesFor(event.id)"
-                        />
+                  <!-- Pre-vote options -->
+                  <div class="ev-opts-block">
+                    <div class="ev-opts-block__hd">
+                      <span class="ev-opts-dot ev-opts-dot--cyan"></span>
+                      <span class="ev-opts-label">Esperienze pre-voto</span>
+                    </div>
+                    <div class="ev-opts-grid">
+                      <label class="ev-toggle">
+                        <input type="checkbox" v-model="newEvent.show_pre_vote_sponsors" :disabled="!hasEnoughTeams" />
+                        <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                        <span class="ev-toggle__text">Sponsor bordo campo</span>
+                      </label>
+                      <label class="ev-toggle">
+                        <input type="checkbox" v-model="newEvent.show_pre_vote_bottom_sponsors" :disabled="!hasEnoughTeams" />
+                        <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                        <span class="ev-toggle__text">Sponsor fondo campo</span>
+                      </label>
+                      <label class="ev-toggle">
+                        <input type="checkbox" v-model="newEvent.show_vote_counter" :disabled="!hasEnoughTeams" />
+                        <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                        <span class="ev-toggle__text">Contatore voti live</span>
                       </label>
                     </div>
                   </div>
-                </div>
-                <label class="feedback-editor__suggestion">
-                  Domanda suggerimenti (opzionale)
-                  <textarea
-                    v-model="feedbackDraftFor(event.id).suggestionPrompt"
-                    rows="2"
-                    maxlength="120"
-                    :disabled="isSavingPrizesFor(event.id)"
-                    placeholder="Testo mostrato per la domanda aperta"
-                  ></textarea>
-                </label>
-              </div>
-              <div class="prize-editor existing-prizes">
-                <div class="prize-editor__header">
-                  <strong>Premi in palio</strong>
-                  <p class="field-hint">
-                    Modifica l'elenco dei premi. I premi già assegnati non
-                    possono essere rimossi.
-                  </p>
-                </div>
-                <div class="prize-editor__list">
-                  <div
-                    v-for="(prize, index) in prizeDraftsFor(event.id)"
-                    :key="`event-${event.id}-prize-${prize.id || index}`"
-                    class="prize-editor__row"
-                  >
-                    <input
-                      v-model="prize.name"
-                      type="text"
-                      :placeholder="`Premio ${index + 1}`"
-                      :disabled="isSavingPrizesFor(event.id)"
-                    />
-                    <input
-                      v-model="prize.winSmsText"
-                      type="text"
-                      placeholder="Testo SMS vittoria"
-                      :disabled="isSavingPrizesFor(event.id)"
-                    />
-                    <span v-if="prize.winner" class="prize-editor__winner"
-                      >Assegnato a {{ prizeWinnerLabel(prize) }}</span
-                    >
-                    <button
-                      class="btn outline"
-                      type="button"
-                      @click="removePrizeDraft(event.id, index)"
-                      :disabled="
-                        prize.winner ||
-                        prizeDraftsFor(event.id).length <= 1 ||
-                        isSavingPrizesFor(event.id)
-                      "
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                </div>
-                <div class="prize-editor__actions">
-                  <button
-                    class="btn secondary"
-                    type="button"
-                    @click="addPrizeDraft(event.id)"
-                    :disabled="isSavingPrizesFor(event.id)"
-                  >
-                    Aggiungi premio
-                  </button>
-                  <button
-                    class="btn primary"
-                    type="button"
-                    @click="savePrizesForEvent(event)"
-                    :disabled="isSavingPrizesFor(event.id)"
-                  >
-                    {{
-                      isSavingPrizesFor(event.id)
-                        ? "Salvataggio…"
-                        : "Salva impostazioni"
-                    }}
-                  </button>
-                </div>
-                <p v-if="eventPrizeErrors[event.id]" class="error">
-                  {{ eventPrizeErrors[event.id] }}
-                </p>
-                <p v-if="eventFeedbackErrors[event.id]" class="error">
-                  {{ eventFeedbackErrors[event.id] }}
-                </p>
-              </div>
-              <div class="postvote-options">
-                <div class="postvote-options__header">
-                  <strong>Mini-games · Quiz Lampo</strong>
-                </div>
-                <div class="postvote-options__grid">
-                  <div class="quiz-toggle-actions">
-                    <button
-                      class="btn"
-                      :class="quizDraftFor(event.id).enabled ? 'primary' : 'secondary'"
-                      type="button"
-                      @click="quizDraftFor(event.id).enabled = true"
-                    >
-                      Abilita quiz
-                    </button>
-                    <button
-                      class="btn"
-                      :class="quizDraftFor(event.id).enabled ? 'secondary' : 'danger'"
-                      type="button"
-                      @click="quizDraftFor(event.id).enabled = false"
-                    >
-                      Disabilita quiz
-                    </button>
-                  </div>
-                </div>
-                <div class="prize-editor__actions">
-                  <button class="btn secondary" type="button" @click="loadQuizForEvent(event.id)">Ricarica Quiz</button>
-                  <button class="btn primary" type="button" @click="saveQuizConfig(event.id)">Salva Config</button>
-                </div>
-                <div class="prize-editor__list">
-                  <div v-for="(q, qIndex) in quizQuestionsFor(event.id)" :key="`quiz-${event.id}-${q.id || qIndex}`" class="prize-editor__row">
-                    <input v-model="q.question_text" type="text" placeholder="Testo domanda" />
-                    <div class="feedback-editor__answers">
-                      <label v-for="aIdx in q.answers.length" :key="`qa-${aIdx}`" class="feedback-editor__answer">
-                        <input v-model="q.answers[aIdx-1]" type="text" :placeholder="`Risposta ${aIdx}`" />
+
+                  <!-- Post-vote options -->
+                  <div class="ev-opts-block">
+                    <div class="ev-opts-block__hd">
+                      <span class="ev-opts-dot ev-opts-dot--purple"></span>
+                      <span class="ev-opts-label">Esperienze post-voto</span>
+                    </div>
+                    <div class="ev-opts-grid">
+                      <label class="ev-toggle">
+                        <input type="checkbox" v-model="newEvent.show_vote_trend" :disabled="!hasEnoughTeams" />
+                        <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                        <span class="ev-toggle__text">Andamento voti</span>
+                      </label>
+                      <label class="ev-toggle">
+                        <input type="checkbox" v-model="newEvent.show_selfie" :disabled="!hasEnoughTeams" />
+                        <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                        <span class="ev-toggle__text">Selfie MVP</span>
+                      </label>
+                      <label class="ev-toggle">
+                        <input type="checkbox" v-model="newEvent.show_reaction_test" :disabled="!hasEnoughTeams" />
+                        <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                        <span class="ev-toggle__text">Mini-gioco riflessi</span>
+                      </label>
+                      <label class="ev-toggle">
+                        <input type="checkbox" v-model="newEvent.show_feedback_survey" :disabled="!hasEnoughTeams" />
+                        <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                        <span class="ev-toggle__text">Sondaggio feedback</span>
                       </label>
                     </div>
-                    <label>Corretta idx<input type="number" min="0" :max="q.answers.length-1" v-model.number="q.correct_index" /></label>
-                    <label>Ordine<input type="number" min="0" v-model.number="q.order_index" /></label>
-                    <div class="prize-editor__actions">
-                      <button class="btn outline" type="button" @click="addAnswerToQuestion(event.id, qIndex)" :disabled="q.answers.length>=4">+ Risposta</button>
-                      <button class="btn outline" type="button" @click="removeAnswerFromQuestion(event.id, qIndex)" :disabled="q.answers.length<=2">- Risposta</button>
-                      <button class="btn primary" type="button" @click="saveQuizQuestion(event.id, q)">Salva domanda</button>
-                      <button class="btn danger" type="button" @click="deleteQuizQuestion(event.id, q)">Elimina</button>
-                    </div>
                   </div>
-                  <button class="btn secondary" type="button" @click="addQuizQuestionDraft(event.id)">Aggiungi domanda</button>
-                </div>
-              </div>
-              <div class="postvote-options">
-                <div class="postvote-options__header">
-                  <strong>Stories</strong>
-                  <p class="field-hint">Gestisci stories giocatori mostrate nella live experience.</p>
-                </div>
-                <div class="prize-editor__actions">
-                  <button class="btn secondary" type="button" @click="loadStoriesForEvent(event.id)">
-                    {{ isStoriesLoading(event.id) ? 'Caricamento…' : 'Ricarica Stories' }}
-                  </button>
-                  <button class="btn secondary" type="button" @click="addStoryDraft(event.id)">Aggiungi story</button>
-                </div>
-                <div class="prize-editor__list">
-                  <div v-for="(story, storyIndex) in storiesForEvent(event.id)" :key="`story-${event.id}-${story.id || storyIndex}`" class="prize-editor__row">
-                    <input v-model="story.player_name" type="text" placeholder="Nome giocatore (opzionale)" />
-                    <input v-model="story.title" type="text" placeholder="Titolo breve (opzionale)" />
-                    <input v-model="story.thumbnail_url" type="url" placeholder="Thumbnail URL" />
-                    <input v-model="story.video_url" type="url" placeholder="Video verticale URL" />
-                    <input
-                      :id="`story-video-${event.id}-${storyIndex}`"
-                      type="file"
-                      accept="video/mp4,video/webm,video/quicktime"
-                      style="display: none"
-                      @change="uploadStoryVideo(event.id, story, storyIndex, $event)"
-                    />
-                    <div class="prize-editor__actions">
-                      <button
-                        class="btn outline"
-                        type="button"
-                        @click="triggerStoryVideoPicker(event.id, storyIndex)"
-                        :disabled="isStoryVideoUploading(event.id, storyIndex) || isStoriesSaving(event.id)"
-                      >
-                        {{ isStoryVideoUploading(event.id, storyIndex) ? 'Upload video…' : 'Carica video dal dispositivo' }}
+
+                  <!-- Prizes -->
+                  <div class="ev-opts-block">
+                    <div class="ev-opts-block__hd">
+                      <span class="ev-opts-dot ev-opts-dot--gold"></span>
+                      <span class="ev-opts-label">Premi in palio</span>
+                      <span class="ev-opts-count">{{ newEventPrizes.length }} {{ newEventPrizes.length === 1 ? 'premio' : 'premi' }}</span>
+                    </div>
+                    <div class="ev-prizes-list">
+                      <div v-for="(prize, index) in newEventPrizes" :key="`new-ev-prize-${index}`" class="ev-prize-row">
+                        <span class="ev-prize-num">#{{ index + 1 }}</span>
+                        <input v-model.trim="prize.name" type="text" :placeholder="`Premio ${index + 1}`" :disabled="!hasEnoughTeams" class="ev-input" />
+                        <input v-model.trim="prize.winSmsText" type="text" placeholder="SMS vittoria" :disabled="!hasEnoughTeams" class="ev-input" />
+                        <button class="ev-btn-icon ev-btn-icon--danger" type="button" @click="removeNewEventPrize(index)" :disabled="newEventPrizes.length <= 1" title="Rimuovi">✕</button>
+                      </div>
+                    </div>
+                    <button class="ev-btn-ghost" type="button" @click="addNewEventPrize" :disabled="!hasEnoughTeams">＋ Aggiungi premio</button>
+                  </div>
+
+                  <!-- Footer actions -->
+                  <div class="ev-cform__footer">
+                    <div v-if="lastCreatedEventLink" class="ev-success-banner">
+                      <span>✓ Evento creato!</span>
+                      <a :href="lastCreatedEventLink" target="_blank" rel="noopener">{{ lastCreatedEventLink }}</a>
+                      <button class="ev-btn-ghost ev-btn-ghost--sm" type="button" @click="copyLink(lastCreatedEventLink)">Copia link</button>
+                    </div>
+                    <div class="ev-cform__actions">
+                      <button class="ev-btn-deactivate" type="button" @click="deactivateEvents" :disabled="!activeEventId || isDisablingEvents">
+                        {{ isDisablingEvents ? 'Disattivazione…' : 'Disattiva tutti' }}
+                      </button>
+                      <button class="ev-btn-create" type="submit" :disabled="!hasEnoughTeams">
+                        Crea evento <span>→</span>
                       </button>
                     </div>
-                    <label class="postvote-toggle">
-                      <input v-model="story.is_active" type="checkbox" />
-                      <span class="postvote-toggle__label">Attiva</span>
-                    </label>
-                    <div class="prize-editor__actions">
-                      <button class="btn outline" type="button" @click="moveStory(event.id, storyIndex, -1)" :disabled="storyIndex === 0">↑</button>
-                      <button class="btn outline" type="button" @click="moveStory(event.id, storyIndex, 1)" :disabled="storyIndex === storiesForEvent(event.id).length - 1">↓</button>
-                      <button class="btn primary" type="button" @click="saveStory(event.id, story, storyIndex)" :disabled="isStoriesSaving(event.id) || isStoryVideoUploading(event.id, storyIndex)">Salva</button>
-                      <button class="btn danger" type="button" @click="deleteStory(event.id, story, storyIndex)" :disabled="isStoriesSaving(event.id)">Elimina</button>
-                    </div>
+                  </div>
+
+                </form>
+              </div>
+            </transition>
+          </div>
+
+          <!-- ══ EVENTS LIST ══════════════════════════════════════════ -->
+          <div class="ev-list">
+            <p v-if="!visibleEvents.length" class="ev-empty">
+              Nessun evento. Creane uno qui sopra.
+            </p>
+
+            <div v-for="event in visibleEvents" :key="event.id" class="ev-card"
+              :class="{ 'ev-card--active': event.is_active, 'ev-card--closed': event.is_active && event.votes_closed }">
+
+              <!-- Card header -->
+              <div class="ev-card__hd">
+                <div class="ev-card__identity">
+                  <h3 class="ev-card__title">{{ eventLabel(event) }}</h3>
+                  <div class="ev-card__meta">
+                    <span>{{ formatEventDate(event.start_datetime) }}</span>
+                    <span v-if="event.location" class="ev-sep">·</span>
+                    <span v-if="event.location">{{ event.location }}</span>
                   </div>
                 </div>
+                <div class="ev-card__badges">
+                  <span v-if="event.is_active && !event.votes_closed" class="ev-badge ev-badge--live">
+                    <span class="ev-badge__pulse"></span>Live
+                  </span>
+                  <span v-else-if="event.is_active && event.votes_closed" class="ev-badge ev-badge--closed">Chiuse</span>
+                  <span v-else class="ev-badge ev-badge--idle">Inattivo</span>
+                </div>
               </div>
-            </li>
-          </ul>
+
+              <!-- Quick actions bar -->
+              <div class="ev-card__actions">
+                <button class="ev-act ev-act--success" type="button" :disabled="event.is_active || updatingEventId === event.id" @click="activateEvent(event.id)">
+                  <span v-if="event.is_active">✓ Attivo</span>
+                  <span v-else-if="updatingEventId === event.id">Attivazione…</span>
+                  <span v-else>Attiva</span>
+                </button>
+                <button class="ev-act ev-act--secondary" type="button" @click="openVote(event.id)">↗ Pagina voto</button>
+                <button class="ev-act ev-act--warning" type="button" :disabled="concludingEventId === event.id" @click="concludeEvent(event.id)">
+                  <span v-if="concludingEventId === event.id">Conclusione…</span>
+                  <span v-else>Concludi</span>
+                </button>
+                <button class="ev-act ev-act--danger" type="button" @click="deleteEvent(event.id)">Elimina</button>
+                <div class="ev-card__link">
+                  <code class="ev-link-code">{{ buildEventLink(event.id) }}</code>
+                  <button class="ev-btn-icon" type="button" @click="copyLink(buildEventLink(event.id))" title="Copia link">⎘</button>
+                </div>
+              </div>
+
+              <!-- ── Tab bar ── -->
+              <div class="ev-tabs">
+                <div class="ev-tabs__bar">
+                  <button v-for="tab in [{id:'settings',icon:'⚙',label:'Impostazioni'},{id:'prizes',icon:'🎁',label:'Premi'},{id:'feedback',icon:'📋',label:'Sondaggio'},{id:'quiz',icon:'🧩',label:'Quiz'},{id:'stories',icon:'▶',label:'Stories'}]"
+                    :key="tab.id" type="button" class="ev-tabs__btn" :class="{ active: getEventTab(event.id) === tab.id }"
+                    @click="setEventTab(event.id, tab.id)">
+                    <span>{{ tab.icon }}</span>{{ tab.label }}
+                  </button>
+                </div>
+
+                <div class="ev-tabs__panel">
+
+                  <!-- ── TAB: Impostazioni ── -->
+                  <div v-if="getEventTab(event.id) === 'settings'" class="ev-tab-settings">
+                    <div class="ev-toggles-grid">
+                      <div class="ev-toggles-col">
+                        <div class="ev-toggles-col__label">Pre-voto</div>
+                        <label class="ev-toggle">
+                          <input type="checkbox" v-model="event.show_pre_vote_sponsors" :disabled="isSavingPrizesFor(event.id)" />
+                          <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                          <span class="ev-toggle__text">Sponsor bordo campo</span>
+                        </label>
+                        <label class="ev-toggle">
+                          <input type="checkbox" v-model="event.show_pre_vote_bottom_sponsors" :disabled="isSavingPrizesFor(event.id)" />
+                          <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                          <span class="ev-toggle__text">Sponsor fondo campo</span>
+                        </label>
+                        <label class="ev-toggle">
+                          <input type="checkbox" v-model="event.show_vote_counter" :disabled="isSavingPrizesFor(event.id)" />
+                          <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                          <span class="ev-toggle__text">Contatore voti live</span>
+                        </label>
+                      </div>
+                      <div class="ev-toggles-col">
+                        <div class="ev-toggles-col__label">Post-voto</div>
+                        <label class="ev-toggle">
+                          <input type="checkbox" v-model="event.show_vote_trend" :disabled="isSavingPrizesFor(event.id)" />
+                          <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                          <span class="ev-toggle__text">Andamento voti</span>
+                        </label>
+                        <label class="ev-toggle">
+                          <input type="checkbox" v-model="event.show_selfie" :disabled="isSavingPrizesFor(event.id)" />
+                          <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                          <span class="ev-toggle__text">Selfie MVP</span>
+                        </label>
+                        <label class="ev-toggle">
+                          <input type="checkbox" v-model="event.show_reaction_test" :disabled="isSavingPrizesFor(event.id)" />
+                          <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                          <span class="ev-toggle__text">Mini-gioco riflessi</span>
+                        </label>
+                        <label class="ev-toggle">
+                          <input type="checkbox" v-model="event.show_feedback_survey" :disabled="isSavingPrizesFor(event.id)" />
+                          <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                          <span class="ev-toggle__text">Sondaggio feedback</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div class="ev-tab-save-row">
+                      <button class="ev-btn-save" type="button" @click="saveEventPrizes(event)" :disabled="isSavingPrizesFor(event.id)">
+                        {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva impostazioni' }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- ── TAB: Premi ── -->
+                  <div v-else-if="getEventTab(event.id) === 'prizes'" class="ev-tab-prizes">
+                    <div class="ev-prizes-list">
+                      <div v-for="(prize, i) in eventPrizeDrafts[event.id]" :key="`ev-${event.id}-prize-${i}`" class="ev-prize-row">
+                        <span class="ev-prize-num">#{{ i + 1 }}</span>
+                        <input v-model="prize.name" type="text" :placeholder="`Premio ${i + 1}`" class="ev-input" :disabled="isSavingPrizesFor(event.id)" />
+                        <input v-model="prize.winSmsText" type="text" placeholder="SMS vincitore" class="ev-input" :disabled="isSavingPrizesFor(event.id)" />
+                        <span v-if="prize.winner" class="ev-prize-winner">🏆 {{ prize.winner.ticketCode }}</span>
+                        <button class="ev-btn-icon ev-btn-icon--danger" type="button"
+                          :disabled="!!prize.winner || eventPrizeDrafts[event.id].length <= 1 || isSavingPrizesFor(event.id)"
+                          @click="removeEventPrize(event.id, i)" title="Rimuovi">✕</button>
+                      </div>
+                    </div>
+                    <div class="ev-tab-save-row">
+                      <button class="ev-btn-ghost" type="button" @click="addEventPrize(event.id)" :disabled="isSavingPrizesFor(event.id)">＋ Aggiungi premio</button>
+                      <button class="ev-btn-save" type="button" @click="saveEventPrizes(event)" :disabled="isSavingPrizesFor(event.id)">
+                        {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva premi' }}
+                      </button>
+                    </div>
+                    <p v-if="eventPrizeErrors[event.id]" class="ev-tab-error">{{ eventPrizeErrors[event.id] }}</p>
+                  </div>
+
+                  <!-- ── TAB: Sondaggio ── -->
+                  <div v-else-if="getEventTab(event.id) === 'feedback'" class="ev-tab-feedback">
+                    <div class="ev-feedback-questions">
+                      <div v-for="question in feedbackDraftFor(event.id).questions" :key="`ev-${event.id}-fbq-${question.id}`" class="ev-feedback-q">
+                        <div class="ev-feedback-q__hd">
+                          <span class="ev-feedback-q__id">{{ question.id }}</span>
+                          <input v-model="question.title" type="text" :placeholder="`Domanda: ${question.id}`" class="ev-input" :disabled="isSavingPrizesFor(event.id)" />
+                        </div>
+                        <div class="ev-feedback-answers">
+                          <label v-for="answer in question.answers" :key="`ev-${event.id}-fba-${question.id}-${answer.value}`" class="ev-feedback-ans">
+                            <span v-if="answer.icon" class="ev-feedback-ans__icon">{{ answer.icon }}</span>
+                            <code class="ev-feedback-ans__code">{{ answer.value }}</code>
+                            <input v-model="answer.label" type="text" :placeholder="`Risposta: ${answer.value}`" class="ev-input" :disabled="isSavingPrizesFor(event.id)" />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="ev-field" style="margin-top:0.85rem">
+                      <label class="ev-label">Domanda suggerimenti (opzionale)</label>
+                      <textarea v-model="feedbackDraftFor(event.id).suggestionPrompt" rows="2" maxlength="120" class="ev-input" :disabled="isSavingPrizesFor(event.id)" placeholder="Testo domanda aperta…"></textarea>
+                    </div>
+                    <div class="ev-tab-save-row">
+                      <button class="ev-btn-save" type="button" @click="saveEventPrizes(event)" :disabled="isSavingPrizesFor(event.id)">
+                        {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva sondaggio' }}
+                      </button>
+                    </div>
+                    <p v-if="eventFeedbackErrors[event.id]" class="ev-tab-error">{{ eventFeedbackErrors[event.id] }}</p>
+                  </div>
+
+                  <!-- ── TAB: Quiz ── -->
+                  <div v-else-if="getEventTab(event.id) === 'quiz'" class="ev-tab-quiz">
+                    <div class="ev-quiz-statusbar">
+                      <span class="ev-quiz-statusbar__label">Stato quiz:</span>
+                      <button class="ev-act" :class="quizDraftFor(event.id).enabled ? 'ev-act--success' : 'ev-act--secondary'" type="button" @click="quizDraftFor(event.id).enabled = true">Abilitato</button>
+                      <button class="ev-act" :class="!quizDraftFor(event.id).enabled ? 'ev-act--danger' : 'ev-act--secondary'" type="button" @click="quizDraftFor(event.id).enabled = false">Disabilitato</button>
+                      <span style="flex:1"></span>
+                      <button class="ev-btn-ghost ev-btn-ghost--sm" type="button" @click="loadQuizForEvent(event.id)">↻ Ricarica</button>
+                      <button class="ev-btn-save" type="button" @click="saveQuizConfig(event.id)">Salva config</button>
+                    </div>
+                    <div class="ev-quiz-questions">
+                      <div v-for="(q, qi) in quizQuestionsFor(event.id)" :key="`quiz-${event.id}-${q.id || qi}`" class="ev-quiz-q">
+                        <div class="ev-quiz-q__hd">
+                          <span class="ev-quiz-q__num">Q{{ qi + 1 }}</span>
+                          <input v-model="q.question_text" type="text" placeholder="Testo domanda" class="ev-input ev-quiz-q__text" />
+                          <label class="ev-quiz-meta">
+                            <span>Corretta</span>
+                            <input type="number" min="0" :max="q.answers.length - 1" v-model.number="q.correct_index" class="ev-input ev-input--sm" />
+                          </label>
+                          <label class="ev-quiz-meta">
+                            <span>Ordine</span>
+                            <input type="number" min="0" v-model.number="q.order_index" class="ev-input ev-input--sm" />
+                          </label>
+                        </div>
+                        <div class="ev-quiz-answers">
+                          <div v-for="(_, ai) in q.answers" :key="ai" class="ev-quiz-ans">
+                            <span class="ev-quiz-ans__badge" :class="{ correct: q.correct_index === ai }">{{ ai }}</span>
+                            <input v-model="q.answers[ai]" type="text" :placeholder="`Risposta ${ai + 1}`" class="ev-input" />
+                          </div>
+                        </div>
+                        <div class="ev-quiz-q__actions">
+                          <button class="ev-btn-ghost ev-btn-ghost--sm" type="button" @click="addAnswerToQuestion(event.id, qi)" :disabled="q.answers.length >= 4">＋ Risposta</button>
+                          <button class="ev-btn-ghost ev-btn-ghost--sm" type="button" @click="removeAnswerFromQuestion(event.id, qi)" :disabled="q.answers.length <= 2">－ Risposta</button>
+                          <button class="ev-btn-save ev-btn-save--sm" type="button" @click="saveQuizQuestion(event.id, q)">Salva</button>
+                          <button class="ev-act ev-act--danger" type="button" @click="deleteQuizQuestion(event.id, q)">Elimina</button>
+                        </div>
+                      </div>
+                      <button class="ev-btn-ghost" type="button" @click="addQuizQuestionDraft(event.id)">＋ Aggiungi domanda</button>
+                    </div>
+                  </div>
+
+                  <!-- ── TAB: Stories ── -->
+                  <div v-else-if="getEventTab(event.id) === 'stories'" class="ev-tab-stories">
+                    <div class="ev-stories-toolbar">
+                      <span v-if="isStoriesLoading(event.id)" class="ev-loading">
+                        <span class="ev-spinner"></span> Caricamento…
+                      </span>
+                      <button class="ev-btn-ghost ev-btn-ghost--sm" type="button" @click="loadStoriesForEvent(event.id)" :disabled="isStoriesLoading(event.id)">↻ Ricarica</button>
+                      <button class="ev-btn-ghost" type="button" @click="addStoryDraft(event.id)">＋ Aggiungi story</button>
+                    </div>
+                    <div class="ev-stories-list">
+                      <div v-for="(story, si) in storiesForEvent(event.id)" :key="`story-${event.id}-${story.id || si}`" class="ev-story-row">
+                        <div class="ev-story-thumb">
+                          <img v-if="story.thumbnail_url" :src="story.thumbnail_url" alt="thumb" />
+                          <span v-else>▶</span>
+                        </div>
+                        <div class="ev-story-fields">
+                          <div class="ev-story-grid">
+                            <input v-model="story.player_name" type="text" placeholder="Nome giocatore (opz.)" class="ev-input" />
+                            <input v-model="story.title" type="text" placeholder="Titolo (opz.)" class="ev-input" />
+                            <input v-model="story.thumbnail_url" type="url" placeholder="Thumbnail URL" class="ev-input" />
+                            <div class="ev-story-video">
+                              <input v-model="story.video_url" type="url" placeholder="Video URL" class="ev-input" />
+                              <input :id="`story-video-${event.id}-${si}`" type="file" accept="video/mp4,video/webm,video/quicktime" style="display:none" @change="uploadStoryVideo(event.id, story, si, $event)" />
+                              <button class="ev-btn-ghost ev-btn-ghost--sm" type="button" @click="triggerStoryVideoPicker(event.id, si)" :disabled="isStoryVideoUploading(event.id, si) || isStoriesSaving(event.id)">
+                                {{ isStoryVideoUploading(event.id, si) ? 'Upload…' : '⬆ Carica' }}
+                              </button>
+                            </div>
+                          </div>
+                          <div class="ev-story-footer">
+                            <label class="ev-toggle ev-toggle--inline">
+                              <input type="checkbox" v-model="story.is_active" />
+                              <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                              <span class="ev-toggle__text">Attiva</span>
+                            </label>
+                            <div class="ev-story-order">
+                              <button class="ev-btn-icon" type="button" @click="moveStory(event.id, si, -1)" :disabled="si === 0">↑</button>
+                              <button class="ev-btn-icon" type="button" @click="moveStory(event.id, si, 1)" :disabled="si === storiesForEvent(event.id).length - 1">↓</button>
+                            </div>
+                            <button class="ev-btn-save ev-btn-save--sm" type="button" @click="saveStory(event.id, story, si)" :disabled="isStoriesSaving(event.id) || isStoryVideoUploading(event.id, si)">Salva</button>
+                            <button class="ev-act ev-act--danger" type="button" @click="deleteStory(event.id, story, si)" :disabled="isStoriesSaving(event.id)">Elimina</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+            </div>
+          </div>
+
         </section>
 
         <section v-else-if="section === 'closing'" class="card closing-card">
@@ -2939,6 +2659,10 @@ const eventPrizeDrafts = reactive({});
 const eventPrizeErrors = reactive({});
 const eventFeedbackDrafts = reactive({});
 const eventFeedbackErrors = reactive({});
+const eventActiveTab = reactive({});
+const createFormOpen = ref(true);
+function setEventTab(eventId, tab) { eventActiveTab[eventId] = tab; }
+function getEventTab(eventId) { return eventActiveTab[eventId] || 'settings'; }
 const savingEventPrizes = ref(0);
 const portalRef = ref(null);
 const toolbarRef = ref(null);
