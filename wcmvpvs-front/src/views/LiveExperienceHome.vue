@@ -553,13 +553,31 @@
             <div class="mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center">
               <p class="mb-4 rounded-full border border-amber-300/40 bg-amber-300/15 px-4 py-2 text-sm font-black text-amber-100">Saldo: {{ totalCoins }} 🪙</p>
               <div class="wheel-wrap wheel-wrap--modal" :class="{ 'wheel-wrap--result': Boolean(wheelResult) }">
-                <div class="wheel-pointer" aria-hidden="true">▼</div>
+                <!-- Pointer indicator -->
+                <div class="wheel-pointer" aria-hidden="true">
+                  <div class="wheel-pointer__triangle"></div>
+                  <div class="wheel-pointer__stem"></div>
+                </div>
+
+                <!-- Outer decorative ring -->
+                <div class="wheel-outer-ring" :class="{ 'wheel-outer-ring--jackpot': wheelResult?.type === 'jackpot' }"></div>
+
                 <div
                   ref="wheelEl"
                   class="fortune-wheel fortune-wheel--modal"
                   :class="{ 'fortune-wheel--spinning': isWheelSpinning, 'fortune-wheel--jackpot': wheelResult?.type === 'jackpot' }"
                   :style="{ transform: `rotate(${wheelRotationDeg}deg)` }"
                 >
+                  <!-- Segment divider lines -->
+                  <svg class="fortune-wheel__dividers" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <line v-for="i in 8" :key="i"
+                      x1="50" y1="50" x2="50" y2="0"
+                      stroke="rgba(255,255,255,0.45)" stroke-width="0.7"
+                      :transform="`rotate(${(i - 1) * 45}, 50, 50)`"
+                    />
+                  </svg>
+
+                  <!-- Segment labels -->
                   <span
                     v-for="(segment, index) in wheelSegments"
                     :key="segment.id"
@@ -569,6 +587,11 @@
                   >
                     {{ segment.shortLabel }}
                   </span>
+
+                  <!-- Center hub -->
+                  <div class="fortune-wheel__hub">
+                    <span class="fortune-wheel__hub-icon">🍀</span>
+                  </div>
                 </div>
               </div>
 
@@ -667,14 +690,14 @@ const mysteryRewards = [
   { id: 'free-retry', type: 'freeRetry', label: 'RETRY GRATIS MINIGIOCO' },
 ];
 const wheelSegments = [
-  { id: 'coins-3-a', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '+3', weight: 24 },
-  { id: 'coins-5', type: 'coins', amount: 5, label: '+5 monete', shortLabel: '+5', weight: 20 },
-  { id: 'coins-8', type: 'coins', amount: 8, label: '+8 monete', shortLabel: '+8', weight: 16 },
-  { id: 'coins-12', type: 'coins', amount: 12, label: '+12 monete', shortLabel: '+12', weight: 11 },
-  { id: 'free-retry-wheel', type: 'freeRetry', label: 'Retry minigioco', shortLabel: 'Retry', weight: 8 },
-  { id: 'x2-next-win', type: 'nextMultiplier', amount: 2, label: 'x2 prossima vincita minigioco', shortLabel: 'x2', weight: 10 },
-  { id: 'coins-3-b', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '+3', weight: 24 },
-  { id: 'jackpot-25', type: 'jackpot', amount: 25, label: 'JACKPOT +25 monete', shortLabel: 'JACKPOT', weight: 3 },
+  { id: 'coins-3-a', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '🪙+3', weight: 24 },
+  { id: 'coins-5', type: 'coins', amount: 5, label: '+5 monete', shortLabel: '🪙+5', weight: 20 },
+  { id: 'coins-8', type: 'coins', amount: 8, label: '+8 monete', shortLabel: '🪙+8', weight: 16 },
+  { id: 'coins-12', type: 'coins', amount: 12, label: '+12 monete', shortLabel: '🪙+12', weight: 11 },
+  { id: 'free-retry-wheel', type: 'freeRetry', label: 'Retry minigioco', shortLabel: '🔄 Retry', weight: 8 },
+  { id: 'x2-next-win', type: 'nextMultiplier', amount: 2, label: 'x2 prossima vincita minigioco', shortLabel: '⚡×2', weight: 10 },
+  { id: 'coins-3-b', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '🪙+3', weight: 24 },
+  { id: 'jackpot-25', type: 'jackpot', amount: 25, label: 'JACKPOT +25 monete', shortLabel: '💎JACK', weight: 3 },
 ];
 
 const props = defineProps({
@@ -1768,10 +1791,13 @@ async function spinFortuneWheel() {
   const winningSegment = pickWheelSegment();
   const targetIndex = wheelSegments.findIndex((segment) => segment.id === winningSegment.id);
   const targetCenter = targetIndex * WHEEL_SEGMENT_DEG + WHEEL_SEGMENT_DEG / 2;
-  const landingRotation = (360 - targetCenter) % 360;
+  // Account for the current accumulated rotation so the pointer always lands
+  // precisely on the winning segment, even after multiple spins.
+  const currentEffectiveAngle = wheelRotationDeg.value % 360;
+  const landingRotation = ((360 - targetCenter) - currentEffectiveAngle + 360) % 360;
 
   startWheelTickLoop();
-  wheelRotationDeg.value += WHEEL_SPINS * 360 + landingRotation + Math.random() * 8;
+  wheelRotationDeg.value += WHEEL_SPINS * 360 + landingRotation;
   await wait(3800);
   stopWheelTickLoop();
 
@@ -2272,51 +2298,176 @@ function onFeatureSelect(featureId) {
   align-items: center;
 }
 
+/* ── Pointer ─────────────────────────────────────── */
 .wheel-pointer {
   position: absolute;
-  top: -0.5rem;
-  z-index: 2;
-  color: #facc15;
-  font-size: 1.3rem;
+  top: -1.1rem;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
 }
 
+.wheel-pointer__triangle {
+  width: 0;
+  height: 0;
+  border-left: 14px solid transparent;
+  border-right: 14px solid transparent;
+  border-top: 24px solid #fde68a;
+  filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.9)) drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+}
+
+.wheel-pointer__stem {
+  width: 6px;
+  height: 12px;
+  background: linear-gradient(180deg, #fde68a, #f59e0b);
+  border-radius: 0 0 3px 3px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+/* ── Outer decorative ring ────────────────────────── */
+.wheel-outer-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  border: 5px solid transparent;
+  background: conic-gradient(
+    #fbbf24, #f59e0b, #ef4444, #a855f7, #3b82f6, #22c55e, #f97316, #eab308, #fbbf24
+  ) border-box;
+  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: destination-out;
+  mask-composite: exclude;
+  opacity: 0.75;
+  pointer-events: none;
+  transition: opacity 0.4s, box-shadow 0.4s;
+}
+
+.wheel-outer-ring--jackpot {
+  opacity: 1;
+  box-shadow: 0 0 24px rgba(250, 204, 21, 0.9);
+  animation: ring-jackpot 0.6s ease infinite alternate;
+}
+
+@keyframes ring-jackpot {
+  from { opacity: 0.85; }
+  to   { opacity: 1; box-shadow: 0 0 40px rgba(250,204,21,1); }
+}
+
+/* ── Wheel ────────────────────────────────────────── */
 .fortune-wheel {
   position: relative;
   height: 100%;
   width: 100%;
   border-radius: 9999px;
-  border: 8px solid rgba(255, 255, 255, 0.65);
+  border: 6px solid rgba(255, 255, 255, 0.7);
+  /* White 1-deg separators between each coloured segment */
   background: conic-gradient(
-    #f59e0b 0deg 45deg,
-    #a855f7 45deg 90deg,
-    #22c55e 90deg 135deg,
-    #ef4444 135deg 180deg,
-    #14b8a6 180deg 225deg,
-    #3b82f6 225deg 270deg,
-    #f97316 270deg 315deg,
-    #eab308 315deg 360deg
+    #f59e0b    0deg  44deg,
+    #fff      44deg  45deg,
+    #a855f7   45deg  89deg,
+    #fff      89deg  90deg,
+    #22c55e   90deg 134deg,
+    #fff     134deg 135deg,
+    #ef4444  135deg 179deg,
+    #fff     179deg 180deg,
+    #14b8a6  180deg 224deg,
+    #fff     224deg 225deg,
+    #3b82f6  225deg 269deg,
+    #fff     269deg 270deg,
+    #f97316  270deg 314deg,
+    #fff     314deg 315deg,
+    #eab308  315deg 359deg,
+    #fff     359deg 360deg
   );
-  box-shadow: 0 0 28px rgba(251, 191, 36, 0.35);
+  box-shadow:
+    0 0 0 3px rgba(255,255,255,0.15),
+    0 0 32px rgba(251, 191, 36, 0.4),
+    0 8px 32px rgba(0,0,0,0.5);
   transition: transform 3.8s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+
+.fortune-wheel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at 38% 28%,
+    rgba(255,255,255,0.18) 0%,
+    transparent 60%
+  );
+  pointer-events: none;
 }
 
 .fortune-wheel--jackpot {
-  box-shadow: 0 0 52px rgba(250, 204, 21, 0.95);
+  box-shadow:
+    0 0 0 3px rgba(255,255,255,0.2),
+    0 0 60px rgba(250, 204, 21, 1),
+    0 8px 32px rgba(0,0,0,0.5);
 }
 
+/* ── SVG dividers ─────────────────────────────────── */
+.fortune-wheel__dividers {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Labels ───────────────────────────────────────── */
 .fortune-wheel__label {
   position: absolute;
   left: 50%;
   top: 50%;
-  font-size: clamp(0.7rem, 2.4vw, 0.9rem);
+  z-index: 3;
+  font-size: clamp(0.62rem, 2.1vw, 0.82rem);
   font-weight: 900;
   color: #fff;
-  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+  background: rgba(0,0,0,0.22);
+  padding: 0.1em 0.35em;
+  border-radius: 999px;
+  backdrop-filter: blur(1px);
+  line-height: 1.3;
 }
 
 .fortune-wheel__label--winner {
   color: #fde68a;
-  text-shadow: 0 0 14px rgba(250, 204, 21, 0.95);
+  background: rgba(0,0,0,0.45);
+  text-shadow: 0 0 16px rgba(250, 204, 21, 1), 0 1px 3px rgba(0,0,0,0.9);
+  box-shadow: 0 0 10px rgba(250,204,21,0.7);
+}
+
+/* ── Center hub ───────────────────────────────────── */
+.fortune-wheel__hub {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: clamp(36px, 11%, 52px);
+  height: clamp(36px, 11%, 52px);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #fef9c3, #f59e0b 60%, #b45309);
+  border: 3px solid rgba(255,255,255,0.85);
+  box-shadow:
+    0 0 14px rgba(251,191,36,0.7),
+    0 3px 10px rgba(0,0,0,0.5),
+    inset 0 1px 3px rgba(255,255,255,0.5);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fortune-wheel__hub-icon {
+  font-size: clamp(0.9rem, 3%, 1.3rem);
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
 }
 
 .wheel-reveal {
