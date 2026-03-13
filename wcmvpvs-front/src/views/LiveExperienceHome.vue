@@ -154,11 +154,19 @@
                   <h2 class="text-4xl font-black leading-tight text-slate-900">Ordina dal BAR</h2>
                   <p class="mt-2 text-sm text-slate-600">Ritira al banco o ricevi istruzioni per il ritiro.</p>
                 </div>
-                <article v-for="mode in barOrderModes" :key="mode.id" class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm" :class="barOrderMode === mode.id ? 'ring-2 ring-amber-400' : ''" @click="barOrderMode = mode.id">
-                  <p class="text-xs font-bold uppercase text-slate-500">{{ mode.label }}</p>
-                  <p class="mt-2 text-3xl">{{ mode.emoji }}</p>
-                </article>
-                <button type="button" class="w-full rounded-2xl bg-slate-900 py-4 text-lg font-black text-white" @click="goBarStep('categories')">Inizia ordine</button>
+                <div class="grid grid-cols-2 gap-3">
+                  <button
+                    v-for="mode in barOrderModes"
+                    :key="mode.id"
+                    type="button"
+                    class="aspect-square rounded-3xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-amber-300 hover:shadow-md"
+                    :class="barOrderMode === mode.id ? 'ring-2 ring-amber-400' : ''"
+                    @click="selectBarMode(mode.id)"
+                  >
+                    <p class="text-xs font-bold uppercase text-slate-500">{{ mode.label }}</p>
+                    <p class="mt-3 text-5xl">{{ mode.emoji }}</p>
+                  </button>
+                </div>
               </section>
 
               <section v-else-if="barStep === 'categories'" class="space-y-4">
@@ -1951,6 +1959,11 @@ function openBarOrdering() {
   selectedCategoryId.value = 'all';
   void Promise.all([loadBarProducts(), loadBarCategories()]);
   isBarModalOpen.value = true;
+}
+
+function selectBarMode(modeId) {
+  barOrderMode.value = modeId;
+  goBarStep('categories');
 }
 
 function openBarCategory(categoryId) {
