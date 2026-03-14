@@ -26,6 +26,8 @@ func (rt *_router) getCoinsStream(w http.ResponseWriter, r *http.Request, ctx re
 		return
 	}
 
+	clearSSEDeadline(w)
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")

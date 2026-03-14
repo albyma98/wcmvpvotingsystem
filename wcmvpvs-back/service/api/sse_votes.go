@@ -10,6 +10,14 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// clearSSEDeadline removes the write deadline so the long-lived SSE connection
+// is not killed by the server's WriteTimeout (default 5s).
+func clearSSEDeadline(w http.ResponseWriter) {
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+	_ = rc.SetReadDeadline(time.Time{})
+}
+
 // getVotesStream opens an SSE stream that emits a notification whenever a new vote
 // is cast for the given event. Clients should re-fetch /events/{id}/votes/live on receipt.
 func (rt *_router) getVotesStream(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -25,6 +33,8 @@ func (rt *_router) getVotesStream(w http.ResponseWriter, r *http.Request, ctx re
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Streaming non supportato.")
 		return
 	}
+
+	clearSSEDeadline(w)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
