@@ -1368,787 +1368,48 @@
           </ul>
         </section>
 
-        <section v-else-if="section === 'teams'" class="card">
-          <header class="section-header">
-            <h2>Squadre</h2>
-          </header>
-          <form @submit.prevent="createTeam" class="form-inline">
-            <input
-              v-model.trim="newTeamName"
-              type="text"
-              placeholder="Nome squadra"
-              required
-            />
-            <button class="btn primary" type="submit">Aggiungi</button>
-          </form>
-          <ul class="item-list compact">
-            <li v-for="team in teams" :key="team.id" class="item">
-              <span>{{ team.name }}</span>
-              <button
-                class="btn danger"
-                type="button"
-                @click="deleteTeam(team.id)"
-              >
-                Elimina
-              </button>
-            </li>
-          </ul>
-        </section>
+        <AdminTeamsSection
+          v-else-if="section === 'teams'"
+          :auth-headers="authHeaders"
+          :is-super-admin="isSuperAdmin"
+          @updated="teams = $event"
+        />
 
-        <section v-else-if="section === 'players'" class="card">
-          <SectionHeader
-            title="Giocatori"
-            :description="`Gestisci fino a ${playerSlotCount} giocatori da mostrare nella pagina di voto.`"
-          />
+        <AdminPlayersSection
+          v-else-if="section === 'players'"
+          :auth-headers="authHeaders"
+          :is-super-admin="isSuperAdmin"
+          :teams="teams"
+        />
 
-          <p v-if="!teams.length" class="info-banner">
-            Aggiungi almeno una squadra per assegnare correttamente i giocatori
-            salvati nel database.
-          </p>
+        <AdminSponsorsSection
+          v-else-if="section === 'sponsors'"
+          :auth-headers="authHeaders"
+          :is-super-admin="isSuperAdmin"
+        />
 
-          <p v-if="playerOverflow.length" class="info-banner warning">
-            Sono presenti {{ playerOverflow.length }} giocatori aggiuntivi nel
-            database. Verranno rimossi al prossimo salvataggio.
-          </p>
-
-          <div class="player-slots">
-            <fieldset
-              v-for="(slot, index) in playerSlots"
-              :key="`player-slot-${index}`"
-              class="player-slot"
-            >
-              <legend>Giocatore {{ index + 1 }}</legend>
-              <div class="player-slot__grid">
-                <label>
-                  Nome
-                  <input
-                    v-model.trim="slot.first_name"
-                    type="text"
-                    placeholder="Es. Mario"
-                  />
-                </label>
-                <label>
-                  Cognome
-                  <input
-                    v-model.trim="slot.last_name"
-                    type="text"
-                    placeholder="Es. Rossi"
-                  />
-                </label>
-                <label>
-                  Ruolo
-                  <input
-                    v-model.trim="slot.role"
-                    type="text"
-                    placeholder="Es. Schiacciatore"
-                  />
-                </label>
-                <label>
-                  Numero di maglia
-                  <input
-                    v-model="slot.jersey_number"
-                    type="number"
-                    min="0"
-                    inputmode="numeric"
-                    placeholder="Es. 7"
-                  />
-                </label>
-                <label>
-                  Squadra
-                  <select v-model.number="slot.team_id">
-                    <option :value="0">Seleziona squadra</option>
-                    <option
-                      v-for="team in teams"
-                      :key="team.id"
-                      :value="team.id"
-                    >
-                      {{ team.name }}
-                    </option>
-                  </select>
-                </label>
-                <label class="checkbox-inline">
-                  <input type="checkbox" v-model="slot.is_called_up" />
-                  <span>Convocato</span>
-                </label>
-                <label>
-                  URL immagine (opzionale)
-                  <input
-                    v-model.trim="slot.image_url"
-                    type="url"
-                    placeholder="https://..."
-                    @input="handlePlayerUrlChange(index)"
-                  />
-                </label>
-                <label class="file-input">
-                  Oppure carica immagine
-                  <input
-                    type="file"
-                    accept="image/*"
-                    @change="handlePlayerImageChange(index, $event)"
-                  />
-                </label>
-                <div
-                  v-if="slot.image_preview"
-                  class="player-slot__preview"
-                  aria-label="Anteprima immagine giocatore"
-                >
-                  <img :src="slot.image_preview" alt="Anteprima giocatore" />
-                  <button
-                    class="btn link"
-                    type="button"
-                    @click="removePlayerImage(index)"
-                  >
-                    Rimuovi
-                  </button>
-                </div>
-              </div>
-            </fieldset>
-          </div>
-
-          <div class="player-schema">
-            <label>
-              Schema convocati
-              <select v-model.number="rosterSchema">
-                <option :value="12">12 giocatori</option>
-                <option :value="13">13 giocatori</option>
-                <option :value="14">14 giocatori</option>
-              </select>
-            </label>
-            <p class="muted small">
-              Il layout della pagina di voto si adatterà automaticamente in base al
-              numero di convocati selezionato.
-            </p>
-          </div>
-
-          <div class="actions-row">
-            <button
-              class="btn outline"
-              type="button"
-              @click="restorePlayerSlots"
-              :disabled="isSavingPlayers"
-            >
-              Ripristina dati salvati
-            </button>
-            <button
-              class="btn primary"
-              type="button"
-              @click="savePlayers"
-              :disabled="isSavingPlayers"
-            >
-              {{ isSavingPlayers ? "Salvataggio…" : "Salva giocatori" }}
-            </button>
-          </div>
-
-          <p v-if="playerSaveError" class="error">{{ playerSaveError }}</p>
-          <p v-if="playerSaveMessage" class="success-message">
-            {{ playerSaveMessage }}
-          </p>
-        </section>
-
-        <section v-else-if="section === 'sponsors'" class="card">
-          <header class="section-header">
-            <h2>Sponsor</h2>
-            <p>
-              Gestisci fino a {{ maxSponsors }} sponsor da mostrare nella
-              schermata pubblica.
-            </p>
-          </header>
-
-          <div
-            class="sponsor-controls"
-            role="group"
-            aria-label="Visibilità sponsor"
-          >
-            <label class="sponsor-range">
-              <span
-                >Numero di sponsor visibili: {{ desiredActiveSponsorCount }} /
-                {{ maxSponsors }}</span
-              >
-              <input
-                type="range"
-                min="0"
-                :max="sponsorSliderMax"
-                v-model.number="desiredActiveSponsorCount"
-                @change="applyActiveSponsorCount"
-                :disabled="!sponsors.length || isApplyingSponsorCount"
-              />
-            </label>
-            <p class="muted small">
-              Gli sponsor attivi vengono mostrati nell'ordine indicato qui
-              sotto.
-            </p>
-          </div>
-
-          <form @submit.prevent="createSponsor" class="form-grid sponsor-form">
-            <label>
-              Nome sponsor
-              <input
-                v-model.trim="newSponsor.name"
-                type="text"
-                placeholder="Es. Partner ufficiale"
-              />
-            </label>
-            <label>
-              Nome report
-              <input
-                v-model.trim="newSponsor.reportName"
-                type="text"
-                placeholder="Etichetta per i report (es. Sponsor A)"
-              />
-            </label>
-            <label>
-              Link (opzionale)
-              <input
-                v-model.trim="newSponsor.linkUrl"
-                type="url"
-                placeholder="https://example.com"
-              />
-            </label>
-            <label class="file-input">
-              Logo sponsor
-              <input
-                type="file"
-                accept="image/*"
-                @change="handleNewSponsorLogoChange"
-              />
-            </label>
-            <div
-              v-if="newSponsor.logoData"
-              class="sponsor-preview new"
-              aria-label="Anteprima logo nuovo sponsor"
-            >
-              <img :src="newSponsor.logoData" alt="Anteprima logo sponsor" />
-            </div>
-            <button
-              class="btn primary"
-              type="submit"
-              :disabled="isCreatingSponsor"
-            >
-              {{ isCreatingSponsor ? "Salvataggio…" : "Aggiungi sponsor" }}
-            </button>
-          </form>
-
-          <ul v-if="sponsors.length" class="item-list sponsors-list">
-            <li
-              v-for="sponsor in sponsors"
-              :key="sponsor.id"
-              class="item sponsor-item"
-            >
-              <div class="item-body sponsor-body">
-                <div
-                  class="sponsor-preview"
-                  :aria-label="`Logo sponsor ${sponsor.name || sponsor.position}`"
-                >
-                  <img
-                    v-if="sponsor.logoData"
-                    :src="sponsor.logoData"
-                    :alt="`Logo ${sponsor.name || 'sponsor'}`"
-                  />
-                  <span v-else class="empty-logo">Logo non disponibile</span>
-                </div>
-                <div class="sponsor-fields">
-                  <div class="form-grid compact">
-                    <label>
-                      Nome sponsor
-                      <input v-model.trim="sponsor.name" type="text" />
-                    </label>
-                    <label>
-                      Nome report
-                      <input
-                        v-model.trim="sponsor.reportName"
-                        type="text"
-                        placeholder="Etichetta interna"
-                      />
-                    </label>
-                    <label>
-                      Link (opzionale)
-                      <input
-                        v-model.trim="sponsor.linkUrl"
-                        type="url"
-                        placeholder="https://example.com"
-                      />
-                    </label>
-                    <label class="file-input">
-                      Aggiorna logo
-                      <input
-                        type="file"
-                        accept="image/*"
-                        @change="
-                          (event) => handleSponsorLogoChange(event, sponsor)
-                        "
-                      />
-                    </label>
-                  </div>
-                  <p class="muted sponsor-meta">
-                    Posizione {{ sponsor.position }} •
-                    {{ sponsor.isActive ? "Visibile" : "Nascosto" }}
-                  </p>
-                </div>
-              </div>
-              <div class="item-actions vertical">
-                <button
-                  class="btn secondary"
-                  type="button"
-                  @click="updateSponsorEntry(sponsor)"
-                  :disabled="sponsorBeingUpdated === sponsor.id"
-                >
-                  <span v-if="sponsorBeingUpdated === sponsor.id"
-                    >Salvataggio…</span
-                  >
-                  <span v-else>Salva</span>
-                </button>
-                <button
-                  class="btn danger"
-                  type="button"
-                  @click="deleteSponsorEntry(sponsor.id)"
-                  :disabled="sponsorBeingDeleted === sponsor.id"
-                >
-                  <span v-if="sponsorBeingDeleted === sponsor.id"
-                    >Eliminazione…</span
-                  >
-                  <span v-else>Elimina</span>
-                </button>
-              </div>
-            </li>
-          </ul>
-          <p v-else class="muted text-center">
-            Nessuno sponsor configurato al momento.
-          </p>
-        </section>
-
-        <section v-else-if="section === 'coupons'" class="card">
-          <SectionHeader
-            title="Coupon"
-            description="Crea e gestisci i coupon promozionali collegati agli sponsor e alle partite."
-          />
-
-          <form @submit.prevent="createCoupon" class="form-grid coupon-form">
-            <label>
-              Titolo
-              <input
-                v-model.trim="newCoupon.title"
-                type="text"
-                placeholder="Sconto speciale"
-                required
-              />
-            </label>
-            <label>
-              Descrizione breve
-              <textarea
-                v-model.trim="newCoupon.shortDesc"
-                rows="2"
-                placeholder="Testo sintetico per il coupon"
-              ></textarea>
-            </label>
-            <label class="choice-group">
-              Partner
-              <div
-                class="status-options"
-                role="radiogroup"
-                aria-label="Partner associato al coupon"
-              >
-                <label
-                  v-for="partner in partners"
-                  :key="partner.id"
-                  class="status-option"
-                >
-                  <input
-                    type="radio"
-                    name="new-coupon-partner"
-                    :value="partner.id"
-                    v-model.number="newCoupon.sponsorId"
-                    :disabled="!partners.length"
-                  />
-                  <span>
-                    {{
-                      partner.displayName || partner.username || `Partner ${partner.id}`
-                    }}
-                  </span>
-                </label>
-              </div>
-              <small class="field-hint" v-if="!partners.length">
-                Aggiungi almeno un partner per creare un coupon.
-              </small>
-            </label>
-            <label class="choice-group">
-              Stato
-              <div class="status-options" role="radiogroup" aria-label="Stato coupon">
-                <label
-                  v-for="status in couponStatusOptions"
-                  :key="status"
-                  class="status-option"
-                >
-                  <input
-                    type="radio"
-                    name="new-coupon-status"
-                    :value="status"
-                    v-model="newCoupon.status"
-                  />
-                  <span>{{ getCouponStatusLabel(status) }}</span>
-                </label>
-              </div>
-            </label>
-            <label>
-              Limite utilizzi
-              <input
-                v-model.number="newCoupon.maxUses"
-                type="number"
-                min="0"
-                placeholder="0 per illimitato"
-              />
-            </label>
-            <label>
-              Data inizio
-              <input v-model="newCoupon.startDateInput" type="datetime-local" />
-            </label>
-            <label>
-              Data fine
-              <input v-model="newCoupon.endDateInput" type="datetime-local" />
-            </label>
-            <label>
-              Immagine (URL)
-              <input
-                v-model.trim="newCoupon.imageUrl"
-                type="text"
-                inputmode="url"
-                placeholder="https://example.com/immagine.jpg"
-                @input="syncCouponImageSource(newCoupon)"
-              />
-              <small class="field-hint"
-                >In alternativa puoi caricare un file dal dispositivo.</small
-              >
-            </label>
-            <label class="file-input coupon-file-input">
-              Carica immagine
-              <input
-                type="file"
-                accept="image/*"
-                @change="(event) => handleCouponImageFileChange(event, newCoupon)"
-              />
-            </label>
-            <div
-              v-if="newCoupon.imagePreview"
-              class="coupon-image-preview"
-              aria-label="Anteprima immagine coupon"
-            >
-              <img :src="newCoupon.imagePreview" alt="Anteprima coupon" />
-              <button
-                class="btn link"
-                type="button"
-                @click="clearCouponImage(newCoupon)"
-              >
-                Rimuovi immagine
-              </button>
-            </div>
-            <div class="match-selector">
-              <span>Associa alle partite</span>
-              <BaseSearchInput
-                v-model="couponEventSearch"
-                class="match-search"
-                placeholder="Cerca partita per squadra o data"
-              />
-              <div class="match-selector__grid match-selector__grid--scroll">
-                <label v-for="event in filteredCouponEvents" :key="event.id" class="checkbox">
-                  <input
-                    type="checkbox"
-                    :value="event.id"
-                    v-model.number="newCoupon.matchIds"
-                  />
-                  <span>
-                    {{ couponMatchLabel(event) }}
-                    <small class="muted block">{{ event.start_datetime }}</small>
-                  </span>
-                </label>
-                <p v-if="!events.length" class="muted small">
-                  Nessuna partita disponibile: crea un evento per associare dei coupon.
-                </p>
-              </div>
-            </div>
-
-            <button class="btn primary" type="submit" :disabled="isCreatingCoupon">
-              {{ isCreatingCoupon ? "Creazione…" : "Crea coupon" }}
-            </button>
-          </form>
-
-          <p v-if="couponError" class="error">{{ couponError }}</p>
-          <p v-if="couponSuccess" class="success-message">{{ couponSuccess }}</p>
-
-          <ul v-if="coupons.length" class="item-list coupons-list">
-            <li v-for="coupon in coupons" :key="coupon.id" class="item coupon-item">
-              <div class="coupon-fields">
-                <div class="form-grid compact">
-                  <label>
-                    Titolo
-                    <input v-model.trim="coupon.title" type="text" />
-                  </label>
-                  <label class="choice-group">
-                    Partner
-                    <div
-                      class="status-options"
-                      role="radiogroup"
-                      :aria-label="`Partner per il coupon ${coupon.title || coupon.id}`"
-                    >
-                      <label
-                        v-for="partner in partners"
-                        :key="partner.id"
-                        class="status-option"
-                      >
-                        <input
-                          type="radio"
-                          :name="`coupon-partner-${coupon.id}`"
-                          :value="partner.id"
-                          v-model.number="coupon.sponsorId"
-                          :disabled="!partners.length"
-                        />
-                        <span>
-                          {{
-                            partner.displayName ||
-                              partner.username ||
-                              `Partner ${partner.id}`
-                          }}
-                        </span>
-                      </label>
-                    </div>
-                  </label>
-                  <label class="choice-group">
-                    Stato
-                    <div
-                      class="status-options"
-                      role="radiogroup"
-                      :aria-label="`Stato coupon ${coupon.title || coupon.id}`"
-                    >
-                      <label
-                        v-for="status in couponStatusOptions"
-                        :key="status"
-                        class="status-option"
-                      >
-                        <input
-                          type="radio"
-                          :name="`coupon-status-${coupon.id}`"
-                          :value="status"
-                          v-model="coupon.status"
-                        />
-                        <span>{{ getCouponStatusLabel(status) }}</span>
-                      </label>
-                    </div>
-                  </label>
-                  <label>
-                    Limite utilizzi
-                    <input v-model.number="coupon.maxUses" type="number" min="0" />
-                  </label>
-                  <label>
-                    Data inizio
-                    <input v-model="coupon.startDateInput" type="datetime-local" />
-                  </label>
-                  <label>
-                    Data fine
-                    <input v-model="coupon.endDateInput" type="datetime-local" />
-                  </label>
-                  <label>
-                    Immagine (URL)
-                    <input
-                      v-model.trim="coupon.imageUrl"
-                      type="text"
-                      inputmode="url"
-                      @input="syncCouponImageSource(coupon)"
-                    />
-                    <small class="field-hint"
-                      >Puoi inserire un URL oppure caricare un file.</small
-                    >
-                  </label>
-                  <label class="file-input coupon-file-input">
-                    Carica immagine
-                    <input
-                      type="file"
-                      accept="image/*"
-                      @change="(event) => handleCouponImageFileChange(event, coupon)"
-                    />
-                  </label>
-                  <div
-                    v-if="coupon.imagePreview"
-                    class="coupon-image-preview"
-                    :aria-label="`Anteprima immagine per ${coupon.title || coupon.id}`"
-                  >
-                    <img :src="coupon.imagePreview" alt="Anteprima coupon" />
-                    <button
-                      class="btn link"
-                      type="button"
-                      @click="clearCouponImage(coupon)"
-                    >
-                      Rimuovi immagine
-                    </button>
-                  </div>
-                </div>
-                <label>
-                  Descrizione breve
-                  <textarea v-model.trim="coupon.shortDesc" rows="2"></textarea>
-                </label>
-                <div class="match-selector inline">
-                  <span class="muted small">Partite associate</span>
-                  <div class="match-selector__grid">
-                    <label v-for="event in filteredCouponEvents" :key="event.id" class="checkbox">
-                      <input
-                        type="checkbox"
-                        :value="event.id"
-                        v-model.number="coupon.matchIds"
-                      />
-                      <span>{{ couponMatchLabel(event) }}</span>
-                    </label>
-                  </div>
-                </div>
-                <p class="muted coupon-meta">
-                  Viste: {{ coupon.totalViews }} • Richieste: {{ coupon.totalClaims }} •
-                  Utilizzi: {{ coupon.totalRedemptions }}
-                </p>
-              </div>
-              <div class="item-actions vertical">
-                <button
-                  class="btn secondary"
-                  type="button"
-                  @click="updateCouponEntry(coupon)"
-                  :disabled="couponBeingSaved === coupon.id"
-                >
-                  <span v-if="couponBeingSaved === coupon.id">Salvataggio…</span>
-                  <span v-else>Salva</span>
-                </button>
-                <button
-                  class="btn danger"
-                  type="button"
-                  @click="deleteCouponEntry(coupon.id)"
-                  :disabled="couponBeingDeleted === coupon.id"
-                >
-                  <span v-if="couponBeingDeleted === coupon.id">Eliminazione…</span>
-                  <span v-else>Elimina</span>
-                </button>
-              </div>
-            </li>
-          </ul>
-          <p v-else class="muted text-center">Nessun coupon configurato.</p>
-        </section>
+        <AdminCouponsSection
+          v-else-if="section === 'coupons'"
+          :auth-headers="authHeaders"
+          :is-super-admin="isSuperAdmin"
+          :events="events"
+          :partners="partners"
+        />
 
         <AdminBarSection v-else-if="section === 'bar'" :auth-headers="authHeaders" :is-super-admin="isSuperAdmin" />
 
-        <section v-else-if="section === 'partners'" class="card">
-          <header class="section-header">
-            <h2>Partners</h2>
-            <p>
-              Crea le credenziali per gli esercenti che convalidano i coupon. Ogni
-              partner accede con username e password dedicati.
-            </p>
-          </header>
-          <form @submit.prevent="createPartner" class="form-grid">
-            <label>
-              Nome partner
-              <input
-                v-model.trim="newPartner.name"
-                type="text"
-                placeholder="Es. Bar dello Stadio"
-              />
-            </label>
-            <label>
-              Username
-              <input
-                v-model.trim="newPartner.username"
-                type="text"
-                placeholder="Credenziale di accesso"
-                required
-              />
-            </label>
-            <label>
-              Password
-              <input
-                v-model="newPartner.password"
-                type="password"
-                autocomplete="new-password"
-                required
-              />
-            </label>
-            <button class="btn primary" type="submit">Aggiungi partner</button>
-          </form>
-          <ul class="item-list compact" v-if="partners.length">
-            <li v-for="partner in partners" :key="partner.id" class="item">
-              <div class="item-body">
-                <div>
-                  <strong>{{ partner.displayName }}</strong>
-                  <span class="muted"> • {{ partner.username }}</span>
-                  <p class="muted small" v-if="partner.createdAtLabel">
-                    Creato il {{ partner.createdAtLabel }}
-                  </p>
-                </div>
-                <div class="partner-actions">
-                  <label class="inline-input">
-                    <span>Nuova password</span>
-                    <input
-                      v-model="partner.newPassword"
-                      type="password"
-                      placeholder="Aggiorna password"
-                    />
-                  </label>
-                  <button
-                    class="btn secondary"
-                    type="button"
-                    @click="updatePartnerPassword(partner)"
-                    :disabled="partner.isUpdating || !partner.newPassword"
-                  >
-                    <span v-if="partner.isUpdating">Salvataggio…</span>
-                    <span v-else>Aggiorna</span>
-                  </button>
-                  <button
-                    class="btn danger"
-                    type="button"
-                    @click="deletePartner(partner.id)"
-                    :disabled="partner.isDeleting"
-                  >
-                    <span v-if="partner.isDeleting">Eliminazione…</span>
-                    <span v-else>Elimina</span>
-                  </button>
-                </div>
-              </div>
-            </li>
-          </ul>
-          <p v-else class="muted text-center">Nessun partner configurato.</p>
-        </section>
+        <AdminPartnersSection
+          v-else-if="section === 'partners'"
+          :auth-headers="authHeaders"
+          :is-super-admin="isSuperAdmin"
+          @updated="partners = $event"
+        />
 
-        <section v-else-if="section === 'admins'" class="card">
-          <header class="section-header">
-            <h2>Utenti amministratori</h2>
-          </header>
-          <form @submit.prevent="createAdmin" class="form-grid">
-            <input
-              v-model.trim="newAdmin.username"
-              type="text"
-              placeholder="Username"
-              required
-            />
-            <input
-              v-model="newAdmin.password"
-              type="password"
-              placeholder="Password"
-              required
-            />
-            <input
-              v-model.trim="newAdmin.role"
-              type="text"
-              placeholder="Ruolo (es. staff)"
-            />
-            <button class="btn primary" type="submit">Aggiungi</button>
-          </form>
-          <ul class="item-list compact">
-            <li v-for="admin in admins" :key="admin.id" class="item">
-              <div>
-                <strong>{{ admin.username }}</strong>
-                <span class="muted"> • {{ admin.role || "staff" }}</span>
-              </div>
-              <button
-                class="btn danger"
-                type="button"
-                @click="deleteAdmin(admin.id)"
-              >
-                Elimina
-              </button>
-            </li>
-          </ul>
-        </section>
+        <AdminAdminsSection
+          v-else-if="section === 'admins'"
+          :auth-headers="authHeaders"
+          :is-super-admin="isSuperAdmin"
+        />
         <section v-else-if="section === 'marketing'" class="card">
           <MarketingSection />
         </section>
@@ -2222,7 +1483,7 @@ import {
   ref,
   watch,
 } from "vue";
-import { apiClient, resolveApiUrl } from "../api";
+import { apiClient, resolveApiUrl, getOrganizationSlug } from "../api";
 import { DEFAULT_ROSTER_SCHEMA, MAX_PLAYER_SLOTS } from "../roster";
 import VoteTrendChart from "./VoteTrendChart.vue";
 import AdminLayout from "./admin/AdminLayout.vue";
@@ -2232,6 +1493,12 @@ import AdminBarSection from "./AdminBarSection.vue";
 import SectionHeader from "./admin/ui/SectionHeader.vue";
 import BaseSearchInput from "./admin/ui/BaseSearchInput.vue";
 import MarketingSection from "./admin/marketing/MarketingSection.vue";
+import AdminTeamsSection from "./admin/AdminTeamsSection.vue";
+import AdminAdminsSection from "./admin/AdminAdminsSection.vue";
+import AdminPartnersSection from "./admin/AdminPartnersSection.vue";
+import AdminSponsorsSection from "./admin/AdminSponsorsSection.vue";
+import AdminPlayersSection from "./admin/AdminPlayersSection.vue";
+import AdminCouponsSection from "./admin/AdminCouponsSection.vue";
 
 const props = defineProps({
   organizationSlug: {
@@ -2255,7 +1522,6 @@ const resolvedOrganizationSlug = computed(() =>
 );
 
 const baseVoteUrl = computed(() => new URL(basePath.value || "/", window.location.origin));
-const RESULTS_POLL_INTERVAL = 5000;
 const historyDateFormatter = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "full",
   timeStyle: "short",
@@ -2477,7 +1743,7 @@ function toApiSurveyPayload(survey) {
   };
 }
 
-let resultsPollHandle = 0;
+let resultsSseSource = null;
 
 const isSidebarOpen = ref(false);
 const section = ref("dashboard");
@@ -3608,22 +2874,24 @@ function clearCollections() {
 }
 
 function stopResultsPolling() {
-  if (resultsPollHandle) {
-    window.clearInterval(resultsPollHandle);
-    resultsPollHandle = 0;
+  if (resultsSseSource) {
+    resultsSseSource.close();
+    resultsSseSource = null;
   }
 }
 
 function startResultsPolling() {
   stopResultsPolling();
-  if (!selectedResultsEventId.value) {
+  if (!selectedResultsEventId.value || typeof EventSource === 'undefined') {
     return;
   }
-  resultsPollHandle = window.setInterval(() => {
-    fetchEventResults().catch(() => {
-      /* silent */
-    });
-  }, RESULTS_POLL_INTERVAL);
+  const base = resolveApiUrl(`/events/${selectedResultsEventId.value}/votes/stream`);
+  const slug = getOrganizationSlug();
+  const url = slug ? base + (base.includes('?') ? '&' : '?') + 'organization_slug=' + encodeURIComponent(slug) : base;
+  resultsSseSource = new EventSource(url);
+  resultsSseSource.addEventListener('message', () => {
+    fetchEventResults().catch(() => { /* silent */ });
+  });
 }
 
 function resetResultsState() {

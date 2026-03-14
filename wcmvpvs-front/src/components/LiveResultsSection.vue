@@ -70,7 +70,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { fetchLiveVoteSummary } from '../api';
+import { fetchLiveVoteSummary, resolveApiUrl, getOrganizationSlug } from '../api';
 import VoteTrendChart from './VoteTrendChart.vue';
 
 const props = defineProps({
@@ -92,7 +92,7 @@ const state = ref(null);
 const isLoading = ref(false);
 const errorMessage = ref('');
 const isFetching = ref(false);
-let pollTimer = null;
+let sseSource = null;
 
 const resolvedSummary = computed(() => {
   if (!state.value || typeof state.value !== 'object') {
@@ -262,22 +262,30 @@ function formatVotesLabel(value) {
   return Number(value || 0).toLocaleString('it-IT');
 }
 
-function clearPollTimer() {
-  if (pollTimer && typeof window !== 'undefined') {
-    window.clearInterval(pollTimer);
+function stopSSE() {
+  if (sseSource) {
+    sseSource.close();
+    sseSource = null;
   }
-  pollTimer = null;
 }
 
-function startPolling() {
-  if (typeof window === 'undefined') {
+function buildSSEUrl(path) {
+  const full = resolveApiUrl(path);
+  const slug = getOrganizationSlug();
+  if (!slug) return full;
+  return full + (full.includes('?') ? '&' : '?') + 'organization_slug=' + encodeURIComponent(slug);
+}
+
+function startSSE() {
+  stopSSE();
+  if (typeof window === 'undefined' || !props.eventId || typeof EventSource === 'undefined') {
     return;
   }
-  clearPollTimer();
-  const interval = Math.max(3000, Number.isFinite(props.pollInterval) ? Number(props.pollInterval) : 5000);
-  pollTimer = window.setInterval(() => {
+  const url = buildSSEUrl(`/events/${props.eventId}/votes/stream`);
+  sseSource = new EventSource(url);
+  sseSource.addEventListener('message', () => {
     loadData({ silent: true });
-  }, interval);
+  });
 }
 
 async function loadData({ silent = false } = {}) {
@@ -325,9 +333,9 @@ watch(
   (active) => {
     if (active) {
       loadData();
-      startPolling();
+      startSSE();
     } else {
-      clearPollTimer();
+      stopSSE();
     }
   },
   { immediate: true },
@@ -339,22 +347,13 @@ watch(
     state.value = null;
     if (shouldPoll.value) {
       loadData();
-      startPolling();
-    }
-  },
-);
-
-watch(
-  () => props.pollInterval,
-  () => {
-    if (shouldPoll.value) {
-      startPolling();
+      startSSE();
     }
   },
 );
 
 onBeforeUnmount(() => {
-  clearPollTimer();
+  stopSSE();
 });
 </script>
 

@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(python \"c:\\\\Users\\\\Alberto\\\\Desktop\\\\wcmvpvotingsystem\\\\wcmvpvs-back\\\\service\\\\api\\\\fan_profile.go\")",
+      "Bash(python3.exe -c \"print\\(''ok''\\)\")",
+      "Bash(py -3 -c \"print\\(''ok''\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(go build:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

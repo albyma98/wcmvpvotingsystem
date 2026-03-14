@@ -120,6 +120,8 @@ func New(cfg Config) (Router, error) {
 		stripeSecretKey:     cfg.StripeSecretKey,
 		stripeWebhookSecret: cfg.StripeWebhookSecret,
 		stripeSuccessURL:    cfg.StripeSuccessURL,
+		votesHub:            newSSEHub(),
+		coinsHub:            newSSEHub(),
 	}, nil
 }
 
@@ -160,6 +162,9 @@ type _router struct {
 	stripeSecretKey     string
 	stripeWebhookSecret string
 	stripeSuccessURL    string
+
+	votesHub *sseHub
+	coinsHub *sseHub
 }
 
 type adminSession struct {

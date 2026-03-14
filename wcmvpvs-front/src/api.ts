@@ -95,6 +95,10 @@ function getOrganizationSlugFromLocation() {
   return detectOrganizationSlug(window.location?.pathname || '', window.location?.search || '');
 }
 
+export function getOrganizationSlug(): string {
+  return getOrganizationSlugFromLocation();
+}
+
 export const apiClient = axios.create({
   baseURL: resolveApiBaseUrl(),
 });

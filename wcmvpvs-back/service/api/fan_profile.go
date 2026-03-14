@@ -152,6 +152,7 @@ func (rt *_router) postGuestCoins(w http.ResponseWriter, r *http.Request, ctx re
 				_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore salvataggio monete")
 				return
 			}
+			rt.coinsHub.Broadcast(eventID)
 			_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": payload.Coins, "registered": true})
 			return
 		}
@@ -162,6 +163,7 @@ func (rt *_router) postGuestCoins(w http.ResponseWriter, r *http.Request, ctx re
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore salvataggio monete")
 		return
 	}
+	rt.coinsHub.Broadcast(eventID)
 	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": payload.Coins, "registered": false})
 }
 

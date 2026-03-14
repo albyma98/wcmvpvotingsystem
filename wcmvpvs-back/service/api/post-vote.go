@@ -129,6 +129,8 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 		return
 	}
+
+	rt.votesHub.Broadcast(req.EventID)
 	validationURL, err := rt.buildTicketValidationURL(req.EventID, code, signature)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot build ticket validation URL")

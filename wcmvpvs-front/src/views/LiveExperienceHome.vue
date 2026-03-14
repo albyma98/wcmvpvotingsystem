@@ -639,7 +639,7 @@ import LiveHeader from '../components/LiveHeader.vue';
 import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
 import StoryModal from '../components/StoryModal.vue';
-import { apiClient, fetchFanProfile, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins } from '../api';
+import { apiClient, fetchFanProfile, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins, resolveApiUrl, getOrganizationSlug } from '../api';
 import { getOrCreateDeviceId } from '../deviceId';
 
 const anonymousAvatarSvg = encodeURIComponent(
@@ -894,7 +894,7 @@ const leaderboardTop3 = ref([
   { name: 'TIFO3', coins: 249 },
 ]);
 const leaderboardUser = ref(null);
-let leaderboardPollingTimer = null;
+let leaderboardSseSource = null;
 let boostCountdownTimer = null;
 let isLeaderboardRequestInFlight = false;
 let hasPendingLeaderboardRefresh = false;
@@ -1186,21 +1186,24 @@ async function loadLeaderboardPreview() {
 }
 
 function stopLeaderboardPolling() {
-  if (leaderboardPollingTimer !== null && typeof window !== 'undefined') {
-    window.clearInterval(leaderboardPollingTimer);
+  if (leaderboardSseSource) {
+    leaderboardSseSource.close();
+    leaderboardSseSource = null;
   }
-  leaderboardPollingTimer = null;
 }
 
 function startLeaderboardPolling() {
   stopLeaderboardPolling();
-  if (typeof window === 'undefined' || !props.eventId) {
+  if (typeof window === 'undefined' || !props.eventId || typeof EventSource === 'undefined') {
     return;
   }
-
-  leaderboardPollingTimer = window.setInterval(() => {
+  const base = resolveApiUrl(`/events/${props.eventId}/coins/stream`);
+  const slug = getOrganizationSlug();
+  const url = slug ? base + (base.includes('?') ? '&' : '?') + 'organization_slug=' + encodeURIComponent(slug) : base;
+  leaderboardSseSource = new EventSource(url);
+  leaderboardSseSource.addEventListener('message', () => {
     refreshLeaderboardPreview();
-  }, 5000);
+  });
 }
 
 function openFeedbackModal() {

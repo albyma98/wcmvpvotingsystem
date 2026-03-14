@@ -87,6 +87,8 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/events/{id}/results", rt.wrap(rt.getEventResults))
 	rt.router.Get("/events/{id}/votes/count", rt.wrap(rt.getEventVoteCount))
 	rt.router.Get("/events/{id}/votes/live", rt.wrap(rt.getLiveEventVotes))
+	rt.router.Get("/events/{id}/votes/stream", rt.wrap(rt.getVotesStream))
+	rt.router.Get("/events/{eventId}/coins/stream", rt.wrap(rt.getCoinsStream))
 	rt.router.Get("/events/{id}/vote-status", rt.wrap(rt.getVoteStatus))
 	rt.router.Get("/events/{eventId}/stories", rt.wrap(rt.listPublicEventStories))
 	rt.router.Get("/events/{eventId}/stories/videos/{filename}", rt.wrap(rt.getEventStoryVideo))
