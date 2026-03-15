@@ -32,7 +32,6 @@ package database
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -43,6 +42,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/internal/security"
 )
 
 // AppDatabase is the high level interface for the DB
@@ -2321,17 +2322,17 @@ func recreateAdminsTable(db *sql.DB) error {
 	return nil
 }
 
-func hashPasswordSHA256(password string) string {
-	sum := sha256.Sum256([]byte(password))
-	return hex.EncodeToString(sum[:])
-}
-
 func createDefaultStaffAdmin(tx *sql.Tx, organizationID int) error {
 	if organizationID <= 0 {
 		return fmt.Errorf("invalid organization id for default admin")
 	}
 
-	_, err := tx.Exec(`INSERT INTO admins (username, password_hash, role, organization_id) VALUES (?, ?, 'staff', ?)`, "staff", hashPasswordSHA256("staff"), organizationID)
+	hash, err := security.HashPassword("staff")
+	if err != nil {
+		return fmt.Errorf("hashing default staff password: %w", err)
+	}
+
+	_, err = tx.Exec(`INSERT INTO admins (username, password_hash, role, organization_id) VALUES (?, ?, 'staff', ?)`, "staff", hash, organizationID)
 	return err
 }
 

@@ -355,7 +355,13 @@ func (rt *_router) purgeEvent(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 
-	if !adminPasswordMatches(admin.PasswordHash, payload.Password) {
+	ok, err := adminPasswordMatches(admin.PasswordHash, payload.Password)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot verify admin password while purging event")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !ok {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}

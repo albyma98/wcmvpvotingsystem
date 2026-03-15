@@ -1,10 +1,7 @@
 package api
 
 import (
-	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/internal/security"
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 	"github.com/go-chi/chi/v5"
@@ -762,9 +760,16 @@ func (rt *_router) createAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 		orgID = 0
 	}
 
+	hashedPassword, err := hashAdminPassword(payload.Password)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot hash admin password")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	admin := database.Admin{
 		Username:       payload.Username,
-		PasswordHash:   hashAdminPassword(payload.Password),
+		PasswordHash:   hashedPassword,
 		Role:           payload.Role,
 		OrganizationID: orgID,
 	}
@@ -810,7 +815,13 @@ func (rt *_router) updateAdmin(w http.ResponseWriter, r *http.Request, ctx reqco
 
 	admin := database.Admin{ID: id, Username: payload.Username, Role: payload.Role, OrganizationID: target.OrganizationID}
 	if payload.Password != "" {
-		admin.PasswordHash = hashAdminPassword(payload.Password)
+		hashedPassword, err := hashAdminPassword(payload.Password)
+		if err != nil {
+			ctx.Logger.WithError(err).Error("cannot hash admin password")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		admin.PasswordHash = hashedPassword
 	}
 
 	if err := rt.db.UpdateAdmin(admin); err != nil {
@@ -885,7 +896,14 @@ func (rt *_router) createPartner(w http.ResponseWriter, r *http.Request, ctx req
 		return
 	}
 
-	admin := database.Admin{Username: payload.Username, PasswordHash: hashAdminPassword(payload.Password), Role: "partner", OrganizationID: ctx.OrganizationID}
+	hashedPassword, err := hashAdminPassword(payload.Password)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot hash partner password")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	admin := database.Admin{Username: payload.Username, PasswordHash: hashedPassword, Role: "partner", OrganizationID: ctx.OrganizationID}
 	id, err := rt.db.CreateAdmin(admin)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot create partner")
@@ -923,7 +941,14 @@ func (rt *_router) updatePartner(w http.ResponseWriter, r *http.Request, ctx req
 		return
 	}
 
-	updated := database.Admin{ID: id, Username: partner.Username, Role: partner.Role, OrganizationID: partner.OrganizationID, PasswordHash: hashAdminPassword(payload.Password)}
+	hashedPassword, err := hashAdminPassword(payload.Password)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot hash partner password")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	updated := database.Admin{ID: id, Username: partner.Username, Role: partner.Role, OrganizationID: partner.OrganizationID, PasswordHash: hashedPassword}
 	if err := rt.db.UpdateAdmin(updated); err != nil {
 		ctx.Logger.WithError(err).Error("cannot update partner")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1121,10 +1146,19 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		}
 	}
 
-	if !adminPasswordMatches(admin.PasswordHash, payload.Password) {
+	ok, updatedHash, err := rt.verifyAndMigrateAdminPassword(admin, payload.Password)
+	if err != nil {
+		ctx.Logger.WithError(err).WithField("username", payload.Username).Error("cannot verify admin password")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !ok {
 		ctx.Logger.WithField("username", payload.Username).Warn("admin login failed: wrong password")
 		w.WriteHeader(http.StatusUnauthorized)
 		return
+	}
+	if updatedHash != "" {
+		admin.PasswordHash = updatedHash
 	}
 
 	orgSlug := ctx.OrganizationSlug
@@ -1186,10 +1220,19 @@ func (rt *_router) partnerLogin(w http.ResponseWriter, r *http.Request, ctx reqc
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	if !adminPasswordMatches(admin.PasswordHash, payload.Password) {
+	ok, updatedHash, err := rt.verifyAndMigrateAdminPassword(admin, payload.Password)
+	if err != nil {
+		ctx.Logger.WithError(err).WithField("username", payload.Username).Error("cannot verify partner password")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !ok {
 		ctx.Logger.WithField("username", payload.Username).Warn("partner login failed: wrong password")
 		w.WriteHeader(http.StatusUnauthorized)
 		return
+	}
+	if updatedHash != "" {
+		admin.PasswordHash = updatedHash
 	}
 
 	token, err := rt.createPartnerSession(admin.ID, admin.Username, ctx.OrganizationID, ctx.OrganizationSlug)
@@ -1206,20 +1249,40 @@ func (rt *_router) partnerLogin(w http.ResponseWriter, r *http.Request, ctx reqc
 	ctx.Logger.WithField("username", admin.Username).Info("partner logged in")
 }
 
-func hashAdminPassword(password string) string {
-	sum := sha256.Sum256([]byte(password))
-	return hex.EncodeToString(sum[:])
+func hashAdminPassword(password string) (string, error) {
+	return security.HashPassword(password)
 }
 
-func adminPasswordMatches(hash, password string) bool {
+func adminPasswordMatches(hash, password string) (bool, error) {
 	if hash == "" {
-		return false
+		return false, nil
 	}
-	candidate := hashAdminPassword(password)
-	if len(candidate) != len(hash) {
-		return false
+	if security.IsArgon2idHash(hash) {
+		return security.VerifyPassword(password, hash)
 	}
-	return subtle.ConstantTimeCompare([]byte(hash), []byte(candidate)) == 1
+	if security.IsLegacySHA256Hash(hash) {
+		return security.VerifyLegacySHA256Password(password, hash), nil
+	}
+	return false, nil
+}
+
+func (rt *_router) verifyAndMigrateAdminPassword(admin database.Admin, password string) (bool, string, error) {
+	match, err := adminPasswordMatches(admin.PasswordHash, password)
+	if err != nil || !match {
+		return match, "", err
+	}
+	if security.IsArgon2idHash(admin.PasswordHash) && !security.NeedsRehash(admin.PasswordHash) {
+		return true, "", nil
+	}
+	newHash, err := hashAdminPassword(password)
+	if err != nil {
+		return false, "", err
+	}
+	updated := database.Admin{ID: admin.ID, Username: admin.Username, Role: admin.Role, OrganizationID: admin.OrganizationID, PasswordHash: newHash}
+	if err := rt.db.UpdateAdmin(updated); err != nil {
+		return false, "", err
+	}
+	return true, newHash, nil
 }
 
 func applyEventPostVoteDefaults(e *database.Event, raw map[string]json.RawMessage) {
