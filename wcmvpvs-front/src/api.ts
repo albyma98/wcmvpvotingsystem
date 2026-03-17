@@ -775,3 +775,84 @@ export async function redeemFanReward(eventId, rewardKey, costCoins) {
     return { ok: false, error, message };
   }
 }
+
+export async function joinTapLiveQueue(eventId: number) {
+  try {
+    const { data } = await apiClient.post(`/events/${eventId}/tap-live/queue`, {}, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    return { ok: false, status, message, error };
+  }
+}
+
+export async function cancelTapLiveQueue(eventId: number) {
+  try {
+    await apiClient.delete(`/events/${eventId}/tap-live/queue`, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export async function fetchTapLiveState(eventId: number) {
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/tap-live/state`, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, status, message, error };
+  }
+}
+
+export async function submitTapLiveScore(eventId: number, matchId: string, score: number) {
+  try {
+    await apiClient.post(`/events/${eventId}/tap-live/submit`, {
+      match_id: matchId,
+      score,
+    }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export async function abortTapLiveMatch(eventId: number, matchId: string) {
+  try {
+    await apiClient.post(`/events/${eventId}/tap-live/abort`, {
+      match_id: matchId,
+    }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export async function fetchTapLiveResult(eventId: number, matchId: string) {
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/tap-live/result`, {
+      params: { match_id: matchId },
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+export function buildTapLiveSseUrl(eventId: number) {
+  const token = encodeURIComponent(getFanSessionToken());
+  return resolveApiUrl(`/events/${eventId}/tap-live/stream?fan_session=${token}`);
+}
