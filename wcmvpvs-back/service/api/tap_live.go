@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	tapLiveQueueTimeout       = 30 * time.Second
 	tapLiveRoundDurationSec   = 10
 	tapLiveCountdownSec       = 3
 	tapLiveWinCoins           = 30
@@ -74,7 +73,6 @@ type tapLiveWaitingFan struct {
 	eventID    int
 	orgID      int
 	createdAt  time.Time
-	expiresAt  time.Time
 	notifiedID int
 }
 
@@ -97,12 +95,7 @@ func (m *tapLiveManager) cancelWaiting(fanID int) {
 func (m *tapLiveManager) matchFor(fanID int, eventID int, orgID int) (tapLiveWaitingFan, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	now := time.Now()
 	for id, w := range m.waiting {
-		if w.expiresAt.Before(now) {
-			delete(m.waiting, id)
-			continue
-		}
 		if id == fanID {
 			continue
 		}
@@ -112,6 +105,16 @@ func (m *tapLiveManager) matchFor(fanID int, eventID int, orgID int) (tapLiveWai
 		}
 	}
 	return tapLiveWaitingFan{}, false
+}
+
+func (m *tapLiveManager) waitingFor(fanID int, eventID int, orgID int) (tapLiveWaitingFan, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w, ok := m.waiting[fanID]
+	if !ok || w.eventID != eventID || w.orgID != orgID {
+		return tapLiveWaitingFan{}, false
+	}
+	return w, true
 }
 
 func (m *tapLiveManager) isBusy(fanID int) bool {
@@ -197,7 +200,7 @@ func (rt *_router) postTapLiveQueue(w http.ResponseWriter, r *http.Request, ctx 
 		return
 	}
 	if existing, err := rt.db.GetOpenTapLiveMatchByFan(eventID, fanID); err == nil && existing.ID > 0 {
-		_ = writeJSON(w, http.StatusOK, tapLiveQueueEntry{MatchID: existing.MatchID, Status: existing.Status, Message: "Cerchiamo un avversario…", WaitingDeadline: time.Now().Add(tapLiveQueueTimeout).Unix()})
+		_ = writeJSON(w, http.StatusOK, tapLiveQueueEntry{MatchID: existing.MatchID, Status: existing.Status, Message: "Cerchiamo un avversario…"})
 		return
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -208,8 +211,8 @@ func (rt *_router) postTapLiveQueue(w http.ResponseWriter, r *http.Request, ctx 
 
 	opp, found := rt.tapLive.matchFor(fanID, eventID, ctx.OrganizationID)
 	if !found {
-		rt.tapLive.putWaiting(tapLiveWaitingFan{fanID: fanID, nickname: me.Profile.Nickname, eventID: eventID, orgID: ctx.OrganizationID, createdAt: time.Now(), expiresAt: time.Now().Add(tapLiveQueueTimeout)})
-		_ = writeJSON(w, http.StatusAccepted, tapLiveQueueEntry{Status: "searching", Message: "Cerchiamo un avversario…", WaitingDeadline: time.Now().Add(tapLiveQueueTimeout).Unix()})
+		rt.tapLive.putWaiting(tapLiveWaitingFan{fanID: fanID, nickname: me.Profile.Nickname, eventID: eventID, orgID: ctx.OrganizationID, createdAt: time.Now()})
+		_ = writeJSON(w, http.StatusAccepted, tapLiveQueueEntry{Status: "searching", Message: "Cerchiamo un avversario…"})
 		return
 	}
 
@@ -257,6 +260,10 @@ func (rt *_router) getTapLiveState(w http.ResponseWriter, r *http.Request, ctx r
 	m, err := rt.db.GetOpenTapLiveMatchByFan(eventID, me.Profile.ID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if waiting, ok := rt.tapLive.waitingFor(me.Profile.ID, eventID, ctx.OrganizationID); ok {
+				_ = writeJSON(w, http.StatusOK, tapLiveState{Status: "searching", Message: "Cerchiamo un avversario…", DurationSeconds: tapLiveRoundDurationSec, CountdownStart: waiting.createdAt.Unix()})
+				return
+			}
 			_ = writeJSON(w, http.StatusOK, tapLiveState{Status: "idle"})
 			return
 		}
