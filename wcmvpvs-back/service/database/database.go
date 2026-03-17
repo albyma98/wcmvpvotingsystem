@@ -771,6 +771,28 @@ type FanRewardRedemption struct {
 	CreatedAt string `json:"created_at"`
 }
 
+type TapLiveMatch struct {
+	ID               int       `json:"id"`
+	MatchID          string    `json:"match_id"`
+	EventID          int       `json:"event_id"`
+	OrganizationID   int       `json:"organization_id"`
+	Fan1ID           int       `json:"fan1_id"`
+	Fan2ID           int       `json:"fan2_id"`
+	Fan1Nickname     string    `json:"fan1_nickname"`
+	Fan2Nickname     string    `json:"fan2_nickname"`
+	Status           string    `json:"status"`
+	CountdownStartAt time.Time `json:"countdown_start_at"`
+	StartedAt        time.Time `json:"started_at"`
+	EndedAt          time.Time `json:"ended_at"`
+	Fan1Score        int       `json:"fan1_score"`
+	Fan2Score        int       `json:"fan2_score"`
+	Fan1SubmittedAt  string    `json:"fan1_submitted_at"`
+	Fan2SubmittedAt  string    `json:"fan2_submitted_at"`
+	Fan1Result       string    `json:"fan1_result"`
+	Fan2Result       string    `json:"fan2_result"`
+	Fan1Coins        int       `json:"fan1_coins"`
+	Fan2Coins        int       `json:"fan2_coins"`
+}
 type FanLeaderboardEntry struct {
 	FanID     int    `json:"fan_id"`
 	Nickname  string `json:"nickname"`
@@ -993,6 +1015,13 @@ type AppDatabase interface {
 	GetFanBySessionToken(token string) (FanProfileSummary, error)
 	GetFanByDevice(eventID int, organizationID int, deviceID string) (FanProfileSummary, error)
 	SetFanWalletCoins(fanID int, coins int) error
+	AddFanWalletCoins(fanID int, delta int) error
+	CreateTapLiveMatch(eventID, organizationID int, matchID string, fan1ID, fan2ID int, countdownStart, startAt, endAt time.Time) (TapLiveMatch, error)
+	GetOpenTapLiveMatchByFan(eventID int, fanID int) (TapLiveMatch, error)
+	GetTapLiveMatchByID(matchID string) (TapLiveMatch, error)
+	SubmitTapLiveScore(matchID string, fanID int, score int) error
+	TryFinalizeTapLiveMatch(matchID string) error
+	AbortTapLiveMatch(matchID string, fanID int) error
 	GetGuestCoins(eventID int, organizationID int, deviceID string) (int, error)
 	UpsertGuestCoins(eventID int, organizationID int, deviceID string, coins int) error
 	GetFanLeaderboard(eventID int, organizationID int, limit int) ([]FanLeaderboardEntry, error)
@@ -6915,6 +6944,31 @@ func ensureFanProfileTables(db *sql.DB) error {
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (fan_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
 		);`,
+		`CREATE TABLE IF NOT EXISTS tap_live_matches (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			match_id TEXT NOT NULL UNIQUE,
+			event_id INTEGER NOT NULL,
+			organization_id INTEGER NOT NULL DEFAULT 0,
+			fan1_id INTEGER NOT NULL,
+			fan2_id INTEGER NOT NULL,
+			status TEXT NOT NULL DEFAULT 'matched',
+			countdown_start_at TEXT,
+			started_at TEXT,
+			ended_at TEXT,
+			fan1_score INTEGER NOT NULL DEFAULT 0,
+			fan2_score INTEGER NOT NULL DEFAULT 0,
+			fan1_submitted_at TEXT,
+			fan2_submitted_at TEXT,
+			fan1_result TEXT NOT NULL DEFAULT '',
+			fan2_result TEXT NOT NULL DEFAULT '',
+			fan1_coins INTEGER NOT NULL DEFAULT 0,
+			fan2_coins INTEGER NOT NULL DEFAULT 0,
+			abandoned_by_fan_id INTEGER,
+			finalized_at TEXT,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (fan1_id) REFERENCES fan_profiles(id) ON DELETE CASCADE,
+			FOREIGN KEY (fan2_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
+		);`,
 		`ALTER TABLE fan_profiles ADD COLUMN phone_e164 TEXT;`,
 		`ALTER TABLE fan_profiles ADD COLUMN phone_verified_at TEXT;`,
 		`ALTER TABLE fan_sessions ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP;`,
@@ -6936,6 +6990,7 @@ func ensureFanProfileTables(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_guest_wallets_device ON guest_wallets(event_id, organization_id, device_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_fan_wallets_coins ON fan_wallets(coins DESC);`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_fan_profiles_phone_e164_unique ON fan_profiles(phone_e164);`,
+		`CREATE INDEX IF NOT EXISTS idx_tap_live_matches_lookup ON tap_live_matches(event_id, fan1_id, fan2_id, status);`,
 	}
 
 	for _, stmt := range statements {
@@ -7189,6 +7244,178 @@ func (db *appdbimpl) SetFanWalletCoins(fanID int, coins int) error {
 	return err
 }
 
+func (db *appdbimpl) AddFanWalletCoins(fanID int, delta int) error {
+	if fanID <= 0 {
+		return ErrInvalidSponsorData
+	}
+	_, err := db.c.Exec(`INSERT INTO fan_wallets (fan_id, coins) VALUES (?, ?)
+	ON CONFLICT(fan_id) DO UPDATE SET coins = MAX(0, fan_wallets.coins + excluded.coins), updated_at=CURRENT_TIMESTAMP`, fanID, delta)
+	return err
+}
+
+func (db *appdbimpl) scanTapLiveMatch(scanner interface {
+	Scan(dest ...interface{}) error
+}) (TapLiveMatch, error) {
+	var m TapLiveMatch
+	var cStart, started, ended, s1, s2 sql.NullString
+	err := scanner.Scan(&m.ID, &m.MatchID, &m.EventID, &m.OrganizationID, &m.Fan1ID, &m.Fan2ID, &m.Fan1Nickname, &m.Fan2Nickname, &m.Status, &cStart, &started, &ended, &m.Fan1Score, &m.Fan2Score, &s1, &s2, &m.Fan1Result, &m.Fan2Result, &m.Fan1Coins, &m.Fan2Coins)
+	if err != nil {
+		return TapLiveMatch{}, err
+	}
+	if cStart.Valid {
+		if t, e := time.Parse(time.RFC3339, cStart.String); e == nil {
+			m.CountdownStartAt = t
+		}
+	}
+	if started.Valid {
+		if t, e := time.Parse(time.RFC3339, started.String); e == nil {
+			m.StartedAt = t
+		}
+	}
+	if ended.Valid {
+		if t, e := time.Parse(time.RFC3339, ended.String); e == nil {
+			m.EndedAt = t
+		}
+	}
+	if s1.Valid {
+		m.Fan1SubmittedAt = s1.String
+	}
+	if s2.Valid {
+		m.Fan2SubmittedAt = s2.String
+	}
+	return m, nil
+}
+
+func (db *appdbimpl) CreateTapLiveMatch(eventID, organizationID int, matchID string, fan1ID, fan2ID int, countdownStart, startAt, endAt time.Time) (TapLiveMatch, error) {
+	_, err := db.c.Exec(`INSERT INTO tap_live_matches (match_id, event_id, organization_id, fan1_id, fan2_id, status, countdown_start_at, started_at, ended_at)
+	VALUES (?, ?, ?, ?, ?, 'countdown', ?, ?, ?)`, matchID, eventID, organizationID, fan1ID, fan2ID, countdownStart.UTC().Format(time.RFC3339), startAt.UTC().Format(time.RFC3339), endAt.UTC().Format(time.RFC3339))
+	if err != nil {
+		return TapLiveMatch{}, err
+	}
+	return db.GetTapLiveMatchByID(matchID)
+}
+
+func (db *appdbimpl) GetTapLiveMatchByID(matchID string) (TapLiveMatch, error) {
+	row := db.c.QueryRow(`SELECT m.id, m.match_id, m.event_id, m.organization_id, m.fan1_id, m.fan2_id,
+	f1.nickname, f2.nickname, m.status, m.countdown_start_at, m.started_at, m.ended_at,
+	m.fan1_score, m.fan2_score, m.fan1_submitted_at, m.fan2_submitted_at, m.fan1_result, m.fan2_result, m.fan1_coins, m.fan2_coins
+	FROM tap_live_matches m
+	JOIN fan_profiles f1 ON f1.id=m.fan1_id
+	JOIN fan_profiles f2 ON f2.id=m.fan2_id
+	WHERE m.match_id = ? LIMIT 1`, strings.TrimSpace(matchID))
+	return db.scanTapLiveMatch(row)
+}
+
+func (db *appdbimpl) GetOpenTapLiveMatchByFan(eventID int, fanID int) (TapLiveMatch, error) {
+	row := db.c.QueryRow(`SELECT m.id, m.match_id, m.event_id, m.organization_id, m.fan1_id, m.fan2_id,
+	f1.nickname, f2.nickname, m.status, m.countdown_start_at, m.started_at, m.ended_at,
+	m.fan1_score, m.fan2_score, m.fan1_submitted_at, m.fan2_submitted_at, m.fan1_result, m.fan2_result, m.fan1_coins, m.fan2_coins
+	FROM tap_live_matches m
+	JOIN fan_profiles f1 ON f1.id=m.fan1_id
+	JOIN fan_profiles f2 ON f2.id=m.fan2_id
+	WHERE m.event_id = ? AND (m.fan1_id = ? OR m.fan2_id = ?) AND m.status IN ('matched','countdown','playing')
+	ORDER BY m.id DESC LIMIT 1`, eventID, fanID, fanID)
+	return db.scanTapLiveMatch(row)
+}
+
+func (db *appdbimpl) SubmitTapLiveScore(matchID string, fanID int, score int) error {
+	if fanID <= 0 {
+		return ErrInvalidSponsorData
+	}
+	res, err := db.c.Exec(`UPDATE tap_live_matches SET
+	fan1_score = CASE WHEN fan1_id = ? AND fan1_submitted_at IS NULL THEN ? ELSE fan1_score END,
+	fan2_score = CASE WHEN fan2_id = ? AND fan2_submitted_at IS NULL THEN ? ELSE fan2_score END,
+	fan1_submitted_at = CASE WHEN fan1_id = ? AND fan1_submitted_at IS NULL THEN CURRENT_TIMESTAMP ELSE fan1_submitted_at END,
+	fan2_submitted_at = CASE WHEN fan2_id = ? AND fan2_submitted_at IS NULL THEN CURRENT_TIMESTAMP ELSE fan2_submitted_at END,
+	status = CASE WHEN status='countdown' THEN 'playing' ELSE status END
+	WHERE match_id = ? AND (fan1_id = ? OR fan2_id = ?) AND status IN ('countdown','playing')`, fanID, nonNegativeInt(score), fanID, nonNegativeInt(score), fanID, fanID, strings.TrimSpace(matchID), fanID, fanID)
+	if err != nil {
+		return err
+	}
+	a, _ := res.RowsAffected()
+	if a == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (db *appdbimpl) TryFinalizeTapLiveMatch(matchID string) error {
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var id, fan1, fan2, s1, s2 int
+	var status, sub1, sub2 string
+	if err := tx.QueryRow(`SELECT id, fan1_id, fan2_id, fan1_score, fan2_score, status, IFNULL(fan1_submitted_at,''), IFNULL(fan2_submitted_at,'') FROM tap_live_matches WHERE match_id = ?`, strings.TrimSpace(matchID)).Scan(&id, &fan1, &fan2, &s1, &s2, &status, &sub1, &sub2); err != nil {
+		return err
+	}
+	if status == "finished" {
+		return tx.Commit()
+	}
+	if strings.TrimSpace(sub1) == "" || strings.TrimSpace(sub2) == "" {
+		return tx.Commit()
+	}
+	res1, res2 := "draw", "draw"
+	c1, c2 := 15, 15
+	if s1 > s2 {
+		res1, res2, c1, c2 = "win", "lose", 30, 8
+	} else if s2 > s1 {
+		res1, res2, c1, c2 = "lose", "win", 8, 30
+	}
+	if _, err := tx.Exec(`UPDATE tap_live_matches SET status='finished', fan1_result=?, fan2_result=?, fan1_coins=?, fan2_coins=?, finalized_at=CURRENT_TIMESTAMP WHERE id=? AND status <> 'finished'`, res1, res2, c1, c2, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO fan_wallets (fan_id, coins) VALUES (?, ?) ON CONFLICT(fan_id) DO UPDATE SET coins = fan_wallets.coins + excluded.coins, updated_at=CURRENT_TIMESTAMP`, fan1, c1); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO fan_wallets (fan_id, coins) VALUES (?, ?) ON CONFLICT(fan_id) DO UPDATE SET coins = fan_wallets.coins + excluded.coins, updated_at=CURRENT_TIMESTAMP`, fan2, c2); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (db *appdbimpl) AbortTapLiveMatch(matchID string, fanID int) error {
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var id, f1, f2 int
+	var status string
+	if err := tx.QueryRow(`SELECT id, fan1_id, fan2_id, status FROM tap_live_matches WHERE match_id = ?`, strings.TrimSpace(matchID)).Scan(&id, &f1, &f2, &status); err != nil {
+		return err
+	}
+	if status == "finished" {
+		return tx.Commit()
+	}
+	if fanID != f1 && fanID != f2 {
+		return sql.ErrNoRows
+	}
+	winner, loser := f1, f2
+	if fanID == f1 {
+		winner, loser = f2, f1
+	}
+	res1, res2, c1, c2 := "forfeit_win", "forfeit_lose", 25, 0
+	if winner == f2 {
+		res1, res2, c1, c2 = "forfeit_lose", "forfeit_win", 0, 25
+	}
+	if _, err := tx.Exec(`UPDATE tap_live_matches SET status='finished', fan1_result=?, fan2_result=?, fan1_coins=?, fan2_coins=?, abandoned_by_fan_id=?, finalized_at=CURRENT_TIMESTAMP WHERE id=? AND status <> 'finished'`, res1, res2, c1, c2, fanID, id); err != nil {
+		return err
+	}
+	if c1 > 0 {
+		if _, err := tx.Exec(`INSERT INTO fan_wallets (fan_id, coins) VALUES (?, ?) ON CONFLICT(fan_id) DO UPDATE SET coins = fan_wallets.coins + excluded.coins, updated_at=CURRENT_TIMESTAMP`, f1, c1); err != nil {
+			return err
+		}
+	}
+	if c2 > 0 {
+		if _, err := tx.Exec(`INSERT INTO fan_wallets (fan_id, coins) VALUES (?, ?) ON CONFLICT(fan_id) DO UPDATE SET coins = fan_wallets.coins + excluded.coins, updated_at=CURRENT_TIMESTAMP`, f2, c2); err != nil {
+			return err
+		}
+	}
+	_ = loser
+	return tx.Commit()
+}
 func (db *appdbimpl) UpsertGuestCoins(eventID int, organizationID int, deviceID string, coins int) error {
 	_, err := db.c.Exec(`INSERT INTO guest_wallets (event_id, organization_id, device_id, coins) VALUES (?, ?, ?, ?)
 	ON CONFLICT(event_id, organization_id, device_id) DO UPDATE SET coins = excluded.coins, updated_at=CURRENT_TIMESTAMP`, eventID, organizationID, strings.TrimSpace(deviceID), nonNegativeInt(coins))

@@ -122,6 +122,8 @@ func New(cfg Config) (Router, error) {
 		stripeSuccessURL:    cfg.StripeSuccessURL,
 		votesHub:            newSSEHub(),
 		coinsHub:            newSSEHub(),
+		tapLiveHub:          newSSEHub(),
+		tapLive:             newTapLiveManager(),
 	}, nil
 }
 
@@ -163,8 +165,10 @@ type _router struct {
 	stripeWebhookSecret string
 	stripeSuccessURL    string
 
-	votesHub *sseHub
-	coinsHub *sseHub
+	votesHub   *sseHub
+	coinsHub   *sseHub
+	tapLiveHub *sseHub
+	tapLive    *tapLiveManager
 }
 
 type adminSession struct {
