@@ -1,35 +1,34 @@
 <template>
   <div class="tap-challenge flex h-full min-h-0 w-full flex-col">
-    <header class="rounded-[24px] border border-white/12 bg-slate-950/65 p-3 text-slate-100 shadow-[0_16px_40px_rgba(2,6,23,0.28)] backdrop-blur-xl">
-      <div class="flex items-start justify-between gap-2.5">
-        <div>
-          <p class="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-200/80">Tap Challenge 1vs1</p>
-          <h2 class="mt-1.5 text-base font-black leading-tight text-white sm:text-lg">{{ headline }}</h2>
-          <p class="mt-1 text-xs leading-5 text-slate-300 sm:text-sm">{{ subline }}</p>
-        </div>
-        <div class="rounded-[18px] border border-white/10 bg-white/5 px-2.5 py-2 text-right shadow-inner shadow-white/5">
-          <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-slate-400">Stato</p>
-          <p class="mt-1 text-[11px] font-bold leading-4 text-white sm:text-xs">{{ statusLabel }}</p>
-        </div>
-      </div>
-
-      <div class="mt-3 grid grid-cols-2 gap-2.5">
-        <div class="stat-card">
-          <span class="stat-card__label">Tempo</span>
-          <strong class="stat-card__value">{{ timeLabel }}</strong>
-        </div>
-        <div class="stat-card">
-          <span class="stat-card__label">Tap</span>
-          <strong class="stat-card__value">{{ tapCount }}</strong>
-        </div>
-      </div>
-    </header>
-
     <main
       ref="gameAreaRef"
-      class="game-area relative mt-3 flex-1 overflow-hidden rounded-[26px] border border-white/14 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_rgba(15,23,42,0.9)_42%,_rgba(2,6,23,0.98)_100%)]"
+      class="game-area relative flex-1 overflow-hidden rounded-[26px] border border-white/14 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_rgba(15,23,42,0.9)_42%,_rgba(2,6,23,0.98)_100%)] px-4 py-4 sm:px-5 sm:py-5"
       @touchmove.prevent
     >
+      <section class="info-panel relative z-[1] mb-4 flex flex-col gap-3 rounded-[24px] border border-white/12 bg-slate-950/45 p-4 text-slate-100 shadow-[0_16px_40px_rgba(2,6,23,0.2)] backdrop-blur-xl">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0 flex-1">
+            <p class="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-200/80">Tap Challenge 1vs1</p>
+            <h2 class="mt-1.5 text-base font-black leading-tight text-white sm:text-lg">{{ headline }}</h2>
+            <p class="mt-1 text-xs leading-5 text-slate-300 sm:text-sm">{{ subline }}</p>
+          </div>
+          <div class="status-chip">
+            <p class="status-chip__label">Stato</p>
+            <p class="status-chip__value">{{ statusLabel }}</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div class="stat-card">
+            <span class="stat-card__label">Tempo</span>
+            <strong class="stat-card__value">{{ timeLabel }}</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__label">Tap</span>
+            <strong class="stat-card__value">{{ tapCount }}</strong>
+          </div>
+        </div>
+      </section>
       <div class="pointer-events-none absolute inset-0 opacity-80">
         <div class="absolute inset-x-[-20%] top-[-18%] h-40 rounded-full bg-cyan-400/18 blur-3xl"></div>
         <div class="absolute bottom-[-18%] right-[-8%] h-44 w-44 rounded-full bg-fuchsia-500/18 blur-3xl"></div>
@@ -47,12 +46,12 @@
         <span>🏐</span>
       </button>
 
-      <section v-else-if="liveStep === 'searching'" class="overlay px-4 text-center">
+      <section v-else-if="liveStep === 'searching'" class="overlay overlay--single px-2 text-center">
         <div class="search-pulse mb-5"></div>
         <p class="eyebrow">MATCHMAKING</p>
         <h3 class="mt-2 text-2xl font-black text-white sm:text-3xl">Cerchiamo un avversario live</h3>
         <p class="mt-2.5 max-w-[280px] text-xs leading-5 text-slate-200 sm:text-sm sm:leading-6">Stiamo sincronizzando una sfida reale 1vs1. Resta pronto: appena troviamo l’avversario comparirà la schermata versus.</p>
-        <div class="mt-4 rounded-[24px] border border-white/10 bg-white/5 px-3.5 py-3 text-left shadow-lg shadow-black/20">
+        <div class="mt-5 w-full max-w-[320px] rounded-[24px] border border-white/10 bg-white/5 px-3.5 py-3 text-left shadow-lg shadow-black/20">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-200/80">Tempo stimato</p>
@@ -65,8 +64,7 @@
         </div>
       </section>
 
-      <section v-else-if="liveStep === 'countdown'" class="overlay px-3.5 py-4">
-        <div class="versus-card w-full max-w-[320px]">
+      <section v-else-if="liveStep === 'countdown'" class="overlay overlay--single px-1 py-2">
           <p class="eyebrow text-center">MATCH TROVATO</p>
           <div class="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2.5">
             <div class="versus-player versus-player--me">
@@ -83,7 +81,7 @@
               <h4>{{ opponentNicknameLabel }}</h4>
             </div>
           </div>
-          <div class="mt-4 rounded-[20px] border border-cyan-300/20 bg-slate-950/55 px-3.5 py-3.5 text-center">
+          <div class="mt-4 rounded-[20px] border border-cyan-300/20 bg-slate-950/35 px-3.5 py-3.5 text-center">
             <p class="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-200/80">Countdown sincronizzato</p>
             <div class="mt-2 flex items-end justify-center gap-3">
               <span class="countdown-ring">{{ countdownDisplay }}</span>
@@ -91,11 +89,9 @@
             </div>
             <p class="mt-3 text-xs text-slate-300">Il match si attiverà per entrambi nello stesso istante reale.</p>
           </div>
-        </div>
       </section>
 
-      <section v-else-if="liveStep === 'result'" class="overlay px-3.5 py-4">
-        <div class="result-card w-full max-w-[360px]">
+      <section v-else-if="liveStep === 'result'" class="overlay overlay--single px-1 py-2">
           <div class="flex items-start justify-between gap-4">
             <div>
               <p class="eyebrow">RISULTATO MATCH</p>
@@ -141,10 +137,9 @@
               <button type="button" class="cta-secondary" :disabled="rematchBusy" @click="leavePostMatchAndExit">Torna al menu</button>
             </div>
           </div>
-        </div>
       </section>
 
-      <div v-else class="overlay px-4 text-center">
+      <div v-else class="overlay overlay--single px-2 text-center">
         <p class="eyebrow">TAP CHALLENGE</p>
         <h3 class="mt-2 text-2xl font-black text-white sm:text-3xl">Sfida da 10 secondi</h3>
         <p class="mt-2.5 max-w-[280px] text-xs leading-5 text-slate-200 sm:text-sm sm:leading-6">Tappa la palla più velocemente possibile: in live 1vs1 partirai con countdown condiviso e schermata versus dedicata.</p>
@@ -704,10 +699,56 @@ if (typeof window !== 'undefined') {
 
 <style scoped>
 .tap-challenge { user-select: none; }
-.game-area { min-height: min(43vh, 300px); max-height: 300px; touch-action: manipulation; }
-.overlay { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.game-area {
+  min-height: min(62vh, 640px);
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  touch-action: manipulation;
+}
+.overlay {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.overlay--single {
+  width: 100%;
+  border-radius: 28px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: linear-gradient(180deg, rgba(15,23,42,0.42), rgba(2,6,23,0.62));
+  padding: 1.25rem;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
 .tap-challenge :deep(.cta-primary), .tap-challenge :deep(.cta-secondary) { min-height: 44px; }
 .eyebrow { font-size: 10px; font-weight: 800; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(165, 243, 252, 0.8); }
+.info-panel { flex-shrink: 0; }
+.status-chip {
+  min-width: 92px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05);
+  padding: 0.65rem 0.75rem;
+  text-align: right;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.status-chip__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.9);
+}
+.status-chip__value {
+  margin-top: 0.3rem;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #fff;
+}
 .stat-card, .result-stat {
   border-radius: 22px;
   border: 1px solid rgba(255,255,255,0.1);
