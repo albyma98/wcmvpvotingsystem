@@ -1018,6 +1018,7 @@ type AppDatabase interface {
 	AddFanWalletCoins(fanID int, delta int) error
 	CreateTapLiveMatch(eventID, organizationID int, matchID string, fan1ID, fan2ID int, countdownStart, startAt, endAt time.Time) (TapLiveMatch, error)
 	GetOpenTapLiveMatchByFan(eventID int, fanID int) (TapLiveMatch, error)
+	GetLatestTapLiveMatchByFan(eventID int, fanID int) (TapLiveMatch, error)
 	GetTapLiveMatchByID(matchID string) (TapLiveMatch, error)
 	SubmitTapLiveScore(matchID string, fanID int, score int) error
 	TryFinalizeTapLiveMatch(matchID string) error
@@ -7314,6 +7315,18 @@ func (db *appdbimpl) GetOpenTapLiveMatchByFan(eventID int, fanID int) (TapLiveMa
 	JOIN fan_profiles f1 ON f1.id=m.fan1_id
 	JOIN fan_profiles f2 ON f2.id=m.fan2_id
 	WHERE m.event_id = ? AND (m.fan1_id = ? OR m.fan2_id = ?) AND m.status IN ('matched','countdown','playing')
+	ORDER BY m.id DESC LIMIT 1`, eventID, fanID, fanID)
+	return db.scanTapLiveMatch(row)
+}
+
+func (db *appdbimpl) GetLatestTapLiveMatchByFan(eventID int, fanID int) (TapLiveMatch, error) {
+	row := db.c.QueryRow(`SELECT m.id, m.match_id, m.event_id, m.organization_id, m.fan1_id, m.fan2_id,
+	f1.nickname, f2.nickname, m.status, m.countdown_start_at, m.started_at, m.ended_at,
+	m.fan1_score, m.fan2_score, m.fan1_submitted_at, m.fan2_submitted_at, m.fan1_result, m.fan2_result, m.fan1_coins, m.fan2_coins
+	FROM tap_live_matches m
+	JOIN fan_profiles f1 ON f1.id=m.fan1_id
+	JOIN fan_profiles f2 ON f2.id=m.fan2_id
+	WHERE m.event_id = ? AND (m.fan1_id = ? OR m.fan2_id = ?)
 	ORDER BY m.id DESC LIMIT 1`, eventID, fanID, fanID)
 	return db.scanTapLiveMatch(row)
 }

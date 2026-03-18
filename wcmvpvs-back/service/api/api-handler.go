@@ -77,6 +77,8 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/events/{eventId}/tap-live/submit", rt.wrap(rt.postTapLiveSubmit))
 	rt.router.Post("/events/{eventId}/tap-live/abort", rt.wrap(rt.postTapLiveAbort))
 	rt.router.Get("/events/{eventId}/tap-live/result", rt.wrap(rt.getTapLiveResult))
+	rt.router.Post("/events/{eventId}/tap-live/rematch", rt.wrap(rt.postTapLiveRematch))
+	rt.router.Post("/events/{eventId}/tap-live/postmatch-leave", rt.wrap(rt.postTapLivePostmatchLeave))
 
 	rt.router.Get("/events", rt.wrapAdmin(rt.listEvents))
 	rt.router.Post("/events", rt.wrapAdmin(rt.createEvent))
