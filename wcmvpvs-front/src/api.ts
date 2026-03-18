@@ -852,6 +852,34 @@ export async function fetchTapLiveResult(eventId: number, matchId: string) {
   }
 }
 
+export async function requestTapLiveRematch(eventId: number, matchId: string, action: 'request' | 'decline' | 'leave' = 'request') {
+  try {
+    const { data } = await apiClient.post(`/events/${eventId}/tap-live/rematch`, {
+      match_id: matchId,
+      action,
+    }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, error, message };
+  }
+}
+
+export async function leaveTapLivePostmatch(eventId: number, matchId: string) {
+  try {
+    await apiClient.post(`/events/${eventId}/tap-live/postmatch-leave`, {
+      match_id: matchId,
+    }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
 export function buildTapLiveSseUrl(eventId: number) {
   const token = encodeURIComponent(getFanSessionToken());
   return resolveApiUrl(`/events/${eventId}/tap-live/stream?fan_session=${token}`);
