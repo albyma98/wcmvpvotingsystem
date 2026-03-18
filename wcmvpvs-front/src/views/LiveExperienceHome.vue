@@ -812,6 +812,8 @@ const barCheckoutError = ref('');
 const barOrderConfirmed = ref(false);
 const barProducts = ref([]);
 const barCategoriesData = ref([]);
+const barSuggestionsCache = ref({});
+let barCatalogPreloadPromise = null;
 const barCart = ref({});
 const barDelivery = ref({ sector: '', row: '', seat: '', notes: '' });
 const barStep = ref('start');
@@ -1069,7 +1071,7 @@ function tickBoostState() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadBarProducts(), loadBarCategories()]);
+  await preloadBarCatalog();
   await confirmBarOrderFromQuery();
   if (typeof window === 'undefined') {
     return;
@@ -1986,7 +1988,7 @@ function openBarOrdering() {
   barStep.value = 'start';
   barStepHistory.value = [];
   selectedCategoryId.value = 'all';
-  void Promise.all([loadBarProducts(), loadBarCategories()]);
+  void preloadBarCatalog({ force: true });
   isBarModalOpen.value = true;
 }
 
@@ -2047,18 +2049,68 @@ function addSuggestedProduct(productId) {
 }
 
 
-async function loadBarSuggestionsForProduct(productID) {
+function defaultBarSuggestionsPayload() {
+  return { title: '', items: [], source: 'none', enabled: false };
+}
+
+function normalizeBarSuggestionsPayload(data) {
+  return data && typeof data === 'object' ? data : defaultBarSuggestionsPayload();
+}
+
+async function fetchBarSuggestionsForProduct(productID, options = {}) {
   const numericId = Number(String(productID || '').replace('product:', ''));
   if (!numericId) {
-    barSuggestionsPayload.value = { title: '', items: [], source: 'none', enabled: false };
-    return;
+    return defaultBarSuggestionsPayload();
   }
+
+  const cacheKey = String(numericId);
+  if (!options.force && barSuggestionsCache.value[cacheKey]) {
+    return barSuggestionsCache.value[cacheKey];
+  }
+
   try {
     const { data } = await apiClient.get(`/bar/suggestions/${numericId}`);
-    barSuggestionsPayload.value = data && typeof data === 'object' ? data : { title: '', items: [], source: 'none', enabled: false };
+    const payload = normalizeBarSuggestionsPayload(data);
+    barSuggestionsCache.value = { ...barSuggestionsCache.value, [cacheKey]: payload };
+    return payload;
   } catch (error) {
-    barSuggestionsPayload.value = { title: '', items: [], source: 'none', enabled: false };
+    const payload = defaultBarSuggestionsPayload();
+    barSuggestionsCache.value = { ...barSuggestionsCache.value, [cacheKey]: payload };
+    return payload;
   }
+}
+
+async function preloadBarSuggestions(products, options = {}) {
+  const productIds = (Array.isArray(products) ? products : [])
+    .map((product) => String(product?.id || ''))
+    .filter((id) => id.startsWith('product:'));
+
+  if (!productIds.length) {
+    return;
+  }
+
+  await Promise.all(productIds.map((productId) => fetchBarSuggestionsForProduct(productId, options)));
+}
+
+async function preloadBarCatalog(options = {}) {
+  if (barCatalogPreloadPromise && !options.force) {
+    return barCatalogPreloadPromise;
+  }
+
+  barCatalogPreloadPromise = (async () => {
+    await Promise.all([loadBarProducts(), loadBarCategories()]);
+    await preloadBarSuggestions(barProducts.value, options);
+  })();
+
+  try {
+    await barCatalogPreloadPromise;
+  } finally {
+    barCatalogPreloadPromise = null;
+  }
+}
+
+async function loadBarSuggestionsForProduct(productID) {
+  barSuggestionsPayload.value = await fetchBarSuggestionsForProduct(productID);
 }
 
 async function loadBarCategories() {
