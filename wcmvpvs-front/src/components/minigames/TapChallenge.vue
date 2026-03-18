@@ -1,19 +1,19 @@
 <template>
   <div class="tap-challenge flex h-full min-h-0 w-full flex-col">
-    <header class="rounded-[28px] border border-white/12 bg-slate-950/65 p-4 text-slate-100 shadow-[0_20px_60px_rgba(2,6,23,0.32)] backdrop-blur-xl">
-      <div class="flex items-start justify-between gap-3">
+    <header class="rounded-[24px] border border-white/12 bg-slate-950/65 p-3 text-slate-100 shadow-[0_16px_40px_rgba(2,6,23,0.28)] backdrop-blur-xl">
+      <div class="flex items-start justify-between gap-2.5">
         <div>
-          <p class="text-[11px] font-semibold uppercase tracking-[0.34em] text-cyan-200/80">Tap Challenge 1vs1</p>
-          <h2 class="mt-2 text-lg font-black text-white">{{ headline }}</h2>
-          <p class="mt-1 text-sm text-slate-300">{{ subline }}</p>
+          <p class="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-200/80">Tap Challenge 1vs1</p>
+          <h2 class="mt-1.5 text-base font-black leading-tight text-white sm:text-lg">{{ headline }}</h2>
+          <p class="mt-1 text-xs leading-5 text-slate-300 sm:text-sm">{{ subline }}</p>
         </div>
-        <div class="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-right shadow-inner shadow-white/5">
-          <p class="text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-400">Stato</p>
-          <p class="mt-1 text-xs font-bold text-white">{{ statusLabel }}</p>
+        <div class="rounded-[18px] border border-white/10 bg-white/5 px-2.5 py-2 text-right shadow-inner shadow-white/5">
+          <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-slate-400">Stato</p>
+          <p class="mt-1 text-[11px] font-bold leading-4 text-white sm:text-xs">{{ statusLabel }}</p>
         </div>
       </div>
 
-      <div class="mt-4 grid grid-cols-2 gap-3">
+      <div class="mt-3 grid grid-cols-2 gap-2.5">
         <div class="stat-card">
           <span class="stat-card__label">Tempo</span>
           <strong class="stat-card__value">{{ timeLabel }}</strong>
@@ -27,7 +27,7 @@
 
     <main
       ref="gameAreaRef"
-      class="game-area relative mt-4 flex-1 overflow-hidden rounded-[32px] border border-white/14 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_rgba(15,23,42,0.9)_42%,_rgba(2,6,23,0.98)_100%)]"
+      class="game-area relative mt-3 flex-1 overflow-hidden rounded-[26px] border border-white/14 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_rgba(15,23,42,0.9)_42%,_rgba(2,6,23,0.98)_100%)]"
       @touchmove.prevent
     >
       <div class="pointer-events-none absolute inset-0 opacity-80">
@@ -47,12 +47,12 @@
         <span>🏐</span>
       </button>
 
-      <section v-else-if="liveStep === 'searching'" class="overlay px-5 text-center">
+      <section v-else-if="liveStep === 'searching'" class="overlay px-4 text-center">
         <div class="search-pulse mb-5"></div>
         <p class="eyebrow">MATCHMAKING</p>
-        <h3 class="mt-2 text-3xl font-black text-white">Cerchiamo un avversario live</h3>
-        <p class="mt-3 max-w-[280px] text-sm leading-6 text-slate-200">Stiamo sincronizzando una sfida reale 1vs1. Resta pronto: appena troviamo l’avversario comparirà la schermata versus.</p>
-        <div class="mt-5 rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-left shadow-lg shadow-black/20">
+        <h3 class="mt-2 text-2xl font-black text-white sm:text-3xl">Cerchiamo un avversario live</h3>
+        <p class="mt-2.5 max-w-[280px] text-xs leading-5 text-slate-200 sm:text-sm sm:leading-6">Stiamo sincronizzando una sfida reale 1vs1. Resta pronto: appena troviamo l’avversario comparirà la schermata versus.</p>
+        <div class="mt-4 rounded-[24px] border border-white/10 bg-white/5 px-3.5 py-3 text-left shadow-lg shadow-black/20">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-200/80">Tempo stimato</p>
@@ -65,10 +65,10 @@
         </div>
       </section>
 
-      <section v-else-if="liveStep === 'countdown'" class="overlay px-4">
-        <div class="versus-card w-full max-w-[330px]">
+      <section v-else-if="liveStep === 'countdown'" class="overlay px-3.5 py-4">
+        <div class="versus-card w-full max-w-[320px]">
           <p class="eyebrow text-center">MATCH TROVATO</p>
-          <div class="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <div class="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2.5">
             <div class="versus-player versus-player--me">
               <div class="versus-player__avatar">🧑</div>
               <p class="versus-player__label">Tu</p>
@@ -83,7 +83,7 @@
               <h4>{{ opponentNicknameLabel }}</h4>
             </div>
           </div>
-          <div class="mt-6 rounded-[24px] border border-cyan-300/20 bg-slate-950/55 px-4 py-4 text-center">
+          <div class="mt-4 rounded-[20px] border border-cyan-300/20 bg-slate-950/55 px-3.5 py-3.5 text-center">
             <p class="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-200/80">Countdown sincronizzato</p>
             <div class="mt-2 flex items-end justify-center gap-3">
               <span class="countdown-ring">{{ countdownDisplay }}</span>
@@ -94,18 +94,18 @@
         </div>
       </section>
 
-      <section v-else-if="liveStep === 'result'" class="overlay px-4 py-5">
+      <section v-else-if="liveStep === 'result'" class="overlay px-3.5 py-4">
         <div class="result-card w-full max-w-[360px]">
           <div class="flex items-start justify-between gap-4">
             <div>
               <p class="eyebrow">RISULTATO MATCH</p>
-              <h3 class="mt-2 text-3xl font-black text-white">{{ resultTitle }}</h3>
-              <p class="mt-2 text-sm text-slate-300">{{ resultSubtitle }}</p>
+              <h3 class="mt-2 text-2xl font-black text-white sm:text-3xl">{{ resultTitle }}</h3>
+              <p class="mt-2 text-xs leading-5 text-slate-300 sm:text-sm">{{ resultSubtitle }}</p>
             </div>
             <div class="result-badge" :class="`result-badge--${resultTone}`">{{ resultBadge }}</div>
           </div>
 
-          <div class="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-[28px] border border-white/10 bg-white/5 p-4">
+          <div class="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2.5 rounded-[22px] border border-white/10 bg-white/5 p-3.5">
             <div class="score-card text-left">
               <p class="score-card__label">{{ myNicknameLabel }}</p>
               <strong class="score-card__value">{{ liveSummary.myScore }}</strong>
@@ -117,7 +117,7 @@
             </div>
           </div>
 
-          <div class="mt-4 grid grid-cols-2 gap-3">
+          <div class="mt-3 grid grid-cols-2 gap-2.5">
             <div class="result-stat">
               <span class="result-stat__label">Differenza</span>
               <strong class="result-stat__value">{{ tapDeltaLabel }}</strong>
@@ -132,9 +132,9 @@
             </div>
           </div>
 
-          <p class="mt-4 rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-slate-200">{{ rematchHint }}</p>
+          <p class="mt-3 rounded-[18px] border border-white/10 bg-slate-950/50 px-3.5 py-3 text-xs leading-5 text-slate-200 sm:text-sm">{{ rematchHint }}</p>
 
-          <div class="mt-5 grid grid-cols-1 gap-2">
+          <div class="mt-4 grid grid-cols-1 gap-2">
             <button type="button" class="cta-primary" :disabled="rematchButtonDisabled" @click="requestRematchAction">{{ rematchButtonLabel }}</button>
             <div class="grid grid-cols-2 gap-2">
               <button type="button" class="cta-secondary" :disabled="rematchBusy" @click="searchNewOpponent">Cerca nuovo avversario</button>
@@ -144,22 +144,22 @@
         </div>
       </section>
 
-      <div v-else class="overlay px-5 text-center">
+      <div v-else class="overlay px-4 text-center">
         <p class="eyebrow">TAP CHALLENGE</p>
-        <h3 class="mt-2 text-3xl font-black text-white">Sfida da 10 secondi</h3>
-        <p class="mt-3 max-w-[280px] text-sm leading-6 text-slate-200">Tappa la palla più velocemente possibile: in live 1vs1 partirai con countdown condiviso e schermata versus dedicata.</p>
-        <p v-if="status === 'finished'" class="mt-4 text-sm font-semibold text-amber-200">Hai guadagnato {{ earnedCoins }} monete nel singleplayer.</p>
+        <h3 class="mt-2 text-2xl font-black text-white sm:text-3xl">Sfida da 10 secondi</h3>
+        <p class="mt-2.5 max-w-[280px] text-xs leading-5 text-slate-200 sm:text-sm sm:leading-6">Tappa la palla più velocemente possibile: in live 1vs1 partirai con countdown condiviso e schermata versus dedicata.</p>
+        <p v-if="status === 'finished'" class="mt-3 text-sm font-semibold text-amber-200">Hai guadagnato {{ earnedCoins }} monete nel singleplayer.</p>
       </div>
     </main>
 
-    <p v-if="errorMessage" class="mt-3 rounded-2xl border border-red-300/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">{{ errorMessage }}</p>
+    <p v-if="errorMessage" class="mt-2.5 rounded-[18px] border border-red-300/40 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-100 sm:text-sm">{{ errorMessage }}</p>
 
-    <footer class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+    <footer class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
       <button type="button" class="cta-primary" :disabled="isPrimaryDisabled" @click="onPrimaryAction">{{ primaryLabel }}</button>
       <button type="button" class="cta-secondary" @click="handleSecondaryAction">{{ secondaryLabel }}</button>
     </footer>
 
-    <div v-if="showLiveButton" class="mt-2">
+    <div v-if="showLiveButton" class="mt-1.5">
       <button class="cta-secondary w-full" type="button" :disabled="liveBusy" @click="startLive">Sfida live</button>
     </div>
   </div>
@@ -704,14 +704,15 @@ if (typeof window !== 'undefined') {
 
 <style scoped>
 .tap-challenge { user-select: none; }
-.game-area { min-height: 360px; touch-action: manipulation; }
+.game-area { min-height: min(43vh, 300px); max-height: 300px; touch-action: manipulation; }
 .overlay { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.tap-challenge :deep(.cta-primary), .tap-challenge :deep(.cta-secondary) { min-height: 44px; }
 .eyebrow { font-size: 10px; font-weight: 800; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(165, 243, 252, 0.8); }
 .stat-card, .result-stat {
   border-radius: 22px;
   border: 1px solid rgba(255,255,255,0.1);
   background: rgba(255,255,255,0.06);
-  padding: 0.9rem 1rem;
+  padding: 0.75rem 0.85rem;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 .stat-card__label, .result-stat__label, .score-card__label {
@@ -724,8 +725,8 @@ if (typeof window !== 'undefined') {
 }
 .stat-card__value, .result-stat__value, .score-card__value {
   display: block;
-  margin-top: 0.35rem;
-  font-size: 1.2rem;
+  margin-top: 0.25rem;
+  font-size: 1.05rem;
   font-weight: 900;
   color: #fff;
 }
@@ -734,21 +735,21 @@ if (typeof window !== 'undefined') {
   left: 0;
   top: 0;
   z-index: 2;
-  width: 74px;
-  height: 74px;
+  width: 52px;
+  height: 52px;
   border-radius: 9999px;
   border: 2px solid rgba(255,255,255,.72);
   background: radial-gradient(circle at 30% 25%, #fef3c7, #f59e0b 60%, #b45309);
   color: #111827;
-  font-size: 36px;
+  font-size: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 18px 30px rgba(2,6,23,.42), 0 0 0 8px rgba(251,191,36,0.12);
+  box-shadow: 0 14px 24px rgba(2,6,23,.42), 0 0 0 6px rgba(251,191,36,0.12);
 }
 .search-pulse {
-  width: 120px;
-  height: 120px;
+  width: 92px;
+  height: 92px;
   border-radius: 9999px;
   border: 1px solid rgba(34, 211, 238, 0.38);
   background: radial-gradient(circle, rgba(34,211,238,0.38), rgba(34,211,238,0.04));
@@ -765,7 +766,7 @@ if (typeof window !== 'undefined') {
   border-radius: 32px;
   border: 1px solid rgba(255,255,255,0.12);
   background: linear-gradient(180deg, rgba(15,23,42,0.82), rgba(2,6,23,0.96));
-  padding: 1.25rem;
+  padding: 1rem;
   box-shadow: 0 24px 70px rgba(2,6,23,0.55);
   animation: card-rise 380ms cubic-bezier(.21,1,.21,1);
 }
@@ -773,7 +774,7 @@ if (typeof window !== 'undefined') {
   position: relative;
   border-radius: 26px;
   border: 1px solid rgba(255,255,255,0.1);
-  padding: 1rem 0.8rem;
+  padding: 0.85rem 0.7rem;
   text-align: center;
   background: rgba(255,255,255,0.04);
   overflow: hidden;
@@ -790,37 +791,37 @@ if (typeof window !== 'undefined') {
 .versus-player--opponent::after { background: radial-gradient(circle, rgba(244,114,182,0.28), transparent 68%); }
 .versus-player__avatar {
   margin: 0 auto;
-  width: 54px;
-  height: 54px;
+  width: 46px;
+  height: 46px;
   border-radius: 18px;
   border: 1px solid rgba(255,255,255,0.14);
   background: rgba(255,255,255,0.09);
   display: grid;
   place-items: center;
-  font-size: 1.45rem;
+  font-size: 1.2rem;
 }
-.versus-player__label { margin-top: 0.7rem; font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase; color: rgba(186, 230, 253, 0.72); }
-.versus-player h4 { margin-top: 0.4rem; font-size: 1rem; font-weight: 900; color: #fff; word-break: break-word; }
+.versus-player__label { margin-top: 0.55rem; font-size: 9px; letter-spacing: 0.24em; text-transform: uppercase; color: rgba(186, 230, 253, 0.72); }
+.versus-player h4 { margin-top: 0.3rem; font-size: 0.92rem; font-weight: 900; color: #fff; word-break: break-word; }
 .versus-center span {
   display: grid;
   place-items: center;
-  width: 62px;
-  height: 62px;
+  width: 52px;
+  height: 52px;
   border-radius: 9999px;
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 900;
   color: #fff;
   background: linear-gradient(135deg, rgba(34,211,238,0.4), rgba(168,85,247,0.35));
   box-shadow: 0 0 28px rgba(34,211,238,0.28);
 }
 .countdown-ring {
-  width: 88px;
-  height: 88px;
+  width: 72px;
+  height: 72px;
   border-radius: 9999px;
   border: 1px solid rgba(52,211,153,0.5);
   display: grid;
   place-items: center;
-  font-size: 2.15rem;
+  font-size: 1.7rem;
   font-weight: 900;
   color: #fff;
   background: radial-gradient(circle, rgba(16,185,129,0.26), rgba(15,23,42,0.35));
@@ -828,7 +829,7 @@ if (typeof window !== 'undefined') {
 }
 .result-badge {
   border-radius: 9999px;
-  padding: 0.55rem 0.85rem;
+  padding: 0.45rem 0.7rem;
   font-size: 0.75rem;
   font-weight: 900;
   letter-spacing: 0.18em;
@@ -844,7 +845,7 @@ if (typeof window !== 'undefined') {
 }
 .cta-primary, .cta-secondary {
   border-radius: 9999px;
-  padding: 0.9rem 1rem;
+  padding: 0.75rem 0.85rem;
   font-weight: 900;
   transition: transform 160ms ease, opacity 160ms ease, border-color 160ms ease;
 }
