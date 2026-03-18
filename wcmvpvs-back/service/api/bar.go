@@ -74,6 +74,22 @@ type stripeCheckoutSessionResponse struct {
 	PaymentStatus string `json:"payment_status"`
 }
 
+func (rt *_router) resolveDefaultBarPartnerID(organizationID int) int {
+	if organizationID <= 0 {
+		return 0
+	}
+	partners, err := rt.db.ListPartners(organizationID)
+	if err != nil {
+		return 0
+	}
+	for _, p := range partners {
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(p.Username)), "BAR") {
+			return p.ID
+		}
+	}
+	return 0
+}
+
 func (rt *_router) listBarCategories(w http.ResponseWriter, _ *http.Request, _ reqcontext.RequestContext) {
 	categories, err := rt.db.ListBarCategories(false)
 	if err != nil {
@@ -309,7 +325,7 @@ func (rt *_router) createBarCheckoutSession(w http.ResponseWriter, r *http.Reque
 
 	createdOrder, err := rt.db.CreateBarOrder(database.BarOrder{
 		OrganizationID:  ctx.OrganizationID,
-		PartnerID:       0,
+		PartnerID:       rt.resolveDefaultBarPartnerID(ctx.OrganizationID),
 		ProductsJSON:    string(productsJSON),
 		QuantitiesJSON:  string(quantitiesJSON),
 		TotalCents:      int(totalCents),
@@ -326,6 +342,7 @@ func (rt *_router) createBarCheckoutSession(w http.ResponseWriter, r *http.Reque
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "impossibile salvare ordine")
 		return
 	}
+	rt.notifyBarOrdersChanged(createdOrder.OrganizationID, createdOrder.PartnerID)
 
 	w.Header().Set("content-type", "application/json")
 	_ = json.NewEncoder(w).Encode(barCheckoutResponse{CheckoutURL: createdSession.URL, SessionID: createdSession.ID, OrderID: createdOrder.ID})
@@ -360,6 +377,9 @@ func (rt *_router) confirmBarCheckoutSession(w http.ResponseWriter, r *http.Requ
 			ctx.Logger.WithError(err).Error("cannot update bar order payment")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
+		}
+		if order, err := rt.db.GetBarOrderByStripeReference(payload.SessionID); err == nil {
+			rt.notifyBarOrdersChanged(order.OrganizationID, order.PartnerID)
 		}
 	}
 
@@ -408,8 +428,14 @@ func (rt *_router) handleBarStripeWebhook(w http.ResponseWriter, r *http.Request
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+			if order, err := rt.db.GetBarOrderByStripeReference(sessionID); err == nil {
+				rt.notifyBarOrdersChanged(order.OrganizationID, order.PartnerID)
+			}
 		case "checkout.session.expired":
 			_ = rt.db.UpdateBarOrderPaymentByStripeReference(sessionID, "expired", "cancelled")
+			if order, err := rt.db.GetBarOrderByStripeReference(sessionID); err == nil {
+				rt.notifyBarOrdersChanged(order.OrganizationID, order.PartnerID)
+			}
 		}
 	}
 
@@ -683,6 +709,7 @@ func (rt *_router) updateAdminBarOrderStatus(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	rt.notifyBarOrdersChanged(order.OrganizationID, order.PartnerID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

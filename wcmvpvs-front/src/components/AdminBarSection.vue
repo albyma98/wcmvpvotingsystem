@@ -599,7 +599,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { apiClient } from '../api';
+import { apiClient, getOrganizationSlug, resolveApiUrl } from '../api';
 
 const props = defineProps({ authHeaders: { type: Object, required: true }, isSuperAdmin: { type: Boolean, default: false } });
 const activeTab = ref('dashboard');
@@ -633,6 +633,7 @@ const settings = ref({
 const RECENT_CANCELLED_MINUTES = 20;
 const refreshEveryMs = 15000;
 let refreshTimer = null;
+let ordersSseSource = null;
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -946,6 +947,43 @@ async function load() {
   }
 }
 
+function stopOrdersSSE() {
+  if (ordersSseSource) {
+    ordersSseSource.close();
+    ordersSseSource = null;
+  }
+}
+
+function startOrdersSSE() {
+  stopOrdersSSE();
+  if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+    return;
+  }
+  const bearer = String(props.authHeaders?.headers?.Authorization || props.authHeaders?.Authorization || '').trim();
+  const token = bearer.startsWith('Bearer ') ? bearer.slice(7).trim() : '';
+  if (!token) {
+    return;
+  }
+
+  const base = resolveApiUrl('/admin/bar/orders/stream');
+  const url = new URL(base, window.location.origin);
+  url.searchParams.set('access_token', token);
+  const slug = getOrganizationSlug();
+  if (slug) {
+    url.searchParams.set('organization_slug', slug);
+  }
+
+  ordersSseSource = new EventSource(url.toString());
+  ordersSseSource.addEventListener('message', () => {
+    load().catch(() => { /* silent SSE refresh */ });
+  });
+  ordersSseSource.addEventListener('error', () => {
+    if (ordersSseSource?.readyState === EventSource.CLOSED) {
+      stopOrdersSSE();
+    }
+  });
+}
+
 async function setStatus(orderId, status) {
   await apiClient.put(`/admin/bar/orders/${orderId}/status`, { status }, props.authHeaders);
   await load();
@@ -1224,6 +1262,7 @@ function closeOrderDetail() {
 
 onMounted(async () => {
   await Promise.all([load(), loadCategories(), loadProducts(), loadMenus(), loadSuggestions()]);
+  startOrdersSSE();
   refreshTimer = window.setInterval(() => {
     if (settings.value.autoRefreshLive) {
       load();
@@ -1232,6 +1271,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  stopOrdersSSE();
   if (refreshTimer) {
     window.clearInterval(refreshTimer);
   }

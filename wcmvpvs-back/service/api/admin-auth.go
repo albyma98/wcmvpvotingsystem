@@ -14,6 +14,9 @@ import (
 func (rt *_router) wrapAdmin(fn httpRouterHandler) http.HandlerFunc {
 	return rt.wrap(func(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 		token := parseBearerToken(r.Header.Get("Authorization"))
+		if token == "" && r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/admin/bar/orders/stream") {
+			token = strings.TrimSpace(r.URL.Query().Get("access_token"))
+		}
 		session, ok := rt.getAdminSession(token)
 		if !ok {
 			w.WriteHeader(http.StatusUnauthorized)
