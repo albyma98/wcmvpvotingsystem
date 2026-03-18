@@ -1054,6 +1054,7 @@ type AppDatabase interface {
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
 	CreateBarOrder(order BarOrder) (BarOrder, error)
 	GetBarOrder(id int) (BarOrder, error)
+	GetBarOrderByStripeReference(stripeReference string) (BarOrder, error)
 	UpdateBarOrderPaymentByStripeReference(stripeReference, paymentStatus, orderStatus string) error
 	ListBarOrders(organizationID, partnerID int, status string) ([]BarOrder, error)
 	UpdateBarOrderStatus(id int, status string) error
@@ -6324,6 +6325,20 @@ func (db *appdbimpl) GetBarOrder(id int) (BarOrder, error) {
 	}
 	var order BarOrder
 	err := db.c.QueryRow(`SELECT id, IFNULL(organization_id, 0), IFNULL(partner_id, 0), products_json, quantities_json, total_cents, sector, row_label, seat, IFNULL(notes, ''), order_status, payment_status, stripe_reference, IFNULL(created_at, ''), IFNULL(updated_at, '') FROM bar_orders WHERE id = ?`, id).
+		Scan(&order.ID, &order.OrganizationID, &order.PartnerID, &order.ProductsJSON, &order.QuantitiesJSON, &order.TotalCents, &order.Sector, &order.Row, &order.Seat, &order.Notes, &order.OrderStatus, &order.PaymentStatus, &order.StripeReference, &order.CreatedAt, &order.UpdatedAt)
+	if err != nil {
+		return BarOrder{}, err
+	}
+	return order, nil
+}
+
+func (db *appdbimpl) GetBarOrderByStripeReference(stripeReference string) (BarOrder, error) {
+	ref := strings.TrimSpace(stripeReference)
+	if ref == "" {
+		return BarOrder{}, sql.ErrNoRows
+	}
+	var order BarOrder
+	err := db.c.QueryRow(`SELECT id, IFNULL(organization_id, 0), IFNULL(partner_id, 0), products_json, quantities_json, total_cents, sector, row_label, seat, IFNULL(notes, ''), order_status, payment_status, stripe_reference, IFNULL(created_at, ''), IFNULL(updated_at, '') FROM bar_orders WHERE stripe_reference = ?`, ref).
 		Scan(&order.ID, &order.OrganizationID, &order.PartnerID, &order.ProductsJSON, &order.QuantitiesJSON, &order.TotalCents, &order.Sector, &order.Row, &order.Seat, &order.Notes, &order.OrderStatus, &order.PaymentStatus, &order.StripeReference, &order.CreatedAt, &order.UpdatedAt)
 	if err != nil {
 		return BarOrder{}, err

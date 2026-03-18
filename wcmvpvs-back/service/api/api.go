@@ -122,6 +122,7 @@ func New(cfg Config) (Router, error) {
 		stripeSuccessURL:    cfg.StripeSuccessURL,
 		votesHub:            newSSEHub(),
 		coinsHub:            newSSEHub(),
+		barOrdersHub:        newSSEHub(),
 		tapLiveHub:          newSSEHub(),
 		tapLive:             newTapLiveManager(),
 		tapLiveRematch:      newTapLiveRematchManager(),
@@ -168,6 +169,7 @@ type _router struct {
 
 	votesHub       *sseHub
 	coinsHub       *sseHub
+	barOrdersHub   *sseHub
 	tapLiveHub     *sseHub
 	tapLive        *tapLiveManager
 	tapLiveRematch *tapLiveRematchManager

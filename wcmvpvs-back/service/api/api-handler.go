@@ -157,6 +157,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admin/bar/menus", rt.wrapAdmin(rt.createAdminBarMenu))
 	rt.router.Delete("/admin/bar/menus/{id}", rt.wrapAdmin(rt.deleteAdminBarMenu))
 	rt.router.Get("/admin/bar/orders", rt.wrapAdmin(rt.listAdminBarOrders))
+	rt.router.Get("/admin/bar/orders/stream", rt.wrapAdmin(rt.streamAdminBarOrders))
 	rt.router.Put("/admin/bar/orders/{id}/status", rt.wrapAdmin(rt.updateAdminBarOrderStatus))
 	rt.router.Get("/admin/master/summary", rt.wrapAdmin(rt.getMasterSummary))
 	rt.router.Get("/admin/master/analytics", rt.wrapAdmin(rt.getMasterAnalytics))
