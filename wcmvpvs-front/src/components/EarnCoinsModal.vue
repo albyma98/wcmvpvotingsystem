@@ -289,6 +289,7 @@ async function handleClaim(payload) {
 
   isClaiming.value = true;
   const coins = Math.max(0, Number(payload?.coins) || 0);
+  const keepOpen = Boolean(payload?.keepOpen);
 
   try {
     const toEl = resolveWalletTarget();
@@ -305,8 +306,11 @@ async function handleClaim(payload) {
 
     emit('earned', payload);
     emit('coins-earned', coins);
-    activeView.value = 'list';
-    activeGame.value = null;
+
+    if (!keepOpen) {
+      activeView.value = 'list';
+      activeGame.value = null;
+    }
   } finally {
     isClaiming.value = false;
   }

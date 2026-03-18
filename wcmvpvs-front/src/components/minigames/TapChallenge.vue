@@ -10,6 +10,17 @@
         <div class="absolute bottom-[-18%] right-[-8%] h-44 w-44 rounded-full bg-fuchsia-500/18 blur-3xl"></div>
       </div>
 
+      <div v-if="showGameHud" class="hud">
+        <div class="hud-card">
+          <span class="hud-card__label">Tempo</span>
+          <strong class="hud-card__value">{{ liveStep === 'countdown' ? countdownDisplay : timeLabel }}</strong>
+        </div>
+        <div class="hud-card hud-card--accent">
+          <span class="hud-card__label">Tap</span>
+          <strong class="hud-card__value">{{ tapCount }}</strong>
+        </div>
+      </div>
+
       <button
         v-if="status === 'playing'"
         ref="ballRef"
@@ -125,9 +136,8 @@
 
     <p v-if="errorMessage" class="mt-2.5 rounded-[18px] border border-red-300/40 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-100 sm:text-sm">{{ errorMessage }}</p>
 
-    <footer class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <button type="button" class="cta-primary" :disabled="isPrimaryDisabled" @click="onPrimaryAction">{{ primaryLabel }}</button>
-      <button type="button" class="cta-secondary" @click="handleSecondaryAction">{{ secondaryLabel }}</button>
+    <footer class="mt-3">
+      <button type="button" class="cta-primary w-full" :disabled="isPrimaryDisabled" @click="onPrimaryAction">{{ primaryLabel }}</button>
     </footer>
 
     <div v-if="showLiveButton" class="mt-1.5">
@@ -219,6 +229,7 @@ const statusLabel = computed(() => {
 });
 const timeLabel = computed(() => `${(Math.max(0, timeLeftMs.value) / 1000).toFixed(status.value === 'playing' ? 1 : 0)}s`);
 const showLiveButton = computed(() => status.value === 'ready' && liveStep.value === 'idle');
+const showGameHud = computed(() => liveStep.value === 'countdown' || status.value === 'playing');
 const headline = computed(() => {
   if (liveStep.value === 'searching') return 'Matchmaking in corso';
   if (liveStep.value === 'countdown') return 'Duello confermato';
@@ -237,17 +248,12 @@ const subline = computed(() => {
 const primaryLabel = computed(() => {
   if (liveStep.value === 'searching') return 'Annulla ricerca';
   if (liveStep.value === 'countdown' || liveStep.value === 'playing') return 'Match in corso';
-  if (liveStep.value === 'result') return 'Chiudi risultato';
+  if (liveStep.value === 'result') return 'Torna al menu';
   if (isSubmitting.value || claimRequested.value) return 'Accredito…';
   if (status.value === 'finished' && errorMessage.value) return 'Riprova accredito';
   if (status.value === 'finished') return 'Riscatta monete';
   if (isCooldownActive.value) return `In cooldown ${formatCooldown(cooldownRemainingMs.value)}`;
   return 'Inizia';
-});
-const secondaryLabel = computed(() => {
-  if (liveStep.value === 'result') return 'Esci';
-  if (liveStep.value === 'searching') return 'Esci';
-  return 'Esci';
 });
 const isPrimaryDisabled = computed(() => liveStep.value === 'countdown' || liveStep.value === 'playing' || isSubmitting.value || claimRequested.value || (status.value === 'ready' && isCooldownActive.value));
 const ballStyle = computed(() => ({ transform: `translate3d(${ballX.value}px, ${ballY.value}px, 0)` }));
@@ -360,13 +366,6 @@ function onPrimaryAction() {
   if (isCooldownActive.value) return;
   startGame();
 }
-function handleSecondaryAction() {
-  if (liveStep.value === 'result') {
-    leavePostMatchAndExit();
-    return;
-  }
-  emit('exit');
-}
 async function startGame() {
   stopTimer();
   stopBallMovement();
@@ -458,7 +457,7 @@ function applyLiveResult(data = {}) {
   rematchState.value = normalizeRematchState(data.rematch || {});
   liveStep.value = 'result';
   status.value = 'finished';
-  emit('claim', { coins: liveCoins.value, source: 'tap_challenge_live', meta: { matchId: liveMatchId.value, taps: tapCount.value, outcome: liveOutcome.value } });
+  emit('claim', { coins: liveCoins.value, source: 'tap_challenge_live', keepOpen: true, meta: { matchId: liveMatchId.value, taps: tapCount.value, outcome: liveOutcome.value } });
 }
 async function claimReward() {
   if (isSubmitting.value || claimRequested.value || status.value !== 'finished') return;
@@ -700,6 +699,38 @@ if (typeof window !== 'undefined') {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 .tap-challenge :deep(.cta-primary), .tap-challenge :deep(.cta-secondary) { min-height: 44px; }
+.hud {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.hud-card {
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(15,23,42,0.68);
+  padding: 0.8rem 0.95rem;
+  box-shadow: 0 12px 24px rgba(2,6,23,0.24);
+  backdrop-filter: blur(10px);
+}
+.hud-card--accent { border-color: rgba(34,211,238,0.24); }
+.hud-card__label {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(186,230,253,0.76);
+}
+.hud-card__value {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: #fff;
+}
 .eyebrow { font-size: 10px; font-weight: 800; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(165, 243, 252, 0.8); }
 .info-panel { flex-shrink: 0; }
 .status-chip {
