@@ -5,30 +5,6 @@
       class="game-area relative flex-1 overflow-hidden rounded-[26px] border border-white/14 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_rgba(15,23,42,0.9)_42%,_rgba(2,6,23,0.98)_100%)] px-4 py-4 sm:px-5 sm:py-5"
       @touchmove.prevent
     >
-      <section class="info-panel relative z-[1] mb-4 flex flex-col gap-3 rounded-[24px] border border-white/12 bg-slate-950/45 p-4 text-slate-100 shadow-[0_16px_40px_rgba(2,6,23,0.2)] backdrop-blur-xl">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <p class="text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-200/80">Tap Challenge 1vs1</p>
-            <h2 class="mt-1.5 text-base font-black leading-tight text-white sm:text-lg">{{ headline }}</h2>
-            <p class="mt-1 text-xs leading-5 text-slate-300 sm:text-sm">{{ subline }}</p>
-          </div>
-          <div class="status-chip">
-            <p class="status-chip__label">Stato</p>
-            <p class="status-chip__value">{{ statusLabel }}</p>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2.5">
-          <div class="stat-card">
-            <span class="stat-card__label">Tempo</span>
-            <strong class="stat-card__value">{{ timeLabel }}</strong>
-          </div>
-          <div class="stat-card">
-            <span class="stat-card__label">Tap</span>
-            <strong class="stat-card__value">{{ tapCount }}</strong>
-          </div>
-        </div>
-      </section>
       <div class="pointer-events-none absolute inset-0 opacity-80">
         <div class="absolute inset-x-[-20%] top-[-18%] h-40 rounded-full bg-cyan-400/18 blur-3xl"></div>
         <div class="absolute bottom-[-18%] right-[-8%] h-44 w-44 rounded-full bg-fuchsia-500/18 blur-3xl"></div>
