@@ -39,11 +39,11 @@ import { abortTapLiveMatch, buildTapLiveSseUrl, cancelTapLiveQueue, fetchTapLive
 
 const props = defineProps({ eventId: { type: Number, default: 0 }, cooldownSeconds: { type: Number, default: 60 } });
 const emit = defineEmits(['claim', 'exit']);
-const ROUND_DURATION_MS = 10_000; const TICK_MS = 100; const MIN_DISTANCE_PX = 30; const BASE_MOVE_INTERVAL_MS = 850; const MIN_MOVE_INTERVAL_MS = 220; const SPEED_GAIN_PER_TAP = 0.92;
+const ROUND_DURATION_MS = 10_000; const MATCHMAKING_TIMEOUT_MS = 20_000; const TICK_MS = 100; const MIN_DISTANCE_PX = 30; const BASE_MOVE_INTERVAL_MS = 850; const MIN_MOVE_INTERVAL_MS = 220; const SPEED_GAIN_PER_TAP = 0.92;
 const status = ref('ready'); const timeLeftMs = ref(ROUND_DURATION_MS); const tapCount = ref(0); const cooldownUntil = ref(0); const errorMessage = ref(''); const isSubmitting = ref(false); const claimRequested = ref(false); const nowTs = ref(Date.now());
 const gameAreaRef = ref(null); const ballRef = ref(null); const ballX = ref(0); const ballY = ref(0); const lastBallX = ref(0); const lastBallY = ref(0); const moveIntervalMs = ref(BASE_MOVE_INTERVAL_MS);
-const liveStep = ref('idle'); const liveBusy = ref(false); const liveMatchId = ref(''); const liveOutcome = ref(''); const liveCoins = ref(0); const liveMessage = ref(''); let sse;
-let timerId; let moveTimerId; let gameEndsAt = 0; let cooldownTickId;
+const liveStep = ref('idle'); const liveBusy = ref(false); const liveMatchId = ref(''); const liveOutcome = ref(''); const liveCoins = ref(0); const liveMessage = ref(''); const matchmakingDeadline = ref(0); let sse;
+let timerId; let moveTimerId; let gameEndsAt = 0; let cooldownTickId; let matchmakingTimerId;
 const earnedCoins = computed(() => tapCount.value); const isCooldownActive = computed(() => cooldownUntil.value > nowTs.value); const cooldownRemainingMs = computed(() => Math.max(0, cooldownUntil.value - nowTs.value));
 const statusLabel = computed(() => liveStep.value !== 'idle' ? `LIVE ${liveStep.value.toUpperCase()}` : status.value === 'playing' ? 'PLAYING' : status.value === 'finished' ? 'FINISHED' : 'READY');
 const timeLabel = computed(() => `${(Math.max(0, timeLeftMs.value) / 1000).toFixed(1)}s`);
@@ -57,7 +57,7 @@ const headline = computed(() => {
   return 'Tap Challenge';
 });
 const subline = computed(() => {
-  if (liveStep.value === 'searching') return 'Attendi qualche secondo o annulla.';
+  if (liveStep.value === 'searching') return matchmakingDeadline.value > nowTs.value ? `Attendi ${formatSeconds(Math.max(0, matchmakingDeadline.value - nowTs.value))} o annulla.` : 'Attendi qualche secondo o annulla.';
   if (liveStep.value === 'countdown') return 'La sfida inizia tra…';
   if (liveStep.value === 'result') return `Hai guadagnato ${liveCoins.value} monete`;
   return status.value === 'ready' ? 'Tappa la palla più volte possibile in 10 secondi.' : 'Tappa la palla più volte possibile';
@@ -75,11 +75,12 @@ const primaryLabel = computed(() => {
 const isPrimaryDisabled = computed(() => liveStep.value === 'countdown' || status.value === 'playing' || isSubmitting.value || claimRequested.value || (status.value === 'ready' && isCooldownActive.value));
 const ballStyle = computed(() => ({ transform: `translate3d(${ballX.value}px, ${ballY.value}px, 0)` }));
 
-onBeforeUnmount(async () => { stopTimer(); stopBallMovement(); sse?.close(); if (liveMatchId.value && liveStep.value !== 'result') await abortTapLiveMatch(props.eventId, liveMatchId.value); if (cooldownTickId && typeof window !== 'undefined') window.clearInterval(cooldownTickId); });
+onBeforeUnmount(async () => { stopTimer(); stopBallMovement(); stopMatchmakingTimer(); sse?.close(); if (liveMatchId.value && liveStep.value !== 'result') await abortTapLiveMatch(props.eventId, liveMatchId.value); if (cooldownTickId && typeof window !== 'undefined') window.clearInterval(cooldownTickId); });
 if (typeof window !== 'undefined') cooldownTickId = window.setInterval(() => { nowTs.value = Date.now(); }, 250);
 
 function stopTimer() { if (!timerId || typeof window === 'undefined') return; window.clearInterval(timerId); timerId = undefined; }
 function stopBallMovement() { if (!moveTimerId || typeof window === 'undefined') return; window.clearTimeout(moveTimerId); moveTimerId = undefined; }
+function stopMatchmakingTimer() { if (!matchmakingTimerId || typeof window === 'undefined') return; window.clearTimeout(matchmakingTimerId); matchmakingTimerId = undefined; }
 function scheduleBallMovement() { stopBallMovement(); if (typeof window === 'undefined' || status.value !== 'playing') return; moveTimerId = window.setTimeout(() => { if (status.value !== 'playing') return; repositionBall(); scheduleBallMovement(); }, moveIntervalMs.value); }
 function onPrimaryAction() { if (liveStep.value === 'searching') { cancelLiveSearch(); return; } if (liveStep.value === 'result') { resetLive(); return; } if (status.value === 'playing' || isSubmitting.value || claimRequested.value) return; if (status.value === 'finished') { claimReward(); return; } if (isCooldownActive.value) return; startGame(); }
 async function startGame() { stopTimer(); stopBallMovement(); errorMessage.value=''; claimRequested.value=false; status.value='playing'; tapCount.value=0; timeLeftMs.value=ROUND_DURATION_MS; moveIntervalMs.value=BASE_MOVE_INTERVAL_MS; gameEndsAt=Date.now()+ROUND_DURATION_MS; await nextTick(); repositionBall(true); scheduleBallMovement(); if (typeof window === 'undefined') return; timerId=window.setInterval(() => { const remaining=gameEndsAt-Date.now(); timeLeftMs.value=Math.max(0,remaining); if (remaining<=0) finishGame(); }, TICK_MS); }
@@ -95,20 +96,22 @@ async function startLive() {
   errorMessage.value = ''; liveBusy.value = true; liveStep.value = 'searching';
   const q = await joinTapLiveQueue(props.eventId); liveBusy.value = false;
   if (!q.ok) { liveStep.value = 'idle'; errorMessage.value = q.message || 'Nessun avversario trovato'; return; }
-  liveMatchId.value = String(q.data?.match_id || '');
+  liveMatchId.value = String(q.data?.match_id || ''); matchmakingDeadline.value = Number(q.data?.waiting_deadline || 0) * 1000 || (Date.now() + MATCHMAKING_TIMEOUT_MS); scheduleMatchmakingTimeout();
   openLiveSSE();
   await syncLiveState();
 }
 async function cancelLiveSearch() { await cancelTapLiveQueue(props.eventId); resetLive(); }
-function resetLive() { liveStep.value = 'idle'; liveMatchId.value = ''; liveOutcome.value=''; liveCoins.value=0; liveMessage.value=''; status.value='ready'; timeLeftMs.value = ROUND_DURATION_MS; tapCount.value=0; sse?.close(); sse = undefined; }
-function openLiveSSE() { if (typeof EventSource === 'undefined') return; sse?.close(); sse = new EventSource(buildTapLiveSseUrl(props.eventId)); sse.onmessage = () => { syncLiveState(); }; sse.onerror = () => {}; }
+function resetLive() { liveStep.value = 'idle'; liveMatchId.value = ''; liveOutcome.value=''; liveCoins.value=0; liveMessage.value=''; matchmakingDeadline.value = 0; status.value='ready'; timeLeftMs.value = ROUND_DURATION_MS; tapCount.value=0; stopMatchmakingTimer(); sse?.close(); sse = undefined; }
+function scheduleMatchmakingTimeout() { stopMatchmakingTimer(); if (typeof window === 'undefined' || !matchmakingDeadline.value || liveStep.value !== 'searching') return; const delay = Math.max(0, matchmakingDeadline.value - Date.now()); matchmakingTimerId = window.setTimeout(async () => { if (liveStep.value !== 'searching') return; await syncLiveState(); if (liveStep.value === 'searching') { errorMessage.value = 'Tempo di attesa scaduto, riprova.'; await cancelTapLiveQueue(props.eventId); resetLive(); } }, delay + 50); }
+function openLiveSSE() { if (typeof EventSource === 'undefined') return; sse?.close(); sse = new EventSource(buildTapLiveSseUrl(props.eventId)); sse.onmessage = () => { syncLiveState(); }; sse.addEventListener('update', () => { syncLiveState(); }); sse.onerror = () => {}; }
 async function syncLiveState() { const state = await fetchTapLiveState(props.eventId); if (!state.ok) return; const s = state.data?.status || 'idle'; if (s === 'idle') { if (liveStep.value === 'searching') errorMessage.value = 'Nessun avversario trovato'; resetLive(); return; }
   liveMatchId.value = String(state.data?.match_id || liveMatchId.value || '');
-  if (s === 'matched' || s === 'countdown') { liveStep.value = 'countdown'; const startAt = Number(state.data?.start_at || 0) * 1000; const ms = Math.max(0, startAt - Date.now()); timeLeftMs.value = ms; stopTimer(); timerId = window.setInterval(() => { const rem = Math.max(0, startAt - Date.now()); timeLeftMs.value = rem; if (rem <= 0) { stopTimer(); liveStep.value = 'playing'; startGame(); } }, 100); return; }
+  if (s === 'searching') { liveStep.value = 'searching'; scheduleMatchmakingTimeout(); return; }
+  if (s === 'matched' || s === 'countdown') { stopMatchmakingTimer(); matchmakingDeadline.value = 0; liveStep.value = 'countdown'; const startAt = Number(state.data?.start_at || 0) * 1000; const ms = Math.max(0, startAt - Date.now()); timeLeftMs.value = ms; stopTimer(); timerId = window.setInterval(() => { const rem = Math.max(0, startAt - Date.now()); timeLeftMs.value = rem; if (rem <= 0) { stopTimer(); liveStep.value = 'playing'; startGame(); } }, 100); return; }
   if (s === 'playing') { liveStep.value = 'playing'; if (status.value !== 'playing') startGame(); return; }
   if (s === 'finished') { const result = await fetchTapLiveResult(props.eventId, liveMatchId.value); if (result.ok) { liveOutcome.value=result.data.outcome; liveCoins.value=Number(result.data.coins_earned||0); liveMessage.value=result.data.message||'Tempo scaduto'; liveStep.value='result'; status.value='finished'; } }
 }
-function clamp(value,min,max){return Math.min(max,Math.max(min,value));} function distance(ax,ay,bx,by){return Math.hypot(ax-bx,ay-by);} function formatCooldown(ms){const ts=Math.max(0,Math.ceil(ms/1000)); const m=Math.floor(ts/60); const s=ts%60; return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;}
+function clamp(value,min,max){return Math.min(max,Math.max(min,value));} function distance(ax,ay,bx,by){return Math.hypot(ax-bx,ay-by);} function formatCooldown(ms){const ts=Math.max(0,Math.ceil(ms/1000)); const m=Math.floor(ts/60); const s=ts%60; return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;} function formatSeconds(ms){return `${Math.max(1, Math.ceil(ms/1000))}s`;}
 if (typeof window !== 'undefined') { const stored=Number.parseInt(window.localStorage.getItem('tap_challenge_cooldown_until')||'',10); if(Number.isFinite(stored)&&stored>Date.now()) cooldownUntil.value=stored; }
 </script>
 
