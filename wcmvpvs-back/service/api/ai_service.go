@@ -131,6 +131,21 @@ type aiProviderResponse struct {
 	} `json:"choices"`
 }
 
+type aiEventReportRequest struct {
+	EventID int                           `json:"event_id"`
+	Metrics database.EventAIReportMetrics `json:"metrics"`
+}
+
+type aiEventReportResponse struct {
+	ExecutiveSummary string   `json:"executive_summary"`
+	FullReport       string   `json:"full_report"`
+	Insights         []string `json:"insights"`
+	Suggestions      []string `json:"suggestions"`
+	Strengths        []string `json:"strengths"`
+	Criticalities    []string `json:"criticalities"`
+	Source           string   `json:"source"`
+}
+
 func newAIService(cfg aiServiceConfig) *aiService {
 	if cfg.RequestTimeout <= 0 {
 		cfg.RequestTimeout = 4 * time.Second
@@ -254,6 +269,51 @@ func (svc *aiService) GeneratePopupMessage(ctx context.Context, req aiPopupReque
 	return resp
 }
 
+func (svc *aiService) GenerateEventReport(ctx context.Context, req aiEventReportRequest) aiEventReportResponse {
+	fallback := svc.fallbackEventReport(req)
+	if !svc.enabled() || strings.TrimSpace(svc.cfg.APIKey) == "" {
+		fallback.Source = "fallback"
+		return fallback
+	}
+	cacheKey := svc.cacheKey("event_report", req)
+	if payload, ok := svc.getCache(cacheKey); ok {
+		var resp aiEventReportResponse
+		if json.Unmarshal(payload, &resp) == nil {
+			resp.Source = "llm_cache"
+			return resp
+		}
+	}
+	content, err := svc.callProvider(ctx, svc.buildEventReportPrompt(req))
+	if err != nil {
+		svc.cfg.Logger.WithError(err).Warn("ai event report provider failed")
+		fallback.Source = "fallback"
+		return fallback
+	}
+	var parsed aiEventReportResponse
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+		svc.cfg.Logger.WithError(err).Warn("ai event report invalid json")
+		fallback.Source = "fallback"
+		return fallback
+	}
+	resp := aiEventReportResponse{
+		ExecutiveSummary: sanitizeAIText(parsed.ExecutiveSummary, 500),
+		FullReport:       sanitizeAIText(parsed.FullReport, 4000),
+		Insights:         sanitizeList(parsed.Insights, 6, 180),
+		Suggestions:      sanitizeList(parsed.Suggestions, 6, 180),
+		Strengths:        sanitizeList(parsed.Strengths, 4, 140),
+		Criticalities:    sanitizeList(parsed.Criticalities, 4, 140),
+		Source:           "llm",
+	}
+	if resp.ExecutiveSummary == "" || resp.FullReport == "" {
+		fallback.Source = "fallback"
+		return fallback
+	}
+	if payload, err := json.Marshal(resp); err == nil {
+		svc.setCache(cacheKey, payload)
+	}
+	return resp
+}
+
 func (svc *aiService) buildUpsellPrompt(req aiUpsellRequest) string {
 	payload, _ := json.Marshal(req)
 	return "Sei un assistente copywriter per upsell in-app durante un evento sportivo. Rispondi SOLO con JSON valido nel formato {\"suggestions\":[{\"product_name\":string,\"reason\":string,\"marketing_text\":string,\"priority\":number}]}. Regole: massimo 3 suggerimenti, non inventare prodotti, niente prezzi, tono breve e commerciale naturale, italiano. Input: " + string(payload)
@@ -262,6 +322,11 @@ func (svc *aiService) buildUpsellPrompt(req aiUpsellRequest) string {
 func (svc *aiService) buildPopupPrompt(req aiPopupRequest) string {
 	payload, _ := json.Marshal(req)
 	return "Sei un assistente copywriter per popup in-app di fan engagement sportivo. Rispondi SOLO con JSON valido nel formato {\"popup_title\":string,\"popup_body\":string,\"cta_text\":string,\"tone\":string,\"urgency_level\":string}. Regole: copy breve, sportivo, chiaro, non invasivo, italiano. Input: " + string(payload)
+}
+
+func (svc *aiService) buildEventReportPrompt(req aiEventReportRequest) string {
+	payload, _ := json.Marshal(req)
+	return "Sei un analista post-evento per una piattaforma di fan engagement sportivo. Rispondi SOLO con JSON valido nel formato {\"executive_summary\":string,\"full_report\":string,\"insights\":string[],\"suggestions\":string[],\"strengths\":string[],\"criticalities\":string[]}. Regole: usa solo i numeri presenti nell'input, non inventare dati, spiega il significato operativo dei numeri, tono professionale ma semplice, italiano, report concreto e leggibile, massimo 8 paragrafi nel full_report. Input: " + string(payload)
 }
 
 func (svc *aiService) callProvider(ctx context.Context, prompt string) (string, error) {
@@ -408,6 +473,73 @@ func (svc *aiService) fallbackPopup(req aiPopupRequest) aiPopupResponse {
 	return popup
 }
 
+func (svc *aiService) fallbackEventReport(req aiEventReportRequest) aiEventReportResponse {
+	m := req.Metrics
+	strengths := []string{}
+	criticalities := []string{}
+	insights := []string{}
+	suggestions := []string{}
+
+	if m.UniqueVoters > 0 {
+		insights = append(insights, fmt.Sprintf("L'evento ha coinvolto %d votanti unici, trasformando la partita in un touchpoint digitale reale e non solo informativo.", m.UniqueVoters))
+	}
+	if m.NewFansRegistered > 0 {
+		strengths = append(strengths, fmt.Sprintf("Acquisizione fan attiva: %d nuove registrazioni nella finestra evento.", m.NewFansRegistered))
+	}
+	if m.ReturningFans > 0 {
+		insights = append(insights, fmt.Sprintf("Sono tornati %d fan già conosciuti, segnale utile di retention durante il match.", m.ReturningFans))
+	}
+	if m.TotalInteractions > 0 && m.TotalVotes > 0 {
+		insights = append(insights, fmt.Sprintf("Le interazioni post-voto (%d) mostrano che l'utente non si è fermato al voto ma ha continuato a esplorare l'esperienza.", m.TotalInteractions))
+	}
+	if m.ReactionAttempts > 0 || m.TapLiveMatches > 0 {
+		strengths = append(strengths, fmt.Sprintf("Area gaming attiva: %d tentativi reaction test e %d match Tap Live completati.", m.ReactionAttempts, m.TapLiveMatches))
+	}
+	if m.CoinsSpentOnRewards == 0 && (m.ReactionAttempts > 0 || m.TapLiveMatches > 0) {
+		criticalities = append(criticalities, "Le meccaniche di gioco risultano attive, ma le monete non stanno ancora convertendo in riscatti premio.")
+		suggestions = append(suggestions, "Rendere più visibile il catalogo premi o inserire CTA contestuali quando l'utente raggiunge una soglia utile.")
+	}
+	if m.SponsorSeenSessions > 0 && m.SponsorTotalClicks == 0 {
+		criticalities = append(criticalities, "Gli sponsor hanno visibilità ma non stanno generando interazione cliccata.")
+		suggestions = append(suggestions, "Testare creatività, CTA o placement sponsor più orientati all'azione.")
+	}
+	if m.SponsorSeenSessions > 0 && m.SponsorTotalClicks > 0 {
+		strengths = append(strengths, fmt.Sprintf("Gli sponsor hanno generato %d click su %d sessioni viste.", m.SponsorTotalClicks, m.SponsorSeenSessions))
+	}
+	if m.BarOrdersCount > 0 {
+		insights = append(insights, fmt.Sprintf("Il BAR ha registrato %d ordini nella finestra evento, per un controvalore di circa € %.2f.", m.BarOrdersCount, float64(m.BarRevenueCents)/100))
+	} else if m.UniqueVoters > 0 {
+		criticalities = append(criticalities, "Buona partecipazione digitale, ma nessuna conversione BAR rilevata nella finestra dell'evento.")
+	}
+	if m.CouponViews > 0 && m.CouponClaims < m.CouponViews {
+		suggestions = append(suggestions, "Rafforzare il passaggio da vista coupon a claim con messaggi più chiari sul valore dell'offerta.")
+	}
+	if m.PeakActivityLabel != "" {
+		insights = append(insights, fmt.Sprintf("Il picco di attività digitale è arrivato intorno alle %s con %d azioni registrate nello stesso slot.", m.PeakActivityLabel, m.PeakActivityCount))
+	}
+
+	executive := fmt.Sprintf("%s ha generato %d voti, %d votanti unici e %d sessioni tracciate. Il quadro complessivo mostra un coinvolgimento digitale %s, con sponsor %s e conversione premio %s.",
+		nonEmpty(m.EventTitle, fmt.Sprintf("Evento #%d", m.EventID)),
+		m.TotalVotes,
+		m.UniqueVoters,
+		m.TotalSessions,
+		qualitativeLevel(m.TotalInteractions+m.ReactionAttempts+m.TapLiveMatches, 40, 120),
+		qualitativeSponsor(m.SponsorSeenSessions, m.SponsorTotalClicks),
+		qualitativeReward(m.RewardRedemptions))
+	full := fmt.Sprintf("Riepilogo generale: l'evento %s ha registrato %d voti e %d votanti unici, supportati da %d sessioni digitali e una permanenza media di %.0f secondi. Sul fronte fan, si osservano %d nuove registrazioni e %d fan già noti tornati attivi. L'engagement in-app ha prodotto %d interazioni principali, con %d aperture del trend voto, %d aperture selfie e %d aperture del reaction test. Il comparto gaming ha raccolto %d tentativi reaction e %d match Tap Live, assegnando %d monete note. Sul fronte conversione, risultano %d riscatti premio per %d monete spese, %d claim coupon e %d redemption coupon. Gli sponsor hanno ottenuto %d sessioni viste e %d click totali. Nella finestra evento il BAR ha registrato %d ordini.",
+		nonEmpty(m.EventTitle, fmt.Sprintf("evento #%d", m.EventID)), m.TotalVotes, m.UniqueVoters, m.TotalSessions, m.AverageDurationSeconds, m.NewFansRegistered, m.ReturningFans, m.TotalInteractions, m.VoteTrendOpens, m.SelfieOpens, m.ReactionOpens, m.ReactionAttempts, m.TapLiveMatches, m.TapLiveCoinsAwarded, m.RewardRedemptions, m.CoinsSpentOnRewards, m.CouponClaims, m.CouponRedemptions, m.SponsorSeenSessions, m.SponsorTotalClicks, m.BarOrdersCount)
+
+	return aiEventReportResponse{
+		ExecutiveSummary: executive,
+		FullReport:       full,
+		Insights:         uniqueNonEmpty(insights),
+		Suggestions:      uniqueNonEmpty(suggestions),
+		Strengths:        uniqueNonEmpty(strengths),
+		Criticalities:    uniqueNonEmpty(criticalities),
+		Source:           "fallback",
+	}
+}
+
 func sanitizeAIText(value string, maxLen int) string {
 	clean := strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
 	clean = strings.ReplaceAll(clean, "\"", "")
@@ -415,6 +547,77 @@ func sanitizeAIText(value string, maxLen int) string {
 		clean = strings.TrimSpace(clean[:maxLen])
 	}
 	return clean
+}
+
+func sanitizeList(items []string, maxItems int, maxLen int) []string {
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = sanitizeAIText(item, maxLen)
+		if item == "" {
+			continue
+		}
+		out = append(out, item)
+		if maxItems > 0 && len(out) >= maxItems {
+			break
+		}
+	}
+	return uniqueNonEmpty(out)
+}
+
+func uniqueNonEmpty(items []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key := strings.ToLower(item)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
+func nonEmpty(value, fallback string) string {
+	if strings.TrimSpace(value) != "" {
+		return strings.TrimSpace(value)
+	}
+	return fallback
+}
+
+func qualitativeLevel(value, medium, high int) string {
+	switch {
+	case value >= high:
+		return "alto"
+	case value >= medium:
+		return "buono"
+	default:
+		return "moderato"
+	}
+}
+
+func qualitativeSponsor(seen, clicks int) string {
+	if seen == 0 {
+		return "ancora poco misurabili"
+	}
+	if clicks == 0 {
+		return "visibili ma con interazione debole"
+	}
+	return "attivi e capaci di generare risposta"
+}
+
+func qualitativeReward(redemptions int) string {
+	if redemptions <= 0 {
+		return "ancora bassa"
+	}
+	if redemptions < 5 {
+		return "presente ma migliorabile"
+	}
+	return "solida"
 }
 
 func containsCart(cart []aiCartItem, productName string) bool {

@@ -832,6 +832,67 @@ type AIInteractionLog struct {
 	CreatedAt      string `json:"created_at"`
 }
 
+type EventAIReportMetrics struct {
+	EventID                   int     `json:"event_id"`
+	OrganizationID            int     `json:"organization_id"`
+	EventTitle                string  `json:"event_title"`
+	StartDateTime             string  `json:"start_datetime"`
+	Location                  string  `json:"location,omitempty"`
+	TotalVotes                int     `json:"total_votes"`
+	UniqueVoters              int     `json:"unique_voters"`
+	TotalSessions             int     `json:"total_sessions"`
+	UniqueSessionUsers        int     `json:"unique_session_users"`
+	NewFansRegistered         int     `json:"new_fans_registered"`
+	ReturningFans             int     `json:"returning_fans"`
+	AverageDurationSeconds    float64 `json:"average_duration_seconds"`
+	TotalDurationSeconds      int64   `json:"total_duration_seconds"`
+	TotalInteractions         int     `json:"total_interactions"`
+	VoteTrendOpens            int     `json:"vote_trend_opens"`
+	SelfieOpens               int     `json:"selfie_opens"`
+	SelfieApproved            int     `json:"selfie_approved"`
+	ReactionOpens             int     `json:"reaction_opens"`
+	ReactionAttempts          int     `json:"reaction_attempts"`
+	ReactionAverageMs         float64 `json:"reaction_average_ms"`
+	TapLiveMatches            int     `json:"tap_live_matches"`
+	TapLiveParticipants       int     `json:"tap_live_participants"`
+	TapLiveCoinsAwarded       int     `json:"tap_live_coins_awarded"`
+	RewardRedemptions         int     `json:"reward_redemptions"`
+	CoinsSpentOnRewards       int     `json:"coins_spent_on_rewards"`
+	CouponViews               int     `json:"coupon_views"`
+	CouponClaims              int     `json:"coupon_claims"`
+	CouponRedemptions         int     `json:"coupon_redemptions"`
+	SponsorSessions           int     `json:"sponsor_sessions"`
+	SponsorSeenSessions       int     `json:"sponsor_seen_sessions"`
+	SponsorWatchedSessions    int     `json:"sponsor_watched_sessions"`
+	SponsorTotalClicks        int     `json:"sponsor_total_clicks"`
+	SponsorUniqueClickers     int     `json:"sponsor_unique_clickers"`
+	SponsorAverageWatchTimeMs float64 `json:"sponsor_average_watch_time_ms"`
+	BarOrdersCount            int     `json:"bar_orders_count"`
+	BarRevenueCents           int     `json:"bar_revenue_cents"`
+	BarPaidOrdersCount        int     `json:"bar_paid_orders_count"`
+	PeakActivityLabel         string  `json:"peak_activity_label,omitempty"`
+	PeakActivityCount         int     `json:"peak_activity_count"`
+}
+
+type EventAIReport struct {
+	ID               int                  `json:"id"`
+	EventID          int                  `json:"event_id"`
+	OrganizationID   int                  `json:"organization_id"`
+	Status           string               `json:"status"`
+	Source           string               `json:"source"`
+	ExecutiveSummary string               `json:"executive_summary"`
+	FullReport       string               `json:"full_report"`
+	Insights         []string             `json:"insights"`
+	Suggestions      []string             `json:"suggestions"`
+	Strengths        []string             `json:"strengths"`
+	Criticalities    []string             `json:"criticalities"`
+	Metrics          EventAIReportMetrics `json:"metrics"`
+	PromptJSON       string               `json:"prompt_json,omitempty"`
+	ResponseJSON     string               `json:"response_json,omitempty"`
+	GeneratedAt      string               `json:"generated_at"`
+	UpdatedAt        string               `json:"updated_at"`
+}
+
 type AIPopupSessionState struct {
 	ShownCount     int    `json:"shown_count"`
 	LastTrigger    string `json:"last_trigger,omitempty"`
@@ -945,6 +1006,7 @@ type AppDatabase interface {
 	UpdateOrganizationRosterSchema(organizationID int, rosterSchema int) error
 	GetOrganizationRosterSchema(organizationID int) (int, error)
 	CreateEvent(e Event) (int, error)
+	GetEventByID(id int) (Event, error)
 	ListEvents() ([]Event, error)
 	ListEventsByOrganization(organizationID int) ([]Event, error)
 	UpdateEvent(e Event) error
@@ -1081,6 +1143,9 @@ type AppDatabase interface {
 	CreateAIInteractionLog(item AIInteractionLog) (AIInteractionLog, error)
 	UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error
 	GetAIPopupSessionState(sessionID, trigger string, maxPerSession int, cooldown time.Duration) (AIPopupSessionState, error)
+	GetEventAIReport(eventID int) (EventAIReport, error)
+	UpsertEventAIReport(report EventAIReport) (EventAIReport, error)
+	GetEventAIReportMetrics(eventID int) (EventAIReportMetrics, error)
 	GetBarOrder(id int) (BarOrder, error)
 	GetBarOrderByStripeReference(stripeReference string) (BarOrder, error)
 	UpdateBarOrderPaymentByStripeReference(stripeReference, paymentStatus, orderStatus string) error
@@ -2250,6 +2315,30 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_interactions_user ON ai_interactions(user_id, created_at)`); err != nil {
 		return nil, fmt.Errorf("error ensuring ai_interactions user index: %w", err)
 	}
+	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS event_ai_reports (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		event_id INTEGER NOT NULL UNIQUE,
+		organization_id INTEGER NOT NULL DEFAULT 0,
+		status TEXT NOT NULL DEFAULT 'generated',
+		source TEXT NOT NULL DEFAULT 'fallback',
+		executive_summary TEXT NOT NULL DEFAULT '',
+		full_report TEXT NOT NULL DEFAULT '',
+		insights_json TEXT NOT NULL DEFAULT '[]',
+		suggestions_json TEXT NOT NULL DEFAULT '[]',
+		strengths_json TEXT NOT NULL DEFAULT '[]',
+		criticalities_json TEXT NOT NULL DEFAULT '[]',
+		metrics_json TEXT NOT NULL DEFAULT '{}',
+		prompt_json TEXT NOT NULL DEFAULT '',
+		response_json TEXT NOT NULL DEFAULT '',
+		generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(event_id) REFERENCES events(id)
+	);`); err != nil {
+		return nil, fmt.Errorf("error ensuring event_ai_reports table: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_event_ai_reports_org ON event_ai_reports(organization_id, generated_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring event_ai_reports org index: %w", err)
+	}
 
 	var shopProductCount int
 	if err = db.QueryRow(`SELECT COUNT(*) FROM shop_products`).Scan(&shopProductCount); err != nil {
@@ -3283,6 +3372,19 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 	}
 
 	return es, nil
+}
+
+func (db *appdbimpl) GetEventByID(id int) (Event, error) {
+	events, err := db.ListEvents()
+	if err != nil {
+		return Event{}, err
+	}
+	for _, event := range events {
+		if event.ID == id {
+			return event, nil
+		}
+	}
+	return Event{}, sql.ErrNoRows
 }
 
 func (db *appdbimpl) ListEventsByOrganization(organizationID int) ([]Event, error) {
@@ -7921,4 +8023,159 @@ func (db *appdbimpl) GetAIPopupSessionState(sessionID, trigger string, maxPerSes
 		state.WithinCooldown = true
 	}
 	return state, nil
+}
+
+func (db *appdbimpl) GetEventAIReport(eventID int) (EventAIReport, error) {
+	var report EventAIReport
+	var insightsJSON, suggestionsJSON, strengthsJSON, criticalitiesJSON, metricsJSON string
+	err := db.c.QueryRow(`SELECT id, event_id, organization_id, status, source, executive_summary, full_report,
+		insights_json, suggestions_json, strengths_json, criticalities_json, metrics_json, prompt_json, response_json,
+		generated_at, updated_at
+		FROM event_ai_reports WHERE event_id = ?`, eventID).
+		Scan(&report.ID, &report.EventID, &report.OrganizationID, &report.Status, &report.Source, &report.ExecutiveSummary, &report.FullReport,
+			&insightsJSON, &suggestionsJSON, &strengthsJSON, &criticalitiesJSON, &metricsJSON, &report.PromptJSON, &report.ResponseJSON,
+			&report.GeneratedAt, &report.UpdatedAt)
+	if err != nil {
+		return EventAIReport{}, err
+	}
+	_ = json.Unmarshal([]byte(insightsJSON), &report.Insights)
+	_ = json.Unmarshal([]byte(suggestionsJSON), &report.Suggestions)
+	_ = json.Unmarshal([]byte(strengthsJSON), &report.Strengths)
+	_ = json.Unmarshal([]byte(criticalitiesJSON), &report.Criticalities)
+	_ = json.Unmarshal([]byte(metricsJSON), &report.Metrics)
+	return report, nil
+}
+
+func (db *appdbimpl) UpsertEventAIReport(report EventAIReport) (EventAIReport, error) {
+	insightsJSON, _ := json.Marshal(report.Insights)
+	suggestionsJSON, _ := json.Marshal(report.Suggestions)
+	strengthsJSON, _ := json.Marshal(report.Strengths)
+	criticalitiesJSON, _ := json.Marshal(report.Criticalities)
+	metricsJSON, _ := json.Marshal(report.Metrics)
+	_, err := db.c.Exec(`INSERT INTO event_ai_reports (
+		event_id, organization_id, status, source, executive_summary, full_report, insights_json, suggestions_json,
+		strengths_json, criticalities_json, metrics_json, prompt_json, response_json, generated_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	ON CONFLICT(event_id) DO UPDATE SET
+		organization_id=excluded.organization_id,
+		status=excluded.status,
+		source=excluded.source,
+		executive_summary=excluded.executive_summary,
+		full_report=excluded.full_report,
+		insights_json=excluded.insights_json,
+		suggestions_json=excluded.suggestions_json,
+		strengths_json=excluded.strengths_json,
+		criticalities_json=excluded.criticalities_json,
+		metrics_json=excluded.metrics_json,
+		prompt_json=excluded.prompt_json,
+		response_json=excluded.response_json,
+		generated_at=CURRENT_TIMESTAMP,
+		updated_at=CURRENT_TIMESTAMP`,
+		report.EventID, report.OrganizationID, strings.TrimSpace(report.Status), strings.TrimSpace(report.Source),
+		strings.TrimSpace(report.ExecutiveSummary), strings.TrimSpace(report.FullReport), string(insightsJSON), string(suggestionsJSON),
+		string(strengthsJSON), string(criticalitiesJSON), string(metricsJSON), report.PromptJSON, report.ResponseJSON)
+	if err != nil {
+		return EventAIReport{}, err
+	}
+	return db.GetEventAIReport(report.EventID)
+}
+
+func (db *appdbimpl) GetEventAIReportMetrics(eventID int) (EventAIReportMetrics, error) {
+	metrics := EventAIReportMetrics{EventID: eventID}
+	event, err := db.GetEventByID(eventID)
+	if err != nil {
+		return metrics, err
+	}
+	metrics.OrganizationID = event.OrganizationID
+	metrics.EventTitle = strings.TrimSpace(event.Team1Name + " vs " + event.Team2Name)
+	metrics.StartDateTime = event.StartDateTime
+	metrics.Location = strings.TrimSpace(event.Location)
+
+	startTime, endTime := reportEventTimeWindow(event.StartDateTime)
+
+	_ = db.c.QueryRow(`SELECT COUNT(*), COUNT(DISTINCT device_id) FROM votes WHERE event_id = ?`, eventID).Scan(&metrics.TotalVotes, &metrics.UniqueVoters)
+	_ = db.c.QueryRow(`SELECT COUNT(*), COUNT(DISTINCT device_id) FROM page_engagements WHERE event_id = ?`, eventID).Scan(&metrics.TotalSessions, &metrics.UniqueSessionUsers)
+	_ = db.c.QueryRow(`SELECT COUNT(*) FROM fan_profiles WHERE organization_id = ? AND created_at >= ? AND created_at <= ?`, event.OrganizationID, startTime, endTime).Scan(&metrics.NewFansRegistered)
+	_ = db.c.QueryRow(`SELECT COUNT(DISTINCT v.user_id) FROM votes v JOIN fan_profiles p ON p.id = v.user_id WHERE v.event_id = ? AND v.user_id > 0 AND p.created_at < ?`, eventID, startTime).Scan(&metrics.ReturningFans)
+	_ = db.c.QueryRow(`SELECT COUNT(*) FROM post_vote_actions WHERE event_id = ?`, eventID).Scan(&metrics.TotalInteractions)
+	engagement, _ := db.GetEventEngagement(eventID)
+	metrics.AverageDurationSeconds = engagement.AverageDurationSeconds
+	metrics.TotalDurationSeconds = engagement.TotalDurationSeconds
+	metrics.VoteTrendOpens = engagement.VoteTrendOpens
+	metrics.SelfieOpens = engagement.SelfieOpens
+	metrics.ReactionOpens = engagement.ReactionOpens
+	_ = db.c.QueryRow(`SELECT COUNT(*) FROM selfies WHERE event_id = ? AND approved = 1`, eventID).Scan(&metrics.SelfieApproved)
+	_ = db.c.QueryRow(`SELECT COUNT(*), IFNULL(AVG(reaction_time_ms),0) FROM reaction_tests WHERE event_id = ? AND is_valid = 1`, eventID).Scan(&metrics.ReactionAttempts, &metrics.ReactionAverageMs)
+	_ = db.c.QueryRow(`SELECT COUNT(*), COUNT(DISTINCT fan1_id) + COUNT(DISTINCT fan2_id), IFNULL(SUM(fan1_coins + fan2_coins),0) FROM tap_live_matches WHERE event_id = ? AND status = 'finished'`, eventID).Scan(&metrics.TapLiveMatches, &metrics.TapLiveParticipants, &metrics.TapLiveCoinsAwarded)
+	_ = db.c.QueryRow(`SELECT COUNT(*), IFNULL(SUM(cost_coins),0) FROM fan_reward_redemptions WHERE event_id = ?`, eventID).Scan(&metrics.RewardRedemptions, &metrics.CoinsSpentOnRewards)
+
+	coupons, _ := db.ListCoupons(event.OrganizationID)
+	for _, coupon := range coupons {
+		for _, matchID := range coupon.MatchIDs {
+			if matchID == eventID {
+				metrics.CouponViews += coupon.TotalViews
+				metrics.CouponClaims += coupon.TotalClaims
+				metrics.CouponRedemptions += coupon.TotalRedemptions
+				break
+			}
+		}
+	}
+
+	sponsor, _ := db.GetSponsorAnalytics(eventID)
+	metrics.SponsorSessions = sponsor.TotalSessions
+	metrics.SponsorSeenSessions = sponsor.SeenSessions
+	metrics.SponsorWatchedSessions = sponsor.WatchedSessions
+	metrics.SponsorTotalClicks = sponsor.TotalClicks
+	metrics.SponsorUniqueClickers = sponsor.UniqueClickers
+	metrics.SponsorAverageWatchTimeMs = sponsor.AverageWatchTime
+
+	_ = db.c.QueryRow(`SELECT COUNT(*), IFNULL(SUM(total_cents),0),
+		SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END)
+		FROM bar_orders
+		WHERE organization_id = ? AND created_at >= ? AND created_at <= ?`,
+		event.OrganizationID, startTime, endTime).Scan(&metrics.BarOrdersCount, &metrics.BarRevenueCents, &metrics.BarPaidOrdersCount)
+
+	if peakLabel, peakCount, err := db.computePeakActivityLabel(eventID); err == nil {
+		metrics.PeakActivityLabel = peakLabel
+		metrics.PeakActivityCount = peakCount
+	}
+
+	return metrics, nil
+}
+
+func (db *appdbimpl) computePeakActivityLabel(eventID int) (string, int, error) {
+	rows, err := db.c.Query(`SELECT bucket, SUM(total_count) FROM (
+		SELECT strftime('%H:%M', created_at) AS bucket, COUNT(*) AS total_count FROM votes WHERE event_id = ? GROUP BY bucket
+		UNION ALL
+		SELECT strftime('%H:%M', created_at) AS bucket, COUNT(*) AS total_count FROM post_vote_actions WHERE event_id = ? GROUP BY bucket
+		UNION ALL
+		SELECT strftime('%H:%M', created_at) AS bucket, COUNT(*) AS total_count FROM reaction_tests WHERE event_id = ? GROUP BY bucket
+	) GROUP BY bucket ORDER BY SUM(total_count) DESC, bucket ASC LIMIT 1`, eventID, eventID, eventID)
+	if err != nil {
+		return "", 0, err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var label string
+		var count int
+		if err := rows.Scan(&label, &count); err != nil {
+			return "", 0, err
+		}
+		return label, count, nil
+	}
+	return "", 0, nil
+}
+
+func reportEventTimeWindow(start string) (string, string) {
+	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(start))
+	if err != nil {
+		if local, localErr := time.Parse("2006-01-02T15:04", strings.TrimSpace(start)); localErr == nil {
+			parsed = local
+		} else {
+			parsed = time.Now().UTC()
+		}
+	}
+	startTime := parsed.Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+	endTime := parsed.Add(6 * time.Hour).UTC().Format(time.RFC3339)
+	return startTime, endTime
 }

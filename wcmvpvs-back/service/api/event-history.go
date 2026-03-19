@@ -61,6 +61,7 @@ type eventHistoryEntry struct {
 	HasPrizeDraw       bool                               `json:"has_prize_draw"`
 	FeedbackSummary    *eventFeedbackSummaryResponse      `json:"feedback_summary,omitempty"`
 	FeedbackSurvey     database.EventFeedbackSurveyConfig `json:"feedback_survey"`
+	AIReport           *database.EventAIReport            `json:"ai_report,omitempty"`
 }
 
 type historyEntryWrapper struct {
@@ -222,6 +223,10 @@ func (rt *_router) buildEventHistoryEntry(ctx reqcontext.RequestContext, event d
 		HasPrizeDraw:       hasPrizeDraw,
 		FeedbackSummary:    feedbackSummaryPtr,
 		FeedbackSurvey:     surveyConfig,
+	}
+
+	if report, err := rt.db.GetEventAIReport(event.ID); err == nil {
+		entry.AIReport = &report
 	}
 
 	return &historyEntryWrapper{entry: entry, startTime: startTime}, nil

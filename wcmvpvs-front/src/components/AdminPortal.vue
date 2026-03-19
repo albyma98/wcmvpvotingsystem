@@ -897,6 +897,20 @@
                   </div>
                   <div class="history-item__actions">
                     <button
+                      class="btn secondary"
+                      type="button"
+                      :disabled="isGeneratingHistoryAiReport(entry.id)"
+                      @click="generateEventAiReport(entry)"
+                    >
+                      {{
+                        isGeneratingHistoryAiReport(entry.id)
+                          ? "Analisi AI…"
+                          : entry.aiReport
+                            ? "Rigenera report AI"
+                            : "Genera report AI"
+                      }}
+                    </button>
+                    <button
                       class="btn outline"
                       type="button"
                       :disabled="isDownloadingHistoryReport(entry.id)"
@@ -921,6 +935,44 @@
               </div>
 
               <div class="history-details">
+                <div
+                  v-if="entry.aiReport"
+                  class="history-details__column history-details__column--ai"
+                >
+                  <h4>Report AI post-partita</h4>
+                  <p class="history-ai-summary">
+                    {{ entry.aiReport.executiveSummary }}
+                  </p>
+                  <p v-if="entry.aiReport.fullReport" class="history-ai-report">
+                    {{ entry.aiReport.fullReport }}
+                  </p>
+                  <div
+                    v-if="
+                      entry.aiReport.strengths.length ||
+                      entry.aiReport.criticalities.length ||
+                      entry.aiReport.insights.length ||
+                      entry.aiReport.suggestions.length
+                    "
+                    class="history-ai-grid"
+                  >
+                    <div v-if="entry.aiReport.strengths.length" class="history-ai-card">
+                      <h5>Punti forti</h5>
+                      <ul><li v-for="(item, index) in entry.aiReport.strengths" :key="`strength-${entry.id}-${index}`">{{ item }}</li></ul>
+                    </div>
+                    <div v-if="entry.aiReport.criticalities.length" class="history-ai-card">
+                      <h5>Criticità</h5>
+                      <ul><li v-for="(item, index) in entry.aiReport.criticalities" :key="`critical-${entry.id}-${index}`">{{ item }}</li></ul>
+                    </div>
+                    <div v-if="entry.aiReport.insights.length" class="history-ai-card">
+                      <h5>Insight automatici</h5>
+                      <ul><li v-for="(item, index) in entry.aiReport.insights" :key="`insight-${entry.id}-${index}`">{{ item }}</li></ul>
+                    </div>
+                    <div v-if="entry.aiReport.suggestions.length" class="history-ai-card">
+                      <h5>Suggerimenti operativi</h5>
+                      <ul><li v-for="(item, index) in entry.aiReport.suggestions" :key="`suggestion-${entry.id}-${index}`">{{ item }}</li></ul>
+                    </div>
+                  </div>
+                </div>
                 <div class="history-details__column">
                   <h4>MVP</h4>
                   <p v-if="entry.mvp">
@@ -1786,6 +1838,7 @@ const selfieModerationMessage = ref("");
 const selectedSelfieEventId = ref(0);
 const selfieBusyState = reactive({});
 const historyReportDownloadState = reactive({});
+const historyAiGenerateState = reactive({});
 const purgeDialog = reactive({
   visible: false,
   event: null,
@@ -4422,6 +4475,16 @@ function isDownloadingHistoryReport(id) {
   return Boolean(id && historyReportDownloadState[id]);
 }
 
+function setHistoryAiBusy(id, busy) {
+  if (!id) return;
+  if (busy) historyAiGenerateState[id] = true;
+  else delete historyAiGenerateState[id];
+}
+
+function isGeneratingHistoryAiReport(id) {
+  return Boolean(id && historyAiGenerateState[id]);
+}
+
 function selfieStatusLabel(selfie) {
   if (!selfie) {
     return "";
@@ -5003,6 +5066,9 @@ function normalizeHistoryEntry(item) {
     item?.feedback_summary ?? item?.feedbackSummary,
     feedbackSurvey,
   );
+  const aiReport = normalizeAiHistoryReport(
+    item?.ai_report ?? item?.aiReport ?? null,
+  );
 
   return {
     id,
@@ -5036,6 +5102,62 @@ function normalizeHistoryEntry(item) {
     isTimelineExpanded: false,
     feedbackSummary,
     feedbackSurvey,
+    aiReport,
+  };
+}
+
+function normalizeAiHistoryReport(item) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const metrics = item?.metrics && typeof item.metrics === "object" ? item.metrics : {};
+  const asList = (value) =>
+    Array.isArray(value)
+      ? value.map((entry) => (typeof entry === "string" ? entry.trim() : "")).filter(Boolean)
+      : [];
+  return {
+    source: typeof item?.source === "string" ? item.source.trim() : "fallback",
+    executiveSummary:
+      typeof item?.executive_summary === "string"
+        ? item.executive_summary.trim()
+        : typeof item?.executiveSummary === "string"
+          ? item.executiveSummary.trim()
+          : "",
+    fullReport:
+      typeof item?.full_report === "string"
+        ? item.full_report.trim()
+        : typeof item?.fullReport === "string"
+          ? item.fullReport.trim()
+          : "",
+    insights: asList(item?.insights),
+    suggestions: asList(item?.suggestions),
+    strengths: asList(item?.strengths),
+    criticalities: asList(item?.criticalities),
+    generatedAt:
+      typeof item?.generated_at === "string"
+        ? item.generated_at
+        : typeof item?.generatedAt === "string"
+          ? item.generatedAt
+          : "",
+    metrics: {
+      uniqueVoters: Number(metrics?.unique_voters ?? metrics?.uniqueVoters ?? 0) || 0,
+      totalSessions: Number(metrics?.total_sessions ?? metrics?.totalSessions ?? 0) || 0,
+      newFansRegistered: Number(metrics?.new_fans_registered ?? metrics?.newFansRegistered ?? 0) || 0,
+      returningFans: Number(metrics?.returning_fans ?? metrics?.returningFans ?? 0) || 0,
+      totalInteractions: Number(metrics?.total_interactions ?? metrics?.totalInteractions ?? 0) || 0,
+      rewardRedemptions: Number(metrics?.reward_redemptions ?? metrics?.rewardRedemptions ?? 0) || 0,
+      coinsSpentOnRewards: Number(metrics?.coins_spent_on_rewards ?? metrics?.coinsSpentOnRewards ?? 0) || 0,
+      sponsorTotalClicks: Number(metrics?.sponsor_total_clicks ?? metrics?.sponsorTotalClicks ?? 0) || 0,
+      sponsorSeenSessions: Number(metrics?.sponsor_seen_sessions ?? metrics?.sponsorSeenSessions ?? 0) || 0,
+      barOrdersCount: Number(metrics?.bar_orders_count ?? metrics?.barOrdersCount ?? 0) || 0,
+      barRevenueCents: Number(metrics?.bar_revenue_cents ?? metrics?.barRevenueCents ?? 0) || 0,
+      peakActivityLabel:
+        typeof metrics?.peak_activity_label === "string"
+          ? metrics.peak_activity_label
+          : typeof metrics?.peakActivityLabel === "string"
+            ? metrics.peakActivityLabel
+            : "",
+    },
   };
 }
 
@@ -5115,6 +5237,33 @@ async function downloadEventHistoryReport(entry) {
     eventHistorySuccess.value = "";
   } finally {
     setHistoryReportBusy(eventId, false);
+  }
+}
+
+async function generateEventAiReport(entry) {
+  if (!entry?.id) return;
+  setHistoryAiBusy(entry.id, true);
+  eventHistoryError.value = "";
+  eventHistorySuccess.value = "";
+  try {
+    const { data } = await apiClient.post(
+      `/admin/events/${entry.id}/ai-report`,
+      {},
+      authHeaders.value,
+    );
+    const normalized = normalizeAiHistoryReport(data);
+    entry.aiReport = normalized;
+    eventHistorySuccess.value = `Report AI aggiornato per "${entry.title}".`;
+  } catch (error) {
+    if (error?.response?.status === 401) {
+      handleUnauthorized();
+    } else {
+      console.error("event ai report generation error", error);
+      eventHistoryError.value =
+        "Impossibile generare il report AI per questo evento.";
+    }
+  } finally {
+    setHistoryAiBusy(entry.id, false);
   }
 }
 
@@ -6777,6 +6926,44 @@ textarea:focus {
   margin: 0 0 0.5rem;
   font-size: 1rem;
   color: #0f172a;
+}
+
+.history-details__column--ai {
+  flex-basis: 100%;
+  background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%);
+  border: 1px solid rgba(99, 102, 241, 0.16);
+}
+
+.history-ai-summary,
+.history-ai-report {
+  margin: 0 0 0.8rem;
+  line-height: 1.6;
+  color: #1e293b;
+}
+
+.history-ai-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.history-ai-card {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.85rem;
+  padding: 0.85rem 1rem;
+}
+
+.history-ai-card h5 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.history-ai-card ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: #334155;
 }
 
 .history-engagement {
