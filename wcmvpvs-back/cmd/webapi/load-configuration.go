@@ -49,6 +49,17 @@ type WebAPIConfiguration struct {
 		WebhookSecret   string
 		SuccessRedirect string `conf:"default:/newui"`
 	}
+
+	AI struct {
+		Enabled          bool   `conf:"default:false"`
+		ProviderBaseURL  string `conf:"default:https://api.openai.com/v1"`
+		APIKey           string
+		Model            string        `conf:"default:gpt-4o-mini"`
+		RequestTimeout   time.Duration `conf:"default:4s"`
+		CacheTTL         time.Duration `conf:"default:90s"`
+		MaxPopupsSession int           `conf:"default:3"`
+		PopupCooldown    time.Duration `conf:"default:8m"`
+	}
 	BootstrapAdmin struct {
 		Enabled      bool   `conf:"default:true"`
 		Username     string `conf:"default:Albyma"`
