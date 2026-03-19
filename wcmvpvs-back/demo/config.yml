@@ -1,5 +1,6 @@
-# This is the configuration file for the API service
-# Description of this part is present in the `main.go` file
+# This is an example configuration file for the API service.
+# In normal Docker usage of this repository, prefer `.env` at repo root.
+# Use this file only if you start the Go backend manually and want YAML-based config.
 
 log:
   level: debug
@@ -17,3 +18,14 @@ log:
 #  writetimeout: 5s
 #  shutdowntimeout: 5s
 #  behindproxy: false
+
+# AI module (example only; for Docker/deploy use `.env`)
+#ai:
+#  enabled: false
+#  providerbaseurl: https://api.openai.com/v1
+#  apikey: ""
+#  model: gpt-4o-mini
+#  requesttimeout: 4s
+#  cachettl: 90s
+#  maxpopupssession: 3
+#  popupcooldown: 8m

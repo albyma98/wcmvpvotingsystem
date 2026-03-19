@@ -884,3 +884,30 @@ export function buildTapLiveSseUrl(eventId: number) {
   const token = encodeURIComponent(getFanSessionToken());
   return resolveApiUrl(`/events/${eventId}/tap-live/stream?fan_session=${token}`);
 }
+
+export async function generateAIBarUpsell(payload: Record<string, unknown>) {
+  const { data } = await apiClient.post('/ai/bar/upsell', payload, {
+    headers: getDeviceHeaders(),
+  });
+  return data;
+}
+
+export async function generateAIPopup(payload: Record<string, unknown>) {
+  const { data } = await apiClient.post('/ai/popups/generate', payload, {
+    headers: getDeviceHeaders(),
+  });
+  return data;
+}
+
+export async function trackAIInteraction(interactionId: number, outcome: string, extra: Record<string, unknown> = {}) {
+  if (!interactionId) {
+    return;
+  }
+  await apiClient.post(`/ai/interactions/${interactionId}/track`, {
+    outcome,
+    occurred_at: new Date().toISOString(),
+    ...extra,
+  }, {
+    headers: getDeviceHeaders(),
+  });
+}

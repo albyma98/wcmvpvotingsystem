@@ -68,6 +68,15 @@ type Config struct {
 	StripeSecretKey     string
 	StripeWebhookSecret string
 	StripeSuccessURL    string
+
+	AIEnabled          bool
+	AIProviderBaseURL  string
+	AIAPIKey           string
+	AIModel            string
+	AIRequestTimeout   time.Duration
+	AICacheTTL         time.Duration
+	AIMaxPopupsSession int
+	AIPopupCooldown    time.Duration
 }
 
 // Router is the package API interface representing an API handler builder
@@ -120,12 +129,23 @@ func New(cfg Config) (Router, error) {
 		stripeSecretKey:     cfg.StripeSecretKey,
 		stripeWebhookSecret: cfg.StripeWebhookSecret,
 		stripeSuccessURL:    cfg.StripeSuccessURL,
-		votesHub:            newSSEHub(),
-		coinsHub:            newSSEHub(),
-		barOrdersHub:        newSSEHub(),
-		tapLiveHub:          newSSEHub(),
-		tapLive:             newTapLiveManager(),
-		tapLiveRematch:      newTapLiveRematchManager(),
+		aiService: newAIService(aiServiceConfig{
+			Enabled:          cfg.AIEnabled,
+			ProviderBaseURL:  cfg.AIProviderBaseURL,
+			APIKey:           cfg.AIAPIKey,
+			Model:            cfg.AIModel,
+			RequestTimeout:   cfg.AIRequestTimeout,
+			CacheTTL:         cfg.AICacheTTL,
+			MaxPopupsSession: cfg.AIMaxPopupsSession,
+			PopupCooldown:    cfg.AIPopupCooldown,
+			Logger:           cfg.Logger,
+		}),
+		votesHub:       newSSEHub(),
+		coinsHub:       newSSEHub(),
+		barOrdersHub:   newSSEHub(),
+		tapLiveHub:     newSSEHub(),
+		tapLive:        newTapLiveManager(),
+		tapLiveRematch: newTapLiveRematchManager(),
 	}, nil
 }
 
@@ -166,6 +186,8 @@ type _router struct {
 	stripeSecretKey     string
 	stripeWebhookSecret string
 	stripeSuccessURL    string
+
+	aiService *aiService
 
 	votesHub       *sseHub
 	coinsHub       *sseHub

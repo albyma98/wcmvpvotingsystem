@@ -814,6 +814,31 @@ type ShopProduct struct {
 	DeletedAt        string `json:"deleted_at,omitempty"`
 }
 
+type AIInteractionLog struct {
+	ID             int    `json:"id"`
+	FeatureType    string `json:"feature_type"`
+	Trigger        string `json:"trigger"`
+	UserID         int    `json:"user_id,omitempty"`
+	SessionID      string `json:"session_id,omitempty"`
+	OrganizationID int    `json:"organization_id,omitempty"`
+	EventID        int    `json:"event_id,omitempty"`
+	InputJSON      string `json:"input_json,omitempty"`
+	OutputJSON     string `json:"output_json,omitempty"`
+	Status         string `json:"status,omitempty"`
+	ShownAt        string `json:"shown_at,omitempty"`
+	ClickedAt      string `json:"clicked_at,omitempty"`
+	ConvertedAt    string `json:"converted_at,omitempty"`
+	DismissedAt    string `json:"dismissed_at,omitempty"`
+	CreatedAt      string `json:"created_at"`
+}
+
+type AIPopupSessionState struct {
+	ShownCount     int    `json:"shown_count"`
+	LastTrigger    string `json:"last_trigger,omitempty"`
+	LastShownAt    string `json:"last_shown_at,omitempty"`
+	WithinCooldown bool   `json:"within_cooldown"`
+}
+
 type BarCategory struct {
 	ID        int    `json:"id"`
 	Name      string `json:"name"`
@@ -1053,6 +1078,9 @@ type AppDatabase interface {
 	ListShopOrders() ([]ShopOrder, error)
 	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
 	CreateBarOrder(order BarOrder) (BarOrder, error)
+	CreateAIInteractionLog(item AIInteractionLog) (AIInteractionLog, error)
+	UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error
+	GetAIPopupSessionState(sessionID, trigger string, maxPerSession int, cooldown time.Duration) (AIPopupSessionState, error)
 	GetBarOrder(id int) (BarOrder, error)
 	GetBarOrderByStripeReference(stripeReference string) (BarOrder, error)
 	UpdateBarOrderPaymentByStripeReference(stripeReference, paymentStatus, orderStatus string) error
@@ -2192,6 +2220,35 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bar_orders_partner ON bar_orders(partner_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring bar_orders partner index: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS ai_interactions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		feature_type TEXT NOT NULL,
+		trigger TEXT NOT NULL DEFAULT '',
+		user_id INTEGER NOT NULL DEFAULT 0,
+		session_id TEXT NOT NULL DEFAULT '',
+		organization_id INTEGER NOT NULL DEFAULT 0,
+		event_id INTEGER NOT NULL DEFAULT 0,
+		input_json TEXT,
+		output_json TEXT,
+		status TEXT NOT NULL DEFAULT 'generated',
+		shown_at TEXT,
+		clicked_at TEXT,
+		converted_at TEXT,
+		dismissed_at TEXT,
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);`); err != nil {
+		return nil, fmt.Errorf("error ensuring ai_interactions table: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_interactions_feature ON ai_interactions(feature_type, created_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring ai_interactions feature index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_interactions_session ON ai_interactions(session_id, created_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring ai_interactions session index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_interactions_user ON ai_interactions(user_id, created_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring ai_interactions user index: %w", err)
 	}
 
 	var shopProductCount int
@@ -7787,4 +7844,81 @@ func (db *appdbimpl) ListSMSTemplates(organizationID int) ([]SMSTemplate, error)
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+func (db *appdbimpl) CreateAIInteractionLog(item AIInteractionLog) (AIInteractionLog, error) {
+	result, err := db.c.Exec(`INSERT INTO ai_interactions (feature_type, trigger, user_id, session_id, organization_id, event_id, input_json, output_json, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		strings.TrimSpace(item.FeatureType), strings.TrimSpace(item.Trigger), item.UserID, strings.TrimSpace(item.SessionID), item.OrganizationID, item.EventID, strings.TrimSpace(item.InputJSON), strings.TrimSpace(item.OutputJSON), strings.TrimSpace(item.Status))
+	if err != nil {
+		return AIInteractionLog{}, err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return AIInteractionLog{}, err
+	}
+	item.ID = int(id)
+	_ = db.c.QueryRow(`SELECT IFNULL(created_at,''), IFNULL(shown_at,''), IFNULL(clicked_at,''), IFNULL(converted_at,''), IFNULL(dismissed_at,'') FROM ai_interactions WHERE id = ?`, item.ID).Scan(&item.CreatedAt, &item.ShownAt, &item.ClickedAt, &item.ConvertedAt, &item.DismissedAt)
+	return item, nil
+}
+
+func (db *appdbimpl) UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error {
+	if id <= 0 {
+		return sql.ErrNoRows
+	}
+	column := ""
+	switch strings.TrimSpace(outcome) {
+	case "shown":
+		column = "shown_at"
+	case "clicked", "upsell_clicked":
+		column = "clicked_at"
+	case "converted", "upsell_added_to_cart", "upsell_converted", "popup_converted":
+		column = "converted_at"
+	case "dismissed", "popup_dismissed":
+		column = "dismissed_at"
+	default:
+		return fmt.Errorf("unsupported ai outcome: %s", outcome)
+	}
+	query := fmt.Sprintf(`UPDATE ai_interactions SET status = ?, %s = ? WHERE id = ?`, column)
+	_, err := db.c.Exec(query, strings.TrimSpace(outcome), occurredAt.UTC().Format(time.RFC3339), id)
+	return err
+}
+
+func (db *appdbimpl) GetAIPopupSessionState(sessionID, trigger string, maxPerSession int, cooldown time.Duration) (AIPopupSessionState, error) {
+	state := AIPopupSessionState{}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return state, nil
+	}
+	rows, err := db.c.Query(`SELECT trigger, IFNULL(shown_at, ''), created_at FROM ai_interactions WHERE feature_type = 'popup' AND session_id = ? ORDER BY id DESC`, sessionID)
+	if err != nil {
+		return state, err
+	}
+	defer rows.Close()
+	now := time.Now().UTC()
+	for rows.Next() {
+		var rowTrigger, shownAt, createdAt string
+		if err := rows.Scan(&rowTrigger, &shownAt, &createdAt); err != nil {
+			return state, err
+		}
+		if strings.TrimSpace(shownAt) != "" {
+			state.ShownCount++
+			if state.LastShownAt == "" {
+				state.LastShownAt = shownAt
+				state.LastTrigger = rowTrigger
+				if parsed, err := time.Parse(time.RFC3339, shownAt); err == nil {
+					state.WithinCooldown = cooldown > 0 && now.Sub(parsed) < cooldown
+				}
+			}
+		} else if state.LastShownAt == "" {
+			state.LastTrigger = rowTrigger
+			state.LastShownAt = createdAt
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return state, err
+	}
+	if maxPerSession > 0 && state.ShownCount >= maxPerSession {
+		state.WithinCooldown = true
+	}
+	return state, nil
 }

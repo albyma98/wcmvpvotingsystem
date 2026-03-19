@@ -83,6 +83,62 @@ La repository include tutto il necessario per eseguire l'applicazione (backend G
 
    Assicurati che l'admin di bootstrap sia stato creato controllando i log del backend (messaggio `admin ... creato`). È possibile disabilitare la creazione automatica impostando `BOOTSTRAP_ADMIN_ENABLED=false` o lasciando vuoto `BOOTSTRAP_ADMIN_PASSWORD_HASH`.【F:wcmvpvs-back/cmd/webapi/main.go†L42-L70】
 
+
+## Configurazione modulo AI (upsell BAR + popup in-app)
+
+Il modulo AI viene eseguito **solo lato backend Go**: il frontend non parla mai direttamente con il provider LLM. Il provider viene usato esclusivamente per generare copy/suggerimenti, mentre disponibilità prodotti, prezzi, trigger reali e regole di business restano sotto controllo applicativo.
+
+### Quale file devo usare davvero?
+
+Se stai avviando il progetto come previsto in questo repository, cioè con **Docker Compose**, devi configurare il modulo AI nel file **`.env`** partendo da `.env.example`.
+
+Il file `wcmvpvs-back/demo/config.yml` **non è il file principale del deploy**: è solo un esempio di configurazione YAML per esecuzioni manuali/locali del backend fuori da Docker. Quindi, nella pratica:
+
+- **usa `.env`** se lanci il progetto con `docker compose up`;
+- **usa `wcmvpvs-back/demo/config.yml` solo se avvii il backend Go manualmente** e vuoi passare la configurazione via YAML invece che via env.
+
+### Variabili da impostare
+
+Nel file `.env` puoi configurare il modulo con queste variabili:
+
+```bash
+# Attiva il modulo AI
+CFG_AI_ENABLED=true
+
+# Provider LLM (OpenAI-compatible)
+AI_PROVIDER_BASE_URL=https://api.openai.com/v1
+AI_API_KEY=sk-...
+AI_MODEL=gpt-4o-mini
+
+# Guardrail runtime backend
+CFG_AI_REQUESTTIMEOUT=4s
+CFG_AI_CACHETTL=90s
+CFG_AI_MAXPOPUPSSESSION=3
+CFG_AI_POPUPCOOLDOWN=8m
+```
+
+### Significato delle variabili
+
+- `CFG_AI_ENABLED`: abilita/disabilita totalmente il modulo AI; se `false`, il sistema usa solo fallback statici.
+- `AI_PROVIDER_BASE_URL`: URL base del provider LLM compatibile con endpoint `/chat/completions`.
+- `AI_API_KEY`: chiave API del provider.
+- `AI_MODEL`: nome modello da usare per copy upsell e popup.
+- `CFG_AI_REQUESTTIMEOUT`: timeout massimo per singola chiamata LLM.
+- `CFG_AI_CACHETTL`: cache breve lato backend per evitare richieste duplicate inutili.
+- `CFG_AI_MAXPOPUPSSESSION`: massimo popup AI mostrabili nella stessa sessione.
+- `CFG_AI_POPUPCOOLDOWN`: attesa minima tra popup consecutivi nella stessa sessione.
+
+### Note operative
+
+- Se usi `docker-compose.yml`, le variabili AI vengono già inoltrate al backend tramite `environment`, quindi ti basta valorizzarle nel file `.env`.
+- Se `CFG_AI_ENABLED=true` ma `AI_API_KEY` è vuota, il backend non va in errore: usa il fallback statico.
+- Gli endpoint AI esposti dal backend sono:
+  - `POST /api/ai/bar/upsell`
+  - `POST /api/ai/popups/generate`
+  - `POST /api/ai/interactions/{id}/track`
+- Le interazioni AI vengono salvate nella tabella SQLite `ai_interactions` per tracking di `shown`, `dismissed`, `clicked`, `converted`.
+- Per produzione conviene partire con timeout stretti e cache breve, poi tarare valori e prompt con i dati reali.
+
 ## OTP SMS (Twilio Verify) - API examples
 
 Il backend espone gli endpoint OTP sotto `/api/auth/*` (proxy frontend) / `/auth/*` (backend diretto).
