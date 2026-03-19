@@ -623,6 +623,13 @@
       @submitted="handleFeedbackSubmitted"
     />
 
+    <InAppAiPopup
+      v-model="isAiPopupOpen"
+      :popup="activeAiPopup"
+      @dismiss="handleAiPopupDismiss"
+      @cta="handleAiPopupCTA"
+    />
+
   </div>
 </template>
 
@@ -632,6 +639,7 @@ import EarnCoinsModal from '../components/EarnCoinsModal.vue';
 import CoinCollectAnimation from '../components/CoinCollectAnimation.vue';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import ExperienceFeedbackCta from '../components/ExperienceFeedbackCta.vue';
+import InAppAiPopup from '../components/InAppAiPopup.vue';
 import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
 import FeatureCard from '../components/FeatureCard.vue';
 import FanRegistrationPromptModal from '../components/FanRegistrationPromptModal.vue';
@@ -639,8 +647,9 @@ import LiveHeader from '../components/LiveHeader.vue';
 import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
 import StoryModal from '../components/StoryModal.vue';
-import { apiClient, fetchFanProfile, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins, resolveApiUrl, getOrganizationSlug } from '../api';
+import { apiClient, fetchFanProfile, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins, resolveApiUrl, getOrganizationSlug, generateAIBarUpsell, generateAIPopup, trackAIInteraction } from '../api';
 import { getOrCreateDeviceId } from '../deviceId';
+import { safeTrackEvent } from '../tracking';
 
 const anonymousAvatarSvg = encodeURIComponent(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 220'>
@@ -809,6 +818,11 @@ const isSpendPreviewOpen = ref(false);
 const isBarModalOpen = ref(false);
 const isBarCheckoutLoading = ref(false);
 const barCheckoutError = ref('');
+const isAiPopupOpen = ref(false);
+const activeAiPopup = ref(null);
+const aiPopupHistory = ref([]);
+const lastActivityAt = ref(Date.now());
+let inactivityTimer = null;
 const barOrderConfirmed = ref(false);
 const barProducts = ref([]);
 const barCategoriesData = ref([]);
@@ -1097,6 +1111,18 @@ onMounted(async () => {
   loadSponsors();
   await loadLeaderboardPreview();
   startLeaderboardPolling();
+  registerUserActivity();
+
+  if (typeof window !== 'undefined') {
+    const activityEvents = ['click', 'touchstart', 'keydown'];
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, registerUserActivity, { passive: true }));
+    inactivityTimer = window.setInterval(() => {
+      const idleSeconds = Math.round((Date.now() - lastActivityAt.value) / 1000);
+      if (idleSeconds >= 75 && !isAiPopupOpen.value && !isBarModalOpen.value) {
+        maybeOpenAiPopup('inactive_user', 'far_esplorare_una_feature', { idleSeconds });
+      }
+    }, 15000);
+  }
 
   if (boostCountdownTimer === null) {
     boostCountdownTimer = window.setInterval(() => {
@@ -1467,6 +1493,10 @@ onBeforeUnmount(() => {
     window.clearInterval(boostCountdownTimer);
     boostCountdownTimer = null;
   }
+  if (typeof window !== 'undefined' && inactivityTimer !== null) {
+    window.clearInterval(inactivityTimer);
+    inactivityTimer = null;
+  }
   if (typeof document !== 'undefined') {
     document.body.style.overflow = '';
   }
@@ -1534,6 +1564,9 @@ async function loadFanProfile() {
     leaderboardUser.value = normalizeLeaderboardUser(data.user_rank ?? data.userRank);
     fanRewardRedemptions.value = Array.isArray(data.reward_redemptions) ? data.reward_redemptions : [];
     fanLotteryTicket.value = data.lottery_ticket || null;
+    if (totalCoins.value >= 8 && totalCoins.value < 15) {
+      void maybeOpenAiPopup('coins_near_reward', 'far_spendere_monete', { wallet: totalCoins.value });
+    }
   } else if (Number.isFinite(Number(data.guest_coins))) {
     totalCoins.value = Math.max(totalCoins.value, Number(data.guest_coins) || 0);
     fanRewardRedemptions.value = [];
@@ -1835,6 +1868,7 @@ function openWheelModal() {
 
 
 function openSpendPreview() {
+  registerUserActivity();
   isSpendPreviewOpen.value = true;
   mysteryBoxStep.value = 'idle';
   mysteryBoxStatusText.value = '';
@@ -1859,6 +1893,66 @@ async function attemptRedeem(rewardKey, costCoins, rewardLabel) {
   }
 }
 
+function registerUserActivity() {
+  lastActivityAt.value = Date.now();
+}
+
+async function maybeOpenAiPopup(triggerType, objective, extra = {}) {
+  try {
+    const sessionId = getOrCreateDeviceId();
+    const popup = await generateAIPopup({
+      trigger_type: triggerType,
+      objective,
+      session_id: sessionId,
+      event_id: props.eventId,
+      event_phase: props.isLive ? 'live' : 'prematch',
+      sessions_count: isRegisteredFan.value ? 2 : 1,
+      games_played: Number(extra.gamesPlayed || 0),
+      coins: totalCoins.value,
+      inactive_seconds: Math.max(0, Math.round((Date.now() - lastActivityAt.value) / 1000)),
+      cart_items_count: barCartCount.value,
+      cart_total_cents: barTotalCents.value,
+      popup_history_session: aiPopupHistory.value,
+      extra,
+    });
+    if (!popup || popup.source === 'suppressed' || !popup.popup_title) {
+      return;
+    }
+    activeAiPopup.value = { ...popup, trigger_type: triggerType };
+    isAiPopupOpen.value = true;
+    aiPopupHistory.value = [...aiPopupHistory.value, { trigger_type: triggerType, interaction_id: popup.interaction_id || 0, shown_at: new Date().toISOString() }].slice(-10);
+    safeTrackEvent('ai', 'popup_shown', triggerType, { source: popup.source, interactionId: popup.interaction_id || 0 });
+    if (popup.interaction_id) {
+      await trackAIInteraction(popup.interaction_id, 'shown', { session_id: sessionId, trigger: triggerType });
+    }
+  } catch (error) {
+    // silent fallback
+  }
+}
+
+async function handleAiPopupDismiss() {
+  const interactionId = Number(activeAiPopup.value?.interaction_id) || 0;
+  safeTrackEvent('ai', 'popup_dismissed', activeAiPopup.value?.trigger_type || 'popup', { interactionId });
+  if (interactionId) {
+    await trackAIInteraction(interactionId, 'dismissed', { session_id: getOrCreateDeviceId() }).catch(() => {});
+  }
+}
+
+async function handleAiPopupCTA() {
+  const trigger = String(activeAiPopup.value?.trigger_type || 'popup');
+  const interactionId = Number(activeAiPopup.value?.interaction_id) || 0;
+  safeTrackEvent('ai', 'popup_clicked', trigger, { interactionId });
+  if (interactionId) {
+    await trackAIInteraction(interactionId, 'clicked', { session_id: getOrCreateDeviceId() }).catch(() => {});
+  }
+  if (trigger === 'cart_abandon_risk') {
+    openBarOrdering();
+  } else if (trigger === 'coins_near_reward') {
+    openSpendPreview();
+  } else {
+    isEarnModalOpen.value = true;
+  }
+}
 
 const barCategoryImageMap = {
   Panini: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=1000&q=80',
@@ -1973,8 +2067,12 @@ const barOrderSummaryLabel = computed(() => {
 });
 
 function goBarStep(nextStep) {
+  registerUserActivity();
   if (barStep.value !== nextStep) barStepHistory.value.push(barStep.value);
   barStep.value = nextStep;
+  if (nextStep === 'cart' && barCartCount.value > 0) {
+    maybeOpenAiPopup('cart_abandon_risk', 'far_completare_ordine', { cartSummary: barOrderSummaryLabel.value });
+  }
 }
 
 function goBackBarStep() {
@@ -1983,6 +2081,7 @@ function goBackBarStep() {
 }
 
 function openBarOrdering() {
+  registerUserActivity();
   barOrderConfirmed.value = false;
   barCheckoutError.value = '';
   barStep.value = 'start';
@@ -2043,8 +2142,13 @@ async function addProductFromDetail() {
   goBarStep('upsell');
 }
 
-function addSuggestedProduct(productId) {
+async function addSuggestedProduct(productId) {
   if (productId) increaseBarQty(productId);
+  const interactionId = Number(barSuggestionsPayload.value?.interaction_id) || 0;
+  safeTrackEvent('ai', 'upsell_added_to_cart', String(productId || ''), { interactionId });
+  if (interactionId) {
+    await trackAIInteraction(interactionId, 'upsell_added_to_cart', { session_id: getOrCreateDeviceId() }).catch(() => {});
+  }
   goBarStep('products');
 }
 
@@ -2110,6 +2214,49 @@ async function preloadBarCatalog(options = {}) {
 }
 
 async function loadBarSuggestionsForProduct(productID) {
+  const selectedItems = barCartItems.value.map((item) => ({
+    product_id: String(item.id),
+    product_name: item.name,
+    category: item.category,
+    quantity: item.qty,
+  }));
+  try {
+    const aiPayload = await generateAIBarUpsell({
+      trigger: 'product_added',
+      event_id: props.eventId,
+      event_phase: props.isLive ? 'live' : 'prematch',
+      cart: selectedItems,
+      available_products: normalizedBarProducts.value.map((product) => ({
+        product_id: String(product.id),
+        name: product.name,
+        category: product.category,
+        available: true,
+        visible: true,
+        priority: String(product.badge || '').toLowerCase().includes('venduto'),
+        price_cents: Number(product.price_cents || 0),
+      })),
+    });
+    const suggestions = Array.isArray(aiPayload?.suggestions) ? aiPayload.suggestions : [];
+    if (suggestions.length) {
+      barSuggestionsPayload.value = {
+        title: 'Potrebbe piacerti anche',
+        source: aiPayload?.source || 'ai',
+        enabled: true,
+        interaction_id: aiPayload?.interaction_id || 0,
+        items: suggestions.map((suggestion) => {
+          const matched = normalizedBarProducts.value.find((product) => product.name === suggestion.product_name || String(product.id) === String(suggestion.product_id));
+          return matched ? { ...matched, reason: suggestion.reason, marketing_text: suggestion.marketing_text } : suggestion;
+        }),
+      };
+      if (aiPayload?.interaction_id) {
+        await trackAIInteraction(aiPayload.interaction_id, 'shown', { session_id: getOrCreateDeviceId(), trigger: 'product_added' }).catch(() => {});
+      }
+      safeTrackEvent('ai', 'upsell_shown', 'product_added', { source: aiPayload?.source || 'ai', interactionId: aiPayload?.interaction_id || 0 });
+      return;
+    }
+  } catch (error) {
+    // fallback below
+  }
   barSuggestionsPayload.value = await fetchBarSuggestionsForProduct(productID);
 }
 
@@ -2210,6 +2357,7 @@ async function confirmBarOrderFromQuery() {
 }
 
 function onFeatureSelect(featureId) {
+  registerUserActivity();
   if (featureId === 'game-live') {
     isEarnModalOpen.value = true;
     return;

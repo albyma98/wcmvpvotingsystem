@@ -182,6 +182,14 @@ func run() error {
 		StripeSecretKey:           firstNonEmpty(cfg.Stripe.SecretKey, os.Getenv("STRIPE_SECRET_KEY")),
 		StripeWebhookSecret:       firstNonEmpty(cfg.Stripe.WebhookSecret, os.Getenv("STRIPE_WEBHOOK_SECRET")),
 		StripeSuccessURL:          firstNonEmpty(cfg.Stripe.SuccessRedirect, os.Getenv("STRIPE_SUCCESS_REDIRECT")),
+		AIEnabled:                 cfg.AI.Enabled,
+		AIProviderBaseURL:         firstNonEmpty(cfg.AI.ProviderBaseURL, os.Getenv("AI_PROVIDER_BASE_URL")),
+		AIAPIKey:                  firstNonEmpty(cfg.AI.APIKey, os.Getenv("AI_API_KEY")),
+		AIModel:                   firstNonEmpty(cfg.AI.Model, os.Getenv("AI_MODEL")),
+		AIRequestTimeout:          cfg.AI.RequestTimeout,
+		AICacheTTL:                cfg.AI.CacheTTL,
+		AIMaxPopupsSession:        cfg.AI.MaxPopupsSession,
+		AIPopupCooldown:           cfg.AI.PopupCooldown,
 	})
 	if err != nil {
 		logger.WithError(err).Error("error creating the API server instance")
