@@ -115,6 +115,8 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/events/{eventId}/feedback", rt.wrap(rt.submitEventFeedback))
 	rt.router.Get("/admin/events/history", rt.wrapAdmin(rt.getEventHistory))
 	rt.router.Get("/admin/events/history/{eventId}/report", rt.wrapAdmin(rt.downloadEventHistoryReport))
+	rt.router.Get("/admin/events/{eventId}/ai-report", rt.wrapAdmin(rt.getAdminEventAIReport))
+	rt.router.Post("/admin/events/{eventId}/ai-report", rt.wrapAdmin(rt.generateAdminEventAIReport))
 	rt.router.Get("/admin/events/{eventId}/sponsors/analytics", rt.wrapAdmin(rt.getSponsorAnalytics))
 	rt.router.Post("/admin/events/{id}/purge", rt.wrapAdmin(rt.purgeEvent))
 	rt.router.Get("/admin/events/{eventId}/selfies", rt.wrapAdmin(rt.listAdminSelfies))
