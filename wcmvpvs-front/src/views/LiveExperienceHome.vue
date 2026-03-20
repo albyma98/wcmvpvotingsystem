@@ -650,6 +650,7 @@ import StoryModal from '../components/StoryModal.vue';
 import { apiClient, fetchFanProfile, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins, resolveApiUrl, getOrganizationSlug, generateAIBarUpsell, generateAIPopup, trackAIInteraction } from '../api';
 import { getOrCreateDeviceId } from '../deviceId';
 import { safeTrackEvent } from '../tracking';
+import { endTrackingLifecycle, startTrackingLifecycle, trackAppEvent, trackSectionView, updateTrackingContext } from '../eventTracking';
 
 const anonymousAvatarSvg = encodeURIComponent(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 220'>
@@ -1022,6 +1023,7 @@ function normalizeLeaderboardUser(entry) {
 }
 
 function openLeaderboard() {
+  trackAppEvent('navigation.leaderboard_opened', { modal: 'fans_leaderboard', registered_fan: isRegisteredFan.value }, 'navigation');
   isLeaderboardModalOpen.value = true;
   if (!isRegisteredFan.value) {
     openRegistrationPrompt('leaderboard');
@@ -1106,6 +1108,12 @@ onMounted(async () => {
 
   hasSubmittedFeedback.value = window.localStorage.getItem(experienceFormStorageKey) === '1';
 
+  startTrackingLifecycle({ eventId: props.eventId, page: 'newui_live_experience', source: 'newui' });
+  updateTrackingContext({
+    loginState: isRegisteredFan.value ? 'logged_in' : 'guest',
+    profileState: isRegisteredFan.value ? 'registered' : 'guest',
+  });
+  trackSectionView('home.hero', { match_label: matchLabel.value });
   await loadFanProfile();
   loadEventStories();
   loadSponsors();
@@ -1236,12 +1244,15 @@ function startLeaderboardPolling() {
 
 function openFeedbackModal() {
   if (!hasFeedbackSurvey.value || hasSubmittedFeedback.value) {
+    trackAppEvent('feedback.cta_ignored', { already_submitted: hasSubmittedFeedback.value, available: hasFeedbackSurvey.value }, 'feedback');
     return;
   }
+  trackAppEvent('feedback.modal_opened', { survey_enabled: hasFeedbackSurvey.value }, 'feedback');
   isFeedbackModalOpen.value = true;
 }
 
 function handleFeedbackSubmitted() {
+  trackAppEvent('feedback.submitted', { event_id: props.eventId }, 'feedback');
   hasSubmittedFeedback.value = true;
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(experienceFormStorageKey, '1');
@@ -1280,12 +1291,17 @@ async function loadSponsors() {
             return a.insertedIndex - b.insertedIndex;
           })
       : [];
+    if (sponsors.value.length) {
+      trackSectionView('sponsors.marquee', { sponsor_count: sponsors.value.length });
+    }
   } catch (error) {
+    trackAppEvent('error.sponsors_load_failed', { message: error?.message || 'unknown_error' }, 'error');
     sponsors.value = [];
   }
 }
 
 function handleSponsorClick(sponsor) {
+  trackAppEvent('sponsor.clicked', { sponsor_id: Number(sponsor?.id) || 0, sponsor_name: String(sponsor?.name || ''), sponsor_link: String(sponsor?.linkUrl || sponsor?.link_url || '') }, 'sponsor');
   const eventId = Number(props.eventId) || 0;
   const sponsorId = Number(sponsor?.id) || 0;
   if (!eventId || !sponsorId) {
@@ -1347,6 +1363,8 @@ async function loadEventStories() {
 }
 
 function openStory(index) {
+  const story = activeStories.value[index] || null;
+  trackAppEvent('content.story_opened', { story_id: Number(story?.id) || 0, story_index: index, story_title: String(story?.title || story?.headline || '') }, 'content');
   preloadAndOpenStory(index);
 }
 
@@ -1487,6 +1505,7 @@ watch([isStoryModalOpen, isProfileOverlayOpen], ([storyOpen, profileOpen]) => {
 });
 
 onBeforeUnmount(() => {
+  endTrackingLifecycle('live_experience_unmounted');
   stopLeaderboardPolling();
   stopWheelTickLoop();
   if (typeof window !== 'undefined' && boostCountdownTimer !== null) {
@@ -1557,6 +1576,13 @@ async function loadFanProfile() {
   if (data.session_token) {
     fanSessionToken.value = data.session_token;
   }
+  updateTrackingContext({
+    fanId: Number(data?.user?.id) || 0,
+    fanSessionToken: data.session_token || fanSessionToken.value || undefined,
+    loginState: data.registered ? 'logged_in' : 'guest',
+    profileState: data.registered ? 'registered' : 'guest',
+  });
+  trackAppEvent('fan.profile_loaded', { registered: Boolean(data.registered), wallet: Number(data.wallet || data.guest_coins || 0) }, 'fan');
   if (data.registered) {
     fanId.value = Number(data.user?.id) || 0;
     fanNickname.value = data.user?.nickname || '';
@@ -1578,6 +1604,7 @@ async function loadFanProfile() {
 async function handleExistingFanLogin() {
   await loadFanProfile();
   if (!isRegisteredFan.value) {
+    trackAppEvent('fan.login_failed', { reason: 'fan_profile_not_found' }, 'fan');
     return { ok: false, message: 'Impossibile trovare un profilo associato a questo numero.' };
   }
   if (shouldOpenProfileAfterAuth.value) {
@@ -1598,8 +1625,10 @@ async function handleRegistrationSubmit(form) {
     enter_lottery: form.trigger === 'after_vote',
   });
   if (!response?.ok) {
+    trackAppEvent('fan.registration_failed', { trigger: form.trigger, message: response.message || 'registration_failed' }, 'fan');
     return { ok: false, message: response.message };
   }
+  trackAppEvent('fan.registration_completed', { trigger: form.trigger, nickname: form.nickname, accepted_terms: form.acceptedTerms }, 'fan');
   isRegisteredFan.value = true;
   fanId.value = Number(response.data?.user?.id) || 0;
   fanNickname.value = response.data?.user?.nickname || '';
@@ -1615,6 +1644,7 @@ async function handleRegistrationSubmit(form) {
 }
 
 function openProfileOverlay() {
+  trackAppEvent('fan.profile_opened', { registered_fan: isRegisteredFan.value }, 'fan');
   if (!isRegisteredFan.value) {
     openRegistrationPrompt('profile_overlay');
     return;
@@ -1623,6 +1653,7 @@ function openProfileOverlay() {
 }
 
 function closeProfileOverlay() {
+  trackAppEvent('fan.profile_closed', {}, 'fan');
   isProfileOverlayOpen.value = false;
 }
 
@@ -1869,6 +1900,7 @@ function openWheelModal() {
 
 function openSpendPreview() {
   registerUserActivity();
+  trackAppEvent('coins.store_opened', { wallet_coins: totalCoins.value }, 'coins');
   isSpendPreviewOpen.value = true;
   mysteryBoxStep.value = 'idle';
   mysteryBoxStatusText.value = '';
@@ -1876,25 +1908,33 @@ function openSpendPreview() {
 
 function closeSpendPreview() {
   if (isWheelSpinning.value) {
+    trackAppEvent('coins.store_close_blocked', { reason: 'wheel_spinning' }, 'coins');
     return;
   }
+  trackAppEvent('coins.store_closed', { wallet_coins: totalCoins.value }, 'coins');
   isSpendPreviewOpen.value = false;
 }
 
 async function attemptRedeem(rewardKey, costCoins, rewardLabel) {
   if (!isRegisteredFan.value) {
+    trackAppEvent('coins.reward_redeem_blocked', { reward_key: rewardKey, cost_coins: costCoins, reason: 'registration_required' }, 'coins');
     selectedRewardLabel.value = rewardLabel || `${String(rewardKey).replace('-', ' ').toUpperCase()} · ${costCoins} 🪙`;
     openRegistrationPrompt('spend_redeem');
     return;
   }
+  trackAppEvent('coins.reward_redeem_attempted', { reward_key: rewardKey, cost_coins: costCoins, reward_label: rewardLabel }, 'coins');
   const response = await redeemFanReward(props.eventId, rewardKey, costCoins);
   if (response?.ok) {
+    trackAppEvent('coins.reward_redeem_completed', { reward_key: rewardKey, cost_coins: costCoins, wallet_after: Number(response.data?.wallet) || totalCoins.value }, 'coins');
     totalCoins.value = Number(response.data?.wallet) || totalCoins.value;
+    return;
   }
+  trackAppEvent('coins.reward_redeem_failed', { reward_key: rewardKey, cost_coins: costCoins, message: response?.message || 'redeem_failed' }, 'coins');
 }
 
 function registerUserActivity() {
   lastActivityAt.value = Date.now();
+  updateTrackingContext({ section: isBarModalOpen.value ? `bar.${barStep.value}` : 'home' });
 }
 
 async function maybeOpenAiPopup(triggerType, objective, extra = {}) {
@@ -2068,6 +2108,7 @@ const barOrderSummaryLabel = computed(() => {
 
 function goBarStep(nextStep) {
   registerUserActivity();
+  trackAppEvent('bar.step_viewed', { step: nextStep, previous_step: barStep.value, cart_items_count: barCartCount.value, cart_total_cents: barTotalCents.value }, 'bar');
   if (barStep.value !== nextStep) barStepHistory.value.push(barStep.value);
   barStep.value = nextStep;
   if (nextStep === 'cart' && barCartCount.value > 0) {
@@ -2082,6 +2123,7 @@ function goBackBarStep() {
 
 function openBarOrdering() {
   registerUserActivity();
+  trackAppEvent('bar.menu_opened', { cart_items_count: barCartCount.value, cart_total_cents: barTotalCents.value }, 'bar');
   barOrderConfirmed.value = false;
   barCheckoutError.value = '';
   barStep.value = 'start';
@@ -2092,16 +2134,20 @@ function openBarOrdering() {
 }
 
 function selectBarMode(modeId) {
+  trackAppEvent('bar.order_mode_selected', { order_mode: modeId }, 'bar');
   barOrderMode.value = modeId;
   goBarStep('categories');
 }
 
 function openBarCategory(categoryId) {
+  trackAppEvent('bar.category_viewed', { category_id: String(categoryId) }, 'bar');
   selectedCategoryId.value = String(categoryId);
   goBarStep('products');
 }
 
 function openProductDetail(productId) {
+  const product = normalizedBarProducts.value.find((item) => String(item.id) === String(productId));
+  trackAppEvent('bar.product_viewed', { product_id: productId, product_name: product?.name || '' }, 'bar');
   selectedBarProductId.value = productId;
   barDetailQty.value = 1;
   selectedBarExtras.value = [];
@@ -2119,22 +2165,26 @@ function changeDetailQty(delta) {
 }
 
 function increaseBarQty(productId) {
+  trackAppEvent('bar.cart_quantity_changed', { product_id: productId, delta: 1, previous_qty: Number(barCart.value?.[productId] || 0) }, 'bar');
   const current = Number(barCart.value?.[productId] || 0);
   barCart.value = { ...barCart.value, [productId]: current + 1 };
 }
 
 function decreaseBarQty(productId) {
   const current = Number(barCart.value?.[productId] || 0);
+  trackAppEvent('bar.cart_quantity_changed', { product_id: productId, delta: -1, previous_qty: current }, 'bar');
   if (current <= 0) return;
   barCart.value = { ...barCart.value, [productId]: current - 1 };
 }
 
 function removeBarProduct(productId) {
+  trackAppEvent('bar.cart_item_removed', { product_id: productId, previous_qty: Number(barCart.value?.[productId] || 0) }, 'bar');
   barCart.value = { ...barCart.value, [productId]: 0 };
 }
 
 async function addProductFromDetail() {
   if (!selectedBarProduct.value) return;
+  trackAppEvent('bar.added_to_cart', { product_id: selectedBarProduct.value.id, product_name: selectedBarProduct.value.name, quantity: barDetailQty.value, extras_count: selectedBarExtras.value.length }, 'bar');
   const productId = selectedBarProduct.value.id;
   const current = Number(barCart.value?.[productId] || 0);
   barCart.value = { ...barCart.value, [productId]: current + barDetailQty.value };
@@ -2143,6 +2193,7 @@ async function addProductFromDetail() {
 }
 
 async function addSuggestedProduct(productId) {
+  trackAppEvent('bar.upsell_accepted', { product_id: productId, interaction_id: Number(barSuggestionsPayload.value?.interaction_id) || 0 }, 'bar');
   if (productId) increaseBarQty(productId);
   const interactionId = Number(barSuggestionsPayload.value?.interaction_id) || 0;
   safeTrackEvent('ai', 'upsell_added_to_cart', String(productId || ''), { interactionId });
@@ -2251,6 +2302,7 @@ async function loadBarSuggestionsForProduct(productID) {
       if (aiPayload?.interaction_id) {
         await trackAIInteraction(aiPayload.interaction_id, 'shown', { session_id: getOrCreateDeviceId(), trigger: 'product_added' }).catch(() => {});
       }
+      trackAppEvent('ai.upsell_shown', { source: aiPayload?.source || 'ai', interaction_id: aiPayload?.interaction_id || 0, suggestions_count: suggestions.length }, 'ai');
       safeTrackEvent('ai', 'upsell_shown', 'product_added', { source: aiPayload?.source || 'ai', interactionId: aiPayload?.interaction_id || 0 });
       return;
     }
@@ -2280,6 +2332,7 @@ async function loadBarProducts() {
 
 async function startBarCheckout() {
   barCheckoutError.value = '';
+  trackAppEvent('bar.checkout_started', { order_mode: barOrderMode.value, cart_items_count: barCartCount.value, cart_total_cents: barTotalCents.value }, 'bar');
   if (barOrderMode.value === 'seat' && (!barDelivery.value.sector || !barDelivery.value.row || !barDelivery.value.seat)) {
     barCheckoutError.value = 'Inserisci settore, fila e posto.';
     return;
@@ -2291,6 +2344,7 @@ async function startBarCheckout() {
 
   if (!items.length) {
     barCheckoutError.value = 'Seleziona almeno un prodotto.';
+    trackAppEvent('bar.checkout_failed', { reason: 'empty_cart' }, 'bar');
     return;
   }
 
@@ -2306,12 +2360,14 @@ async function startBarCheckout() {
 
     if (!data?.checkout_url || !data?.session_id) {
       barCheckoutError.value = 'Checkout non disponibile.';
+      trackAppEvent('bar.checkout_failed', { reason: 'missing_checkout_url' }, 'bar');
       return;
     }
 
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('bar:last_session_id', String(data.session_id));
     }
+    trackAppEvent('bar.checkout_redirected', { session_id: String(data.session_id), checkout_url_present: Boolean(data?.checkout_url) }, 'bar');
 
     const stripe = await ensureStripeClient();
     if (stripe && data?.session_id) {
@@ -2325,6 +2381,7 @@ async function startBarCheckout() {
     }
   } catch (error) {
     barCheckoutError.value = error?.response?.data?.message || 'Errore durante la creazione del pagamento.';
+    trackAppEvent('bar.checkout_failed', { reason: 'request_error', message: barCheckoutError.value }, 'bar');
   } finally {
     isBarCheckoutLoading.value = false;
   }
@@ -2344,6 +2401,7 @@ async function confirmBarOrderFromQuery() {
   try {
     const { data } = await apiClient.post('/bar/checkout/confirm', { session_id: sessionId });
     if (data?.confirmed) {
+      trackAppEvent('bar.order_completed', { order_id: data?.order_id || 0, session_id: sessionId, cart_total_cents: barTotalCents.value }, 'bar');
       barOrderConfirmed.value = true;
       barConfirmedOrderNumber.value = String(data?.order_id || sessionId).slice(-6);
       isBarModalOpen.value = true;
@@ -2352,12 +2410,14 @@ async function confirmBarOrderFromQuery() {
       barDelivery.value = { sector: '', row: '', seat: '', notes: '' };
     }
   } catch (error) {
-    // silent
+    trackAppEvent('bar.order_confirmation_failed', { session_id: sessionId, message: error?.response?.data?.message || 'confirmation_failed' }, 'bar');
   }
 }
 
+
 function onFeatureSelect(featureId) {
   registerUserActivity();
+  trackAppEvent('navigation.feature_selected', { feature_id: featureId }, 'navigation');
   if (featureId === 'game-live') {
     isEarnModalOpen.value = true;
     return;

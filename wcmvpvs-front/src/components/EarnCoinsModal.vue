@@ -124,6 +124,7 @@ import QuickQuizGame from './QuickQuizGame.vue';
 import TapChallenge from './minigames/TapChallenge.vue';
 import MemoryFlashGame from './minigames/MemoryFlashGame.vue';
 import { getEarnCooldownRemainingSeconds, startEarnCooldown } from '../utils/earnCooldown';
+import { trackAppEvent } from '../eventTracking';
 
 const props = defineProps({
   modelValue: {
@@ -187,6 +188,7 @@ watch(
 
     if (isOpen) {
       document.body.style.overflow = 'hidden';
+      trackAppEvent('game.catalog_opened', { event_id: props.eventId, wallet_coins: props.walletCoins }, 'game');
       if (!intervalId) {
         intervalId = window.setInterval(() => {
           forceTick();
@@ -198,6 +200,7 @@ watch(
     }
 
     document.body.style.overflow = '';
+    trackAppEvent('game.catalog_closed', { active_game: activeGame.value?.id || '' }, 'game');
     goBack();
     window.removeEventListener('keydown', onKeydown);
     if (intervalId) {
@@ -235,6 +238,7 @@ function forceTick() {
 }
 
 function closeModal() {
+  trackAppEvent('game.catalog_close_requested', { active_game: activeGame.value?.id || '' }, 'game');
   if (isClaiming.value) {
     return;
   }
@@ -269,6 +273,7 @@ function getTapChallengeCooldownSeconds(now = Date.now()) {
 }
 
 function openGame(option) {
+  trackAppEvent('game.opened', { game_id: option?.id || '', title: option?.title || '', reward: option?.reward || 0 }, 'game');
   activeGame.value = option;
   activeView.value = 'game';
 }
@@ -278,6 +283,9 @@ function goBack() {
     return;
   }
 
+  if (activeGame.value) {
+    trackAppEvent('game.abandoned', { game_id: activeGame.value.id, title: activeGame.value.title }, 'game');
+  }
   activeView.value = 'list';
   activeGame.value = null;
 }
@@ -289,6 +297,7 @@ async function handleClaim(payload) {
 
   isClaiming.value = true;
   const coins = Math.max(0, Number(payload?.coins) || 0);
+  trackAppEvent('game.claim_attempted', { game_id: activeGame.value?.id || '', coins }, 'game');
   const keepOpen = Boolean(payload?.keepOpen);
 
   try {
@@ -306,6 +315,7 @@ async function handleClaim(payload) {
 
     emit('earned', payload);
     emit('coins-earned', coins);
+    trackAppEvent('game.claim_completed', { game_id: activeGame.value?.id || '', coins, keep_open: keepOpen }, 'game');
 
     if (!keepOpen) {
       activeView.value = 'list';
@@ -323,6 +333,7 @@ function handleSpend(payload) {
   }
 
   emit('coins-earned', -coins);
+  trackAppEvent('coins.spent', { source: activeGame.value?.id || 'game', amount: coins }, 'coins');
 }
 
 function consumeFreeRetry() {
@@ -331,10 +342,12 @@ function consumeFreeRetry() {
 
 function handleOptionClick(option) {
   if (!option.isAvailable) {
+    trackAppEvent('game.open_blocked', { game_id: option.id, reason: 'not_available' }, 'game');
     return;
   }
 
   if (cooldowns.value[option.id] > 0) {
+    trackAppEvent('game.open_blocked', { game_id: option.id, reason: 'cooldown', cooldown_seconds: cooldowns.value[option.id] }, 'game');
     return;
   }
 

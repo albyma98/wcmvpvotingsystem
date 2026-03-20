@@ -129,6 +129,24 @@ type OrganizationStats struct {
 	TotalMatches   int    `json:"total_matches"`
 }
 
+type TrackingEvent struct {
+	Name             string `json:"name"`
+	Domain           string `json:"domain"`
+	SessionID        string `json:"session_id,omitempty"`
+	DeviceID         string `json:"device_id,omitempty"`
+	FanID            int    `json:"fan_id,omitempty"`
+	OrganizationID   int    `json:"organization_id,omitempty"`
+	OrganizationSlug string `json:"organization_slug,omitempty"`
+	EventID          int    `json:"event_id,omitempty"`
+	Page             string `json:"page,omitempty"`
+	Section          string `json:"section,omitempty"`
+	Source           string `json:"source,omitempty"`
+	LoginState       string `json:"login_state,omitempty"`
+	ProfileState     string `json:"profile_state,omitempty"`
+	OccurredAt       string `json:"occurred_at,omitempty"`
+	MetadataJSON     string `json:"metadata_json,omitempty"`
+}
+
 type EventEngagementStats struct {
 	EventID                int     `json:"event_id"`
 	TotalDurationSeconds   int64   `json:"total_duration_seconds"`
@@ -1081,6 +1099,7 @@ type AppDatabase interface {
 	DeleteSponsor(id int, organizationID int) error
 	ListSponsors(organizationID int) ([]Sponsor, error)
 	ListActiveSponsors(organizationID int) ([]Sponsor, error)
+	RecordTrackingEvents(eventID int, items []TrackingEvent) error
 	RecordSponsorSession(eventID int, deviceID string) error
 	RecordSponsorExposure(eventID int, sponsorIDs []int, deviceID, exposureType string, durationMs int) error
 	RecordSponsorClick(eventID, sponsorID int, deviceID string) error
@@ -1681,6 +1700,47 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_page_engagements_device ON page_engagements(event_id, device_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring page_engagements device index: %w", err)
+	}
+
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='tracking_events';`).Scan(&tableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `CREATE TABLE tracking_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        organization_id INTEGER NOT NULL DEFAULT 0,
+        fan_id INTEGER,
+        session_id TEXT NOT NULL DEFAULT '',
+        device_id TEXT NOT NULL DEFAULT '',
+        event_name TEXT NOT NULL,
+        event_domain TEXT NOT NULL DEFAULT '',
+        page TEXT NOT NULL DEFAULT '',
+        section TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT '',
+        login_state TEXT NOT NULL DEFAULT '',
+        profile_state TEXT NOT NULL DEFAULT '',
+        organization_slug TEXT NOT NULL DEFAULT '',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+        FOREIGN KEY (fan_id) REFERENCES fan_profiles(id) ON DELETE SET NULL
+);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating tracking_events table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error verifying tracking_events table: %w", err)
+	}
+
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_tracking_events_event ON tracking_events(event_id, occurred_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring tracking_events event index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_tracking_events_session ON tracking_events(event_id, session_id, occurred_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring tracking_events session index: %w", err)
+	}
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_tracking_events_name ON tracking_events(event_id, event_name, occurred_at)`); err != nil {
+		return nil, fmt.Errorf("error ensuring tracking_events name index: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='post_vote_actions';`).Scan(&tableName)
@@ -4975,6 +5035,59 @@ func (db *appdbimpl) ListSponsors(organizationID int) ([]Sponsor, error) {
 
 func (db *appdbimpl) ListActiveSponsors(organizationID int) ([]Sponsor, error) {
 	return db.querySponsors(true, organizationID)
+}
+
+func (db *appdbimpl) RecordTrackingEvents(eventID int, items []TrackingEvent) error {
+	if eventID <= 0 || len(items) == 0 {
+		return nil
+	}
+
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`INSERT INTO tracking_events (
+		event_id, organization_id, fan_id, session_id, device_id, event_name, event_domain, page, section, source,
+		login_state, profile_state, organization_slug, metadata_json, occurred_at
+	) VALUES (?, ?, NULLIF(?, 0), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, item := range items {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		occurredAt := strings.TrimSpace(item.OccurredAt)
+		if occurredAt == "" {
+			occurredAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		if _, err = stmt.Exec(
+			eventID,
+			nonNegativeInt(item.OrganizationID),
+			nonNegativeInt(item.FanID),
+			strings.TrimSpace(item.SessionID),
+			strings.TrimSpace(item.DeviceID),
+			name,
+			strings.TrimSpace(item.Domain),
+			strings.TrimSpace(item.Page),
+			strings.TrimSpace(item.Section),
+			strings.TrimSpace(item.Source),
+			strings.TrimSpace(item.LoginState),
+			strings.TrimSpace(item.ProfileState),
+			strings.TrimSpace(item.OrganizationSlug),
+			strings.TrimSpace(item.MetadataJSON),
+			occurredAt,
+		); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (db *appdbimpl) RecordSponsorSession(eventID int, deviceID string) error {

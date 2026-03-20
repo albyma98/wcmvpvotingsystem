@@ -186,6 +186,15 @@ export function sendJsonBeacon(path: string, payload: Record<string, unknown> = 
   return apiClient.post(path, payload).then(() => {});
 }
 
+
+export function trackEventBatch(eventId: number, payload: Record<string, unknown>) {
+  if (!eventId) {
+    return Promise.resolve();
+  }
+
+  return sendJsonBeacon(`/events/${eventId}/tracking/events`, payload);
+}
+
 export function resolveStaticAssetUrl(path: string) {
   if (!path) {
     return '';
