@@ -68,7 +68,8 @@ func (rt *_router) generateAIUpsellSuggestions(w http.ResponseWriter, r *http.Re
 		}
 	}
 	userID, sessionID := getAIIdentity(r, ctx.OrganizationID, rt.db)
-	serviceReq := aiUpsellRequest{UserID: userID, SessionID: sessionID, Trigger: strings.TrimSpace(payload.Trigger), EventID: payload.EventID, EventPhase: payload.EventPhase, Cart: payload.Cart, PurchaseHistory: payload.PurchaseHistory, AdminPriorityProducts: payload.AdminPriorityProducts, AvailableProducts: available}
+	trackingSignals, _ := rt.db.ListRecentTrackingSignals(payload.EventID, sessionID, 12)
+	serviceReq := aiUpsellRequest{UserID: userID, SessionID: sessionID, Trigger: strings.TrimSpace(payload.Trigger), EventID: payload.EventID, EventPhase: payload.EventPhase, Cart: payload.Cart, PurchaseHistory: payload.PurchaseHistory, AdminPriorityProducts: payload.AdminPriorityProducts, AvailableProducts: available, TrackingSignals: trackingSignals}
 	response := rt.aiService.GenerateUpsellSuggestions(r.Context(), serviceReq)
 	inputJSON, _ := json.Marshal(serviceReq)
 	outputJSON, _ := json.Marshal(response)
@@ -103,7 +104,8 @@ func (rt *_router) generateAIPopupMessage(w http.ResponseWriter, r *http.Request
 		}
 	}
 	userID, _ := getAIIdentity(r, ctx.OrganizationID, rt.db)
-	serviceReq := aiPopupRequest{UserID: userID, SessionID: payload.SessionID, TriggerType: payload.TriggerType, EventID: payload.EventID, EventPhase: payload.EventPhase, Objective: payload.Objective, SessionsCount: payload.SessionsCount, GamesPlayed: payload.GamesPlayed, Coins: payload.Coins, LastGame: payload.LastGame, LastPurchase: payload.LastPurchase, InactiveSeconds: payload.InactiveSeconds, CartItemsCount: payload.CartItemsCount, CartTotalCents: payload.CartTotalCents, PopupHistorySession: payload.PopupHistorySession, Extra: payload.Extra}
+	trackingSignals, _ := rt.db.ListRecentTrackingSignals(payload.EventID, payload.SessionID, 12)
+	serviceReq := aiPopupRequest{UserID: userID, SessionID: payload.SessionID, TriggerType: payload.TriggerType, EventID: payload.EventID, EventPhase: payload.EventPhase, Objective: payload.Objective, SessionsCount: payload.SessionsCount, GamesPlayed: payload.GamesPlayed, Coins: payload.Coins, LastGame: payload.LastGame, LastPurchase: payload.LastPurchase, InactiveSeconds: payload.InactiveSeconds, CartItemsCount: payload.CartItemsCount, CartTotalCents: payload.CartTotalCents, PopupHistorySession: payload.PopupHistorySession, TrackingSignals: trackingSignals, Extra: payload.Extra}
 	response := rt.aiService.GeneratePopupMessage(r.Context(), serviceReq)
 	inputJSON, _ := json.Marshal(serviceReq)
 	outputJSON, _ := json.Marshal(response)

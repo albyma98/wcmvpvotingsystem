@@ -44,15 +44,16 @@ type cachedAIResult struct {
 }
 
 type aiUpsellRequest struct {
-	UserID                int              `json:"user_id,omitempty"`
-	SessionID             string           `json:"session_id,omitempty"`
-	Trigger               string           `json:"trigger"`
-	EventID               int              `json:"event_id,omitempty"`
-	EventPhase            string           `json:"event_phase,omitempty"`
-	AdminPriorityProducts []string         `json:"admin_priority_products,omitempty"`
-	Cart                  []aiCartItem     `json:"cart"`
-	PurchaseHistory       []string         `json:"purchase_history,omitempty"`
-	AvailableProducts     []aiProductInput `json:"available_products"`
+	UserID                int                       `json:"user_id,omitempty"`
+	SessionID             string                    `json:"session_id,omitempty"`
+	Trigger               string                    `json:"trigger"`
+	EventID               int                       `json:"event_id,omitempty"`
+	EventPhase            string                    `json:"event_phase,omitempty"`
+	AdminPriorityProducts []string                  `json:"admin_priority_products,omitempty"`
+	Cart                  []aiCartItem              `json:"cart"`
+	PurchaseHistory       []string                  `json:"purchase_history,omitempty"`
+	AvailableProducts     []aiProductInput          `json:"available_products"`
+	TrackingSignals       []database.TrackingSignal `json:"tracking_signals,omitempty"`
 }
 
 type aiCartItem struct {
@@ -87,22 +88,23 @@ type aiUpsellSuggestion struct {
 }
 
 type aiPopupRequest struct {
-	UserID              int                      `json:"user_id,omitempty"`
-	SessionID           string                   `json:"session_id,omitempty"`
-	TriggerType         string                   `json:"trigger_type"`
-	EventID             int                      `json:"event_id,omitempty"`
-	EventPhase          string                   `json:"event_phase,omitempty"`
-	Objective           string                   `json:"objective"`
-	SessionsCount       int                      `json:"sessions_count,omitempty"`
-	GamesPlayed         int                      `json:"games_played,omitempty"`
-	Coins               int                      `json:"coins,omitempty"`
-	LastGame            string                   `json:"last_game,omitempty"`
-	LastPurchase        string                   `json:"last_purchase,omitempty"`
-	InactiveSeconds     int                      `json:"inactive_seconds,omitempty"`
-	CartItemsCount      int                      `json:"cart_items_count,omitempty"`
-	CartTotalCents      int                      `json:"cart_total_cents,omitempty"`
-	PopupHistorySession []map[string]interface{} `json:"popup_history_session,omitempty"`
-	Extra               map[string]interface{}   `json:"extra,omitempty"`
+	UserID              int                       `json:"user_id,omitempty"`
+	SessionID           string                    `json:"session_id,omitempty"`
+	TriggerType         string                    `json:"trigger_type"`
+	EventID             int                       `json:"event_id,omitempty"`
+	EventPhase          string                    `json:"event_phase,omitempty"`
+	Objective           string                    `json:"objective"`
+	SessionsCount       int                       `json:"sessions_count,omitempty"`
+	GamesPlayed         int                       `json:"games_played,omitempty"`
+	Coins               int                       `json:"coins,omitempty"`
+	LastGame            string                    `json:"last_game,omitempty"`
+	LastPurchase        string                    `json:"last_purchase,omitempty"`
+	InactiveSeconds     int                       `json:"inactive_seconds,omitempty"`
+	CartItemsCount      int                       `json:"cart_items_count,omitempty"`
+	CartTotalCents      int                       `json:"cart_total_cents,omitempty"`
+	PopupHistorySession []map[string]interface{}  `json:"popup_history_session,omitempty"`
+	TrackingSignals     []database.TrackingSignal `json:"tracking_signals,omitempty"`
+	Extra               map[string]interface{}    `json:"extra,omitempty"`
 }
 
 type aiPopupResponse struct {
@@ -316,12 +318,12 @@ func (svc *aiService) GenerateEventReport(ctx context.Context, req aiEventReport
 
 func (svc *aiService) buildUpsellPrompt(req aiUpsellRequest) string {
 	payload, _ := json.Marshal(req)
-	return "Sei un assistente copywriter per upsell in-app durante un evento sportivo. Rispondi SOLO con JSON valido nel formato {\"suggestions\":[{\"product_name\":string,\"reason\":string,\"marketing_text\":string,\"priority\":number}]}. Regole: massimo 3 suggerimenti, non inventare prodotti, niente prezzi, tono breve e commerciale naturale, italiano. Input: " + string(payload)
+	return "Sei un assistente copywriter per upsell in-app durante un evento sportivo. Rispondi SOLO con JSON valido nel formato {\"suggestions\":[{\"product_name\":string,\"reason\":string,\"marketing_text\":string,\"priority\":number}]}. Regole: massimo 3 suggerimenti, non inventare prodotti, niente prezzi, tono breve e commerciale naturale, italiano. Se tracking_signals contiene eventi recenti, trattali come trigger prioritari e contestualizza il copy su quelli. Input: " + string(payload)
 }
 
 func (svc *aiService) buildPopupPrompt(req aiPopupRequest) string {
 	payload, _ := json.Marshal(req)
-	return "Sei un assistente copywriter per popup in-app di fan engagement sportivo. Rispondi SOLO con JSON valido nel formato {\"popup_title\":string,\"popup_body\":string,\"cta_text\":string,\"tone\":string,\"urgency_level\":string}. Regole: copy breve, sportivo, chiaro, non invasivo, italiano. Input: " + string(payload)
+	return "Sei un assistente copywriter per popup in-app di fan engagement sportivo. Rispondi SOLO con JSON valido nel formato {\"popup_title\":string,\"popup_body\":string,\"cta_text\":string,\"tone\":string,\"urgency_level\":string}. Regole: copy breve, sportivo, chiaro, non invasivo, italiano. Input: " + string(payload) + ". Usa i tracking_signals recenti come trigger prioritari quando presenti."
 }
 
 func (svc *aiService) buildEventReportPrompt(req aiEventReportRequest) string {
