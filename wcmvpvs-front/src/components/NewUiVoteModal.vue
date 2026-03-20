@@ -44,6 +44,7 @@
 import { computed, onMounted, ref } from 'vue';
 import VolleyCourtModal from './VolleyCourtModal.vue';
 import { apiClient, fetchVoteStatus, vote } from '../api';
+import { trackAppEvent, updateTrackingContext } from '../eventTracking';
 import { DEFAULT_ROSTER_SCHEMA, mapPlayersToLayout } from '../roster';
 
 const props = defineProps({
@@ -77,6 +78,7 @@ const players = computed(() => {
 const feedbackClass = computed(() => (isErrorFeedback.value ? 'text-red-300' : 'text-emerald-300'));
 
 async function loadPlayers() {
+  trackAppEvent('vote.screen_opened', { event_id: props.eventId }, 'vote');
   isLoadingPlayers.value = true;
   playersError.value = '';
   try {
@@ -89,9 +91,11 @@ async function loadPlayers() {
 
     const payload = Array.isArray(data?.players) ? data.players : data;
     rawPlayers.value = Array.isArray(payload) ? payload : [];
+    trackAppEvent('vote.roster_loaded', { players_count: rawPlayers.value.length }, 'vote');
   } catch (error) {
     console.error('Impossibile caricare i giocatori per newui', error);
     playersError.value = 'Non è stato possibile caricare i giocatori. Riprova più tardi.';
+    trackAppEvent('vote.roster_load_failed', { message: playersError.value }, 'vote');
     rawPlayers.value = [];
   } finally {
     isLoadingPlayers.value = false;
@@ -106,6 +110,7 @@ async function loadCurrentVote() {
   const response = await fetchVoteStatus(props.eventId);
   if (response?.ok && response.playerId) {
     selectedPlayerId.value = response.playerId;
+    trackAppEvent('vote.current_selection_loaded', { player_id: response.playerId }, 'vote');
   }
 }
 
@@ -116,22 +121,27 @@ async function handlePlayerSelect(player) {
 
   isVoting.value = true;
   feedbackMessage.value = '';
+  trackAppEvent('vote.player_selected', { player_id: player.id, player_name: `${player.first_name || ''} ${player.last_name || ''}`.trim() }, 'vote');
   try {
+    trackAppEvent('vote.submit_attempted', { event_id: props.eventId, player_id: player.id }, 'vote');
     const response = await vote({ eventId: props.eventId, playerId: player.id });
     if (!response?.ok) {
       isErrorFeedback.value = true;
       feedbackMessage.value = response?.message || 'Voto non registrato. Riprova.';
+      trackAppEvent('vote.submit_failed', { player_id: player.id, message: feedbackMessage.value, status: response?.status || 0 }, 'vote');
       return;
     }
 
     selectedPlayerId.value = player.id;
     isErrorFeedback.value = false;
     feedbackMessage.value = 'Voto registrato con successo!';
+    trackAppEvent('vote.submitted', { player_id: player.id, player_name: `${player.first_name || ''} ${player.last_name || ''}`.trim() }, 'vote');
     emit('voted', player);
   } catch (error) {
     console.error('Errore voto newui', error);
     isErrorFeedback.value = true;
     feedbackMessage.value = 'Si è verificato un errore. Riprova.';
+    trackAppEvent('vote.submit_failed', { player_id: player.id, message: feedbackMessage.value }, 'vote');
   } finally {
     isVoting.value = false;
   }
