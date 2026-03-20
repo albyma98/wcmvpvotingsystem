@@ -147,6 +147,15 @@ type TrackingEvent struct {
 	MetadataJSON     string `json:"metadata_json,omitempty"`
 }
 
+type TrackingSignal struct {
+	Name       string                 `json:"name"`
+	Domain     string                 `json:"domain,omitempty"`
+	Section    string                 `json:"section,omitempty"`
+	Source     string                 `json:"source,omitempty"`
+	OccurredAt string                 `json:"occurred_at,omitempty"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+}
+
 type EventEngagementStats struct {
 	EventID                int     `json:"event_id"`
 	TotalDurationSeconds   int64   `json:"total_duration_seconds"`
@@ -1161,6 +1170,7 @@ type AppDatabase interface {
 	CreateBarOrder(order BarOrder) (BarOrder, error)
 	CreateAIInteractionLog(item AIInteractionLog) (AIInteractionLog, error)
 	UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error
+	ListRecentTrackingSignals(eventID int, sessionID string, limit int) ([]TrackingSignal, error)
 	GetAIPopupSessionState(sessionID, trigger string, maxPerSession int, cooldown time.Duration) (AIPopupSessionState, error)
 	GetEventAIReport(eventID int) (EventAIReport, error)
 	UpsertEventAIReport(report EventAIReport) (EventAIReport, error)
@@ -8074,6 +8084,41 @@ func (db *appdbimpl) CreateAIInteractionLog(item AIInteractionLog) (AIInteractio
 	item.ID = int(id)
 	_ = db.c.QueryRow(`SELECT IFNULL(created_at,''), IFNULL(shown_at,''), IFNULL(clicked_at,''), IFNULL(converted_at,''), IFNULL(dismissed_at,'') FROM ai_interactions WHERE id = ?`, item.ID).Scan(&item.CreatedAt, &item.ShownAt, &item.ClickedAt, &item.ConvertedAt, &item.DismissedAt)
 	return item, nil
+}
+
+func (db *appdbimpl) ListRecentTrackingSignals(eventID int, sessionID string, limit int) ([]TrackingSignal, error) {
+	if eventID <= 0 {
+		return nil, nil
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 12
+	}
+	rows, err := db.c.Query(`SELECT event_name, IFNULL(event_domain, ''), IFNULL(section, ''), IFNULL(source, ''), IFNULL(occurred_at, ''), IFNULL(metadata_json, '')
+		FROM tracking_events
+		WHERE event_id = ? AND (session_id = ? OR device_id = ?)
+		ORDER BY datetime(occurred_at) DESC, id DESC
+		LIMIT ?`, eventID, sessionID, sessionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]TrackingSignal, 0, limit)
+	for rows.Next() {
+		var item TrackingSignal
+		var metadataJSON string
+		if err := rows.Scan(&item.Name, &item.Domain, &item.Section, &item.Source, &item.OccurredAt, &metadataJSON); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(metadataJSON) != "" {
+			_ = json.Unmarshal([]byte(metadataJSON), &item.Metadata)
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
 }
 
 func (db *appdbimpl) UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error {

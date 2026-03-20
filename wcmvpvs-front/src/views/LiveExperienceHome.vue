@@ -1985,7 +1985,7 @@ async function handleAiPopupCTA() {
   if (interactionId) {
     await trackAIInteraction(interactionId, 'clicked', { session_id: getOrCreateDeviceId() }).catch(() => {});
   }
-  if (trigger === 'cart_abandon_risk') {
+  if (trigger === 'cart_abandon_risk' || trigger === 'bar.step_viewed') {
     openBarOrdering();
   } else if (trigger === 'coins_near_reward') {
     openSpendPreview();
@@ -2112,7 +2112,7 @@ function goBarStep(nextStep) {
   if (barStep.value !== nextStep) barStepHistory.value.push(barStep.value);
   barStep.value = nextStep;
   if (nextStep === 'cart' && barCartCount.value > 0) {
-    maybeOpenAiPopup('cart_abandon_risk', 'far_completare_ordine', { cartSummary: barOrderSummaryLabel.value });
+    maybeOpenAiPopup('bar.step_viewed', 'far_completare_ordine', { cartSummary: barOrderSummaryLabel.value, tracked_event_name: 'bar.step_viewed', tracked_step: nextStep });
   }
 }
 
@@ -2273,7 +2273,7 @@ async function loadBarSuggestionsForProduct(productID) {
   }));
   try {
     const aiPayload = await generateAIBarUpsell({
-      trigger: 'product_added',
+      trigger: 'bar.added_to_cart',
       event_id: props.eventId,
       event_phase: props.isLive ? 'live' : 'prematch',
       cart: selectedItems,
@@ -2300,10 +2300,10 @@ async function loadBarSuggestionsForProduct(productID) {
         }),
       };
       if (aiPayload?.interaction_id) {
-        await trackAIInteraction(aiPayload.interaction_id, 'shown', { session_id: getOrCreateDeviceId(), trigger: 'product_added' }).catch(() => {});
+        await trackAIInteraction(aiPayload.interaction_id, 'shown', { session_id: getOrCreateDeviceId(), trigger: 'bar.added_to_cart' }).catch(() => {});
       }
       trackAppEvent('ai.upsell_shown', { source: aiPayload?.source || 'ai', interaction_id: aiPayload?.interaction_id || 0, suggestions_count: suggestions.length }, 'ai');
-      safeTrackEvent('ai', 'upsell_shown', 'product_added', { source: aiPayload?.source || 'ai', interactionId: aiPayload?.interaction_id || 0 });
+      safeTrackEvent('ai', 'upsell_shown', 'bar.added_to_cart', { source: aiPayload?.source || 'ai', interactionId: aiPayload?.interaction_id || 0 });
       return;
     }
   } catch (error) {
