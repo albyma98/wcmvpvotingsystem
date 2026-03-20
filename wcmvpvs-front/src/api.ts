@@ -155,13 +155,43 @@ export function resolveApiUrl(path: string) {
   return sanitizedPath;
 }
 
+function resolveBeaconUrl(path: string) {
+  const baseUrl = resolveApiUrl(path);
+  const organizationSlug = getOrganizationSlugFromLocation();
+
+  if (!organizationSlug) {
+    return baseUrl;
+  }
+
+  try {
+    const url = new URL(baseUrl);
+    if (!url.searchParams.get('organization_slug')) {
+      url.searchParams.set('organization_slug', organizationSlug);
+    }
+    return url.toString();
+  } catch (error) {
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${separator}organization_slug=${encodeURIComponent(organizationSlug)}`;
+  }
+}
+
 export function sendJsonBeacon(path: string, payload: Record<string, unknown> = {}) {
   if (!path) {
     return Promise.resolve();
   }
 
-  const url = resolveApiUrl(path);
+  const url = resolveBeaconUrl(path);
   const body = JSON.stringify(payload);
+  const organizationSlug = getOrganizationSlugFromLocation();
+  const deviceId = getOrCreateDeviceId();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+  if (organizationSlug) {
+    headers['X-Organization-Slug'] = organizationSlug;
+  }
+  if (deviceId) {
+    headers['X-Device-ID'] = deviceId;
+  }
 
   if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
     try {
@@ -177,13 +207,13 @@ export function sendJsonBeacon(path: string, payload: Record<string, unknown> = 
   if (typeof fetch === 'function') {
     return fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body,
       keepalive: true,
     }).then(() => {});
   }
 
-  return apiClient.post(path, payload).then(() => {});
+  return apiClient.post(path, payload, { headers }).then(() => {});
 }
 
 
