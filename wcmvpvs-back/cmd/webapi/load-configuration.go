@@ -55,7 +55,7 @@ type WebAPIConfiguration struct {
 		ProviderBaseURL  string `conf:"default:https://api.openai.com/v1"`
 		APIKey           string
 		Model            string        `conf:"default:gpt-4o-mini"`
-		RequestTimeout   time.Duration `conf:"default:4s"`
+		RequestTimeout   time.Duration `conf:"default:30s"`
 		CacheTTL         time.Duration `conf:"default:90s"`
 		MaxPopupsSession int           `conf:"default:3"`
 		PopupCooldown    time.Duration `conf:"default:8m"`

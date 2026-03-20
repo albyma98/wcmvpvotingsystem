@@ -46,7 +46,14 @@ func (rt *_router) generateAdminEventAIReport(w http.ResponseWriter, r *http.Req
 
 	reqPayload := aiEventReportRequest{EventID: eventID, Metrics: metrics}
 	promptJSON, _ := json.Marshal(reqPayload)
-	aiResp := rt.aiService.GenerateEventReport(context.Background(), reqPayload)
+	requestTimeout := 30 * time.Second
+	if rt.aiService != nil && rt.aiService.cfg.RequestTimeout > 0 {
+		requestTimeout = rt.aiService.cfg.RequestTimeout
+	}
+	reportCtx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+
+	aiResp := rt.aiService.GenerateEventReport(reportCtx, reqPayload)
 	responseJSON, _ := json.Marshal(aiResp)
 
 	report, err := rt.db.UpsertEventAIReport(database.EventAIReport{
