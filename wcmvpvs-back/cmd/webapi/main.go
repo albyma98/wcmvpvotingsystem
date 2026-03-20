@@ -208,13 +208,25 @@ func run() error {
 	// Apply CORS policy
 	handler = applyCORSHandler(handler)
 
+	serverReadTimeout := cfg.Web.ReadTimeout
+	serverWriteTimeout := cfg.Web.WriteTimeout
+	if cfg.AI.RequestTimeout > 0 {
+		minimumAITimeout := cfg.AI.RequestTimeout + 5*time.Second
+		if serverReadTimeout < minimumAITimeout {
+			serverReadTimeout = minimumAITimeout
+		}
+		if serverWriteTimeout < minimumAITimeout {
+			serverWriteTimeout = minimumAITimeout
+		}
+	}
+
 	// Create the API server
 	apiserver := http.Server{
 		Addr:              cfg.Web.APIHost,
 		Handler:           handler,
-		ReadTimeout:       cfg.Web.ReadTimeout,
-		ReadHeaderTimeout: cfg.Web.ReadTimeout,
-		WriteTimeout:      cfg.Web.WriteTimeout,
+		ReadTimeout:       serverReadTimeout,
+		ReadHeaderTimeout: serverReadTimeout,
+		WriteTimeout:      serverWriteTimeout,
 	}
 
 	// Start the service listening for requests in a separate goroutine

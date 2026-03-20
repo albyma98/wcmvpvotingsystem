@@ -148,7 +148,7 @@ type aiEventReportResponse struct {
 
 func newAIService(cfg aiServiceConfig) *aiService {
 	if cfg.RequestTimeout <= 0 {
-		cfg.RequestTimeout = 4 * time.Second
+		cfg.RequestTimeout = 30 * time.Second
 	}
 	if cfg.CacheTTL <= 0 {
 		cfg.CacheTTL = 90 * time.Second
