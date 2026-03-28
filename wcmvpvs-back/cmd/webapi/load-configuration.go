@@ -38,10 +38,11 @@ type WebAPIConfiguration struct {
 	}
 
 	Twilio struct {
-		AccountSID          string
-		AuthToken           string
-		VerifyServiceSID    string
-		MessagingServiceSID string
+		AccountSID                  string
+		AuthToken                   string
+		VerifyServiceSID            string
+		MessagingServiceSID         string
+		WhatsAppMessagingServiceSID string
 	}
 
 	Stripe struct {

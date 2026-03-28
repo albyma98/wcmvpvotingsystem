@@ -60,10 +60,11 @@ type Config struct {
 	// TicketValidationBaseURL is the public base URL used to generate ticket validation links
 	TicketValidationBaseURL string
 
-	TwilioAccountSID          string
-	TwilioAuthToken           string
-	TwilioVerifySID           string
-	TwilioMessagingServiceSID string
+	TwilioAccountSID                  string
+	TwilioAuthToken                   string
+	TwilioVerifySID                   string
+	TwilioMessagingServiceSID         string
+	TwilioWhatsAppMessagingServiceSID string
 
 	StripeSecretKey     string
 	StripeWebhookSecret string
@@ -122,9 +123,10 @@ func New(cfg Config) (Router, error) {
 			ServiceSID: cfg.TwilioVerifySID,
 		}),
 		twilioMessaging: newTwilioMessagingClient(twilioMessagingConfig{
-			AccountSID:          cfg.TwilioAccountSID,
-			AuthToken:           cfg.TwilioAuthToken,
-			MessagingServiceSID: cfg.TwilioMessagingServiceSID,
+			AccountSID:                  cfg.TwilioAccountSID,
+			AuthToken:                   cfg.TwilioAuthToken,
+			MessagingServiceSID:         cfg.TwilioMessagingServiceSID,
+			WhatsAppMessagingServiceSID: cfg.TwilioWhatsAppMessagingServiceSID,
 		}),
 		stripeSecretKey:     cfg.StripeSecretKey,
 		stripeWebhookSecret: cfg.StripeWebhookSecret,
