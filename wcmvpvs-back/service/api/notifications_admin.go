@@ -20,11 +20,11 @@ func (rt *_router) sendTestWinnerSMS(w http.ResponseWriter, r *http.Request, ctx
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Numero non valido")
 		return
 	}
-	if _, err := rt.twilioMessaging.SendSMS(phone, winnerExtractedSMSMessage); err != nil {
-		ctx.Logger.WithError(err).WithField("phone", maskPhone(phone)).Warn("test sms failed")
-		_ = writeJSONMessage(w, twilioHTTPStatus(err), "Invio SMS fallito")
+	if _, err := rt.twilioMessaging.SendWhatsApp(phone, winnerExtractedSMSMessage); err != nil {
+		ctx.Logger.WithError(err).WithField("phone", maskPhone(phone)).Warn("test whatsapp failed")
+		_ = writeJSONMessage(w, twilioHTTPStatus(err), "Invio WhatsApp fallito")
 		return
 	}
-	ctx.Logger.WithField("phone", maskPhone(phone)).Info("test sms sent")
-	_ = writeJSON(w, http.StatusOK, map[string]string{"message": "SMS inviato"})
+	ctx.Logger.WithField("phone", maskPhone(phone)).Info("test whatsapp sent")
+	_ = writeJSON(w, http.StatusOK, map[string]string{"message": "WhatsApp inviato"})
 }

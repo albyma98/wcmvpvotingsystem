@@ -591,14 +591,14 @@ func (rt *_router) assignPrizeWinner(w http.ResponseWriter, r *http.Request, ctx
 	}
 
 	if prize.Winner != nil && strings.TrimSpace(prize.Winner.Phone) != "" && strings.TrimSpace(prize.Winner.NotifiedAt) == "" {
-		if !rt.twilioMessaging.enabled() {
-			ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}).Info("winner sms skipped: twilio messaging is not configured")
+		if !rt.twilioMessaging.enabledWhatsApp() {
+			ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}).Info("winner whatsapp skipped: twilio whatsapp messaging is not configured")
 		} else {
 			message := buildPrizeWinnerSMSMessage(eventID, prize)
-			res, sendErr := rt.twilioMessaging.SendSMS(prize.Winner.Phone, message)
+			res, sendErr := rt.twilioMessaging.SendWhatsApp(prize.Winner.Phone, message)
 			if sendErr != nil {
 				_ = rt.db.MarkPrizeWinnerNotifyFailed(eventID, prizeID)
-				ctx.Logger.WithError(sendErr).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}).Warn("winner sms send failed")
+				ctx.Logger.WithError(sendErr).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}).Warn("winner whatsapp send failed")
 			} else {
 				if err := rt.db.MarkPrizeWinnerNotified(eventID, prizeID, res.SID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 					ctx.Logger.WithError(err).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID}).Warn("cannot mark winner as notified")
