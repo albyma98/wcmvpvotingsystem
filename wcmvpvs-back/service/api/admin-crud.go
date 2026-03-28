@@ -591,14 +591,18 @@ func (rt *_router) assignPrizeWinner(w http.ResponseWriter, r *http.Request, ctx
 	}
 
 	if prize.Winner != nil && strings.TrimSpace(prize.Winner.Phone) != "" && strings.TrimSpace(prize.Winner.NotifiedAt) == "" {
-		message := buildPrizeWinnerSMSMessage(eventID, prize)
-		res, sendErr := rt.twilioMessaging.SendSMS(prize.Winner.Phone, message)
-		if sendErr != nil {
-			_ = rt.db.MarkPrizeWinnerNotifyFailed(eventID, prizeID)
-			ctx.Logger.WithError(sendErr).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}).Warn("winner sms send failed")
+		if !rt.twilioMessaging.enabled() {
+			ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}).Info("winner sms skipped: twilio messaging is not configured")
 		} else {
-			if err := rt.db.MarkPrizeWinnerNotified(eventID, prizeID, res.SID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-				ctx.Logger.WithError(err).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID}).Warn("cannot mark winner as notified")
+			message := buildPrizeWinnerSMSMessage(eventID, prize)
+			res, sendErr := rt.twilioMessaging.SendSMS(prize.Winner.Phone, message)
+			if sendErr != nil {
+				_ = rt.db.MarkPrizeWinnerNotifyFailed(eventID, prizeID)
+				ctx.Logger.WithError(sendErr).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}).Warn("winner sms send failed")
+			} else {
+				if err := rt.db.MarkPrizeWinnerNotified(eventID, prizeID, res.SID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+					ctx.Logger.WithError(err).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID}).Warn("cannot mark winner as notified")
+				}
 			}
 		}
 	}
