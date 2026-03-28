@@ -69,7 +69,7 @@ func (rt *_router) recordTrackingEvents(w http.ResponseWriter, r *http.Request, 
 
 	resolvedFanID := 0
 	if fanSessionToken != "" {
-		if summary, fanErr := rt.db.GetFanBySessionToken(fanSessionToken); fanErr == nil {
+		if summary, fanErr := rt.db.GetFanBySessionToken(fanSessionToken, deviceID); fanErr == nil {
 			resolvedFanID = summary.Profile.ID
 		}
 	}

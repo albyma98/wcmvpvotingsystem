@@ -82,7 +82,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 	)
 
 	if token := rt.fanSessionTokenFromRequest(r); token != "" {
-		if me, fanErr := rt.db.GetFanBySessionToken(token); fanErr == nil {
+		if me, fanErr := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r)); fanErr == nil {
 			fanID = &me.Profile.ID
 		} else if !errors.Is(fanErr, sql.ErrNoRows) {
 			ctx.Logger.WithError(fanErr).Warn("cannot resolve fan session while casting vote")

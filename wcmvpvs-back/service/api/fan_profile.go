@@ -2,8 +2,8 @@ package api
 
 import (
 	"database/sql"
-	"errors"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -82,7 +82,7 @@ func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqconte
 	eventID := parseIDFromQuery(r, "event_id")
 
 	if sessionToken != "" {
-		summary, err := rt.db.GetFanBySessionToken(sessionToken)
+		summary, err := rt.db.GetFanBySessionToken(sessionToken, deviceID)
 		if err == nil {
 			resp["registered"] = true
 			resp["user"] = summary.Profile
@@ -133,7 +133,9 @@ func (rt *_router) postGuestCoins(w http.ResponseWriter, r *http.Request, ctx re
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Dispositivo non valido")
 		return
 	}
-	var payload struct{ Coins int `json:"coins"` }
+	var payload struct {
+		Coins int `json:"coins"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta non valida")
 		return
@@ -141,7 +143,7 @@ func (rt *_router) postGuestCoins(w http.ResponseWriter, r *http.Request, ctx re
 
 	token := rt.fanSessionTokenFromRequest(r)
 	if token != "" {
-		me, err := rt.db.GetFanBySessionToken(token)
+		me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 		if err == nil {
 			if me.Profile.OrganizationID != 0 && me.Profile.OrganizationID != ctx.OrganizationID {
 				_ = writeJSONMessage(w, http.StatusForbidden, "Profilo non valido per questa organizzazione")
@@ -201,7 +203,7 @@ func (rt *_router) getCoinsLeaderboard(w http.ResponseWriter, r *http.Request, c
 	}
 	resp := map[string]interface{}{"top3": top}
 	if token := rt.fanSessionTokenFromRequest(r); token != "" {
-		if me, e := rt.db.GetFanBySessionToken(token); e == nil {
+		if me, e := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r)); e == nil {
 			if rank, rankErr := rt.db.GetFanRank(eventID, ctx.OrganizationID, me.Profile.ID); rankErr == nil {
 				resp["userRank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins}
 			}
@@ -221,7 +223,7 @@ func (rt *_router) postFanRewardRedeem(w http.ResponseWriter, r *http.Request, c
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Profilo tifoso richiesto")
 		return
 	}
-	me, err := rt.db.GetFanBySessionToken(token)
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	if err != nil {
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Profilo tifoso richiesto")
 		return
@@ -242,7 +244,7 @@ func (rt *_router) postFanRewardRedeem(w http.ResponseWriter, r *http.Request, c
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore riscatto")
 		return
 	}
-	updated, _ := rt.db.GetFanBySessionToken(token)
+	updated, _ := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": updated.Wallet})
 }
 

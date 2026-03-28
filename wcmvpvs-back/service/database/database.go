@@ -1127,7 +1127,7 @@ type AppDatabase interface {
 	CreateFanWithPhoneE164(phone string) (FanProfile, error)
 	MarkFanPhoneVerified(phone string, verifiedAt time.Time) error
 	UpsertFanSession(token string, fanID int, deviceID string) error
-	GetFanBySessionToken(token string) (FanProfileSummary, error)
+	GetFanBySessionToken(token string, deviceID string) (FanProfileSummary, error)
 	GetFanByDevice(eventID int, organizationID int, deviceID string) (FanProfileSummary, error)
 	SetFanWalletCoins(fanID int, coins int) error
 	AddFanWalletCoins(fanID int, delta int) error
@@ -7502,12 +7502,16 @@ func (db *appdbimpl) UpsertFanSession(token string, fanID int, deviceID string) 
 	return err
 }
 
-func (db *appdbimpl) GetFanBySessionToken(token string) (FanProfileSummary, error) {
+func (db *appdbimpl) GetFanBySessionToken(token string, deviceID string) (FanProfileSummary, error) {
 	token = strings.TrimSpace(token)
+	deviceID = strings.TrimSpace(deviceID)
 	if token == "" {
 		return FanProfileSummary{}, sql.ErrNoRows
 	}
-	if _, err := db.c.Exec(`UPDATE fan_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token = ?`, token); err != nil {
+	if _, err := db.c.Exec(`UPDATE fan_sessions
+		SET device_id = CASE WHEN ? <> '' THEN ? ELSE device_id END,
+			last_seen_at = CURRENT_TIMESTAMP
+		WHERE token = ?`, deviceID, deviceID, token); err != nil {
 		return FanProfileSummary{}, err
 	}
 	return db.getFanSummaryByWhere(`JOIN fan_sessions s ON s.fan_id = p.id WHERE s.token = ?`, token)

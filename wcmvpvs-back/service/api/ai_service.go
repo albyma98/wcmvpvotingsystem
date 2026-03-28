@@ -669,7 +669,7 @@ func getAIIdentity(r *http.Request, ctxOrgID int, db database.AppDatabase) (int,
 	sessionToken := strings.TrimSpace(r.Header.Get("Authorization"))
 	sessionToken = strings.TrimPrefix(sessionToken, "Bearer ")
 	if sessionToken != "" && db != nil {
-		if fan, err := db.GetFanBySessionToken(sessionToken); err == nil {
+		if fan, err := db.GetFanBySessionToken(sessionToken, ""); err == nil {
 			return fan.Profile.ID, sessionToken
 		}
 	}
