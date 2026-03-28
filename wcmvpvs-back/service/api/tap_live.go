@@ -374,7 +374,7 @@ func (rt *_router) getTapLiveStream(w http.ResponseWriter, r *http.Request, ctx 
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan richiesta")
 		return
 	}
-	me, err := rt.db.GetFanBySessionToken(token)
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	if err != nil {
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan non valida")
 		return
@@ -422,7 +422,7 @@ func (rt *_router) postTapLiveQueue(w http.ResponseWriter, r *http.Request, ctx 
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Solo utenti registrati")
 		return
 	}
-	me, err := rt.db.GetFanBySessionToken(token)
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	if err != nil {
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Solo utenti registrati")
 		return
@@ -473,7 +473,7 @@ func (rt *_router) deleteTapLiveQueue(w http.ResponseWriter, r *http.Request, ct
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	me, err := rt.db.GetFanBySessionToken(token)
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	if err == nil {
 		rt.tapLive.cancelWaiting(me.Profile.ID)
 	}
@@ -487,7 +487,7 @@ func (rt *_router) getTapLiveState(w http.ResponseWriter, r *http.Request, ctx r
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan richiesta")
 		return
 	}
-	me, err := rt.db.GetFanBySessionToken(token)
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	if err != nil {
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan non valida")
 		return
@@ -564,7 +564,7 @@ func (rt *_router) postTapLiveSubmit(w http.ResponseWriter, r *http.Request, ctx
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan richiesta")
 		return
 	}
-	me, err := rt.db.GetFanBySessionToken(token)
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	if err != nil {
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan non valida")
 		return
@@ -609,7 +609,7 @@ func (rt *_router) postTapLiveAbort(w http.ResponseWriter, r *http.Request, ctx 
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	me, err := rt.db.GetFanBySessionToken(token)
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	if err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -632,7 +632,7 @@ func (rt *_router) getTapLiveResult(w http.ResponseWriter, r *http.Request, ctx 
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan richiesta")
 		return
 	}
-	me, err := rt.db.GetFanBySessionToken(token)
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	if err != nil {
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan non valida")
 		return
@@ -704,7 +704,7 @@ func (rt *_router) postTapLiveRematch(w http.ResponseWriter, r *http.Request, ct
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan richiesta")
 		return
 	}
-	me, err := rt.db.GetFanBySessionToken(token)
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	if err != nil {
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan non valida")
 		return
@@ -748,7 +748,7 @@ func (rt *_router) postTapLivePostmatchLeave(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	me, err := rt.db.GetFanBySessionToken(token)
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
 	if err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
