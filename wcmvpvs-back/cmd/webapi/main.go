@@ -181,6 +181,7 @@ func run() error {
 		TwilioVerifySID:                   firstNonEmpty(cfg.Twilio.VerifyServiceSID, os.Getenv("VERIFY_SERVICE_SID")),
 		TwilioMessagingServiceSID:         firstNonEmpty(cfg.Twilio.MessagingServiceSID, os.Getenv("MESSAGING_SERVICE_SID")),
 		TwilioWhatsAppMessagingServiceSID: firstNonEmpty(cfg.Twilio.WhatsAppMessagingServiceSID, os.Getenv("WHATSAPP_MESSAGING_SERVICE_ID")),
+		TwilioWinnerContentTemplateSID:    firstNonEmpty(cfg.Twilio.WinnerContentTemplateSID, os.Getenv("CONTENT_TEMPLATE_WINNER_SID")),
 		StripeSecretKey:                   firstNonEmpty(cfg.Stripe.SecretKey, os.Getenv("STRIPE_SECRET_KEY")),
 		StripeWebhookSecret:               firstNonEmpty(cfg.Stripe.WebhookSecret, os.Getenv("STRIPE_WEBHOOK_SECRET")),
 		StripeSuccessURL:                  firstNonEmpty(cfg.Stripe.SuccessRedirect, os.Getenv("STRIPE_SUCCESS_REDIRECT")),

@@ -43,6 +43,7 @@ type WebAPIConfiguration struct {
 		VerifyServiceSID            string
 		MessagingServiceSID         string
 		WhatsAppMessagingServiceSID string
+		WinnerContentTemplateSID    string
 	}
 
 	Stripe struct {
