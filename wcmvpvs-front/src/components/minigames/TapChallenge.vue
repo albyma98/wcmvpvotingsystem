@@ -148,7 +148,6 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
-import { awardTapChallengeCoins } from '../../services/coins';
 import {
   abortTapLiveMatch,
   buildTapLiveSseUrl,
@@ -469,14 +468,7 @@ async function claimReward() {
   }
   isSubmitting.value = true;
   errorMessage.value = '';
-  const requestId = crypto?.randomUUID ? crypto.randomUUID() : `tap_${Date.now()}`;
-  const result = await awardTapChallengeCoins({ amount: earnedCoins.value, requestId, eventContextId: props.eventId, meta: { taps: tapCount.value, durationMs: ROUND_DURATION_MS } });
   isSubmitting.value = false;
-  if (!result.ok) {
-    errorMessage.value = 'Errore accredito, riprova.';
-    claimRequested.value = false;
-    return;
-  }
   emit('claim', { coins: earnedCoins.value, source: 'tap_challenge', meta: { taps: tapCount.value } });
 }
 
