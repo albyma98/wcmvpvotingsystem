@@ -390,9 +390,16 @@
                     </div>
                   </div>
 
-                  <form class="mt-4 space-y-2" @submit.prevent="saveNickname">
-                    <label for="profile-nickname" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-300">Modifica nickname</label>
-                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <form class="mt-4 space-y-2" @submit.prevent="handleNicknameSubmit">
+                    <button
+                      type="button"
+                      class="rounded-xl border border-white/20 bg-slate-900/60 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-slate-100 transition hover:border-amber-300/70 hover:text-amber-200"
+                      @click="toggleNicknameEditor"
+                    >
+                      MODIFICA NICKNAME
+                    </button>
+
+                    <div v-if="isNicknameEditorOpen" class="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <input
                         id="profile-nickname"
                         v-model.trim="nicknameDraft"
@@ -836,6 +843,7 @@ const nicknameDraft = ref('');
 const nicknameErrorMessage = ref('');
 const nicknameSuccessMessage = ref('');
 const isSavingNickname = ref(false);
+const isNicknameEditorOpen = ref(false);
 const fanId = ref(0);
 const isProfileOverlayOpen = ref(false);
 const fanRewardRedemptions = ref([]);
@@ -1559,6 +1567,7 @@ watch(isProfileOverlayOpen, (isOpen) => {
   nicknameDraft.value = fanNickname.value.trim();
   nicknameErrorMessage.value = '';
   nicknameSuccessMessage.value = '';
+  isNicknameEditorOpen.value = false;
 });
 
 watch(fanNickname, (value) => {
@@ -1719,6 +1728,21 @@ function openProfileOverlay() {
 function closeProfileOverlay() {
   trackAppEvent('fan.profile_closed', {}, 'fan');
   isProfileOverlayOpen.value = false;
+}
+
+function toggleNicknameEditor() {
+  isNicknameEditorOpen.value = !isNicknameEditorOpen.value;
+  if (!isNicknameEditorOpen.value) {
+    nicknameErrorMessage.value = '';
+    nicknameSuccessMessage.value = '';
+  }
+}
+
+async function handleNicknameSubmit() {
+  await saveNickname();
+  if (!nicknameErrorMessage.value) {
+    isNicknameEditorOpen.value = false;
+  }
 }
 
 function validateNicknameDraft(rawNickname) {
