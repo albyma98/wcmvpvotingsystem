@@ -1677,7 +1677,7 @@ function markPromptDismissed(trigger) {
 
 function openRegistrationPrompt(trigger) {
   if (isRegisteredFan.value || typeof window === 'undefined') return;
-  if (trigger === 'spend_redeem') {
+  if (trigger === 'spend_redeem' || trigger === 'profile_overlay') {
     registrationTrigger.value = trigger;
     isRegistrationPromptOpen.value = true;
     return;
