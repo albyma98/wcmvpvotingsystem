@@ -94,10 +94,8 @@
                       v-else-if="activeGame?.id === 'memory-flash'"
                       class="h-full w-full"
                       :wallet-coins="walletCoins"
-                      :free-retry="freeRetry"
                       @claim="handleClaim"
                       @spend="handleSpend"
-                      @consume-free-retry="consumeFreeRetry"
                       @exit="goBack"
                     />
                     <div v-else class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
@@ -143,13 +141,9 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
-  freeRetry: {
-    type: Number,
-    default: 0,
-  },
 });
 
-const emit = defineEmits(['update:modelValue', 'earned', 'coins-earned', 'consume-free-retry']);
+const emit = defineEmits(['update:modelValue', 'earned', 'coins-earned']);
 
 const activeView = ref('list');
 const activeGame = ref(null);
@@ -334,10 +328,6 @@ function handleSpend(payload) {
 
   emit('coins-earned', -coins);
   trackAppEvent('coins.spent', { source: activeGame.value?.id || 'game', amount: coins }, 'coins');
-}
-
-function consumeFreeRetry() {
-  emit('consume-free-retry');
 }
 
 function handleOptionClick(option) {

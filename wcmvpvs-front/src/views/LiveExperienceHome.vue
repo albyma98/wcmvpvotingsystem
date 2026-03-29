@@ -322,9 +322,7 @@
       :event-id="eventId"
       :wallet-target-el="walletTargetEl"
       :wallet-coins="totalCoins"
-      :free-retry="freeRetry"
       @coins-earned="addCoinsFromMinigame"
-      @consume-free-retry="consumeFreeRetry"
     />
 
     <CoinCollectAnimation ref="coinAnimationRef" />
@@ -689,7 +687,6 @@ const storageKeys = {
   wallet: 'wallet:coins',
   coinBoostActive: 'coinBoostActive',
   coinBoostEndTime: 'coinBoostEndTime',
-  freeRetry: 'freeRetry',
   nextGameMultiplier: 'nextGameMultiplier',
   mysteryBoxCooldownEndTime: 'mysteryBoxCooldownEndTime',
 };
@@ -697,15 +694,15 @@ const mysteryRewards = [
   { id: 'coins-6', type: 'coins', amount: 6, label: '+6 monete' },
   { id: 'coins-12', type: 'coins', amount: 12, label: '+12 monete' },
   { id: 'coins-20', type: 'coins', amount: 20, label: '+20 monete' },
+  { id: 'coins-10', type: 'coins', amount: 10, label: '+10 monete' },
   { id: 'boost', type: 'boost', label: 'BOOST MONETE 10 MINUTI' },
-  { id: 'free-retry', type: 'freeRetry', label: 'RETRY GRATIS MINIGIOCO' },
 ];
 const wheelSegments = [
   { id: 'coins-3-a', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '🪙+3', weight: 24 },
   { id: 'coins-5', type: 'coins', amount: 5, label: '+5 monete', shortLabel: '🪙+5', weight: 20 },
   { id: 'coins-8', type: 'coins', amount: 8, label: '+8 monete', shortLabel: '🪙+8', weight: 16 },
   { id: 'coins-12', type: 'coins', amount: 12, label: '+12 monete', shortLabel: '🪙+12', weight: 11 },
-  { id: 'free-retry-wheel', type: 'freeRetry', label: 'Retry minigioco', shortLabel: '🔄 Retry', weight: 8 },
+  { id: 'coins-15', type: 'coins', amount: 15, label: '+15 monete', shortLabel: '🪙+15', weight: 8 },
   { id: 'x2-next-win', type: 'nextMultiplier', amount: 2, label: 'x2 prossima vincita minigioco', shortLabel: '⚡×2', weight: 10 },
   { id: 'coins-3-b', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '🪙+3', weight: 24 },
   { id: 'jackpot-25', type: 'jackpot', amount: 25, label: 'JACKPOT +25 monete', shortLabel: '💎JACK', weight: 3 },
@@ -896,7 +893,6 @@ const mysteryBoxCooldownEndTime = ref(0);
 const coinBoostActive = ref(false);
 const coinBoostEndTime = ref(0);
 const boostTick = ref(Date.now());
-const freeRetry = ref(0);
 const nextGameMultiplier = ref(1);
 const isWheelSpinning = ref(false);
 const wheelRotationDeg = ref(0);
@@ -957,7 +953,6 @@ const wheelResultRevealLabel = computed(() => {
   if (!wheelResult.value) return '';
   if (wheelResult.value.type === 'jackpot') return 'JACKPOT';
   if (wheelResult.value.type === 'coins') return `+${wheelResult.value.amount || 0} MONETE`;
-  if (wheelResult.value.type === 'freeRetry') return 'RETRY MINIGIOCO';
   if (wheelResult.value.type === 'nextMultiplier') return 'X2 PROSSIMA VINCITA';
   return wheelResult.value.label.toUpperCase();
 });
@@ -1049,7 +1044,6 @@ function persistPowerUps() {
   }
   window.localStorage.setItem(storageKeys.coinBoostActive, coinBoostActive.value ? '1' : '0');
   window.localStorage.setItem(storageKeys.coinBoostEndTime, String(coinBoostEndTime.value || 0));
-  window.localStorage.setItem(storageKeys.freeRetry, String(Math.max(0, freeRetry.value)));
   window.localStorage.setItem(storageKeys.nextGameMultiplier, String(Math.max(1, nextGameMultiplier.value)));
   window.localStorage.setItem(storageKeys.mysteryBoxCooldownEndTime, String(mysteryBoxCooldownEndTime.value || 0));
 }
@@ -1061,7 +1055,6 @@ function hydratePowerUps() {
 
   const storedBoostActive = window.localStorage.getItem(storageKeys.coinBoostActive) === '1';
   const storedBoostEndTime = Number.parseInt(window.localStorage.getItem(storageKeys.coinBoostEndTime) || '0', 10);
-  const storedFreeRetry = Number.parseInt(window.localStorage.getItem(storageKeys.freeRetry) || '0', 10);
   const storedMultiplier = Number.parseInt(window.localStorage.getItem(storageKeys.nextGameMultiplier) || '1', 10);
   const storedMysteryBoxCooldownEndTime = Number.parseInt(window.localStorage.getItem(storageKeys.mysteryBoxCooldownEndTime) || '0', 10);
 
@@ -1071,7 +1064,6 @@ function hydratePowerUps() {
     coinBoostEndTime.value = 0;
   }
 
-  freeRetry.value = Math.max(0, Number.isFinite(storedFreeRetry) ? storedFreeRetry : 0);
   nextGameMultiplier.value = Math.max(1, Number.isFinite(storedMultiplier) ? storedMultiplier : 1);
   mysteryBoxCooldownEndTime.value = Number.isFinite(storedMysteryBoxCooldownEndTime)
     ? Math.max(Date.now(), storedMysteryBoxCooldownEndTime)
@@ -1709,19 +1701,6 @@ function activateCoinBoost() {
   persistPowerUps();
 }
 
-function grantFreeRetry() {
-  freeRetry.value = 1;
-  persistPowerUps();
-}
-
-function consumeFreeRetry() {
-  if (freeRetry.value <= 0) {
-    return;
-  }
-  freeRetry.value = 0;
-  persistPowerUps();
-}
-
 async function executeMysteryReward(reward) {
   if (!reward) {
     return;
@@ -1735,10 +1714,6 @@ async function executeMysteryReward(reward) {
   if (reward.type === 'boost') {
     activateCoinBoost();
     return;
-  }
-
-  if (reward.type === 'freeRetry') {
-    grantFreeRetry();
   }
 }
 
@@ -1855,12 +1830,6 @@ async function executeWheelReward(segment) {
     persistPowerUps();
     return;
   }
-
-  if (segment.type === 'freeRetry') {
-    grantFreeRetry();
-    return;
-  }
-
 }
 
 async function spinFortuneWheel() {
