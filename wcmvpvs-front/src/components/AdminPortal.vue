@@ -2664,14 +2664,18 @@ const isAuthenticated = computed(() => Boolean(token.value));
 const isSuperAdmin = computed(() => activeRole.value === "superadmin");
 const isStaff = computed(() => activeRole.value === "staff");
 const isBarAdmin = computed(() => activeRole.value === "bar");
+const isBarFeatureEnabled = ref(true);
 const availableTabs = computed(() => {
+  const filteredTabs = isBarFeatureEnabled.value
+    ? tabs
+    : tabs.filter((tab) => tab.id !== "bar");
   if (isSuperAdmin.value) {
-    return tabs;
+    return filteredTabs;
   }
   if (isBarAdmin.value) {
-    return tabs.filter((tab) => BAR_TAB_IDS.has(tab.id));
+    return filteredTabs.filter((tab) => BAR_TAB_IDS.has(tab.id));
   }
-  return tabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
+  return filteredTabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
 });
 
 const navigationGroups = computed(() => {
@@ -4036,6 +4040,7 @@ function logout() {
   token.value = "";
   activeUsername.value = "";
   activeRole.value = "";
+  isBarFeatureEnabled.value = true;
   localStorage.removeItem("adminToken");
   localStorage.removeItem("adminUsername");
   localStorage.removeItem("adminRole");
@@ -4075,6 +4080,7 @@ async function loadPlayers() {
     apiClient.get("/players", authHeaders.value),
   );
 
+  isBarFeatureEnabled.value = data?.bar_enabled !== false;
   const schemaCandidate = Number(data?.roster_schema);
   if (Number.isFinite(schemaCandidate)) {
     rosterSchema.value = validateRosterSchema(schemaCandidate);

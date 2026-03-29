@@ -125,6 +125,7 @@
     </main>
 
     <button
+      v-if="isBarFeatureEnabled"
       type="button"
       class="fixed bottom-5 right-4 z-[140] inline-flex items-center gap-2 rounded-full border border-amber-200/60 bg-amber-400 px-4 py-3 text-sm font-black uppercase tracking-wide text-slate-950 shadow-[0_12px_30px_rgba(251,191,36,0.45)]"
       @click="openBarOrdering"
@@ -134,7 +135,7 @@
 
     <Teleport to="body">
       <Transition name="earn-modal-fade">
-        <div v-if="isBarModalOpen" class="fixed inset-0 z-[220] bg-slate-100 text-slate-900">
+        <div v-if="isBarFeatureEnabled && isBarModalOpen" class="fixed inset-0 z-[220] bg-slate-100 text-slate-900">
           <div class="mx-auto flex h-full w-full max-w-3xl flex-col">
             <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
               <div class="flex items-center justify-between gap-3">
@@ -918,6 +919,10 @@ let hasPendingLeaderboardRefresh = false;
 const hasSponsors = computed(() => sponsors.value.length > 0);
 const showSponsorsBox = computed(() => hasSponsors.value);
 const showFeedbackCta = computed(() => hasFeedbackSurvey.value);
+const isBarFeatureEnabled = computed(() =>
+  props.activeEvent?.organization_bar_enabled !== false &&
+  props.activeEvent?.organizationBarEnabled !== false,
+);
 const hasFeedbackSurvey = computed(() => {
   const survey = props.activeEvent?.feedback_survey ?? props.activeEvent?.feedbackSurvey;
   return Array.isArray(survey?.questions) && survey.questions.length > 0;
@@ -1087,8 +1092,10 @@ function tickBoostState() {
 }
 
 onMounted(async () => {
-  await preloadBarCatalog();
-  await confirmBarOrderFromQuery();
+  if (isBarFeatureEnabled.value) {
+    await preloadBarCatalog();
+    await confirmBarOrderFromQuery();
+  }
   if (typeof window === 'undefined') {
     return;
   }
@@ -1488,6 +1495,16 @@ watch(() => props.registrationPromptSignal, (value, previous) => {
       handleAfterVoteLotteryFlow();
     });
   }
+});
+
+watch(isBarFeatureEnabled, (enabled) => {
+  if (enabled) {
+    return;
+  }
+  isBarModalOpen.value = false;
+  barStep.value = 'start';
+  barStepHistory.value = [];
+  barCart.value = {};
 });
 
 watch([currentStory, isStoryModalOpen], ([story, isOpen]) => {
@@ -2122,6 +2139,9 @@ function goBackBarStep() {
 }
 
 function openBarOrdering() {
+  if (!isBarFeatureEnabled.value) {
+    return;
+  }
   registerUserActivity();
   trackAppEvent('bar.menu_opened', { cart_items_count: barCartCount.value, cart_total_cents: barTotalCents.value }, 'bar');
   barOrderConfirmed.value = false;
@@ -2248,6 +2268,9 @@ async function preloadBarSuggestions(products, options = {}) {
 }
 
 async function preloadBarCatalog(options = {}) {
+  if (!isBarFeatureEnabled.value) {
+    return;
+  }
   if (barCatalogPreloadPromise && !options.force) {
     return barCatalogPreloadPromise;
   }
@@ -2313,6 +2336,10 @@ async function loadBarSuggestionsForProduct(productID) {
 }
 
 async function loadBarCategories() {
+  if (!isBarFeatureEnabled.value) {
+    barCategoriesData.value = [];
+    return;
+  }
   try {
     const { data } = await apiClient.get('/bar/categories');
     barCategoriesData.value = Array.isArray(data) ? data : [];
@@ -2322,6 +2349,10 @@ async function loadBarCategories() {
 }
 
 async function loadBarProducts() {
+  if (!isBarFeatureEnabled.value) {
+    barProducts.value = [];
+    return;
+  }
   try {
     const { data } = await apiClient.get('/bar/products');
     barProducts.value = Array.isArray(data) ? data : [];

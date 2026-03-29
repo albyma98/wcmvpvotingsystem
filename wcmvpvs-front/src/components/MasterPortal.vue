@@ -458,6 +458,10 @@
                 <input type="checkbox" v-model="organizationForm.is_active" />
                 <span>Società attiva</span>
               </label>
+              <label class="switch-field">
+                <input type="checkbox" v-model="organizationForm.bar_enabled" />
+                <span>Feature BAR attiva</span>
+              </label>
               <label>
                 Costo SMS (€)
                 <input v-model.number="organizationForm.sms_cost" type="number" min="0" step="0.01" />
@@ -484,6 +488,7 @@
                   <th>Slug / URL</th>
                   <th>Città</th>
                   <th>Stato</th>
+                  <th>BAR</th>
                   <th>Costo SMS</th>
                   <th>SMS gratuiti</th>
                   <th>Creata il</th>
@@ -530,6 +535,11 @@
                       {{ org.is_active ? 'Attiva' : 'Disattiva' }}
                     </span>
                   </td>
+                  <td>
+                    <span :class="['status-pill', org.bar_enabled ? 'active' : 'inactive']">
+                      {{ org.bar_enabled ? 'Attivo' : 'Disattivo' }}
+                    </span>
+                  </td>
                   <td>€ {{ Number(org.sms_cost || 0).toFixed(2) }}</td>
                   <td>{{ org.free_sms || 0 }}</td>
                   <td>{{ formatDate(org.created_at) }}</td>
@@ -543,10 +553,10 @@
                   </td>
                 </tr>
                 <tr v-if="!organizations.length && !isLoadingOrganizations">
-                  <td colspan="8" class="empty">Nessuna società registrata.</td>
+                  <td colspan="9" class="empty">Nessuna società registrata.</td>
                 </tr>
                 <tr v-if="isLoadingOrganizations">
-                  <td colspan="8" class="empty">Caricamento in corso…</td>
+                  <td colspan="9" class="empty">Caricamento in corso…</td>
                 </tr>
               </tbody>
             </table>
@@ -695,6 +705,14 @@
                     </dd>
                   </div>
                   <div>
+                    <dt>Feature BAR</dt>
+                    <dd>
+                      <span :class="['status-pill', organizationDetail.organization.bar_enabled ? 'active' : 'inactive']">
+                        {{ organizationDetail.organization.bar_enabled ? 'Attiva' : 'Disattiva' }}
+                      </span>
+                    </dd>
+                  </div>
+                  <div>
                     <dt>Creato il</dt>
                     <dd>{{ formatDate(organizationDetail.organization.created_at) }}</dd>
                   </div>
@@ -789,7 +807,7 @@ const selectedOrganizationId = ref(0);
 const organizationDetail = ref(null);
 const isLoadingDetail = ref(false);
 
-const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', logo_url: '', is_active: true, sms_cost: 0.08, free_sms: 0 });
+const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', logo_url: '', is_active: true, sms_cost: 0.08, free_sms: 0, bar_enabled: true });
 const organizationFormVisible = ref(false);
 const organizationFormMode = ref('create');
 const isSavingOrganization = ref(false);
@@ -817,6 +835,7 @@ function resetOrganizationForm() {
   organizationForm.is_active = true;
   organizationForm.sms_cost = 0.08;
   organizationForm.free_sms = 0;
+  organizationForm.bar_enabled = true;
   organizationFormError.value = '';
 }
 
@@ -845,6 +864,7 @@ function openEditOrganization(org) {
   organizationForm.is_active = Boolean(org.is_active);
   organizationForm.sms_cost = Number(org.sms_cost ?? 0.08);
   organizationForm.free_sms = Number(org.free_sms ?? 0);
+  organizationForm.bar_enabled = org.bar_enabled !== false;
   organizationFormVisible.value = true;
 }
 
@@ -1271,6 +1291,7 @@ async function submitOrganizationForm() {
       is_active: organizationForm.is_active,
       sms_cost: Number(organizationForm.sms_cost || 0),
       free_sms: Math.max(0, Number(organizationForm.free_sms || 0)),
+      bar_enabled: organizationForm.bar_enabled !== false,
     };
     if (organizationFormMode.value === 'create') {
       await apiClient.post('/admin/master/organizations', payload, authHeaders.value);

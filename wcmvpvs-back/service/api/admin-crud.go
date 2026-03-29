@@ -109,7 +109,11 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 	rosterSchema := resolveRosterSchemaValue(13)
+	barEnabled := true
 	if ctx.OrganizationID > 0 {
+		if org, orgErr := rt.db.GetOrganization(ctx.OrganizationID); orgErr == nil {
+			barEnabled = org.BarEnabled
+		}
 		if schema, schemaErr := rt.db.GetOrganizationRosterSchema(ctx.OrganizationID); schemaErr == nil {
 			rosterSchema = resolveRosterSchemaValue(schema)
 		}
@@ -118,7 +122,8 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqco
 	response := struct {
 		Players      []database.Player `json:"players"`
 		RosterSchema int               `json:"roster_schema"`
-	}{Players: players, RosterSchema: rosterSchema}
+		BarEnabled   bool              `json:"bar_enabled"`
+	}{Players: players, RosterSchema: rosterSchema, BarEnabled: barEnabled}
 
 	_ = json.NewEncoder(w).Encode(response)
 	ctx.Logger.WithFields(map[string]interface{}{"players": len(players), "roster_schema": rosterSchema}).Info("listed players")
@@ -144,6 +149,10 @@ func (rt *_router) listPublicPlayers(w http.ResponseWriter, r *http.Request, ctx
 	}
 
 	rosterSchema := resolveRosterSchemaValue(13)
+	barEnabled := true
+	if org, orgErr := rt.db.GetOrganization(ctx.OrganizationID); orgErr == nil {
+		barEnabled = org.BarEnabled
+	}
 	if schema, schemaErr := rt.db.GetOrganizationRosterSchema(ctx.OrganizationID); schemaErr == nil {
 		rosterSchema = resolveRosterSchemaValue(schema)
 	}
@@ -151,7 +160,8 @@ func (rt *_router) listPublicPlayers(w http.ResponseWriter, r *http.Request, ctx
 	response := struct {
 		Players      []database.Player `json:"players"`
 		RosterSchema int               `json:"roster_schema"`
-	}{Players: filtered, RosterSchema: rosterSchema}
+		BarEnabled   bool              `json:"bar_enabled"`
+	}{Players: filtered, RosterSchema: rosterSchema, BarEnabled: barEnabled}
 
 	_ = json.NewEncoder(w).Encode(response)
 	ctx.Logger.WithFields(map[string]interface{}{"players": len(filtered), "roster_schema": rosterSchema}).Info("listed public players")

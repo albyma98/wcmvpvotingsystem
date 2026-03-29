@@ -72,13 +72,14 @@ func (rt *_router) createMasterOrganization(w http.ResponseWriter, r *http.Reque
 	}
 
 	var payload struct {
-		Name     string  `json:"name"`
-		Slug     string  `json:"slug"`
-		City     string  `json:"city"`
-		LogoURL  string  `json:"logo_url"`
-		IsActive bool    `json:"is_active"`
-		SMSCost  float64 `json:"sms_cost"`
-		FreeSMS  int     `json:"free_sms"`
+		Name       string  `json:"name"`
+		Slug       string  `json:"slug"`
+		City       string  `json:"city"`
+		LogoURL    string  `json:"logo_url"`
+		IsActive   bool    `json:"is_active"`
+		SMSCost    float64 `json:"sms_cost"`
+		FreeSMS    int     `json:"free_sms"`
+		BarEnabled bool    `json:"bar_enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while creating organization")
@@ -87,13 +88,14 @@ func (rt *_router) createMasterOrganization(w http.ResponseWriter, r *http.Reque
 	}
 
 	org, err := rt.db.CreateOrganization(database.Organization{
-		Name:     payload.Name,
-		Slug:     payload.Slug,
-		City:     payload.City,
-		LogoURL:  payload.LogoURL,
-		IsActive: payload.IsActive,
-		SMSCost:  payload.SMSCost,
-		FreeSMS:  payload.FreeSMS,
+		Name:       payload.Name,
+		Slug:       payload.Slug,
+		City:       payload.City,
+		LogoURL:    payload.LogoURL,
+		IsActive:   payload.IsActive,
+		SMSCost:    payload.SMSCost,
+		FreeSMS:    payload.FreeSMS,
+		BarEnabled: payload.BarEnabled,
 	})
 	if err != nil {
 		if errors.Is(err, database.ErrInvalidOrganizationData) {
@@ -121,13 +123,14 @@ func (rt *_router) updateMasterOrganization(w http.ResponseWriter, r *http.Reque
 	}
 
 	var payload struct {
-		Name     string  `json:"name"`
-		Slug     string  `json:"slug"`
-		City     string  `json:"city"`
-		LogoURL  string  `json:"logo_url"`
-		IsActive bool    `json:"is_active"`
-		SMSCost  float64 `json:"sms_cost"`
-		FreeSMS  int     `json:"free_sms"`
+		Name       string  `json:"name"`
+		Slug       string  `json:"slug"`
+		City       string  `json:"city"`
+		LogoURL    string  `json:"logo_url"`
+		IsActive   bool    `json:"is_active"`
+		SMSCost    float64 `json:"sms_cost"`
+		FreeSMS    int     `json:"free_sms"`
+		BarEnabled bool    `json:"bar_enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while updating organization")
@@ -136,14 +139,15 @@ func (rt *_router) updateMasterOrganization(w http.ResponseWriter, r *http.Reque
 	}
 
 	org, err := rt.db.UpdateOrganization(database.Organization{
-		ID:       orgID,
-		Name:     payload.Name,
-		Slug:     payload.Slug,
-		City:     payload.City,
-		LogoURL:  payload.LogoURL,
-		IsActive: payload.IsActive,
-		SMSCost:  payload.SMSCost,
-		FreeSMS:  payload.FreeSMS,
+		ID:         orgID,
+		Name:       payload.Name,
+		Slug:       payload.Slug,
+		City:       payload.City,
+		LogoURL:    payload.LogoURL,
+		IsActive:   payload.IsActive,
+		SMSCost:    payload.SMSCost,
+		FreeSMS:    payload.FreeSMS,
+		BarEnabled: payload.BarEnabled,
 	})
 	if err != nil {
 		switch {
