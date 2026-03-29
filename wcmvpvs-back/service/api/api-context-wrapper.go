@@ -35,10 +35,37 @@ func (rt *_router) wrap(fn httpRouterHandler) http.HandlerFunc {
 		if !rt.populateOrganizationFromRequest(w, r, &ctx) {
 			return
 		}
+		if !rt.enforceBarFeatureAccess(w, r, ctx) {
+			return
+		}
 		ctx.Logger.Infof("handling %s %s", r.Method, r.URL.Path)
 		// Call the next handler in chain (usually, the handler function for the path)
 		fn(w, r, ctx)
 	}
+}
+
+func (rt *_router) isBarFeaturePath(path string) bool {
+	return strings.HasPrefix(path, "/bar") || strings.HasPrefix(path, "/admin/bar") || strings.HasPrefix(path, "/ai/bar")
+}
+
+func (rt *_router) enforceBarFeatureAccess(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) bool {
+	if !rt.isBarFeaturePath(r.URL.Path) {
+		return true
+	}
+	if ctx.OrganizationID == 0 {
+		return true
+	}
+	org, err := rt.db.GetOrganization(ctx.OrganizationID)
+	if err != nil {
+		ctx.Logger.WithError(err).Warn("cannot resolve organization while enforcing bar feature flag")
+		w.WriteHeader(http.StatusNotFound)
+		return false
+	}
+	if org.BarEnabled {
+		return true
+	}
+	w.WriteHeader(http.StatusNotFound)
+	return false
 }
 
 func (rt *_router) populateOrganizationFromRequest(w http.ResponseWriter, r *http.Request, ctx *reqcontext.RequestContext) bool {

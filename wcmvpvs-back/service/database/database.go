@@ -69,6 +69,7 @@ type Event struct {
 	OrganizationID            int                        `json:"organization_id"`
 	OrganizationName          string                     `json:"organization_name,omitempty"`
 	OrganizationLogoURL       string                     `json:"organization_logo_url,omitempty"`
+	OrganizationBarEnabled    bool                       `json:"organization_bar_enabled"`
 	Team1ID                   int                        `json:"team1_id"`
 	Team2ID                   int                        `json:"team2_id"`
 	StartDateTime             string                     `json:"start_datetime"`
@@ -117,6 +118,7 @@ type Organization struct {
 	TeamID       int     `json:"team_id,omitempty"`
 	SMSCost      float64 `json:"sms_cost"`
 	FreeSMS      int     `json:"free_sms"`
+	BarEnabled   bool    `json:"bar_enabled"`
 	CreatedAt    string  `json:"created_at"`
 	UpdatedAt    string  `json:"updated_at"`
 }
@@ -1491,6 +1493,7 @@ roster_schema INTEGER NOT NULL DEFAULT 13,
 team_id INTEGER,
 sms_cost REAL NOT NULL DEFAULT 0.08,
 free_sms INTEGER NOT NULL DEFAULT 0,
+bar_enabled INTEGER NOT NULL DEFAULT 1,
 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 FOREIGN KEY (team_id) REFERENCES teams(id)
@@ -1519,6 +1522,11 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN free_sms INTEGER NOT NULL DEFAULT 0`); err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring organizations free sms column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN bar_enabled INTEGER NOT NULL DEFAULT 1`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring organizations bar enabled column: %w", err)
 		}
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_organizations_team ON organizations(team_id)`); err != nil {
@@ -3752,6 +3760,7 @@ SELECT e.id,
        e.feedback_survey_config,
        IFNULL(o.name, ''),
        IFNULL(o.logo_url, ''),
+       IFNULL(o.bar_enabled, 1),
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -3760,7 +3769,7 @@ LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
 WHERE e.is_active = 1 AND e.organization_id = ?
 LIMIT 1
-`, organizationID).Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.OrganizationName, &e.OrganizationLogoURL, &e.Team1Name, &e.Team2Name)
+`, organizationID).Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.OrganizationName, &e.OrganizationLogoURL, &e.OrganizationBarEnabled, &e.Team1Name, &e.Team2Name)
 	if err != nil {
 		return Event{}, err
 	}
@@ -4379,12 +4388,14 @@ func (db *appdbimpl) GetAdminByID(id int) (Admin, error) {
 func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) {
 	var org Organization
 	var isActive int
+	var barEnabled int
 	var rosterSchema int
 	var teamID sql.NullInt64
-	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &org.City, &org.LogoURL, &isActive, &rosterSchema, &teamID, &org.SMSCost, &org.FreeSMS, &org.CreatedAt, &org.UpdatedAt); err != nil {
+	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &org.City, &org.LogoURL, &isActive, &rosterSchema, &teamID, &org.SMSCost, &org.FreeSMS, &barEnabled, &org.CreatedAt, &org.UpdatedAt); err != nil {
 		return Organization{}, err
 	}
 	org.IsActive = isActive != 0
+	org.BarEnabled = barEnabled != 0
 	org.RosterSchema = normalizeRosterSchema(rosterSchema)
 	if teamID.Valid {
 		org.TeamID = int(teamID.Int64)
@@ -4393,7 +4404,7 @@ func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) 
 }
 
 func (db *appdbimpl) ListOrganizations() ([]Organization, error) {
-	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
+	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -4414,7 +4425,7 @@ func (db *appdbimpl) GetOrganization(id int) (Organization, error) {
 	if id <= 0 {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), created_at, updated_at FROM organizations WHERE id = ?`, id)
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), created_at, updated_at FROM organizations WHERE id = ?`, id)
 	return db.scanOrganization(row)
 }
 
@@ -4422,7 +4433,7 @@ func (db *appdbimpl) GetOrganizationBySlug(slug string) (Organization, error) {
 	if slug == "" {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
 	return db.scanOrganization(row)
 }
 
@@ -4458,7 +4469,7 @@ func (db *appdbimpl) CreateOrganization(org Organization) (Organization, error) 
 		teamID = int(newTeamID)
 	}
 
-	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, roster_schema, team_id, sms_cost, free_sms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS))
+	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, roster_schema, team_id, sms_cost, free_sms, bar_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), boolToInt(org.BarEnabled))
 	if err != nil {
 		return Organization{}, err
 	}
@@ -4517,7 +4528,7 @@ func (db *appdbimpl) UpdateOrganization(org Organization) (Organization, error) 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, roster_schema=?, team_id=?, sms_cost=?, free_sms=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), org.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, roster_schema=?, team_id=?, sms_cost=?, free_sms=?, bar_enabled=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), boolToInt(org.BarEnabled), org.ID); err != nil {
 		return Organization{}, err
 	}
 
