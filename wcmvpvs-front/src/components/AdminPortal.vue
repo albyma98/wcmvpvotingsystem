@@ -350,7 +350,7 @@
                       <textarea v-model="feedbackDraftFor(event.id).suggestionPrompt" rows="2" maxlength="120" class="ev-input" :disabled="isSavingPrizesFor(event.id)" placeholder="Testo domanda aperta…"></textarea>
                     </div>
                     <div class="ev-tab-save-row">
-                      <button class="ev-btn-save" type="button" @click="saveEventPrizes(event)" :disabled="isSavingPrizesFor(event.id)">
+                      <button class="ev-btn-save" type="button" @click="saveEventFeedbackSurvey(event)" :disabled="isSavingPrizesFor(event.id)">
                         {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva sondaggio' }}
                       </button>
                     </div>
@@ -3783,7 +3783,7 @@ function prizeWinnerLabel(prize) {
   return prize.winner.ticketCode || "";
 }
 
-async function savePrizesForEvent(event) {
+async function saveEventPrizes(event) {
   if (!event || !event.id || isSavingPrizesFor(event.id)) {
     return;
   }
@@ -3839,6 +3839,48 @@ async function savePrizesForEvent(event) {
       const message = "Impossibile salvare le impostazioni. Riprova più tardi.";
       eventPrizeErrors[event.id] = message;
       eventFeedbackErrors[event.id] = message;
+    }
+  } finally {
+    savingEventPrizes.value = 0;
+  }
+}
+
+async function saveEventFeedbackSurvey(event) {
+  if (!event || !event.id || isSavingPrizesFor(event.id)) {
+    return;
+  }
+
+  eventFeedbackErrors[event.id] = "";
+  const surveyDraft = feedbackDraftFor(event.id);
+
+  const payload = {
+    team1_id: event.team1_id,
+    team2_id: event.team2_id,
+    start_datetime: event.start_datetime,
+    location: event.location,
+    show_pre_vote_sponsors: Boolean(event.show_pre_vote_sponsors),
+    show_pre_vote_bottom_sponsors: Boolean(event.show_pre_vote_bottom_sponsors),
+    show_vote_counter: Boolean(event.show_vote_counter),
+    show_reaction_test: Boolean(event.show_reaction_test),
+    show_selfie: Boolean(event.show_selfie),
+    show_vote_trend: Boolean(event.show_vote_trend),
+    show_feedback_survey: Boolean(event.show_feedback_survey),
+    feedback_survey: toApiSurveyPayload(surveyDraft),
+  };
+
+  savingEventPrizes.value = event.id;
+  try {
+    await secureRequest(() =>
+      apiClient.put(`/events/${event.id}`, payload, authHeaders.value),
+    );
+    await loadEvents();
+  } catch (error) {
+    if (error?.response?.status === 400) {
+      eventFeedbackErrors[event.id] =
+        "Controlla le domande del sondaggio e riprova.";
+    } else if (error?.response?.status !== 401) {
+      eventFeedbackErrors[event.id] =
+        "Impossibile salvare il sondaggio. Riprova più tardi.";
     }
   } finally {
     savingEventPrizes.value = 0;
