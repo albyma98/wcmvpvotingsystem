@@ -331,6 +331,111 @@ func (rt *_router) postFanRewardRedeem(w http.ResponseWriter, r *http.Request, c
 	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": updated.Wallet})
 }
 
+func (rt *_router) postFanSupportDonation(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	eventID, err := parseNumericID(chi.URLParam(r, "eventId"))
+	if err != nil {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Evento non valido")
+		return
+	}
+	token := rt.fanSessionTokenFromRequest(r)
+	if token == "" {
+		_ = writeJSONMessage(w, http.StatusUnauthorized, "Profilo tifoso richiesto")
+		return
+	}
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
+	if err != nil {
+		_ = writeJSONMessage(w, http.StatusUnauthorized, "Profilo tifoso richiesto")
+		return
+	}
+	if me.Profile.OrganizationID != 0 && me.Profile.OrganizationID != ctx.OrganizationID {
+		_ = writeJSONMessage(w, http.StatusForbidden, "Profilo non valido per questa organizzazione")
+		return
+	}
+	var payload struct {
+		Coins int `json:"coins"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta non valida")
+		return
+	}
+	if payload.Coins <= 0 {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Inserisci un valore monete valido")
+		return
+	}
+	donation, wallet, err := rt.db.DonateFanSupport(eventID, ctx.OrganizationID, me.Profile.ID, payload.Coins)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			_ = writeJSONMessage(w, http.StatusConflict, "Monete insufficienti")
+			return
+		}
+		ctx.Logger.WithError(err).Error("fan support donation failed")
+		_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore durante la donazione")
+		return
+	}
+	eventTotal, _ := rt.db.GetFanSupportEventTotal(eventID, ctx.OrganizationID)
+	userRank, _ := rt.db.GetFanSupportRank(eventID, ctx.OrganizationID, me.Profile.ID)
+	top, _ := rt.db.GetFanSupportLeaderboard(eventID, ctx.OrganizationID, 10)
+	topResp := make([]map[string]interface{}, 0, len(top))
+	for _, entry := range top {
+		topResp = append(topResp, map[string]interface{}{
+			"rank":        entry.Rank,
+			"nickname":    entry.Nickname,
+			"tifo_points": entry.TifoPoints,
+		})
+	}
+	rt.coinsHub.Broadcast(eventID)
+	_ = writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":                  true,
+		"wallet":              wallet,
+		"donation":            donation,
+		"event_total_points":  eventTotal,
+		"user_total_points":   userRank.TifoPoints,
+		"user_rank":           userRank.Rank,
+		"leaderboard":         topResp,
+		"feedback_message":    "Hai donato " + strconv.Itoa(donation.CoinsDonated) + " monete e aggiunto " + strconv.Itoa(donation.TifoPoints) + " Punti Tifo alla squadra",
+		"conversion_per_coin": 1,
+	})
+}
+
+func (rt *_router) getFanSupportLeaderboard(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	eventID, err := parseNumericID(chi.URLParam(r, "eventId"))
+	if err != nil {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Evento non valido")
+		return
+	}
+	limit := parseIDFromQuery(r, "limit")
+	if limit == 0 {
+		limit = 10
+	}
+	rows, err := rt.db.GetFanSupportLeaderboard(eventID, ctx.OrganizationID, limit)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("fan support leaderboard")
+		_ = writeJSON(w, http.StatusOK, map[string]interface{}{"leaderboard": []interface{}{}, "event_total_points": 0})
+		return
+	}
+	eventTotal, _ := rt.db.GetFanSupportEventTotal(eventID, ctx.OrganizationID)
+	leaderboard := make([]map[string]interface{}, 0, len(rows))
+	for _, entry := range rows {
+		leaderboard = append(leaderboard, map[string]interface{}{
+			"rank":        entry.Rank,
+			"nickname":    entry.Nickname,
+			"tifo_points": entry.TifoPoints,
+		})
+	}
+	resp := map[string]interface{}{
+		"leaderboard":        leaderboard,
+		"event_total_points": eventTotal,
+	}
+	if token := rt.fanSessionTokenFromRequest(r); token != "" {
+		if me, e := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r)); e == nil {
+			if rank, rankErr := rt.db.GetFanSupportRank(eventID, ctx.OrganizationID, me.Profile.ID); rankErr == nil {
+				resp["user_rank"] = map[string]interface{}{"rank": rank.Rank, "tifo_points": rank.TifoPoints, "nickname": rank.Nickname}
+			}
+		}
+	}
+	_ = writeJSON(w, http.StatusOK, resp)
+}
+
 func parseIDFromQuery(r *http.Request, key string) int {
 	v := strings.TrimSpace(r.URL.Query().Get(key))
 	id, _ := parseNumericID(v)

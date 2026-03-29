@@ -543,6 +543,59 @@
                   </div>
                 </section>
 
+                <section class="mt-4 rounded-2xl border border-emerald-200/30 bg-emerald-500/10 p-4 shadow-[0_10px_28px_rgba(6,95,70,0.35)]">
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-200">Sostieni la squadra</p>
+                      <h3 class="mt-1 text-2xl font-black text-white">Dona il tuo tifo</h3>
+                      <p class="mt-1 text-sm text-slate-200">Trasforma le tue monete in Punti Tifo per aiutare la squadra e salire nella classifica dei sostenitori.</p>
+                    </div>
+                    <div class="rounded-xl border border-emerald-200/30 bg-emerald-300/15 px-3 py-2 text-right">
+                      <p class="text-xs uppercase tracking-wide text-emerald-100">Saldo</p>
+                      <p class="text-lg font-black text-white">{{ totalCoins }} 🪙</p>
+                    </div>
+                  </div>
+
+                  <p class="mt-3 text-sm font-semibold text-emerald-100">Tifo totale della squadra: {{ fanSupportEventTotal }} punti</p>
+                  <p v-if="fanSupportUserRank" class="mt-1 text-xs font-semibold text-slate-200">Tu sei #{{ fanSupportUserRank.rank }} con {{ fanSupportUserRank.tifoPoints }} punti</p>
+
+                  <div class="mt-3 grid grid-cols-4 gap-2">
+                    <button v-for="amount in fanSupportQuickAmounts" :key="amount" type="button" class="rounded-xl border px-3 py-2 text-sm font-black transition"
+                      :class="selectedFanSupportCoins === amount ? 'border-emerald-100 bg-emerald-200/25 text-white' : 'border-white/20 bg-white/5 text-emerald-100'"
+                      @click="selectedFanSupportCoins = amount">
+                      Dona {{ amount }}
+                    </button>
+                  </div>
+                  <div class="mt-3">
+                    <input
+                      v-model.number="fanSupportCustomCoins"
+                      type="number"
+                      min="1"
+                      inputmode="numeric"
+                      class="w-full rounded-xl border border-white/20 bg-slate-950/40 px-3 py-2 text-white placeholder:text-slate-400"
+                      placeholder="Importo personalizzato (opzionale)"
+                    >
+                  </div>
+                  <button
+                    type="button"
+                    class="mt-3 w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black uppercase tracking-wide text-emerald-950"
+                    :disabled="isFanSupportSubmitting || !fanSupportDonationAmount"
+                    @click="submitFanSupportDonation"
+                  >
+                    {{ isFanSupportSubmitting ? 'Donazione in corso...' : `Dona ora (${fanSupportDonationAmount || 0} 🪙)` }}
+                  </button>
+                  <p v-if="fanSupportFeedbackMessage" class="mt-2 text-sm font-semibold text-emerald-100">{{ fanSupportFeedbackMessage }}</p>
+                  <p v-if="fanSupportErrorMessage" class="mt-2 text-sm font-semibold text-rose-200">{{ fanSupportErrorMessage }}</p>
+
+                  <ol class="mt-3 space-y-1 rounded-xl border border-white/15 bg-slate-900/35 p-3">
+                    <li v-for="entry in fanSupportLeaderboard" :key="`${entry.rank}-${entry.nickname}`" class="flex items-center justify-between text-sm"
+                      :class="fanSupportUserRank && fanSupportUserRank.rank === entry.rank ? 'font-black text-amber-200' : 'text-slate-100'">
+                      <span>#{{ entry.rank }} · {{ entry.nickname }}</span>
+                      <strong>{{ entry.tifoPoints }} pt</strong>
+                    </li>
+                  </ol>
+                </section>
+
                 <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <button
                     v-for="coupon in spendCouponPreview"
@@ -677,7 +730,7 @@ import LiveHeader from '../components/LiveHeader.vue';
 import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
 import StoryModal from '../components/StoryModal.vue';
-import { apiClient, fetchFanProfile, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins, resolveApiUrl, getOrganizationSlug, generateAIBarUpsell, generateAIPopup, trackAIInteraction, updateFanNickname } from '../api';
+import { apiClient, donateFanSupport, fetchFanProfile, fetchFanSupportLeaderboard, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins, resolveApiUrl, getOrganizationSlug, generateAIBarUpsell, generateAIPopup, trackAIInteraction, updateFanNickname } from '../api';
 import { getOrCreateDeviceId } from '../deviceId';
 import { safeTrackEvent } from '../tracking';
 import { endTrackingLifecycle, startTrackingLifecycle, trackAppEvent, trackSectionView, updateTrackingContext } from '../eventTracking';
@@ -947,6 +1000,15 @@ const leaderboardTop3 = ref([
   { name: 'TIFO3', coins: 249 },
 ]);
 const leaderboardUser = ref(null);
+const fanSupportLeaderboard = ref([]);
+const fanSupportEventTotal = ref(0);
+const fanSupportUserRank = ref(null);
+const fanSupportQuickAmounts = [10, 25, 50, 100];
+const selectedFanSupportCoins = ref(50);
+const fanSupportCustomCoins = ref(null);
+const fanSupportFeedbackMessage = ref('');
+const fanSupportErrorMessage = ref('');
+const isFanSupportSubmitting = ref(false);
 let leaderboardSseSource = null;
 let boostCountdownTimer = null;
 let isLeaderboardRequestInFlight = false;
@@ -994,6 +1056,14 @@ const wheelResultRevealLabel = computed(() => {
   if (wheelResult.value.type === 'coins') return `+${wheelResult.value.amount || 0} MONETE`;
   if (wheelResult.value.type === 'nextMultiplier') return 'X2 PROSSIMA VINCITA';
   return wheelResult.value.label.toUpperCase();
+});
+
+const fanSupportDonationAmount = computed(() => {
+  const custom = Number(fanSupportCustomCoins.value);
+  if (Number.isFinite(custom) && custom > 0) {
+    return Math.floor(custom);
+  }
+  return Math.max(0, Number(selectedFanSupportCoins.value) || 0);
 });
 
 const profileAvatarUrl = computed(() => {
@@ -1283,6 +1353,9 @@ function startLeaderboardPolling() {
   leaderboardSseSource = new EventSource(url);
   leaderboardSseSource.addEventListener('message', () => {
     refreshLeaderboardPreview();
+    if (isSpendPreviewOpen.value) {
+      loadFanSupportData();
+    }
   });
 }
 
@@ -2016,6 +2089,9 @@ function openSpendPreview() {
   isSpendPreviewOpen.value = true;
   mysteryBoxStep.value = 'idle';
   mysteryBoxStatusText.value = '';
+  fanSupportFeedbackMessage.value = '';
+  fanSupportErrorMessage.value = '';
+  loadFanSupportData();
 }
 
 function closeSpendPreview() {
@@ -2042,6 +2118,73 @@ async function attemptRedeem(rewardKey, costCoins, rewardLabel) {
     return;
   }
   trackAppEvent('coins.reward_redeem_failed', { reward_key: rewardKey, cost_coins: costCoins, message: response?.message || 'redeem_failed' }, 'coins');
+}
+
+async function loadFanSupportData() {
+  const response = await fetchFanSupportLeaderboard(props.eventId, 10);
+  if (!response?.ok) {
+    return;
+  }
+  const data = response.data || {};
+  fanSupportEventTotal.value = Math.max(0, Number(data.event_total_points) || 0);
+  fanSupportLeaderboard.value = Array.isArray(data.leaderboard)
+    ? data.leaderboard.map((entry, idx) => ({
+      rank: Math.max(1, Number(entry?.rank) || idx + 1),
+      nickname: String(entry?.nickname || 'Tifoso'),
+      tifoPoints: Math.max(0, Number(entry?.tifo_points) || 0),
+    }))
+    : [];
+  const userRank = data.user_rank || data.userRank;
+  fanSupportUserRank.value = userRank
+    ? {
+      rank: Math.max(1, Number(userRank.rank) || 1),
+      nickname: String(userRank.nickname || ''),
+      tifoPoints: Math.max(0, Number(userRank.tifo_points) || 0),
+    }
+    : null;
+}
+
+async function submitFanSupportDonation() {
+  fanSupportFeedbackMessage.value = '';
+  fanSupportErrorMessage.value = '';
+  if (!isRegisteredFan.value) {
+    openRegistrationPrompt('spend_redeem');
+    return;
+  }
+  const coins = fanSupportDonationAmount.value;
+  if (!Number.isFinite(coins) || coins <= 0) {
+    fanSupportErrorMessage.value = 'Inserisci un importo valido.';
+    return;
+  }
+  if (coins > totalCoins.value) {
+    fanSupportErrorMessage.value = 'Monete insufficienti.';
+    return;
+  }
+  isFanSupportSubmitting.value = true;
+  const response = await donateFanSupport(props.eventId, coins);
+  isFanSupportSubmitting.value = false;
+  if (!response?.ok) {
+    fanSupportErrorMessage.value = response?.message || 'Donazione non riuscita.';
+    return;
+  }
+  const data = response.data || {};
+  totalCoins.value = Math.max(0, Number(data.wallet) || totalCoins.value);
+  fanSupportFeedbackMessage.value = String(data.feedback_message || `Hai donato ${coins} monete e aggiunto ${coins} Punti Tifo alla squadra`);
+  fanSupportEventTotal.value = Math.max(0, Number(data.event_total_points) || fanSupportEventTotal.value);
+  fanSupportUserRank.value = {
+    rank: Math.max(1, Number(data.user_rank) || 1),
+    tifoPoints: Math.max(0, Number(data.user_total_points) || 0),
+    nickname: fanNickname.value || 'Tu',
+  };
+  if (Array.isArray(data.leaderboard)) {
+    fanSupportLeaderboard.value = data.leaderboard.map((entry, idx) => ({
+      rank: Math.max(1, Number(entry?.rank) || idx + 1),
+      nickname: String(entry?.nickname || 'Tifoso'),
+      tifoPoints: Math.max(0, Number(entry?.tifo_points) || 0),
+    }));
+  } else {
+    await loadFanSupportData();
+  }
 }
 
 function registerUserActivity() {

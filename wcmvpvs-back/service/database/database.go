@@ -800,6 +800,23 @@ type FanRewardRedemption struct {
 	CreatedAt string `json:"created_at"`
 }
 
+type FanSupportDonation struct {
+	ID             int    `json:"id"`
+	UserID         int    `json:"user_id"`
+	OrganizationID int    `json:"organization_id"`
+	EventID        int    `json:"event_id"`
+	CoinsDonated   int    `json:"coins_donated"`
+	TifoPoints     int    `json:"tifo_points"`
+	CreatedAt      string `json:"created_at"`
+}
+
+type FanSupportLeaderboardEntry struct {
+	FanID      int    `json:"fan_id"`
+	Nickname   string `json:"nickname"`
+	TifoPoints int    `json:"tifo_points"`
+	Rank       int    `json:"rank"`
+}
+
 type TapLiveMatch struct {
 	ID               int       `json:"id"`
 	MatchID          string    `json:"match_id"`
@@ -1147,6 +1164,10 @@ type AppDatabase interface {
 	GetFanLeaderboard(eventID int, organizationID int, limit int) ([]FanLeaderboardEntry, error)
 	GetFanRank(eventID int, organizationID int, fanID int) (FanLeaderboardEntry, error)
 	ListFanRewardRedemptions(eventID int, fanID int) ([]FanRewardRedemption, error)
+	DonateFanSupport(eventID int, organizationID int, fanID int, coins int) (FanSupportDonation, int, error)
+	GetFanSupportLeaderboard(eventID int, organizationID int, limit int) ([]FanSupportLeaderboardEntry, error)
+	GetFanSupportRank(eventID int, organizationID int, fanID int) (FanSupportLeaderboardEntry, error)
+	GetFanSupportEventTotal(eventID int, organizationID int) (int, error)
 	GetFanLotteryTicket(eventID int, fanID int) (EventTicket, error)
 	RecordFanLotteryEntry(eventID int, fanID int, ticketCode string, source string) error
 	RecordFanRewardRedemption(eventID int, fanID int, rewardKey string, costCoins int) error
@@ -7256,6 +7277,32 @@ func ensureFanProfileTables(db *sql.DB) error {
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (fan_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
 		);`,
+		`CREATE TABLE IF NOT EXISTS fan_support_donations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			organization_id INTEGER NOT NULL DEFAULT 0,
+			event_id INTEGER NOT NULL,
+			coins_donated INTEGER NOT NULL DEFAULT 0,
+			tifo_points INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
+		);`,
+		`CREATE TABLE IF NOT EXISTS fan_support_event_totals (
+			event_id INTEGER NOT NULL,
+			organization_id INTEGER NOT NULL DEFAULT 0,
+			fan_id INTEGER NOT NULL,
+			tifo_points INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (event_id, organization_id, fan_id),
+			FOREIGN KEY (fan_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
+		);`,
+		`CREATE TABLE IF NOT EXISTS fan_support_event_summary (
+			event_id INTEGER NOT NULL,
+			organization_id INTEGER NOT NULL DEFAULT 0,
+			total_tifo_points INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (event_id, organization_id)
+		);`,
 		`CREATE TABLE IF NOT EXISTS tap_live_matches (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			match_id TEXT NOT NULL UNIQUE,
@@ -7303,6 +7350,8 @@ func ensureFanProfileTables(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_fan_wallets_coins ON fan_wallets(coins DESC);`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_fan_profiles_phone_e164_unique ON fan_profiles(phone_e164);`,
 		`CREATE INDEX IF NOT EXISTS idx_tap_live_matches_lookup ON tap_live_matches(event_id, fan1_id, fan2_id, status);`,
+		`CREATE INDEX IF NOT EXISTS idx_fan_support_donations_event ON fan_support_donations(event_id, organization_id, created_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_fan_support_totals_rank ON fan_support_event_totals(event_id, organization_id, tifo_points DESC, fan_id ASC);`,
 	}
 
 	for _, stmt := range statements {
@@ -7918,6 +7967,143 @@ func (db *appdbimpl) RecordFanRewardRedemption(eventID int, fanID int, rewardKey
 		return err
 	}
 	return tx.Commit()
+}
+
+func (db *appdbimpl) DonateFanSupport(eventID int, organizationID int, fanID int, coins int) (FanSupportDonation, int, error) {
+	coins = nonNegativeInt(coins)
+	if coins == 0 {
+		return FanSupportDonation{}, 0, ErrInvalidSponsorData
+	}
+	tx, err := db.c.Begin()
+	if err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`UPDATE fan_wallets SET coins = coins - ? WHERE fan_id = ? AND coins >= ?`, coins, fanID, coins)
+	if err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return FanSupportDonation{}, 0, sql.ErrNoRows
+	}
+
+	points := coins // future-proof: same conversion now, can become configurable later.
+	insertRes, err := tx.Exec(`INSERT INTO fan_support_donations (user_id, organization_id, event_id, coins_donated, tifo_points)
+	VALUES (?, ?, ?, ?, ?)`, fanID, organizationID, eventID, coins, points)
+	if err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+
+	if _, err = tx.Exec(`INSERT INTO fan_support_event_totals (event_id, organization_id, fan_id, tifo_points)
+	VALUES (?, ?, ?, ?)
+	ON CONFLICT(event_id, organization_id, fan_id)
+	DO UPDATE SET tifo_points = fan_support_event_totals.tifo_points + excluded.tifo_points, updated_at = CURRENT_TIMESTAMP`,
+		eventID, organizationID, fanID, points); err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+
+	if _, err = tx.Exec(`INSERT INTO fan_support_event_summary (event_id, organization_id, total_tifo_points)
+	VALUES (?, ?, ?)
+	ON CONFLICT(event_id, organization_id)
+	DO UPDATE SET total_tifo_points = fan_support_event_summary.total_tifo_points + excluded.total_tifo_points, updated_at = CURRENT_TIMESTAMP`,
+		eventID, organizationID, points); err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+
+	var wallet int
+	if err = tx.QueryRow(`SELECT coins FROM fan_wallets WHERE fan_id = ?`, fanID).Scan(&wallet); err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+
+	donationID, _ := insertRes.LastInsertId()
+	if err = tx.Commit(); err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+
+	return FanSupportDonation{
+		ID:             int(donationID),
+		UserID:         fanID,
+		OrganizationID: organizationID,
+		EventID:        eventID,
+		CoinsDonated:   coins,
+		TifoPoints:     points,
+	}, wallet, nil
+}
+
+func (db *appdbimpl) GetFanSupportLeaderboard(eventID int, organizationID int, limit int) ([]FanSupportLeaderboardEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := db.c.Query(`SELECT t.fan_id, p.nickname, t.tifo_points
+	FROM fan_support_event_totals t
+	JOIN fan_profiles p ON p.id = t.fan_id
+	WHERE t.event_id = ? AND t.organization_id = ?
+	ORDER BY t.tifo_points DESC, t.fan_id ASC
+	LIMIT ?`, eventID, organizationID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]FanSupportLeaderboardEntry, 0, limit)
+	rank := 1
+	for rows.Next() {
+		var e FanSupportLeaderboardEntry
+		if err := rows.Scan(&e.FanID, &e.Nickname, &e.TifoPoints); err != nil {
+			return nil, err
+		}
+		e.Rank = rank
+		rank++
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func (db *appdbimpl) GetFanSupportRank(eventID int, organizationID int, fanID int) (FanSupportLeaderboardEntry, error) {
+	rows, err := db.c.Query(`SELECT fan_id, tifo_points
+	FROM fan_support_event_totals
+	WHERE event_id = ? AND organization_id = ?
+	ORDER BY tifo_points DESC, fan_id ASC`, eventID, organizationID)
+	if err != nil {
+		return FanSupportLeaderboardEntry{}, err
+	}
+	defer rows.Close()
+	rank := 1
+	for rows.Next() {
+		var currentFanID int
+		var points int
+		if err := rows.Scan(&currentFanID, &points); err != nil {
+			return FanSupportLeaderboardEntry{}, err
+		}
+		if currentFanID == fanID {
+			var out FanSupportLeaderboardEntry
+			if err := db.c.QueryRow(`SELECT id, nickname FROM fan_profiles WHERE id = ?`, fanID).Scan(&out.FanID, &out.Nickname); err != nil {
+				return FanSupportLeaderboardEntry{}, err
+			}
+			out.Rank = rank
+			out.TifoPoints = points
+			return out, nil
+		}
+		rank++
+	}
+	return FanSupportLeaderboardEntry{}, sql.ErrNoRows
+}
+
+func (db *appdbimpl) GetFanSupportEventTotal(eventID int, organizationID int) (int, error) {
+	var total int
+	err := db.c.QueryRow(`SELECT total_tifo_points FROM fan_support_event_summary WHERE event_id = ? AND organization_id = ?`,
+		eventID, organizationID).Scan(&total)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	if total < 0 {
+		return 0, nil
+	}
+	return total, nil
 }
 
 func nonNegativeInt(value int) int {
