@@ -160,7 +160,8 @@ const coinAnimationRef = ref(null);
 
 const earnOptions = [
   { id: 'reaction', title: 'Reaction Test', description: 'Testa i riflessi e scala la classifica.', reward: 10, icon: '⚡', type: 'game', cooldownSeconds: 90, isAvailable: true },
-  { id: 'quiz', title: 'Quiz Lampo', description: 'Rispondi veloce a domande a tema match.', reward: 15, icon: '🧠', type: 'game', cooldownSeconds: 120, isAvailable: true },
+  // Temporaneamente disabilitato su richiesta: mostra la card ma impedisce l'avvio del gioco.
+  { id: 'quiz', title: 'Quiz Lampo', description: 'Rispondi veloce a domande a tema match.', reward: 15, icon: '🧠', type: 'game', cooldownSeconds: 120, isAvailable: false },
   { id: 'tap', title: 'Tap Challenge', description: 'Tappa più forte che puoi in 10 secondi.', reward: 8, icon: '👆', type: 'game', cooldownSeconds: 60, isAvailable: true },
   { id: 'memory-flash', title: 'Memory Flash', description: 'Memorizza le coppie e chiudi il board prima del tempo.', reward: 8, icon: '🧩', type: 'game', cooldownSeconds: 60, isAvailable: true },
   { id: 'sponsor-rush', title: 'Sponsor Rush', description: 'Prendi i loghi sponsor al volo entro il tempo limite.', reward: 12, icon: '🏷️', type: 'game', cooldownSeconds: 45, isAvailable: true },
