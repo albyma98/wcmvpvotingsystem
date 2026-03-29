@@ -1580,7 +1580,8 @@ function goToPrevStory() {
 
 watch(
   () => props.eventId,
-  () => {
+  (eventId) => {
+    updateTrackingContext({ eventId: Number(eventId) || undefined });
     if (typeof window === 'undefined') {
       return;
     }
