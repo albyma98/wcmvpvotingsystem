@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,13 @@ import (
 	"github.com/gofrs/uuid"
 )
 
+const (
+	fanNicknameMinLen = 3
+	fanNicknameMaxLen = 24
+)
+
+var fanNicknamePattern = regexp.MustCompile(`^[A-Za-z0-9._ -]+$`)
+
 type fanRegisterPayload struct {
 	EventID       int    `json:"event_id"`
 	Nickname      string `json:"nickname"`
@@ -22,6 +30,27 @@ type fanRegisterPayload struct {
 	AcceptedTerms bool   `json:"accepted_terms"`
 	GuestCoins    int    `json:"guest_coins"`
 	EnterLottery  bool   `json:"enter_lottery"`
+}
+
+type fanNicknameUpdatePayload struct {
+	Nickname string `json:"nickname"`
+}
+
+func validateFanNickname(raw string) (string, string) {
+	nickname := strings.TrimSpace(raw)
+	if nickname == "" {
+		return "", "Il nickname non può essere vuoto."
+	}
+	if len([]rune(nickname)) < fanNicknameMinLen {
+		return "", "Il nickname deve avere almeno 3 caratteri."
+	}
+	if len([]rune(nickname)) > fanNicknameMaxLen {
+		return "", "Il nickname può avere massimo 24 caratteri."
+	}
+	if !fanNicknamePattern.MatchString(nickname) {
+		return "", "Usa solo lettere, numeri, spazi, punto, trattino o underscore."
+	}
+	return nickname, ""
 }
 
 func (rt *_router) fanSessionTokenFromRequest(r *http.Request) string {
@@ -120,6 +149,60 @@ func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqconte
 		resp["guest_coins"] = coins
 	}
 	_ = writeJSON(w, http.StatusOK, resp)
+}
+
+func (rt *_router) putFanNickname(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	token := rt.fanSessionTokenFromRequest(r)
+	if token == "" {
+		_ = writeJSONMessage(w, http.StatusUnauthorized, "Profilo tifoso richiesto")
+		return
+	}
+
+	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
+	if err != nil {
+		_ = writeJSONMessage(w, http.StatusUnauthorized, "Profilo tifoso richiesto")
+		return
+	}
+	if me.Profile.OrganizationID != 0 && me.Profile.OrganizationID != ctx.OrganizationID {
+		_ = writeJSONMessage(w, http.StatusForbidden, "Profilo non valido per questa organizzazione")
+		return
+	}
+
+	var payload fanNicknameUpdatePayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta non valida")
+		return
+	}
+
+	nickname, validationMessage := validateFanNickname(payload.Nickname)
+	if validationMessage != "" {
+		_ = writeJSONMessage(w, http.StatusBadRequest, validationMessage)
+		return
+	}
+
+	isAvailable, err := rt.db.IsFanNicknameAvailable(ctx.OrganizationID, nickname, me.Profile.ID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("check nickname availability failed")
+		_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore durante il controllo del nickname")
+		return
+	}
+	if !isAvailable {
+		_ = writeJSONMessage(w, http.StatusConflict, "Nickname già in uso, scegli un altro nome.")
+		return
+	}
+
+	profile, err := rt.db.UpdateFanNickname(me.Profile.ID, nickname)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("update fan nickname failed")
+		_ = writeJSONMessage(w, http.StatusInternalServerError, "Impossibile aggiornare il nickname")
+		return
+	}
+
+	_ = writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"message": "Nickname aggiornato",
+		"user":    profile,
+	})
 }
 
 func (rt *_router) postGuestCoins(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

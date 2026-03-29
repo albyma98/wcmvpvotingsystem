@@ -390,6 +390,30 @@
                     </div>
                   </div>
 
+                  <form class="mt-4 space-y-2" @submit.prevent="saveNickname">
+                    <label for="profile-nickname" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-300">Modifica nickname</label>
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <input
+                        id="profile-nickname"
+                        v-model.trim="nicknameDraft"
+                        type="text"
+                        minlength="3"
+                        maxlength="24"
+                        class="w-full rounded-xl border border-white/20 bg-slate-900/70 px-3 py-2 text-sm font-semibold text-white outline-none transition focus:border-amber-300/70 focus:ring-2 focus:ring-amber-300/35"
+                        placeholder="Inserisci nickname"
+                      >
+                      <button
+                        type="submit"
+                        class="rounded-xl bg-amber-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="isSavingNickname || !canSubmitNickname"
+                      >
+                        {{ isSavingNickname ? 'Salvataggio...' : 'Aggiorna' }}
+                      </button>
+                    </div>
+                    <p v-if="nicknameErrorMessage" class="text-xs font-semibold text-rose-300">{{ nicknameErrorMessage }}</p>
+                    <p v-else-if="nicknameSuccessMessage" class="text-xs font-semibold text-emerald-300">{{ nicknameSuccessMessage }}</p>
+                  </form>
+
                   <div class="mt-5 rounded-xl border border-emerald-300/25 bg-emerald-400/10 p-4">
                     <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/90">Saldo monete</p>
                     <p class="mt-1 text-3xl font-black text-emerald-300">{{ totalCoins }} 🪙</p>
@@ -646,7 +670,7 @@ import LiveHeader from '../components/LiveHeader.vue';
 import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
 import StoryModal from '../components/StoryModal.vue';
-import { apiClient, fetchFanProfile, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins, resolveApiUrl, getOrganizationSlug, generateAIBarUpsell, generateAIPopup, trackAIInteraction } from '../api';
+import { apiClient, fetchFanProfile, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins, resolveApiUrl, getOrganizationSlug, generateAIBarUpsell, generateAIPopup, trackAIInteraction, updateFanNickname } from '../api';
 import { getOrCreateDeviceId } from '../deviceId';
 import { safeTrackEvent } from '../tracking';
 import { endTrackingLifecycle, startTrackingLifecycle, trackAppEvent, trackSectionView, updateTrackingContext } from '../eventTracking';
@@ -683,6 +707,9 @@ const COIN_BOOST_DURATION_MS = 10 * 60 * 1000;
 const FORTUNE_WHEEL_COST = 6;
 const WHEEL_SEGMENT_DEG = 45;
 const WHEEL_SPINS = 5;
+const FAN_NICKNAME_MIN_LEN = 3;
+const FAN_NICKNAME_MAX_LEN = 24;
+const FAN_NICKNAME_PATTERN = /^[A-Za-z0-9._ -]+$/;
 const storageKeys = {
   wallet: 'wallet:coins',
   coinBoostActive: 'coinBoostActive',
@@ -805,6 +832,10 @@ const registrationTrigger = ref('after_vote');
 const isRegisteredFan = ref(false);
 const fanSessionToken = ref('');
 const fanNickname = ref('');
+const nicknameDraft = ref('');
+const nicknameErrorMessage = ref('');
+const nicknameSuccessMessage = ref('');
+const isSavingNickname = ref(false);
 const fanId = ref(0);
 const isProfileOverlayOpen = ref(false);
 const fanRewardRedemptions = ref([]);
@@ -966,6 +997,12 @@ const profileNickname = computed(() => {
     return fanNickname.value.trim();
   }
   return isRegisteredFan.value ? 'Tifoso' : 'Guest';
+});
+const canSubmitNickname = computed(() => {
+  if (isSavingNickname.value) {
+    return false;
+  }
+  return nicknameDraft.value.trim() !== fanNickname.value.trim();
 });
 
 const accountRedemptions = computed(() =>
@@ -1513,6 +1550,24 @@ watch([isStoryModalOpen, isProfileOverlayOpen], ([storyOpen, profileOpen]) => {
   document.body.style.overflow = storyOpen || profileOpen ? 'hidden' : '';
 });
 
+watch(isProfileOverlayOpen, (isOpen) => {
+  if (!isOpen) {
+    nicknameErrorMessage.value = '';
+    nicknameSuccessMessage.value = '';
+    return;
+  }
+  nicknameDraft.value = fanNickname.value.trim();
+  nicknameErrorMessage.value = '';
+  nicknameSuccessMessage.value = '';
+});
+
+watch(fanNickname, (value) => {
+  if (!isProfileOverlayOpen.value || isSavingNickname.value) {
+    return;
+  }
+  nicknameDraft.value = String(value || '').trim();
+});
+
 onBeforeUnmount(() => {
   endTrackingLifecycle('live_experience_unmounted');
   stopLeaderboardPolling();
@@ -1664,6 +1719,53 @@ function openProfileOverlay() {
 function closeProfileOverlay() {
   trackAppEvent('fan.profile_closed', {}, 'fan');
   isProfileOverlayOpen.value = false;
+}
+
+function validateNicknameDraft(rawNickname) {
+  const normalized = String(rawNickname || '').trim();
+  if (!normalized) {
+    return { valid: false, message: 'Il nickname non può essere vuoto.' };
+  }
+  if (normalized.length < FAN_NICKNAME_MIN_LEN) {
+    return { valid: false, message: 'Il nickname deve avere almeno 3 caratteri.' };
+  }
+  if (normalized.length > FAN_NICKNAME_MAX_LEN) {
+    return { valid: false, message: 'Il nickname può avere massimo 24 caratteri.' };
+  }
+  if (!FAN_NICKNAME_PATTERN.test(normalized)) {
+    return { valid: false, message: 'Usa solo lettere, numeri, spazio, punto, trattino o underscore.' };
+  }
+  return { valid: true, nickname: normalized };
+}
+
+async function saveNickname() {
+  nicknameErrorMessage.value = '';
+  nicknameSuccessMessage.value = '';
+  const validation = validateNicknameDraft(nicknameDraft.value);
+  if (!validation.valid) {
+    nicknameErrorMessage.value = validation.message;
+    return;
+  }
+
+  const nextNickname = validation.nickname;
+  if (nextNickname === fanNickname.value.trim()) {
+    nicknameSuccessMessage.value = 'Nessuna modifica da salvare.';
+    return;
+  }
+
+  isSavingNickname.value = true;
+  const response = await updateFanNickname(nextNickname);
+  isSavingNickname.value = false;
+  if (!response?.ok) {
+    nicknameErrorMessage.value = response?.message || 'Impossibile aggiornare il nickname.';
+    return;
+  }
+
+  fanNickname.value = String(response.data?.user?.nickname || nextNickname).trim();
+  nicknameDraft.value = fanNickname.value;
+  nicknameSuccessMessage.value = response.data?.message || 'Nickname aggiornato';
+  await refreshLeaderboardPreview();
+  trackAppEvent('fan.nickname_updated', { fan_id: fanId.value, nickname: fanNickname.value }, 'fan');
 }
 
 function randomMysteryReward() {

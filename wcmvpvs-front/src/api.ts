@@ -758,6 +758,19 @@ export async function registerFanProfile(payload) {
   }
 }
 
+export async function updateFanNickname(nickname: string) {
+  try {
+    const { data } = await apiClient.put('/fan/nickname', { nickname }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, status, message, error };
+  }
+}
+
 export async function startPhoneAuth(phone: string, mode: 'register' | 'login' = 'register') {
   try {
     await apiClient.post('/auth/start', { phone, mode }, { headers: getDeviceHeaders() });

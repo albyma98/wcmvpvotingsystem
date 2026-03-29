@@ -1125,6 +1125,8 @@ type AppDatabase interface {
 	ListContactBonuses(eventID int, deviceID string) ([]ContactSubmission, error)
 	RecordContactEvent(eventID int, deviceID, name string) error
 	RegisterFan(input FanRegisterInput) (FanProfileSummary, error)
+	IsFanNicknameAvailable(organizationID int, nickname string, excludeFanID int) (bool, error)
+	UpdateFanNickname(fanID int, nickname string) (FanProfile, error)
 	GetFanByPhoneE164(phone string) (FanProfile, error)
 	CreateFanWithPhoneE164(phone string) (FanProfile, error)
 	MarkFanPhoneVerified(phone string, verifiedAt time.Time) error
@@ -1237,6 +1239,8 @@ var (
 	ErrCouponExpired           = errors.New("coupon expired")
 	ErrCouponAlreadyUsed       = errors.New("coupon already used")
 	ErrCouponMaxReached        = errors.New("coupon max uses reached")
+	ErrNicknameTaken           = errors.New("nickname already taken")
+	ErrInvalidNickname         = errors.New("invalid nickname")
 )
 
 var allowedPostVoteActions = map[string]struct{}{
@@ -7536,6 +7540,50 @@ func (db *appdbimpl) GetFanByDevice(eventID int, organizationID int, deviceID st
 		return db.getFanSummaryByWhere(`JOIN votes v ON v.user_id = p.id WHERE v.event_id = ? AND v.device_id = ? ORDER BY v.id DESC LIMIT 1`, eventID, deviceID)
 	}
 	return db.getFanSummaryByWhere(`JOIN fan_sessions s ON s.fan_id = p.id WHERE s.device_id = ? LIMIT 1`, deviceID)
+}
+
+func (db *appdbimpl) IsFanNicknameAvailable(organizationID int, nickname string, excludeFanID int) (bool, error) {
+	nickname = strings.TrimSpace(nickname)
+	if organizationID <= 0 || nickname == "" {
+		return false, ErrInvalidNickname
+	}
+
+	var existingID int
+	err := db.c.QueryRow(`SELECT id
+		FROM fan_profiles
+		WHERE organization_id = ?
+		  AND LOWER(TRIM(nickname)) = LOWER(TRIM(?))
+		  AND id <> ?
+		LIMIT 1`, organizationID, nickname, excludeFanID).Scan(&existingID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
+func (db *appdbimpl) UpdateFanNickname(fanID int, nickname string) (FanProfile, error) {
+	nickname = strings.TrimSpace(nickname)
+	if fanID <= 0 || nickname == "" {
+		return FanProfile{}, ErrInvalidNickname
+	}
+	if _, err := db.c.Exec(`UPDATE fan_profiles
+		SET nickname = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, nickname, fanID); err != nil {
+		return FanProfile{}, err
+	}
+	var profile FanProfile
+	var accepted int
+	err := db.c.QueryRow(`SELECT id, organization_id, nickname, gender, phone, accepted_terms, created_at, updated_at
+		FROM fan_profiles WHERE id = ?`, fanID).
+		Scan(&profile.ID, &profile.OrganizationID, &profile.Nickname, &profile.Gender, &profile.Phone, &accepted, &profile.CreatedAt, &profile.UpdatedAt)
+	if err != nil {
+		return FanProfile{}, err
+	}
+	profile.AcceptedTerms = accepted == 1
+	return profile, nil
 }
 
 func (db *appdbimpl) GetGuestCoins(eventID int, organizationID int, deviceID string) (int, error) {
