@@ -158,6 +158,23 @@ type TrackingSignal struct {
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 }
 
+type EventTrackingAggregate struct {
+	Name            string   `json:"name"`
+	Count           int      `json:"count"`
+	UniqueSessions  int      `json:"unique_sessions"`
+	UniqueDevices   int      `json:"unique_devices"`
+	UniqueFans      int      `json:"unique_fans"`
+	FirstOccurredAt string   `json:"first_occurred_at,omitempty"`
+	LastOccurredAt  string   `json:"last_occurred_at,omitempty"`
+	Pages           []string `json:"pages,omitempty"`
+	Sections        []string `json:"sections,omitempty"`
+	Sources         []string `json:"sources,omitempty"`
+	Domains         []string `json:"domains,omitempty"`
+	LoginStates     []string `json:"login_states,omitempty"`
+	ProfileStates   []string `json:"profile_states,omitempty"`
+	MetadataSamples []string `json:"metadata_samples,omitempty"`
+}
+
 type EventEngagementStats struct {
 	EventID                int     `json:"event_id"`
 	TotalDurationSeconds   int64   `json:"total_duration_seconds"`
@@ -1196,6 +1213,7 @@ type AppDatabase interface {
 	CreateAIInteractionLog(item AIInteractionLog) (AIInteractionLog, error)
 	UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error
 	ListRecentTrackingSignals(eventID int, sessionID string, limit int) ([]TrackingSignal, error)
+	ListEventTrackingAggregates(eventID int) ([]EventTrackingAggregate, error)
 	GetAIPopupSessionState(sessionID, trigger string, maxPerSession int, cooldown time.Duration) (AIPopupSessionState, error)
 	GetEventAIReport(eventID int) (EventAIReport, error)
 	UpsertEventAIReport(report EventAIReport) (EventAIReport, error)
@@ -8367,6 +8385,130 @@ func (db *appdbimpl) ListRecentTrackingSignals(eventID int, sessionID string, li
 		out = append(out, item)
 	}
 	return out, rows.Err()
+}
+
+func splitDistinctValues(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	values := make([]string, 0)
+	for _, part := range strings.Split(raw, ",") {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	sort.Strings(values)
+	return values
+}
+
+func (db *appdbimpl) ListEventTrackingAggregates(eventID int) ([]EventTrackingAggregate, error) {
+	if eventID <= 0 {
+		return []EventTrackingAggregate{}, nil
+	}
+
+	rows, err := db.c.Query(`SELECT
+		event_name,
+		COUNT(*) AS total_count,
+		COUNT(DISTINCT NULLIF(session_id, '')) AS unique_sessions,
+		COUNT(DISTINCT NULLIF(device_id, '')) AS unique_devices,
+		COUNT(DISTINCT fan_id) AS unique_fans,
+		IFNULL(MIN(occurred_at), '') AS first_occurred_at,
+		IFNULL(MAX(occurred_at), '') AS last_occurred_at,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(page, '')), '') AS pages,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(section, '')), '') AS sections,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(source, '')), '') AS sources,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(event_domain, '')), '') AS domains,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(login_state, '')), '') AS login_states,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(profile_state, '')), '') AS profile_states
+	FROM tracking_events
+	WHERE event_id = ?
+	GROUP BY event_name
+	ORDER BY total_count DESC, event_name ASC`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]EventTrackingAggregate, 0)
+	for rows.Next() {
+		var item EventTrackingAggregate
+		var pagesRaw, sectionsRaw, sourcesRaw, domainsRaw, loginStatesRaw, profileStatesRaw string
+		if err := rows.Scan(
+			&item.Name,
+			&item.Count,
+			&item.UniqueSessions,
+			&item.UniqueDevices,
+			&item.UniqueFans,
+			&item.FirstOccurredAt,
+			&item.LastOccurredAt,
+			&pagesRaw,
+			&sectionsRaw,
+			&sourcesRaw,
+			&domainsRaw,
+			&loginStatesRaw,
+			&profileStatesRaw,
+		); err != nil {
+			return nil, err
+		}
+		item.Pages = splitDistinctValues(pagesRaw)
+		item.Sections = splitDistinctValues(sectionsRaw)
+		item.Sources = splitDistinctValues(sourcesRaw)
+		item.Domains = splitDistinctValues(domainsRaw)
+		item.LoginStates = splitDistinctValues(loginStatesRaw)
+		item.ProfileStates = splitDistinctValues(profileStatesRaw)
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sampleRows, err := db.c.Query(`SELECT event_name, IFNULL(metadata_json, '')
+		FROM tracking_events
+		WHERE event_id = ?
+		ORDER BY datetime(occurred_at) DESC, id DESC`, eventID)
+	if err != nil {
+		return out, nil
+	}
+	defer sampleRows.Close()
+
+	samplesByEvent := make(map[string][]string)
+	for sampleRows.Next() {
+		var eventName, metadataRaw string
+		if err := sampleRows.Scan(&eventName, &metadataRaw); err != nil {
+			continue
+		}
+		eventName = strings.TrimSpace(eventName)
+		metadataRaw = strings.TrimSpace(metadataRaw)
+		if eventName == "" || metadataRaw == "" || metadataRaw == "{}" {
+			continue
+		}
+		if len(samplesByEvent[eventName]) >= 3 {
+			continue
+		}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(metadataRaw), &parsed); err != nil || len(parsed) == 0 {
+			continue
+		}
+		normalizedJSON, err := json.Marshal(parsed)
+		if err != nil {
+			continue
+		}
+		samplesByEvent[eventName] = append(samplesByEvent[eventName], string(normalizedJSON))
+	}
+
+	for i := range out {
+		out[i].MetadataSamples = samplesByEvent[out[i].Name]
+	}
+
+	return out, nil
 }
 
 func (db *appdbimpl) UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error {

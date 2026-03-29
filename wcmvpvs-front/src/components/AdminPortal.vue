@@ -1323,6 +1323,56 @@
                   </div>
                   <p v-else class="muted">Tracking non disponibile.</p>
                 </div>
+                <div class="history-details__column history-details__column--tracking-events">
+                  <h4>Tracking events</h4>
+                  <p v-if="!entry.trackingEvents.length" class="muted">
+                    Nessun tracking event registrato.
+                  </p>
+                  <ul v-else class="history-tracking-events">
+                    <li
+                      v-for="track in entry.trackingEvents"
+                      :key="`${entry.id}-tracking-${track.name}`"
+                      class="history-tracking-events__item"
+                    >
+                      <div class="history-tracking-events__head">
+                        <strong>{{ track.nameLabel }}</strong>
+                        <span>{{ track.countLabel }}</span>
+                      </div>
+                      <p class="history-tracking-events__meta">
+                        Sessioni: {{ track.uniqueSessionsLabel }} · Device: {{ track.uniqueDevicesLabel }} · Fan: {{ track.uniqueFansLabel }}
+                      </p>
+                      <p
+                        v-if="track.rangeLabel"
+                        class="history-tracking-events__meta"
+                      >
+                        Ultima attività: {{ track.rangeLabel }}
+                      </p>
+                      <div
+                        v-if="track.details.length"
+                        class="history-tracking-events__chips"
+                      >
+                        <span
+                          v-for="detail in track.details"
+                          :key="`${entry.id}-tracking-${track.name}-${detail.label}`"
+                          class="history-tracking-events__chip"
+                        >
+                          <strong>{{ detail.label }}:</strong> {{ detail.value }}
+                        </span>
+                      </div>
+                      <ul
+                        v-if="track.metadataSamples.length"
+                        class="history-tracking-events__samples"
+                      >
+                        <li
+                          v-for="(sample, sampleIndex) in track.metadataSamples"
+                          :key="`${entry.id}-tracking-${track.name}-sample-${sampleIndex}`"
+                        >
+                          <code>{{ sample }}</code>
+                        </li>
+                      </ul>
+                    </li>
+                  </ul>
+                </div>
                 <div
                   class="history-details__column history-details__column--prizes"
                 >
@@ -4828,6 +4878,140 @@ function normalizeHistoryEngagement(raw) {
   };
 }
 
+function formatTrackingValueList(values, limit = 4) {
+  if (!Array.isArray(values)) {
+    return "";
+  }
+  const normalized = values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  if (!normalized.length) {
+    return "";
+  }
+  const visible = normalized.slice(0, limit);
+  const hiddenCount = normalized.length - visible.length;
+  return hiddenCount > 0
+    ? `${visible.join(", ")} (+${hiddenCount})`
+    : visible.join(", ");
+}
+
+function normalizeHistoryTrackingEvents(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .map((eventItem) => {
+      if (!eventItem || typeof eventItem !== "object") {
+        return null;
+      }
+      const name =
+        typeof eventItem?.name === "string" ? eventItem.name.trim() : "";
+      const count = Number(eventItem?.count ?? 0) || 0;
+      if (!name && count <= 0) {
+        return null;
+      }
+
+      const uniqueSessions =
+        Number(eventItem?.unique_sessions ?? eventItem?.uniqueSessions ?? 0) ||
+        0;
+      const uniqueDevices =
+        Number(eventItem?.unique_devices ?? eventItem?.uniqueDevices ?? 0) || 0;
+      const uniqueFans =
+        Number(eventItem?.unique_fans ?? eventItem?.uniqueFans ?? 0) || 0;
+
+      const firstOccurredAt =
+        typeof (eventItem?.first_occurred_at ?? eventItem?.firstOccurredAt) ===
+        "string"
+          ? (eventItem?.first_occurred_at ?? eventItem?.firstOccurredAt)
+          : "";
+      const lastOccurredAt =
+        typeof (eventItem?.last_occurred_at ?? eventItem?.lastOccurredAt) ===
+        "string"
+          ? (eventItem?.last_occurred_at ?? eventItem?.lastOccurredAt)
+          : "";
+
+      const formatDateTime = (value) => {
+        const parsed = parseHistoryDate(value);
+        if (!parsed) {
+          return "";
+        }
+        try {
+          return analyticsTimeFormatter.format(parsed);
+        } catch (error) {
+          return value;
+        }
+      };
+
+      const fromLabel = formatDateTime(firstOccurredAt);
+      const toLabel = formatDateTime(lastOccurredAt);
+      const rangeLabel =
+        fromLabel && toLabel
+          ? `${fromLabel} → ${toLabel}`
+          : toLabel || fromLabel || "";
+
+      const details = [
+        {
+          label: "Pagine",
+          value: formatTrackingValueList(eventItem?.pages),
+        },
+        {
+          label: "Sezioni",
+          value: formatTrackingValueList(eventItem?.sections),
+        },
+        {
+          label: "Sorgenti",
+          value: formatTrackingValueList(eventItem?.sources),
+        },
+        {
+          label: "Domini",
+          value: formatTrackingValueList(eventItem?.domains),
+        },
+        {
+          label: "Login",
+          value: formatTrackingValueList(eventItem?.login_states ?? eventItem?.loginStates),
+        },
+        {
+          label: "Profilo",
+          value: formatTrackingValueList(eventItem?.profile_states ?? eventItem?.profileStates),
+        },
+      ].filter((detail) => detail.value);
+
+      const metadataSamples = Array.isArray(
+        eventItem?.metadata_samples ?? eventItem?.metadataSamples,
+      )
+        ? (eventItem?.metadata_samples ?? eventItem?.metadataSamples)
+            .map((sample) =>
+              typeof sample === "string" ? sample.trim() : "",
+            )
+            .filter(Boolean)
+        : [];
+
+      return {
+        name: name || "tracking_event",
+        nameLabel: name || "Evento tracking",
+        count,
+        countLabel: `${count.toLocaleString("it-IT")} occorrenze`,
+        uniqueSessions,
+        uniqueSessionsLabel: uniqueSessions.toLocaleString("it-IT"),
+        uniqueDevices,
+        uniqueDevicesLabel: uniqueDevices.toLocaleString("it-IT"),
+        uniqueFans,
+        uniqueFansLabel: uniqueFans.toLocaleString("it-IT"),
+        rangeLabel,
+        details,
+        metadataSamples,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      return a.nameLabel.localeCompare(b.nameLabel, "it");
+    });
+}
+
 function normalizeHistoryEntry(item) {
   const id = Number(item?.id) || 0;
   const homeTeam =
@@ -5117,6 +5301,9 @@ function normalizeHistoryEntry(item) {
   const aiReport = normalizeAiHistoryReport(
     item?.ai_report ?? item?.aiReport ?? null,
   );
+  const trackingEvents = normalizeHistoryTrackingEvents(
+    item?.tracking_events ?? item?.trackingEvents,
+  );
 
   return {
     id,
@@ -5151,6 +5338,7 @@ function normalizeHistoryEntry(item) {
     feedbackSummary,
     feedbackSurvey,
     aiReport,
+    trackingEvents,
   };
 }
 
@@ -7991,5 +8179,62 @@ textarea:focus {
 .selfie-admin-actions .btn {
   flex: 1 1 auto;
   min-width: 160px;
+}
+
+.history-tracking-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.history-tracking-events__item {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.history-tracking-events__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: #0f172a;
+}
+
+.history-tracking-events__meta {
+  margin: 0.25rem 0 0;
+  color: #475569;
+  font-size: 0.82rem;
+}
+
+.history-tracking-events__chips {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.history-tracking-events__chip {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.74rem;
+  color: #334155;
+}
+
+.history-tracking-events__samples {
+  margin: 0.6rem 0 0;
+  padding-left: 1.1rem;
+  color: #1e293b;
+}
+
+.history-tracking-events__samples code {
+  font-size: 0.74rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>
