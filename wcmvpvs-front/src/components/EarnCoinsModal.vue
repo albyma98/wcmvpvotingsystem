@@ -98,6 +98,12 @@
                       @spend="handleSpend"
                       @exit="goBack"
                     />
+                    <SponsorRushGame
+                      v-else-if="activeGame?.id === 'sponsor-rush'"
+                      class="h-full w-full"
+                      @claim="handleClaim"
+                      @exit="goBack"
+                    />
                     <div v-else class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
                       Game coming soon
                     </div>
@@ -121,6 +127,7 @@ import ReactionTestGame from './ReactionTestGame.vue';
 import QuickQuizGame from './QuickQuizGame.vue';
 import TapChallenge from './minigames/TapChallenge.vue';
 import MemoryFlashGame from './minigames/MemoryFlashGame.vue';
+import SponsorRushGame from './minigames/SponsorRushGame.vue';
 import { getEarnCooldownRemainingSeconds, startEarnCooldown } from '../utils/earnCooldown';
 import { trackAppEvent } from '../eventTracking';
 
@@ -156,6 +163,7 @@ const earnOptions = [
   { id: 'quiz', title: 'Quiz Lampo', description: 'Rispondi veloce a domande a tema match.', reward: 15, icon: '🧠', type: 'game', cooldownSeconds: 120, isAvailable: true },
   { id: 'tap', title: 'Tap Challenge', description: 'Tappa più forte che puoi in 10 secondi.', reward: 8, icon: '👆', type: 'game', cooldownSeconds: 60, isAvailable: true },
   { id: 'memory-flash', title: 'Memory Flash', description: 'Memorizza le coppie e chiudi il board prima del tempo.', reward: 8, icon: '🧩', type: 'game', cooldownSeconds: 60, isAvailable: true },
+  { id: 'sponsor-rush', title: 'Sponsor Rush', description: 'Prendi i loghi sponsor al volo entro il tempo limite.', reward: 12, icon: '🏷️', type: 'game', cooldownSeconds: 45, isAvailable: true },
 ];
 
 const nowTick = ref(Date.now());
