@@ -828,6 +828,31 @@ export async function redeemFanReward(eventId, rewardKey, costCoins) {
   }
 }
 
+export async function donateFanSupport(eventId, coins) {
+  try {
+    const { data } = await apiClient.post(`/events/${eventId}/support/donate`, { coins }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    return { ok: false, message, status, error };
+  }
+}
+
+export async function fetchFanSupportLeaderboard(eventId, limit = 10) {
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/support/leaderboard`, {
+      params: { limit },
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
 export async function joinTapLiveQueue(eventId: number) {
   try {
     const { data } = await apiClient.post(`/events/${eventId}/tap-live/queue`, {}, {
