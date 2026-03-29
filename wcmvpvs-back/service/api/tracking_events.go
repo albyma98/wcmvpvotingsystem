@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -45,8 +46,29 @@ func (rt *_router) recordTrackingEvents(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	if !rt.ensureEventInOrganization(w, ctx, eventID) {
-		return
+	resolvedOrganizationID := ctx.OrganizationID
+	resolvedOrganizationSlug := strings.TrimSpace(ctx.OrganizationSlug)
+	if resolvedOrganizationID > 0 {
+		if !rt.ensureEventInOrganization(w, ctx, eventID) {
+			return
+		}
+	} else {
+		eventOrganizationID, orgErr := rt.db.GetEventOrganizationID(eventID)
+		if orgErr != nil {
+			if errors.Is(orgErr, sql.ErrNoRows) {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			ctx.Logger.WithError(orgErr).Error("cannot resolve event organization for tracking")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		resolvedOrganizationID = eventOrganizationID
+		if resolvedOrganizationID > 0 {
+			if org, orgErr := rt.db.GetOrganization(resolvedOrganizationID); orgErr == nil {
+				resolvedOrganizationSlug = strings.TrimSpace(org.Slug)
+			}
+		}
 	}
 
 	var payload trackingEventsRequest
@@ -91,8 +113,8 @@ func (rt *_router) recordTrackingEvents(w http.ResponseWriter, r *http.Request, 
 			SessionID:        firstNonEmpty(strings.TrimSpace(item.SessionID), strings.TrimSpace(payload.SessionID)),
 			DeviceID:         firstNonEmpty(strings.TrimSpace(item.DeviceID), strings.TrimSpace(deviceID)),
 			FanID:            fanID,
-			OrganizationID:   firstPositive(item.OrganizationID, ctx.OrganizationID),
-			OrganizationSlug: firstNonEmpty(strings.TrimSpace(item.OrganizationSlug), strings.TrimSpace(ctx.OrganizationSlug)),
+			OrganizationID:   firstPositive(item.OrganizationID, resolvedOrganizationID),
+			OrganizationSlug: firstNonEmpty(strings.TrimSpace(item.OrganizationSlug), resolvedOrganizationSlug),
 			EventID:          eventID,
 			Page:             firstNonEmpty(strings.TrimSpace(item.Page), strings.TrimSpace(payload.Page)),
 			Section:          strings.TrimSpace(item.Section),
