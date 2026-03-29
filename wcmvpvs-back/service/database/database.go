@@ -2587,14 +2587,13 @@ func (db *appdbimpl) Ping() error {
 }
 
 // AddVote stores a vote in the database. If the device already voted for the event,
-// the latest choice replaces the previous one (including the ticket data).
+// only the selected player (and optional user binding) is updated while preserving the
+// original ticket code/signature assigned to that device+event pair.
 func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string, userID *int) error {
 	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id, user_id)
 VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(event_id, device_id) DO UPDATE SET
 player_id = excluded.player_id,
-ticket_code = excluded.ticket_code,
-ticket_signature = excluded.ticket_signature,
 user_id = excluded.user_id,
 created_at = CURRENT_TIMESTAMP`, eventID, playerID, code, signature, deviceID, userID)
 	return err

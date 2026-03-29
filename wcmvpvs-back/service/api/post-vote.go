@@ -89,39 +89,56 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		}
 	}
 
-	for attempt := 0; attempt < maxCodeGenerationAttempts; attempt++ {
-		var err error
-		code, err = generateNumericCode()
-		if err != nil {
-			ctx.Logger.WithError(err).Error("cannot generate vote code")
-			_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
-			return
-		}
-		signature = signCode(rt.VoteSecret, code)
+	existingVote, existingVoteErr := rt.db.GetDeviceVote(req.EventID, req.DeviceID)
+	if existingVoteErr == nil {
+		code = strings.TrimSpace(existingVote.TicketCode)
+		signature = strings.TrimSpace(existingVote.TicketSignature)
+	}
+	if existingVoteErr != nil && !errors.Is(existingVoteErr, sql.ErrNoRows) {
+		ctx.Logger.WithError(existingVoteErr).Error("cannot load existing vote before update")
+		_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
+		return
+	}
 
-		if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID, fanID); err != nil {
-			switch {
-			case isVoteCodeCollision(err):
-				ctx.Logger.WithError(err).Warn("duplicate vote code detected, retrying")
-				continue
-			case isVoteDeviceCollision(err):
-				ctx.Logger.WithError(err).Warn("duplicate vote attempt for device")
-				_ = writeJSONMessage(w, http.StatusConflict, "Hai già votato per questa partita.")
-				return
-			case isUniqueConstraintError(err):
-				ctx.Logger.WithError(err).Error("vote unique constraint violation")
-				_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
-				return
-			default:
-				ctx.Logger.WithError(err).Error("cannot store vote")
+	if code == "" || signature == "" {
+		for attempt := 0; attempt < maxCodeGenerationAttempts; attempt++ {
+			var err error
+			code, err = generateNumericCode()
+			if err != nil {
+				ctx.Logger.WithError(err).Error("cannot generate vote code")
 				_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 				return
 			}
+			signature = signCode(rt.VoteSecret, code)
+			if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID, fanID); err != nil {
+				switch {
+				case isVoteCodeCollision(err):
+					ctx.Logger.WithError(err).Warn("duplicate vote code detected, retrying")
+					continue
+				case isUniqueConstraintError(err):
+					ctx.Logger.WithError(err).Error("vote unique constraint violation")
+					_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
+					return
+				default:
+					ctx.Logger.WithError(err).Error("cannot store vote")
+					_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
+					return
+				}
+			}
+			ctx.Logger.Infof("generated vote code %s", code)
+			ctx.Logger.Info("vote stored in database")
+			break
 		}
-
-		ctx.Logger.Infof("generated vote code %s", code)
-		ctx.Logger.Info("vote stored in database")
-		break
+	} else {
+		if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID, fanID); err != nil {
+			ctx.Logger.WithError(err).Error("cannot update vote while reusing existing ticket code")
+			_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
+			return
+		}
+		ctx.Logger.WithFields(map[string]interface{}{
+			"event_id": req.EventID,
+			"code":     code,
+		}).Info("reused existing vote code for device")
 	}
 
 	if code == "" {
