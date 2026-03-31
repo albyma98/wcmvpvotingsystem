@@ -63,6 +63,7 @@ type eventHistoryEntry struct {
 	FeedbackSurvey     database.EventFeedbackSurveyConfig `json:"feedback_survey"`
 	AIReport           *database.EventAIReport            `json:"ai_report,omitempty"`
 	TrackingEvents     []database.EventTrackingAggregate  `json:"tracking_events"`
+	TrackingAnalytics  database.EventTrackingAnalytics    `json:"tracking_analytics"`
 }
 
 type historyEntryWrapper struct {
@@ -210,6 +211,11 @@ func (rt *_router) buildEventHistoryEntry(ctx reqcontext.RequestContext, event d
 		ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load tracking events for history")
 		trackingEvents = []database.EventTrackingAggregate{}
 	}
+	trackingAnalytics, err := rt.db.GetEventTrackingAnalytics(event.ID)
+	if err != nil {
+		ctx.Logger.WithError(err).WithField("event_id", event.ID).Warn("cannot load tracking analytics for history")
+		trackingAnalytics = database.EventTrackingAnalytics{EventID: event.ID}
+	}
 
 	entry := eventHistoryEntry{
 		ID:                 event.ID,
@@ -230,6 +236,7 @@ func (rt *_router) buildEventHistoryEntry(ctx reqcontext.RequestContext, event d
 		FeedbackSummary:    feedbackSummaryPtr,
 		FeedbackSurvey:     surveyConfig,
 		TrackingEvents:     trackingEvents,
+		TrackingAnalytics:  trackingAnalytics,
 	}
 
 	if report, err := rt.db.GetEventAIReport(event.ID); err == nil {

@@ -1373,6 +1373,95 @@
                     </li>
                   </ul>
                 </div>
+                <div class="history-details__column history-details__column--tracking-analytics">
+                  <h4>Analytics evento</h4>
+                  <div class="history-analytics-kpi">
+                    <div class="history-analytics-kpi__item">
+                      <span>Sessioni uniche</span>
+                      <strong>{{ entry.trackingAnalytics.labels.uniqueSessions }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Eventi totali</span>
+                      <strong>{{ entry.trackingAnalytics.labels.totalEvents }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Voti inviati</span>
+                      <strong>{{ entry.trackingAnalytics.labels.votesSubmitted }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Conv. voto</span>
+                      <strong>{{ entry.trackingAnalytics.labels.voteConversionRate }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Feedback inviati</span>
+                      <strong>{{ entry.trackingAnalytics.labels.feedbackSubmitted }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Click sponsor</span>
+                      <strong>{{ entry.trackingAnalytics.labels.sponsorClicks }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Ordini bar</span>
+                      <strong>{{ entry.trackingAnalytics.labels.barOrdersCompleted }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Eventi/sessione</span>
+                      <strong>{{ entry.trackingAnalytics.labels.avgEventsPerSession }}</strong>
+                    </div>
+                  </div>
+                  <p class="history-analytics-meta">
+                    First/Last event: {{ formatHistoryDate(entry.trackingAnalytics.firstEventAt) || "N/D" }} → {{ formatHistoryDate(entry.trackingAnalytics.lastEventAt) || "N/D" }}
+                  </p>
+                  <p class="history-analytics-meta">
+                    Peak minuto: {{ formatHistoryDate(entry.trackingAnalytics.peakActivityMinute) || "N/D" }}
+                  </p>
+                  <div v-if="entry.trackingAnalytics.funnels.length" class="history-analytics-funnels">
+                    <h5>Funnel principali</h5>
+                    <div
+                      v-for="funnel in entry.trackingAnalytics.funnels"
+                      :key="`${entry.id}-funnel-${funnel.name}`"
+                      class="history-analytics-funnels__item"
+                    >
+                      <strong>{{ funnel.name.toUpperCase() }}</strong>
+                      <ul>
+                        <li
+                          v-for="step in funnel.steps"
+                          :key="`${entry.id}-${funnel.name}-${step.key}`"
+                        >
+                          <span>{{ step.label }}</span>
+                          <span>{{ step.countLabel }}</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div class="history-analytics-segment">
+                    <h5>Guest vs Registrati</h5>
+                    <p>
+                      Voti: G {{ entry.trackingAnalytics.segmentBreakdown.guest.submittedVotes.toLocaleString("it-IT") }}
+                      · R {{ entry.trackingAnalytics.segmentBreakdown.registered.submittedVotes.toLocaleString("it-IT") }}
+                    </p>
+                    <p>
+                      Feedback: G {{ entry.trackingAnalytics.segmentBreakdown.guest.feedbackSubmitted.toLocaleString("it-IT") }}
+                      · R {{ entry.trackingAnalytics.segmentBreakdown.registered.feedbackSubmitted.toLocaleString("it-IT") }}
+                    </p>
+                    <p>
+                      Sponsor click: G {{ entry.trackingAnalytics.segmentBreakdown.guest.sponsorClicks.toLocaleString("it-IT") }}
+                      · R {{ entry.trackingAnalytics.segmentBreakdown.registered.sponsorClicks.toLocaleString("it-IT") }}
+                    </p>
+                  </div>
+                  <div v-if="entry.trackingAnalytics.topEventNames.length" class="history-analytics-top">
+                    <h5>Top event_name</h5>
+                    <ul>
+                      <li
+                        v-for="top in entry.trackingAnalytics.topEventNames.slice(0, 5)"
+                        :key="`${entry.id}-top-${top.name}`"
+                      >
+                        <span>{{ top.name }}</span>
+                        <span>{{ top.count.toLocaleString("it-IT") }}</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
                 <div
                   class="history-details__column history-details__column--prizes"
                 >
@@ -5012,6 +5101,165 @@ function normalizeHistoryTrackingEvents(raw) {
     });
 }
 
+function normalizeHistoryTrackingAnalytics(raw) {
+  const data = raw && typeof raw === "object" ? raw : {};
+  const asNumber = (value) => Number(value ?? 0) || 0;
+  const asRate = (value) => {
+    const parsed = Number(value ?? 0);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return 0;
+    }
+    return parsed;
+  };
+  const formatRateLabel = (value) => `${formatPercent(asRate(value) * 100)}%`;
+  const funnelRaw = Array.isArray(data?.funnels) ? data.funnels : [];
+  const funnels = funnelRaw
+    .map((funnel) => ({
+      name: typeof funnel?.name === "string" ? funnel.name.trim() : "",
+      steps: Array.isArray(funnel?.steps)
+        ? funnel.steps.map((step) => ({
+            key: typeof step?.key === "string" ? step.key.trim() : "",
+            label:
+              typeof step?.label === "string" && step.label.trim()
+                ? step.label.trim()
+                : "Step",
+            count: asNumber(step?.count),
+            countLabel: asNumber(step?.count).toLocaleString("it-IT"),
+          }))
+        : [],
+    }))
+    .filter((funnel) => funnel.name && funnel.steps.length);
+
+  const kpi = data?.kpi && typeof data.kpi === "object" ? data.kpi : {};
+  const topEventNames = Array.isArray(data?.top_event_names ?? data?.topEventNames)
+    ? (data?.top_event_names ?? data?.topEventNames)
+        .map((item) => ({
+          name: typeof item?.name === "string" ? item.name.trim() : "",
+          count: asNumber(item?.count),
+        }))
+        .filter((item) => item.name)
+        .sort((a, b) => b.count - a.count)
+    : [];
+  const byDomain = data?.by_event_domain ?? data?.byEventDomain ?? {};
+  const domainBreakdown = Object.entries(byDomain)
+    .map(([domain, value]) => ({
+      domain: String(domain || "unknown"),
+      count: asNumber(value),
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  return {
+    uniqueSessions: asNumber(data?.unique_sessions ?? data?.uniqueSessions),
+    totalEvents: asNumber(data?.total_events ?? data?.totalEvents),
+    voteSubmittedCount: asNumber(
+      data?.vote_submitted_count ?? data?.voteSubmittedCount,
+    ),
+    feedbackSubmittedCount: asNumber(
+      data?.feedback_submitted_count ?? data?.feedbackSubmittedCount,
+    ),
+    sponsorClickedCount: asNumber(
+      data?.sponsor_clicked_count ?? data?.sponsorClickedCount,
+    ),
+    barOrderCompletedCount: asNumber(
+      data?.bar_order_completed_count ?? data?.barOrderCompletedCount,
+    ),
+    avgEventsPerSession: asRate(
+      data?.avg_events_per_session ?? data?.avgEventsPerSession,
+    ),
+    voteConversionRate: asRate(
+      data?.vote_conversion_rate ?? data?.voteConversionRate,
+    ),
+    voteCompletionRate: asRate(
+      data?.vote_completion_rate ?? data?.voteCompletionRate,
+    ),
+    feedbackCompletionRate: asRate(
+      data?.feedback_completion_rate ?? data?.feedbackCompletionRate,
+    ),
+    barOrderCompletionRate: asRate(
+      data?.bar_order_completion_rate ?? data?.barOrderCompletionRate,
+    ),
+    firstEventAt:
+      typeof (data?.first_event_at ?? data?.firstEventAt) === "string"
+        ? (data?.first_event_at ?? data?.firstEventAt)
+        : "",
+    lastEventAt:
+      typeof (data?.last_event_at ?? data?.lastEventAt) === "string"
+        ? (data?.last_event_at ?? data?.lastEventAt)
+        : "",
+    peakActivityMinute:
+      typeof (data?.peak_activity_minute ?? data?.peakActivityMinute) ===
+      "string"
+        ? (data?.peak_activity_minute ?? data?.peakActivityMinute)
+        : "",
+    segmentBreakdown: {
+      guest: {
+        submittedVotes: asNumber(
+          data?.segment_breakdown?.guest?.submitted_votes ??
+            data?.segmentBreakdown?.guest?.submittedVotes,
+        ),
+        feedbackSubmitted: asNumber(
+          data?.segment_breakdown?.guest?.feedback_submitted ??
+            data?.segmentBreakdown?.guest?.feedbackSubmitted,
+        ),
+        sponsorClicks: asNumber(
+          data?.segment_breakdown?.guest?.sponsor_clicks ??
+            data?.segmentBreakdown?.guest?.sponsorClicks,
+        ),
+      },
+      registered: {
+        submittedVotes: asNumber(
+          data?.segment_breakdown?.registered?.submitted_votes ??
+            data?.segmentBreakdown?.registered?.submittedVotes,
+        ),
+        feedbackSubmitted: asNumber(
+          data?.segment_breakdown?.registered?.feedback_submitted ??
+            data?.segmentBreakdown?.registered?.feedbackSubmitted,
+        ),
+        sponsorClicks: asNumber(
+          data?.segment_breakdown?.registered?.sponsor_clicks ??
+            data?.segmentBreakdown?.registered?.sponsorClicks,
+        ),
+      },
+    },
+    funnels,
+    topEventNames,
+    domainBreakdown,
+    labels: {
+      uniqueSessions: asNumber(
+        kpi?.unique_sessions ?? kpi?.uniqueSessions ?? data?.unique_sessions,
+      ).toLocaleString("it-IT"),
+      totalEvents: asNumber(
+        kpi?.total_events ?? kpi?.totalEvents ?? data?.total_events,
+      ).toLocaleString("it-IT"),
+      votesSubmitted: asNumber(
+        kpi?.votes_submitted ?? kpi?.votesSubmitted ?? data?.vote_submitted_count,
+      ).toLocaleString("it-IT"),
+      voteConversionRate: formatRateLabel(
+        kpi?.vote_conversion_rate ?? kpi?.voteConversionRate ?? data?.vote_conversion_rate,
+      ),
+      feedbackSubmitted: asNumber(
+        kpi?.feedback_submitted ?? kpi?.feedbackSubmitted ?? data?.feedback_submitted_count,
+      ).toLocaleString("it-IT"),
+      sponsorClicks: asNumber(
+        kpi?.sponsor_clicks ?? kpi?.sponsorClicks ?? data?.sponsor_clicked_count,
+      ).toLocaleString("it-IT"),
+      barOrdersCompleted: asNumber(
+        kpi?.bar_orders_completed ??
+          kpi?.barOrdersCompleted ??
+          data?.bar_order_completed_count,
+      ).toLocaleString("it-IT"),
+      avgEventsPerSession: asRate(
+        kpi?.avg_events_per_session ??
+          kpi?.avgEventsPerSession ??
+          data?.avg_events_per_session,
+      ).toFixed(2),
+      voteCompletionRate: formatRateLabel(data?.vote_completion_rate),
+      feedbackCompletionRate: formatRateLabel(data?.feedback_completion_rate),
+      barOrderCompletionRate: formatRateLabel(data?.bar_order_completion_rate),
+    },
+  };
+}
+
 function normalizeHistoryEntry(item) {
   const id = Number(item?.id) || 0;
   const homeTeam =
@@ -5304,6 +5552,9 @@ function normalizeHistoryEntry(item) {
   const trackingEvents = normalizeHistoryTrackingEvents(
     item?.tracking_events ?? item?.trackingEvents,
   );
+  const trackingAnalytics = normalizeHistoryTrackingAnalytics(
+    item?.tracking_analytics ?? item?.trackingAnalytics,
+  );
 
   return {
     id,
@@ -5339,6 +5590,7 @@ function normalizeHistoryEntry(item) {
     feedbackSurvey,
     aiReport,
     trackingEvents,
+    trackingAnalytics,
   };
 }
 
@@ -7440,6 +7692,60 @@ textarea:focus {
   gap: 0.35rem;
   color: #334155;
   font-size: 0.9rem;
+}
+
+.history-analytics-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.55rem;
+}
+
+.history-analytics-kpi__item {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.history-analytics-kpi__item span {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.history-analytics-kpi__item strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.history-analytics-meta {
+  margin: 0.4rem 0 0;
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.history-analytics-funnels,
+.history-analytics-segment,
+.history-analytics-top {
+  margin-top: 0.7rem;
+}
+
+.history-analytics-funnels__item ul,
+.history-analytics-top ul {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+}
+
+.history-analytics-funnels__item li,
+.history-analytics-top li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: #334155;
+  padding: 0.15rem 0;
 }
 
 .history-prize-status {
