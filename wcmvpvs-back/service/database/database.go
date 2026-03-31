@@ -175,6 +175,136 @@ type EventTrackingAggregate struct {
 	MetadataSamples []string `json:"metadata_samples,omitempty"`
 }
 
+type EventTrackingKPI struct {
+	UniqueSessions      int     `json:"unique_sessions"`
+	TotalEvents         int     `json:"total_events"`
+	VotesSubmitted      int     `json:"votes_submitted"`
+	VoteConversionRate  float64 `json:"vote_conversion_rate"`
+	FeedbackSubmitted   int     `json:"feedback_submitted"`
+	SponsorClicks       int     `json:"sponsor_clicks"`
+	BarOrdersCompleted  int     `json:"bar_orders_completed"`
+	AvgEventsPerSession float64 `json:"avg_events_per_session"`
+}
+
+type EventTrackingFunnelStep struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+type EventTrackingFunnel struct {
+	Name  string                    `json:"name"`
+	Steps []EventTrackingFunnelStep `json:"steps"`
+}
+
+type EventTrackingSessionMetrics struct {
+	SessionStartedCount int     `json:"session_started_count"`
+	SessionResumedCount int     `json:"session_resumed_count"`
+	SessionHiddenCount  int     `json:"session_hidden_count"`
+	SessionIdleStarted  int     `json:"session_idle_started_count"`
+	SessionIdleResumed  int     `json:"session_idle_resumed_count"`
+	SessionEndedCount   int     `json:"session_ended_count"`
+	StartedSessions     int     `json:"started_sessions_count"`
+	EndedSessions       int     `json:"ended_sessions_count"`
+	AvgDurationSeconds  float64 `json:"avg_duration_seconds"`
+	FirstSeenAt         string  `json:"first_seen_at,omitempty"`
+	LastSeenAt          string  `json:"last_seen_at,omitempty"`
+}
+
+type EventTrackingSegmentMetric struct {
+	SubmittedVotes    int `json:"submitted_votes"`
+	FeedbackSubmitted int `json:"feedback_submitted"`
+	SponsorClicks     int `json:"sponsor_clicks"`
+}
+
+type EventTrackingSegmentBreakdown struct {
+	Guest      EventTrackingSegmentMetric `json:"guest"`
+	Registered EventTrackingSegmentMetric `json:"registered"`
+}
+
+type EventTrackingAnalytics struct {
+	EventID                          int                           `json:"event_id"`
+	TotalEvents                      int                           `json:"total_events"`
+	UniqueSessions                   int                           `json:"unique_sessions"`
+	UniqueFans                       int                           `json:"unique_fans"`
+	UniqueDevices                    int                           `json:"unique_devices"`
+	RegisteredSessions               int                           `json:"registered_sessions"`
+	GuestSessions                    int                           `json:"guest_sessions"`
+	AvgEventsPerSession              float64                       `json:"avg_events_per_session"`
+	FirstEventAt                     string                        `json:"first_event_at,omitempty"`
+	LastEventAt                      string                        `json:"last_event_at,omitempty"`
+	PeakActivityMinute               string                        `json:"peak_activity_minute,omitempty"`
+	ByEventName                      map[string]int                `json:"by_event_name"`
+	ByEventDomain                    map[string]int                `json:"by_event_domain"`
+	TimelinePerMinute                map[string]int                `json:"timeline_per_minute"`
+	TopEventNames                    []EventTrackingAggregate      `json:"top_event_names"`
+	KPI                              EventTrackingKPI              `json:"kpi"`
+	Funnels                          []EventTrackingFunnel         `json:"funnels"`
+	VoteScreenOpenedCount            int                           `json:"vote_screen_opened_count"`
+	VotePlayerSelectedCount          int                           `json:"vote_player_selected_count"`
+	VoteSubmitAttemptedCount         int                           `json:"vote_submit_attempted_count"`
+	VoteSubmittedCount               int                           `json:"vote_submitted_count"`
+	VoteSubmitFailedCount            int                           `json:"vote_submit_failed_count"`
+	VoteOpenRate                     float64                       `json:"vote_open_rate"`
+	VoteConversionRate               float64                       `json:"vote_conversion_rate"`
+	VoteCompletionRate               float64                       `json:"vote_completion_rate"`
+	VoteAttemptToSubmitRate          float64                       `json:"vote_attempt_to_submit_rate"`
+	RegistrationCompletedCount       int                           `json:"registration_completed_count"`
+	RegistrationFailedCount          int                           `json:"registration_failed_count"`
+	ProfileOpenedCount               int                           `json:"profile_opened_count"`
+	ProfileLoadedCount               int                           `json:"profile_loaded_count"`
+	NicknameUpdatedCount             int                           `json:"nickname_updated_count"`
+	RegistrationRate                 float64                       `json:"registration_rate"`
+	FeedbackModalOpenedCount         int                           `json:"feedback_modal_opened_count"`
+	FeedbackSubmittedCount           int                           `json:"feedback_submitted_count"`
+	FeedbackCTAIgnoredCount          int                           `json:"feedback_cta_ignored_count"`
+	FeedbackOpenRate                 float64                       `json:"feedback_open_rate"`
+	FeedbackCompletionRate           float64                       `json:"feedback_completion_rate"`
+	GameCatalogOpenedCount           int                           `json:"game_catalog_opened_count"`
+	GameOpenedCount                  int                           `json:"game_opened_count"`
+	GameClaimAttemptedCount          int                           `json:"game_claim_attempted_count"`
+	GameClaimCompletedCount          int                           `json:"game_claim_completed_count"`
+	GameAbandonedCount               int                           `json:"game_abandoned_count"`
+	GameOpenBlockedCount             int                           `json:"game_open_blocked_count"`
+	GameOpenRate                     float64                       `json:"game_open_rate"`
+	GameClaimRate                    float64                       `json:"game_claim_rate"`
+	CoinsStoreOpenedCount            int                           `json:"coins_store_opened_count"`
+	CoinsRedeemAttemptedCount        int                           `json:"coins_redeem_attempted_count"`
+	CoinsRedeemCompletedCount        int                           `json:"coins_redeem_completed_count"`
+	CoinsRedeemFailedCount           int                           `json:"coins_redeem_failed_count"`
+	CoinsRedeemBlockedCount          int                           `json:"coins_redeem_blocked_count"`
+	CoinsSpentCount                  int                           `json:"coins_spent_count"`
+	RedeemCompletionRate             float64                       `json:"redeem_completion_rate"`
+	SponsorClickedCount              int                           `json:"sponsor_clicked_count"`
+	SponsorLoadFailedCount           int                           `json:"sponsor_load_failed_count"`
+	SponsorCTRVsSessions             float64                       `json:"sponsor_ctr_vs_sessions"`
+	BarMenuOpenedCount               int                           `json:"bar_menu_opened_count"`
+	BarCategoryViewedCount           int                           `json:"bar_category_viewed_count"`
+	BarProductViewedCount            int                           `json:"bar_product_viewed_count"`
+	BarAddedToCartCount              int                           `json:"bar_added_to_cart_count"`
+	BarCartItemRemovedCount          int                           `json:"bar_cart_item_removed_count"`
+	BarCartQuantityChangedCount      int                           `json:"bar_cart_quantity_changed_count"`
+	BarCheckoutStartedCount          int                           `json:"bar_checkout_started_count"`
+	BarCheckoutRedirectedCount       int                           `json:"bar_checkout_redirected_count"`
+	BarCheckoutFailedCount           int                           `json:"bar_checkout_failed_count"`
+	BarOrderCompletedCount           int                           `json:"bar_order_completed_count"`
+	BarOrderConfirmationFailedCount  int                           `json:"bar_order_confirmation_failed_count"`
+	BarUpsellAcceptedCount           int                           `json:"bar_upsell_accepted_count"`
+	BarMenuOpenRate                  float64                       `json:"bar_menu_open_rate"`
+	BarAddToCartRate                 float64                       `json:"bar_add_to_cart_rate"`
+	BarCheckoutRate                  float64                       `json:"bar_checkout_rate"`
+	BarOrderCompletionRate           float64                       `json:"bar_order_completion_rate"`
+	ContentPageViewedCount           int                           `json:"content_page_viewed_count"`
+	ContentSectionViewedCount        int                           `json:"content_section_viewed_count"`
+	ContentStoryOpenedCount          int                           `json:"content_story_opened_count"`
+	NavigationFeatureSelectedCount   int                           `json:"navigation_feature_selected_count"`
+	NavigationLeaderboardOpenedCount int                           `json:"navigation_leaderboard_opened_count"`
+	ContentEngagementRate            float64                       `json:"content_engagement_rate"`
+	SessionMetrics                   EventTrackingSessionMetrics   `json:"session_metrics"`
+	SegmentBreakdown                 EventTrackingSegmentBreakdown `json:"segment_breakdown"`
+	DomainBreakdownBySession         map[string]int                `json:"domain_breakdown_by_session"`
+}
+
 type EventEngagementStats struct {
 	EventID                int     `json:"event_id"`
 	TotalDurationSeconds   int64   `json:"total_duration_seconds"`
@@ -1214,6 +1344,7 @@ type AppDatabase interface {
 	UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error
 	ListRecentTrackingSignals(eventID int, sessionID string, limit int) ([]TrackingSignal, error)
 	ListEventTrackingAggregates(eventID int) ([]EventTrackingAggregate, error)
+	GetEventTrackingAnalytics(eventID int) (EventTrackingAnalytics, error)
 	GetAIPopupSessionState(sessionID, trigger string, maxPerSession int, cooldown time.Duration) (AIPopupSessionState, error)
 	GetEventAIReport(eventID int) (EventAIReport, error)
 	UpsertEventAIReport(report EventAIReport) (EventAIReport, error)
@@ -8509,6 +8640,446 @@ func (db *appdbimpl) ListEventTrackingAggregates(eventID int) ([]EventTrackingAg
 	}
 
 	return out, nil
+}
+
+func safeRate(numerator int, denominator int) float64 {
+	if denominator <= 0 || numerator <= 0 {
+		return 0
+	}
+	return float64(numerator) / float64(denominator)
+}
+
+func parseTrackingOccurredAt(value string) time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.UTC()
+		}
+	}
+	return time.Time{}
+}
+
+func trackingMinuteKey(ts time.Time) string {
+	if ts.IsZero() {
+		return ""
+	}
+	return ts.UTC().Format("2006-01-02T15:04:00Z")
+}
+
+func (db *appdbimpl) GetEventTrackingAnalytics(eventID int) (EventTrackingAnalytics, error) {
+	analytics := EventTrackingAnalytics{
+		EventID:                  eventID,
+		ByEventName:              make(map[string]int),
+		ByEventDomain:            make(map[string]int),
+		TimelinePerMinute:        make(map[string]int),
+		DomainBreakdownBySession: make(map[string]int),
+		TopEventNames:            make([]EventTrackingAggregate, 0),
+	}
+	if eventID <= 0 {
+		return analytics, nil
+	}
+
+	type sessionInfo struct {
+		registered bool
+	}
+	sessions := make(map[string]*sessionInfo)
+	uniqueFans := make(map[int]struct{})
+	uniqueDevices := make(map[string]struct{})
+	minuteCounter := make(map[string]int)
+
+	rows, err := db.c.Query(`SELECT
+		IFNULL(session_id, ''),
+		IFNULL(fan_id, 0),
+		IFNULL(device_id, ''),
+		IFNULL(event_name, ''),
+		IFNULL(event_domain, ''),
+		IFNULL(login_state, ''),
+		IFNULL(profile_state, ''),
+		IFNULL(occurred_at, '')
+	FROM tracking_events
+	WHERE event_id = ?`, eventID)
+	if err != nil {
+		return analytics, err
+	}
+	defer rows.Close()
+
+	var firstAt time.Time
+	var lastAt time.Time
+	for rows.Next() {
+		var sessionID string
+		var fanID int
+		var deviceID string
+		var eventName string
+		var eventDomain string
+		var loginState string
+		var profileState string
+		var occurredAtRaw string
+		if err := rows.Scan(&sessionID, &fanID, &deviceID, &eventName, &eventDomain, &loginState, &profileState, &occurredAtRaw); err != nil {
+			return analytics, err
+		}
+		sessionID = strings.TrimSpace(sessionID)
+		deviceID = strings.TrimSpace(deviceID)
+		eventName = strings.TrimSpace(eventName)
+		eventDomain = strings.TrimSpace(eventDomain)
+		loginState = strings.ToLower(strings.TrimSpace(loginState))
+		profileState = strings.ToLower(strings.TrimSpace(profileState))
+
+		analytics.TotalEvents++
+		if eventName != "" {
+			analytics.ByEventName[eventName]++
+		}
+		domainKey := eventDomain
+		if domainKey == "" {
+			domainKey = "unknown"
+		}
+		analytics.ByEventDomain[domainKey]++
+
+		if fanID > 0 {
+			uniqueFans[fanID] = struct{}{}
+		}
+		if deviceID != "" {
+			uniqueDevices[deviceID] = struct{}{}
+		}
+		if sessionID != "" {
+			info := sessions[sessionID]
+			if info == nil {
+				info = &sessionInfo{}
+				sessions[sessionID] = info
+			}
+			if loginState == "logged_in" || profileState == "registered" {
+				info.registered = true
+			}
+		}
+
+		occurredAt := parseTrackingOccurredAt(occurredAtRaw)
+		if !occurredAt.IsZero() {
+			if firstAt.IsZero() || occurredAt.Before(firstAt) {
+				firstAt = occurredAt
+			}
+			if lastAt.IsZero() || occurredAt.After(lastAt) {
+				lastAt = occurredAt
+			}
+			minute := trackingMinuteKey(occurredAt)
+			if minute != "" {
+				minuteCounter[minute]++
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return analytics, err
+	}
+
+	analytics.UniqueSessions = len(sessions)
+	analytics.UniqueFans = len(uniqueFans)
+	analytics.UniqueDevices = len(uniqueDevices)
+	for _, info := range sessions {
+		if info.registered {
+			analytics.RegisteredSessions++
+		}
+	}
+	analytics.GuestSessions = analytics.UniqueSessions - analytics.RegisteredSessions
+	if analytics.GuestSessions < 0 {
+		analytics.GuestSessions = 0
+	}
+	analytics.AvgEventsPerSession = safeRate(analytics.TotalEvents, analytics.UniqueSessions)
+
+	if !firstAt.IsZero() {
+		analytics.FirstEventAt = firstAt.Format(time.RFC3339)
+		analytics.SessionMetrics.FirstSeenAt = analytics.FirstEventAt
+	}
+	if !lastAt.IsZero() {
+		analytics.LastEventAt = lastAt.Format(time.RFC3339)
+		analytics.SessionMetrics.LastSeenAt = analytics.LastEventAt
+	}
+
+	peakMinute := ""
+	peakCount := 0
+	for minute, count := range minuteCounter {
+		analytics.TimelinePerMinute[minute] = count
+		if count > peakCount || (count == peakCount && (peakMinute == "" || minute < peakMinute)) {
+			peakCount = count
+			peakMinute = minute
+		}
+	}
+	analytics.PeakActivityMinute = peakMinute
+
+	for name, count := range analytics.ByEventName {
+		analytics.TopEventNames = append(analytics.TopEventNames, EventTrackingAggregate{
+			Name:  name,
+			Count: count,
+		})
+	}
+	sort.SliceStable(analytics.TopEventNames, func(i, j int) bool {
+		if analytics.TopEventNames[i].Count == analytics.TopEventNames[j].Count {
+			return analytics.TopEventNames[i].Name < analytics.TopEventNames[j].Name
+		}
+		return analytics.TopEventNames[i].Count > analytics.TopEventNames[j].Count
+	})
+	if len(analytics.TopEventNames) > 10 {
+		analytics.TopEventNames = analytics.TopEventNames[:10]
+	}
+
+	type sessionRange struct {
+		min time.Time
+		max time.Time
+	}
+	sessionRanges := make(map[string]sessionRange)
+
+	metricRows, err := db.c.Query(`SELECT
+		IFNULL(session_id, ''),
+		IFNULL(event_name, ''),
+		IFNULL(event_domain, ''),
+		IFNULL(login_state, ''),
+		IFNULL(profile_state, ''),
+		IFNULL(occurred_at, '')
+	FROM tracking_events
+	WHERE event_id = ?`, eventID)
+	if err != nil {
+		return analytics, err
+	}
+	defer metricRows.Close()
+
+	for metricRows.Next() {
+		var sessionID, eventName, eventDomain, loginState, profileState, occurredAtRaw string
+		if err := metricRows.Scan(&sessionID, &eventName, &eventDomain, &loginState, &profileState, &occurredAtRaw); err != nil {
+			return analytics, err
+		}
+		sessionID = strings.TrimSpace(sessionID)
+		eventName = strings.TrimSpace(eventName)
+		eventDomain = strings.TrimSpace(eventDomain)
+		loginState = strings.ToLower(strings.TrimSpace(loginState))
+		profileState = strings.ToLower(strings.TrimSpace(profileState))
+		isRegistered := loginState == "logged_in" || profileState == "registered"
+
+		switch eventName {
+		case "vote.screen_opened":
+			analytics.VoteScreenOpenedCount++
+		case "vote.player_selected":
+			analytics.VotePlayerSelectedCount++
+		case "vote.submit_attempted":
+			analytics.VoteSubmitAttemptedCount++
+		case "vote.submitted":
+			analytics.VoteSubmittedCount++
+			if isRegistered {
+				analytics.SegmentBreakdown.Registered.SubmittedVotes++
+			} else {
+				analytics.SegmentBreakdown.Guest.SubmittedVotes++
+			}
+		case "vote.submit_failed":
+			analytics.VoteSubmitFailedCount++
+		case "fan.registration_completed":
+			analytics.RegistrationCompletedCount++
+		case "fan.registration_failed":
+			analytics.RegistrationFailedCount++
+		case "fan.profile_opened":
+			analytics.ProfileOpenedCount++
+		case "fan.profile_loaded":
+			analytics.ProfileLoadedCount++
+		case "fan.nickname_updated":
+			analytics.NicknameUpdatedCount++
+		case "feedback.modal_opened":
+			analytics.FeedbackModalOpenedCount++
+		case "feedback.submitted":
+			analytics.FeedbackSubmittedCount++
+			if isRegistered {
+				analytics.SegmentBreakdown.Registered.FeedbackSubmitted++
+			} else {
+				analytics.SegmentBreakdown.Guest.FeedbackSubmitted++
+			}
+		case "feedback.cta_ignored":
+			analytics.FeedbackCTAIgnoredCount++
+		case "game.catalog_opened":
+			analytics.GameCatalogOpenedCount++
+		case "game.opened":
+			analytics.GameOpenedCount++
+		case "game.claim_attempted":
+			analytics.GameClaimAttemptedCount++
+		case "game.claim_completed":
+			analytics.GameClaimCompletedCount++
+		case "game.abandoned":
+			analytics.GameAbandonedCount++
+		case "game.open_blocked":
+			analytics.GameOpenBlockedCount++
+		case "coins.store_opened":
+			analytics.CoinsStoreOpenedCount++
+		case "coins.reward_redeem_attempted":
+			analytics.CoinsRedeemAttemptedCount++
+		case "coins.reward_redeem_completed":
+			analytics.CoinsRedeemCompletedCount++
+		case "coins.reward_redeem_failed":
+			analytics.CoinsRedeemFailedCount++
+		case "coins.reward_redeem_blocked":
+			analytics.CoinsRedeemBlockedCount++
+		case "coins.spent":
+			analytics.CoinsSpentCount++
+		case "sponsor.clicked":
+			analytics.SponsorClickedCount++
+			if isRegistered {
+				analytics.SegmentBreakdown.Registered.SponsorClicks++
+			} else {
+				analytics.SegmentBreakdown.Guest.SponsorClicks++
+			}
+		case "error.sponsors_load_failed":
+			analytics.SponsorLoadFailedCount++
+		case "bar.menu_opened":
+			analytics.BarMenuOpenedCount++
+		case "bar.category_viewed":
+			analytics.BarCategoryViewedCount++
+		case "bar.product_viewed":
+			analytics.BarProductViewedCount++
+		case "bar.added_to_cart":
+			analytics.BarAddedToCartCount++
+		case "bar.cart_item_removed":
+			analytics.BarCartItemRemovedCount++
+		case "bar.cart_quantity_changed":
+			analytics.BarCartQuantityChangedCount++
+		case "bar.checkout_started":
+			analytics.BarCheckoutStartedCount++
+		case "bar.checkout_redirected":
+			analytics.BarCheckoutRedirectedCount++
+		case "bar.checkout_failed":
+			analytics.BarCheckoutFailedCount++
+		case "bar.order_completed":
+			analytics.BarOrderCompletedCount++
+		case "bar.order_confirmation_failed":
+			analytics.BarOrderConfirmationFailedCount++
+		case "bar.upsell_accepted":
+			analytics.BarUpsellAcceptedCount++
+		case "content.page_viewed":
+			analytics.ContentPageViewedCount++
+		case "content.section_viewed":
+			analytics.ContentSectionViewedCount++
+		case "content.story_opened":
+			analytics.ContentStoryOpenedCount++
+		case "navigation.feature_selected":
+			analytics.NavigationFeatureSelectedCount++
+		case "navigation.leaderboard_opened":
+			analytics.NavigationLeaderboardOpenedCount++
+		case "session.started":
+			analytics.SessionMetrics.SessionStartedCount++
+		case "session.resumed":
+			analytics.SessionMetrics.SessionResumedCount++
+		case "session.hidden":
+			analytics.SessionMetrics.SessionHiddenCount++
+		case "session.idle_started":
+			analytics.SessionMetrics.SessionIdleStarted++
+		case "session.idle_resumed":
+			analytics.SessionMetrics.SessionIdleResumed++
+		case "session.ended":
+			analytics.SessionMetrics.SessionEndedCount++
+		}
+
+		if sessionID != "" && eventDomain != "" {
+			analytics.DomainBreakdownBySession[eventDomain]++
+		}
+		if sessionID != "" {
+			if eventName == "session.started" {
+				analytics.SessionMetrics.StartedSessions++
+			}
+			if eventName == "session.ended" {
+				analytics.SessionMetrics.EndedSessions++
+			}
+			occurredAt := parseTrackingOccurredAt(occurredAtRaw)
+			if !occurredAt.IsZero() {
+				current := sessionRanges[sessionID]
+				if current.min.IsZero() || occurredAt.Before(current.min) {
+					current.min = occurredAt
+				}
+				if current.max.IsZero() || occurredAt.After(current.max) {
+					current.max = occurredAt
+				}
+				sessionRanges[sessionID] = current
+			}
+		}
+	}
+	if err := metricRows.Err(); err != nil {
+		return analytics, err
+	}
+
+	totalDuration := 0.0
+	durationSessions := 0
+	for _, interval := range sessionRanges {
+		if interval.min.IsZero() || interval.max.IsZero() || interval.max.Before(interval.min) {
+			continue
+		}
+		totalDuration += interval.max.Sub(interval.min).Seconds()
+		durationSessions++
+	}
+	if durationSessions > 0 {
+		analytics.SessionMetrics.AvgDurationSeconds = totalDuration / float64(durationSessions)
+	}
+
+	analytics.VoteOpenRate = safeRate(analytics.VoteScreenOpenedCount, analytics.UniqueSessions)
+	analytics.VoteConversionRate = safeRate(analytics.VoteSubmittedCount, analytics.UniqueSessions)
+	analytics.VoteCompletionRate = safeRate(analytics.VoteSubmittedCount, analytics.VoteScreenOpenedCount)
+	analytics.VoteAttemptToSubmitRate = safeRate(analytics.VoteSubmittedCount, analytics.VoteSubmitAttemptedCount)
+	analytics.RegistrationRate = safeRate(analytics.RegistrationCompletedCount, analytics.UniqueSessions)
+	analytics.FeedbackOpenRate = safeRate(analytics.FeedbackModalOpenedCount, analytics.UniqueSessions)
+	analytics.FeedbackCompletionRate = safeRate(analytics.FeedbackSubmittedCount, analytics.FeedbackModalOpenedCount)
+	analytics.GameOpenRate = safeRate(analytics.GameOpenedCount, analytics.UniqueSessions)
+	analytics.GameClaimRate = safeRate(analytics.GameClaimCompletedCount, analytics.GameOpenedCount)
+	analytics.RedeemCompletionRate = safeRate(analytics.CoinsRedeemCompletedCount, analytics.CoinsRedeemAttemptedCount)
+	analytics.SponsorCTRVsSessions = safeRate(analytics.SponsorClickedCount, analytics.UniqueSessions)
+	analytics.BarMenuOpenRate = safeRate(analytics.BarMenuOpenedCount, analytics.UniqueSessions)
+	analytics.BarAddToCartRate = safeRate(analytics.BarAddedToCartCount, analytics.BarProductViewedCount)
+	analytics.BarCheckoutRate = safeRate(analytics.BarCheckoutStartedCount, analytics.BarAddedToCartCount)
+	analytics.BarOrderCompletionRate = safeRate(analytics.BarOrderCompletedCount, analytics.BarCheckoutStartedCount)
+	analytics.ContentEngagementRate = safeRate(
+		analytics.ContentSectionViewedCount+analytics.ContentStoryOpenedCount+analytics.NavigationFeatureSelectedCount,
+		analytics.UniqueSessions,
+	)
+
+	analytics.KPI = EventTrackingKPI{
+		UniqueSessions:      analytics.UniqueSessions,
+		TotalEvents:         analytics.TotalEvents,
+		VotesSubmitted:      analytics.VoteSubmittedCount,
+		VoteConversionRate:  analytics.VoteConversionRate,
+		FeedbackSubmitted:   analytics.FeedbackSubmittedCount,
+		SponsorClicks:       analytics.SponsorClickedCount,
+		BarOrdersCompleted:  analytics.BarOrderCompletedCount,
+		AvgEventsPerSession: analytics.AvgEventsPerSession,
+	}
+	analytics.Funnels = []EventTrackingFunnel{
+		{
+			Name: "mvp",
+			Steps: []EventTrackingFunnelStep{
+				{Key: "unique_sessions", Label: "Sessioni uniche", Count: analytics.UniqueSessions},
+				{Key: "vote.screen_opened", Label: "Vote screen opened", Count: analytics.VoteScreenOpenedCount},
+				{Key: "vote.player_selected", Label: "Vote player selected", Count: analytics.VotePlayerSelectedCount},
+				{Key: "vote.submit_attempted", Label: "Vote submit attempted", Count: analytics.VoteSubmitAttemptedCount},
+				{Key: "vote.submitted", Label: "Vote submitted", Count: analytics.VoteSubmittedCount},
+			},
+		},
+		{
+			Name: "feedback",
+			Steps: []EventTrackingFunnelStep{
+				{Key: "unique_sessions", Label: "Sessioni uniche", Count: analytics.UniqueSessions},
+				{Key: "feedback.modal_opened", Label: "Feedback modal opened", Count: analytics.FeedbackModalOpenedCount},
+				{Key: "feedback.submitted", Label: "Feedback submitted", Count: analytics.FeedbackSubmittedCount},
+			},
+		},
+		{
+			Name: "bar",
+			Steps: []EventTrackingFunnelStep{
+				{Key: "bar.menu_opened", Label: "Bar menu opened", Count: analytics.BarMenuOpenedCount},
+				{Key: "bar.product_viewed", Label: "Bar product viewed", Count: analytics.BarProductViewedCount},
+				{Key: "bar.added_to_cart", Label: "Bar added to cart", Count: analytics.BarAddedToCartCount},
+				{Key: "bar.checkout_started", Label: "Bar checkout started", Count: analytics.BarCheckoutStartedCount},
+				{Key: "bar.order_completed", Label: "Bar order completed", Count: analytics.BarOrderCompletedCount},
+			},
+		},
+	}
+
+	return analytics, nil
 }
 
 func (db *appdbimpl) UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error {
