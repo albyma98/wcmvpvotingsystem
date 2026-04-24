@@ -199,78 +199,88 @@
                               </div>
                             </div>
                           </div>
+                          <!-- Tipo gioco — pill picker -->
                           <div class="bg-field-row">
                             <label class="bg-label">Tipo gioco <span class="bg-req">*</span></label>
-                            <select class="ev-input" v-model="newEvent.brandedGameConfigDraft.game_type">
-                              <option value="tap_challenge">Tap Battle ⚡</option>
-                              <option value="memory_flash">Memory Flash 🃏</option>
-                              <option value="sponsor_rush">Sponsor Rush 🏃</option>
-                              <option value="stack_it">Stack It 🧱</option>
-                            </select>
+                            <div class="bg-game-picker">
+                              <button type="button" class="bg-game-pill" :class="{'bg-game-pill--active': newEvent.brandedGameConfigDraft.game_type === 'tap_challenge'}" @click="newEvent.brandedGameConfigDraft.game_type = 'tap_challenge'">⚡ Tap Battle</button>
+                              <button type="button" class="bg-game-pill" :class="{'bg-game-pill--active': newEvent.brandedGameConfigDraft.game_type === 'memory_flash'}" @click="newEvent.brandedGameConfigDraft.game_type = 'memory_flash'">🃏 Memory Flash</button>
+                              <button type="button" class="bg-game-pill" :class="{'bg-game-pill--active': newEvent.brandedGameConfigDraft.game_type === 'sponsor_rush'}" @click="newEvent.brandedGameConfigDraft.game_type = 'sponsor_rush'">🏃 Sponsor Rush</button>
+                              <button type="button" class="bg-game-pill" :class="{'bg-game-pill--active': newEvent.brandedGameConfigDraft.game_type === 'free_throw_challenge'}" @click="newEvent.brandedGameConfigDraft.game_type = 'free_throw_challenge'">🏀 Free Throw</button>
+                              <button type="button" class="bg-game-pill" style="grid-column:span 2" :class="{'bg-game-pill--active': newEvent.brandedGameConfigDraft.game_type === 'stack_it'}" @click="newEvent.brandedGameConfigDraft.game_type = 'stack_it'">🧱 Stack It — Torre sponsorizzata</button>
+                            </div>
                           </div>
-                          <!-- Stack It config -->
-                          <template v-if="newEvent.brandedGameConfigDraft.game_type === 'stack_it'">
+
+                          <!-- Stack It sub-panel -->
+                          <div v-if="newEvent.brandedGameConfigDraft.game_type === 'stack_it'" class="bg-subpanel">
+                            <p class="bg-subpanel__title">🧱 Configurazione Stack It</p>
                             <div class="bg-field-row">
-                              <label class="bg-label">Texture blocco (URL)</label>
-                              <input class="ev-input" type="url" v-model.trim="newEvent.brandedGameConfigDraft.stack_it_config.block_texture_url" placeholder="https://…" />
+                              <label class="bg-label">Texture blocco (URL immagine)</label>
+                              <input class="ev-input" type="url" v-model.trim="newEvent.brandedGameConfigDraft.stack_it_config.block_texture_url" placeholder="https://… (opzionale)" />
                             </div>
                             <div class="bg-field-row">
-                              <label class="bg-label">Colori blocchi (2-4 hex, separati da virgola)</label>
-                              <input class="ev-input" type="text" :value="(newEvent.brandedGameConfigDraft.stack_it_config.block_colors || []).join(',')" @input="e => newEvent.brandedGameConfigDraft.stack_it_config.block_colors = e.target.value.split(',').map(s=>s.trim()).filter(Boolean)" placeholder="#3b82f6,#8b5cf6,#f59e0b" />
+                              <label class="bg-label">Colori blocchi (hex separati da virgola)</label>
+                              <input class="ev-input" type="text" :value="(newEvent.brandedGameConfigDraft.stack_it_config.block_colors||[]).join(', ')" @input="e => newEvent.brandedGameConfigDraft.stack_it_config.block_colors = e.target.value.split(',').map(s=>s.trim()).filter(Boolean)" placeholder="#3b82f6, #8b5cf6, #f59e0b, #10b981" />
                             </div>
-                            <div class="bg-field-row">
-                              <label class="bg-label">Reward per blocco (coin)</label>
-                              <input class="ev-input bg-input-sm" type="number" min="0" step="0.1" v-model.number="newEvent.brandedGameConfigDraft.stack_it_config.reward_per_block" />
+                            <div class="bg-inline-row">
+                              <div class="bg-field-row">
+                                <label class="bg-label">Coin per blocco</label>
+                                <input class="ev-input" type="number" min="0" step="0.1" v-model.number="newEvent.brandedGameConfigDraft.stack_it_config.reward_per_block" placeholder="0.5" />
+                              </div>
+                              <div class="bg-field-row">
+                                <label class="bg-label">Bonus perfect (coin)</label>
+                                <input class="ev-input" type="number" min="0" v-model.number="newEvent.brandedGameConfigDraft.stack_it_config.perfect_bonus_coins" placeholder="2" />
+                              </div>
                             </div>
-                            <div class="bg-field-row">
-                              <label class="bg-label">Bonus perfect stack (coin)</label>
-                              <input class="ev-input bg-input-sm" type="number" min="0" v-model.number="newEvent.brandedGameConfigDraft.stack_it_config.perfect_bonus_coins" />
+                            <div class="bg-inline-row">
+                              <div class="bg-field-row">
+                                <label class="bg-label">Velocità pendolo (ms)</label>
+                                <input class="ev-input" type="number" min="400" max="3000" v-model.number="newEvent.brandedGameConfigDraft.stack_it_config.initial_pendulum_speed_ms" placeholder="1500" />
+                              </div>
+                              <div class="bg-field-row">
+                                <label class="bg-label">Curva velocità</label>
+                                <select class="ev-input" v-model="newEvent.brandedGameConfigDraft.stack_it_config.speed_curve">
+                                  <option value="gentle">🐢 Gentile</option>
+                                  <option value="standard">⚖️ Standard</option>
+                                  <option value="aggressive">🔥 Aggressiva</option>
+                                </select>
+                              </div>
                             </div>
-                            <div class="bg-field-row">
-                              <label class="bg-label">Velocità iniziale pendolo (ms)</label>
-                              <input class="ev-input bg-input-sm" type="number" min="400" max="3000" v-model.number="newEvent.brandedGameConfigDraft.stack_it_config.initial_pendulum_speed_ms" />
-                            </div>
-                            <div class="bg-field-row">
-                              <label class="bg-label">Curva velocità</label>
-                              <select class="ev-input" v-model="newEvent.brandedGameConfigDraft.stack_it_config.speed_curve">
-                                <option value="gentle">Gentile</option>
-                                <option value="standard">Standard</option>
-                                <option value="aggressive">Aggressiva</option>
-                              </select>
-                            </div>
-                          </template>
-                          <div class="bg-field-row">
-                            <label class="bg-label">CTA Label <span class="bg-opt">(opzionale)</span></label>
-                            <input class="ev-input" type="text" v-model.trim="newEvent.brandedGameConfigDraft.cta_label" placeholder="es. Scopri di più" />
                           </div>
-                          <div class="bg-field-row">
-                            <label class="bg-label">CTA URL <span class="bg-opt">(opzionale)</span></label>
-                            <input class="ev-input" type="url" v-model.trim="newEvent.brandedGameConfigDraft.cta_url" placeholder="https://…" />
+
+                          <!-- CTA -->
+                          <div class="bg-inline-row">
+                            <div class="bg-field-row">
+                              <label class="bg-label">CTA Label</label>
+                              <input class="ev-input" type="text" v-model.trim="newEvent.brandedGameConfigDraft.cta_label" placeholder="Scopri di più" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">CTA URL</label>
+                              <input class="ev-input" type="url" v-model.trim="newEvent.brandedGameConfigDraft.cta_url" placeholder="https://…" />
+                            </div>
                           </div>
+
+                          <!-- Reward -->
                           <div class="bg-field-row">
                             <label class="bg-label">Tipo reward</label>
                             <div class="bg-reward-row">
-                              <label class="bg-radio">
-                                <input type="radio" v-model="newEvent.brandedGameConfigDraft.reward_type" value="coins" /> Coin reward
-                              </label>
-                              <label class="bg-radio">
-                                <input type="radio" v-model="newEvent.brandedGameConfigDraft.reward_type" value="none" /> Nessun premio
-                              </label>
-                              <label class="bg-radio bg-radio--disabled" title="Coming soon">
-                                <input type="radio" disabled value="coupon" /> Coupon <span class="bg-coming-soon">coming soon</span>
-                              </label>
+                              <label class="bg-radio"><input type="radio" v-model="newEvent.brandedGameConfigDraft.reward_type" value="coins" /> 🪙 Coin</label>
+                              <label class="bg-radio"><input type="radio" v-model="newEvent.brandedGameConfigDraft.reward_type" value="none" /> Nessuno</label>
+                              <label class="bg-radio bg-radio--disabled" title="Coming soon"><input type="radio" disabled value="coupon" /> Coupon <span class="bg-coming-soon">soon</span></label>
                             </div>
                           </div>
-                          <div class="bg-field-row" v-if="newEvent.brandedGameConfigDraft.reward_type === 'coins'">
-                            <label class="bg-label">Coin reward</label>
-                            <input class="ev-input bg-input-sm" type="number" min="0" v-model.number="newEvent.brandedGameConfigDraft.reward_coins" />
-                          </div>
-                          <div class="bg-field-row">
-                            <label class="bg-label">Partite max per utente</label>
-                            <input class="ev-input bg-input-sm" type="number" min="1" v-model.number="newEvent.brandedGameConfigDraft.max_plays_per_user" />
+                          <div class="bg-inline-row">
+                            <div class="bg-field-row" v-if="newEvent.brandedGameConfigDraft.reward_type === 'coins' && newEvent.brandedGameConfigDraft.game_type !== 'stack_it'">
+                              <label class="bg-label">Coin reward (flat)</label>
+                              <input class="ev-input" type="number" min="0" v-model.number="newEvent.brandedGameConfigDraft.reward_coins" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Partite max/utente</label>
+                              <input class="ev-input" type="number" min="1" v-model.number="newEvent.brandedGameConfigDraft.max_plays_per_user" />
+                            </div>
                           </div>
                           <p v-if="validateBrandedGameConfigClient(newEvent.brandedGameConfigDraft)" class="bg-error">
-                            {{ validateBrandedGameConfigClient(newEvent.brandedGameConfigDraft) }}
+                            ⚠️ {{ validateBrandedGameConfigClient(newEvent.brandedGameConfigDraft) }}
                           </p>
                         </div>
 
@@ -498,78 +508,88 @@
                               </div>
                             </div>
                           </div>
+                          <!-- Tipo gioco — pill picker (edit) -->
                           <div class="bg-field-row">
                             <label class="bg-label">Tipo gioco <span class="bg-req">*</span></label>
-                            <select class="ev-input" v-model="event.brandedGameConfigDraft.game_type" :disabled="isSavingPrizesFor(event.id)">
-                              <option value="tap_challenge">Tap Battle ⚡</option>
-                              <option value="memory_flash">Memory Flash 🃏</option>
-                              <option value="sponsor_rush">Sponsor Rush 🏃</option>
-                              <option value="stack_it">Stack It 🧱</option>
-                            </select>
+                            <div class="bg-game-picker">
+                              <button type="button" class="bg-game-pill" :disabled="isSavingPrizesFor(event.id)" :class="{'bg-game-pill--active': event.brandedGameConfigDraft.game_type === 'tap_challenge'}" @click="event.brandedGameConfigDraft.game_type = 'tap_challenge'">⚡ Tap Battle</button>
+                              <button type="button" class="bg-game-pill" :disabled="isSavingPrizesFor(event.id)" :class="{'bg-game-pill--active': event.brandedGameConfigDraft.game_type === 'memory_flash'}" @click="event.brandedGameConfigDraft.game_type = 'memory_flash'">🃏 Memory Flash</button>
+                              <button type="button" class="bg-game-pill" :disabled="isSavingPrizesFor(event.id)" :class="{'bg-game-pill--active': event.brandedGameConfigDraft.game_type === 'sponsor_rush'}" @click="event.brandedGameConfigDraft.game_type = 'sponsor_rush'">🏃 Sponsor Rush</button>
+                              <button type="button" class="bg-game-pill" :disabled="isSavingPrizesFor(event.id)" :class="{'bg-game-pill--active': event.brandedGameConfigDraft.game_type === 'free_throw_challenge'}" @click="event.brandedGameConfigDraft.game_type = 'free_throw_challenge'">🏀 Free Throw</button>
+                              <button type="button" class="bg-game-pill" style="grid-column:span 2" :disabled="isSavingPrizesFor(event.id)" :class="{'bg-game-pill--active': event.brandedGameConfigDraft.game_type === 'stack_it'}" @click="event.brandedGameConfigDraft.game_type = 'stack_it'">🧱 Stack It — Torre sponsorizzata</button>
+                            </div>
                           </div>
-                          <!-- Stack It config (edit) -->
-                          <template v-if="event.brandedGameConfigDraft.game_type === 'stack_it'">
+
+                          <!-- Stack It sub-panel (edit) -->
+                          <div v-if="event.brandedGameConfigDraft.game_type === 'stack_it'" class="bg-subpanel">
+                            <p class="bg-subpanel__title">🧱 Configurazione Stack It</p>
                             <div class="bg-field-row">
-                              <label class="bg-label">Texture blocco (URL)</label>
-                              <input class="ev-input" type="url" :disabled="isSavingPrizesFor(event.id)" v-model.trim="event.brandedGameConfigDraft.stack_it_config.block_texture_url" placeholder="https://…" />
+                              <label class="bg-label">Texture blocco (URL immagine)</label>
+                              <input class="ev-input" type="url" :disabled="isSavingPrizesFor(event.id)" v-model.trim="event.brandedGameConfigDraft.stack_it_config.block_texture_url" placeholder="https://… (opzionale)" />
                             </div>
                             <div class="bg-field-row">
-                              <label class="bg-label">Colori blocchi (2-4 hex, separati da virgola)</label>
-                              <input class="ev-input" type="text" :disabled="isSavingPrizesFor(event.id)" :value="(event.brandedGameConfigDraft.stack_it_config.block_colors || []).join(',')" @input="e => event.brandedGameConfigDraft.stack_it_config.block_colors = e.target.value.split(',').map(s=>s.trim()).filter(Boolean)" placeholder="#3b82f6,#8b5cf6,#f59e0b" />
+                              <label class="bg-label">Colori blocchi (hex separati da virgola)</label>
+                              <input class="ev-input" type="text" :disabled="isSavingPrizesFor(event.id)" :value="(event.brandedGameConfigDraft.stack_it_config.block_colors||[]).join(', ')" @input="e => event.brandedGameConfigDraft.stack_it_config.block_colors = e.target.value.split(',').map(s=>s.trim()).filter(Boolean)" placeholder="#3b82f6, #8b5cf6, #f59e0b, #10b981" />
                             </div>
-                            <div class="bg-field-row">
-                              <label class="bg-label">Reward per blocco (coin)</label>
-                              <input class="ev-input bg-input-sm" type="number" min="0" step="0.1" :disabled="isSavingPrizesFor(event.id)" v-model.number="event.brandedGameConfigDraft.stack_it_config.reward_per_block" />
+                            <div class="bg-inline-row">
+                              <div class="bg-field-row">
+                                <label class="bg-label">Coin per blocco</label>
+                                <input class="ev-input" type="number" min="0" step="0.1" :disabled="isSavingPrizesFor(event.id)" v-model.number="event.brandedGameConfigDraft.stack_it_config.reward_per_block" placeholder="0.5" />
+                              </div>
+                              <div class="bg-field-row">
+                                <label class="bg-label">Bonus perfect (coin)</label>
+                                <input class="ev-input" type="number" min="0" :disabled="isSavingPrizesFor(event.id)" v-model.number="event.brandedGameConfigDraft.stack_it_config.perfect_bonus_coins" placeholder="2" />
+                              </div>
                             </div>
-                            <div class="bg-field-row">
-                              <label class="bg-label">Bonus perfect stack (coin)</label>
-                              <input class="ev-input bg-input-sm" type="number" min="0" :disabled="isSavingPrizesFor(event.id)" v-model.number="event.brandedGameConfigDraft.stack_it_config.perfect_bonus_coins" />
+                            <div class="bg-inline-row">
+                              <div class="bg-field-row">
+                                <label class="bg-label">Velocità pendolo (ms)</label>
+                                <input class="ev-input" type="number" min="400" max="3000" :disabled="isSavingPrizesFor(event.id)" v-model.number="event.brandedGameConfigDraft.stack_it_config.initial_pendulum_speed_ms" placeholder="1500" />
+                              </div>
+                              <div class="bg-field-row">
+                                <label class="bg-label">Curva velocità</label>
+                                <select class="ev-input" :disabled="isSavingPrizesFor(event.id)" v-model="event.brandedGameConfigDraft.stack_it_config.speed_curve">
+                                  <option value="gentle">🐢 Gentile</option>
+                                  <option value="standard">⚖️ Standard</option>
+                                  <option value="aggressive">🔥 Aggressiva</option>
+                                </select>
+                              </div>
                             </div>
-                            <div class="bg-field-row">
-                              <label class="bg-label">Velocità iniziale pendolo (ms)</label>
-                              <input class="ev-input bg-input-sm" type="number" min="400" max="3000" :disabled="isSavingPrizesFor(event.id)" v-model.number="event.brandedGameConfigDraft.stack_it_config.initial_pendulum_speed_ms" />
-                            </div>
-                            <div class="bg-field-row">
-                              <label class="bg-label">Curva velocità</label>
-                              <select class="ev-input" :disabled="isSavingPrizesFor(event.id)" v-model="event.brandedGameConfigDraft.stack_it_config.speed_curve">
-                                <option value="gentle">Gentile</option>
-                                <option value="standard">Standard</option>
-                                <option value="aggressive">Aggressiva</option>
-                              </select>
-                            </div>
-                          </template>
-                          <div class="bg-field-row">
-                            <label class="bg-label">CTA Label <span class="bg-opt">(opzionale)</span></label>
-                            <input class="ev-input" type="text" v-model.trim="event.brandedGameConfigDraft.cta_label" :disabled="isSavingPrizesFor(event.id)" placeholder="es. Scopri di più" />
                           </div>
-                          <div class="bg-field-row">
-                            <label class="bg-label">CTA URL <span class="bg-opt">(opzionale)</span></label>
-                            <input class="ev-input" type="url" v-model.trim="event.brandedGameConfigDraft.cta_url" :disabled="isSavingPrizesFor(event.id)" placeholder="https://…" />
+
+                          <!-- CTA -->
+                          <div class="bg-inline-row">
+                            <div class="bg-field-row">
+                              <label class="bg-label">CTA Label</label>
+                              <input class="ev-input" type="text" v-model.trim="event.brandedGameConfigDraft.cta_label" :disabled="isSavingPrizesFor(event.id)" placeholder="Scopri di più" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">CTA URL</label>
+                              <input class="ev-input" type="url" v-model.trim="event.brandedGameConfigDraft.cta_url" :disabled="isSavingPrizesFor(event.id)" placeholder="https://…" />
+                            </div>
                           </div>
+
+                          <!-- Reward -->
                           <div class="bg-field-row">
                             <label class="bg-label">Tipo reward</label>
                             <div class="bg-reward-row">
-                              <label class="bg-radio">
-                                <input type="radio" v-model="event.brandedGameConfigDraft.reward_type" value="coins" :disabled="isSavingPrizesFor(event.id)" /> Coin reward
-                              </label>
-                              <label class="bg-radio">
-                                <input type="radio" v-model="event.brandedGameConfigDraft.reward_type" value="none" :disabled="isSavingPrizesFor(event.id)" /> Nessun premio
-                              </label>
-                              <label class="bg-radio bg-radio--disabled" title="Coming soon">
-                                <input type="radio" disabled value="coupon" /> Coupon <span class="bg-coming-soon">coming soon</span>
-                              </label>
+                              <label class="bg-radio"><input type="radio" v-model="event.brandedGameConfigDraft.reward_type" value="coins" :disabled="isSavingPrizesFor(event.id)" /> 🪙 Coin</label>
+                              <label class="bg-radio"><input type="radio" v-model="event.brandedGameConfigDraft.reward_type" value="none" :disabled="isSavingPrizesFor(event.id)" /> Nessuno</label>
+                              <label class="bg-radio bg-radio--disabled" title="Coming soon"><input type="radio" disabled value="coupon" /> Coupon <span class="bg-coming-soon">soon</span></label>
                             </div>
                           </div>
-                          <div class="bg-field-row" v-if="event.brandedGameConfigDraft.reward_type === 'coins'">
-                            <label class="bg-label">Coin reward</label>
-                            <input class="ev-input bg-input-sm" type="number" min="0" v-model.number="event.brandedGameConfigDraft.reward_coins" :disabled="isSavingPrizesFor(event.id)" />
-                          </div>
-                          <div class="bg-field-row">
-                            <label class="bg-label">Partite max per utente</label>
-                            <input class="ev-input bg-input-sm" type="number" min="1" v-model.number="event.brandedGameConfigDraft.max_plays_per_user" :disabled="isSavingPrizesFor(event.id)" />
+                          <div class="bg-inline-row">
+                            <div class="bg-field-row" v-if="event.brandedGameConfigDraft.reward_type === 'coins' && event.brandedGameConfigDraft.game_type !== 'stack_it'">
+                              <label class="bg-label">Coin reward (flat)</label>
+                              <input class="ev-input" type="number" min="0" v-model.number="event.brandedGameConfigDraft.reward_coins" :disabled="isSavingPrizesFor(event.id)" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Partite max/utente</label>
+                              <input class="ev-input" type="number" min="1" v-model.number="event.brandedGameConfigDraft.max_plays_per_user" :disabled="isSavingPrizesFor(event.id)" />
+                            </div>
                           </div>
                           <p v-if="validateBrandedGameConfigClient(event.brandedGameConfigDraft)" class="bg-error">
-                            {{ validateBrandedGameConfigClient(event.brandedGameConfigDraft) }}
+                            ⚠️ {{ validateBrandedGameConfigClient(event.brandedGameConfigDraft) }}
                           </p>
                         </div>
                         <!-- Preview -->

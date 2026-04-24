@@ -1865,20 +1865,21 @@
 /* ── Branded Game Config Panel ── */
 .admin-portal .bg-config-panel {
   margin-top: 0.75rem;
-  padding: 1rem;
-  border: 1px solid rgba(249,115,22,0.25);
-  border-radius: 10px;
-  background: rgba(255,247,237,0.6);
+  padding: 1.25rem;
+  border: 1.5px solid rgba(249,115,22,0.3);
+  border-radius: 12px;
+  background: #fff;
   animation: ev-slide-in 0.18s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 .admin-portal .bg-config-panel--edit {
   margin-top: 0.5rem;
-  background: rgba(255,247,237,0.4);
+  background: #fafafa;
 }
 .admin-portal .bg-config-grid {
   display: grid;
-  grid-template-columns: 1fr minmax(180px, 220px);
-  gap: 1.25rem;
+  grid-template-columns: 1fr minmax(200px, 240px);
+  gap: 1.5rem;
   align-items: start;
 }
 @media (max-width: 700px) {
@@ -1887,12 +1888,12 @@
 .admin-portal .bg-config-fields {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.85rem;
 }
 .admin-portal .bg-field-row {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.3rem;
 }
 .admin-portal .bg-field-row--colors {
   display: grid;
@@ -1901,8 +1902,9 @@
 }
 .admin-portal .bg-label {
   font-size: 0.8rem;
-  font-weight: 600;
-  color: #475569;
+  font-weight: 700;
+  color: #334155;
+  letter-spacing: 0.01em;
 }
 .admin-portal .bg-req { color: #ef4444; margin-left: 2px; }
 .admin-portal .bg-opt { color: #94a3b8; font-weight: 400; }
@@ -1912,21 +1914,21 @@
   gap: 0.5rem;
 }
 .admin-portal .bg-color-swatch {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  border: 1px solid rgba(15,23,42,0.2);
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  border: 1.5px solid rgba(15,23,42,0.2);
   cursor: pointer;
   padding: 2px;
   background: none;
   flex-shrink: 0;
 }
-.admin-portal .bg-color-hex { max-width: 90px; font-family: monospace; font-size: 0.82rem; }
-.admin-portal .bg-input-sm { max-width: 90px; }
+.admin-portal .bg-color-hex { max-width: 96px; font-family: monospace; font-size: 0.82rem; }
+.admin-portal .bg-input-sm { max-width: 100px; }
 .admin-portal .bg-reward-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.5rem;
   align-items: center;
 }
 .admin-portal .bg-radio {
@@ -1936,10 +1938,21 @@
   font-size: 0.85rem;
   color: #334155;
   cursor: pointer;
+  padding: 0.35rem 0.7rem;
+  border: 1.5px solid rgba(15,23,42,0.15);
+  border-radius: 7px;
+  background: #f1f5f9;
+  transition: all 0.12s;
 }
+.admin-portal .bg-radio:has(input:checked) {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #fff;
+}
+.admin-portal .bg-radio input[type="radio"] { display: none; }
 .admin-portal .bg-radio--disabled { opacity: 0.45; cursor: not-allowed; }
 .admin-portal .bg-coming-soon {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 600;
   background: #e2e8f0;
   color: #64748b;
@@ -1950,8 +1963,79 @@
 .admin-portal .bg-error {
   font-size: 0.8rem;
   color: #ef4444;
-  margin: 0.25rem 0 0;
+  padding: 0.35rem 0.6rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
   font-weight: 500;
+}
+
+/* Select styling */
+.admin-portal select.ev-input {
+  appearance: auto;
+  cursor: pointer;
+  background-image: none;
+}
+
+/* Game type pill picker */
+.admin-portal .bg-game-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+.admin-portal .bg-game-pill {
+  padding: 0.55rem 0.5rem;
+  border: 1.5px solid rgba(15,23,42,0.15);
+  border-radius: 9px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.14s;
+  line-height: 1.2;
+}
+.admin-portal .bg-game-pill:hover:not(:disabled) {
+  background: #e2e8f0;
+  border-color: rgba(2,132,199,0.4);
+  color: #0f172a;
+}
+.admin-portal .bg-game-pill--active {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #fff;
+}
+.admin-portal .bg-game-pill:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Sub-panel for game-specific config */
+.admin-portal .bg-subpanel {
+  margin-top: 0.25rem;
+  padding: 0.9rem;
+  background: rgba(59,130,246,0.05);
+  border: 1.5px solid rgba(59,130,246,0.2);
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  animation: ev-slide-in 0.15s ease;
+}
+.admin-portal .bg-subpanel__title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #2563eb;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+.admin-portal .bg-subpanel .bg-field-row { gap: 0.25rem; }
+.admin-portal .bg-subpanel .bg-label { color: #3b5273; }
+
+/* Inline number+label row */
+.admin-portal .bg-inline-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
 }
 
 /* Preview */
