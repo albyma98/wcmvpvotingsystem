@@ -5,18 +5,6 @@
     <AdminPortal v-else-if="appView === 'portal'" :organization-slug="organizationSlug" />
     <TicketValidationView v-else-if="appView === 'ticket-validation'" />
     <CashLanding v-else-if="appView === 'landing'" />
-    <ShopAdminPortal
-      v-else-if="appView === 'shop-admin'"
-      :current-path="currentPath"
-      :current-search="currentSearch"
-      :on-navigate="navigateTo"
-    />
-    <ShopShell
-      v-else-if="appView === 'shop'"
-      :current-path="currentPath"
-      :current-search="currentSearch"
-      :on-navigate="navigateTo"
-    />
     <PartnerPortal
       v-else-if="appView === 'partner'"
       :current-path="currentPath"
@@ -57,7 +45,6 @@
 <script setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VoteScreen from './components/VoteScreen.vue';
-import ShopShell from './components/shop/ShopShell.vue';
 import LiveExperienceHome from './views/LiveExperienceHome.vue';
 import NewUiVoteModal from './components/NewUiVoteModal.vue';
 
@@ -65,7 +52,6 @@ import NewUiVoteModal from './components/NewUiVoteModal.vue';
 const AdminPortal = defineAsyncComponent(() => import('./components/AdminPortal.vue'));
 const MasterPortal = defineAsyncComponent(() => import('./components/MasterPortal.vue'));
 const AdminLottery = defineAsyncComponent(() => import('./components/AdminLottery.vue'));
-const ShopAdminPortal = defineAsyncComponent(() => import('./components/shop/ShopAdminPortal.vue'));
 const PartnerPortal = defineAsyncComponent(() => import('./components/PartnerPortal.vue'));
 const TicketValidationView = defineAsyncComponent(() => import('./components/TicketValidationView.vue'));
 const CashLanding = defineAsyncComponent(() => import('./components/CashLanding.vue'));
@@ -113,7 +99,6 @@ const organizationSlug = computed(() => {
 
     if (
       pathSegments.value[0] !== 'admin' &&
-      pathSegments.value[0] !== 'shop' &&
       pathSegments.value[0] !== 'partner'
     ) {
       return pathSegments.value[0];
@@ -148,12 +133,6 @@ const appView = computed(() => {
   }
   if (currentPath.value.startsWith('/welcome')) {
     return 'landing';
-  }
-  if (currentPath.value.startsWith('/shop/admin')) {
-    return 'shop-admin';
-  }
-  if (currentPath.value.startsWith('/shop')) {
-    return 'shop';
   }
   if (currentPath.value.includes('/partner')) {
     return 'partner';
@@ -400,7 +379,7 @@ function navigateTo(path, replace = false) {
     currentSearch.value = target.search;
     currentEventId.value = readEventId(target.search);
   } catch (error) {
-    console.error('Navigazione shop non riuscita', error);
+    console.error('Navigazione non riuscita', error);
   }
 
   if (typeof window !== 'undefined') {

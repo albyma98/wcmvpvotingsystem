@@ -1134,26 +1134,6 @@ type BarCategorySuggestionConfig struct {
 	SuggestionIDs []int  `json:"suggestion_ids"`
 }
 
-type ShopOrder struct {
-	ID            int             `json:"id"`
-	CustomerName  string          `json:"customer_name"`
-	CustomerEmail string          `json:"customer_email"`
-	CustomerNotes string          `json:"customer_notes"`
-	TotalCents    int             `json:"total_cents"`
-	CreatedAt     string          `json:"created_at"`
-	Items         []ShopOrderItem `json:"items,omitempty"`
-}
-
-type ShopOrderItem struct {
-	ID              int    `json:"id"`
-	OrderID         int    `json:"order_id"`
-	ProductID       int    `json:"product_id"`
-	ProductName     string `json:"product_name"`
-	Quantity        int    `json:"quantity"`
-	UnitPriceCents  int    `json:"unit_price_cents"`
-	ProductImageURL string `json:"product_image_url,omitempty"`
-}
-
 type BarOrder struct {
 	ID              int    `json:"id"`
 	OrganizationID  int    `json:"organization_id"`
@@ -1338,8 +1318,6 @@ type AppDatabase interface {
 	UpsertBarSuggestionConfig(config BarSuggestionConfig) (BarSuggestionConfig, error)
 	ListBarCategorySuggestionConfigs() ([]BarCategorySuggestionConfig, error)
 	UpsertBarCategorySuggestionConfig(config BarCategorySuggestionConfig) (BarCategorySuggestionConfig, error)
-	ListShopOrders() ([]ShopOrder, error)
-	CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error)
 	CreateBarOrder(order BarOrder) (BarOrder, error)
 	CreateAIInteractionLog(item AIInteractionLog) (AIInteractionLog, error)
 	UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error
@@ -2320,50 +2298,6 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 
 	_, _ = db.Exec(`ALTER TABLE shop_products ADD COLUMN category_id INTEGER`)
-
-	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_orders';`).Scan(&tableName)
-	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE shop_orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        customer_name TEXT NOT NULL,
-        customer_email TEXT NOT NULL,
-        customer_notes TEXT,
-        total_cents INTEGER NOT NULL,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);`
-		if _, err = db.Exec(sqlStmt); err != nil {
-			return nil, fmt.Errorf("error creating shop_orders table: %w", err)
-		}
-	} else if err != nil {
-		return nil, fmt.Errorf("error verifying shop_orders table: %w", err)
-	}
-
-	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='shop_order_items';`).Scan(&tableName)
-	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE shop_order_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        order_id INTEGER NOT NULL,
-        product_id INTEGER NOT NULL,
-        product_name TEXT NOT NULL,
-        product_image_url TEXT,
-        quantity INTEGER NOT NULL,
-        unit_price_cents INTEGER NOT NULL,
-        FOREIGN KEY (order_id) REFERENCES shop_orders(id) ON DELETE CASCADE,
-        FOREIGN KEY (product_id) REFERENCES shop_products(id)
-);`
-		if _, err = db.Exec(sqlStmt); err != nil {
-			return nil, fmt.Errorf("error creating shop_order_items table: %w", err)
-		}
-	} else if err != nil {
-		return nil, fmt.Errorf("error verifying shop_order_items table: %w", err)
-	}
-
-	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_order_items_order ON shop_order_items(order_id)`); err != nil {
-		return nil, fmt.Errorf("error ensuring shop_order_items order index: %w", err)
-	}
-	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_order_items_product ON shop_order_items(product_id)`); err != nil {
-		return nil, fmt.Errorf("error ensuring shop_order_items product index: %w", err)
-	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='bar_menus';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -6622,135 +6556,6 @@ func (db *appdbimpl) UpsertBarCategorySuggestionConfig(config BarCategorySuggest
 	committed = true
 	config.SuggestionIDs = inserted
 	return config, nil
-}
-
-func (db *appdbimpl) ListShopOrders() ([]ShopOrder, error) {
-	rows, err := db.c.Query(`SELECT id, customer_name, customer_email, customer_notes, total_cents, IFNULL(created_at, '') FROM shop_orders ORDER BY id DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var orders []ShopOrder
-	for rows.Next() {
-		var order ShopOrder
-		if err := rows.Scan(&order.ID, &order.CustomerName, &order.CustomerEmail, &order.CustomerNotes, &order.TotalCents, &order.CreatedAt); err != nil {
-			return nil, err
-		}
-
-		itemRows, err := db.c.Query(`SELECT id, order_id, product_id, product_name, product_image_url, quantity, unit_price_cents FROM shop_order_items WHERE order_id = ? ORDER BY id ASC`, order.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		var items []ShopOrderItem
-		for itemRows.Next() {
-			var item ShopOrderItem
-			if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.ProductImageURL, &item.Quantity, &item.UnitPriceCents); err != nil {
-				itemRows.Close()
-				return nil, err
-			}
-			items = append(items, item)
-		}
-
-		if err := itemRows.Err(); err != nil {
-			itemRows.Close()
-			return nil, err
-		}
-		itemRows.Close()
-
-		order.Items = items
-		orders = append(orders, order)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return orders, nil
-}
-
-func (db *appdbimpl) CreateShopOrder(order ShopOrder, items []ShopOrderItem) (ShopOrder, error) {
-	if len(items) == 0 {
-		return ShopOrder{}, fmt.Errorf("order must contain at least one item")
-	}
-
-	customerName := strings.TrimSpace(order.CustomerName)
-	customerEmail := strings.TrimSpace(order.CustomerEmail)
-	customerNotes := strings.TrimSpace(order.CustomerNotes)
-
-	if customerName == "" || customerEmail == "" {
-		return ShopOrder{}, fmt.Errorf("customer information is required")
-	}
-
-	tx, err := db.c.Begin()
-	if err != nil {
-		return ShopOrder{}, err
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-
-	res, err := tx.Exec(`INSERT INTO shop_orders (customer_name, customer_email, customer_notes, total_cents) VALUES (?, ?, ?, ?)`, customerName, customerEmail, customerNotes, order.TotalCents)
-	if err != nil {
-		return ShopOrder{}, err
-	}
-
-	orderID, err := res.LastInsertId()
-	if err != nil {
-		return ShopOrder{}, err
-	}
-
-	order.ID = int(orderID)
-	order.CustomerName = customerName
-	order.CustomerEmail = customerEmail
-	order.CustomerNotes = customerNotes
-
-	storedItems := make([]ShopOrderItem, 0, len(items))
-	for _, item := range items {
-		if item.ProductID <= 0 || item.Quantity <= 0 {
-			return ShopOrder{}, fmt.Errorf("invalid order item")
-		}
-
-		cleanName := strings.TrimSpace(item.ProductName)
-		cleanImage := strings.TrimSpace(item.ProductImageURL)
-
-		result, err := tx.Exec(`INSERT INTO shop_order_items (order_id, product_id, product_name, product_image_url, quantity, unit_price_cents) VALUES (?, ?, ?, ?, ?, ?)`, order.ID, item.ProductID, cleanName, cleanImage, item.Quantity, item.UnitPriceCents)
-		if err != nil {
-			return ShopOrder{}, err
-		}
-
-		itemID, err := result.LastInsertId()
-		if err != nil {
-			return ShopOrder{}, err
-		}
-
-		storedItems = append(storedItems, ShopOrderItem{
-			ID:              int(itemID),
-			OrderID:         order.ID,
-			ProductID:       item.ProductID,
-			ProductName:     cleanName,
-			ProductImageURL: cleanImage,
-			Quantity:        item.Quantity,
-			UnitPriceCents:  item.UnitPriceCents,
-		})
-	}
-
-	if err := tx.QueryRow(`SELECT IFNULL(created_at, '') FROM shop_orders WHERE id = ?`, order.ID).Scan(&order.CreatedAt); err != nil {
-		return ShopOrder{}, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return ShopOrder{}, err
-	}
-	committed = true
-
-	order.Items = storedItems
-
-	return order, nil
 }
 
 func (db *appdbimpl) CreateBarOrder(order BarOrder) (BarOrder, error) {

@@ -22,9 +22,6 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/admin/me", rt.wrapAdmin(rt.adminMe))
 
 	rt.router.Get("/public/players", rt.wrap(rt.listPublicPlayers))
-	rt.router.Get("/shop/products", rt.wrap(rt.listShopProducts))
-	rt.router.Get("/shop/products/{id}", rt.wrap(rt.getShopProduct))
-	rt.router.Post("/shop/checkout", rt.wrap(rt.checkoutShopOrder))
 	rt.router.Get("/bar/categories", rt.wrap(rt.listBarCategories))
 	rt.router.Get("/bar/products", rt.wrap(rt.listBarProducts))
 	rt.router.Get("/bar/suggestions/{productID}", rt.wrap(rt.getBarSuggestions))
@@ -34,9 +31,6 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/bar/checkout/session", rt.wrap(rt.createBarCheckoutSession))
 	rt.router.Post("/bar/checkout/confirm", rt.wrap(rt.confirmBarCheckoutSession))
 	rt.router.Post("/bar/stripe/webhook", rt.wrap(rt.handleBarStripeWebhook))
-	rt.router.Get("/admin/shop/products", rt.wrapAdmin(rt.listAdminShopProducts))
-	rt.router.Post("/admin/shop/products", rt.wrapAdmin(rt.createAdminShopProduct))
-	rt.router.Get("/admin/shop/orders", rt.wrapAdmin(rt.listAdminShopOrders))
 
 	rt.router.Get("/teams", rt.wrapAdmin(rt.listTeams))
 	rt.router.Post("/teams", rt.wrapAdmin(rt.createTeam))

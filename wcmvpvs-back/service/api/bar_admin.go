@@ -13,6 +13,14 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+type createShopProductPayload struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	PriceCents  int    `json:"price_cents"`
+	ImageURL    string `json:"image_url"`
+	CategoryID  int    `json:"category_id"`
+}
+
 type createAdminBarCategoryPayload struct {
 	Name     string `json:"name"`
 	ImageURL string `json:"image_url"`

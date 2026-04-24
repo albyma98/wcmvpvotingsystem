@@ -139,7 +139,7 @@ const organizationSlug = computed(() => {
     return '';
   }
 
-  if (pathSegments.value[0] === 'admin' || pathSegments.value[0] === 'shop') {
+  if (pathSegments.value[0] === 'admin') {
     return '';
   }
 
