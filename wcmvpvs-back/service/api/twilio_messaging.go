@@ -16,6 +16,7 @@ type twilioMessagingConfig struct {
 	AuthToken                   string
 	MessagingServiceSID         string
 	WhatsAppMessagingServiceSID string
+	WhatsAppWinnerContentSID    string
 }
 
 type twilioMessagingClient struct {
@@ -76,6 +77,37 @@ func (c *twilioMessagingClient) SendWhatsApp(phone string, body string) (twilioM
 	if err != nil {
 		return twilioMessageResult{}, err
 	}
+	resp, err := c.postForm(values)
+	if err != nil {
+		return twilioMessageResult{}, err
+	}
+	var parsed twilioMessageResult
+	if err := json.Unmarshal(resp, &parsed); err != nil {
+		return twilioMessageResult{}, err
+	}
+	return parsed, nil
+}
+
+func (c *twilioMessagingClient) enabledWinnerWhatsAppTemplate() bool {
+	return c.enabledWhatsApp() && strings.TrimSpace(c.cfg.WhatsAppWinnerContentSID) != ""
+}
+
+func (c *twilioMessagingClient) SendWhatsAppWinnerTemplate(phone string) (twilioMessageResult, error) {
+	if !c.enabledWinnerWhatsAppTemplate() {
+		return twilioMessageResult{}, errors.New("twilio winner whatsapp template not configured")
+	}
+	to := strings.TrimSpace(phone)
+	if to == "" {
+		return twilioMessageResult{}, errors.New("whatsapp destination is empty")
+	}
+	if !strings.HasPrefix(strings.ToLower(to), "whatsapp:") {
+		to = "whatsapp:" + to
+	}
+	values := url.Values{}
+	values.Set("To", to)
+	values.Set("MessagingServiceSid", strings.TrimSpace(c.cfg.WhatsAppMessagingServiceSID))
+	values.Set("ContentSid", strings.TrimSpace(c.cfg.WhatsAppWinnerContentSID))
+
 	resp, err := c.postForm(values)
 	if err != nil {
 		return twilioMessageResult{}, err

@@ -249,13 +249,14 @@ const primaryLabel = computed(() => {
   if (liveStep.value === 'searching') return 'Annulla ricerca';
   if (liveStep.value === 'countdown' || liveStep.value === 'playing') return 'Match in corso';
   if (liveStep.value === 'result') return 'Torna al menu';
+  if (status.value === 'playing') return 'In corso';
   if (isSubmitting.value || claimRequested.value) return 'Accredito…';
   if (status.value === 'finished' && errorMessage.value) return 'Riprova accredito';
   if (status.value === 'finished') return 'Riscatta monete';
   if (isCooldownActive.value) return `In cooldown ${formatCooldown(cooldownRemainingMs.value)}`;
   return 'Inizia';
 });
-const isPrimaryDisabled = computed(() => liveStep.value === 'countdown' || liveStep.value === 'playing' || isSubmitting.value || claimRequested.value || (status.value === 'ready' && isCooldownActive.value));
+const isPrimaryDisabled = computed(() => status.value === 'playing' || liveStep.value === 'countdown' || liveStep.value === 'playing' || isSubmitting.value || claimRequested.value || (status.value === 'ready' && isCooldownActive.value));
 const ballStyle = computed(() => ({ transform: `translate3d(${ballX.value}px, ${ballY.value}px, 0)` }));
 const matchmakingLabel = computed(() => matchmakingDeadline.value > nowTs.value ? formatSeconds(matchmakingDeadline.value - nowTs.value) : 'quasi pronto');
 const countdownDisplay = computed(() => countdownValue.value <= 0 ? 'GO' : countdownValue.value);

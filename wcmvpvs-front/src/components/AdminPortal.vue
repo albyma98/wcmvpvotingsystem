@@ -350,7 +350,7 @@
                       <textarea v-model="feedbackDraftFor(event.id).suggestionPrompt" rows="2" maxlength="120" class="ev-input" :disabled="isSavingPrizesFor(event.id)" placeholder="Testo domanda aperta…"></textarea>
                     </div>
                     <div class="ev-tab-save-row">
-                      <button class="ev-btn-save" type="button" @click="saveEventPrizes(event)" :disabled="isSavingPrizesFor(event.id)">
+                      <button class="ev-btn-save" type="button" @click="saveEventFeedbackSurvey(event)" :disabled="isSavingPrizesFor(event.id)">
                         {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva sondaggio' }}
                       </button>
                     </div>
@@ -1322,6 +1322,145 @@
                     </p>
                   </div>
                   <p v-else class="muted">Tracking non disponibile.</p>
+                </div>
+                <div class="history-details__column history-details__column--tracking-events">
+                  <h4>Tracking events</h4>
+                  <p v-if="!entry.trackingEvents.length" class="muted">
+                    Nessun tracking event registrato.
+                  </p>
+                  <ul v-else class="history-tracking-events">
+                    <li
+                      v-for="track in entry.trackingEvents"
+                      :key="`${entry.id}-tracking-${track.name}`"
+                      class="history-tracking-events__item"
+                    >
+                      <div class="history-tracking-events__head">
+                        <strong>{{ track.nameLabel }}</strong>
+                        <span>{{ track.countLabel }}</span>
+                      </div>
+                      <p class="history-tracking-events__meta">
+                        Sessioni: {{ track.uniqueSessionsLabel }} · Device: {{ track.uniqueDevicesLabel }} · Fan: {{ track.uniqueFansLabel }}
+                      </p>
+                      <p
+                        v-if="track.rangeLabel"
+                        class="history-tracking-events__meta"
+                      >
+                        Ultima attività: {{ track.rangeLabel }}
+                      </p>
+                      <div
+                        v-if="track.details.length"
+                        class="history-tracking-events__chips"
+                      >
+                        <span
+                          v-for="detail in track.details"
+                          :key="`${entry.id}-tracking-${track.name}-${detail.label}`"
+                          class="history-tracking-events__chip"
+                        >
+                          <strong>{{ detail.label }}:</strong> {{ detail.value }}
+                        </span>
+                      </div>
+                      <ul
+                        v-if="track.metadataSamples.length"
+                        class="history-tracking-events__samples"
+                      >
+                        <li
+                          v-for="(sample, sampleIndex) in track.metadataSamples"
+                          :key="`${entry.id}-tracking-${track.name}-sample-${sampleIndex}`"
+                        >
+                          <code>{{ sample }}</code>
+                        </li>
+                      </ul>
+                    </li>
+                  </ul>
+                </div>
+                <div class="history-details__column history-details__column--tracking-analytics">
+                  <h4>Analytics evento</h4>
+                  <div class="history-analytics-kpi">
+                    <div class="history-analytics-kpi__item">
+                      <span>Sessioni uniche</span>
+                      <strong>{{ entry.trackingAnalytics.labels.uniqueSessions }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Eventi totali</span>
+                      <strong>{{ entry.trackingAnalytics.labels.totalEvents }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Voti inviati</span>
+                      <strong>{{ entry.trackingAnalytics.labels.votesSubmitted }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Conv. voto</span>
+                      <strong>{{ entry.trackingAnalytics.labels.voteConversionRate }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Feedback inviati</span>
+                      <strong>{{ entry.trackingAnalytics.labels.feedbackSubmitted }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Click sponsor</span>
+                      <strong>{{ entry.trackingAnalytics.labels.sponsorClicks }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Ordini bar</span>
+                      <strong>{{ entry.trackingAnalytics.labels.barOrdersCompleted }}</strong>
+                    </div>
+                    <div class="history-analytics-kpi__item">
+                      <span>Eventi/sessione</span>
+                      <strong>{{ entry.trackingAnalytics.labels.avgEventsPerSession }}</strong>
+                    </div>
+                  </div>
+                  <p class="history-analytics-meta">
+                    First/Last event: {{ formatHistoryDate(entry.trackingAnalytics.firstEventAt) || "N/D" }} → {{ formatHistoryDate(entry.trackingAnalytics.lastEventAt) || "N/D" }}
+                  </p>
+                  <p class="history-analytics-meta">
+                    Peak minuto: {{ formatHistoryDate(entry.trackingAnalytics.peakActivityMinute) || "N/D" }}
+                  </p>
+                  <div v-if="entry.trackingAnalytics.funnels.length" class="history-analytics-funnels">
+                    <h5>Funnel principali</h5>
+                    <div
+                      v-for="funnel in entry.trackingAnalytics.funnels"
+                      :key="`${entry.id}-funnel-${funnel.name}`"
+                      class="history-analytics-funnels__item"
+                    >
+                      <strong>{{ funnel.name.toUpperCase() }}</strong>
+                      <ul>
+                        <li
+                          v-for="step in funnel.steps"
+                          :key="`${entry.id}-${funnel.name}-${step.key}`"
+                        >
+                          <span>{{ step.label }}</span>
+                          <span>{{ step.countLabel }}</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div class="history-analytics-segment">
+                    <h5>Guest vs Registrati</h5>
+                    <p>
+                      Voti: G {{ entry.trackingAnalytics.segmentBreakdown.guest.submittedVotes.toLocaleString("it-IT") }}
+                      · R {{ entry.trackingAnalytics.segmentBreakdown.registered.submittedVotes.toLocaleString("it-IT") }}
+                    </p>
+                    <p>
+                      Feedback: G {{ entry.trackingAnalytics.segmentBreakdown.guest.feedbackSubmitted.toLocaleString("it-IT") }}
+                      · R {{ entry.trackingAnalytics.segmentBreakdown.registered.feedbackSubmitted.toLocaleString("it-IT") }}
+                    </p>
+                    <p>
+                      Sponsor click: G {{ entry.trackingAnalytics.segmentBreakdown.guest.sponsorClicks.toLocaleString("it-IT") }}
+                      · R {{ entry.trackingAnalytics.segmentBreakdown.registered.sponsorClicks.toLocaleString("it-IT") }}
+                    </p>
+                  </div>
+                  <div v-if="entry.trackingAnalytics.topEventNames.length" class="history-analytics-top">
+                    <h5>Top event_name</h5>
+                    <ul>
+                      <li
+                        v-for="top in entry.trackingAnalytics.topEventNames.slice(0, 5)"
+                        :key="`${entry.id}-top-${top.name}`"
+                      >
+                        <span>{{ top.name }}</span>
+                        <span>{{ top.count.toLocaleString("it-IT") }}</span>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
                 <div
                   class="history-details__column history-details__column--prizes"
@@ -2663,14 +2802,18 @@ const isAuthenticated = computed(() => Boolean(activeUsername.value));
 const isSuperAdmin = computed(() => activeRole.value === "superadmin");
 const isStaff = computed(() => activeRole.value === "staff");
 const isBarAdmin = computed(() => activeRole.value === "bar");
+const isBarFeatureEnabled = ref(true);
 const availableTabs = computed(() => {
+  const filteredTabs = isBarFeatureEnabled.value
+    ? tabs
+    : tabs.filter((tab) => tab.id !== "bar");
   if (isSuperAdmin.value) {
-    return tabs;
+    return filteredTabs;
   }
   if (isBarAdmin.value) {
-    return tabs.filter((tab) => BAR_TAB_IDS.has(tab.id));
+    return filteredTabs.filter((tab) => BAR_TAB_IDS.has(tab.id));
   }
-  return tabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
+  return filteredTabs.filter((tab) => STAFF_TAB_IDS.has(tab.id));
 });
 
 const navigationGroups = computed(() => {
@@ -3774,7 +3917,7 @@ function prizeWinnerLabel(prize) {
   return prize.winner.ticketCode || "";
 }
 
-async function savePrizesForEvent(event) {
+async function saveEventPrizes(event) {
   if (!event || !event.id || isSavingPrizesFor(event.id)) {
     return;
   }
@@ -3830,6 +3973,48 @@ async function savePrizesForEvent(event) {
       const message = "Impossibile salvare le impostazioni. Riprova più tardi.";
       eventPrizeErrors[event.id] = message;
       eventFeedbackErrors[event.id] = message;
+    }
+  } finally {
+    savingEventPrizes.value = 0;
+  }
+}
+
+async function saveEventFeedbackSurvey(event) {
+  if (!event || !event.id || isSavingPrizesFor(event.id)) {
+    return;
+  }
+
+  eventFeedbackErrors[event.id] = "";
+  const surveyDraft = feedbackDraftFor(event.id);
+
+  const payload = {
+    team1_id: event.team1_id,
+    team2_id: event.team2_id,
+    start_datetime: event.start_datetime,
+    location: event.location,
+    show_pre_vote_sponsors: Boolean(event.show_pre_vote_sponsors),
+    show_pre_vote_bottom_sponsors: Boolean(event.show_pre_vote_bottom_sponsors),
+    show_vote_counter: Boolean(event.show_vote_counter),
+    show_reaction_test: Boolean(event.show_reaction_test),
+    show_selfie: Boolean(event.show_selfie),
+    show_vote_trend: Boolean(event.show_vote_trend),
+    show_feedback_survey: Boolean(event.show_feedback_survey),
+    feedback_survey: toApiSurveyPayload(surveyDraft),
+  };
+
+  savingEventPrizes.value = event.id;
+  try {
+    await secureRequest(() =>
+      apiClient.put(`/events/${event.id}`, payload, authHeaders.value),
+    );
+    await loadEvents();
+  } catch (error) {
+    if (error?.response?.status === 400) {
+      eventFeedbackErrors[event.id] =
+        "Controlla le domande del sondaggio e riprova.";
+    } else if (error?.response?.status !== 401) {
+      eventFeedbackErrors[event.id] =
+        "Impossibile salvare il sondaggio. Riprova più tardi.";
     }
   } finally {
     savingEventPrizes.value = 0;
@@ -4029,6 +4214,7 @@ async function logout() {
   try { await apiClient.post("/admin/logout"); } catch (_) { /* ignora errori di rete */ }
   activeUsername.value = "";
   activeRole.value = "";
+  isBarFeatureEnabled.value = true;
   localStorage.removeItem("adminUsername");
   localStorage.removeItem("adminRole");
   section.value = "events";
@@ -4067,6 +4253,7 @@ async function loadPlayers() {
     apiClient.get("/players", authHeaders.value),
   );
 
+  isBarFeatureEnabled.value = data?.bar_enabled !== false;
   const schemaCandidate = Number(data?.roster_schema);
   if (Number.isFinite(schemaCandidate)) {
     rosterSchema.value = validateRosterSchema(schemaCandidate);
@@ -4772,6 +4959,299 @@ function normalizeHistoryEngagement(raw) {
   };
 }
 
+function formatTrackingValueList(values, limit = 4) {
+  if (!Array.isArray(values)) {
+    return "";
+  }
+  const normalized = values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  if (!normalized.length) {
+    return "";
+  }
+  const visible = normalized.slice(0, limit);
+  const hiddenCount = normalized.length - visible.length;
+  return hiddenCount > 0
+    ? `${visible.join(", ")} (+${hiddenCount})`
+    : visible.join(", ");
+}
+
+function normalizeHistoryTrackingEvents(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .map((eventItem) => {
+      if (!eventItem || typeof eventItem !== "object") {
+        return null;
+      }
+      const name =
+        typeof eventItem?.name === "string" ? eventItem.name.trim() : "";
+      const count = Number(eventItem?.count ?? 0) || 0;
+      if (!name && count <= 0) {
+        return null;
+      }
+
+      const uniqueSessions =
+        Number(eventItem?.unique_sessions ?? eventItem?.uniqueSessions ?? 0) ||
+        0;
+      const uniqueDevices =
+        Number(eventItem?.unique_devices ?? eventItem?.uniqueDevices ?? 0) || 0;
+      const uniqueFans =
+        Number(eventItem?.unique_fans ?? eventItem?.uniqueFans ?? 0) || 0;
+
+      const firstOccurredAt =
+        typeof (eventItem?.first_occurred_at ?? eventItem?.firstOccurredAt) ===
+        "string"
+          ? (eventItem?.first_occurred_at ?? eventItem?.firstOccurredAt)
+          : "";
+      const lastOccurredAt =
+        typeof (eventItem?.last_occurred_at ?? eventItem?.lastOccurredAt) ===
+        "string"
+          ? (eventItem?.last_occurred_at ?? eventItem?.lastOccurredAt)
+          : "";
+
+      const formatDateTime = (value) => {
+        const parsed = parseHistoryDate(value);
+        if (!parsed) {
+          return "";
+        }
+        try {
+          return analyticsTimeFormatter.format(parsed);
+        } catch (error) {
+          return value;
+        }
+      };
+
+      const fromLabel = formatDateTime(firstOccurredAt);
+      const toLabel = formatDateTime(lastOccurredAt);
+      const rangeLabel =
+        fromLabel && toLabel
+          ? `${fromLabel} → ${toLabel}`
+          : toLabel || fromLabel || "";
+
+      const details = [
+        {
+          label: "Pagine",
+          value: formatTrackingValueList(eventItem?.pages),
+        },
+        {
+          label: "Sezioni",
+          value: formatTrackingValueList(eventItem?.sections),
+        },
+        {
+          label: "Sorgenti",
+          value: formatTrackingValueList(eventItem?.sources),
+        },
+        {
+          label: "Domini",
+          value: formatTrackingValueList(eventItem?.domains),
+        },
+        {
+          label: "Login",
+          value: formatTrackingValueList(eventItem?.login_states ?? eventItem?.loginStates),
+        },
+        {
+          label: "Profilo",
+          value: formatTrackingValueList(eventItem?.profile_states ?? eventItem?.profileStates),
+        },
+      ].filter((detail) => detail.value);
+
+      const metadataSamples = Array.isArray(
+        eventItem?.metadata_samples ?? eventItem?.metadataSamples,
+      )
+        ? (eventItem?.metadata_samples ?? eventItem?.metadataSamples)
+            .map((sample) =>
+              typeof sample === "string" ? sample.trim() : "",
+            )
+            .filter(Boolean)
+        : [];
+
+      return {
+        name: name || "tracking_event",
+        nameLabel: name || "Evento tracking",
+        count,
+        countLabel: `${count.toLocaleString("it-IT")} occorrenze`,
+        uniqueSessions,
+        uniqueSessionsLabel: uniqueSessions.toLocaleString("it-IT"),
+        uniqueDevices,
+        uniqueDevicesLabel: uniqueDevices.toLocaleString("it-IT"),
+        uniqueFans,
+        uniqueFansLabel: uniqueFans.toLocaleString("it-IT"),
+        rangeLabel,
+        details,
+        metadataSamples,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      return a.nameLabel.localeCompare(b.nameLabel, "it");
+    });
+}
+
+function normalizeHistoryTrackingAnalytics(raw) {
+  const data = raw && typeof raw === "object" ? raw : {};
+  const asNumber = (value) => Number(value ?? 0) || 0;
+  const asRate = (value) => {
+    const parsed = Number(value ?? 0);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return 0;
+    }
+    return parsed;
+  };
+  const formatRateLabel = (value) => `${formatPercent(asRate(value) * 100)}%`;
+  const funnelRaw = Array.isArray(data?.funnels) ? data.funnels : [];
+  const funnels = funnelRaw
+    .map((funnel) => ({
+      name: typeof funnel?.name === "string" ? funnel.name.trim() : "",
+      steps: Array.isArray(funnel?.steps)
+        ? funnel.steps.map((step) => ({
+            key: typeof step?.key === "string" ? step.key.trim() : "",
+            label:
+              typeof step?.label === "string" && step.label.trim()
+                ? step.label.trim()
+                : "Step",
+            count: asNumber(step?.count),
+            countLabel: asNumber(step?.count).toLocaleString("it-IT"),
+          }))
+        : [],
+    }))
+    .filter((funnel) => funnel.name && funnel.steps.length);
+
+  const kpi = data?.kpi && typeof data.kpi === "object" ? data.kpi : {};
+  const topEventNames = Array.isArray(data?.top_event_names ?? data?.topEventNames)
+    ? (data?.top_event_names ?? data?.topEventNames)
+        .map((item) => ({
+          name: typeof item?.name === "string" ? item.name.trim() : "",
+          count: asNumber(item?.count),
+        }))
+        .filter((item) => item.name)
+        .sort((a, b) => b.count - a.count)
+    : [];
+  const byDomain = data?.by_event_domain ?? data?.byEventDomain ?? {};
+  const domainBreakdown = Object.entries(byDomain)
+    .map(([domain, value]) => ({
+      domain: String(domain || "unknown"),
+      count: asNumber(value),
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  return {
+    uniqueSessions: asNumber(data?.unique_sessions ?? data?.uniqueSessions),
+    totalEvents: asNumber(data?.total_events ?? data?.totalEvents),
+    voteSubmittedCount: asNumber(
+      data?.vote_submitted_count ?? data?.voteSubmittedCount,
+    ),
+    feedbackSubmittedCount: asNumber(
+      data?.feedback_submitted_count ?? data?.feedbackSubmittedCount,
+    ),
+    sponsorClickedCount: asNumber(
+      data?.sponsor_clicked_count ?? data?.sponsorClickedCount,
+    ),
+    barOrderCompletedCount: asNumber(
+      data?.bar_order_completed_count ?? data?.barOrderCompletedCount,
+    ),
+    avgEventsPerSession: asRate(
+      data?.avg_events_per_session ?? data?.avgEventsPerSession,
+    ),
+    voteConversionRate: asRate(
+      data?.vote_conversion_rate ?? data?.voteConversionRate,
+    ),
+    voteCompletionRate: asRate(
+      data?.vote_completion_rate ?? data?.voteCompletionRate,
+    ),
+    feedbackCompletionRate: asRate(
+      data?.feedback_completion_rate ?? data?.feedbackCompletionRate,
+    ),
+    barOrderCompletionRate: asRate(
+      data?.bar_order_completion_rate ?? data?.barOrderCompletionRate,
+    ),
+    firstEventAt:
+      typeof (data?.first_event_at ?? data?.firstEventAt) === "string"
+        ? (data?.first_event_at ?? data?.firstEventAt)
+        : "",
+    lastEventAt:
+      typeof (data?.last_event_at ?? data?.lastEventAt) === "string"
+        ? (data?.last_event_at ?? data?.lastEventAt)
+        : "",
+    peakActivityMinute:
+      typeof (data?.peak_activity_minute ?? data?.peakActivityMinute) ===
+      "string"
+        ? (data?.peak_activity_minute ?? data?.peakActivityMinute)
+        : "",
+    segmentBreakdown: {
+      guest: {
+        submittedVotes: asNumber(
+          data?.segment_breakdown?.guest?.submitted_votes ??
+            data?.segmentBreakdown?.guest?.submittedVotes,
+        ),
+        feedbackSubmitted: asNumber(
+          data?.segment_breakdown?.guest?.feedback_submitted ??
+            data?.segmentBreakdown?.guest?.feedbackSubmitted,
+        ),
+        sponsorClicks: asNumber(
+          data?.segment_breakdown?.guest?.sponsor_clicks ??
+            data?.segmentBreakdown?.guest?.sponsorClicks,
+        ),
+      },
+      registered: {
+        submittedVotes: asNumber(
+          data?.segment_breakdown?.registered?.submitted_votes ??
+            data?.segmentBreakdown?.registered?.submittedVotes,
+        ),
+        feedbackSubmitted: asNumber(
+          data?.segment_breakdown?.registered?.feedback_submitted ??
+            data?.segmentBreakdown?.registered?.feedbackSubmitted,
+        ),
+        sponsorClicks: asNumber(
+          data?.segment_breakdown?.registered?.sponsor_clicks ??
+            data?.segmentBreakdown?.registered?.sponsorClicks,
+        ),
+      },
+    },
+    funnels,
+    topEventNames,
+    domainBreakdown,
+    labels: {
+      uniqueSessions: asNumber(
+        kpi?.unique_sessions ?? kpi?.uniqueSessions ?? data?.unique_sessions,
+      ).toLocaleString("it-IT"),
+      totalEvents: asNumber(
+        kpi?.total_events ?? kpi?.totalEvents ?? data?.total_events,
+      ).toLocaleString("it-IT"),
+      votesSubmitted: asNumber(
+        kpi?.votes_submitted ?? kpi?.votesSubmitted ?? data?.vote_submitted_count,
+      ).toLocaleString("it-IT"),
+      voteConversionRate: formatRateLabel(
+        kpi?.vote_conversion_rate ?? kpi?.voteConversionRate ?? data?.vote_conversion_rate,
+      ),
+      feedbackSubmitted: asNumber(
+        kpi?.feedback_submitted ?? kpi?.feedbackSubmitted ?? data?.feedback_submitted_count,
+      ).toLocaleString("it-IT"),
+      sponsorClicks: asNumber(
+        kpi?.sponsor_clicks ?? kpi?.sponsorClicks ?? data?.sponsor_clicked_count,
+      ).toLocaleString("it-IT"),
+      barOrdersCompleted: asNumber(
+        kpi?.bar_orders_completed ??
+          kpi?.barOrdersCompleted ??
+          data?.bar_order_completed_count,
+      ).toLocaleString("it-IT"),
+      avgEventsPerSession: asRate(
+        kpi?.avg_events_per_session ??
+          kpi?.avgEventsPerSession ??
+          data?.avg_events_per_session,
+      ).toFixed(2),
+      voteCompletionRate: formatRateLabel(data?.vote_completion_rate),
+      feedbackCompletionRate: formatRateLabel(data?.feedback_completion_rate),
+      barOrderCompletionRate: formatRateLabel(data?.bar_order_completion_rate),
+    },
+  };
+}
+
 function normalizeHistoryEntry(item) {
   const id = Number(item?.id) || 0;
   const homeTeam =
@@ -5061,6 +5541,12 @@ function normalizeHistoryEntry(item) {
   const aiReport = normalizeAiHistoryReport(
     item?.ai_report ?? item?.aiReport ?? null,
   );
+  const trackingEvents = normalizeHistoryTrackingEvents(
+    item?.tracking_events ?? item?.trackingEvents,
+  );
+  const trackingAnalytics = normalizeHistoryTrackingAnalytics(
+    item?.tracking_analytics ?? item?.trackingAnalytics,
+  );
 
   return {
     id,
@@ -5095,6 +5581,8 @@ function normalizeHistoryEntry(item) {
     feedbackSummary,
     feedbackSurvey,
     aiReport,
+    trackingEvents,
+    trackingAnalytics,
   };
 }
 
@@ -7198,6 +7686,60 @@ textarea:focus {
   font-size: 0.9rem;
 }
 
+.history-analytics-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.55rem;
+}
+
+.history-analytics-kpi__item {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.history-analytics-kpi__item span {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.history-analytics-kpi__item strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.history-analytics-meta {
+  margin: 0.4rem 0 0;
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.history-analytics-funnels,
+.history-analytics-segment,
+.history-analytics-top {
+  margin-top: 0.7rem;
+}
+
+.history-analytics-funnels__item ul,
+.history-analytics-top ul {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+}
+
+.history-analytics-funnels__item li,
+.history-analytics-top li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: #334155;
+  padding: 0.15rem 0;
+}
+
 .history-prize-status {
   margin: 0 0 0.5rem;
   font-weight: 600;
@@ -7935,5 +8477,62 @@ textarea:focus {
 .selfie-admin-actions .btn {
   flex: 1 1 auto;
   min-width: 160px;
+}
+
+.history-tracking-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.history-tracking-events__item {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.history-tracking-events__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: #0f172a;
+}
+
+.history-tracking-events__meta {
+  margin: 0.25rem 0 0;
+  color: #475569;
+  font-size: 0.82rem;
+}
+
+.history-tracking-events__chips {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.history-tracking-events__chip {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.74rem;
+  color: #334155;
+}
+
+.history-tracking-events__samples {
+  margin: 0.6rem 0 0;
+  padding-left: 1.1rem;
+  color: #1e293b;
+}
+
+.history-tracking-events__samples code {
+  font-size: 0.74rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

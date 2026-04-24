@@ -125,6 +125,7 @@
     </main>
 
     <button
+      v-if="isBarFeatureEnabled"
       type="button"
       class="fixed bottom-5 right-4 z-[140] inline-flex items-center gap-2 rounded-full border border-amber-200/60 bg-amber-400 px-4 py-3 text-sm font-black uppercase tracking-wide text-slate-950 shadow-[0_12px_30px_rgba(251,191,36,0.45)]"
       @click="openBarOrdering"
@@ -134,7 +135,7 @@
 
     <Teleport to="body">
       <Transition name="earn-modal-fade">
-        <div v-if="isBarModalOpen" class="fixed inset-0 z-[220] bg-slate-100 text-slate-900">
+        <div v-if="isBarFeatureEnabled && isBarModalOpen" class="fixed inset-0 z-[220] bg-slate-100 text-slate-900">
           <div class="mx-auto flex h-full w-full max-w-3xl flex-col">
             <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
               <div class="flex items-center justify-between gap-3">
@@ -321,9 +322,7 @@
       :event-id="eventId"
       :wallet-target-el="walletTargetEl"
       :wallet-coins="totalCoins"
-      :free-retry="freeRetry"
       @coins-earned="addCoinsFromMinigame"
-      @consume-free-retry="consumeFreeRetry"
     />
 
     <CoinCollectAnimation ref="coinAnimationRef" />
@@ -390,6 +389,37 @@
                       <p class="text-xl font-extrabold text-white">{{ profileNickname }}</p>
                     </div>
                   </div>
+
+                  <form class="mt-4 space-y-2" @submit.prevent="handleNicknameSubmit">
+                    <button
+                      type="button"
+                      class="rounded-xl border border-white/20 bg-slate-900/60 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-slate-100 transition hover:border-amber-300/70 hover:text-amber-200"
+                      @click="toggleNicknameEditor"
+                    >
+                      MODIFICA NICKNAME
+                    </button>
+
+                    <div v-if="isNicknameEditorOpen" class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <input
+                        id="profile-nickname"
+                        v-model.trim="nicknameDraft"
+                        type="text"
+                        minlength="3"
+                        maxlength="24"
+                        class="w-full rounded-xl border border-white/20 bg-slate-900/70 px-3 py-2 text-sm font-semibold text-white outline-none transition focus:border-amber-300/70 focus:ring-2 focus:ring-amber-300/35"
+                        placeholder="Inserisci nickname"
+                      >
+                      <button
+                        type="submit"
+                        class="rounded-xl bg-amber-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="isSavingNickname || !canSubmitNickname"
+                      >
+                        {{ isSavingNickname ? 'Salvataggio...' : 'Aggiorna' }}
+                      </button>
+                    </div>
+                    <p v-if="nicknameErrorMessage" class="text-xs font-semibold text-rose-300">{{ nicknameErrorMessage }}</p>
+                    <p v-else-if="nicknameSuccessMessage" class="text-xs font-semibold text-emerald-300">{{ nicknameSuccessMessage }}</p>
+                  </form>
 
                   <div class="mt-5 rounded-xl border border-emerald-300/25 bg-emerald-400/10 p-4">
                     <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/90">Saldo monete</p>
@@ -511,6 +541,59 @@
                       {{ canSpinWheel ? 'GIRA' : `Servono ${FORTUNE_WHEEL_COST} 🪙` }}
                     </button>
                   </div>
+                </section>
+
+                <section class="mt-4 rounded-2xl border border-emerald-200/30 bg-emerald-500/10 p-4 shadow-[0_10px_28px_rgba(6,95,70,0.35)]">
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p class="text-xs font-bold uppercase tracking-[0.2em] text-emerald-200">Sostieni la squadra</p>
+                      <h3 class="mt-1 text-2xl font-black text-white">Dona il tuo tifo</h3>
+                      <p class="mt-1 text-sm text-slate-200">Trasforma le tue monete in Punti Tifo per aiutare la squadra e salire nella classifica dei sostenitori.</p>
+                    </div>
+                    <div class="rounded-xl border border-emerald-200/30 bg-emerald-300/15 px-3 py-2 text-right">
+                      <p class="text-xs uppercase tracking-wide text-emerald-100">Saldo</p>
+                      <p class="text-lg font-black text-white">{{ totalCoins }} 🪙</p>
+                    </div>
+                  </div>
+
+                  <p class="mt-3 text-sm font-semibold text-emerald-100">Tifo totale della squadra: {{ fanSupportEventTotal }} punti</p>
+                  <p v-if="fanSupportUserRank" class="mt-1 text-xs font-semibold text-slate-200">Tu sei #{{ fanSupportUserRank.rank }} con {{ fanSupportUserRank.tifoPoints }} punti</p>
+
+                  <div class="mt-3 grid grid-cols-4 gap-2">
+                    <button v-for="amount in fanSupportQuickAmounts" :key="amount" type="button" class="rounded-xl border px-3 py-2 text-sm font-black transition"
+                      :class="selectedFanSupportCoins === amount ? 'border-emerald-100 bg-emerald-200/25 text-white' : 'border-white/20 bg-white/5 text-emerald-100'"
+                      @click="selectedFanSupportCoins = amount">
+                      Dona {{ amount }}
+                    </button>
+                  </div>
+                  <div class="mt-3">
+                    <input
+                      v-model.number="fanSupportCustomCoins"
+                      type="number"
+                      min="1"
+                      inputmode="numeric"
+                      class="w-full rounded-xl border border-white/20 bg-slate-950/40 px-3 py-2 text-white placeholder:text-slate-400"
+                      placeholder="Importo personalizzato (opzionale)"
+                    >
+                  </div>
+                  <button
+                    type="button"
+                    class="mt-3 w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black uppercase tracking-wide text-emerald-950"
+                    :disabled="isFanSupportSubmitting || !fanSupportDonationAmount"
+                    @click="submitFanSupportDonation"
+                  >
+                    {{ isFanSupportSubmitting ? 'Donazione in corso...' : `Dona ora (${fanSupportDonationAmount || 0} 🪙)` }}
+                  </button>
+                  <p v-if="fanSupportFeedbackMessage" class="mt-2 text-sm font-semibold text-emerald-100">{{ fanSupportFeedbackMessage }}</p>
+                  <p v-if="fanSupportErrorMessage" class="mt-2 text-sm font-semibold text-rose-200">{{ fanSupportErrorMessage }}</p>
+
+                  <ol class="mt-3 space-y-1 rounded-xl border border-white/15 bg-slate-900/35 p-3">
+                    <li v-for="entry in fanSupportLeaderboard" :key="`${entry.rank}-${entry.nickname}`" class="flex items-center justify-between text-sm"
+                      :class="fanSupportUserRank && fanSupportUserRank.rank === entry.rank ? 'font-black text-amber-200' : 'text-slate-100'">
+                      <span>#{{ entry.rank }} · {{ entry.nickname }}</span>
+                      <strong>{{ entry.tifoPoints }} pt</strong>
+                    </li>
+                  </ol>
                 </section>
 
                 <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -647,7 +730,7 @@ import LiveHeader from '../components/LiveHeader.vue';
 import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
 import StoryModal from '../components/StoryModal.vue';
-import { apiClient, fetchFanProfile, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins, resolveApiUrl, getOrganizationSlug, generateAIBarUpsell, generateAIPopup, trackAIInteraction } from '../api';
+import { apiClient, donateFanSupport, fetchFanProfile, fetchFanSupportLeaderboard, fetchVoteStatus, redeemFanReward, registerFanProfile, syncGuestCoins, resolveApiUrl, getOrganizationSlug, generateAIBarUpsell, generateAIPopup, trackAIInteraction, updateFanNickname } from '../api';
 import { getOrCreateDeviceId } from '../deviceId';
 import { safeTrackEvent } from '../tracking';
 import { endTrackingLifecycle, startTrackingLifecycle, trackAppEvent, trackSectionView, updateTrackingContext } from '../eventTracking';
@@ -684,11 +767,13 @@ const COIN_BOOST_DURATION_MS = 10 * 60 * 1000;
 const FORTUNE_WHEEL_COST = 6;
 const WHEEL_SEGMENT_DEG = 45;
 const WHEEL_SPINS = 5;
+const FAN_NICKNAME_MIN_LEN = 3;
+const FAN_NICKNAME_MAX_LEN = 24;
+const FAN_NICKNAME_PATTERN = /^[A-Za-z0-9._ -]+$/;
 const storageKeys = {
   wallet: 'wallet:coins',
   coinBoostActive: 'coinBoostActive',
   coinBoostEndTime: 'coinBoostEndTime',
-  freeRetry: 'freeRetry',
   nextGameMultiplier: 'nextGameMultiplier',
   mysteryBoxCooldownEndTime: 'mysteryBoxCooldownEndTime',
 };
@@ -696,15 +781,15 @@ const mysteryRewards = [
   { id: 'coins-6', type: 'coins', amount: 6, label: '+6 monete' },
   { id: 'coins-12', type: 'coins', amount: 12, label: '+12 monete' },
   { id: 'coins-20', type: 'coins', amount: 20, label: '+20 monete' },
+  { id: 'coins-10', type: 'coins', amount: 10, label: '+10 monete' },
   { id: 'boost', type: 'boost', label: 'BOOST MONETE 10 MINUTI' },
-  { id: 'free-retry', type: 'freeRetry', label: 'RETRY GRATIS MINIGIOCO' },
 ];
 const wheelSegments = [
   { id: 'coins-3-a', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '🪙+3', weight: 24 },
   { id: 'coins-5', type: 'coins', amount: 5, label: '+5 monete', shortLabel: '🪙+5', weight: 20 },
   { id: 'coins-8', type: 'coins', amount: 8, label: '+8 monete', shortLabel: '🪙+8', weight: 16 },
   { id: 'coins-12', type: 'coins', amount: 12, label: '+12 monete', shortLabel: '🪙+12', weight: 11 },
-  { id: 'free-retry-wheel', type: 'freeRetry', label: 'Retry minigioco', shortLabel: '🔄 Retry', weight: 8 },
+  { id: 'coins-15', type: 'coins', amount: 15, label: '+15 monete', shortLabel: '🪙+15', weight: 8 },
   { id: 'x2-next-win', type: 'nextMultiplier', amount: 2, label: 'x2 prossima vincita minigioco', shortLabel: '⚡×2', weight: 10 },
   { id: 'coins-3-b', type: 'coins', amount: 3, label: '+3 monete', shortLabel: '🪙+3', weight: 24 },
   { id: 'jackpot-25', type: 'jackpot', amount: 25, label: 'JACKPOT +25 monete', shortLabel: '💎JACK', weight: 3 },
@@ -807,6 +892,11 @@ const registrationTrigger = ref('after_vote');
 const isRegisteredFan = ref(false);
 const fanSessionToken = ref('');
 const fanNickname = ref('');
+const nicknameDraft = ref('');
+const nicknameErrorMessage = ref('');
+const nicknameSuccessMessage = ref('');
+const isSavingNickname = ref(false);
+const isNicknameEditorOpen = ref(false);
 const fanId = ref(0);
 const isProfileOverlayOpen = ref(false);
 const fanRewardRedemptions = ref([]);
@@ -895,7 +985,6 @@ const mysteryBoxCooldownEndTime = ref(0);
 const coinBoostActive = ref(false);
 const coinBoostEndTime = ref(0);
 const boostTick = ref(Date.now());
-const freeRetry = ref(0);
 const nextGameMultiplier = ref(1);
 const isWheelSpinning = ref(false);
 const wheelRotationDeg = ref(0);
@@ -911,6 +1000,15 @@ const leaderboardTop3 = ref([
   { name: 'TIFO3', coins: 249 },
 ]);
 const leaderboardUser = ref(null);
+const fanSupportLeaderboard = ref([]);
+const fanSupportEventTotal = ref(0);
+const fanSupportUserRank = ref(null);
+const fanSupportQuickAmounts = [10, 25, 50, 100];
+const selectedFanSupportCoins = ref(50);
+const fanSupportCustomCoins = ref(null);
+const fanSupportFeedbackMessage = ref('');
+const fanSupportErrorMessage = ref('');
+const isFanSupportSubmitting = ref(false);
 let leaderboardSseSource = null;
 let boostCountdownTimer = null;
 let isLeaderboardRequestInFlight = false;
@@ -918,6 +1016,10 @@ let hasPendingLeaderboardRefresh = false;
 const hasSponsors = computed(() => sponsors.value.length > 0);
 const showSponsorsBox = computed(() => hasSponsors.value);
 const showFeedbackCta = computed(() => hasFeedbackSurvey.value);
+const isBarFeatureEnabled = computed(() =>
+  props.activeEvent?.organization_bar_enabled !== false &&
+  props.activeEvent?.organizationBarEnabled !== false,
+);
 const hasFeedbackSurvey = computed(() => {
   const survey = props.activeEvent?.feedback_survey ?? props.activeEvent?.feedbackSurvey;
   return Array.isArray(survey?.questions) && survey.questions.length > 0;
@@ -952,9 +1054,16 @@ const wheelResultRevealLabel = computed(() => {
   if (!wheelResult.value) return '';
   if (wheelResult.value.type === 'jackpot') return 'JACKPOT';
   if (wheelResult.value.type === 'coins') return `+${wheelResult.value.amount || 0} MONETE`;
-  if (wheelResult.value.type === 'freeRetry') return 'RETRY MINIGIOCO';
   if (wheelResult.value.type === 'nextMultiplier') return 'X2 PROSSIMA VINCITA';
   return wheelResult.value.label.toUpperCase();
+});
+
+const fanSupportDonationAmount = computed(() => {
+  const custom = Number(fanSupportCustomCoins.value);
+  if (Number.isFinite(custom) && custom > 0) {
+    return Math.floor(custom);
+  }
+  return Math.max(0, Number(selectedFanSupportCoins.value) || 0);
 });
 
 const profileAvatarUrl = computed(() => {
@@ -966,6 +1075,12 @@ const profileNickname = computed(() => {
     return fanNickname.value.trim();
   }
   return isRegisteredFan.value ? 'Tifoso' : 'Guest';
+});
+const canSubmitNickname = computed(() => {
+  if (isSavingNickname.value) {
+    return false;
+  }
+  return nicknameDraft.value.trim() !== fanNickname.value.trim();
 });
 
 const accountRedemptions = computed(() =>
@@ -1044,7 +1159,6 @@ function persistPowerUps() {
   }
   window.localStorage.setItem(storageKeys.coinBoostActive, coinBoostActive.value ? '1' : '0');
   window.localStorage.setItem(storageKeys.coinBoostEndTime, String(coinBoostEndTime.value || 0));
-  window.localStorage.setItem(storageKeys.freeRetry, String(Math.max(0, freeRetry.value)));
   window.localStorage.setItem(storageKeys.nextGameMultiplier, String(Math.max(1, nextGameMultiplier.value)));
   window.localStorage.setItem(storageKeys.mysteryBoxCooldownEndTime, String(mysteryBoxCooldownEndTime.value || 0));
 }
@@ -1056,7 +1170,6 @@ function hydratePowerUps() {
 
   const storedBoostActive = window.localStorage.getItem(storageKeys.coinBoostActive) === '1';
   const storedBoostEndTime = Number.parseInt(window.localStorage.getItem(storageKeys.coinBoostEndTime) || '0', 10);
-  const storedFreeRetry = Number.parseInt(window.localStorage.getItem(storageKeys.freeRetry) || '0', 10);
   const storedMultiplier = Number.parseInt(window.localStorage.getItem(storageKeys.nextGameMultiplier) || '1', 10);
   const storedMysteryBoxCooldownEndTime = Number.parseInt(window.localStorage.getItem(storageKeys.mysteryBoxCooldownEndTime) || '0', 10);
 
@@ -1066,7 +1179,6 @@ function hydratePowerUps() {
     coinBoostEndTime.value = 0;
   }
 
-  freeRetry.value = Math.max(0, Number.isFinite(storedFreeRetry) ? storedFreeRetry : 0);
   nextGameMultiplier.value = Math.max(1, Number.isFinite(storedMultiplier) ? storedMultiplier : 1);
   mysteryBoxCooldownEndTime.value = Number.isFinite(storedMysteryBoxCooldownEndTime)
     ? Math.max(Date.now(), storedMysteryBoxCooldownEndTime)
@@ -1087,8 +1199,10 @@ function tickBoostState() {
 }
 
 onMounted(async () => {
-  await preloadBarCatalog();
-  await confirmBarOrderFromQuery();
+  if (isBarFeatureEnabled.value) {
+    await preloadBarCatalog();
+    await confirmBarOrderFromQuery();
+  }
   if (typeof window === 'undefined') {
     return;
   }
@@ -1239,6 +1353,9 @@ function startLeaderboardPolling() {
   leaderboardSseSource = new EventSource(url);
   leaderboardSseSource.addEventListener('message', () => {
     refreshLeaderboardPreview();
+    if (isSpendPreviewOpen.value) {
+      loadFanSupportData();
+    }
   });
 }
 
@@ -1463,7 +1580,8 @@ function goToPrevStory() {
 
 watch(
   () => props.eventId,
-  () => {
+  (eventId) => {
+    updateTrackingContext({ eventId: Number(eventId) || undefined });
     if (typeof window === 'undefined') {
       return;
     }
@@ -1490,6 +1608,16 @@ watch(() => props.registrationPromptSignal, (value, previous) => {
   }
 });
 
+watch(isBarFeatureEnabled, (enabled) => {
+  if (enabled) {
+    return;
+  }
+  isBarModalOpen.value = false;
+  barStep.value = 'start';
+  barStepHistory.value = [];
+  barCart.value = {};
+});
+
 watch([currentStory, isStoryModalOpen], ([story, isOpen]) => {
   if (!isOpen || !story) {
     return;
@@ -1502,6 +1630,25 @@ watch([isStoryModalOpen, isProfileOverlayOpen], ([storyOpen, profileOpen]) => {
     return;
   }
   document.body.style.overflow = storyOpen || profileOpen ? 'hidden' : '';
+});
+
+watch(isProfileOverlayOpen, (isOpen) => {
+  if (!isOpen) {
+    nicknameErrorMessage.value = '';
+    nicknameSuccessMessage.value = '';
+    return;
+  }
+  nicknameDraft.value = fanNickname.value.trim();
+  nicknameErrorMessage.value = '';
+  nicknameSuccessMessage.value = '';
+  isNicknameEditorOpen.value = false;
+});
+
+watch(fanNickname, (value) => {
+  if (!isProfileOverlayOpen.value || isSavingNickname.value) {
+    return;
+  }
+  nicknameDraft.value = String(value || '').trim();
 });
 
 onBeforeUnmount(() => {
@@ -1531,7 +1678,7 @@ function markPromptDismissed(trigger) {
 
 function openRegistrationPrompt(trigger) {
   if (isRegisteredFan.value || typeof window === 'undefined') return;
-  if (trigger === 'spend_redeem') {
+  if (trigger === 'spend_redeem' || trigger === 'profile_overlay') {
     registrationTrigger.value = trigger;
     isRegistrationPromptOpen.value = true;
     return;
@@ -1657,6 +1804,68 @@ function closeProfileOverlay() {
   isProfileOverlayOpen.value = false;
 }
 
+function toggleNicknameEditor() {
+  isNicknameEditorOpen.value = !isNicknameEditorOpen.value;
+  if (!isNicknameEditorOpen.value) {
+    nicknameErrorMessage.value = '';
+    nicknameSuccessMessage.value = '';
+  }
+}
+
+async function handleNicknameSubmit() {
+  await saveNickname();
+  if (!nicknameErrorMessage.value) {
+    isNicknameEditorOpen.value = false;
+  }
+}
+
+function validateNicknameDraft(rawNickname) {
+  const normalized = String(rawNickname || '').trim();
+  if (!normalized) {
+    return { valid: false, message: 'Il nickname non può essere vuoto.' };
+  }
+  if (normalized.length < FAN_NICKNAME_MIN_LEN) {
+    return { valid: false, message: 'Il nickname deve avere almeno 3 caratteri.' };
+  }
+  if (normalized.length > FAN_NICKNAME_MAX_LEN) {
+    return { valid: false, message: 'Il nickname può avere massimo 24 caratteri.' };
+  }
+  if (!FAN_NICKNAME_PATTERN.test(normalized)) {
+    return { valid: false, message: 'Usa solo lettere, numeri, spazio, punto, trattino o underscore.' };
+  }
+  return { valid: true, nickname: normalized };
+}
+
+async function saveNickname() {
+  nicknameErrorMessage.value = '';
+  nicknameSuccessMessage.value = '';
+  const validation = validateNicknameDraft(nicknameDraft.value);
+  if (!validation.valid) {
+    nicknameErrorMessage.value = validation.message;
+    return;
+  }
+
+  const nextNickname = validation.nickname;
+  if (nextNickname === fanNickname.value.trim()) {
+    nicknameSuccessMessage.value = 'Nessuna modifica da salvare.';
+    return;
+  }
+
+  isSavingNickname.value = true;
+  const response = await updateFanNickname(nextNickname);
+  isSavingNickname.value = false;
+  if (!response?.ok) {
+    nicknameErrorMessage.value = response?.message || 'Impossibile aggiornare il nickname.';
+    return;
+  }
+
+  fanNickname.value = String(response.data?.user?.nickname || nextNickname).trim();
+  nicknameDraft.value = fanNickname.value;
+  nicknameSuccessMessage.value = response.data?.message || 'Nickname aggiornato';
+  await refreshLeaderboardPreview();
+  trackAppEvent('fan.nickname_updated', { fan_id: fanId.value, nickname: fanNickname.value }, 'fan');
+}
+
 function randomMysteryReward() {
   const index = Math.floor(Math.random() * mysteryRewards.length);
   return mysteryRewards[index];
@@ -1692,19 +1901,6 @@ function activateCoinBoost() {
   persistPowerUps();
 }
 
-function grantFreeRetry() {
-  freeRetry.value = 1;
-  persistPowerUps();
-}
-
-function consumeFreeRetry() {
-  if (freeRetry.value <= 0) {
-    return;
-  }
-  freeRetry.value = 0;
-  persistPowerUps();
-}
-
 async function executeMysteryReward(reward) {
   if (!reward) {
     return;
@@ -1718,10 +1914,6 @@ async function executeMysteryReward(reward) {
   if (reward.type === 'boost') {
     activateCoinBoost();
     return;
-  }
-
-  if (reward.type === 'freeRetry') {
-    grantFreeRetry();
   }
 }
 
@@ -1838,12 +2030,6 @@ async function executeWheelReward(segment) {
     persistPowerUps();
     return;
   }
-
-  if (segment.type === 'freeRetry') {
-    grantFreeRetry();
-    return;
-  }
-
 }
 
 async function spinFortuneWheel() {
@@ -1904,6 +2090,9 @@ function openSpendPreview() {
   isSpendPreviewOpen.value = true;
   mysteryBoxStep.value = 'idle';
   mysteryBoxStatusText.value = '';
+  fanSupportFeedbackMessage.value = '';
+  fanSupportErrorMessage.value = '';
+  loadFanSupportData();
 }
 
 function closeSpendPreview() {
@@ -1930,6 +2119,73 @@ async function attemptRedeem(rewardKey, costCoins, rewardLabel) {
     return;
   }
   trackAppEvent('coins.reward_redeem_failed', { reward_key: rewardKey, cost_coins: costCoins, message: response?.message || 'redeem_failed' }, 'coins');
+}
+
+async function loadFanSupportData() {
+  const response = await fetchFanSupportLeaderboard(props.eventId, 10);
+  if (!response?.ok) {
+    return;
+  }
+  const data = response.data || {};
+  fanSupportEventTotal.value = Math.max(0, Number(data.event_total_points) || 0);
+  fanSupportLeaderboard.value = Array.isArray(data.leaderboard)
+    ? data.leaderboard.map((entry, idx) => ({
+      rank: Math.max(1, Number(entry?.rank) || idx + 1),
+      nickname: String(entry?.nickname || 'Tifoso'),
+      tifoPoints: Math.max(0, Number(entry?.tifo_points) || 0),
+    }))
+    : [];
+  const userRank = data.user_rank || data.userRank;
+  fanSupportUserRank.value = userRank
+    ? {
+      rank: Math.max(1, Number(userRank.rank) || 1),
+      nickname: String(userRank.nickname || ''),
+      tifoPoints: Math.max(0, Number(userRank.tifo_points) || 0),
+    }
+    : null;
+}
+
+async function submitFanSupportDonation() {
+  fanSupportFeedbackMessage.value = '';
+  fanSupportErrorMessage.value = '';
+  if (!isRegisteredFan.value) {
+    openRegistrationPrompt('spend_redeem');
+    return;
+  }
+  const coins = fanSupportDonationAmount.value;
+  if (!Number.isFinite(coins) || coins <= 0) {
+    fanSupportErrorMessage.value = 'Inserisci un importo valido.';
+    return;
+  }
+  if (coins > totalCoins.value) {
+    fanSupportErrorMessage.value = 'Monete insufficienti.';
+    return;
+  }
+  isFanSupportSubmitting.value = true;
+  const response = await donateFanSupport(props.eventId, coins);
+  isFanSupportSubmitting.value = false;
+  if (!response?.ok) {
+    fanSupportErrorMessage.value = response?.message || 'Donazione non riuscita.';
+    return;
+  }
+  const data = response.data || {};
+  totalCoins.value = Math.max(0, Number(data.wallet) || totalCoins.value);
+  fanSupportFeedbackMessage.value = String(data.feedback_message || `Hai donato ${coins} monete e aggiunto ${coins} Punti Tifo alla squadra`);
+  fanSupportEventTotal.value = Math.max(0, Number(data.event_total_points) || fanSupportEventTotal.value);
+  fanSupportUserRank.value = {
+    rank: Math.max(1, Number(data.user_rank) || 1),
+    tifoPoints: Math.max(0, Number(data.user_total_points) || 0),
+    nickname: fanNickname.value || 'Tu',
+  };
+  if (Array.isArray(data.leaderboard)) {
+    fanSupportLeaderboard.value = data.leaderboard.map((entry, idx) => ({
+      rank: Math.max(1, Number(entry?.rank) || idx + 1),
+      nickname: String(entry?.nickname || 'Tifoso'),
+      tifoPoints: Math.max(0, Number(entry?.tifo_points) || 0),
+    }));
+  } else {
+    await loadFanSupportData();
+  }
 }
 
 function registerUserActivity() {
@@ -2122,6 +2378,9 @@ function goBackBarStep() {
 }
 
 function openBarOrdering() {
+  if (!isBarFeatureEnabled.value) {
+    return;
+  }
   registerUserActivity();
   trackAppEvent('bar.menu_opened', { cart_items_count: barCartCount.value, cart_total_cents: barTotalCents.value }, 'bar');
   barOrderConfirmed.value = false;
@@ -2248,6 +2507,9 @@ async function preloadBarSuggestions(products, options = {}) {
 }
 
 async function preloadBarCatalog(options = {}) {
+  if (!isBarFeatureEnabled.value) {
+    return;
+  }
   if (barCatalogPreloadPromise && !options.force) {
     return barCatalogPreloadPromise;
   }
@@ -2313,6 +2575,10 @@ async function loadBarSuggestionsForProduct(productID) {
 }
 
 async function loadBarCategories() {
+  if (!isBarFeatureEnabled.value) {
+    barCategoriesData.value = [];
+    return;
+  }
   try {
     const { data } = await apiClient.get('/bar/categories');
     barCategoriesData.value = Array.isArray(data) ? data : [];
@@ -2322,6 +2588,10 @@ async function loadBarCategories() {
 }
 
 async function loadBarProducts() {
+  if (!isBarFeatureEnabled.value) {
+    barProducts.value = [];
+    return;
+  }
   try {
     const { data } = await apiClient.get('/bar/products');
     barProducts.value = Array.isArray(data) ? data : [];

@@ -760,6 +760,19 @@ export async function registerFanProfile(payload) {
   }
 }
 
+export async function updateFanNickname(nickname: string) {
+  try {
+    const { data } = await apiClient.put('/fan/nickname', { nickname }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, status, message, error };
+  }
+}
+
 export async function startPhoneAuth(phone: string, mode: 'register' | 'login' = 'register') {
   try {
     await apiClient.post('/auth/start', { phone, mode }, { headers: getDeviceHeaders() });
@@ -814,6 +827,31 @@ export async function redeemFanReward(eventId, rewardKey, costCoins) {
   } catch (error) {
     const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
     return { ok: false, error, message };
+  }
+}
+
+export async function donateFanSupport(eventId, coins) {
+  try {
+    const { data } = await apiClient.post(`/events/${eventId}/support/donate`, { coins }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    return { ok: false, message, status, error };
+  }
+}
+
+export async function fetchFanSupportLeaderboard(eventId, limit = 10) {
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/support/leaderboard`, {
+      params: { limit },
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error };
   }
 }
 

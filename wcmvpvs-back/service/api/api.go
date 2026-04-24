@@ -65,6 +65,7 @@ type Config struct {
 	TwilioVerifySID                   string
 	TwilioMessagingServiceSID         string
 	TwilioWhatsAppMessagingServiceSID string
+	TwilioWinnerContentTemplateSID    string
 
 	StripeSecretKey     string
 	StripeWebhookSecret string
@@ -129,6 +130,7 @@ func New(cfg Config) (Router, error) {
 			AuthToken:                   cfg.TwilioAuthToken,
 			MessagingServiceSID:         cfg.TwilioMessagingServiceSID,
 			WhatsAppMessagingServiceSID: cfg.TwilioWhatsAppMessagingServiceSID,
+			WhatsAppWinnerContentSID:    cfg.TwilioWinnerContentTemplateSID,
 		}),
 		stripeSecretKey:     cfg.StripeSecretKey,
 		stripeWebhookSecret: cfg.StripeWebhookSecret,

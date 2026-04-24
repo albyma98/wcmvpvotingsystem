@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -131,7 +130,11 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 	rosterSchema := resolveRosterSchemaValue(13)
+	barEnabled := true
 	if ctx.OrganizationID > 0 {
+		if org, orgErr := rt.db.GetOrganization(ctx.OrganizationID); orgErr == nil {
+			barEnabled = org.BarEnabled
+		}
 		if schema, schemaErr := rt.db.GetOrganizationRosterSchema(ctx.OrganizationID); schemaErr == nil {
 			rosterSchema = resolveRosterSchemaValue(schema)
 		}
@@ -140,7 +143,8 @@ func (rt *_router) listPlayers(w http.ResponseWriter, r *http.Request, ctx reqco
 	response := struct {
 		Players      []database.Player `json:"players"`
 		RosterSchema int               `json:"roster_schema"`
-	}{Players: players, RosterSchema: rosterSchema}
+		BarEnabled   bool              `json:"bar_enabled"`
+	}{Players: players, RosterSchema: rosterSchema, BarEnabled: barEnabled}
 
 	_ = json.NewEncoder(w).Encode(response)
 	ctx.Logger.WithFields(map[string]interface{}{"players": len(players), "roster_schema": rosterSchema}).Info("listed players")
@@ -166,6 +170,10 @@ func (rt *_router) listPublicPlayers(w http.ResponseWriter, r *http.Request, ctx
 	}
 
 	rosterSchema := resolveRosterSchemaValue(13)
+	barEnabled := true
+	if org, orgErr := rt.db.GetOrganization(ctx.OrganizationID); orgErr == nil {
+		barEnabled = org.BarEnabled
+	}
 	if schema, schemaErr := rt.db.GetOrganizationRosterSchema(ctx.OrganizationID); schemaErr == nil {
 		rosterSchema = resolveRosterSchemaValue(schema)
 	}
@@ -173,7 +181,8 @@ func (rt *_router) listPublicPlayers(w http.ResponseWriter, r *http.Request, ctx
 	response := struct {
 		Players      []database.Player `json:"players"`
 		RosterSchema int               `json:"roster_schema"`
-	}{Players: filtered, RosterSchema: rosterSchema}
+		BarEnabled   bool              `json:"bar_enabled"`
+	}{Players: filtered, RosterSchema: rosterSchema, BarEnabled: barEnabled}
 
 	_ = json.NewEncoder(w).Encode(response)
 	ctx.Logger.WithFields(map[string]interface{}{"players": len(filtered), "roster_schema": rosterSchema}).Info("listed public players")
@@ -612,18 +621,19 @@ func (rt *_router) assignPrizeWinner(w http.ResponseWriter, r *http.Request, ctx
 	}
 
 	if prize.Winner != nil && strings.TrimSpace(prize.Winner.Phone) != "" && strings.TrimSpace(prize.Winner.NotifiedAt) == "" {
-		if !rt.twilioMessaging.enabledWhatsApp() {
-			ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}).Info("winner whatsapp skipped: twilio whatsapp messaging is not configured")
+		logFields := map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}
+		if !rt.twilioMessaging.enabledWinnerWhatsAppTemplate() {
+			ctx.Logger.WithFields(logFields).Info("winner whatsapp skipped: twilio winner whatsapp template is not configured")
 		} else {
-			message := buildPrizeWinnerSMSMessage(eventID, prize)
-			res, sendErr := rt.twilioMessaging.SendWhatsApp(prize.Winner.Phone, message)
+			res, sendErr := rt.twilioMessaging.SendWhatsAppWinnerTemplate(prize.Winner.Phone)
 			if sendErr != nil {
 				_ = rt.db.MarkPrizeWinnerNotifyFailed(eventID, prizeID)
-				ctx.Logger.WithError(sendErr).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone)}).Warn("winner whatsapp send failed")
+				ctx.Logger.WithError(sendErr).WithFields(logFields).Warn("winner whatsapp template send failed")
 			} else {
 				if err := rt.db.MarkPrizeWinnerNotified(eventID, prizeID, res.SID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 					ctx.Logger.WithError(err).WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID}).Warn("cannot mark winner as notified")
 				}
+				ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "winner_phone": maskPhone(prize.Winner.Phone), "twilio_sid": res.SID, "twilio_status": res.Status}).Info("winner whatsapp template sent")
 			}
 		}
 	}
@@ -640,21 +650,6 @@ func (rt *_router) assignPrizeWinner(w http.ResponseWriter, r *http.Request, ctx
 
 	_ = json.NewEncoder(w).Encode(prize)
 	ctx.Logger.WithFields(map[string]interface{}{"event_id": eventID, "prize_id": prizeID, "vote_id": payload.VoteID}).Info("prize winner assigned")
-}
-
-func buildPrizeWinnerSMSMessage(eventID int, prize database.EventPrize) string {
-	template := strings.TrimSpace(prize.WinSMSText)
-	if template == "" {
-		template = winnerExtractedSMSMessage
-	}
-	replacer := strings.NewReplacer(
-		"{NICKNAME}", strings.TrimSpace(prize.Winner.Nickname),
-		"{PREMIO}", strings.TrimSpace(prize.Name),
-		"{EVENTO}", fmt.Sprintf("Evento #%d", eventID),
-		"{CODICE}", strings.TrimSpace(prize.Winner.TicketCode),
-		"{ISTRUZIONI_RITIRO}", "Ritirare il premio allo speaker.",
-	)
-	return strings.TrimSpace(replacer.Replace(template))
 }
 
 func (rt *_router) clearPrizeWinner(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

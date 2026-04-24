@@ -69,6 +69,7 @@ type Event struct {
 	OrganizationID            int                        `json:"organization_id"`
 	OrganizationName          string                     `json:"organization_name,omitempty"`
 	OrganizationLogoURL       string                     `json:"organization_logo_url,omitempty"`
+	OrganizationBarEnabled    bool                       `json:"organization_bar_enabled"`
 	Team1ID                   int                        `json:"team1_id"`
 	Team2ID                   int                        `json:"team2_id"`
 	StartDateTime             string                     `json:"start_datetime"`
@@ -117,6 +118,7 @@ type Organization struct {
 	TeamID       int     `json:"team_id,omitempty"`
 	SMSCost      float64 `json:"sms_cost"`
 	FreeSMS      int     `json:"free_sms"`
+	BarEnabled   bool    `json:"bar_enabled"`
 	CreatedAt    string  `json:"created_at"`
 	UpdatedAt    string  `json:"updated_at"`
 }
@@ -154,6 +156,153 @@ type TrackingSignal struct {
 	Source     string                 `json:"source,omitempty"`
 	OccurredAt string                 `json:"occurred_at,omitempty"`
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type EventTrackingAggregate struct {
+	Name            string   `json:"name"`
+	Count           int      `json:"count"`
+	UniqueSessions  int      `json:"unique_sessions"`
+	UniqueDevices   int      `json:"unique_devices"`
+	UniqueFans      int      `json:"unique_fans"`
+	FirstOccurredAt string   `json:"first_occurred_at,omitempty"`
+	LastOccurredAt  string   `json:"last_occurred_at,omitempty"`
+	Pages           []string `json:"pages,omitempty"`
+	Sections        []string `json:"sections,omitempty"`
+	Sources         []string `json:"sources,omitempty"`
+	Domains         []string `json:"domains,omitempty"`
+	LoginStates     []string `json:"login_states,omitempty"`
+	ProfileStates   []string `json:"profile_states,omitempty"`
+	MetadataSamples []string `json:"metadata_samples,omitempty"`
+}
+
+type EventTrackingKPI struct {
+	UniqueSessions      int     `json:"unique_sessions"`
+	TotalEvents         int     `json:"total_events"`
+	VotesSubmitted      int     `json:"votes_submitted"`
+	VoteConversionRate  float64 `json:"vote_conversion_rate"`
+	FeedbackSubmitted   int     `json:"feedback_submitted"`
+	SponsorClicks       int     `json:"sponsor_clicks"`
+	BarOrdersCompleted  int     `json:"bar_orders_completed"`
+	AvgEventsPerSession float64 `json:"avg_events_per_session"`
+}
+
+type EventTrackingFunnelStep struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+type EventTrackingFunnel struct {
+	Name  string                    `json:"name"`
+	Steps []EventTrackingFunnelStep `json:"steps"`
+}
+
+type EventTrackingSessionMetrics struct {
+	SessionStartedCount int     `json:"session_started_count"`
+	SessionResumedCount int     `json:"session_resumed_count"`
+	SessionHiddenCount  int     `json:"session_hidden_count"`
+	SessionIdleStarted  int     `json:"session_idle_started_count"`
+	SessionIdleResumed  int     `json:"session_idle_resumed_count"`
+	SessionEndedCount   int     `json:"session_ended_count"`
+	StartedSessions     int     `json:"started_sessions_count"`
+	EndedSessions       int     `json:"ended_sessions_count"`
+	AvgDurationSeconds  float64 `json:"avg_duration_seconds"`
+	FirstSeenAt         string  `json:"first_seen_at,omitempty"`
+	LastSeenAt          string  `json:"last_seen_at,omitempty"`
+}
+
+type EventTrackingSegmentMetric struct {
+	SubmittedVotes    int `json:"submitted_votes"`
+	FeedbackSubmitted int `json:"feedback_submitted"`
+	SponsorClicks     int `json:"sponsor_clicks"`
+}
+
+type EventTrackingSegmentBreakdown struct {
+	Guest      EventTrackingSegmentMetric `json:"guest"`
+	Registered EventTrackingSegmentMetric `json:"registered"`
+}
+
+type EventTrackingAnalytics struct {
+	EventID                          int                           `json:"event_id"`
+	TotalEvents                      int                           `json:"total_events"`
+	UniqueSessions                   int                           `json:"unique_sessions"`
+	UniqueFans                       int                           `json:"unique_fans"`
+	UniqueDevices                    int                           `json:"unique_devices"`
+	RegisteredSessions               int                           `json:"registered_sessions"`
+	GuestSessions                    int                           `json:"guest_sessions"`
+	AvgEventsPerSession              float64                       `json:"avg_events_per_session"`
+	FirstEventAt                     string                        `json:"first_event_at,omitempty"`
+	LastEventAt                      string                        `json:"last_event_at,omitempty"`
+	PeakActivityMinute               string                        `json:"peak_activity_minute,omitempty"`
+	ByEventName                      map[string]int                `json:"by_event_name"`
+	ByEventDomain                    map[string]int                `json:"by_event_domain"`
+	TimelinePerMinute                map[string]int                `json:"timeline_per_minute"`
+	TopEventNames                    []EventTrackingAggregate      `json:"top_event_names"`
+	KPI                              EventTrackingKPI              `json:"kpi"`
+	Funnels                          []EventTrackingFunnel         `json:"funnels"`
+	VoteScreenOpenedCount            int                           `json:"vote_screen_opened_count"`
+	VotePlayerSelectedCount          int                           `json:"vote_player_selected_count"`
+	VoteSubmitAttemptedCount         int                           `json:"vote_submit_attempted_count"`
+	VoteSubmittedCount               int                           `json:"vote_submitted_count"`
+	VoteSubmitFailedCount            int                           `json:"vote_submit_failed_count"`
+	VoteOpenRate                     float64                       `json:"vote_open_rate"`
+	VoteConversionRate               float64                       `json:"vote_conversion_rate"`
+	VoteCompletionRate               float64                       `json:"vote_completion_rate"`
+	VoteAttemptToSubmitRate          float64                       `json:"vote_attempt_to_submit_rate"`
+	RegistrationCompletedCount       int                           `json:"registration_completed_count"`
+	RegistrationFailedCount          int                           `json:"registration_failed_count"`
+	ProfileOpenedCount               int                           `json:"profile_opened_count"`
+	ProfileLoadedCount               int                           `json:"profile_loaded_count"`
+	NicknameUpdatedCount             int                           `json:"nickname_updated_count"`
+	RegistrationRate                 float64                       `json:"registration_rate"`
+	FeedbackModalOpenedCount         int                           `json:"feedback_modal_opened_count"`
+	FeedbackSubmittedCount           int                           `json:"feedback_submitted_count"`
+	FeedbackCTAIgnoredCount          int                           `json:"feedback_cta_ignored_count"`
+	FeedbackOpenRate                 float64                       `json:"feedback_open_rate"`
+	FeedbackCompletionRate           float64                       `json:"feedback_completion_rate"`
+	GameCatalogOpenedCount           int                           `json:"game_catalog_opened_count"`
+	GameOpenedCount                  int                           `json:"game_opened_count"`
+	GameClaimAttemptedCount          int                           `json:"game_claim_attempted_count"`
+	GameClaimCompletedCount          int                           `json:"game_claim_completed_count"`
+	GameAbandonedCount               int                           `json:"game_abandoned_count"`
+	GameOpenBlockedCount             int                           `json:"game_open_blocked_count"`
+	GameOpenRate                     float64                       `json:"game_open_rate"`
+	GameClaimRate                    float64                       `json:"game_claim_rate"`
+	CoinsStoreOpenedCount            int                           `json:"coins_store_opened_count"`
+	CoinsRedeemAttemptedCount        int                           `json:"coins_redeem_attempted_count"`
+	CoinsRedeemCompletedCount        int                           `json:"coins_redeem_completed_count"`
+	CoinsRedeemFailedCount           int                           `json:"coins_redeem_failed_count"`
+	CoinsRedeemBlockedCount          int                           `json:"coins_redeem_blocked_count"`
+	CoinsSpentCount                  int                           `json:"coins_spent_count"`
+	RedeemCompletionRate             float64                       `json:"redeem_completion_rate"`
+	SponsorClickedCount              int                           `json:"sponsor_clicked_count"`
+	SponsorLoadFailedCount           int                           `json:"sponsor_load_failed_count"`
+	SponsorCTRVsSessions             float64                       `json:"sponsor_ctr_vs_sessions"`
+	BarMenuOpenedCount               int                           `json:"bar_menu_opened_count"`
+	BarCategoryViewedCount           int                           `json:"bar_category_viewed_count"`
+	BarProductViewedCount            int                           `json:"bar_product_viewed_count"`
+	BarAddedToCartCount              int                           `json:"bar_added_to_cart_count"`
+	BarCartItemRemovedCount          int                           `json:"bar_cart_item_removed_count"`
+	BarCartQuantityChangedCount      int                           `json:"bar_cart_quantity_changed_count"`
+	BarCheckoutStartedCount          int                           `json:"bar_checkout_started_count"`
+	BarCheckoutRedirectedCount       int                           `json:"bar_checkout_redirected_count"`
+	BarCheckoutFailedCount           int                           `json:"bar_checkout_failed_count"`
+	BarOrderCompletedCount           int                           `json:"bar_order_completed_count"`
+	BarOrderConfirmationFailedCount  int                           `json:"bar_order_confirmation_failed_count"`
+	BarUpsellAcceptedCount           int                           `json:"bar_upsell_accepted_count"`
+	BarMenuOpenRate                  float64                       `json:"bar_menu_open_rate"`
+	BarAddToCartRate                 float64                       `json:"bar_add_to_cart_rate"`
+	BarCheckoutRate                  float64                       `json:"bar_checkout_rate"`
+	BarOrderCompletionRate           float64                       `json:"bar_order_completion_rate"`
+	ContentPageViewedCount           int                           `json:"content_page_viewed_count"`
+	ContentSectionViewedCount        int                           `json:"content_section_viewed_count"`
+	ContentStoryOpenedCount          int                           `json:"content_story_opened_count"`
+	NavigationFeatureSelectedCount   int                           `json:"navigation_feature_selected_count"`
+	NavigationLeaderboardOpenedCount int                           `json:"navigation_leaderboard_opened_count"`
+	ContentEngagementRate            float64                       `json:"content_engagement_rate"`
+	SessionMetrics                   EventTrackingSessionMetrics   `json:"session_metrics"`
+	SegmentBreakdown                 EventTrackingSegmentBreakdown `json:"segment_breakdown"`
+	DomainBreakdownBySession         map[string]int                `json:"domain_breakdown_by_session"`
 }
 
 type EventEngagementStats struct {
@@ -798,6 +947,23 @@ type FanRewardRedemption struct {
 	CreatedAt string `json:"created_at"`
 }
 
+type FanSupportDonation struct {
+	ID             int    `json:"id"`
+	UserID         int    `json:"user_id"`
+	OrganizationID int    `json:"organization_id"`
+	EventID        int    `json:"event_id"`
+	CoinsDonated   int    `json:"coins_donated"`
+	TifoPoints     int    `json:"tifo_points"`
+	CreatedAt      string `json:"created_at"`
+}
+
+type FanSupportLeaderboardEntry struct {
+	FanID      int    `json:"fan_id"`
+	Nickname   string `json:"nickname"`
+	TifoPoints int    `json:"tifo_points"`
+	Rank       int    `json:"rank"`
+}
+
 type TapLiveMatch struct {
 	ID               int       `json:"id"`
 	MatchID          string    `json:"match_id"`
@@ -1124,6 +1290,8 @@ type AppDatabase interface {
 	ListContactBonuses(eventID int, deviceID string) ([]ContactSubmission, error)
 	RecordContactEvent(eventID int, deviceID, name string) error
 	RegisterFan(input FanRegisterInput) (FanProfileSummary, error)
+	IsFanNicknameAvailable(organizationID int, nickname string, excludeFanID int) (bool, error)
+	UpdateFanNickname(fanID int, nickname string) (FanProfile, error)
 	GetFanByPhoneE164(phone string) (FanProfile, error)
 	CreateFanWithPhoneE164(phone string) (FanProfile, error)
 	MarkFanPhoneVerified(phone string, verifiedAt time.Time) error
@@ -1144,6 +1312,10 @@ type AppDatabase interface {
 	GetFanLeaderboard(eventID int, organizationID int, limit int) ([]FanLeaderboardEntry, error)
 	GetFanRank(eventID int, organizationID int, fanID int) (FanLeaderboardEntry, error)
 	ListFanRewardRedemptions(eventID int, fanID int) ([]FanRewardRedemption, error)
+	DonateFanSupport(eventID int, organizationID int, fanID int, coins int) (FanSupportDonation, int, error)
+	GetFanSupportLeaderboard(eventID int, organizationID int, limit int) ([]FanSupportLeaderboardEntry, error)
+	GetFanSupportRank(eventID int, organizationID int, fanID int) (FanSupportLeaderboardEntry, error)
+	GetFanSupportEventTotal(eventID int, organizationID int) (int, error)
 	GetFanLotteryTicket(eventID int, fanID int) (EventTicket, error)
 	RecordFanLotteryEntry(eventID int, fanID int, ticketCode string, source string) error
 	RecordFanRewardRedemption(eventID int, fanID int, rewardKey string, costCoins int) error
@@ -1172,6 +1344,8 @@ type AppDatabase interface {
 	CreateAIInteractionLog(item AIInteractionLog) (AIInteractionLog, error)
 	UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error
 	ListRecentTrackingSignals(eventID int, sessionID string, limit int) ([]TrackingSignal, error)
+	ListEventTrackingAggregates(eventID int) ([]EventTrackingAggregate, error)
+	GetEventTrackingAnalytics(eventID int) (EventTrackingAnalytics, error)
 	GetAIPopupSessionState(sessionID, trigger string, maxPerSession int, cooldown time.Duration) (AIPopupSessionState, error)
 	GetEventAIReport(eventID int) (EventAIReport, error)
 	UpsertEventAIReport(report EventAIReport) (EventAIReport, error)
@@ -1236,6 +1410,8 @@ var (
 	ErrCouponExpired           = errors.New("coupon expired")
 	ErrCouponAlreadyUsed       = errors.New("coupon already used")
 	ErrCouponMaxReached        = errors.New("coupon max uses reached")
+	ErrNicknameTaken           = errors.New("nickname already taken")
+	ErrInvalidNickname         = errors.New("invalid nickname")
 )
 
 var allowedPostVoteActions = map[string]struct{}{
@@ -1492,6 +1668,7 @@ roster_schema INTEGER NOT NULL DEFAULT 13,
 team_id INTEGER,
 sms_cost REAL NOT NULL DEFAULT 0.08,
 free_sms INTEGER NOT NULL DEFAULT 0,
+bar_enabled INTEGER NOT NULL DEFAULT 1,
 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 FOREIGN KEY (team_id) REFERENCES teams(id)
@@ -1520,6 +1697,11 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN free_sms INTEGER NOT NULL DEFAULT 0`); err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring organizations free sms column: %w", err)
+		}
+	}
+	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN bar_enabled INTEGER NOT NULL DEFAULT 1`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring organizations bar enabled column: %w", err)
 		}
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_organizations_team ON organizations(team_id)`); err != nil {
@@ -2588,14 +2770,13 @@ func (db *appdbimpl) Ping() error {
 }
 
 // AddVote stores a vote in the database. If the device already voted for the event,
-// the latest choice replaces the previous one (including the ticket data).
+// only the selected player (and optional user binding) is updated while preserving the
+// original ticket code/signature assigned to that device+event pair.
 func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string, userID *int) error {
 	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id, user_id)
 VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(event_id, device_id) DO UPDATE SET
 player_id = excluded.player_id,
-ticket_code = excluded.ticket_code,
-ticket_signature = excluded.ticket_signature,
 user_id = excluded.user_id,
 created_at = CURRENT_TIMESTAMP`, eventID, playerID, code, signature, deviceID, userID)
 	return err
@@ -3754,6 +3935,7 @@ SELECT e.id,
        e.feedback_survey_config,
        IFNULL(o.name, ''),
        IFNULL(o.logo_url, ''),
+       IFNULL(o.bar_enabled, 1),
        IFNULL(t1.name, ''),
        IFNULL(t2.name, '')
 FROM events e
@@ -3762,7 +3944,7 @@ LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
 WHERE e.is_active = 1 AND e.organization_id = ?
 LIMIT 1
-`, organizationID).Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.OrganizationName, &e.OrganizationLogoURL, &e.Team1Name, &e.Team2Name)
+`, organizationID).Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &e.OrganizationName, &e.OrganizationLogoURL, &e.OrganizationBarEnabled, &e.Team1Name, &e.Team2Name)
 	if err != nil {
 		return Event{}, err
 	}
@@ -4386,12 +4568,14 @@ func (db *appdbimpl) GetAdminByID(id int) (Admin, error) {
 func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) {
 	var org Organization
 	var isActive int
+	var barEnabled int
 	var rosterSchema int
 	var teamID sql.NullInt64
-	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &org.City, &org.LogoURL, &isActive, &rosterSchema, &teamID, &org.SMSCost, &org.FreeSMS, &org.CreatedAt, &org.UpdatedAt); err != nil {
+	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &org.City, &org.LogoURL, &isActive, &rosterSchema, &teamID, &org.SMSCost, &org.FreeSMS, &barEnabled, &org.CreatedAt, &org.UpdatedAt); err != nil {
 		return Organization{}, err
 	}
 	org.IsActive = isActive != 0
+	org.BarEnabled = barEnabled != 0
 	org.RosterSchema = normalizeRosterSchema(rosterSchema)
 	if teamID.Valid {
 		org.TeamID = int(teamID.Int64)
@@ -4400,7 +4584,7 @@ func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) 
 }
 
 func (db *appdbimpl) ListOrganizations() ([]Organization, error) {
-	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
+	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -4421,7 +4605,7 @@ func (db *appdbimpl) GetOrganization(id int) (Organization, error) {
 	if id <= 0 {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), created_at, updated_at FROM organizations WHERE id = ?`, id)
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), created_at, updated_at FROM organizations WHERE id = ?`, id)
 	return db.scanOrganization(row)
 }
 
@@ -4429,7 +4613,7 @@ func (db *appdbimpl) GetOrganizationBySlug(slug string) (Organization, error) {
 	if slug == "" {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
 	return db.scanOrganization(row)
 }
 
@@ -4465,7 +4649,7 @@ func (db *appdbimpl) CreateOrganization(org Organization) (Organization, error) 
 		teamID = int(newTeamID)
 	}
 
-	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, roster_schema, team_id, sms_cost, free_sms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS))
+	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, roster_schema, team_id, sms_cost, free_sms, bar_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), boolToInt(org.BarEnabled))
 	if err != nil {
 		return Organization{}, err
 	}
@@ -4524,7 +4708,7 @@ func (db *appdbimpl) UpdateOrganization(org Organization) (Organization, error) 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, roster_schema=?, team_id=?, sms_cost=?, free_sms=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), org.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, roster_schema=?, team_id=?, sms_cost=?, free_sms=?, bar_enabled=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), boolToInt(org.BarEnabled), org.ID); err != nil {
 		return Organization{}, err
 	}
 
@@ -7248,6 +7432,32 @@ func ensureFanProfileTables(db *sql.DB) error {
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (fan_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
 		);`,
+		`CREATE TABLE IF NOT EXISTS fan_support_donations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			organization_id INTEGER NOT NULL DEFAULT 0,
+			event_id INTEGER NOT NULL,
+			coins_donated INTEGER NOT NULL DEFAULT 0,
+			tifo_points INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
+		);`,
+		`CREATE TABLE IF NOT EXISTS fan_support_event_totals (
+			event_id INTEGER NOT NULL,
+			organization_id INTEGER NOT NULL DEFAULT 0,
+			fan_id INTEGER NOT NULL,
+			tifo_points INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (event_id, organization_id, fan_id),
+			FOREIGN KEY (fan_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
+		);`,
+		`CREATE TABLE IF NOT EXISTS fan_support_event_summary (
+			event_id INTEGER NOT NULL,
+			organization_id INTEGER NOT NULL DEFAULT 0,
+			total_tifo_points INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (event_id, organization_id)
+		);`,
 		`CREATE TABLE IF NOT EXISTS tap_live_matches (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			match_id TEXT NOT NULL UNIQUE,
@@ -7295,6 +7505,8 @@ func ensureFanProfileTables(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_fan_wallets_coins ON fan_wallets(coins DESC);`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_fan_profiles_phone_e164_unique ON fan_profiles(phone_e164);`,
 		`CREATE INDEX IF NOT EXISTS idx_tap_live_matches_lookup ON tap_live_matches(event_id, fan1_id, fan2_id, status);`,
+		`CREATE INDEX IF NOT EXISTS idx_fan_support_donations_event ON fan_support_donations(event_id, organization_id, created_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_fan_support_totals_rank ON fan_support_event_totals(event_id, organization_id, tifo_points DESC, fan_id ASC);`,
 	}
 
 	for _, stmt := range statements {
@@ -7532,6 +7744,50 @@ func (db *appdbimpl) GetFanByDevice(eventID int, organizationID int, deviceID st
 		return db.getFanSummaryByWhere(`JOIN votes v ON v.user_id = p.id WHERE v.event_id = ? AND v.device_id = ? ORDER BY v.id DESC LIMIT 1`, eventID, deviceID)
 	}
 	return db.getFanSummaryByWhere(`JOIN fan_sessions s ON s.fan_id = p.id WHERE s.device_id = ? LIMIT 1`, deviceID)
+}
+
+func (db *appdbimpl) IsFanNicknameAvailable(organizationID int, nickname string, excludeFanID int) (bool, error) {
+	nickname = strings.TrimSpace(nickname)
+	if organizationID <= 0 || nickname == "" {
+		return false, ErrInvalidNickname
+	}
+
+	var existingID int
+	err := db.c.QueryRow(`SELECT id
+		FROM fan_profiles
+		WHERE organization_id = ?
+		  AND LOWER(TRIM(nickname)) = LOWER(TRIM(?))
+		  AND id <> ?
+		LIMIT 1`, organizationID, nickname, excludeFanID).Scan(&existingID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
+func (db *appdbimpl) UpdateFanNickname(fanID int, nickname string) (FanProfile, error) {
+	nickname = strings.TrimSpace(nickname)
+	if fanID <= 0 || nickname == "" {
+		return FanProfile{}, ErrInvalidNickname
+	}
+	if _, err := db.c.Exec(`UPDATE fan_profiles
+		SET nickname = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, nickname, fanID); err != nil {
+		return FanProfile{}, err
+	}
+	var profile FanProfile
+	var accepted int
+	err := db.c.QueryRow(`SELECT id, organization_id, nickname, gender, phone, accepted_terms, created_at, updated_at
+		FROM fan_profiles WHERE id = ?`, fanID).
+		Scan(&profile.ID, &profile.OrganizationID, &profile.Nickname, &profile.Gender, &profile.Phone, &accepted, &profile.CreatedAt, &profile.UpdatedAt)
+	if err != nil {
+		return FanProfile{}, err
+	}
+	profile.AcceptedTerms = accepted == 1
+	return profile, nil
 }
 
 func (db *appdbimpl) GetGuestCoins(eventID int, organizationID int, deviceID string) (int, error) {
@@ -7868,6 +8124,143 @@ func (db *appdbimpl) RecordFanRewardRedemption(eventID int, fanID int, rewardKey
 	return tx.Commit()
 }
 
+func (db *appdbimpl) DonateFanSupport(eventID int, organizationID int, fanID int, coins int) (FanSupportDonation, int, error) {
+	coins = nonNegativeInt(coins)
+	if coins == 0 {
+		return FanSupportDonation{}, 0, ErrInvalidSponsorData
+	}
+	tx, err := db.c.Begin()
+	if err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`UPDATE fan_wallets SET coins = coins - ? WHERE fan_id = ? AND coins >= ?`, coins, fanID, coins)
+	if err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return FanSupportDonation{}, 0, sql.ErrNoRows
+	}
+
+	points := coins // future-proof: same conversion now, can become configurable later.
+	insertRes, err := tx.Exec(`INSERT INTO fan_support_donations (user_id, organization_id, event_id, coins_donated, tifo_points)
+	VALUES (?, ?, ?, ?, ?)`, fanID, organizationID, eventID, coins, points)
+	if err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+
+	if _, err = tx.Exec(`INSERT INTO fan_support_event_totals (event_id, organization_id, fan_id, tifo_points)
+	VALUES (?, ?, ?, ?)
+	ON CONFLICT(event_id, organization_id, fan_id)
+	DO UPDATE SET tifo_points = fan_support_event_totals.tifo_points + excluded.tifo_points, updated_at = CURRENT_TIMESTAMP`,
+		eventID, organizationID, fanID, points); err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+
+	if _, err = tx.Exec(`INSERT INTO fan_support_event_summary (event_id, organization_id, total_tifo_points)
+	VALUES (?, ?, ?)
+	ON CONFLICT(event_id, organization_id)
+	DO UPDATE SET total_tifo_points = fan_support_event_summary.total_tifo_points + excluded.total_tifo_points, updated_at = CURRENT_TIMESTAMP`,
+		eventID, organizationID, points); err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+
+	var wallet int
+	if err = tx.QueryRow(`SELECT coins FROM fan_wallets WHERE fan_id = ?`, fanID).Scan(&wallet); err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+
+	donationID, _ := insertRes.LastInsertId()
+	if err = tx.Commit(); err != nil {
+		return FanSupportDonation{}, 0, err
+	}
+
+	return FanSupportDonation{
+		ID:             int(donationID),
+		UserID:         fanID,
+		OrganizationID: organizationID,
+		EventID:        eventID,
+		CoinsDonated:   coins,
+		TifoPoints:     points,
+	}, wallet, nil
+}
+
+func (db *appdbimpl) GetFanSupportLeaderboard(eventID int, organizationID int, limit int) ([]FanSupportLeaderboardEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := db.c.Query(`SELECT t.fan_id, p.nickname, t.tifo_points
+	FROM fan_support_event_totals t
+	JOIN fan_profiles p ON p.id = t.fan_id
+	WHERE t.event_id = ? AND t.organization_id = ?
+	ORDER BY t.tifo_points DESC, t.fan_id ASC
+	LIMIT ?`, eventID, organizationID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]FanSupportLeaderboardEntry, 0, limit)
+	rank := 1
+	for rows.Next() {
+		var e FanSupportLeaderboardEntry
+		if err := rows.Scan(&e.FanID, &e.Nickname, &e.TifoPoints); err != nil {
+			return nil, err
+		}
+		e.Rank = rank
+		rank++
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func (db *appdbimpl) GetFanSupportRank(eventID int, organizationID int, fanID int) (FanSupportLeaderboardEntry, error) {
+	rows, err := db.c.Query(`SELECT fan_id, tifo_points
+	FROM fan_support_event_totals
+	WHERE event_id = ? AND organization_id = ?
+	ORDER BY tifo_points DESC, fan_id ASC`, eventID, organizationID)
+	if err != nil {
+		return FanSupportLeaderboardEntry{}, err
+	}
+	defer rows.Close()
+	rank := 1
+	for rows.Next() {
+		var currentFanID int
+		var points int
+		if err := rows.Scan(&currentFanID, &points); err != nil {
+			return FanSupportLeaderboardEntry{}, err
+		}
+		if currentFanID == fanID {
+			var out FanSupportLeaderboardEntry
+			if err := db.c.QueryRow(`SELECT id, nickname FROM fan_profiles WHERE id = ?`, fanID).Scan(&out.FanID, &out.Nickname); err != nil {
+				return FanSupportLeaderboardEntry{}, err
+			}
+			out.Rank = rank
+			out.TifoPoints = points
+			return out, nil
+		}
+		rank++
+	}
+	return FanSupportLeaderboardEntry{}, sql.ErrNoRows
+}
+
+func (db *appdbimpl) GetFanSupportEventTotal(eventID int, organizationID int) (int, error) {
+	var total int
+	err := db.c.QueryRow(`SELECT total_tifo_points FROM fan_support_event_summary WHERE event_id = ? AND organization_id = ?`,
+		eventID, organizationID).Scan(&total)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	if total < 0 {
+		return 0, nil
+	}
+	return total, nil
+}
+
 func nonNegativeInt(value int) int {
 	if value < 0 {
 		return 0
@@ -8129,6 +8522,570 @@ func (db *appdbimpl) ListRecentTrackingSignals(eventID int, sessionID string, li
 		out = append(out, item)
 	}
 	return out, rows.Err()
+}
+
+func splitDistinctValues(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	values := make([]string, 0)
+	for _, part := range strings.Split(raw, ",") {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	sort.Strings(values)
+	return values
+}
+
+func (db *appdbimpl) ListEventTrackingAggregates(eventID int) ([]EventTrackingAggregate, error) {
+	if eventID <= 0 {
+		return []EventTrackingAggregate{}, nil
+	}
+
+	rows, err := db.c.Query(`SELECT
+		event_name,
+		COUNT(*) AS total_count,
+		COUNT(DISTINCT NULLIF(session_id, '')) AS unique_sessions,
+		COUNT(DISTINCT NULLIF(device_id, '')) AS unique_devices,
+		COUNT(DISTINCT fan_id) AS unique_fans,
+		IFNULL(MIN(occurred_at), '') AS first_occurred_at,
+		IFNULL(MAX(occurred_at), '') AS last_occurred_at,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(page, '')), '') AS pages,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(section, '')), '') AS sections,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(source, '')), '') AS sources,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(event_domain, '')), '') AS domains,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(login_state, '')), '') AS login_states,
+		IFNULL(GROUP_CONCAT(DISTINCT NULLIF(profile_state, '')), '') AS profile_states
+	FROM tracking_events
+	WHERE event_id = ?
+	GROUP BY event_name
+	ORDER BY total_count DESC, event_name ASC`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]EventTrackingAggregate, 0)
+	for rows.Next() {
+		var item EventTrackingAggregate
+		var pagesRaw, sectionsRaw, sourcesRaw, domainsRaw, loginStatesRaw, profileStatesRaw string
+		if err := rows.Scan(
+			&item.Name,
+			&item.Count,
+			&item.UniqueSessions,
+			&item.UniqueDevices,
+			&item.UniqueFans,
+			&item.FirstOccurredAt,
+			&item.LastOccurredAt,
+			&pagesRaw,
+			&sectionsRaw,
+			&sourcesRaw,
+			&domainsRaw,
+			&loginStatesRaw,
+			&profileStatesRaw,
+		); err != nil {
+			return nil, err
+		}
+		item.Pages = splitDistinctValues(pagesRaw)
+		item.Sections = splitDistinctValues(sectionsRaw)
+		item.Sources = splitDistinctValues(sourcesRaw)
+		item.Domains = splitDistinctValues(domainsRaw)
+		item.LoginStates = splitDistinctValues(loginStatesRaw)
+		item.ProfileStates = splitDistinctValues(profileStatesRaw)
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sampleRows, err := db.c.Query(`SELECT event_name, IFNULL(metadata_json, '')
+		FROM tracking_events
+		WHERE event_id = ?
+		ORDER BY datetime(occurred_at) DESC, id DESC`, eventID)
+	if err != nil {
+		return out, nil
+	}
+	defer sampleRows.Close()
+
+	samplesByEvent := make(map[string][]string)
+	for sampleRows.Next() {
+		var eventName, metadataRaw string
+		if err := sampleRows.Scan(&eventName, &metadataRaw); err != nil {
+			continue
+		}
+		eventName = strings.TrimSpace(eventName)
+		metadataRaw = strings.TrimSpace(metadataRaw)
+		if eventName == "" || metadataRaw == "" || metadataRaw == "{}" {
+			continue
+		}
+		if len(samplesByEvent[eventName]) >= 3 {
+			continue
+		}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(metadataRaw), &parsed); err != nil || len(parsed) == 0 {
+			continue
+		}
+		normalizedJSON, err := json.Marshal(parsed)
+		if err != nil {
+			continue
+		}
+		samplesByEvent[eventName] = append(samplesByEvent[eventName], string(normalizedJSON))
+	}
+
+	for i := range out {
+		out[i].MetadataSamples = samplesByEvent[out[i].Name]
+	}
+
+	return out, nil
+}
+
+func safeRate(numerator int, denominator int) float64 {
+	if denominator <= 0 || numerator <= 0 {
+		return 0
+	}
+	return float64(numerator) / float64(denominator)
+}
+
+func parseTrackingOccurredAt(value string) time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.UTC()
+		}
+	}
+	return time.Time{}
+}
+
+func trackingMinuteKey(ts time.Time) string {
+	if ts.IsZero() {
+		return ""
+	}
+	return ts.UTC().Format("2006-01-02T15:04:00Z")
+}
+
+func (db *appdbimpl) GetEventTrackingAnalytics(eventID int) (EventTrackingAnalytics, error) {
+	analytics := EventTrackingAnalytics{
+		EventID:                  eventID,
+		ByEventName:              make(map[string]int),
+		ByEventDomain:            make(map[string]int),
+		TimelinePerMinute:        make(map[string]int),
+		DomainBreakdownBySession: make(map[string]int),
+		TopEventNames:            make([]EventTrackingAggregate, 0),
+	}
+	if eventID <= 0 {
+		return analytics, nil
+	}
+
+	type sessionInfo struct {
+		registered bool
+	}
+	sessions := make(map[string]*sessionInfo)
+	uniqueFans := make(map[int]struct{})
+	uniqueDevices := make(map[string]struct{})
+	minuteCounter := make(map[string]int)
+
+	rows, err := db.c.Query(`SELECT
+		IFNULL(session_id, ''),
+		IFNULL(fan_id, 0),
+		IFNULL(device_id, ''),
+		IFNULL(event_name, ''),
+		IFNULL(event_domain, ''),
+		IFNULL(login_state, ''),
+		IFNULL(profile_state, ''),
+		IFNULL(occurred_at, '')
+	FROM tracking_events
+	WHERE event_id = ?`, eventID)
+	if err != nil {
+		return analytics, err
+	}
+	defer rows.Close()
+
+	var firstAt time.Time
+	var lastAt time.Time
+	for rows.Next() {
+		var sessionID string
+		var fanID int
+		var deviceID string
+		var eventName string
+		var eventDomain string
+		var loginState string
+		var profileState string
+		var occurredAtRaw string
+		if err := rows.Scan(&sessionID, &fanID, &deviceID, &eventName, &eventDomain, &loginState, &profileState, &occurredAtRaw); err != nil {
+			return analytics, err
+		}
+		sessionID = strings.TrimSpace(sessionID)
+		deviceID = strings.TrimSpace(deviceID)
+		eventName = strings.TrimSpace(eventName)
+		eventDomain = strings.TrimSpace(eventDomain)
+		loginState = strings.ToLower(strings.TrimSpace(loginState))
+		profileState = strings.ToLower(strings.TrimSpace(profileState))
+
+		analytics.TotalEvents++
+		if eventName != "" {
+			analytics.ByEventName[eventName]++
+		}
+		domainKey := eventDomain
+		if domainKey == "" {
+			domainKey = "unknown"
+		}
+		analytics.ByEventDomain[domainKey]++
+
+		if fanID > 0 {
+			uniqueFans[fanID] = struct{}{}
+		}
+		if deviceID != "" {
+			uniqueDevices[deviceID] = struct{}{}
+		}
+		if sessionID != "" {
+			info := sessions[sessionID]
+			if info == nil {
+				info = &sessionInfo{}
+				sessions[sessionID] = info
+			}
+			if loginState == "logged_in" || profileState == "registered" {
+				info.registered = true
+			}
+		}
+
+		occurredAt := parseTrackingOccurredAt(occurredAtRaw)
+		if !occurredAt.IsZero() {
+			if firstAt.IsZero() || occurredAt.Before(firstAt) {
+				firstAt = occurredAt
+			}
+			if lastAt.IsZero() || occurredAt.After(lastAt) {
+				lastAt = occurredAt
+			}
+			minute := trackingMinuteKey(occurredAt)
+			if minute != "" {
+				minuteCounter[minute]++
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return analytics, err
+	}
+
+	analytics.UniqueSessions = len(sessions)
+	analytics.UniqueFans = len(uniqueFans)
+	analytics.UniqueDevices = len(uniqueDevices)
+	for _, info := range sessions {
+		if info.registered {
+			analytics.RegisteredSessions++
+		}
+	}
+	analytics.GuestSessions = analytics.UniqueSessions - analytics.RegisteredSessions
+	if analytics.GuestSessions < 0 {
+		analytics.GuestSessions = 0
+	}
+	analytics.AvgEventsPerSession = safeRate(analytics.TotalEvents, analytics.UniqueSessions)
+
+	if !firstAt.IsZero() {
+		analytics.FirstEventAt = firstAt.Format(time.RFC3339)
+		analytics.SessionMetrics.FirstSeenAt = analytics.FirstEventAt
+	}
+	if !lastAt.IsZero() {
+		analytics.LastEventAt = lastAt.Format(time.RFC3339)
+		analytics.SessionMetrics.LastSeenAt = analytics.LastEventAt
+	}
+
+	peakMinute := ""
+	peakCount := 0
+	for minute, count := range minuteCounter {
+		analytics.TimelinePerMinute[minute] = count
+		if count > peakCount || (count == peakCount && (peakMinute == "" || minute < peakMinute)) {
+			peakCount = count
+			peakMinute = minute
+		}
+	}
+	analytics.PeakActivityMinute = peakMinute
+
+	for name, count := range analytics.ByEventName {
+		analytics.TopEventNames = append(analytics.TopEventNames, EventTrackingAggregate{
+			Name:  name,
+			Count: count,
+		})
+	}
+	sort.SliceStable(analytics.TopEventNames, func(i, j int) bool {
+		if analytics.TopEventNames[i].Count == analytics.TopEventNames[j].Count {
+			return analytics.TopEventNames[i].Name < analytics.TopEventNames[j].Name
+		}
+		return analytics.TopEventNames[i].Count > analytics.TopEventNames[j].Count
+	})
+	if len(analytics.TopEventNames) > 10 {
+		analytics.TopEventNames = analytics.TopEventNames[:10]
+	}
+
+	type sessionRange struct {
+		min time.Time
+		max time.Time
+	}
+	sessionRanges := make(map[string]sessionRange)
+
+	metricRows, err := db.c.Query(`SELECT
+		IFNULL(session_id, ''),
+		IFNULL(event_name, ''),
+		IFNULL(event_domain, ''),
+		IFNULL(login_state, ''),
+		IFNULL(profile_state, ''),
+		IFNULL(occurred_at, '')
+	FROM tracking_events
+	WHERE event_id = ?`, eventID)
+	if err != nil {
+		return analytics, err
+	}
+	defer metricRows.Close()
+
+	for metricRows.Next() {
+		var sessionID, eventName, eventDomain, loginState, profileState, occurredAtRaw string
+		if err := metricRows.Scan(&sessionID, &eventName, &eventDomain, &loginState, &profileState, &occurredAtRaw); err != nil {
+			return analytics, err
+		}
+		sessionID = strings.TrimSpace(sessionID)
+		eventName = strings.TrimSpace(eventName)
+		eventDomain = strings.TrimSpace(eventDomain)
+		loginState = strings.ToLower(strings.TrimSpace(loginState))
+		profileState = strings.ToLower(strings.TrimSpace(profileState))
+		isRegistered := loginState == "logged_in" || profileState == "registered"
+
+		switch eventName {
+		case "vote.screen_opened":
+			analytics.VoteScreenOpenedCount++
+		case "vote.player_selected":
+			analytics.VotePlayerSelectedCount++
+		case "vote.submit_attempted":
+			analytics.VoteSubmitAttemptedCount++
+		case "vote.submitted":
+			analytics.VoteSubmittedCount++
+			if isRegistered {
+				analytics.SegmentBreakdown.Registered.SubmittedVotes++
+			} else {
+				analytics.SegmentBreakdown.Guest.SubmittedVotes++
+			}
+		case "vote.submit_failed":
+			analytics.VoteSubmitFailedCount++
+		case "fan.registration_completed":
+			analytics.RegistrationCompletedCount++
+		case "fan.registration_failed":
+			analytics.RegistrationFailedCount++
+		case "fan.profile_opened":
+			analytics.ProfileOpenedCount++
+		case "fan.profile_loaded":
+			analytics.ProfileLoadedCount++
+		case "fan.nickname_updated":
+			analytics.NicknameUpdatedCount++
+		case "feedback.modal_opened":
+			analytics.FeedbackModalOpenedCount++
+		case "feedback.submitted":
+			analytics.FeedbackSubmittedCount++
+			if isRegistered {
+				analytics.SegmentBreakdown.Registered.FeedbackSubmitted++
+			} else {
+				analytics.SegmentBreakdown.Guest.FeedbackSubmitted++
+			}
+		case "feedback.cta_ignored":
+			analytics.FeedbackCTAIgnoredCount++
+		case "game.catalog_opened":
+			analytics.GameCatalogOpenedCount++
+		case "game.opened":
+			analytics.GameOpenedCount++
+		case "game.claim_attempted":
+			analytics.GameClaimAttemptedCount++
+		case "game.claim_completed":
+			analytics.GameClaimCompletedCount++
+		case "game.abandoned":
+			analytics.GameAbandonedCount++
+		case "game.open_blocked":
+			analytics.GameOpenBlockedCount++
+		case "coins.store_opened":
+			analytics.CoinsStoreOpenedCount++
+		case "coins.reward_redeem_attempted":
+			analytics.CoinsRedeemAttemptedCount++
+		case "coins.reward_redeem_completed":
+			analytics.CoinsRedeemCompletedCount++
+		case "coins.reward_redeem_failed":
+			analytics.CoinsRedeemFailedCount++
+		case "coins.reward_redeem_blocked":
+			analytics.CoinsRedeemBlockedCount++
+		case "coins.spent":
+			analytics.CoinsSpentCount++
+		case "sponsor.clicked":
+			analytics.SponsorClickedCount++
+			if isRegistered {
+				analytics.SegmentBreakdown.Registered.SponsorClicks++
+			} else {
+				analytics.SegmentBreakdown.Guest.SponsorClicks++
+			}
+		case "error.sponsors_load_failed":
+			analytics.SponsorLoadFailedCount++
+		case "bar.menu_opened":
+			analytics.BarMenuOpenedCount++
+		case "bar.category_viewed":
+			analytics.BarCategoryViewedCount++
+		case "bar.product_viewed":
+			analytics.BarProductViewedCount++
+		case "bar.added_to_cart":
+			analytics.BarAddedToCartCount++
+		case "bar.cart_item_removed":
+			analytics.BarCartItemRemovedCount++
+		case "bar.cart_quantity_changed":
+			analytics.BarCartQuantityChangedCount++
+		case "bar.checkout_started":
+			analytics.BarCheckoutStartedCount++
+		case "bar.checkout_redirected":
+			analytics.BarCheckoutRedirectedCount++
+		case "bar.checkout_failed":
+			analytics.BarCheckoutFailedCount++
+		case "bar.order_completed":
+			analytics.BarOrderCompletedCount++
+		case "bar.order_confirmation_failed":
+			analytics.BarOrderConfirmationFailedCount++
+		case "bar.upsell_accepted":
+			analytics.BarUpsellAcceptedCount++
+		case "content.page_viewed":
+			analytics.ContentPageViewedCount++
+		case "content.section_viewed":
+			analytics.ContentSectionViewedCount++
+		case "content.story_opened":
+			analytics.ContentStoryOpenedCount++
+		case "navigation.feature_selected":
+			analytics.NavigationFeatureSelectedCount++
+		case "navigation.leaderboard_opened":
+			analytics.NavigationLeaderboardOpenedCount++
+		case "session.started":
+			analytics.SessionMetrics.SessionStartedCount++
+		case "session.resumed":
+			analytics.SessionMetrics.SessionResumedCount++
+		case "session.hidden":
+			analytics.SessionMetrics.SessionHiddenCount++
+		case "session.idle_started":
+			analytics.SessionMetrics.SessionIdleStarted++
+		case "session.idle_resumed":
+			analytics.SessionMetrics.SessionIdleResumed++
+		case "session.ended":
+			analytics.SessionMetrics.SessionEndedCount++
+		}
+
+		if sessionID != "" && eventDomain != "" {
+			analytics.DomainBreakdownBySession[eventDomain]++
+		}
+		if sessionID != "" {
+			if eventName == "session.started" {
+				analytics.SessionMetrics.StartedSessions++
+			}
+			if eventName == "session.ended" {
+				analytics.SessionMetrics.EndedSessions++
+			}
+			occurredAt := parseTrackingOccurredAt(occurredAtRaw)
+			if !occurredAt.IsZero() {
+				current := sessionRanges[sessionID]
+				if current.min.IsZero() || occurredAt.Before(current.min) {
+					current.min = occurredAt
+				}
+				if current.max.IsZero() || occurredAt.After(current.max) {
+					current.max = occurredAt
+				}
+				sessionRanges[sessionID] = current
+			}
+		}
+	}
+	if err := metricRows.Err(); err != nil {
+		return analytics, err
+	}
+
+	totalDuration := 0.0
+	durationSessions := 0
+	for _, interval := range sessionRanges {
+		if interval.min.IsZero() || interval.max.IsZero() || interval.max.Before(interval.min) {
+			continue
+		}
+		totalDuration += interval.max.Sub(interval.min).Seconds()
+		durationSessions++
+	}
+	if durationSessions > 0 {
+		analytics.SessionMetrics.AvgDurationSeconds = totalDuration / float64(durationSessions)
+	}
+
+	analytics.VoteOpenRate = safeRate(analytics.VoteScreenOpenedCount, analytics.UniqueSessions)
+	analytics.VoteConversionRate = safeRate(analytics.VoteSubmittedCount, analytics.UniqueSessions)
+	analytics.VoteCompletionRate = safeRate(analytics.VoteSubmittedCount, analytics.VoteScreenOpenedCount)
+	analytics.VoteAttemptToSubmitRate = safeRate(analytics.VoteSubmittedCount, analytics.VoteSubmitAttemptedCount)
+	analytics.RegistrationRate = safeRate(analytics.RegistrationCompletedCount, analytics.UniqueSessions)
+	analytics.FeedbackOpenRate = safeRate(analytics.FeedbackModalOpenedCount, analytics.UniqueSessions)
+	analytics.FeedbackCompletionRate = safeRate(analytics.FeedbackSubmittedCount, analytics.FeedbackModalOpenedCount)
+	analytics.GameOpenRate = safeRate(analytics.GameOpenedCount, analytics.UniqueSessions)
+	analytics.GameClaimRate = safeRate(analytics.GameClaimCompletedCount, analytics.GameOpenedCount)
+	analytics.RedeemCompletionRate = safeRate(analytics.CoinsRedeemCompletedCount, analytics.CoinsRedeemAttemptedCount)
+	analytics.SponsorCTRVsSessions = safeRate(analytics.SponsorClickedCount, analytics.UniqueSessions)
+	analytics.BarMenuOpenRate = safeRate(analytics.BarMenuOpenedCount, analytics.UniqueSessions)
+	analytics.BarAddToCartRate = safeRate(analytics.BarAddedToCartCount, analytics.BarProductViewedCount)
+	analytics.BarCheckoutRate = safeRate(analytics.BarCheckoutStartedCount, analytics.BarAddedToCartCount)
+	analytics.BarOrderCompletionRate = safeRate(analytics.BarOrderCompletedCount, analytics.BarCheckoutStartedCount)
+	analytics.ContentEngagementRate = safeRate(
+		analytics.ContentSectionViewedCount+analytics.ContentStoryOpenedCount+analytics.NavigationFeatureSelectedCount,
+		analytics.UniqueSessions,
+	)
+
+	analytics.KPI = EventTrackingKPI{
+		UniqueSessions:      analytics.UniqueSessions,
+		TotalEvents:         analytics.TotalEvents,
+		VotesSubmitted:      analytics.VoteSubmittedCount,
+		VoteConversionRate:  analytics.VoteConversionRate,
+		FeedbackSubmitted:   analytics.FeedbackSubmittedCount,
+		SponsorClicks:       analytics.SponsorClickedCount,
+		BarOrdersCompleted:  analytics.BarOrderCompletedCount,
+		AvgEventsPerSession: analytics.AvgEventsPerSession,
+	}
+	analytics.Funnels = []EventTrackingFunnel{
+		{
+			Name: "mvp",
+			Steps: []EventTrackingFunnelStep{
+				{Key: "unique_sessions", Label: "Sessioni uniche", Count: analytics.UniqueSessions},
+				{Key: "vote.screen_opened", Label: "Vote screen opened", Count: analytics.VoteScreenOpenedCount},
+				{Key: "vote.player_selected", Label: "Vote player selected", Count: analytics.VotePlayerSelectedCount},
+				{Key: "vote.submit_attempted", Label: "Vote submit attempted", Count: analytics.VoteSubmitAttemptedCount},
+				{Key: "vote.submitted", Label: "Vote submitted", Count: analytics.VoteSubmittedCount},
+			},
+		},
+		{
+			Name: "feedback",
+			Steps: []EventTrackingFunnelStep{
+				{Key: "unique_sessions", Label: "Sessioni uniche", Count: analytics.UniqueSessions},
+				{Key: "feedback.modal_opened", Label: "Feedback modal opened", Count: analytics.FeedbackModalOpenedCount},
+				{Key: "feedback.submitted", Label: "Feedback submitted", Count: analytics.FeedbackSubmittedCount},
+			},
+		},
+		{
+			Name: "bar",
+			Steps: []EventTrackingFunnelStep{
+				{Key: "bar.menu_opened", Label: "Bar menu opened", Count: analytics.BarMenuOpenedCount},
+				{Key: "bar.product_viewed", Label: "Bar product viewed", Count: analytics.BarProductViewedCount},
+				{Key: "bar.added_to_cart", Label: "Bar added to cart", Count: analytics.BarAddedToCartCount},
+				{Key: "bar.checkout_started", Label: "Bar checkout started", Count: analytics.BarCheckoutStartedCount},
+				{Key: "bar.order_completed", Label: "Bar order completed", Count: analytics.BarOrderCompletedCount},
+			},
+		},
+	}
+
+	return analytics, nil
 }
 
 func (db *appdbimpl) UpdateAIInteractionOutcome(id int, outcome string, occurredAt time.Time) error {

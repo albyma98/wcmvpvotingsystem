@@ -94,10 +94,14 @@
                       v-else-if="activeGame?.id === 'memory-flash'"
                       class="h-full w-full"
                       :wallet-coins="walletCoins"
-                      :free-retry="freeRetry"
                       @claim="handleClaim"
                       @spend="handleSpend"
-                      @consume-free-retry="consumeFreeRetry"
+                      @exit="goBack"
+                    />
+                    <SponsorRushGame
+                      v-else-if="activeGame?.id === 'sponsor-rush'"
+                      class="h-full w-full"
+                      @claim="handleClaim"
                       @exit="goBack"
                     />
                     <div v-else class="flex w-full items-center justify-center rounded-xl border border-dashed border-white/20 bg-slate-900/40 p-6 text-center text-slate-200">
@@ -123,6 +127,7 @@ import ReactionTestGame from './ReactionTestGame.vue';
 import QuickQuizGame from './QuickQuizGame.vue';
 import TapChallenge from './minigames/TapChallenge.vue';
 import MemoryFlashGame from './minigames/MemoryFlashGame.vue';
+import SponsorRushGame from './minigames/SponsorRushGame.vue';
 import { getEarnCooldownRemainingSeconds, startEarnCooldown } from '../utils/earnCooldown';
 import { trackAppEvent } from '../eventTracking';
 
@@ -143,13 +148,9 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
-  freeRetry: {
-    type: Number,
-    default: 0,
-  },
 });
 
-const emit = defineEmits(['update:modelValue', 'earned', 'coins-earned', 'consume-free-retry']);
+const emit = defineEmits(['update:modelValue', 'earned', 'coins-earned']);
 
 const activeView = ref('list');
 const activeGame = ref(null);
@@ -159,9 +160,11 @@ const coinAnimationRef = ref(null);
 
 const earnOptions = [
   { id: 'reaction', title: 'Reaction Test', description: 'Testa i riflessi e scala la classifica.', reward: 10, icon: '⚡', type: 'game', cooldownSeconds: 90, isAvailable: true },
+  // Temporaneamente disabilitato su richiesta: mostra la card ma impedisce l'avvio del gioco.
   { id: 'quiz', title: 'Quiz Lampo', description: 'Rispondi veloce a domande a tema match.', reward: 15, icon: '🧠', type: 'game', cooldownSeconds: 120, isAvailable: false },
   { id: 'tap', title: 'Tap Challenge', description: 'Tappa più forte che puoi in 10 secondi.', reward: 8, icon: '👆', type: 'game', cooldownSeconds: 60, isAvailable: true },
   { id: 'memory-flash', title: 'Memory Flash', description: 'Memorizza le coppie e chiudi il board prima del tempo.', reward: 8, icon: '🧩', type: 'game', cooldownSeconds: 60, isAvailable: true },
+  { id: 'sponsor-rush', title: 'Sponsor Rush', description: 'Prendi i loghi sponsor al volo entro il tempo limite.', reward: 12, icon: '🏷️', type: 'game', cooldownSeconds: 45, isAvailable: true },
 ];
 
 const nowTick = ref(Date.now());
@@ -334,10 +337,6 @@ function handleSpend(payload) {
 
   emit('coins-earned', -coins);
   trackAppEvent('coins.spent', { source: activeGame.value?.id || 'game', amount: coins }, 'coins');
-}
-
-function consumeFreeRetry() {
-  emit('consume-free-retry');
 }
 
 function handleOptionClick(option) {

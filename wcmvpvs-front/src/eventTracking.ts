@@ -192,7 +192,7 @@ export function flushTrackingQueue() {
 
   const eventId = Number(context.eventId) || 0;
   if (!eventId) {
-    queue = [];
+    scheduleFlush();
     return Promise.resolve();
   }
 
@@ -208,7 +208,9 @@ export function flushTrackingQueue() {
   };
 
   return sendJsonBeacon(`/events/${eventId}/tracking/events`, payload)
-    .catch(() => {})
+    .catch(() => {
+      queue = [...batch, ...queue].slice(0, MAX_QUEUE_SIZE);
+    })
     .finally(() => {
       if (queue.length) {
         scheduleFlush();
