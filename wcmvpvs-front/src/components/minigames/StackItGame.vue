@@ -608,11 +608,11 @@ function doClaim() {
   const durationMs = Date.now() - gameStartTime;
   emit('claim', {
     coins: earnedCoins.value,
+    duration_ms: durationMs,
     meta: {
-      score: score.value,
+      game_score: score.value,        // raw block count → backend usa questo per ricalcolare
       perfect_stacks: perfectCount.value,
       max_height: score.value,
-      duration_ms: durationMs,
     },
     keepOpen: false,
   });

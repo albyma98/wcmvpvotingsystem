@@ -21,10 +21,11 @@ const (
 )
 
 var validGameTypes = map[string]struct{}{
-	"tap_challenge": {},
-	"memory_flash":  {},
-	"sponsor_rush":  {},
-	"stack_it":      {},
+	"tap_challenge":        {},
+	"memory_flash":         {},
+	"sponsor_rush":         {},
+	"free_throw_challenge": {},
+	"stack_it":             {},
 }
 
 // validRewardTypes is the closed set of accepted reward_type values.
@@ -83,7 +84,7 @@ func validateBrandedGameConfig(cfg BrandedGameConfig) error {
 		return errors.New("sponsor_id is required")
 	}
 	if _, ok := validGameTypes[cfg.GameType]; !ok {
-		return errors.New("game_type must be one of: tap_challenge, memory_flash, sponsor_rush, stack_it")
+		return errors.New("game_type must be one of: tap_challenge, memory_flash, sponsor_rush, free_throw_challenge, stack_it")
 	}
 	if _, ok := validRewardTypes[cfg.RewardType]; !ok {
 		return errors.New("reward_type must be one of: coins, coupon, none")
@@ -252,9 +253,14 @@ func (rt *_router) postBrandedGameResult(w http.ResponseWriter, r *http.Request,
 	}
 
 	cfg, err := parseBrandedGameConfig(event.BrandedGameConfig)
-	if err != nil || validateBrandedGameConfig(cfg) != nil {
-		ctx.Logger.WithError(err).Error("invalid branded_game_config")
-		w.WriteHeader(http.StatusInternalServerError)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot parse branded_game_config for result")
+		_ = writeJSONMessage(w, http.StatusInternalServerError, "configurazione gioco non valida")
+		return
+	}
+	if valErr := validateBrandedGameConfig(cfg); valErr != nil {
+		ctx.Logger.WithError(valErr).Error("invalid branded_game_config for result")
+		_ = writeJSONMessage(w, http.StatusInternalServerError, "configurazione gioco non valida: "+valErr.Error())
 		return
 	}
 
