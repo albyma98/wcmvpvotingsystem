@@ -31,6 +31,7 @@
         @voted="handleNewUiPlayerVoted"
       />
     </template>
+    <DevStackItDemo v-else-if="appView === 'dev-stack-it'" />
     <VoteScreen
       v-else
       :event-id="resolvedEventId"
@@ -47,6 +48,9 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import VoteScreen from './components/VoteScreen.vue';
 import LiveExperienceHome from './views/LiveExperienceHome.vue';
 import NewUiVoteModal from './components/NewUiVoteModal.vue';
+
+// Dev playground components
+const DevStackItDemo = defineAsyncComponent(() => import('./views/DevStackItDemo.vue'));
 
 // Admin components loaded only when the URL matches an admin route
 const AdminPortal = defineAsyncComponent(() => import('./components/AdminPortal.vue'));
@@ -112,6 +116,9 @@ const organizationSlug = computed(() => {
 });
 
 const appView = computed(() => {
+  if (currentPath.value === '/dev/stack-it-demo') {
+    return 'dev-stack-it';
+  }
   if (currentPath.value.startsWith('/admin/master')) {
     return 'master';
   }

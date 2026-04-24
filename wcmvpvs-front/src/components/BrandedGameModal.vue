@@ -130,6 +130,7 @@
                   :is="gameComponent"
                   :event-id="eventId"
                   :wallet-coins="walletCoins"
+                  :config="config"
                   class="h-full w-full"
                   @claim="handleClaim"
                   @exit="handleDismiss"
@@ -234,6 +235,9 @@ const gameComponentMap = {
   sponsor_rush: defineAsyncComponent(() =>
     import('./minigames/SponsorRushGame.vue'),
   ),
+  stack_it: defineAsyncComponent(() =>
+    import('./minigames/StackItGame.vue'),
+  ),
 };
 
 // ── Props / emits ──────────────────────────────────────────────────────────
@@ -262,6 +266,7 @@ const gameTypeLabel = computed(() => {
     tap_challenge: 'Tap Battle ⚡',
     memory_flash: 'Memory Flash 🃏',
     sponsor_rush: 'Sponsor Rush 🏃',
+    stack_it: 'Stack It 🧱',
   };
   return map[props.config?.game_type] ?? props.config?.game_type ?? '';
 });
@@ -343,6 +348,8 @@ function restartGame() {
 
 async function handleClaim(payload) {
   const score = typeof payload?.coins === 'number' ? payload.coins : 0;
+  const gameMeta = (payload?.meta && typeof payload.meta === 'object') ? payload.meta : {};
+  const durationMs = typeof payload?.duration_ms === 'number' ? payload.duration_ms : 0;
   phase.value = 'submitting';
 
   trackAppEvent(
@@ -361,9 +368,9 @@ async function handleClaim(payload) {
       `/events/${props.eventId}/branded-game/result`,
       {
         score,
-        duration_ms: 0,
+        duration_ms: durationMs,
         completed: true,
-        payload: { game_score: score },
+        payload: { game_score: score, ...gameMeta },
         session_id: '',
       },
     );

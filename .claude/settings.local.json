@@ -27,7 +27,9 @@
       "Bash(sed -n '56,70p' \"/c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-back/service/api/selfies.go\")",
       "Bash(sed -n '56,70p' \"/c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-back/service/api/fan_profile.go\")",
       "Bash(go test *)",
-      "Bash(awk '/^<style/,/^<\\\\/style/' \"/c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-front/src/components/AdminPortal.vue\")"
+      "Bash(awk '/^<style/,/^<\\\\/style/' \"/c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-front/src/components/AdminPortal.vue\")",
+      "Bash(grep -E \"\\\\.vue$|\\\\.ts$\")",
+      "Bash(npm install *)"
     ]
   }
 }

@@ -24,6 +24,7 @@ var validGameTypes = map[string]struct{}{
 	"tap_challenge": {},
 	"memory_flash":  {},
 	"sponsor_rush":  {},
+	"stack_it":      {},
 }
 
 // validRewardTypes is the closed set of accepted reward_type values.
@@ -33,19 +34,35 @@ var validRewardTypes = map[string]struct{}{
 	"none":   {},
 }
 
+// StackItConfig holds stack_it-specific tuning parameters.
+type StackItConfig struct {
+	BlockTextureURL       string   `json:"block_texture_url,omitempty"`
+	BlockColors           []string `json:"block_colors,omitempty"`
+	BackgroundImageURL    string   `json:"background_image_url,omitempty"`
+	PerfectStackSoundURL  string   `json:"perfect_stack_sound_url,omitempty"`
+	GameOverSoundURL      string   `json:"game_over_sound_url,omitempty"`
+	RewardPerBlock        float64  `json:"reward_per_block"`
+	PerfectBonusCoins     float64  `json:"perfect_bonus_coins"`
+	InitialPendulumSpeedMs int     `json:"initial_pendulum_speed_ms"`
+	SpeedCurve            string   `json:"speed_curve,omitempty"`
+	CTALabel              string   `json:"cta_label,omitempty"`
+	CTAURL                string   `json:"cta_url,omitempty"`
+}
+
 // BrandedGameConfig is the parsed representation of the branded_game_config JSON column.
 type BrandedGameConfig struct {
-	SponsorID       string `json:"sponsor_id"`
-	SponsorName     string `json:"sponsor_name"`
-	SponsorLogoURL  string `json:"sponsor_logo_url"`
-	PrimaryColor    string `json:"primary_color"`
-	SecondaryColor  string `json:"secondary_color"`
-	GameType        string `json:"game_type"`
-	CTALabel        string `json:"cta_label,omitempty"`
-	CTAURL          string `json:"cta_url,omitempty"`
-	RewardType      string `json:"reward_type"`
-	RewardCoins     int    `json:"reward_coins,omitempty"`
-	MaxPlaysPerUser int    `json:"max_plays_per_user"`
+	SponsorID       string         `json:"sponsor_id"`
+	SponsorName     string         `json:"sponsor_name"`
+	SponsorLogoURL  string         `json:"sponsor_logo_url"`
+	PrimaryColor    string         `json:"primary_color"`
+	SecondaryColor  string         `json:"secondary_color"`
+	GameType        string         `json:"game_type"`
+	CTALabel        string         `json:"cta_label,omitempty"`
+	CTAURL          string         `json:"cta_url,omitempty"`
+	RewardType      string         `json:"reward_type"`
+	RewardCoins     int            `json:"reward_coins,omitempty"`
+	MaxPlaysPerUser int            `json:"max_plays_per_user"`
+	StackItConfig   *StackItConfig `json:"stack_it_config,omitempty"`
 }
 
 func parseBrandedGameConfig(raw string) (BrandedGameConfig, error) {
@@ -66,7 +83,7 @@ func validateBrandedGameConfig(cfg BrandedGameConfig) error {
 		return errors.New("sponsor_id is required")
 	}
 	if _, ok := validGameTypes[cfg.GameType]; !ok {
-		return errors.New("game_type must be one of: tap_challenge, memory_flash, sponsor_rush")
+		return errors.New("game_type must be one of: tap_challenge, memory_flash, sponsor_rush, stack_it")
 	}
 	if _, ok := validRewardTypes[cfg.RewardType]; !ok {
 		return errors.New("reward_type must be one of: coins, coupon, none")
@@ -173,13 +190,20 @@ func (rt *_router) getBrandedGame(w http.ResponseWriter, r *http.Request, ctx re
 	_ = writeJSON(w, http.StatusOK, resp)
 }
 
+// stackItPayload is the game-specific metadata sent by StackItGame.vue.
+type stackItPayload struct {
+	GameScore     int `json:"game_score"`
+	PerfectStacks int `json:"perfect_stacks"`
+	MaxHeight     int `json:"max_height"`
+}
+
 // POST /events/{eventId}/branded-game/result
 type brandedGameResultRequest struct {
-	Score       int             `json:"score"`
-	DurationMs  int             `json:"duration_ms"`
-	Completed   bool            `json:"completed"`
-	Payload     json.RawMessage `json:"payload"`
-	SessionID   string          `json:"session_id"`
+	Score      int             `json:"score"`
+	DurationMs int             `json:"duration_ms"`
+	Completed  bool            `json:"completed"`
+	Payload    json.RawMessage `json:"payload"`
+	SessionID  string          `json:"session_id"`
 }
 
 type brandedGameResultResponse struct {
@@ -254,9 +278,26 @@ func (rt *_router) postBrandedGameResult(w http.ResponseWriter, r *http.Request,
 		payloadJSON = string(req.Payload)
 	}
 
+	// Compute reward — stack_it uses per-block formula; other games use flat config reward.
 	rewardedCoins := 0
-	if req.Completed && cfg.RewardType == "coins" && cfg.RewardCoins > 0 {
-		rewardedCoins = cfg.RewardCoins
+	if req.Completed && cfg.RewardType == "coins" {
+		if cfg.GameType == "stack_it" && cfg.StackItConfig != nil {
+			var sip stackItPayload
+			if len(req.Payload) > 0 {
+				_ = json.Unmarshal(req.Payload, &sip)
+			}
+			perBlock := cfg.StackItConfig.RewardPerBlock
+			if perBlock <= 0 {
+				perBlock = 0.5
+			}
+			perfBonus := cfg.StackItConfig.PerfectBonusCoins
+			if perfBonus <= 0 {
+				perfBonus = 2
+			}
+			rewardedCoins = int(float64(sip.GameScore)*perBlock + float64(sip.PerfectStacks)*perfBonus)
+		} else if cfg.RewardCoins > 0 {
+			rewardedCoins = cfg.RewardCoins
+		}
 	}
 
 	fanSessionToken := rt.fanSessionTokenFromRequest(r)
@@ -303,26 +344,33 @@ func (rt *_router) postBrandedGameResult(w http.ResponseWriter, r *http.Request,
 
 	// Track events
 	now2 := time.Now().UTC()
+	// Build tracking metadata; include stack_it-specific fields when available.
+	completedMeta := map[string]interface{}{
+		"sponsor_id":     cfg.SponsorID,
+		"game_type":      cfg.GameType,
+		"score":          req.Score,
+		"duration_ms":    req.DurationMs,
+		"completed":      req.Completed,
+		"rewarded_coins": rewardedCoins,
+	}
+	if cfg.GameType == "stack_it" && len(req.Payload) > 0 {
+		var sip stackItPayload
+		if err2 := json.Unmarshal(req.Payload, &sip); err2 == nil {
+			completedMeta["perfect_stacks"] = sip.PerfectStacks
+			completedMeta["max_height"] = sip.MaxHeight
+		}
+	}
+	completedMetaJSON, _ := json.Marshal(completedMeta)
+
 	trackItems := []database.TrackingEvent{
 		{
-			Name:      "branded_game.completed",
-			Domain:    "branded_game",
-			EventID:   eventID,
-			DeviceID:  deviceID,
-			SessionID: strings.TrimSpace(req.SessionID),
-			MetadataJSON: func() string {
-				m := map[string]interface{}{
-					"sponsor_id":     cfg.SponsorID,
-					"game_type":      cfg.GameType,
-					"score":          req.Score,
-					"duration_ms":    req.DurationMs,
-					"completed":      req.Completed,
-					"rewarded_coins": rewardedCoins,
-				}
-				b, _ := json.Marshal(m)
-				return string(b)
-			}(),
-			OccurredAt: now2.Format(time.RFC3339),
+			Name:         "branded_game.completed",
+			Domain:       "branded_game",
+			EventID:      eventID,
+			DeviceID:     deviceID,
+			SessionID:    strings.TrimSpace(req.SessionID),
+			MetadataJSON: string(completedMetaJSON),
+			OccurredAt:   now2.Format(time.RFC3339),
 		},
 	}
 	if rewardedCoins > 0 {
@@ -358,4 +406,42 @@ func (rt *_router) postBrandedGameResult(w http.ResponseWriter, r *http.Request,
 		RewardedCoins:  rewardedCoins,
 		RemainingPlays: remaining,
 	})
+}
+
+// stackItLeaderboardEntry is a single row in the Stack It top-10.
+type stackItLeaderboardEntry struct {
+	Score int  `json:"score"`
+	IsMe  bool `json:"is_me"`
+}
+
+type stackItLeaderboardResponse struct {
+	Entries []stackItLeaderboardEntry `json:"entries"`
+}
+
+// GET /events/{eventId}/branded-game/stackit-leaderboard
+func (rt *_router) getStackItLeaderboard(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	eventID, err := strconv.Atoi(chi.URLParam(r, "eventId"))
+	if err != nil || eventID <= 0 {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "event id non valido")
+		return
+	}
+
+	deviceID := rt.deviceIDFromRequest(r)
+
+	entries, err := rt.db.GetBrandedGameLeaderboard(eventID, 10)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot load stackit leaderboard")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	resp := stackItLeaderboardResponse{Entries: make([]stackItLeaderboardEntry, 0, len(entries))}
+	for _, e := range entries {
+		resp.Entries = append(resp.Entries, stackItLeaderboardEntry{
+			Score: e.Score,
+			IsMe:  deviceID != "" && e.DeviceID == deviceID,
+		})
+	}
+
+	_ = writeJSON(w, http.StatusOK, resp)
 }

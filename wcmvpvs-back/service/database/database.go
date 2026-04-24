@@ -93,17 +93,23 @@ type Event struct {
 }
 
 type BrandedGameParticipation struct {
-	ID             int    `json:"id"`
-	EventID        int    `json:"event_id"`
-	DeviceID       string `json:"device_id"`
-	UserID         *int   `json:"user_id,omitempty"`
-	SessionID      string `json:"session_id"`
-	StartedAt      string `json:"started_at"`
-	EndedAt        string `json:"ended_at,omitempty"`
-	Score          int    `json:"score"`
-	Completed      bool   `json:"completed"`
-	PayloadJSON    string `json:"-"`
-	RewardedCoins  int    `json:"rewarded_coins"`
+	ID            int    `json:"id"`
+	EventID       int    `json:"event_id"`
+	DeviceID      string `json:"device_id"`
+	UserID        *int   `json:"user_id,omitempty"`
+	SessionID     string `json:"session_id"`
+	StartedAt     string `json:"started_at"`
+	EndedAt       string `json:"ended_at,omitempty"`
+	Score         int    `json:"score"`
+	Completed     bool   `json:"completed"`
+	PayloadJSON   string `json:"-"`
+	RewardedCoins int    `json:"rewarded_coins"`
+}
+
+// BrandedGameLeaderboardEntry holds one row of the per-event best-score leaderboard.
+type BrandedGameLeaderboardEntry struct {
+	DeviceID string
+	Score    int
 }
 
 type EventFeedbackSurveyConfig struct {
@@ -1274,6 +1280,7 @@ type AppDatabase interface {
 	RecordTrackingEvents(eventID int, items []TrackingEvent) error
 	GetBrandedGameParticipationCount(eventID int, deviceID string) (int, error)
 	CreateBrandedGameParticipation(p BrandedGameParticipation) (BrandedGameParticipation, error)
+	GetBrandedGameLeaderboard(eventID int, limit int) ([]BrandedGameLeaderboardEntry, error)
 	RecordSponsorSession(eventID int, deviceID string) error
 	RecordSponsorExposure(eventID int, sponsorIDs []int, deviceID, exposureType string, durationMs int) error
 	RecordSponsorClick(eventID, sponsorID int, deviceID string) error
@@ -9220,4 +9227,33 @@ func (db *appdbimpl) CreateBrandedGameParticipation(p BrandedGameParticipation) 
 		}
 	}
 	return p, nil
+}
+
+func (db *appdbimpl) GetBrandedGameLeaderboard(eventID int, limit int) ([]BrandedGameLeaderboardEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := db.c.Query(
+		`SELECT device_id, MAX(score) AS best_score
+		 FROM branded_game_participations
+		 WHERE event_id = ?
+		 GROUP BY device_id
+		 ORDER BY best_score DESC
+		 LIMIT ?`,
+		eventID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []BrandedGameLeaderboardEntry
+	for rows.Next() {
+		var e BrandedGameLeaderboardEntry
+		if scanErr := rows.Scan(&e.DeviceID, &e.Score); scanErr != nil {
+			return nil, scanErr
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
 }

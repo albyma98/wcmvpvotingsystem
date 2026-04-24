@@ -205,8 +205,40 @@
                               <option value="tap_challenge">Tap Battle ⚡</option>
                               <option value="memory_flash">Memory Flash 🃏</option>
                               <option value="sponsor_rush">Sponsor Rush 🏃</option>
+                              <option value="stack_it">Stack It 🧱</option>
                             </select>
                           </div>
+                          <!-- Stack It config -->
+                          <template v-if="newEvent.brandedGameConfigDraft.game_type === 'stack_it'">
+                            <div class="bg-field-row">
+                              <label class="bg-label">Texture blocco (URL)</label>
+                              <input class="ev-input" type="url" v-model.trim="newEvent.brandedGameConfigDraft.stack_it_config.block_texture_url" placeholder="https://…" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Colori blocchi (2-4 hex, separati da virgola)</label>
+                              <input class="ev-input" type="text" :value="(newEvent.brandedGameConfigDraft.stack_it_config.block_colors || []).join(',')" @input="e => newEvent.brandedGameConfigDraft.stack_it_config.block_colors = e.target.value.split(',').map(s=>s.trim()).filter(Boolean)" placeholder="#3b82f6,#8b5cf6,#f59e0b" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Reward per blocco (coin)</label>
+                              <input class="ev-input bg-input-sm" type="number" min="0" step="0.1" v-model.number="newEvent.brandedGameConfigDraft.stack_it_config.reward_per_block" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Bonus perfect stack (coin)</label>
+                              <input class="ev-input bg-input-sm" type="number" min="0" v-model.number="newEvent.brandedGameConfigDraft.stack_it_config.perfect_bonus_coins" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Velocità iniziale pendolo (ms)</label>
+                              <input class="ev-input bg-input-sm" type="number" min="400" max="3000" v-model.number="newEvent.brandedGameConfigDraft.stack_it_config.initial_pendulum_speed_ms" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Curva velocità</label>
+                              <select class="ev-input" v-model="newEvent.brandedGameConfigDraft.stack_it_config.speed_curve">
+                                <option value="gentle">Gentile</option>
+                                <option value="standard">Standard</option>
+                                <option value="aggressive">Aggressiva</option>
+                              </select>
+                            </div>
+                          </template>
                           <div class="bg-field-row">
                             <label class="bg-label">CTA Label <span class="bg-opt">(opzionale)</span></label>
                             <input class="ev-input" type="text" v-model.trim="newEvent.brandedGameConfigDraft.cta_label" placeholder="es. Scopri di più" />
@@ -260,10 +292,21 @@
                             <span v-if="newEvent.brandedGameConfigDraft.game_type === 'tap_challenge'">Tap Battle ⚡</span>
                             <span v-else-if="newEvent.brandedGameConfigDraft.game_type === 'memory_flash'">Memory Flash 🃏</span>
                             <span v-else-if="newEvent.brandedGameConfigDraft.game_type === 'sponsor_rush'">Sponsor Rush 🏃</span>
+                            <span v-else-if="newEvent.brandedGameConfigDraft.game_type === 'stack_it'">Stack It 🧱</span>
                           </div>
+                          <!-- Stack It live pendulum preview -->
+                          <template v-if="newEvent.brandedGameConfigDraft.game_type === 'stack_it'">
+                            <p class="bg-preview__label" style="margin-top:12px">Anteprima blocco</p>
+                            <div class="bg-si-preview" :style="{ background: newEvent.brandedGameConfigDraft.primary_color }">
+                              <div class="bg-si-block" :style="{ background: (newEvent.brandedGameConfigDraft.stack_it_config.block_colors||[])[0] || '#3b82f6', animation: 'bg-si-pendulum ' + (newEvent.brandedGameConfigDraft.stack_it_config.initial_pendulum_speed_ms||1500) + 'ms ease-in-out infinite alternate' }" />
+                            </div>
+                          </template>
                           <p class="bg-preview__label" style="margin-top:12px">Reward</p>
                           <div class="bg-preview-badge" v-if="newEvent.brandedGameConfigDraft.reward_type === 'coins'">
-                            🪙 {{ newEvent.brandedGameConfigDraft.reward_coins }} coin per partita
+                            <template v-if="newEvent.brandedGameConfigDraft.game_type === 'stack_it'">
+                              🪙 {{ newEvent.brandedGameConfigDraft.stack_it_config.reward_per_block || 0.5 }} per blocco + {{ newEvent.brandedGameConfigDraft.stack_it_config.perfect_bonus_coins || 2 }} perfect
+                            </template>
+                            <template v-else>🪙 {{ newEvent.brandedGameConfigDraft.reward_coins }} coin per partita</template>
                           </div>
                           <div class="bg-preview-badge" v-else>Nessun premio</div>
                           <p class="bg-preview__label" style="margin-top:12px">Limite</p>
@@ -461,8 +504,40 @@
                               <option value="tap_challenge">Tap Battle ⚡</option>
                               <option value="memory_flash">Memory Flash 🃏</option>
                               <option value="sponsor_rush">Sponsor Rush 🏃</option>
+                              <option value="stack_it">Stack It 🧱</option>
                             </select>
                           </div>
+                          <!-- Stack It config (edit) -->
+                          <template v-if="event.brandedGameConfigDraft.game_type === 'stack_it'">
+                            <div class="bg-field-row">
+                              <label class="bg-label">Texture blocco (URL)</label>
+                              <input class="ev-input" type="url" :disabled="isSavingPrizesFor(event.id)" v-model.trim="event.brandedGameConfigDraft.stack_it_config.block_texture_url" placeholder="https://…" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Colori blocchi (2-4 hex, separati da virgola)</label>
+                              <input class="ev-input" type="text" :disabled="isSavingPrizesFor(event.id)" :value="(event.brandedGameConfigDraft.stack_it_config.block_colors || []).join(',')" @input="e => event.brandedGameConfigDraft.stack_it_config.block_colors = e.target.value.split(',').map(s=>s.trim()).filter(Boolean)" placeholder="#3b82f6,#8b5cf6,#f59e0b" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Reward per blocco (coin)</label>
+                              <input class="ev-input bg-input-sm" type="number" min="0" step="0.1" :disabled="isSavingPrizesFor(event.id)" v-model.number="event.brandedGameConfigDraft.stack_it_config.reward_per_block" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Bonus perfect stack (coin)</label>
+                              <input class="ev-input bg-input-sm" type="number" min="0" :disabled="isSavingPrizesFor(event.id)" v-model.number="event.brandedGameConfigDraft.stack_it_config.perfect_bonus_coins" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Velocità iniziale pendolo (ms)</label>
+                              <input class="ev-input bg-input-sm" type="number" min="400" max="3000" :disabled="isSavingPrizesFor(event.id)" v-model.number="event.brandedGameConfigDraft.stack_it_config.initial_pendulum_speed_ms" />
+                            </div>
+                            <div class="bg-field-row">
+                              <label class="bg-label">Curva velocità</label>
+                              <select class="ev-input" :disabled="isSavingPrizesFor(event.id)" v-model="event.brandedGameConfigDraft.stack_it_config.speed_curve">
+                                <option value="gentle">Gentile</option>
+                                <option value="standard">Standard</option>
+                                <option value="aggressive">Aggressiva</option>
+                              </select>
+                            </div>
+                          </template>
                           <div class="bg-field-row">
                             <label class="bg-label">CTA Label <span class="bg-opt">(opzionale)</span></label>
                             <input class="ev-input" type="text" v-model.trim="event.brandedGameConfigDraft.cta_label" :disabled="isSavingPrizesFor(event.id)" placeholder="es. Scopri di più" />
@@ -515,10 +590,21 @@
                             <span v-if="event.brandedGameConfigDraft.game_type === 'tap_challenge'">Tap Battle ⚡</span>
                             <span v-else-if="event.brandedGameConfigDraft.game_type === 'memory_flash'">Memory Flash 🃏</span>
                             <span v-else-if="event.brandedGameConfigDraft.game_type === 'sponsor_rush'">Sponsor Rush 🏃</span>
+                            <span v-else-if="event.brandedGameConfigDraft.game_type === 'stack_it'">Stack It 🧱</span>
                           </div>
+                          <!-- Stack It live pendulum preview (edit) -->
+                          <template v-if="event.brandedGameConfigDraft.game_type === 'stack_it'">
+                            <p class="bg-preview__label" style="margin-top:12px">Anteprima blocco</p>
+                            <div class="bg-si-preview" :style="{ background: event.brandedGameConfigDraft.primary_color }">
+                              <div class="bg-si-block" :style="{ background: (event.brandedGameConfigDraft.stack_it_config.block_colors||[])[0] || '#3b82f6', animation: 'bg-si-pendulum ' + (event.brandedGameConfigDraft.stack_it_config.initial_pendulum_speed_ms||1500) + 'ms ease-in-out infinite alternate' }" />
+                            </div>
+                          </template>
                           <p class="bg-preview__label" style="margin-top:12px">Reward</p>
                           <div class="bg-preview-badge" v-if="event.brandedGameConfigDraft.reward_type === 'coins'">
-                            🪙 {{ event.brandedGameConfigDraft.reward_coins }} coin per partita
+                            <template v-if="event.brandedGameConfigDraft.game_type === 'stack_it'">
+                              🪙 {{ event.brandedGameConfigDraft.stack_it_config.reward_per_block || 0.5 }} per blocco + {{ event.brandedGameConfigDraft.stack_it_config.perfect_bonus_coins || 2 }} perfect
+                            </template>
+                            <template v-else>🪙 {{ event.brandedGameConfigDraft.reward_coins }} coin per partita</template>
                           </div>
                           <div class="bg-preview-badge" v-else>Nessun premio</div>
                           <p class="bg-preview__label" style="margin-top:12px">Limite</p>
@@ -2254,6 +2340,22 @@ const playerOverflow = ref([]);
 const isSavingPlayers = ref(false);
 const playerSaveError = ref("");
 const playerSaveMessage = ref("");
+function defaultStackItConfig() {
+  return {
+    block_texture_url: "",
+    block_colors: ["#3b82f6", "#8b5cf6", "#f59e0b", "#10b981"],
+    background_image_url: "",
+    perfect_stack_sound_url: "",
+    game_over_sound_url: "",
+    reward_per_block: 0.5,
+    perfect_bonus_coins: 2,
+    initial_pendulum_speed_ms: 1500,
+    speed_curve: "standard",
+    cta_label: "",
+    cta_url: "",
+  };
+}
+
 function defaultBrandedGameConfig() {
   return {
     sponsor_id: "",
@@ -2267,6 +2369,7 @@ function defaultBrandedGameConfig() {
     reward_type: "coins",
     reward_coins: 50,
     max_plays_per_user: 1,
+    stack_it_config: defaultStackItConfig(),
   };
 }
 
@@ -3649,10 +3752,17 @@ function normalizeEventResponse(event) {
   normalized.show_branded_game = Boolean(event?.show_branded_game);
   try {
     const raw = event?.branded_game_config;
-    normalized.brandedGameConfigDraft =
-      raw && typeof raw === "string" && raw.trim()
-        ? { ...defaultBrandedGameConfig(), ...JSON.parse(raw) }
-        : defaultBrandedGameConfig();
+    if (raw && typeof raw === "string" && raw.trim()) {
+      const parsed = JSON.parse(raw);
+      normalized.brandedGameConfigDraft = {
+        ...defaultBrandedGameConfig(),
+        ...parsed,
+        // Deep-merge stack_it_config so missing fields get defaults
+        stack_it_config: { ...defaultStackItConfig(), ...(parsed.stack_it_config ?? {}) },
+      };
+    } else {
+      normalized.brandedGameConfigDraft = defaultBrandedGameConfig();
+    }
   } catch {
     normalized.brandedGameConfigDraft = defaultBrandedGameConfig();
   }
