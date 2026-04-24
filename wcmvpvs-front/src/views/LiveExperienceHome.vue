@@ -937,6 +937,8 @@ async function loadBrandedGame() {
           reward_type: data.reward_type ?? 'none',
           reward_coins: data.reward_coins ?? 0,
           max_plays_per_user: data.max_plays_per_user ?? 1,
+          stack_it_config: data.stack_it_config ?? null,
+          free_throw_config: data.free_throw_config ?? null,
         },
         canPlay: Boolean(data.can_play),
         playsUsed: data.plays_used ?? 0,

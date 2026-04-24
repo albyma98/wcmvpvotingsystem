@@ -105,19 +105,20 @@ func validateBrandedGameConfig(cfg BrandedGameConfig) error {
 
 // brandedGamePublicResponse is what the GET handler returns — no admin-only fields.
 type brandedGamePublicResponse struct {
-	SponsorID      string `json:"sponsor_id"`
-	SponsorName    string `json:"sponsor_name"`
-	SponsorLogoURL string `json:"sponsor_logo_url"`
-	PrimaryColor   string `json:"primary_color"`
-	SecondaryColor string `json:"secondary_color"`
-	GameType       string `json:"game_type"`
-	CTALabel       string `json:"cta_label,omitempty"`
-	CTAURL         string `json:"cta_url,omitempty"`
-	RewardType     string `json:"reward_type"`
-	RewardCoins    int    `json:"reward_coins,omitempty"`
-	CanPlay        bool   `json:"can_play"`
-	PlaysUsed      int    `json:"plays_used"`
-	PlaysRemaining int    `json:"plays_remaining"`
+	SponsorID      string         `json:"sponsor_id"`
+	SponsorName    string         `json:"sponsor_name"`
+	SponsorLogoURL string         `json:"sponsor_logo_url"`
+	PrimaryColor   string         `json:"primary_color"`
+	SecondaryColor string         `json:"secondary_color"`
+	GameType       string         `json:"game_type"`
+	CTALabel       string         `json:"cta_label,omitempty"`
+	CTAURL         string         `json:"cta_url,omitempty"`
+	RewardType     string         `json:"reward_type"`
+	RewardCoins    int            `json:"reward_coins,omitempty"`
+	StackItConfig  *StackItConfig `json:"stack_it_config,omitempty"`
+	CanPlay        bool           `json:"can_play"`
+	PlaysUsed      int            `json:"plays_used"`
+	PlaysRemaining int            `json:"plays_remaining"`
 }
 
 // GET /events/{eventId}/branded-game
@@ -183,6 +184,7 @@ func (rt *_router) getBrandedGame(w http.ResponseWriter, r *http.Request, ctx re
 		CTAURL:         cfg.CTAURL,
 		RewardType:     cfg.RewardType,
 		RewardCoins:    cfg.RewardCoins,
+		StackItConfig:  cfg.StackItConfig,
 		CanPlay:        remaining > 0,
 		PlaysUsed:      playsUsed,
 		PlaysRemaining: remaining,
