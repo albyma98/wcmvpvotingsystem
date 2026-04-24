@@ -20,22 +20,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            'admin': [
-              './src/components/AdminPortal.vue',
-              './src/components/AdminLottery.vue',
-              './src/components/MasterPortal.vue',
-              './src/components/PartnerPortal.vue',
-              './src/components/TicketValidationView.vue',
-            ],
-            'shop-admin': [
-              './src/components/shop/ShopAdminPortal.vue',
-            ],
-          },
-        },
-      },
+      // defineAsyncComponent already splits admin chunks via dynamic import.
+      // manualChunks is intentionally omitted to avoid Vite adding
+      // <link rel="modulepreload"> for admin files in the user-facing HTML.
     },
   }
 })
