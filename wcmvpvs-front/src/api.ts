@@ -49,8 +49,9 @@ const resolveApiBaseUrl = () => {
   }
 
   if (import.meta.env.DEV) {
-    const devHost = hostname || 'localhost';
-    return ensureApiPath(`${protocol}//${devHost}:3000`);
+    // In dev, use relative path so the Vite proxy handles forwarding to the backend.
+    // The proxy target is configured in vite.config.js via VITE_API_BASE_URL.
+    return '/api';
   }
 
   const originPort = windowPort ? `:${windowPort}` : '';
@@ -101,6 +102,7 @@ export function getOrganizationSlug(): string {
 
 export const apiClient = axios.create({
   baseURL: resolveApiBaseUrl(),
+  withCredentials: true,
 });
 
 apiClient.interceptors.request.use((config) => {

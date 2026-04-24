@@ -1091,6 +1091,7 @@ type AppDatabase interface {
 	CreateAdmin(a Admin) (int, error)
 	ListAdmins(organizationID int) ([]Admin, error)
 	UpdateAdmin(a Admin) error
+	UpdateAdminPasswordHash(id int, hash string) error
 	DeleteAdmin(id int) error
 	GetAdminByUsername(username string, organizationID int) (Admin, error)
 	GetAdminByID(id int) (Admin, error)
@@ -4342,6 +4343,11 @@ func (db *appdbimpl) ListPartners(organizationID int) ([]Admin, error) {
 
 func (db *appdbimpl) UpdateAdmin(a Admin) error {
 	_, err := db.c.Exec(`UPDATE admins SET username=?, password_hash=?, role=?, organization_id=? WHERE id=?`, a.Username, a.PasswordHash, a.Role, nullableOrgID(a.OrganizationID), a.ID)
+	return err
+}
+
+func (db *appdbimpl) UpdateAdminPasswordHash(id int, hash string) error {
+	_, err := db.c.Exec(`UPDATE admins SET password_hash=? WHERE id=?`, hash, id)
 	return err
 }
 

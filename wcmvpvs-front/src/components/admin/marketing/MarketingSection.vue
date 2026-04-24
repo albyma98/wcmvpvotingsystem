@@ -102,7 +102,7 @@ const tab = ref('audience'); const tabs = [{ id: 'audience', label: 'Audience' }
 const q = ref(''); const audience = ref([]); const selectedFan = ref(null); const singleMessage = ref(''); const campaign = ref({ id: 0, name: '', message: '', query: '', fan_ids: [] }); const templates = ref([]); const templateDraft = ref({ name: '', body: '', category: 'promo' }); const logs = ref([]); const categories = ['match', 'promo', 'premi'];
 const campaignFilters = ref({ male: false, female: false, newUsers: false, nonZeroCoins: false, topCoins: false });
 const billing = ref({ sms_cost: 0.08, free_sms_remaining: 0, total_messages: 0, total_cost_charged: 0 });
-const headers = computed(() => ({ Authorization: `Bearer ${localStorage.getItem('adminToken') || ''}` }));
+const headers = computed(() => ({}));
 const maxCoinsInAudience = computed(() => audience.value.reduce((max, fan) => Math.max(max, Number(fan.coins || 0)), 0));
 const selectedCampaignAudience = computed(() => {
   const enabledFilters = Object.values(campaignFilters.value).some(Boolean);

@@ -116,6 +116,8 @@ func New(cfg Config) (Router, error) {
 		voteRateByIP:            map[string][]time.Time{},
 		authRateByPhone:         map[string][]time.Time{},
 		authRateByIP:            map[string][]time.Time{},
+		loginRateByIP:           map[string][]time.Time{},
+		loginRateByUser:         map[string][]time.Time{},
 		marketingRateByOrg:      map[int][]time.Time{},
 		twilioVerify: newTwilioVerifyClient(twilioVerifyConfig{
 			AccountSID: cfg.TwilioAccountSID,
@@ -178,6 +180,10 @@ type _router struct {
 	authRateMu      sync.Mutex
 	authRateByPhone map[string][]time.Time
 	authRateByIP    map[string][]time.Time
+
+	loginRateMu      sync.Mutex
+	loginRateByIP    map[string][]time.Time
+	loginRateByUser  map[string][]time.Time
 
 	marketingRateMu    sync.Mutex
 	marketingRateByOrg map[int][]time.Time

@@ -735,10 +735,9 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
 import VoteTrendChart from './VoteTrendChart.vue';
 
-const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
 const activeRole = ref(localStorage.getItem('adminRole') || '');
-const isAuthenticated = computed(() => Boolean(token.value));
+const isAuthenticated = computed(() => Boolean(activeUsername.value));
 const isSuperAdmin = computed(() => activeRole.value === 'superadmin');
 
 const tabs = [
@@ -804,9 +803,7 @@ const isSavingQrRedirect = ref(false);
 const isDeletingQrRedirect = ref(false);
 const qrRedirectError = ref('');
 
-const authHeaders = computed(() => ({
-  headers: { Authorization: token.value ? `Bearer ${token.value}` : '' },
-}));
+const authHeaders = computed(() => ({ headers: {} }));
 
 function resetOrganizationForm() {
   organizationForm.id = 0;
@@ -1016,10 +1013,8 @@ async function login() {
       username: loginForm.username,
       password: loginForm.password,
     });
-    token.value = data?.token || '';
     activeUsername.value = data?.username || '';
     activeRole.value = data?.role || '';
-    localStorage.setItem('adminToken', token.value);
     localStorage.setItem('adminUsername', activeUsername.value);
     localStorage.setItem('adminRole', activeRole.value);
     loginForm.username = '';
@@ -1040,11 +1035,10 @@ async function login() {
   }
 }
 
-function logout() {
-  token.value = '';
+async function logout() {
+  try { await apiClient.post('/admin/logout'); } catch (_) { /* ignora */ }
   activeUsername.value = '';
   activeRole.value = '';
-  localStorage.removeItem('adminToken');
   localStorage.removeItem('adminUsername');
   localStorage.removeItem('adminRole');
   organizations.value = [];

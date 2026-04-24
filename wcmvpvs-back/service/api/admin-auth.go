@@ -11,9 +11,41 @@ import (
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 )
 
+func adminCookieName() string { return "admin_session" }
+
+func (rt *_router) setAdminCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	http.SetCookie(w, &http.Cookie{
+		Name:     adminCookieName(),
+		Value:    token,
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (rt *_router) clearAdminCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     adminCookieName(),
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+}
+
 func (rt *_router) wrapAdmin(fn httpRouterHandler) http.HandlerFunc {
 	return rt.wrap(func(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-		token := parseBearerToken(r.Header.Get("Authorization"))
+		// Prefer httpOnly cookie, fall back to Bearer header for backward compat
+		token := ""
+		if c, err := r.Cookie(adminCookieName()); err == nil {
+			token = c.Value
+		}
+		if token == "" {
+			token = parseBearerToken(r.Header.Get("Authorization"))
+		}
 		if token == "" && r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/admin/bar/orders/stream") {
 			token = strings.TrimSpace(r.URL.Query().Get("access_token"))
 		}
@@ -158,9 +190,40 @@ func (rt *_router) createPartnerSession(adminID int, username string, orgID int,
 	return token, nil
 }
 
+func partnerCookieName() string { return "partner_session" }
+
+func (rt *_router) setPartnerCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	http.SetCookie(w, &http.Cookie{
+		Name:     partnerCookieName(),
+		Value:    token,
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (rt *_router) clearPartnerCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     partnerCookieName(),
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+}
+
 func (rt *_router) wrapPartner(fn httpRouterHandler) http.HandlerFunc {
 	return rt.wrap(func(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-		token := parseBearerToken(r.Header.Get("Authorization"))
+		token := ""
+		if c, err := r.Cookie(partnerCookieName()); err == nil {
+			token = c.Value
+		}
+		if token == "" {
+			token = parseBearerToken(r.Header.Get("Authorization"))
+		}
 		session, ok := rt.getPartnerSession(token)
 		if !ok {
 			w.WriteHeader(http.StatusUnauthorized)

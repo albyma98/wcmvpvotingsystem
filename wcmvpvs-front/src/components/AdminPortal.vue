@@ -2657,10 +2657,9 @@ const filteredCouponEvents = computed(() => {
   );
 });
 
-const token = ref(localStorage.getItem("adminToken") || "");
 const activeUsername = ref(localStorage.getItem("adminUsername") || "");
 const activeRole = ref(localStorage.getItem("adminRole") || "");
-const isAuthenticated = computed(() => Boolean(token.value));
+const isAuthenticated = computed(() => Boolean(activeUsername.value));
 const isSuperAdmin = computed(() => activeRole.value === "superadmin");
 const isStaff = computed(() => activeRole.value === "staff");
 const isBarAdmin = computed(() => activeRole.value === "bar");
@@ -2740,14 +2739,10 @@ const loginError = ref("");
 const globalError = ref("");
 
 const authHeaders = computed(() => {
-  const headers = {
-    Authorization: token.value ? `Bearer ${token.value}` : "",
-  };
-
+  const headers = {};
   if (resolvedOrganizationSlug.value) {
     headers["X-Organization-Slug"] = resolvedOrganizationSlug.value;
   }
-
   return { headers };
 });
 
@@ -4011,10 +4006,8 @@ async function login() {
       username: loginForm.username,
       password: loginForm.password,
     });
-    token.value = data.token;
     activeUsername.value = data.username;
     activeRole.value = data.role || "";
-    localStorage.setItem("adminToken", token.value);
     localStorage.setItem("adminUsername", activeUsername.value);
     localStorage.setItem("adminRole", activeRole.value);
     selectDefaultSection();
@@ -4032,11 +4025,10 @@ async function login() {
   }
 }
 
-function logout() {
-  token.value = "";
+async function logout() {
+  try { await apiClient.post("/admin/logout"); } catch (_) { /* ignora errori di rete */ }
   activeUsername.value = "";
   activeRole.value = "";
-  localStorage.removeItem("adminToken");
   localStorage.removeItem("adminUsername");
   localStorage.removeItem("adminRole");
   section.value = "events";

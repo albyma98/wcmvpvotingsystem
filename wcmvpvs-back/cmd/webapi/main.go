@@ -209,6 +209,8 @@ func run() error {
 
 	// Apply CORS policy
 	handler = applyCORSHandler(handler)
+	// Apply security headers (X-Frame-Options, HSTS, etc.)
+	handler = applySecurityHeaders(handler)
 
 	serverReadTimeout := cfg.Web.ReadTimeout
 	serverWriteTimeout := cfg.Web.WriteTimeout

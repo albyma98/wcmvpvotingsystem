@@ -161,9 +161,8 @@ const allowedCodesCount = computed(() => tickets.value.length);
 const selectedEventId = ref(0);
 const eventInput = ref('');
 
-const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
-const isAuthenticated = computed(() => Boolean(token.value));
+const isAuthenticated = computed(() => Boolean(activeUsername.value));
 
 const loginForm = reactive({
   username: '',
@@ -185,11 +184,7 @@ const animationInterval = ref(null);
 const animationTimeout = ref(null);
 const isResettingPrize = ref(0);
 
-const authHeaders = computed(() => ({
-  headers: {
-    Authorization: token.value ? `Bearer ${token.value}` : '',
-  },
-}));
+const authHeaders = computed(() => ({ headers: {} }));
 
 const selectedEvent = computed(
   () => events.value.find((event) => event.id === selectedEventId.value) || null,
@@ -477,10 +472,9 @@ function resetState() {
   clearTimers();
 }
 
-function logout() {
-  token.value = '';
+async function logout() {
+  try { await apiClient.post('/admin/logout'); } catch (_) { /* ignora */ }
   activeUsername.value = '';
-  localStorage.removeItem('adminToken');
   localStorage.removeItem('adminUsername');
   localStorage.removeItem('adminRole');
   resetState();
@@ -516,9 +510,7 @@ async function login() {
       username: loginForm.username,
       password: loginForm.password,
     });
-    token.value = data.token;
     activeUsername.value = data.username;
-    localStorage.setItem('adminToken', token.value);
     localStorage.setItem('adminUsername', activeUsername.value);
     localStorage.setItem('adminRole', data.role || '');
     loginForm.username = '';

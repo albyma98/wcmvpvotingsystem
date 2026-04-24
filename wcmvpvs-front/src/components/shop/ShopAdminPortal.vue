@@ -179,7 +179,6 @@ const loginForm = reactive({
 });
 
 const portalRef = ref(null);
-const token = ref(localStorage.getItem('adminToken') || '');
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
 const isLoggingIn = ref(false);
 const loginError = ref('');
@@ -210,11 +209,7 @@ const currencyFormatter = new Intl.NumberFormat('it-IT', {
   currency: 'EUR',
 });
 
-const authHeaders = computed(() => ({
-  headers: {
-    Authorization: token.value ? `Bearer ${token.value}` : '',
-  },
-}));
+const authHeaders = computed(() => ({ headers: {} }));
 
 const routeInfo = computed(() => {
   const path = props.currentPath || '/shop/admin';
@@ -266,10 +261,9 @@ function resetCollections() {
   productsError.value = '';
 }
 
-function logout() {
-  token.value = '';
+async function logout() {
+  try { await apiClient.post('/admin/logout'); } catch (_) { /* ignora */ }
   activeUsername.value = '';
-  localStorage.removeItem('adminToken');
   localStorage.removeItem('adminUsername');
   localStorage.removeItem('adminRole');
   resetCollections();
@@ -306,9 +300,7 @@ async function login() {
       username: loginForm.username,
       password: loginForm.password,
     });
-    token.value = data.token;
     activeUsername.value = data.username;
-    localStorage.setItem('adminToken', token.value);
     localStorage.setItem('adminUsername', activeUsername.value);
     if (data.role) {
       localStorage.setItem('adminRole', data.role);
@@ -446,9 +438,9 @@ async function createProduct() {
 }
 
 watch(
-  [() => activeSection.value, () => token.value],
-  async ([section, tokenValue]) => {
-    if (!tokenValue) {
+  [() => activeSection.value, () => activeUsername.value],
+  async ([section, username]) => {
+    if (!username) {
       return;
     }
     if (section === 'products') {

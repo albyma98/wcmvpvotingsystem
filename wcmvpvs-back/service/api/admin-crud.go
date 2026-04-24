@@ -12,11 +12,32 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 )
+
+const (
+	loginIPLimit   = 10             // max tentativi per IP nella finestra
+	loginUserLimit = 5              // max tentativi per username nella finestra
+	loginWindow    = 10 * time.Minute
+)
+
+func (rt *_router) allowLoginRequest(username, ip string) bool {
+	now := time.Now()
+	rt.loginRateMu.Lock()
+	defer rt.loginRateMu.Unlock()
+	if username != "" && !allowRate(rt.loginRateByUser, strings.ToLower(username), loginUserLimit, loginWindow, now) {
+		return false
+	}
+	if ip != "" && !allowRate(rt.loginRateByIP, ip, loginIPLimit, loginWindow, now) {
+		return false
+	}
+	return true
+}
 
 func resolveRosterSchemaValue(value int) int {
 	switch value {
@@ -1107,6 +1128,12 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 
+	if !rt.allowLoginRequest(payload.Username, clientIPFromRequest(r)) {
+		ctx.Logger.WithField("username", payload.Username).Warn("admin login rate limited")
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
+
 	orgID := ctx.OrganizationID
 	admin, err := rt.db.GetAdminByUsername(payload.Username, orgID)
 	if err != nil {
@@ -1131,6 +1158,14 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 
+	// Upgrade silenzioso SHA256 → bcrypt al primo login con vecchio hash
+	if !isBcryptHash(admin.PasswordHash) {
+		if newHash, err := bcrypt.GenerateFromPassword([]byte(payload.Password), bcryptCost); err == nil {
+			_ = rt.db.UpdateAdminPasswordHash(admin.ID, string(newHash))
+			ctx.Logger.WithField("username", admin.Username).Info("admin password hash upgraded to bcrypt")
+		}
+	}
+
 	orgSlug := ctx.OrganizationSlug
 	orgTeamID := ctx.OrganizationTeamID
 	if !strings.EqualFold(admin.Role, "superadmin") {
@@ -1151,12 +1186,40 @@ func (rt *_router) adminLogin(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 
+	rt.setAdminCookie(w, r, token, int(rt.sessionTimeout.Seconds()))
 	_ = json.NewEncoder(w).Encode(struct {
 		Token    string `json:"token"`
 		Username string `json:"username"`
 		Role     string `json:"role"`
 	}{Token: token, Username: admin.Username, Role: admin.Role})
 	ctx.Logger.WithField("username", admin.Username).Info("admin logged in")
+}
+
+func (rt *_router) adminLogout(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	rt.clearAdminCookie(w)
+	rt.adminSessionsMu.Lock()
+	if c, err := r.Cookie(adminCookieName()); err == nil && c.Value != "" {
+		delete(rt.adminSessions, c.Value)
+	}
+	rt.adminSessionsMu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (rt *_router) partnerLogout(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	rt.clearPartnerCookie(w)
+	rt.partnerSessionsMu.Lock()
+	if c, err := r.Cookie(partnerCookieName()); err == nil && c.Value != "" {
+		delete(rt.partnerSessions, c.Value)
+	}
+	rt.partnerSessionsMu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (rt *_router) adminMe(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	_ = json.NewEncoder(w).Encode(struct {
+		Username string `json:"username"`
+		Role     string `json:"role"`
+	}{Username: ctx.AdminUsername, Role: ctx.AdminRole})
 }
 
 func (rt *_router) partnerLogin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -1172,6 +1235,12 @@ func (rt *_router) partnerLogin(w http.ResponseWriter, r *http.Request, ctx reqc
 
 	if payload.Username == "" || payload.Password == "" || ctx.OrganizationID == 0 || ctx.OrganizationSlug == "" {
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if !rt.allowLoginRequest(payload.Username, clientIPFromRequest(r)) {
+		ctx.Logger.WithField("username", payload.Username).Warn("partner login rate limited")
+		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
 
@@ -1203,6 +1272,7 @@ func (rt *_router) partnerLogin(w http.ResponseWriter, r *http.Request, ctx reqc
 		return
 	}
 
+	rt.setPartnerCookie(w, r, token, int(rt.sessionTimeout.Seconds()))
 	_ = json.NewEncoder(w).Encode(struct {
 		Token    string `json:"token"`
 		Username string `json:"username"`
@@ -1210,7 +1280,25 @@ func (rt *_router) partnerLogin(w http.ResponseWriter, r *http.Request, ctx reqc
 	ctx.Logger.WithField("username", admin.Username).Info("partner logged in")
 }
 
+const bcryptCost = 12
+
 func hashAdminPassword(password string) string {
+	b, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+	if err != nil {
+		// fallback non raggiungibile in condizioni normali
+		sum := sha256.Sum256([]byte(password))
+		return hex.EncodeToString(sum[:])
+	}
+	return string(b)
+}
+
+// isBcryptHash returns true if h is a bcrypt hash (starts with $2).
+func isBcryptHash(h string) bool {
+	return strings.HasPrefix(h, "$2")
+}
+
+// sha256Hex returns the SHA256 hex of password (legacy format).
+func sha256Hex(password string) string {
 	sum := sha256.Sum256([]byte(password))
 	return hex.EncodeToString(sum[:])
 }
@@ -1219,7 +1307,11 @@ func adminPasswordMatches(hash, password string) bool {
 	if hash == "" {
 		return false
 	}
-	candidate := hashAdminPassword(password)
+	if isBcryptHash(hash) {
+		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
+	}
+	// Legacy SHA256 path — constant-time compare
+	candidate := sha256Hex(password)
 	if len(candidate) != len(hash) {
 		return false
 	}

@@ -55,18 +55,20 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import AdminPortal from './components/AdminPortal.vue';
-import MasterPortal from './components/MasterPortal.vue';
-import AdminLottery from './components/AdminLottery.vue';
-import TicketValidationView from './components/TicketValidationView.vue';
-import CashLanding from './components/CashLanding.vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VoteScreen from './components/VoteScreen.vue';
 import ShopShell from './components/shop/ShopShell.vue';
-import ShopAdminPortal from './components/shop/ShopAdminPortal.vue';
-import PartnerPortal from './components/PartnerPortal.vue';
 import LiveExperienceHome from './views/LiveExperienceHome.vue';
 import NewUiVoteModal from './components/NewUiVoteModal.vue';
+
+// Admin components loaded only when the URL matches an admin route
+const AdminPortal = defineAsyncComponent(() => import('./components/AdminPortal.vue'));
+const MasterPortal = defineAsyncComponent(() => import('./components/MasterPortal.vue'));
+const AdminLottery = defineAsyncComponent(() => import('./components/AdminLottery.vue'));
+const ShopAdminPortal = defineAsyncComponent(() => import('./components/shop/ShopAdminPortal.vue'));
+const PartnerPortal = defineAsyncComponent(() => import('./components/PartnerPortal.vue'));
+const TicketValidationView = defineAsyncComponent(() => import('./components/TicketValidationView.vue'));
+const CashLanding = defineAsyncComponent(() => import('./components/CashLanding.vue'));
 import { apiClient, fetchVoteStatus } from './api';
 
 function readEventId(search) {

@@ -8,7 +8,22 @@
       "Bash(node -e \":*)",
       "Bash(go build:*)",
       "Bash(npm run:*)",
-      "Bash(go version:*)"
+      "Bash(go version:*)",
+      "Bash(grep -E \"\\\\.vue$\")",
+      "Bash(node -e ' *)",
+      "Bash(go get *)",
+      "Bash(GOFLAGS=-mod=mod go get golang.org/x/crypto/bcrypt)",
+      "Bash(GOFLAGS=\"\" GONOSUMCHECK=\"*\" go mod download golang.org/x/crypto)",
+      "Bash(GONOSUMCHECK=\"*\" GONOSUMDB=\"*\" GOFLAGS=\"-mod=mod\" go get golang.org/x/crypto/bcrypt@latest)",
+      "Bash(go mod *)",
+      "Bash(go env *)",
+      "Bash(cp 'C:/Users/Alberto/go/pkg/mod/golang.org/x/crypto@v0.19.0/bcrypt/*.go' /c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-back/vendor/golang.org/x/crypto/bcrypt/)",
+      "Bash(cp 'C:/Users/Alberto/go/pkg/mod/golang.org/x/crypto@v0.19.0/blowfish/*.go' /c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-back/vendor/golang.org/x/crypto/blowfish/)",
+      "Bash(GONOSUMCHECK=\"*\" GONOSUMDB=\"*\" GOFLAGS=\"-mod=vendor\" go build ./...)",
+      "Read(//c/Users/Alberto/go/pkg/mod/cache/download/sumdb/**)",
+      "Bash(GONOSUMCHECK=\"*\" GONOSUMDB=\"*\" GOFLAGS=\"-mod=mod\" go build ./...)",
+      "Bash(dir \"C:\\\\Users\\\\Alberto\\\\Desktop\\\\wcmvpvotingsystem\\\\wcmvpvs-back\\\\vendor\\\\github.com\\\\go-chi\")",
+      "Bash(GONOSUMDB=\"*\" GOFLAGS=\"-mod=mod\" go build ./...)"
     ]
   }
 }

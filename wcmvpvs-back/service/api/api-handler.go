@@ -18,6 +18,8 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/vote", rt.wrap(rt.postVote))
 	// Admin CRUD routes
 	rt.router.Post("/admin/login", rt.wrap(rt.adminLogin))
+	rt.router.Post("/admin/logout", rt.wrap(rt.adminLogout))
+	rt.router.Get("/admin/me", rt.wrapAdmin(rt.adminMe))
 
 	rt.router.Get("/public/players", rt.wrap(rt.listPublicPlayers))
 	rt.router.Get("/shop/products", rt.wrap(rt.listShopProducts))
@@ -54,6 +56,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/coupons/{couponId}/claim", rt.wrap(rt.claimCoupon))
 	rt.router.Get("/user/coupons", rt.wrap(rt.listUserCoupons))
 	rt.router.Post("/partner/login", rt.wrap(rt.partnerLogin))
+	rt.router.Post("/partner/logout", rt.wrap(rt.partnerLogout))
 	rt.router.Post("/partner/coupons/validate", rt.wrapPartner(rt.validatePartnerCoupon))
 	rt.router.Post("/auth/start", rt.wrap(rt.postAuthStart))
 	rt.router.Post("/auth/verify", rt.wrap(rt.postAuthVerify))

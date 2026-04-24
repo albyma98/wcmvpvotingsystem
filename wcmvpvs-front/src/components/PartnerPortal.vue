@@ -127,7 +127,6 @@ const loginForm = reactive({
   username: '',
   password: '',
 });
-const token = ref(localStorage.getItem('partnerToken') || '');
 const activeUsername = ref(localStorage.getItem('partnerUsername') || '');
 const isLoggingIn = ref(false);
 const loginError = ref('');
@@ -142,14 +141,10 @@ const validationResult = ref(null);
 
 const pendingParams = ref({ code: '', signature: '', sponsorId: 0 });
 
-const isAuthenticated = computed(() => Boolean(token.value));
+const isAuthenticated = computed(() => Boolean(activeUsername.value));
 const pendingCode = computed(() => pendingParams.value.code || '');
 
-const authHeaders = computed(() => ({
-  headers: {
-    Authorization: token.value ? `Bearer ${token.value}` : '',
-  },
-}));
+const authHeaders = computed(() => ({ headers: {} }));
 
 function parseQueryParams(rawSearch) {
   const params = new URLSearchParams(rawSearch || '');
@@ -186,9 +181,7 @@ async function login() {
       username: loginForm.username,
       password: loginForm.password,
     });
-    token.value = data.token || '';
     activeUsername.value = data.username || '';
-    localStorage.setItem('partnerToken', token.value);
     localStorage.setItem('partnerUsername', activeUsername.value);
     loginForm.username = '';
     loginForm.password = '';
@@ -207,10 +200,9 @@ async function login() {
   }
 }
 
-function logout() {
-  token.value = '';
+async function logout() {
+  try { await apiClient.post('/partner/logout'); } catch (_) { /* ignora */ }
   activeUsername.value = '';
-  localStorage.removeItem('partnerToken');
   localStorage.removeItem('partnerUsername');
 }
 
