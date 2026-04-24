@@ -23,7 +23,11 @@
       "Read(//c/Users/Alberto/go/pkg/mod/cache/download/sumdb/**)",
       "Bash(GONOSUMCHECK=\"*\" GONOSUMDB=\"*\" GOFLAGS=\"-mod=mod\" go build ./...)",
       "Bash(dir \"C:\\\\Users\\\\Alberto\\\\Desktop\\\\wcmvpvotingsystem\\\\wcmvpvs-back\\\\vendor\\\\github.com\\\\go-chi\")",
-      "Bash(GONOSUMDB=\"*\" GOFLAGS=\"-mod=mod\" go build ./...)"
+      "Bash(GONOSUMDB=\"*\" GOFLAGS=\"-mod=mod\" go build ./...)",
+      "Bash(sed -n '56,70p' \"/c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-back/service/api/selfies.go\")",
+      "Bash(sed -n '56,70p' \"/c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-back/service/api/fan_profile.go\")",
+      "Bash(go test *)",
+      "Bash(awk '/^<style/,/^<\\\\/style/' \"/c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-front/src/components/AdminPortal.vue\")"
     ]
   }
 }

@@ -155,6 +155,124 @@
                     </div>
                   </div>
 
+                  <!-- Branded Mini-Game -->
+                  <div class="ev-opts-block">
+                    <div class="ev-opts-block__hd">
+                      <span class="ev-opts-dot ev-opts-dot--orange"></span>
+                      <span class="ev-opts-label">Branded Mini-Game</span>
+                    </div>
+                    <div class="ev-opts-grid">
+                      <label class="ev-toggle">
+                        <input type="checkbox" v-model="newEvent.show_branded_game" :disabled="!hasEnoughTeams" />
+                        <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                        <span class="ev-toggle__text">Attiva mini-game sponsor</span>
+                      </label>
+                    </div>
+                    <div v-if="newEvent.show_branded_game" class="bg-config-panel">
+                      <div class="bg-config-grid">
+                        <div class="bg-config-fields">
+                          <div class="bg-field-row">
+                            <label class="bg-label">ID Sponsor <span class="bg-req">*</span></label>
+                            <input class="ev-input" type="text" v-model.trim="newEvent.brandedGameConfigDraft.sponsor_id" placeholder="es. acme-sport" />
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">Nome Sponsor <span class="bg-req">*</span></label>
+                            <input class="ev-input" type="text" v-model.trim="newEvent.brandedGameConfigDraft.sponsor_name" placeholder="es. ACME Sport" />
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">URL Logo Sponsor</label>
+                            <input class="ev-input" type="url" v-model.trim="newEvent.brandedGameConfigDraft.sponsor_logo_url" placeholder="https://…/logo.png" />
+                          </div>
+                          <div class="bg-field-row bg-field-row--colors">
+                            <div>
+                              <label class="bg-label">Colore primario</label>
+                              <div class="bg-color-row">
+                                <input type="color" v-model="newEvent.brandedGameConfigDraft.primary_color" class="bg-color-swatch" />
+                                <input class="ev-input bg-color-hex" type="text" v-model="newEvent.brandedGameConfigDraft.primary_color" maxlength="7" />
+                              </div>
+                            </div>
+                            <div>
+                              <label class="bg-label">Colore secondario</label>
+                              <div class="bg-color-row">
+                                <input type="color" v-model="newEvent.brandedGameConfigDraft.secondary_color" class="bg-color-swatch" />
+                                <input class="ev-input bg-color-hex" type="text" v-model="newEvent.brandedGameConfigDraft.secondary_color" maxlength="7" />
+                              </div>
+                            </div>
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">Tipo gioco <span class="bg-req">*</span></label>
+                            <select class="ev-input" v-model="newEvent.brandedGameConfigDraft.game_type">
+                              <option value="tap_challenge">Tap Battle ⚡</option>
+                              <option value="memory_flash">Memory Flash 🃏</option>
+                              <option value="sponsor_rush">Sponsor Rush 🏃</option>
+                            </select>
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">CTA Label <span class="bg-opt">(opzionale)</span></label>
+                            <input class="ev-input" type="text" v-model.trim="newEvent.brandedGameConfigDraft.cta_label" placeholder="es. Scopri di più" />
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">CTA URL <span class="bg-opt">(opzionale)</span></label>
+                            <input class="ev-input" type="url" v-model.trim="newEvent.brandedGameConfigDraft.cta_url" placeholder="https://…" />
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">Tipo reward</label>
+                            <div class="bg-reward-row">
+                              <label class="bg-radio">
+                                <input type="radio" v-model="newEvent.brandedGameConfigDraft.reward_type" value="coins" /> Coin reward
+                              </label>
+                              <label class="bg-radio">
+                                <input type="radio" v-model="newEvent.brandedGameConfigDraft.reward_type" value="none" /> Nessun premio
+                              </label>
+                              <label class="bg-radio bg-radio--disabled" title="Coming soon">
+                                <input type="radio" disabled value="coupon" /> Coupon <span class="bg-coming-soon">coming soon</span>
+                              </label>
+                            </div>
+                          </div>
+                          <div class="bg-field-row" v-if="newEvent.brandedGameConfigDraft.reward_type === 'coins'">
+                            <label class="bg-label">Coin reward</label>
+                            <input class="ev-input bg-input-sm" type="number" min="0" v-model.number="newEvent.brandedGameConfigDraft.reward_coins" />
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">Partite max per utente</label>
+                            <input class="ev-input bg-input-sm" type="number" min="1" v-model.number="newEvent.brandedGameConfigDraft.max_plays_per_user" />
+                          </div>
+                          <p v-if="validateBrandedGameConfigClient(newEvent.brandedGameConfigDraft)" class="bg-error">
+                            {{ validateBrandedGameConfigClient(newEvent.brandedGameConfigDraft) }}
+                          </p>
+                        </div>
+
+                        <!-- Preview -->
+                        <div class="bg-preview">
+                          <p class="bg-preview__label">Anteprima entry</p>
+                          <div class="bg-preview-entry"
+                            :style="{ background: newEvent.brandedGameConfigDraft.primary_color, color: newEvent.brandedGameConfigDraft.secondary_color }">
+                            <img v-if="newEvent.brandedGameConfigDraft.sponsor_logo_url"
+                              :src="newEvent.brandedGameConfigDraft.sponsor_logo_url"
+                              class="bg-preview-logo" alt="logo sponsor" />
+                            <span class="bg-preview-icon" v-else>🏆</span>
+                            <span class="bg-preview-text">
+                              Gioca con {{ newEvent.brandedGameConfigDraft.sponsor_name || 'Sponsor' }}
+                            </span>
+                          </div>
+                          <p class="bg-preview__label" style="margin-top:12px">Tipo gioco</p>
+                          <div class="bg-preview-badge">
+                            <span v-if="newEvent.brandedGameConfigDraft.game_type === 'tap_challenge'">Tap Battle ⚡</span>
+                            <span v-else-if="newEvent.brandedGameConfigDraft.game_type === 'memory_flash'">Memory Flash 🃏</span>
+                            <span v-else-if="newEvent.brandedGameConfigDraft.game_type === 'sponsor_rush'">Sponsor Rush 🏃</span>
+                          </div>
+                          <p class="bg-preview__label" style="margin-top:12px">Reward</p>
+                          <div class="bg-preview-badge" v-if="newEvent.brandedGameConfigDraft.reward_type === 'coins'">
+                            🪙 {{ newEvent.brandedGameConfigDraft.reward_coins }} coin per partita
+                          </div>
+                          <div class="bg-preview-badge" v-else>Nessun premio</div>
+                          <p class="bg-preview__label" style="margin-top:12px">Limite</p>
+                          <div class="bg-preview-badge">{{ newEvent.brandedGameConfigDraft.max_plays_per_user }} partita/e per utente</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <!-- Prizes -->
                   <div class="ev-opts-block">
                     <div class="ev-opts-block__hd">
@@ -297,8 +415,118 @@
                           <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
                           <span class="ev-toggle__text">Sondaggio feedback</span>
                         </label>
+                        <label class="ev-toggle">
+                          <input type="checkbox" v-model="event.show_branded_game" :disabled="isSavingPrizesFor(event.id)" />
+                          <span class="ev-toggle__track"><span class="ev-toggle__thumb"></span></span>
+                          <span class="ev-toggle__text">Branded Mini-Game</span>
+                        </label>
                       </div>
                     </div>
+
+                    <!-- Branded Game inline config (edit) -->
+                    <div v-if="event.show_branded_game" class="bg-config-panel bg-config-panel--edit">
+                      <div class="bg-config-grid">
+                        <div class="bg-config-fields">
+                          <div class="bg-field-row">
+                            <label class="bg-label">ID Sponsor <span class="bg-req">*</span></label>
+                            <input class="ev-input" type="text" v-model.trim="event.brandedGameConfigDraft.sponsor_id" :disabled="isSavingPrizesFor(event.id)" placeholder="es. acme-sport" />
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">Nome Sponsor <span class="bg-req">*</span></label>
+                            <input class="ev-input" type="text" v-model.trim="event.brandedGameConfigDraft.sponsor_name" :disabled="isSavingPrizesFor(event.id)" placeholder="es. ACME Sport" />
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">URL Logo Sponsor</label>
+                            <input class="ev-input" type="url" v-model.trim="event.brandedGameConfigDraft.sponsor_logo_url" :disabled="isSavingPrizesFor(event.id)" placeholder="https://…/logo.png" />
+                          </div>
+                          <div class="bg-field-row bg-field-row--colors">
+                            <div>
+                              <label class="bg-label">Colore primario</label>
+                              <div class="bg-color-row">
+                                <input type="color" v-model="event.brandedGameConfigDraft.primary_color" :disabled="isSavingPrizesFor(event.id)" class="bg-color-swatch" />
+                                <input class="ev-input bg-color-hex" type="text" v-model="event.brandedGameConfigDraft.primary_color" maxlength="7" :disabled="isSavingPrizesFor(event.id)" />
+                              </div>
+                            </div>
+                            <div>
+                              <label class="bg-label">Colore secondario</label>
+                              <div class="bg-color-row">
+                                <input type="color" v-model="event.brandedGameConfigDraft.secondary_color" :disabled="isSavingPrizesFor(event.id)" class="bg-color-swatch" />
+                                <input class="ev-input bg-color-hex" type="text" v-model="event.brandedGameConfigDraft.secondary_color" maxlength="7" :disabled="isSavingPrizesFor(event.id)" />
+                              </div>
+                            </div>
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">Tipo gioco <span class="bg-req">*</span></label>
+                            <select class="ev-input" v-model="event.brandedGameConfigDraft.game_type" :disabled="isSavingPrizesFor(event.id)">
+                              <option value="tap_challenge">Tap Battle ⚡</option>
+                              <option value="memory_flash">Memory Flash 🃏</option>
+                              <option value="sponsor_rush">Sponsor Rush 🏃</option>
+                            </select>
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">CTA Label <span class="bg-opt">(opzionale)</span></label>
+                            <input class="ev-input" type="text" v-model.trim="event.brandedGameConfigDraft.cta_label" :disabled="isSavingPrizesFor(event.id)" placeholder="es. Scopri di più" />
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">CTA URL <span class="bg-opt">(opzionale)</span></label>
+                            <input class="ev-input" type="url" v-model.trim="event.brandedGameConfigDraft.cta_url" :disabled="isSavingPrizesFor(event.id)" placeholder="https://…" />
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">Tipo reward</label>
+                            <div class="bg-reward-row">
+                              <label class="bg-radio">
+                                <input type="radio" v-model="event.brandedGameConfigDraft.reward_type" value="coins" :disabled="isSavingPrizesFor(event.id)" /> Coin reward
+                              </label>
+                              <label class="bg-radio">
+                                <input type="radio" v-model="event.brandedGameConfigDraft.reward_type" value="none" :disabled="isSavingPrizesFor(event.id)" /> Nessun premio
+                              </label>
+                              <label class="bg-radio bg-radio--disabled" title="Coming soon">
+                                <input type="radio" disabled value="coupon" /> Coupon <span class="bg-coming-soon">coming soon</span>
+                              </label>
+                            </div>
+                          </div>
+                          <div class="bg-field-row" v-if="event.brandedGameConfigDraft.reward_type === 'coins'">
+                            <label class="bg-label">Coin reward</label>
+                            <input class="ev-input bg-input-sm" type="number" min="0" v-model.number="event.brandedGameConfigDraft.reward_coins" :disabled="isSavingPrizesFor(event.id)" />
+                          </div>
+                          <div class="bg-field-row">
+                            <label class="bg-label">Partite max per utente</label>
+                            <input class="ev-input bg-input-sm" type="number" min="1" v-model.number="event.brandedGameConfigDraft.max_plays_per_user" :disabled="isSavingPrizesFor(event.id)" />
+                          </div>
+                          <p v-if="validateBrandedGameConfigClient(event.brandedGameConfigDraft)" class="bg-error">
+                            {{ validateBrandedGameConfigClient(event.brandedGameConfigDraft) }}
+                          </p>
+                        </div>
+                        <!-- Preview -->
+                        <div class="bg-preview">
+                          <p class="bg-preview__label">Anteprima entry</p>
+                          <div class="bg-preview-entry"
+                            :style="{ background: event.brandedGameConfigDraft.primary_color, color: event.brandedGameConfigDraft.secondary_color }">
+                            <img v-if="event.brandedGameConfigDraft.sponsor_logo_url"
+                              :src="event.brandedGameConfigDraft.sponsor_logo_url"
+                              class="bg-preview-logo" alt="logo sponsor" />
+                            <span class="bg-preview-icon" v-else>🏆</span>
+                            <span class="bg-preview-text">
+                              Gioca con {{ event.brandedGameConfigDraft.sponsor_name || 'Sponsor' }}
+                            </span>
+                          </div>
+                          <p class="bg-preview__label" style="margin-top:12px">Tipo gioco</p>
+                          <div class="bg-preview-badge">
+                            <span v-if="event.brandedGameConfigDraft.game_type === 'tap_challenge'">Tap Battle ⚡</span>
+                            <span v-else-if="event.brandedGameConfigDraft.game_type === 'memory_flash'">Memory Flash 🃏</span>
+                            <span v-else-if="event.brandedGameConfigDraft.game_type === 'sponsor_rush'">Sponsor Rush 🏃</span>
+                          </div>
+                          <p class="bg-preview__label" style="margin-top:12px">Reward</p>
+                          <div class="bg-preview-badge" v-if="event.brandedGameConfigDraft.reward_type === 'coins'">
+                            🪙 {{ event.brandedGameConfigDraft.reward_coins }} coin per partita
+                          </div>
+                          <div class="bg-preview-badge" v-else>Nessun premio</div>
+                          <p class="bg-preview__label" style="margin-top:12px">Limite</p>
+                          <div class="bg-preview-badge">{{ event.brandedGameConfigDraft.max_plays_per_user }} partita/e per utente</div>
+                        </div>
+                      </div>
+                    </div>
+
                     <div class="ev-tab-save-row">
                       <button class="ev-btn-save" type="button" @click="saveEventPrizes(event)" :disabled="isSavingPrizesFor(event.id)">
                         {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva impostazioni' }}
@@ -2026,6 +2254,33 @@ const playerOverflow = ref([]);
 const isSavingPlayers = ref(false);
 const playerSaveError = ref("");
 const playerSaveMessage = ref("");
+function defaultBrandedGameConfig() {
+  return {
+    sponsor_id: "",
+    sponsor_name: "",
+    sponsor_logo_url: "",
+    primary_color: "#1a73e8",
+    secondary_color: "#ffffff",
+    game_type: "tap_challenge",
+    cta_label: "",
+    cta_url: "",
+    reward_type: "coins",
+    reward_coins: 50,
+    max_plays_per_user: 1,
+  };
+}
+
+function validateBrandedGameConfigClient(cfg) {
+  if (!cfg.sponsor_id?.trim()) return "ID sponsor obbligatorio.";
+  if (!cfg.sponsor_name?.trim()) return "Nome sponsor obbligatorio.";
+  if (!cfg.game_type) return "Seleziona il tipo di gioco.";
+  if (cfg.reward_type === "coins" && (cfg.reward_coins ?? 0) < 0)
+    return "I coin reward devono essere ≥ 0.";
+  if ((cfg.max_plays_per_user ?? 1) < 1)
+    return "Partite massime per utente devono essere ≥ 1.";
+  return null;
+}
+
 function createDefaultNewEventState() {
   return {
     team1_id: 0,
@@ -2039,6 +2294,8 @@ function createDefaultNewEventState() {
     show_pre_vote_sponsors: true,
     show_pre_vote_bottom_sponsors: true,
     show_vote_counter: true,
+    show_branded_game: false,
+    brandedGameConfigDraft: defaultBrandedGameConfig(),
   };
 }
 
@@ -3388,6 +3645,18 @@ function normalizeEventResponse(event) {
   );
   normalized.feedback_survey = survey;
   normalized.feedbackSurvey = survey;
+
+  normalized.show_branded_game = Boolean(event?.show_branded_game);
+  try {
+    const raw = event?.branded_game_config;
+    normalized.brandedGameConfigDraft =
+      raw && typeof raw === "string" && raw.trim()
+        ? { ...defaultBrandedGameConfig(), ...JSON.parse(raw) }
+        : defaultBrandedGameConfig();
+  } catch {
+    normalized.brandedGameConfigDraft = defaultBrandedGameConfig();
+  }
+
   return normalized;
 }
 
@@ -3950,6 +4219,10 @@ async function saveEventPrizes(event) {
     show_selfie: Boolean(event.show_selfie),
     show_vote_trend: Boolean(event.show_vote_trend),
     show_feedback_survey: Boolean(event.show_feedback_survey),
+    show_branded_game: Boolean(event.show_branded_game),
+    branded_game_config: event.show_branded_game
+      ? JSON.stringify(event.brandedGameConfigDraft ?? defaultBrandedGameConfig())
+      : "",
     feedback_survey: toApiSurveyPayload(surveyDraft),
     prizes: sanitized,
   };
@@ -3999,6 +4272,10 @@ async function saveEventFeedbackSurvey(event) {
     show_selfie: Boolean(event.show_selfie),
     show_vote_trend: Boolean(event.show_vote_trend),
     show_feedback_survey: Boolean(event.show_feedback_survey),
+    show_branded_game: Boolean(event.show_branded_game),
+    branded_game_config: event.show_branded_game
+      ? JSON.stringify(event.brandedGameConfigDraft ?? defaultBrandedGameConfig())
+      : "",
     feedback_survey: toApiSurveyPayload(surveyDraft),
   };
 
@@ -5938,9 +6215,21 @@ async function createEvent() {
     show_selfie: Boolean(newEvent.show_selfie),
     show_vote_trend: Boolean(newEvent.show_vote_trend),
     show_feedback_survey: Boolean(newEvent.show_feedback_survey),
+    show_branded_game: Boolean(newEvent.show_branded_game),
+    branded_game_config: newEvent.show_branded_game
+      ? JSON.stringify(newEvent.brandedGameConfigDraft ?? defaultBrandedGameConfig())
+      : "",
     feedback_survey: toApiSurveyPayload(newEventSurvey),
     prizes: prizesPayload,
   };
+
+  if (newEvent.show_branded_game) {
+    const bgErr = validateBrandedGameConfigClient(newEvent.brandedGameConfigDraft ?? {});
+    if (bgErr) {
+      globalError.value = `Branded Game: ${bgErr}`;
+      return;
+    }
+  }
 
   const { data } = await secureRequest(() =>
     apiClient.post("/events", payload, authHeaders.value),

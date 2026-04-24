@@ -108,3 +108,110 @@ curl -i -X POST http://localhost:3000/auth/resend \
   -H 'Content-Type: application/json' \
   -d '{"phone":"+393331234567"}'
 ```
+
+---
+
+## Feature: Branded Mini-Game Modal
+
+Un formato di advertising interattivo che permette agli sponsor di presentare un mini-game brandizzato durante la partita. I fan giocano, vincono coin, e vengono esposti al brand sponsor.
+
+### Come si configura lato admin
+
+1. Apri il portale admin → sezione **Eventi**
+2. In creazione o modifica evento, individua il blocco **Branded Mini-Game** (punto arancione)
+3. Attiva il toggle "Attiva mini-game sponsor"
+4. Compila il form che appare:
+
+| Campo | Descrizione | Obbligatorio |
+|---|---|---|
+| ID Sponsor | Identificativo interno (es. `acme-2025`) | ✅ |
+| Nome Sponsor | Nome visualizzato ai fan (es. `ACME Sport`) | ✅ |
+| URL Logo | Link pubblico all'immagine logo | No |
+| Colore primario | Sfondo header e CTA (hex) | No |
+| Colore secondario | Testo su sfondo primario (hex) | No |
+| Tipo gioco | `Tap Battle`, `Memory Flash`, `Sponsor Rush` | ✅ |
+| CTA Label | Testo pulsante link sponsor (es. "Scopri di più") | No |
+| CTA URL | URL https dove mandare il fan | No |
+| Tipo reward | `coins` o `nessun premio` | ✅ |
+| Coin reward | Monete assegnate al completamento | Se reward=coins |
+| Partite max | Quante volte può giocare per evento (default 1) | ✅ |
+
+5. Clicca **Salva impostazioni** — la config viene serializzata come JSON nella colonna `branded_game_config` dell'evento.
+
+La preview a destra del form si aggiorna in tempo reale mostrando il pulsante di entry come lo vedrà il fan.
+
+### Struttura JSON `branded_game_config`
+
+```json
+{
+  "sponsor_id": "acme-2025",
+  "sponsor_name": "ACME Sport",
+  "sponsor_logo_url": "https://cdn.example.com/acme-logo.png",
+  "primary_color": "#1a73e8",
+  "secondary_color": "#ffffff",
+  "game_type": "tap_challenge",
+  "cta_label": "Scopri ACME Sport",
+  "cta_url": "https://acmesport.it",
+  "reward_type": "coins",
+  "reward_coins": 50,
+  "max_plays_per_user": 1
+}
+```
+
+### API endpoints
+
+```
+GET  /events/{eventId}/branded-game
+     → config pubblica + { can_play, plays_used, plays_remaining }
+     → 404 se show_branded_game=false
+
+POST /events/{eventId}/branded-game/result
+     Body: { score, duration_ms, completed, payload, session_id }
+     → { rewarded_coins, remaining_plays }
+     → 409 se plays esauriti
+     → 429 se rate limit superato (20 req/min per device)
+```
+
+### Come sviluppare un nuovo `game_type`
+
+1. **Crea il componente** in `wcmvpvs-front/src/components/minigames/NuovoGioco.vue` rispettando il contratto:
+   ```vue
+   <script setup>
+   const props = defineProps({
+     eventId: { type: Number },
+     walletCoins: { type: Number, default: 0 },
+   });
+   const emit = defineEmits(['claim', 'exit']);
+   // emit('claim', { coins: N, keepOpen?: false })
+   // emit('exit')
+   </script>
+   ```
+
+2. **Registra il tipo** in `BrandedGameModal.vue`:
+   ```js
+   const gameComponentMap = {
+     tap_challenge: defineAsyncComponent(() => import('./minigames/TapChallenge.vue')),
+     memory_flash:  defineAsyncComponent(() => import('./minigames/MemoryFlashGame.vue')),
+     sponsor_rush:  defineAsyncComponent(() => import('./minigames/SponsorRushGame.vue')),
+     nuovo_gioco:   defineAsyncComponent(() => import('./minigames/NuovoGioco.vue')), // ← aggiungi
+   };
+   ```
+
+3. **Aggiungi il tipo** alla whitelist backend in `branded_game.go`:
+   ```go
+   var validGameTypes = map[string]struct{}{
+     "tap_challenge": {},
+     "memory_flash":  {},
+     "sponsor_rush":  {},
+     "nuovo_gioco":   {}, // ← aggiungi
+   }
+   ```
+
+4. **Aggiorna il select** nell'admin form in `AdminPortal.vue`:
+   ```html
+   <option value="nuovo_gioco">Nuovo Gioco 🎯</option>
+   ```
+
+5. Aggiungi la label nel `gameTypeLabel` computed di `BrandedGameEntry.vue` e `BrandedGameModal.vue`.
+
+Il mini-game non deve sapere nulla di branded game: riceve `eventId` e `walletCoins`, emette `claim` o `exit`. Il wrapper `BrandedGameModal` gestisce branding, tracking, e submit result.

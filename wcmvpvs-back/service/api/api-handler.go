@@ -58,6 +58,8 @@ func (rt *_router) Handler() chi.Router {
 
 	rt.router.Post("/events/{eventId}/engagement", rt.wrap(rt.recordPageEngagement))
 	rt.router.Post("/events/{eventId}/tracking/events", rt.wrap(rt.recordTrackingEvents))
+	rt.router.Get("/events/{eventId}/branded-game", rt.wrap(rt.getBrandedGame))
+	rt.router.Post("/events/{eventId}/branded-game/result", rt.wrap(rt.postBrandedGameResult))
 	rt.router.Get("/events/{eventId}/engagement", rt.wrap(rt.getEventEngagementStats))
 	rt.router.Post("/events/{eventId}/sponsors/session", rt.wrap(rt.recordSponsorSessionEvent))
 	rt.router.Post("/events/{eventId}/sponsors/exposures", rt.wrap(rt.recordSponsorExposureEvent))

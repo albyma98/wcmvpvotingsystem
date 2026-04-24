@@ -1216,6 +1216,7 @@
 .admin-portal .ev-opts-dot--cyan   { background: #0284c7; box-shadow: 0 0 6px rgba(2,132,199,0.5); }
 .admin-portal .ev-opts-dot--purple { background: #6366f1; box-shadow: 0 0 6px rgba(129,140,248,0.5); }
 .admin-portal .ev-opts-dot--gold   { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
+.admin-portal .ev-opts-dot--orange { background: #f97316; box-shadow: 0 0 6px rgba(249,115,22,0.5); }
 
 .admin-portal .ev-opts-label {
   font-size: 0.85rem;
@@ -1860,3 +1861,140 @@
 }
 
 .admin-portal .ev-story-order { display: flex; gap: 0.28rem; }
+
+/* ── Branded Game Config Panel ── */
+.admin-portal .bg-config-panel {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(249,115,22,0.25);
+  border-radius: 10px;
+  background: rgba(255,247,237,0.6);
+  animation: ev-slide-in 0.18s ease;
+}
+.admin-portal .bg-config-panel--edit {
+  margin-top: 0.5rem;
+  background: rgba(255,247,237,0.4);
+}
+.admin-portal .bg-config-grid {
+  display: grid;
+  grid-template-columns: 1fr minmax(180px, 220px);
+  gap: 1.25rem;
+  align-items: start;
+}
+@media (max-width: 700px) {
+  .admin-portal .bg-config-grid { grid-template-columns: 1fr; }
+}
+.admin-portal .bg-config-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.admin-portal .bg-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.admin-portal .bg-field-row--colors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.admin-portal .bg-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+}
+.admin-portal .bg-req { color: #ef4444; margin-left: 2px; }
+.admin-portal .bg-opt { color: #94a3b8; font-weight: 400; }
+.admin-portal .bg-color-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.admin-portal .bg-color-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid rgba(15,23,42,0.2);
+  cursor: pointer;
+  padding: 2px;
+  background: none;
+  flex-shrink: 0;
+}
+.admin-portal .bg-color-hex { max-width: 90px; font-family: monospace; font-size: 0.82rem; }
+.admin-portal .bg-input-sm { max-width: 90px; }
+.admin-portal .bg-reward-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.admin-portal .bg-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #334155;
+  cursor: pointer;
+}
+.admin-portal .bg-radio--disabled { opacity: 0.45; cursor: not-allowed; }
+.admin-portal .bg-coming-soon {
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: #e2e8f0;
+  color: #64748b;
+  padding: 1px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+}
+.admin-portal .bg-error {
+  font-size: 0.8rem;
+  color: #ef4444;
+  margin: 0.25rem 0 0;
+  font-weight: 500;
+}
+
+/* Preview */
+.admin-portal .bg-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.admin-portal .bg-preview__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+.admin-portal .bg-preview-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  min-height: 48px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  transition: background 0.2s, color 0.2s;
+}
+.admin-portal .bg-preview-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.admin-portal .bg-preview-icon { font-size: 1.2rem; flex-shrink: 0; }
+.admin-portal .bg-preview-text { line-height: 1.2; }
+.admin-portal .bg-preview-badge {
+  display: inline-block;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  background: rgba(15,23,42,0.06);
+  font-size: 0.82rem;
+  color: #334155;
+  font-weight: 500;
+}

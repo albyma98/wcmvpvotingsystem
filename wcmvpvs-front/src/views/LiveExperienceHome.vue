@@ -106,6 +106,16 @@
         </article>
       </section>
 
+      <section v-if="showBrandedGameEntry" class="animate-on-enter px-0.5 w-full">
+        <BrandedGameEntry
+          :config="brandedGameInfo.config"
+          :can-play="brandedGameInfo.canPlay"
+          :plays-used="brandedGameInfo.playsUsed"
+          :event-id="eventId"
+          @open="openBrandedGameModal"
+        />
+      </section>
+
       <section v-if="showFeedbackCta" class="feedback-area__cta-slot animate-on-enter mt-[2.8vh] mb-[2vh] w-full">
         <ExperienceFeedbackCta
           :disabled="!hasFeedbackSurvey || hasSubmittedFeedback"
@@ -323,6 +333,18 @@
       :wallet-target-el="walletTargetEl"
       :wallet-coins="totalCoins"
       @coins-earned="addCoinsFromMinigame"
+    />
+
+    <BrandedGameModal
+      v-if="brandedGameInfo"
+      :model-value="isBrandedGameModalOpen"
+      :event-id="eventId"
+      :config="brandedGameInfo.config"
+      :can-play="brandedGameInfo.canPlay"
+      :plays-used="brandedGameInfo.playsUsed"
+      :wallet-coins="totalCoins"
+      @update:model-value="onBrandedGameModalClose"
+      @coins-earned="addCoinsFromBrandedGame"
     />
 
     <CoinCollectAnimation ref="coinAnimationRef" />
@@ -717,8 +739,10 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EarnCoinsModal from '../components/EarnCoinsModal.vue';
+import BrandedGameEntry from '../components/BrandedGameEntry.vue';
+const BrandedGameModal = defineAsyncComponent(() => import('../components/BrandedGameModal.vue'));
 import CoinCollectAnimation from '../components/CoinCollectAnimation.vue';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import ExperienceFeedbackCta from '../components/ExperienceFeedbackCta.vue';
@@ -886,6 +910,60 @@ const props = defineProps({
 
 const emit = defineEmits(['feature-select']);
 const isEarnModalOpen = ref(false);
+
+// ── Branded Game ────────────────────────────────────────────────────────────
+const brandedGameInfo = ref(null); // { config, canPlay, playsUsed, playsRemaining }
+const isBrandedGameModalOpen = ref(false);
+
+const showBrandedGameEntry = computed(
+  () => Boolean(props.activeEvent?.show_branded_game) && brandedGameInfo.value !== null,
+);
+
+async function loadBrandedGame() {
+  if (!props.eventId || !props.activeEvent?.show_branded_game) return;
+  try {
+    const { data } = await apiClient.get(`/events/${props.eventId}/branded-game`);
+    if (data && data.game_type) {
+      brandedGameInfo.value = {
+        config: {
+          sponsor_id: data.sponsor_id ?? '',
+          sponsor_name: data.sponsor_name ?? '',
+          sponsor_logo_url: data.sponsor_logo_url ?? '',
+          primary_color: data.primary_color ?? '#1a73e8',
+          secondary_color: data.secondary_color ?? '#ffffff',
+          game_type: data.game_type,
+          cta_label: data.cta_label ?? '',
+          cta_url: data.cta_url ?? '',
+          reward_type: data.reward_type ?? 'none',
+          reward_coins: data.reward_coins ?? 0,
+          max_plays_per_user: data.max_plays_per_user ?? 1,
+        },
+        canPlay: Boolean(data.can_play),
+        playsUsed: data.plays_used ?? 0,
+        playsRemaining: data.plays_remaining ?? 0,
+      };
+    }
+  } catch {
+    // Non mostrare l'entry se la config non è disponibile
+    brandedGameInfo.value = null;
+  }
+}
+
+function addCoinsFromBrandedGame(amount) {
+  return addCoins(amount, { source: 'branded_game' });
+}
+
+function openBrandedGameModal() {
+  isBrandedGameModalOpen.value = true;
+}
+
+function onBrandedGameModalClose(val) {
+  isBrandedGameModalOpen.value = val;
+  // Aggiorna canPlay dopo la chiusura (potrebbe aver giocato)
+  if (!val && brandedGameInfo.value) {
+    loadBrandedGame();
+  }
+}
 const isLeaderboardModalOpen = ref(false);
 const isRegistrationPromptOpen = ref(false);
 const registrationTrigger = ref('after_vote');
@@ -1231,6 +1309,7 @@ onMounted(async () => {
   await loadFanProfile();
   loadEventStories();
   loadSponsors();
+  loadBrandedGame();
   await loadLeaderboardPreview();
   startLeaderboardPolling();
   registerUserActivity();
