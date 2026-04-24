@@ -1680,6 +1680,16 @@ watch(
   },
 );
 
+// activeEvent arriva async da App.vue — loadBrandedGame deve ritentare quando diventa disponibile
+watch(
+  () => props.activeEvent?.show_branded_game,
+  (showBrandedGame) => {
+    if (showBrandedGame && brandedGameInfo.value === null) {
+      loadBrandedGame();
+    }
+  },
+);
+
 
 watch(() => props.registrationPromptSignal, (value, previous) => {
   if (value !== previous) {
