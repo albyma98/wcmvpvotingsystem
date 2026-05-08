@@ -11,6 +11,7 @@
   "dependencies": {
     "axios": "^1.6.8",
     "gsap": "^3.15.0",
+    "posthog-js": "^1.372.10",
     "vue": "^3.5.22",
     "vue-qrcode-reader": "^5.7.3"
   },

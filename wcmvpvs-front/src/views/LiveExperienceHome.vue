@@ -758,6 +758,7 @@ import { apiClient, donateFanSupport, fetchFanProfile, fetchFanSupportLeaderboar
 import { getOrCreateDeviceId } from '../deviceId';
 import { safeTrackEvent } from '../tracking';
 import { endTrackingLifecycle, startTrackingLifecycle, trackAppEvent, trackSectionView, updateTrackingContext } from '../eventTracking';
+import { track as posthogTrack, EVENTS as PH_EVENTS } from '../lib/track';
 
 const anonymousAvatarSvg = encodeURIComponent(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 220'>
@@ -1306,6 +1307,11 @@ onMounted(async () => {
   updateTrackingContext({
     loginState: isRegisteredFan.value ? 'logged_in' : 'guest',
     profileState: isRegisteredFan.value ? 'registered' : 'guest',
+  });
+  posthogTrack(PH_EVENTS.HOME_OPENED, {
+    event_id: props.eventId || undefined,
+    login_state: isRegisteredFan.value ? 'logged_in' : 'guest',
+    source: 'newui',
   });
   trackSectionView('home.hero', { match_label: matchLabel.value });
   await loadFanProfile();

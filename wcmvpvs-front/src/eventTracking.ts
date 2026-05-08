@@ -1,5 +1,6 @@
 import { getOrCreateDeviceId } from './deviceId';
 import { getFanSessionToken, getOrganizationSlug, sendJsonBeacon } from './api';
+import { track as posthogTrack } from './lib/track';
 
 type TrackingPrimitive = string | number | boolean | null;
 type TrackingValue = TrackingPrimitive | TrackingValue[] | { [key: string]: TrackingValue };
@@ -166,6 +167,22 @@ export function trackAppEvent(name: string, payload: TrackingPayload = {}, domai
   queue.push(event);
   if (queue.length > MAX_QUEUE_SIZE) {
     queue = queue.slice(queue.length - MAX_QUEUE_SIZE);
+  }
+
+  try {
+    posthogTrack(trimmedName, {
+      domain: finalDomain,
+      page: event.page,
+      section: event.section,
+      source: event.source,
+      session_id: event.session_id,
+      organization_slug: event.organization_slug,
+      login_state: event.login_state,
+      profile_state: event.profile_state,
+      ...(metadata || {}),
+    });
+  } catch {
+    /* PostHog mirror non deve mai rompere il tracking custom */
   }
 
   if (typeof window !== 'undefined') {

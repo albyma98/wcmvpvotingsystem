@@ -4,3 +4,21 @@
 **/.DS_Store
 wcmvpvs-back/service/database/mvpvs.db
 .env
+memory/
+
+# Claude-generated artifacts (2026-05-07)
+REPORT_KPI_STAGIONE_2025_26.md
+REPORT_STAGIONALE_2025_26_FINAL.md
+DASHBOARD_VENDITA.html
+ArenaBoostX_PitchDeck_2026_27.pptx
+ArenaBoostX_PitchDeck_2026_27.pdf
+PIANO_FIX_TECNICO_2026_27.md
+COLD_OUTREACH_PLAYBOOK.md
+
+# Filesystem temp files
+.fuse_hidden*
+
+# DB dumps/backups
+mvpvs_*.db
+mvpvs_*.db-shm
+mvpvs_*.db-wal

@@ -29,7 +29,9 @@
       "Bash(go test *)",
       "Bash(awk '/^<style/,/^<\\\\/style/' \"/c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-front/src/components/AdminPortal.vue\")",
       "Bash(grep -E \"\\\\.vue$|\\\\.ts$\")",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "PowerShell(Get-ChildItem -File | Where-Object { $_.CreationTime -ge \\(Get-Date\\).AddDays\\(-2\\) -and $_.CreationTime -lt \\(Get-Date\\).Date } | Select-Object Name, CreationTime, LastWriteTime | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -File | Where-Object { $_.CreationTime -ge \\(Get-Date\\).Date.AddDays\\(-1\\) -and $_.CreationTime -lt \\(Get-Date\\).Date.AddDays\\(1\\) } | Sort-Object CreationTime | Select-Object Name, CreationTime | Format-Table -AutoSize)"
     ]
   }
 }
