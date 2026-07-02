@@ -16,7 +16,7 @@ package api
 func registerTournamentRoutes(rt *_router) {
 	// Bootstrap tabelle del mondo torneo (idempotente) + route admin.
 	if err := rt.store.EnsureTournamentAdminTables(); err != nil {
-		panic("tournament admin tables: " + err.Error())
+		rt.baseLogger.WithError(err).Error("cannot ensure tournament admin tables")
 	}
 	registerTournamentAdminRoutes(rt)
 
