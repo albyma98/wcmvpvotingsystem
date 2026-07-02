@@ -563,6 +563,8 @@
           </div>
         </div>
 
+        <MasterTournamentsSection v-if="activeSection === 'tournaments'" />
+
         <div v-else-if="activeSection === 'qr-redirects'" class="qr-redirects-view">
           <header class="section-header">
             <div>
@@ -749,7 +751,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
 import VoteTrendChart from './VoteTrendChart.vue';
 
@@ -761,9 +763,13 @@ const isSuperAdmin = computed(() => activeRole.value === 'superadmin');
 const tabs = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'organizations', label: 'Società' },
+  { id: 'tournaments', label: 'Tornei' },
   { id: 'qr-redirects', label: 'QR Redirect' },
 ];
 const activeSection = ref('dashboard');
+
+const MasterTournamentsSection = defineAsyncComponent(() =>
+  import('./master/MasterTournamentsSection.vue'));
 
 const loginForm = reactive({ username: '', password: '' });
 const isLoggingIn = ref(false);

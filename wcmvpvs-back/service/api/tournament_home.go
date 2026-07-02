@@ -49,7 +49,7 @@ type NextMatch struct {
 
 type Tile struct {
 	ID    string `json:"id"`
-	Icon  string `json:"icon"`  // chiave icona nel client: calendar|chart|bracket|star|trophy|gallery|doc|info
+	Icon  string `json:"icon"` // chiave icona nel client: calendar|chart|bracket|star|trophy|gallery|doc|info
 	Label string `json:"label"`
 	Sub   string `json:"sub"`
 	Color string `json:"color"` // hex — configurabile per torneo dal pannello admin

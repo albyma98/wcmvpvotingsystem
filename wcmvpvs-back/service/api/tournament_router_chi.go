@@ -14,6 +14,12 @@ package api
 // registerTournamentRoutes monta le due route della home torneo sul router reale.
 // Chiamato da Handler() in api-handler.go.
 func registerTournamentRoutes(rt *_router) {
+	// Bootstrap tabelle del mondo torneo (idempotente) + route admin.
+	if err := rt.store.EnsureTournamentAdminTables(); err != nil {
+		panic("tournament admin tables: " + err.Error())
+	}
+	registerTournamentAdminRoutes(rt)
+
 	// Snapshot completo della home: chiamato una volta al load. Cache-Control 30s.
 	rt.router.Get("/v1/tournaments/{slug}/home", rt.HandleTournamentHome)
 

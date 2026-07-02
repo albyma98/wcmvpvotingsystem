@@ -31,6 +31,10 @@
         @voted="handleNewUiPlayerVoted"
       />
     </template>
+    <TournamentAdminPortal
+      v-else-if="appView === 'tournament-admin'"
+      :slug="tournamentAdminSlug"
+    />
     <TournamentSectionView
       v-else-if="appView === 'tournament' && tournamentSection"
       :slug="tournamentSlug"
@@ -66,6 +70,7 @@ const DevStackItDemo = defineAsyncComponent(() => import('./views/DevStackItDemo
 // Tournament Mode — caricato solo su /t/:slug, così il bundle del torneo
 // non pesa sul time-to-interactive dell'app club (deep-link da QR in arena).
 const TournamentHomeView = defineAsyncComponent(() => import('./views/TournamentHomeView.vue'));
+const TournamentAdminPortal = defineAsyncComponent(() => import('./views/TournamentAdminPortal.vue'));
 const TournamentSectionView = defineAsyncComponent(() => import('./views/TournamentSectionView.vue'));
 
 // Admin components loaded only when the URL matches an admin route
@@ -134,6 +139,13 @@ const organizationSlug = computed(() => {
 const isTournamentPath = computed(
   () => pathSegments.value[0] === 't' && pathSegments.value.length >= 2,
 );
+// /ta/:slug → pannello admin del torneo (mondo parallelo alle società)
+const isTournamentAdminPath = computed(
+  () => pathSegments.value[0] === 'ta' && pathSegments.value.length >= 2,
+);
+const tournamentAdminSlug = computed(() =>
+  isTournamentAdminPath.value ? pathSegments.value[1] : '',
+);
 const tournamentSlug = computed(() =>
   isTournamentPath.value ? pathSegments.value[1] : '',
 );
@@ -147,6 +159,9 @@ const appView = computed(() => {
   }
   // /t/:slug è il deep-link del torneo: view full-screen autonoma, nessuna
   // chrome dell'app club (App.vue non ha header/nav globali: "bare" è implicito).
+  if (isTournamentAdminPath.value) {
+    return 'tournament-admin';
+  }
   if (isTournamentPath.value) {
     return 'tournament';
   }

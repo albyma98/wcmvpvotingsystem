@@ -144,8 +144,8 @@ func (s *Store) getLiveMatches(ctx context.Context, slug string) ([]LiveMatch, e
 		       tb.name, COALESCE(tb.logo_url,'')
 		FROM matches m
 		JOIN events e   ON e.id = m.event_id AND e.slug = ? AND e.type = 'tournament'
-		JOIN teams  ta  ON ta.id = m.team_a_id
-		JOIN teams  tb  ON tb.id = m.team_b_id
+		JOIN tournament_teams ta ON ta.id = m.team_a_id
+		JOIN tournament_teams tb ON tb.id = m.team_b_id
 		WHERE m.status = 'live'
 		ORDER BY m.court`
 	rows, err := s.db.QueryContext(ctx, q, slug)
@@ -175,8 +175,8 @@ func (s *Store) getNextMatch(ctx context.Context, slug string) (*NextMatch, erro
 		       tb.name, COALESCE(tb.city,'')
 		FROM matches m
 		JOIN events e  ON e.id = m.event_id AND e.slug = ? AND e.type = 'tournament'
-		JOIN teams  ta ON ta.id = m.team_a_id
-		JOIN teams  tb ON tb.id = m.team_b_id
+		JOIN tournament_teams ta ON ta.id = m.team_a_id
+		JOIN tournament_teams tb ON tb.id = m.team_b_id
 		WHERE m.status = 'scheduled'
 		ORDER BY m.scheduled_at ASC
 		LIMIT 1`
@@ -219,14 +219,15 @@ func (s *Store) getTiles(ctx context.Context, slug string) ([]Tile, error) {
 // torneo e sintetizziamo il tier dalla posizione (slot 1 = main). Così gli
 // sponsor esistenti dell'app club vengono riusati senza duplicare tabelle.
 func (s *Store) getSponsors(ctx context.Context, slug string) ([]Sponsor, error) {
+	// Tabella dedicata del mondo torneo (NON la sponsors del club, che è
+	// scopata su organization con logo_data/position: schema incompatibile).
 	const q = `
-		SELECT sp.id, sp.name, COALESCE(sp.logo_data,''), COALESCE(sp.link_url,''),
-		       CASE WHEN sp.position = 1 THEN 'main' ELSE 'partner' END AS tier
-		FROM sponsors sp
-		JOIN events e ON e.organization_id = sp.organization_id
-		            AND e.slug = ? AND e.type = 'tournament'
-		WHERE sp.is_active = 1
-		ORDER BY CASE WHEN sp.position = 1 THEN 0 ELSE 1 END, sp.position`
+		SELECT sp.id, sp.name, COALESCE(sp.logo_url,''), COALESCE(sp.url,''),
+		       sp.tier, COALESCE(sp.brand_color,'')
+		FROM tournament_sponsors sp
+		JOIN events e ON e.id = sp.event_id AND e.slug = ? AND e.type = 'tournament'
+		WHERE sp.active = 1
+		ORDER BY CASE sp.tier WHEN 'main' THEN 0 ELSE 1 END, sp.position, sp.id`
 	rows, err := s.db.QueryContext(ctx, q, slug)
 	if err != nil {
 		return nil, err
