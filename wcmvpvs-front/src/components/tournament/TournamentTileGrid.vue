@@ -19,26 +19,29 @@ const ICONS = {
 </script>
 
 <template>
-  <nav class="tile-grid" aria-label="Sezioni torneo">
+  <!-- div, NON <nav>: Materialize (caricato globalmente da index.html) colora
+       ogni <nav> con background #ee6e73 → si vedeva una banda rossa nei gap. -->
+  <div class="tile-grid" role="navigation" aria-label="Sezioni torneo">
     <button
       class="tile"
       v-for="tile in tiles"
       :key="tile.id"
+      :style="{ background: tile.color }"
       @click="$emit('select', tile)"
     >
       <span class="tile-icon" v-html="ICONS[tile.icon] || ICONS.info"></span>
       <span class="tile-label">{{ tile.label }}</span>
       <span class="tile-sub">{{ tile.sub }}</span>
     </button>
-  </nav>
+  </div>
 </template>
 
 <style scoped>
 .tile-grid { display: grid; grid-template-columns: repeat(4, var(--tm-tile)); grid-auto-rows: var(--tm-tile); gap: 9px; justify-content: space-between; }
+.tile-grid { background: transparent; } /* difesa extra contro stili globali su container */
 .tile {
   width: var(--tm-tile); height: var(--tm-tile);
-  border: 1px solid var(--tm-border); border-radius: 12px; color: #fff; cursor: pointer;
-  background: var(--tm-surface); /* sfondo neutro: niente banda colorata dietro i box */
+  border: none; border-radius: 12px; color: #fff; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: clamp(2px,.5dvh,6px); padding: 4px 3px; text-align: center;
   transition: transform .12s ease, filter .12s ease;
