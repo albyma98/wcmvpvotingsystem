@@ -21,6 +21,7 @@ mvp.wearingcash.it {
       path /index.html /
     }
   header @html Cache-Control "no-cache, must-revalidate"
+  
 
   handle_path /api/* {
     reverse_proxy backend:3000

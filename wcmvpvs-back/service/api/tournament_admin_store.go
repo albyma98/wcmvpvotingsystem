@@ -218,13 +218,18 @@ func (s *Store) CreateTournament(ctx context.Context, in TournamentCreateInput, 
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	orgID, teamAID, teamBID, err := ensureTournamentEventRefs(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
+
 	// events: le colonne club NOT NULL (team1/2, start_datetime) vengono
 	// riempite con valori neutri — il mondo club le ignora (type filtra).
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO events (organization_id, team1_id, team2_id, start_datetime, location,
 		                    slug, name, format, date_label, status_label, phase_label, type)
-		VALUES (0, 0, 0, '', ?, ?, ?, ?, ?, 'TORNEO IN ARRIVO', 'ISCRIZIONI', 'tournament')`,
-		in.Location, in.Slug, in.Name, in.Format, in.DateLabel)
+		VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, 'TORNEO IN ARRIVO', 'ISCRIZIONI', 'tournament')`,
+		orgID, teamAID, teamBID, in.Location, in.Slug, in.Name, in.Format, in.DateLabel)
 	if err != nil {
 		return 0, err
 	}
@@ -252,6 +257,53 @@ func (s *Store) CreateTournament(ctx context.Context, in TournamentCreateInput, 
 		return 0, err
 	}
 	return eventID, nil
+}
+
+func ensureTournamentEventRefs(ctx context.Context, tx *sql.Tx) (int64, int64, int64, error) {
+	teamAID, err := ensureTournamentRefTeam(ctx, tx, "__tournament_ref_home")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	teamBID, err := ensureTournamentRefTeam(ctx, tx, "__tournament_ref_away")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	const slug = "__tournament-system"
+	var orgID int64
+	err = tx.QueryRowContext(ctx, `SELECT id FROM organizations WHERE slug = ? LIMIT 1`, slug).Scan(&orgID)
+	if errors.Is(err, sql.ErrNoRows) {
+		res, insertErr := tx.ExecContext(ctx, `
+			INSERT INTO organizations
+				(name, slug, city, logo_url, is_active, roster_schema, team_id, sms_cost, free_sms, bar_enabled)
+			VALUES
+				('Tournament System', ?, '', '', 0, 13, ?, 0, 0, 0)`,
+			slug, teamAID)
+		if insertErr != nil {
+			return 0, 0, 0, insertErr
+		}
+		orgID, err = res.LastInsertId()
+		if err != nil {
+			return 0, 0, 0, err
+		}
+	} else if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return orgID, teamAID, teamBID, nil
+}
+
+func ensureTournamentRefTeam(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
+	var id int64
+	err := tx.QueryRowContext(ctx, `SELECT id FROM teams WHERE name = ? LIMIT 1`, name).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		res, insertErr := tx.ExecContext(ctx, `INSERT INTO teams (name, championship) VALUES (?, '')`, name)
+		if insertErr != nil {
+			return 0, insertErr
+		}
+		return res.LastInsertId()
+	}
+	return id, err
 }
 
 func (s *Store) SlugExists(ctx context.Context, slug string) (bool, error) {
