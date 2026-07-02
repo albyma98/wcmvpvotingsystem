@@ -27,6 +27,31 @@ var errTANotFound = errors.New("not found")
 // Chiamata al mount delle route: nessun tocco a database.go.
 func (s *Store) EnsureTournamentAdminTables() error {
 	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS matches (
+			id TEXT PRIMARY KEY,
+			event_id INTEGER NOT NULL,
+			court TEXT NOT NULL DEFAULT '',
+			set_label TEXT NOT NULL DEFAULT '',
+			score_a INTEGER NOT NULL DEFAULT 0,
+			score_b INTEGER NOT NULL DEFAULT 0,
+			sets_json TEXT NOT NULL DEFAULT '[]',
+			status TEXT NOT NULL DEFAULT 'scheduled',
+			scheduled_time TEXT NOT NULL DEFAULT '',
+			scheduled_at TEXT,
+			team_a_id INTEGER NOT NULL,
+			team_b_id INTEGER NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS event_tiles (
+			id TEXT PRIMARY KEY,
+			event_id INTEGER NOT NULL,
+			icon TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			sub TEXT NOT NULL DEFAULT '',
+			color TEXT NOT NULL DEFAULT '',
+			route TEXT NOT NULL DEFAULT '',
+			position INTEGER NOT NULL DEFAULT 0,
+			enabled INTEGER NOT NULL DEFAULT 1
+		);`,
 		`CREATE TABLE IF NOT EXISTS tournament_admins (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			event_id INTEGER NOT NULL,
@@ -70,11 +95,31 @@ func (s *Store) EnsureTournamentAdminTables() error {
 	// Punteggio del set corrente (il resto di matches esiste già).
 	// ALTER idempotente: SQLite non ha IF NOT EXISTS su ADD COLUMN.
 	for _, alter := range []string{
+		`ALTER TABLE events ADD COLUMN slug TEXT`,
+		`ALTER TABLE events ADD COLUMN name TEXT`,
+		`ALTER TABLE events ADD COLUMN format TEXT`,
+		`ALTER TABLE events ADD COLUMN date_label TEXT`,
+		`ALTER TABLE events ADD COLUMN status_label TEXT`,
+		`ALTER TABLE events ADD COLUMN phase_label TEXT`,
+		`ALTER TABLE events ADD COLUMN logo_url TEXT`,
+		`ALTER TABLE events ADD COLUMN hero_image_url TEXT`,
+		`ALTER TABLE events ADD COLUMN type TEXT NOT NULL DEFAULT 'match'`,
 		`ALTER TABLE matches ADD COLUMN cur_a INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN cur_b INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("matches alter: %w", err)
+		}
+	}
+	for _, idx := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_events_slug ON events(slug)`,
+		`CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id, status)`,
+		`CREATE INDEX IF NOT EXISTS idx_event_tiles_event ON event_tiles(event_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_tournament_teams_event ON tournament_teams(event_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_tournament_sponsors_event ON tournament_sponsors(event_id)`,
+	} {
+		if _, err := s.db.Exec(idx); err != nil {
+			return fmt.Errorf("tournament admin index: %w", err)
 		}
 	}
 	return nil
