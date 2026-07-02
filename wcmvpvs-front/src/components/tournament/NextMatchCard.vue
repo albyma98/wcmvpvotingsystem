@@ -29,6 +29,6 @@ defineProps({
 .match-head .label { font-size: clamp(9px,1.35dvh,11px); font-weight: 800; letter-spacing: 1px; color: var(--tm-gold); }
 .match-head .court { font-size: clamp(9px,1.35dvh,11px); font-weight: 700; letter-spacing: 1px; color: var(--tm-text-dim); }
 .match-head .court b { color: var(--tm-text); font-weight: 800; }
-.match-body { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: clamp(3px,.6dvh,6px) 12px clamp(7px,1.3dvh,12px); }
-.vs { font-size: clamp(13px,2.1dvh,18px); font-weight: 900; font-style: italic; color: var(--tm-text-dim); letter-spacing: 1px; text-align: center; }
+.match-body { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: clamp(4px,.8dvh,8px) 12px clamp(8px,1.4dvh,13px); }
+.vs { font-size: clamp(12px,1.9dvh,16px); font-weight: 900; font-style: italic; color: var(--tm-text-dim); letter-spacing: 1px; text-align: center; }
 </style>

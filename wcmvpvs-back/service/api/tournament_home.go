@@ -57,11 +57,12 @@ type Tile struct {
 }
 
 type Sponsor struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-	Logo string `json:"logo,omitempty"`
-	URL  string `json:"url,omitempty"`
-	Tier string `json:"tier"` // "main" | "partner" — inventory differenziato
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Logo       string `json:"logo,omitempty"`
+	URL        string `json:"url,omitempty"`
+	Tier       string `json:"tier"`                 // "main" | "partner" — inventory differenziato
+	BrandColor string `json:"brandColor,omitempty"` // usato dal marquee quando manca il logo
 }
 
 type TournamentInfo struct {

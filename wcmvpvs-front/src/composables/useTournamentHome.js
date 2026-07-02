@@ -22,7 +22,14 @@ const MOCK = {
     { id: 'event', icon: 'info', label: 'Info Evento', sub: 'Mappa e servizi', color: '#5B2E86', route: '/event' }
   ],
   sponsors: [
-    { id: 1, name: 'WC WearingCash' }, { id: 2, name: 'MIKASA' }, { id: 3, name: 'BEACH ARENA' }, { id: 4, name: 'BPER:' }, { id: 5, name: 'RADIO BRUNO' }
+    { id: 1, name: 'WC WearingCash', tier: 'main' },
+    { id: 2, name: 'MIKASA', tier: 'main' },
+    { id: 3, name: 'BEACH ARENA', tier: 'partner', brandColor: '#0E7C5B' },
+    { id: 4, name: 'BPER Banca', tier: 'partner', brandColor: '#00539F' },
+    { id: 5, name: 'RADIO BRUNO', tier: 'partner', brandColor: '#FFD400' },
+    { id: 6, name: 'GELATERIA ONDA', tier: 'partner', brandColor: '#FF6B9D' },
+    { id: 7, name: 'BAGNO 54', tier: 'partner', brandColor: '#F97316' },
+    { id: 8, name: 'SPORT CAFÈ', tier: 'partner', brandColor: '#8B5CF6' }
   ]
 }
 

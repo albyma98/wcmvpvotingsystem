@@ -235,7 +235,7 @@ func (s *Store) getSponsors(ctx context.Context, slug string) ([]Sponsor, error)
 	out := make([]Sponsor, 0, 8)
 	for rows.Next() {
 		var sp Sponsor
-		if err := rows.Scan(&sp.ID, &sp.Name, &sp.Logo, &sp.URL, &sp.Tier); err != nil {
+		if err := rows.Scan(&sp.ID, &sp.Name, &sp.Logo, &sp.URL, &sp.Tier, &sp.BrandColor); err != nil {
 			return nil, err
 		}
 		out = append(out, sp)
