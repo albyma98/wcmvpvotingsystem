@@ -17,11 +17,19 @@ mvp.wearingcash.it {
     X-XSS-Protection "1; mode=block"
   }
 
+  @html {
+      path /index.html /
+    }
+  header @html Cache-Control "no-cache, must-revalidate"
+
   handle_path /api/* {
     reverse_proxy backend:3000
   }
 
+
+
   handle {
     reverse_proxy frontend:80
   }
+
 }

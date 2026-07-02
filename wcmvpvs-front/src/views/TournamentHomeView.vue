@@ -49,8 +49,10 @@ function onTile (tile) {
   width: 100%;
   max-width: 430px;
   margin: 0 auto;
+  height: 100vh;    /* fallback per browser senza dvh */
   height: 100dvh;
-  background: var(--tm-bg);
+  background: #0A0A0E;                 /* fallback hard: mai trasparente sopra l'app club */
+  background: var(--tm-bg, #0A0A0E);
   color: var(--tm-text);
   display: flex;
   flex-direction: column;
@@ -67,6 +69,10 @@ function onTile (tile) {
   padding: 0 14px calc(8px + env(safe-area-inset-bottom));
   gap: clamp(6px, 1dvh, 12px);
 }
+/* Anti-overlap: i figli non devono MAI restringersi sotto la loro altezza
+   naturale. Se il totale supera lo spazio, meglio un taglio pulito in fondo
+   che contenuti sovrapposti (il bug visto su Safari iOS). */
+.tm-wrap > * { flex-shrink: 0; }
 .tm-loading {
   flex: 1;
   display: grid;
