@@ -104,11 +104,52 @@ func (s *Store) EnsureTournamentAdminTables() error {
 		`ALTER TABLE events ADD COLUMN logo_url TEXT`,
 		`ALTER TABLE events ADD COLUMN hero_image_url TEXT`,
 		`ALTER TABLE events ADD COLUMN type TEXT NOT NULL DEFAULT 'match'`,
+		`ALTER TABLE matches ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE matches ADD COLUMN court TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE matches ADD COLUMN set_label TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE matches ADD COLUMN score_a INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE matches ADD COLUMN score_b INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE matches ADD COLUMN sets_json TEXT NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE matches ADD COLUMN status TEXT NOT NULL DEFAULT 'scheduled'`,
+		`ALTER TABLE matches ADD COLUMN scheduled_time TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE matches ADD COLUMN scheduled_at TEXT`,
+		`ALTER TABLE matches ADD COLUMN team_a_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE matches ADD COLUMN team_b_id INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN cur_a INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN cur_b INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE event_tiles ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE event_tiles ADD COLUMN icon TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE event_tiles ADD COLUMN label TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE event_tiles ADD COLUMN sub TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE event_tiles ADD COLUMN color TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE event_tiles ADD COLUMN route TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE event_tiles ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE event_tiles ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE tournament_admins ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tournament_admins ADD COLUMN username TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_admins ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_admins ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_admin_sessions ADD COLUMN admin_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tournament_admin_sessions ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tournament_admin_sessions ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_teams ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tournament_teams ADD COLUMN name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_teams ADD COLUMN short_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_teams ADD COLUMN city TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_teams ADD COLUMN logo_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_teams ADD COLUMN group_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_teams ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN logo_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN tier TEXT NOT NULL DEFAULT 'partner'`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN brand_color TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN active INTEGER NOT NULL DEFAULT 1`,
 	} {
 		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
-			return fmt.Errorf("matches alter: %w", err)
+			return fmt.Errorf("tournament admin alter (%s): %w", alter, err)
 		}
 	}
 	for _, idx := range []string{
@@ -119,7 +160,7 @@ func (s *Store) EnsureTournamentAdminTables() error {
 		`CREATE INDEX IF NOT EXISTS idx_tournament_sponsors_event ON tournament_sponsors(event_id)`,
 	} {
 		if _, err := s.db.Exec(idx); err != nil {
-			return fmt.Errorf("tournament admin index: %w", err)
+			return fmt.Errorf("tournament admin index (%s): %w", idx, err)
 		}
 	}
 	return nil
