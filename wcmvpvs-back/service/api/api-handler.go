@@ -201,6 +201,10 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Put("/admin/coupons/{id}", rt.wrapAdmin(rt.updateAdminCoupon))
 	rt.router.Delete("/admin/coupons/{id}", rt.wrapAdmin(rt.deleteAdminCoupon))
 
+	// Tournament Mode — route registrate direttamente sul mux (il chi vendorizzato
+	// non supporta Mount). Caddy/nginx strippano /api → qui /v1/tournaments/...
+	registerTournamentRoutes(rt)
+
 	rt.router.NotFound(rt.wrap(rt.handleQRRedirectNotFound))
 
 	return rt.router

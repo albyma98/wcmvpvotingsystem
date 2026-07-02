@@ -31,6 +31,17 @@
         @voted="handleNewUiPlayerVoted"
       />
     </template>
+    <TournamentSectionView
+      v-else-if="appView === 'tournament' && tournamentSection"
+      :slug="tournamentSlug"
+      :section="tournamentSection"
+      @navigate="navigateTo"
+    />
+    <TournamentHomeView
+      v-else-if="appView === 'tournament'"
+      :slug="tournamentSlug"
+      @navigate="navigateTo"
+    />
     <DevStackItDemo v-else-if="appView === 'dev-stack-it'" />
     <VoteScreen
       v-else
@@ -51,6 +62,11 @@ import NewUiVoteModal from './components/NewUiVoteModal.vue';
 
 // Dev playground components
 const DevStackItDemo = defineAsyncComponent(() => import('./views/DevStackItDemo.vue'));
+
+// Tournament Mode — caricato solo su /t/:slug, così il bundle del torneo
+// non pesa sul time-to-interactive dell'app club (deep-link da QR in arena).
+const TournamentHomeView = defineAsyncComponent(() => import('./views/TournamentHomeView.vue'));
+const TournamentSectionView = defineAsyncComponent(() => import('./views/TournamentSectionView.vue'));
 
 // Admin components loaded only when the URL matches an admin route
 const AdminPortal = defineAsyncComponent(() => import('./components/AdminPortal.vue'));
@@ -115,9 +131,24 @@ const organizationSlug = computed(() => {
   return fromQuery.trim();
 });
 
+const isTournamentPath = computed(
+  () => pathSegments.value[0] === 't' && pathSegments.value.length >= 2,
+);
+const tournamentSlug = computed(() =>
+  isTournamentPath.value ? pathSegments.value[1] : '',
+);
+const tournamentSection = computed(() =>
+  isTournamentPath.value ? (pathSegments.value[2] ?? '') : '',
+);
+
 const appView = computed(() => {
   if (currentPath.value === '/dev/stack-it-demo') {
     return 'dev-stack-it';
+  }
+  // /t/:slug è il deep-link del torneo: view full-screen autonoma, nessuna
+  // chrome dell'app club (App.vue non ha header/nav globali: "bare" è implicito).
+  if (isTournamentPath.value) {
+    return 'tournament';
   }
   if (currentPath.value.startsWith('/admin/master')) {
     return 'master';

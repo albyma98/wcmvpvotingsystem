@@ -1,0 +1,114 @@
+import { ref, onMounted, onUnmounted } from 'vue'
+
+const MOCK = {
+  tournament: {
+    slug: 'sunset-beach-cup', name: 'Sunset Beach Cup', format: 'BEACH VOLLEY 4X4',
+    dateLabel: '8 - 11 GIUGNO 2024', location: 'LIDO DI CLASSE, RA',
+    statusLabel: 'TORNEO IN CORSO', phaseLabel: 'FASE A GIRONI', logo: null, heroImage: null
+  },
+  liveMatches: [
+    { id: 'm1', court: 'CAMPO 2', teamA: { name: 'Mambo Beach' }, teamB: { name: 'Netbreakers' }, score: { a: 1, b: 1 }, setLabel: '1° SET', sets: ['21-18', '18-21'] },
+    { id: 'm2', court: 'CAMPO 3', teamA: { name: 'Sunset Kings' }, teamB: { name: 'Block Party' }, score: { a: 0, b: 1 }, setLabel: '2° SET', sets: ['19-21'] }
+  ],
+  nextMatch: { court: 'CAMPO 1', time: '18:30', teamA: { name: 'Sand Kings' }, teamB: { name: 'Beach Volley', sub: 'PESARO' } },
+  tiles: [
+    { id: 'calendar', icon: 'calendar', label: 'Calendario', sub: 'Tutte le partite', color: '#35357F', route: '/calendar' },
+    { id: 'standings', icon: 'chart', label: 'Classifiche', sub: 'Gironi e ranking', color: '#5B2333', route: '/standings' },
+    { id: 'bracket', icon: 'bracket', label: 'Tabellone', sub: 'Fase finale', color: '#0E5F4C', route: '/bracket' },
+    { id: 'mvp', icon: 'star', label: 'Vota MVP', sub: 'Vota il migliore', color: '#A8730F', route: '/mvp' },
+    { id: 'prizes', icon: 'trophy', label: 'Premi', sub: 'Cosa si vince', color: '#6B5A12', route: '/prizes' },
+    { id: 'gallery', icon: 'gallery', label: 'Gallery', sub: 'Foto del torneo', color: '#8F2B44', route: '/gallery' },
+    { id: 'rules', icon: 'doc', label: 'Regolamento', sub: 'Info e regole', color: '#3A4A63', route: '/rules' },
+    { id: 'event', icon: 'info', label: 'Info Evento', sub: 'Mappa e servizi', color: '#5B2E86', route: '/event' }
+  ],
+  sponsors: [
+    { id: 1, name: 'WC WearingCash' }, { id: 2, name: 'MIKASA' }, { id: 3, name: 'BEACH ARENA' }, { id: 4, name: 'BPER:' }, { id: 5, name: 'RADIO BRUNO' }
+  ]
+}
+
+
+/**
+ * Home torneo: snapshot completo al mount + polling leggero della sola
+ * sezione live (score/set) ogni 10s. Nessun websocket: per tornei 24h/weekend
+ * il polling è più che sufficiente e azzera complessità infra (Lightsail-friendly).
+ *
+ * GET /api/v1/tournaments/:slug/home   → snapshot completo
+ * GET /api/v1/tournaments/:slug/live   → solo { liveMatches, nextMatch } (payload ~1KB)
+ */
+export function useTournamentHome (slug, { livePollMs = 10000, mock = false } = {}) {
+  const tournament = ref(null)
+  const liveMatches = ref([])
+  const nextMatch = ref(null)
+  const tiles = ref([])
+  const sponsors = ref([])
+  const loading = ref(true)
+  const error = ref(null)
+
+  let timer = null
+  let aborter = null
+
+  async function fetchHome () {
+    loading.value = true
+    error.value = null
+    if (mock) {
+      tournament.value = MOCK.tournament
+      liveMatches.value = MOCK.liveMatches
+      nextMatch.value = MOCK.nextMatch
+      tiles.value = MOCK.tiles
+      sponsors.value = MOCK.sponsors
+      loading.value = false
+      return
+    }
+    try {
+      const res = await fetch(`/api/v1/tournaments/${slug}/home`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      tournament.value = data.tournament
+      liveMatches.value = data.liveMatches ?? []
+      nextMatch.value = data.nextMatch ?? null
+      tiles.value = data.tiles ?? []
+      sponsors.value = data.sponsors ?? []
+    } catch (e) {
+      error.value = e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function pollLive () {
+    if (mock) return
+    // Non pollare in background: risparmia batteria e banda in tribuna
+    if (document.hidden) return
+    try {
+      aborter?.abort()
+      aborter = new AbortController()
+      const res = await fetch(`/api/v1/tournaments/${slug}/live`, { signal: aborter.signal })
+      if (!res.ok) return
+      const data = await res.json()
+      liveMatches.value = data.liveMatches ?? []
+      if (data.nextMatch !== undefined) nextMatch.value = data.nextMatch
+      if (data.tournament?.phaseLabel && tournament.value) {
+        tournament.value.phaseLabel = data.tournament.phaseLabel
+        tournament.value.statusLabel = data.tournament.statusLabel
+      }
+    } catch { /* polling silenzioso: il prossimo tick riprova */ }
+  }
+
+  function onVisibility () {
+    if (!document.hidden) pollLive() // refresh immediato al rientro in app
+  }
+
+  onMounted(() => {
+    fetchHome()
+    timer = setInterval(pollLive, livePollMs)
+    document.addEventListener('visibilitychange', onVisibility)
+  })
+
+  onUnmounted(() => {
+    clearInterval(timer)
+    aborter?.abort()
+    document.removeEventListener('visibilitychange', onVisibility)
+  })
+
+  return { tournament, liveMatches, nextMatch, tiles, sponsors, loading, error, refresh: fetchHome }
+}

@@ -1,0 +1,28 @@
+/* ABX Tournament Mode — design tokens
+   Layer fan-facing: dark + gold (energia evento), separato dal brand corporate navy/mint */
+:root {
+  --tm-bg: #0A0A0E;
+  --tm-surface: #15151B;
+  --tm-surface-2: #1C1C24;
+  --tm-border: rgba(255, 255, 255, .08);
+  --tm-text: #FFFFFF;
+  --tm-text-dim: rgba(255, 255, 255, .55);
+  --tm-text-faint: rgba(255, 255, 255, .38);
+  --tm-gold: #F2B928;
+  --tm-live: #E5484D;
+  --tm-radius: 14px;
+
+  /* Tile quadrato: min tra vincolo-larghezza (4 col con gap) e vincolo-altezza (dvh).
+     Larghezza e altezza del tile derivano entrambe da qui → quadrato garantito. */
+  --tm-tile: min(calc((min(100vw, 430px) - 28px - 27px) / 4), 10.5dvh);
+
+  /* Tile palette (configurabile per torneo via API, questi sono i default) */
+  --tm-tile-indigo: #35357F;
+  --tm-tile-maroon: #5B2333;
+  --tm-tile-teal: #0E5F4C;
+  --tm-tile-amber: #A8730F;
+  --tm-tile-olive: #6B5A12;
+  --tm-tile-crimson: #8F2B44;
+  --tm-tile-slate: #3A4A63;
+  --tm-tile-purple: #5B2E86;
+}

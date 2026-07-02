@@ -1387,6 +1387,10 @@ type AppDatabase interface {
 	RedeemCoupon(code string, sponsorID int) (UserCoupon, error)
 	ListUserCoupons(userID *int, sponsorID int) ([]UserCoupon, error)
 	Ping() error
+
+	// SQLConn exposes the underlying *sql.DB. Used by data layers that run raw
+	// SQL outside the AppDatabase method set (e.g. the Tournament Mode store).
+	SQLConn() *sql.DB
 }
 
 type appdbimpl struct {
@@ -2619,10 +2623,90 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if err = ensureBrandedGameTables(db); err != nil {
 		return nil, err
 	}
+	if err = ensureTournamentTables(db); err != nil {
+		return nil, err
+	}
 
 	return &appdbimpl{
 		c: db,
 	}, nil
+}
+
+// ensureTournamentTables applies the additive schema for Tournament Mode.
+// Principle: a tournament is an `event` with type='tournament' — it reuses the
+// existing events/teams/sponsors tables rather than forking the schema. Every
+// statement here is additive (ADD COLUMN / CREATE TABLE IF NOT EXISTS) and never
+// touches existing club-season data or behavior.
+func ensureTournamentTables(db *sql.DB) error {
+	// Additive columns on existing tables. ALTER ... ADD COLUMN is idempotent
+	// only via the "duplicate column name" guard (SQLite has no ADD COLUMN IF NOT EXISTS).
+	additive := []string{
+		`ALTER TABLE events ADD COLUMN slug TEXT`,
+		`ALTER TABLE events ADD COLUMN name TEXT`,
+		`ALTER TABLE events ADD COLUMN format TEXT`,
+		`ALTER TABLE events ADD COLUMN date_label TEXT`,
+		`ALTER TABLE events ADD COLUMN status_label TEXT`,
+		`ALTER TABLE events ADD COLUMN phase_label TEXT`,
+		`ALTER TABLE events ADD COLUMN logo_url TEXT`,
+		`ALTER TABLE events ADD COLUMN hero_image_url TEXT`,
+		`ALTER TABLE events ADD COLUMN type TEXT NOT NULL DEFAULT 'match'`,
+		`ALTER TABLE teams ADD COLUMN logo_url TEXT`,
+		`ALTER TABLE teams ADD COLUMN city TEXT`,
+	}
+	for _, stmt := range additive {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("tournament additive migration failed (%s): %w", stmt, err)
+		}
+	}
+
+	// matches: partite multi-campo di un torneo. IDs testuali per rispecchiare
+	// il contratto JSON (LiveMatch.ID è una stringa, es. "m1").
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS matches (
+		id TEXT PRIMARY KEY,
+		event_id INTEGER NOT NULL,
+		court TEXT NOT NULL DEFAULT '',
+		set_label TEXT NOT NULL DEFAULT '',
+		score_a INTEGER NOT NULL DEFAULT 0,
+		score_b INTEGER NOT NULL DEFAULT 0,
+		sets_json TEXT NOT NULL DEFAULT '[]',
+		status TEXT NOT NULL DEFAULT 'scheduled',
+		scheduled_time TEXT NOT NULL DEFAULT '',
+		scheduled_at TEXT,
+		team_a_id INTEGER NOT NULL,
+		team_b_id INTEGER NOT NULL,
+		FOREIGN KEY (event_id) REFERENCES events(id),
+		FOREIGN KEY (team_a_id) REFERENCES teams(id),
+		FOREIGN KEY (team_b_id) REFERENCES teams(id)
+	);`); err != nil {
+		return fmt.Errorf("error creating matches table: %w", err)
+	}
+
+	// event_tiles: griglia di navigazione configurabile per torneo dal pannello admin.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS event_tiles (
+		id TEXT PRIMARY KEY,
+		event_id INTEGER NOT NULL,
+		icon TEXT NOT NULL DEFAULT '',
+		label TEXT NOT NULL DEFAULT '',
+		sub TEXT NOT NULL DEFAULT '',
+		color TEXT NOT NULL DEFAULT '',
+		route TEXT NOT NULL DEFAULT '',
+		position INTEGER NOT NULL DEFAULT 0,
+		enabled INTEGER NOT NULL DEFAULT 1,
+		FOREIGN KEY (event_id) REFERENCES events(id)
+	);`); err != nil {
+		return fmt.Errorf("error creating event_tiles table: %w", err)
+	}
+
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_slug ON events(slug)`); err != nil {
+		return fmt.Errorf("error creating events slug index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id, status)`); err != nil {
+		return fmt.Errorf("error creating matches event index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_event_tiles_event ON event_tiles(event_id)`); err != nil {
+		return fmt.Errorf("error creating event_tiles event index: %w", err)
+	}
+	return nil
 }
 
 func ensureBrandedGameTables(db *sql.DB) error {
@@ -2765,6 +2849,12 @@ func createDefaultStaffAdmin(tx *sql.Tx, organizationID int) error {
 
 func (db *appdbimpl) Ping() error {
 	return db.c.Ping()
+}
+
+// SQLConn returns the underlying *sql.DB so raw-SQL data layers (Tournament
+// Mode store) can share the same connection pool.
+func (db *appdbimpl) SQLConn() *sql.DB {
+	return db.c
 }
 
 // AddVote stores a vote in the database. If the device already voted for the event,
