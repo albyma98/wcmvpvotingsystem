@@ -33,7 +33,14 @@
       "PowerShell(Get-ChildItem -File | Where-Object { $_.CreationTime -ge \\(Get-Date\\).AddDays\\(-2\\) -and $_.CreationTime -lt \\(Get-Date\\).Date } | Select-Object Name, CreationTime, LastWriteTime | Format-Table -AutoSize)",
       "PowerShell(Get-ChildItem -File | Where-Object { $_.CreationTime -ge \\(Get-Date\\).Date.AddDays\\(-1\\) -and $_.CreationTime -lt \\(Get-Date\\).Date.AddDays\\(1\\) } | Sort-Object CreationTime | Select-Object Name, CreationTime | Format-Table -AutoSize)",
       "Skill(run)",
-      "Skill(run:*)"
+      "Skill(run:*)",
+      "Bash(git apply *)",
+      "Bash(git branch *)",
+      "Bash(echo \"exit: $?\")",
+      "PowerShell(Set-Location \"c:\\\\Users\\\\Alberto\\\\Desktop\\\\wcmvpvotingsystem\\\\wcmvpvs-back\"; Write-Output \"=== go build ===\"; go build ./... 2>&1; Write-Output \"build exit: $LASTEXITCODE\"; Write-Output \"=== go vet ===\"; go vet ./... 2>&1; Write-Output \"vet exit: $LASTEXITCODE\")",
+      "Bash(git add *)",
+      "Bash(rm -f tournament-p1-completo.patch)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
