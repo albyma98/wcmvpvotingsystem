@@ -373,6 +373,17 @@ async function saveSettings () {
 button { cursor: pointer; }
 .form-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .form-row input, .form-row select, textarea { background: #15151b; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 9px 11px; color: #fff; flex: 1; min-width: 120px; font-size: 14px; }
+/* Materialize (CSS globale da index.html) nasconde i <select> nativi con
+   `select{display:none}` (+ background chiaro e height:3rem) e lascia le <option>
+   senza contrasto. Qui li ripristiniamo e li rendiamo leggibili (scoped → solo
+   il pannello torneo, non tocca il resto dell'app club). */
+select {
+  display: block; height: auto;
+  background: #15151b; color: #fff;
+  border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+  padding: 9px 11px; font-size: 14px;
+}
+option { background: #15151b; color: #fff; }
 textarea { width: 100%; font-family: inherit; }
 .form-row button, .ta-body > button { background: #f2b928; color: #111; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 800; align-self: flex-start; }
 .team-form { display: flex; flex-direction: column; gap: 8px; }
