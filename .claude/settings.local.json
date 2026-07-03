@@ -40,7 +40,12 @@
       "PowerShell(Set-Location \"c:\\\\Users\\\\Alberto\\\\Desktop\\\\wcmvpvotingsystem\\\\wcmvpvs-back\"; Write-Output \"=== go build ===\"; go build ./... 2>&1; Write-Output \"build exit: $LASTEXITCODE\"; Write-Output \"=== go vet ===\"; go vet ./... 2>&1; Write-Output \"vet exit: $LASTEXITCODE\")",
       "Bash(git add *)",
       "Bash(rm -f tournament-p1-completo.patch)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "PowerShell(Set-Location \"c:\\\\Users\\\\Alberto\\\\Desktop\\\\wcmvpvotingsystem\\\\wcmvpvs-back\"; go build ./... 2>&1; Write-Output \"go build: $LASTEXITCODE\"; go vet ./... 2>&1; Write-Output \"go vet: $LASTEXITCODE\")",
+      "PowerShell(Set-Location \"c:\\\\Users\\\\Alberto\\\\Desktop\\\\wcmvpvotingsystem\\\\wcmvpvs-back\"; go build ./... 2>&1; Write-Output \"build: $LASTEXITCODE\"; go vet ./... 2>&1; Write-Output \"vet: $LASTEXITCODE\")",
+      "Bash('/c/Program Files \\(x86\\)/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --hide-scrollbars --window-size=520,420 --virtual-time-budget=6000 --screenshot=C:/Users/Alberto/AppData/Local/Temp/claude/c--Users-Alberto-Desktop-wcmvpvotingsystem/feeccc46-21b3-4d25-8517-62e5d154fa02/scratchpad/seltest.png file:///C:/Users/Alberto/AppData/Local/Temp/claude/c--Users-Alberto-Desktop-wcmvpvotingsystem/feeccc46-21b3-4d25-8517-62e5d154fa02/scratchpad/seltest.html)",
+      "Bash(sed -n '/func \\(s \\\\*Store\\) getLiveMatches/,/^}/p' service/api/tournament_store.go)",
+      "Bash(sed -n '/func \\(s \\\\*Store\\) getNextMatch/,/^}/p' service/api/tournament_store.go)"
     ]
   }
 }
