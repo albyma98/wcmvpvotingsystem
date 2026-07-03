@@ -67,6 +67,43 @@ func (s *Store) EnsureTournamentAdminTables() error {
 			return fmt.Errorf("tournament admin tables: %w", err)
 		}
 	}
+
+	// Reconcile: alcune installazioni hanno tournament_teams/tournament_sponsors
+	// ereditate da un design precedente (colonna `tournament_id NOT NULL`, quando
+	// i tornei erano una tabella a parte). Con il modello attuale (torneo = event)
+	// gli INSERT usano event_id e falliscono con "NOT NULL constraint failed:
+	// ...tournament_id". Se rileviamo lo schema vecchio, ricostruiamo la tabella
+	// allo schema canonico preservando i dati compatibili.
+	if err := s.reconcileTournamentTable("tournament_teams",
+		`CREATE TABLE tournament_teams (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			short_name TEXT NOT NULL DEFAULT '',
+			city TEXT NOT NULL DEFAULT '',
+			logo_url TEXT NOT NULL DEFAULT '',
+			group_name TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		[]string{"id", "event_id", "name", "short_name", "city", "logo_url", "group_name", "created_at"}); err != nil {
+		return err
+	}
+	if err := s.reconcileTournamentTable("tournament_sponsors",
+		`CREATE TABLE tournament_sponsors (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			logo_url TEXT NOT NULL DEFAULT '',
+			url TEXT NOT NULL DEFAULT '',
+			tier TEXT NOT NULL DEFAULT 'partner',
+			brand_color TEXT NOT NULL DEFAULT '',
+			position INTEGER NOT NULL DEFAULT 0,
+			active INTEGER NOT NULL DEFAULT 1
+		)`,
+		[]string{"id", "event_id", "name", "logo_url", "url", "tier", "brand_color", "position", "active"}); err != nil {
+		return err
+	}
+
 	// ALTER idempotenti (SQLite non ha IF NOT EXISTS su ADD COLUMN): garantiscono
 	// che tutte le colonne esistano anche su DB creati da versioni precedenti
 	// (difesa contro drift dello schema → evita "no such column" mascherato da 500).
@@ -86,6 +123,65 @@ func (s *Store) EnsureTournamentAdminTables() error {
 	} {
 		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("tournament column ensure (%s): %w", alter, err)
+		}
+	}
+	return nil
+}
+
+// tableColumns ritorna l'insieme dei nomi colonna di una tabella (vuoto se assente).
+func (s *Store) tableColumns(table string) (map[string]bool, error) {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt interface{}
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return nil, err
+		}
+		cols[name] = true
+	}
+	return cols, rows.Err()
+}
+
+// reconcileTournamentTable ricostruisce `table` allo schema canonico quando
+// rileva lo schema legacy (colonna `tournament_id`) o l'assenza di `event_id`.
+// Preserva i dati copiando solo le colonne in comune. Operazioni FK-safe
+// (nessuna tabella referenzia queste): rename → create → insert → drop.
+func (s *Store) reconcileTournamentTable(table, createSQL string, canonical []string) error {
+	cols, err := s.tableColumns(table)
+	if err != nil {
+		return fmt.Errorf("reconcile %s (table_info): %w", table, err)
+	}
+	if len(cols) == 0 {
+		return nil // assente: la crea il CREATE IF NOT EXISTS
+	}
+	if !cols["tournament_id"] && cols["event_id"] {
+		return nil // già schema canonico (event-based)
+	}
+
+	shared := make([]string, 0, len(canonical))
+	for _, c := range canonical {
+		if cols[c] {
+			shared = append(shared, c)
+		}
+	}
+	stmts := []string{
+		fmt.Sprintf(`ALTER TABLE %s RENAME TO %s_old`, table, table),
+		createSQL,
+	}
+	if cols["event_id"] && len(shared) > 0 {
+		list := strings.Join(shared, ", ")
+		stmts = append(stmts, fmt.Sprintf(`INSERT INTO %s (%s) SELECT %s FROM %s_old`, table, list, list, table))
+	}
+	stmts = append(stmts, fmt.Sprintf(`DROP TABLE %s_old`, table))
+	for _, q := range stmts {
+		if _, err := s.db.Exec(q); err != nil {
+			return fmt.Errorf("reconcile %s: %w", table, err)
 		}
 	}
 	return nil
