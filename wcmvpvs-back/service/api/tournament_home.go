@@ -36,6 +36,7 @@ type LiveMatch struct {
 	TeamA    Team     `json:"teamA"`
 	TeamB    Team     `json:"teamB"`
 	Score    Score    `json:"score"`    // set vinti
+	Cur      Score    `json:"cur"`      // punti del set in corso (cambiano ad ogni scambio)
 	SetLabel string   `json:"setLabel"` // "1° SET"
 	Sets     []string `json:"sets"`     // ["21-18","18-21"]
 }

@@ -15,10 +15,10 @@ const props = defineProps({
 })
 const emit = defineEmits(['navigate'])
 
-// mock: true → dati demo (Sunset Beach Cup) senza toccare la rete.
-// Togliere { mock: true } quando il backend è collegato.
+// Dati reali dal backend: snapshot su /home + polling di /live ogni 10s
+// (partite in corso e prossima partita si aggiornano da sole).
 const { tournament, liveMatches, nextMatch, tiles, sponsors, loading } =
-  useTournamentHome(props.slug, { mock: true })
+  useTournamentHome(props.slug)
 
 function onTile (tile) {
   emit('navigate', `/t/${props.slug}${tile.route}`)

@@ -139,7 +139,7 @@ func (s *Store) getTournamentInfo(ctx context.Context, slug string) (*Tournament
 
 func (s *Store) getLiveMatches(ctx context.Context, slug string) ([]LiveMatch, error) {
 	const q = `
-		SELECT m.id, m.court, m.set_label, m.score_a, m.score_b, m.sets_json,
+		SELECT m.id, m.court, m.set_label, m.score_a, m.score_b, m.cur_a, m.cur_b, m.sets_json,
 		       ta.name, COALESCE(ta.logo_url,''),
 		       tb.name, COALESCE(tb.logo_url,'')
 		FROM matches m
@@ -158,7 +158,7 @@ func (s *Store) getLiveMatches(ctx context.Context, slug string) ([]LiveMatch, e
 	for rows.Next() {
 		var m LiveMatch
 		var setsJSON string
-		if err := rows.Scan(&m.ID, &m.Court, &m.SetLabel, &m.Score.A, &m.Score.B, &setsJSON,
+		if err := rows.Scan(&m.ID, &m.Court, &m.SetLabel, &m.Score.A, &m.Score.B, &m.Cur.A, &m.Cur.B, &setsJSON,
 			&m.TeamA.Name, &m.TeamA.Logo, &m.TeamB.Name, &m.TeamB.Logo); err != nil {
 			return nil, err
 		}

@@ -27,8 +27,10 @@ function onScroll () {
         <div class="match-body">
           <TeamBadge :team="m.teamA" size="lg" />
           <div class="score-block">
-            <div class="score">{{ m.score.a }} : {{ m.score.b }}</div>
-            <div class="set-label">{{ m.setLabel }}</div>
+            <!-- numero grande = punti del set in corso (si aggiorna ad ogni scambio);
+                 fallback ai set vinti se il backend non manda `cur` (es. mock) -->
+            <div class="score">{{ m.cur ? m.cur.a : m.score.a }} : {{ m.cur ? m.cur.b : m.score.b }}</div>
+            <div class="set-label">{{ m.setLabel }} · Set {{ m.score.a }}-{{ m.score.b }}</div>
           </div>
           <TeamBadge :team="m.teamB" size="lg" />
         </div>
