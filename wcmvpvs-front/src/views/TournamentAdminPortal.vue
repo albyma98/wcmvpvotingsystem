@@ -49,6 +49,7 @@ const tabs = [
   { id: 'live', label: 'Live' },
   { id: 'matches', label: 'Calendario' },
   { id: 'teams', label: 'Squadre' },
+  { id: 'operators', label: 'Operatori' },
   { id: 'sponsors', label: 'Sponsor' },
   { id: 'settings', label: 'Impostazioni' }
 ]
@@ -66,7 +67,7 @@ function flash (msg) { notice.value = msg; setTimeout(() => { if (notice.value =
 async function bootstrap (ov) {
   overview.value = ov
   Object.assign(settings, ov.settings)
-  await Promise.all([loadTeams(), loadMatches(), loadSponsors()])
+  await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadOperators()])
 }
 async function loadTeams () { const r = await j('GET', '/teams'); if (r.ok) teams.value = (await r.json()).teams }
 async function loadMatches () { const r = await j('GET', '/matches'); if (r.ok) matches.value = (await r.json()).matches }
@@ -88,12 +89,12 @@ async function deleteTeam (id) {
 }
 
 // ---------- calendario ----------
-const newMatch = reactive({ court: 'CAMPO 1', time: '', teamAId: 0, teamBId: 0 })
+const newMatch = reactive({ court: 'CAMPO 1', time: '', stage: '', teamAId: 0, teamBId: 0 })
 async function createMatch () {
   if (!newMatch.teamAId || !newMatch.teamBId || newMatch.teamAId === newMatch.teamBId) { flash('Scegli due squadre diverse.'); return }
   const scheduledAt = new Date().toISOString().slice(0, 10) + 'T' + (newMatch.time || '00:00')
   const r = await j('POST', '/matches', { ...newMatch, scheduledAt })
-  if (r.ok) { newMatch.time = ''; newMatch.teamAId = 0; newMatch.teamBId = 0; await loadMatches(); flash('Partita creata.') }
+  if (r.ok) { newMatch.time = ''; newMatch.stage = ''; newMatch.teamAId = 0; newMatch.teamBId = 0; await loadMatches(); flash('Partita creata.') }
 }
 async function deleteMatch (id) {
   if (!confirm('Eliminare la partita?')) return
@@ -135,6 +136,28 @@ async function deleteSponsor (id) {
   const r = await j('DELETE', `/sponsors/${id}`)
   if (r.ok) { await loadSponsors(); flash('Sponsor rimosso.') }
 }
+
+// ---------- operatori campo ----------
+const operators = ref([])
+const newOperator = reactive({ court: 'CAMPO 1', label: '' })
+const createdOperator = ref(null)
+async function loadOperators () { const r = await j('GET', '/operators'); if (r.ok) operators.value = (await r.json()).operators }
+async function createOperator () {
+  if (!newOperator.court.trim()) return
+  const r = await j('POST', '/operators', { ...newOperator })
+  if (r.ok) {
+    createdOperator.value = await r.json()
+    newOperator.label = ''
+    await loadOperators()
+  }
+}
+async function deleteOperator (id) {
+  if (!confirm('Revocare il link? L\'operatore perde subito l\'accesso.')) return
+  const r = await j('DELETE', `/operators/${id}`)
+  if (r.ok) { await loadOperators(); flash('Operatore revocato.') }
+}
+const opLink = t => `${window.location.origin}/op/${t}`
+function copy (text) { navigator.clipboard?.writeText(text) }
 
 // ---------- impostazioni ----------
 async function saveSettings () {
@@ -220,6 +243,7 @@ async function saveSettings () {
           <input v-model="newMatch.time" placeholder="18:30" style="max-width:90px" />
           <select v-model.number="newMatch.teamAId"><option :value="0">Squadra A</option><option v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</option></select>
           <select v-model.number="newMatch.teamBId"><option :value="0">Squadra B</option><option v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</option></select>
+          <select v-model="newMatch.stage"><option value="">Girone</option><option>QUARTI</option><option>SEMIFINALE</option><option>FINALE 3° POSTO</option><option>FINALE</option></select>
           <button @click="createMatch">Aggiungi</button>
         </div>
         <div v-for="m in matches" :key="m.id" class="row-match">
@@ -237,6 +261,28 @@ async function saveSettings () {
         <div v-for="t in teams" :key="t.id" class="row-match">
           <span><b>{{ t.name }}</b> <small v-if="t.shortName">({{ t.shortName }})</small> <small v-if="t.groupName">· Girone {{ t.groupName }}</small></span>
           <button class="danger" @click="deleteTeam(t.id)">Elimina</button>
+        </div>
+      </section>
+
+      <!-- OPERATORI CAMPO -->
+      <section v-else-if="tab === 'operators'" class="ta-body">
+        <p class="hint">Un link per campo: mandalo su WhatsApp al volontario insieme al PIN. Revocabile in ogni momento.</p>
+        <div class="form-row">
+          <input v-model="newOperator.court" placeholder="CAMPO 1" style="max-width:130px" />
+          <input v-model="newOperator.label" placeholder="Nome operatore (opzionale)" />
+          <button @click="createOperator">Genera link</button>
+        </div>
+        <div v-if="createdOperator" class="op-created">
+          <p><b>{{ createdOperator.operator.court }}</b> — consegna questi due dati:</p>
+          <div class="cred"><code>{{ opLink(createdOperator.operator.token) }}</code><button @click="copy(opLink(createdOperator.operator.token))">Copia link</button></div>
+          <div class="cred"><code>PIN {{ createdOperator.operator.pin }}</code><button @click="copy(createdOperator.operator.pin)">Copia PIN</button></div>
+        </div>
+        <div v-for="o in operators" :key="o.id" class="row-match">
+          <span><b>{{ o.court }}</b> <small v-if="o.label">· {{ o.label }}</small> <small>· PIN {{ o.pin }}</small></span>
+          <span style="display:flex;gap:6px">
+            <button class="ghost" @click="copy(opLink(o.token))">Copia link</button>
+            <button class="danger" @click="deleteOperator(o.id)">Revoca</button>
+          </span>
         </div>
       </section>
 

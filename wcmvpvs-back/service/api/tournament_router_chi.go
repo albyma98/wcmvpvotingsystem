@@ -16,9 +16,13 @@ package api
 func registerTournamentRoutes(rt *_router) {
 	// Bootstrap tabelle del mondo torneo (idempotente) + route admin.
 	if err := rt.store.EnsureTournamentAdminTables(); err != nil {
-		rt.baseLogger.WithError(err).Error("cannot ensure tournament admin tables")
+		panic("tournament admin tables: " + err.Error())
 	}
 	registerTournamentAdminRoutes(rt)
+	if err := rt.store.EnsureTournamentP1Tables(); err != nil {
+		panic("tournament p1 tables: " + err.Error())
+	}
+	registerTournamentP1Routes(rt)
 
 	// Snapshot completo della home: chiamato una volta al load. Cache-Control 30s.
 	rt.router.Get("/v1/tournaments/{slug}/home", rt.HandleTournamentHome)

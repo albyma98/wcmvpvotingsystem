@@ -146,6 +146,7 @@ func (rt *_router) createMasterTournament(w http.ResponseWriter, r *http.Request
 	})
 }
 
+
 // ========================== AUTH ADMIN TORNEO ================================
 
 func (rt *_router) setTACookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {
@@ -324,6 +325,7 @@ func (rt *_router) taCreateMatch(w http.ResponseWriter, r *http.Request, eventID
 		Court       string `json:"court"`
 		Time        string `json:"time"`        // "18:30" — mostrato al tifoso
 		ScheduledAt string `json:"scheduledAt"` // ISO per l'ordinamento
+		Stage       string `json:"stage"`       // '' = girone; altrimenti fase finale
 		TeamAID     int64  `json:"teamAId"`
 		TeamBID     int64  `json:"teamBId"`
 	}
@@ -331,12 +333,12 @@ func (rt *_router) taCreateMatch(w http.ResponseWriter, r *http.Request, eventID
 		http.Error(w, `{"error":"bad_input"}`, http.StatusBadRequest)
 		return
 	}
-	id, err := rt.store.CreateTAMatch(r.Context(), eventID, body.Court, body.Time, body.ScheduledAt, body.TeamAID, body.TeamBID)
+	id, err := rt.store.CreateTAMatch(r.Context(), eventID, body.Court, body.Time, body.ScheduledAt, body.Stage, body.TeamAID, body.TeamBID)
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
-	rt.invalidateLiveCache(r, eventID)
+	rt.invalidateTournamentCaches(r, eventID)
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": id})
 }
 
@@ -345,7 +347,7 @@ func (rt *_router) taDeleteMatch(w http.ResponseWriter, r *http.Request, eventID
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
-	rt.invalidateLiveCache(r, eventID)
+	rt.invalidateTournamentCaches(r, eventID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
@@ -370,15 +372,9 @@ func (rt *_router) taScoreAction(w http.ResponseWriter, r *http.Request, eventID
 		return
 	}
 	// Il polling dei tifosi deve vedere il punto SUBITO, non a fine TTL.
-	rt.invalidateLiveCache(r, eventID)
+	rt.invalidateTournamentCaches(r, eventID)
 	matches, _ := rt.store.ListTAMatches(r.Context(), eventID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "matches": matches})
-}
-
-func (rt *_router) invalidateLiveCache(r *http.Request, eventID int64) {
-	if _, slug, err := rt.store.GetTASettings(r.Context(), eventID); err == nil && slug != "" {
-		rt.liveCache.Delete(slug)
-	}
 }
 
 func (rt *_router) taListSponsors(w http.ResponseWriter, r *http.Request, eventID int64) {
@@ -432,6 +428,6 @@ func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, even
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
-	rt.invalidateLiveCache(r, eventID)
+	rt.invalidateTournamentCaches(r, eventID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }

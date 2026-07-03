@@ -27,31 +27,6 @@ var errTANotFound = errors.New("not found")
 // Chiamata al mount delle route: nessun tocco a database.go.
 func (s *Store) EnsureTournamentAdminTables() error {
 	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS matches (
-			id TEXT PRIMARY KEY,
-			event_id INTEGER NOT NULL,
-			court TEXT NOT NULL DEFAULT '',
-			set_label TEXT NOT NULL DEFAULT '',
-			score_a INTEGER NOT NULL DEFAULT 0,
-			score_b INTEGER NOT NULL DEFAULT 0,
-			sets_json TEXT NOT NULL DEFAULT '[]',
-			status TEXT NOT NULL DEFAULT 'scheduled',
-			scheduled_time TEXT NOT NULL DEFAULT '',
-			scheduled_at TEXT,
-			team_a_id INTEGER NOT NULL,
-			team_b_id INTEGER NOT NULL
-		);`,
-		`CREATE TABLE IF NOT EXISTS event_tiles (
-			id TEXT PRIMARY KEY,
-			event_id INTEGER NOT NULL,
-			icon TEXT NOT NULL DEFAULT '',
-			label TEXT NOT NULL DEFAULT '',
-			sub TEXT NOT NULL DEFAULT '',
-			color TEXT NOT NULL DEFAULT '',
-			route TEXT NOT NULL DEFAULT '',
-			position INTEGER NOT NULL DEFAULT 0,
-			enabled INTEGER NOT NULL DEFAULT 1
-		);`,
 		`CREATE TABLE IF NOT EXISTS tournament_admins (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			event_id INTEGER NOT NULL,
@@ -95,72 +70,11 @@ func (s *Store) EnsureTournamentAdminTables() error {
 	// Punteggio del set corrente (il resto di matches esiste già).
 	// ALTER idempotente: SQLite non ha IF NOT EXISTS su ADD COLUMN.
 	for _, alter := range []string{
-		`ALTER TABLE events ADD COLUMN slug TEXT`,
-		`ALTER TABLE events ADD COLUMN name TEXT`,
-		`ALTER TABLE events ADD COLUMN format TEXT`,
-		`ALTER TABLE events ADD COLUMN date_label TEXT`,
-		`ALTER TABLE events ADD COLUMN status_label TEXT`,
-		`ALTER TABLE events ADD COLUMN phase_label TEXT`,
-		`ALTER TABLE events ADD COLUMN logo_url TEXT`,
-		`ALTER TABLE events ADD COLUMN hero_image_url TEXT`,
-		`ALTER TABLE events ADD COLUMN type TEXT NOT NULL DEFAULT 'match'`,
-		`ALTER TABLE matches ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE matches ADD COLUMN court TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE matches ADD COLUMN set_label TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE matches ADD COLUMN score_a INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE matches ADD COLUMN score_b INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE matches ADD COLUMN sets_json TEXT NOT NULL DEFAULT '[]'`,
-		`ALTER TABLE matches ADD COLUMN status TEXT NOT NULL DEFAULT 'scheduled'`,
-		`ALTER TABLE matches ADD COLUMN scheduled_time TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE matches ADD COLUMN scheduled_at TEXT`,
-		`ALTER TABLE matches ADD COLUMN team_a_id INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE matches ADD COLUMN team_b_id INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN cur_a INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN cur_b INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE event_tiles ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE event_tiles ADD COLUMN icon TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE event_tiles ADD COLUMN label TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE event_tiles ADD COLUMN sub TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE event_tiles ADD COLUMN color TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE event_tiles ADD COLUMN route TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE event_tiles ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE event_tiles ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
-		`ALTER TABLE tournament_admins ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE tournament_admins ADD COLUMN username TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_admins ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_admins ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_admin_sessions ADD COLUMN admin_id INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE tournament_admin_sessions ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE tournament_admin_sessions ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_teams ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE tournament_teams ADD COLUMN name TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_teams ADD COLUMN short_name TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_teams ADD COLUMN city TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_teams ADD COLUMN logo_url TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_teams ADD COLUMN group_name TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_teams ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_sponsors ADD COLUMN event_id INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE tournament_sponsors ADD COLUMN name TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_sponsors ADD COLUMN logo_url TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_sponsors ADD COLUMN url TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_sponsors ADD COLUMN tier TEXT NOT NULL DEFAULT 'partner'`,
-		`ALTER TABLE tournament_sponsors ADD COLUMN brand_color TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE tournament_sponsors ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE tournament_sponsors ADD COLUMN active INTEGER NOT NULL DEFAULT 1`,
 	} {
 		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
-			return fmt.Errorf("tournament admin alter (%s): %w", alter, err)
-		}
-	}
-	for _, idx := range []string{
-		`CREATE INDEX IF NOT EXISTS idx_events_slug ON events(slug)`,
-		`CREATE INDEX IF NOT EXISTS idx_matches_event ON matches(event_id, status)`,
-		`CREATE INDEX IF NOT EXISTS idx_event_tiles_event ON event_tiles(event_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_tournament_teams_event ON tournament_teams(event_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_tournament_sponsors_event ON tournament_sponsors(event_id)`,
-	} {
-		if _, err := s.db.Exec(idx); err != nil {
-			return fmt.Errorf("tournament admin index (%s): %w", idx, err)
+			return fmt.Errorf("matches alter: %w", err)
 		}
 	}
 	return nil
@@ -218,18 +132,13 @@ func (s *Store) CreateTournament(ctx context.Context, in TournamentCreateInput, 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	orgID, teamAID, teamBID, err := ensureTournamentEventRefs(ctx, tx)
-	if err != nil {
-		return 0, err
-	}
-
 	// events: le colonne club NOT NULL (team1/2, start_datetime) vengono
 	// riempite con valori neutri — il mondo club le ignora (type filtra).
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO events (organization_id, team1_id, team2_id, start_datetime, location,
 		                    slug, name, format, date_label, status_label, phase_label, type)
-		VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, 'TORNEO IN ARRIVO', 'ISCRIZIONI', 'tournament')`,
-		orgID, teamAID, teamBID, in.Location, in.Slug, in.Name, in.Format, in.DateLabel)
+		VALUES (0, 0, 0, '', ?, ?, ?, ?, ?, 'TORNEO IN ARRIVO', 'ISCRIZIONI', 'tournament')`,
+		in.Location, in.Slug, in.Name, in.Format, in.DateLabel)
 	if err != nil {
 		return 0, err
 	}
@@ -257,53 +166,6 @@ func (s *Store) CreateTournament(ctx context.Context, in TournamentCreateInput, 
 		return 0, err
 	}
 	return eventID, nil
-}
-
-func ensureTournamentEventRefs(ctx context.Context, tx *sql.Tx) (int64, int64, int64, error) {
-	teamAID, err := ensureTournamentRefTeam(ctx, tx, "__tournament_ref_home")
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	teamBID, err := ensureTournamentRefTeam(ctx, tx, "__tournament_ref_away")
-	if err != nil {
-		return 0, 0, 0, err
-	}
-
-	const slug = "__tournament-system"
-	var orgID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM organizations WHERE slug = ? LIMIT 1`, slug).Scan(&orgID)
-	if errors.Is(err, sql.ErrNoRows) {
-		res, insertErr := tx.ExecContext(ctx, `
-			INSERT INTO organizations
-				(name, slug, city, logo_url, is_active, roster_schema, team_id, sms_cost, free_sms, bar_enabled)
-			VALUES
-				('Tournament System', ?, '', '', 0, 13, ?, 0, 0, 0)`,
-			slug, teamAID)
-		if insertErr != nil {
-			return 0, 0, 0, insertErr
-		}
-		orgID, err = res.LastInsertId()
-		if err != nil {
-			return 0, 0, 0, err
-		}
-	} else if err != nil {
-		return 0, 0, 0, err
-	}
-
-	return orgID, teamAID, teamBID, nil
-}
-
-func ensureTournamentRefTeam(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
-	var id int64
-	err := tx.QueryRowContext(ctx, `SELECT id FROM teams WHERE name = ? LIMIT 1`, name).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		res, insertErr := tx.ExecContext(ctx, `INSERT INTO teams (name, championship) VALUES (?, '')`, name)
-		if insertErr != nil {
-			return 0, insertErr
-		}
-		return res.LastInsertId()
-	}
-	return id, err
 }
 
 func (s *Store) SlugExists(ctx context.Context, slug string) (bool, error) {
@@ -476,6 +338,7 @@ func (s *Store) DeleteTATeam(ctx context.Context, eventID, teamID int64) error {
 type TAMatch struct {
 	ID        string   `json:"id"`
 	Court     string   `json:"court"`
+	Stage     string   `json:"stage"`
 	Time      string   `json:"time"`
 	Status    string   `json:"status"` // scheduled | live | finished
 	SetLabel  string   `json:"setLabel"`
@@ -492,7 +355,7 @@ type TAMatch struct {
 
 func (s *Store) ListTAMatches(ctx context.Context, eventID int64) ([]TAMatch, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT m.id, m.court, m.scheduled_time, m.status, m.set_label,
+		SELECT m.id, m.court, COALESCE(m.stage,''), m.scheduled_time, m.status, m.set_label,
 		       m.score_a, m.score_b, m.cur_a, m.cur_b, m.sets_json,
 		       m.team_a_id, m.team_b_id, ta.name, tb.name
 		FROM matches m
@@ -509,7 +372,7 @@ func (s *Store) ListTAMatches(ctx context.Context, eventID int64) ([]TAMatch, er
 	for rows.Next() {
 		var m TAMatch
 		var setsJSON string
-		if err := rows.Scan(&m.ID, &m.Court, &m.Time, &m.Status, &m.SetLabel,
+		if err := rows.Scan(&m.ID, &m.Court, &m.Stage, &m.Time, &m.Status, &m.SetLabel,
 			&m.ScoreA, &m.ScoreB, &m.CurA, &m.CurB, &setsJSON,
 			&m.TeamAID, &m.TeamBID, &m.TeamAName, &m.TeamBName); err != nil {
 			return nil, err
@@ -520,16 +383,16 @@ func (s *Store) ListTAMatches(ctx context.Context, eventID int64) ([]TAMatch, er
 	return out, rows.Err()
 }
 
-func (s *Store) CreateTAMatch(ctx context.Context, eventID int64, court, timeLabel, scheduledAt string, teamA, teamB int64) (string, error) {
+func (s *Store) CreateTAMatch(ctx context.Context, eventID int64, court, timeLabel, scheduledAt, stage string, teamA, teamB int64) (string, error) {
 	buf := make([]byte, 8)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
 	id := fmt.Sprintf("m%d-%s", eventID, base64.RawURLEncoding.EncodeToString(buf))
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO matches (id, event_id, court, scheduled_time, scheduled_at, team_a_id, team_b_id, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
-		id, eventID, court, timeLabel, scheduledAt, teamA, teamB)
+		INSERT INTO matches (id, event_id, court, scheduled_time, scheduled_at, stage, team_a_id, team_b_id, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
+		id, eventID, court, timeLabel, scheduledAt, strings.TrimSpace(stage), teamA, teamB)
 	return id, err
 }
 
