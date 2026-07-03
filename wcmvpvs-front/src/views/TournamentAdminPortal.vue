@@ -74,13 +74,25 @@ async function loadMatches () { const r = await j('GET', '/matches'); if (r.ok) 
 async function loadSponsors () { const r = await j('GET', '/sponsors'); if (r.ok) sponsors.value = (await r.json()).sponsors }
 
 // ---------- squadre ----------
-const csv = ref('')
-async function importTeams () {
-  if (!csv.value.trim()) return
+const newTeam = reactive({ name: '', shortName: '', city: '', groupName: '' })
+async function addTeam () {
+  const name = newTeam.name.trim()
+  if (!name) { flash('Inserisci il nome della squadra.'); return }
   busy.value = 'teams'
-  const r = await j('POST', '/teams', { csv: csv.value })
+  const r = await j('POST', '/teams', { teams: [{
+    name,
+    shortName: newTeam.shortName.trim(),
+    city: newTeam.city.trim(),
+    groupName: newTeam.groupName.trim()
+  }] })
   busy.value = ''
-  if (r.ok) { csv.value = ''; await loadTeams(); flash('Squadre importate.') }
+  if (r.ok) {
+    newTeam.name = ''; newTeam.shortName = ''; newTeam.city = ''; newTeam.groupName = ''
+    await loadTeams()
+    flash('Squadra aggiunta.')
+  } else {
+    flash('Errore nel salvataggio della squadra.')
+  }
 }
 async function deleteTeam (id) {
   const r = await j('DELETE', `/teams/${id}`)
@@ -255,12 +267,30 @@ async function saveSettings () {
 
       <!-- SQUADRE -->
       <section v-else-if="tab === 'teams'" class="ta-body">
-        <p class="hint">Una squadra per riga: <code>Nome;Sigla;Città;Girone</code> (solo il nome è obbligatorio).</p>
-        <textarea v-model="csv" rows="6" placeholder="Mambo Beach;MAMBO;;A&#10;Netbreakers;NETB;;A&#10;Sand Kings;SAND;;B"></textarea>
-        <button :disabled="busy === 'teams'" @click="importTeams">{{ busy === 'teams' ? 'Import…' : 'Importa squadre' }}</button>
-        <div v-for="t in teams" :key="t.id" class="row-match">
-          <span><b>{{ t.name }}</b> <small v-if="t.shortName">({{ t.shortName }})</small> <small v-if="t.groupName">· Girone {{ t.groupName }}</small></span>
-          <button class="danger" @click="deleteTeam(t.id)">Elimina</button>
+        <p class="hint">Aggiungi una squadra alla volta. Solo il nome è obbligatorio; sigla, città e girone sono facoltativi.</p>
+        <div class="team-form">
+          <input v-model="newTeam.name" placeholder="Nome squadra *" @keyup.enter="addTeam" />
+          <div class="form-row">
+            <input v-model="newTeam.shortName" placeholder="Sigla (es. MAMBO)" maxlength="6" style="max-width:150px" @keyup.enter="addTeam" />
+            <input v-model="newTeam.city" placeholder="Città" @keyup.enter="addTeam" />
+            <input v-model="newTeam.groupName" placeholder="Girone" maxlength="4" style="max-width:100px" @keyup.enter="addTeam" />
+          </div>
+          <button :disabled="busy === 'teams' || !newTeam.name.trim()" @click="addTeam">
+            {{ busy === 'teams' ? 'Salvo…' : 'Aggiungi squadra' }}
+          </button>
+        </div>
+
+        <div class="team-list">
+          <p v-if="!teams.length" class="hint">Nessuna squadra ancora. Aggiungi la prima qui sopra.</p>
+          <div v-for="t in teams" :key="t.id" class="row-match">
+            <span>
+              <b>{{ t.name }}</b>
+              <small v-if="t.shortName">({{ t.shortName }})</small>
+              <small v-if="t.city">· {{ t.city }}</small>
+              <small v-if="t.groupName">· Girone {{ t.groupName }}</small>
+            </span>
+            <button class="danger" @click="deleteTeam(t.id)">Elimina</button>
+          </div>
         </div>
       </section>
 
@@ -345,6 +375,11 @@ button { cursor: pointer; }
 .form-row input, .form-row select, textarea { background: #15151b; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 9px 11px; color: #fff; flex: 1; min-width: 120px; font-size: 14px; }
 textarea { width: 100%; font-family: inherit; }
 .form-row button, .ta-body > button { background: #f2b928; color: #111; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 800; align-self: flex-start; }
+.team-form { display: flex; flex-direction: column; gap: 8px; }
+.team-form > input { background: #15151b; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 9px 11px; color: #fff; font-size: 14px; width: 100%; }
+.team-form button { background: #f2b928; color: #111; border: none; border-radius: 8px; padding: 10px 16px; font-weight: 800; align-self: flex-start; }
+.team-form button:disabled { opacity: .5; cursor: default; }
+.team-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
 .row-match { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #15151b; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; }
 .row-match.done { opacity: .75; }
 .row-match small { color: #94a3b8; }

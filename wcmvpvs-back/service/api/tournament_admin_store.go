@@ -67,14 +67,25 @@ func (s *Store) EnsureTournamentAdminTables() error {
 			return fmt.Errorf("tournament admin tables: %w", err)
 		}
 	}
-	// Punteggio del set corrente (il resto di matches esiste già).
-	// ALTER idempotente: SQLite non ha IF NOT EXISTS su ADD COLUMN.
+	// ALTER idempotenti (SQLite non ha IF NOT EXISTS su ADD COLUMN): garantiscono
+	// che tutte le colonne esistano anche su DB creati da versioni precedenti
+	// (difesa contro drift dello schema → evita "no such column" mascherato da 500).
 	for _, alter := range []string{
 		`ALTER TABLE matches ADD COLUMN cur_a INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN cur_b INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tournament_teams ADD COLUMN short_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_teams ADD COLUMN city TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_teams ADD COLUMN logo_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_teams ADD COLUMN group_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN logo_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN tier TEXT NOT NULL DEFAULT 'partner'`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN brand_color TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tournament_sponsors ADD COLUMN active INTEGER NOT NULL DEFAULT 1`,
 	} {
 		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
-			return fmt.Errorf("matches alter: %w", err)
+			return fmt.Errorf("tournament column ensure (%s): %w", alter, err)
 		}
 	}
 	return nil

@@ -292,6 +292,7 @@ func (rt *_router) taCreateTeams(w http.ResponseWriter, r *http.Request, eventID
 	}
 	n, err := rt.store.InsertTATeams(r.Context(), eventID, teams)
 	if err != nil {
+		rt.baseLogger.WithError(err).WithField("eventID", eventID).Error("cannot insert tournament teams")
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
