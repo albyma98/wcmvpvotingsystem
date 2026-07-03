@@ -132,13 +132,40 @@ func (s *Store) CreateTournament(ctx context.Context, in TournamentCreateInput, 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// events: le colonne club NOT NULL (team1/2, start_datetime) vengono
-	// riempite con valori neutri — il mondo club le ignora (type filtra).
+	// events ha FK NOT NULL su organization_id/team1_id/team2_id (schema club) e
+	// le FK sono attive (PRAGMA foreign_keys=ON). Un torneo non ha né org né due
+	// squadre fisse: usiamo righe sentinella CONDIVISE (una sola org + una sola
+	// team di sistema, riusate da tutti i tornei) così l'INSERT soddisfa le FK
+	// senza rifare la tabella events (referenziata da altre 19 FK) e senza
+	// toccare i dati/logica del club. I valori non sono usati dalle query torneo
+	// (che filtrano per slug + type='tournament').
+	var sysOrgID, sysTeamID int64
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO organizations (name, slug, is_active)
+		SELECT 'Tornei (sistema)', '__tournament_sys__', 0
+		WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE slug = '__tournament_sys__')`); err != nil {
+		return 0, err
+	}
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM organizations WHERE slug = '__tournament_sys__' LIMIT 1`).Scan(&sysOrgID); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO teams (name, championship)
+		SELECT '—', '__tournament_sys__'
+		WHERE NOT EXISTS (SELECT 1 FROM teams WHERE championship = '__tournament_sys__')`); err != nil {
+		return 0, err
+	}
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM teams WHERE championship = '__tournament_sys__' LIMIT 1`).Scan(&sysTeamID); err != nil {
+		return 0, err
+	}
+
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO events (organization_id, team1_id, team2_id, start_datetime, location,
 		                    slug, name, format, date_label, status_label, phase_label, type)
-		VALUES (0, 0, 0, '', ?, ?, ?, ?, ?, 'TORNEO IN ARRIVO', 'ISCRIZIONI', 'tournament')`,
-		in.Location, in.Slug, in.Name, in.Format, in.DateLabel)
+		VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, 'TORNEO IN ARRIVO', 'ISCRIZIONI', 'tournament')`,
+		sysOrgID, sysTeamID, sysTeamID, in.Location, in.Slug, in.Name, in.Format, in.DateLabel)
 	if err != nil {
 		return 0, err
 	}

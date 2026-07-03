@@ -1,0 +1,100 @@
+package api
+
+// Verifica end-to-end del CRUD torneo con le FK ATTIVE (come in produzione:
+// PRAGMA foreign_keys=ON). Riproduce e blocca la regressione
+// "FOREIGN KEY constraint failed" su creazione torneo e su creazione partita.
+
+import (
+	"context"
+	"database/sql"
+	"path/filepath"
+	"testing"
+
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
+	_ "github.com/mattn/go-sqlite3"
+)
+
+func TestTournamentCRUD_ForeignKeysEnabled(t *testing.T) {
+	dsn := "file:" + filepath.Join(t.TempDir(), "crud.db") + "?_foreign_keys=on"
+	conn, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer conn.Close()
+	if _, err := conn.Exec(`PRAGMA foreign_keys=ON`); err != nil {
+		t.Fatalf("pragma: %v", err)
+	}
+
+	appdb, err := database.New(conn)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	db := appdb.SQLConn()
+	store := NewStore(db)
+	if err := store.EnsureTournamentAdminTables(); err != nil {
+		t.Fatalf("EnsureTournamentAdminTables: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// 1) CREATE tournament (era il caso che falliva con FK constraint failed)
+	evID, err := store.CreateTournament(ctx, TournamentCreateInput{
+		Name: "Test Cup", Format: "BEACH VOLLEY 4X4", DateLabel: "1-2 GIU 2026",
+		Location: "Roma", Slug: "test-cup",
+	}, "admin", "hash")
+	if err != nil {
+		t.Fatalf("CreateTournament: %v", err)
+	}
+
+	// Creare due volte deve riusare le sentinelle (una sola org/team di sistema)
+	if _, err := store.CreateTournament(ctx, TournamentCreateInput{
+		Name: "Test Cup 2", Format: "4x4", DateLabel: "x", Location: "Milano", Slug: "test-cup-2",
+	}, "admin2", "hash2"); err != nil {
+		t.Fatalf("CreateTournament (second): %v", err)
+	}
+	var orgCount, teamCount int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM organizations WHERE slug='__tournament_sys__'`).Scan(&orgCount)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM teams WHERE championship='__tournament_sys__'`).Scan(&teamCount)
+	if orgCount != 1 || teamCount != 1 {
+		t.Fatalf("sentinelle non condivise: org=%d team=%d (attese 1 e 1)", orgCount, teamCount)
+	}
+
+	// 2) CREATE squadre torneo + 3) CREATE partita (FK matches.team_* -> tournament_teams)
+	var teamA, teamB int64
+	if res, err := db.Exec(`INSERT INTO tournament_teams (event_id, name) VALUES (?, 'Mambo Beach')`, evID); err != nil {
+		t.Fatalf("insert team A: %v", err)
+	} else {
+		teamA, _ = res.LastInsertId()
+	}
+	if res, err := db.Exec(`INSERT INTO tournament_teams (event_id, name) VALUES (?, 'Netbreakers')`, evID); err != nil {
+		t.Fatalf("insert team B: %v", err)
+	} else {
+		teamB, _ = res.LastInsertId()
+	}
+
+	matchID, err := store.CreateTAMatch(ctx, evID, "CAMPO 1", "18:30", "", "", teamA, teamB)
+	if err != nil {
+		t.Fatalf("CreateTAMatch: %v", err)
+	}
+
+	// 4) UPDATE punteggio (console operatore)
+	if err := store.ApplyScoreAction(ctx, evID, matchID, "start"); err != nil {
+		t.Fatalf("ApplyScoreAction start: %v", err)
+	}
+	if err := store.ApplyScoreAction(ctx, evID, matchID, "point_a"); err != nil {
+		t.Fatalf("ApplyScoreAction point_a: %v", err)
+	}
+
+	// 5) READ pubblico (join su tournament_teams + matches)
+	if _, err := store.GetTournamentHome(ctx, "test-cup"); err != nil {
+		t.Fatalf("GetTournamentHome: %v", err)
+	}
+	if _, err := store.GetTournamentLive(ctx, "test-cup"); err != nil {
+		t.Fatalf("GetTournamentLive: %v", err)
+	}
+
+	// 6) DELETE partita
+	if err := store.DeleteTAMatch(ctx, evID, matchID); err != nil {
+		t.Fatalf("DeleteTAMatch: %v", err)
+	}
+}

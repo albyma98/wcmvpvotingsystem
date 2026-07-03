@@ -2659,26 +2659,64 @@ func ensureTournamentTables(db *sql.DB) error {
 		}
 	}
 
-	// matches: partite multi-campo di un torneo. IDs testuali per rispecchiare
-	// il contratto JSON (LiveMatch.ID è una stringa, es. "m1").
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS matches (
+	// matches: partite di un torneo. team_a_id/team_b_id referenziano
+	// `tournament_teams` (gestite dal pannello admin torneo), NON le teams del
+	// club → nessuna FK su di esse (altrimenti l'INSERT di una partita fallirebbe
+	// con FOREIGN KEY constraint failed). Unica FK: event_id → events.
+	const matchesSchema = `CREATE TABLE IF NOT EXISTS matches (
 		id TEXT PRIMARY KEY,
 		event_id INTEGER NOT NULL,
 		court TEXT NOT NULL DEFAULT '',
 		set_label TEXT NOT NULL DEFAULT '',
 		score_a INTEGER NOT NULL DEFAULT 0,
 		score_b INTEGER NOT NULL DEFAULT 0,
+		cur_a INTEGER NOT NULL DEFAULT 0,
+		cur_b INTEGER NOT NULL DEFAULT 0,
 		sets_json TEXT NOT NULL DEFAULT '[]',
 		status TEXT NOT NULL DEFAULT 'scheduled',
+		stage TEXT NOT NULL DEFAULT '',
 		scheduled_time TEXT NOT NULL DEFAULT '',
 		scheduled_at TEXT,
 		team_a_id INTEGER NOT NULL,
 		team_b_id INTEGER NOT NULL,
-		FOREIGN KEY (event_id) REFERENCES events(id),
-		FOREIGN KEY (team_a_id) REFERENCES teams(id),
-		FOREIGN KEY (team_b_id) REFERENCES teams(id)
-	);`); err != nil {
+		FOREIGN KEY (event_id) REFERENCES events(id)
+	)`
+	if _, err := db.Exec(matchesSchema); err != nil {
 		return fmt.Errorf("error creating matches table: %w", err)
+	}
+
+	// Migrazione da una versione precedente di `matches` che aveva FK verso le
+	// teams del club e mancava della colonna `stage`: la ricostruiamo. È una
+	// tabella tournament-only senza FK entranti, quindi il rebuild è sicuro
+	// (nessuna operazione viola FK: rename/create/insert-vuoto/drop). Rilevata
+	// dall'assenza della colonna `stage`.
+	matchesHasStage := false
+	if rows, err := db.Query(`PRAGMA table_info(matches)`); err == nil {
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, ctype string
+			var dflt sql.NullString
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil && name == "stage" {
+				matchesHasStage = true
+			}
+		}
+		rows.Close()
+	}
+	if !matchesHasStage {
+		rebuild := []string{
+			`ALTER TABLE matches RENAME TO matches_old`,
+			matchesSchema,
+			`INSERT INTO matches (id, event_id, court, set_label, score_a, score_b,
+			                      sets_json, status, scheduled_time, scheduled_at, team_a_id, team_b_id)
+			 SELECT id, event_id, court, set_label, score_a, score_b,
+			        sets_json, status, scheduled_time, scheduled_at, team_a_id, team_b_id FROM matches_old`,
+			`DROP TABLE matches_old`,
+		}
+		for _, q := range rebuild {
+			if _, err := db.Exec(q); err != nil {
+				return fmt.Errorf("matches rebuild failed: %w", err)
+			}
+		}
 	}
 
 	// event_tiles: griglia di navigazione configurabile per torneo dal pannello admin.
