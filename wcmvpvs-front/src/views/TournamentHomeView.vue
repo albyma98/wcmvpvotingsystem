@@ -2,12 +2,14 @@
 // Adattato per l'app ArenaBoostX: il progetto non usa vue-router, la
 // navigazione è path-based e gestita da App.vue. Riceviamo lo slug come prop
 // ed emettiamo 'navigate' verso l'host, che chiama il suo navigateTo().
+import { computed } from 'vue'
 import { useTournamentHome } from '@/composables/useTournamentHome'
 import TournamentHero from '@/components/tournament/TournamentHero.vue'
 import LiveMatchCarousel from '@/components/tournament/LiveMatchCarousel.vue'
 import NextMatchCard from '@/components/tournament/NextMatchCard.vue'
 import TournamentTileGrid from '@/components/tournament/TournamentTileGrid.vue'
 import SponsorStrip from '@/components/tournament/SponsorStrip.vue'
+import SunsetPadel from '@/views/SunsetPadel.vue'
 import '@/assets/tournament-tokens.css'
 
 const props = defineProps({
@@ -23,14 +25,41 @@ const { tournament, liveMatches, nextMatch, tiles, sponsors, loading } =
 function onTile (tile) {
   emit('navigate', `/t/${props.slug}${tile.route}`)
 }
+
+// --- Layout selezionabile: 'classic' (default) | 'sunset' -------------------
+const useSunset = computed(() => tournament.value?.layout === 'sunset')
+// Mapping dei dati reali sulle props del layout Sunset.
+const brandTop = computed(() => (tournament.value?.name || '').split(' ')[0] || '')
+const brandBottom = computed(() => (tournament.value?.name || '').split(' ').slice(1).join(' '))
+const sunsetNext = computed(() => ({
+  time: nextMatch.value?.time || '—',
+  home: nextMatch.value?.teamA?.name || '—',
+  away: nextMatch.value?.teamB?.name || '—'
+}))
+// Sunset usa le stesse route delle tile; live/signup sono scorciatoie.
+function onSunsetNav (route) { emit('navigate', `/t/${props.slug}${route}`) }
 </script>
 
 <template>
-  <!-- Layout above-the-fold: hero a dimensione fissa, body che riempie il
-       resto senza mai scrollare. Zero bottom nav: tutta la navigazione passa
-       dalle tile, che sono il pattern giusto per l'onboarding-da-QR (il tifoso
-       scansiona ed è già dentro, senza imparare una barra). -->
-  <div class="tm-page">
+  <!-- Layout SUNSET: grafica alternativa, stessi dati e navigazione. -->
+  <SunsetPadel
+    v-if="useSunset && !loading"
+    :status="tournament.statusLabel"
+    :brand-top="brandTop"
+    :brand-bottom="brandBottom"
+    :subtitle="tournament.format"
+    :date="tournament.dateLabel"
+    :place="tournament.location"
+    :next-match="sunsetNext"
+    :tiles="tiles"
+    :sponsors="sponsors"
+    @navigate="onSunsetNav"
+    @live="onSunsetNav('/calendar')"
+    @signup="onSunsetNav('/event')"
+  />
+
+  <!-- Layout CLASSIC (default): above-the-fold, hero fisso + tile + sponsor. -->
+  <div class="tm-page" v-else>
     <TournamentHero v-if="tournament" :tournament="tournament" />
 
     <div class="tm-wrap" v-if="!loading">

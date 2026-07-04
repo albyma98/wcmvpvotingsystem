@@ -794,6 +794,8 @@ type TASettings struct {
 	// Fase finale: quante squadre passano per girone + finalina 3°/4° posto.
 	BracketQualifiers int  `json:"bracketQualifiers"`
 	BracketThirdPlace bool `json:"bracketThirdPlace"`
+	// Grafica della home tifosi: 'classic' | 'sunset'.
+	FanLayout string `json:"fanLayout"`
 }
 
 func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, string, error) {
@@ -804,11 +806,12 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 		SELECT COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
 		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
 		       COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0),
-		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0), COALESCE(slug,'')
+		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0),
+		       COALESCE(fan_layout,'classic'), COALESCE(slug,'')
 		FROM events WHERE id = ?`, eventID).
 		Scan(&st.Name, &st.Format, &st.DateLabel, &st.Location, &st.StatusLabel, &st.PhaseLabel,
 			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss,
-			&st.BracketQualifiers, &thirdPlace, &slug)
+			&st.BracketQualifiers, &thirdPlace, &st.FanLayout, &slug)
 	st.BracketThirdPlace = thirdPlace == 1
 	return &st, slug, err
 }
@@ -821,10 +824,10 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE events SET name=?, format=?, date_label=?, location=?, status_label=?, phase_label=?,
 		                  points_per_win=?, points_per_draw=?, points_per_loss=?,
-		                  bracket_qualifiers=?, bracket_third_place=?
+		                  bracket_qualifiers=?, bracket_third_place=?, fan_layout=?
 		WHERE id = ? AND type = 'tournament'`,
 		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel,
 		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss,
-		st.BracketQualifiers, thirdPlace, eventID)
+		st.BracketQualifiers, thirdPlace, st.FanLayout, eventID)
 	return err
 }

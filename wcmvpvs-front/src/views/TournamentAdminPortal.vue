@@ -61,7 +61,7 @@ const teams = ref([])
 const matches = ref([])
 const sponsors = ref([])
 const gallery = ref([])
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, bracketQualifiers: 2, bracketThirdPlace: false })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
 const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
@@ -468,6 +468,17 @@ async function generateBracket () {
           <label>Stato (pill) <input v-model="settings.statusLabel" placeholder="TORNEO IN CORSO" /></label>
           <label>Fase (pill) <input v-model="settings.phaseLabel" placeholder="FASE A GIRONI" /></label>
         </div>
+
+        <h3 class="settings-sub">Grafica home tifosi</h3>
+        <div class="settings-grid">
+          <label>Layout
+            <select v-model="settings.fanLayout">
+              <option value="classic">Classic (scuro + oro)</option>
+              <option value="sunset">Sunset (pop estivo)</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint">Cambia l'aspetto della pagina che vedono i tifosi (/t/{{ slug }}). Le funzioni (live, calendario, classifiche, gallery…) restano identiche. Salva e ricarica la pagina tifosi per vedere il nuovo layout.</p>
 
         <h3 class="settings-sub">Punti classifica (gironi)</h3>
         <div class="settings-grid">

@@ -76,6 +76,7 @@ type TournamentInfo struct {
 	PhaseLabel  string `json:"phaseLabel"`  // "FASE A GIRONI"
 	Logo        string `json:"logo,omitempty"`
 	HeroImage   string `json:"heroImage,omitempty"`
+	Layout      string `json:"layout"` // 'classic' | 'sunset' — grafica home tifosi
 }
 
 type HomeResponse struct {

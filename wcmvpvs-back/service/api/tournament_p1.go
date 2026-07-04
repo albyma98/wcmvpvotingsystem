@@ -64,6 +64,7 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		`ALTER TABLE events ADD COLUMN points_per_loss INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE events ADD COLUMN bracket_qualifiers INTEGER NOT NULL DEFAULT 2`,
 		`ALTER TABLE events ADD COLUMN bracket_third_place INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE events ADD COLUMN fan_layout TEXT NOT NULL DEFAULT 'classic'`,
 		`ALTER TABLE matches ADD COLUMN team_a_label TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE matches ADD COLUMN team_b_label TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE matches ADD COLUMN win_to_id TEXT NOT NULL DEFAULT ''`,
