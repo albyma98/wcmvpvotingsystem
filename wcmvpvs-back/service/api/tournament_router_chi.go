@@ -23,6 +23,10 @@ func registerTournamentRoutes(rt *_router) {
 		panic("tournament p1 tables: " + err.Error())
 	}
 	registerTournamentP1Routes(rt)
+	if err := rt.store.EnsureTournamentGalleryTables(); err != nil {
+		panic("tournament gallery tables: " + err.Error())
+	}
+	registerTournamentGalleryRoutes(rt)
 
 	// Snapshot completo della home: chiamato una volta al load. Cache-Control 30s.
 	rt.router.Get("/v1/tournaments/{slug}/home", rt.HandleTournamentHome)

@@ -4,6 +4,7 @@
 // le altre sezioni restano placeholder finché non hanno contenuto (P2/P3).
 import { computed, onMounted, ref } from 'vue'
 import { useTournamentStream } from '@/composables/useTournamentStream'
+import TournamentGallery from '@/components/tournament/TournamentGallery.vue'
 
 const props = defineProps({
   slug: { type: String, required: true },
@@ -19,6 +20,7 @@ const titles = {
 
 const matches = ref([])
 const groups = ref([])
+const photos = ref([])
 const loading = ref(true)
 const error = ref('')
 
@@ -34,6 +36,10 @@ async function load () {
       const r = await fetch(`/api/v1/tournaments/${props.slug}/matches`)
       if (!r.ok) throw new Error(r.status)
       matches.value = (await r.json()).matches ?? []
+    } else if (props.section === 'gallery') {
+      const r = await fetch(`/api/v1/tournaments/${props.slug}/gallery`)
+      if (!r.ok) throw new Error(r.status)
+      photos.value = (await r.json()).photos ?? []
     }
   } catch (e) {
     error.value = 'Dati non disponibili al momento.'
@@ -61,7 +67,7 @@ const byStage = computed(() => {
 })
 
 const hasData = computed(() =>
-  ['calendar', 'standings', 'bracket'].includes(props.section))
+  ['calendar', 'standings', 'bracket', 'gallery'].includes(props.section))
 
 // Le sezioni live si aggiornano da sole via SSE (push, niente polling).
 onMounted(load)
@@ -76,7 +82,13 @@ useTournamentStream(props.slug, () => { if (hasData.value) load() })
     </header>
 
     <div class="section-body">
-      <p v-if="hasData && loading" class="muted">Caricamento…</p>
+      <!-- GALLERY: sempre montata (niente flash di "Caricamento" sui refresh live) -->
+      <TournamentGallery
+        v-if="section === 'gallery'"
+        :slug="slug" :photos="photos" @uploaded="load"
+      />
+
+      <p v-else-if="hasData && loading" class="muted">Caricamento…</p>
       <p v-else-if="hasData && error" class="muted">{{ error }}</p>
 
       <!-- CALENDARIO -->
