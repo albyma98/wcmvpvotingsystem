@@ -22,7 +22,7 @@ const marqueeTrack = computed(() => [...partnerSponsors.value, ...partnerSponsor
 </script>
 
 <template>
-  <section class="sponsor-block" v-if="sponsors.length">
+  <section class="sponsor-block" :class="{ 'has-main': mainSponsors.length }" v-if="sponsors.length">
     <div class="label">Main Sponsor</div>
 
     <div class="sponsor-main" v-if="mainSponsors.length">
@@ -36,7 +36,8 @@ const marqueeTrack = computed(() => [...partnerSponsors.value, ...partnerSponsor
       </component>
     </div>
 
-    <div class="sponsor-marquee" v-if="partnerSponsors.length">
+    <!-- Partner nascosti quando ci sono main sponsor: lo spazio va ai loghi main. -->
+    <div class="sponsor-marquee" v-if="!mainSponsors.length && partnerSponsors.length">
       <div class="marquee-track">
         <component
           v-for="(s, i) in marqueeTrack" :key="`${s.id}-${i}`"
@@ -69,6 +70,25 @@ const marqueeTrack = computed(() => [...partnerSponsors.value, ...partnerSponsor
 }
 .sp-main-item { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
 .sponsor-main img { height: clamp(38px,6dvh,55px); object-fit: contain; }
+
+/* --- Con main sponsor: il blocco cresce e i loghi riempiono tutto lo spazio,
+   stretchati per occupare la cella. I partner sono omessi (v-if sopra). --- */
+.sponsor-block.has-main {
+  display: flex; flex-direction: column;
+  flex: 1 1 0; min-height: 0;   /* nel column di .tm-wrap: si prende lo spazio disponibile */
+}
+.has-main .sponsor-main {
+  flex: 1; min-height: 0; align-items: stretch;
+  gap: clamp(10px,3vw,22px);
+}
+.has-main .sp-main-item { flex: 1 1 0; min-width: 0; align-items: stretch; }
+.has-main .sponsor-main img {
+  width: 100%; height: 100%; object-fit: fill; border-radius: 10px;
+}
+.has-main .sp-text {
+  width: 100%; display: flex; align-items: center; justify-content: center;
+  text-align: center; overflow: hidden;
+}
 .sp-text { font-weight: 900; font-size: clamp(19px,3dvh,26px); letter-spacing: .4px; white-space: nowrap; }
 /* PARTNER: marquee continuo stile LED bordo campo */
 .sponsor-marquee {
