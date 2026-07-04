@@ -336,6 +336,84 @@ func (s *Store) ListTournaments(ctx context.Context) ([]TournamentSummary, error
 	return out, rows.Err()
 }
 
+// SetTAAdminPassword imposta (o crea, se mancante) le credenziali admin di un
+// torneo e ritorna lo username effettivo. passwordHash è già bcrypt-ato dal
+// chiamante. Cambiando la password invalidiamo le sessioni attive del torneo:
+// un reset dal master deve sloggare chi era entrato con la vecchia password.
+func (s *Store) SetTAAdminPassword(ctx context.Context, eventID int64, passwordHash string) (string, error) {
+	var slug string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT slug FROM events WHERE id = ? AND type = 'tournament'`, eventID).Scan(&slug)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", errTANotFound
+	}
+	if err != nil {
+		return "", err
+	}
+
+	var username string
+	err = s.db.QueryRowContext(ctx,
+		`SELECT username FROM tournament_admins WHERE event_id = ?`, eventID).Scan(&username)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Torneo senza admin (installazione legacy): lo creiamo ora.
+		username = "ta-" + slug
+		if _, err := s.db.ExecContext(ctx,
+			`INSERT INTO tournament_admins (event_id, username, password_hash) VALUES (?, ?, ?)`,
+			eventID, username, passwordHash); err != nil {
+			return "", err
+		}
+		return username, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE tournament_admins SET password_hash = ? WHERE event_id = ?`, passwordHash, eventID); err != nil {
+		return "", err
+	}
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM tournament_admin_sessions WHERE event_id = ?`, eventID)
+	return username, nil
+}
+
+// DeleteTournament rimuove un torneo e TUTTI i suoi dati in transazione: admin,
+// sessioni, operatori di campo, squadre, sponsor, partite, tiles e la riga event.
+// Le sentinelle di sistema (org/team condivise) restano: sono riusate dagli
+// altri tornei. Ordine figli→padre per rispettare eventuali FK (PRAGMA ON).
+func (s *Store) DeleteTournament(ctx context.Context, eventID int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var n int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM events WHERE id = ? AND type = 'tournament'`, eventID).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return errTANotFound
+	}
+
+	stmts := []string{
+		`DELETE FROM court_operator_sessions WHERE operator_id IN (SELECT id FROM court_operators WHERE event_id = ?)`,
+		`DELETE FROM court_operators WHERE event_id = ?`,
+		`DELETE FROM tournament_admin_sessions WHERE event_id = ?`,
+		`DELETE FROM tournament_admins WHERE event_id = ?`,
+		`DELETE FROM tournament_sponsors WHERE event_id = ?`,
+		`DELETE FROM matches WHERE event_id = ?`,
+		`DELETE FROM tournament_teams WHERE event_id = ?`,
+		`DELETE FROM event_tiles WHERE event_id = ?`,
+		`DELETE FROM events WHERE id = ? AND type = 'tournament'`,
+	}
+	for _, q := range stmts {
+		if _, err := tx.ExecContext(ctx, q, eventID); err != nil {
+			return fmt.Errorf("delete tournament (%s): %w", q, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // --- Auth admin torneo --------------------------------------------------------
 
 type taAdmin struct {

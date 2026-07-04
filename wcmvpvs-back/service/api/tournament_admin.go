@@ -38,6 +38,8 @@ func registerTournamentAdminRoutes(rt *_router) {
 	// --- Master (superadmin) ---
 	rt.router.Get("/admin/master/tournaments", rt.wrapAdmin(rt.listMasterTournaments))
 	rt.router.Post("/admin/master/tournaments", rt.wrapAdmin(rt.createMasterTournament))
+	rt.router.Put("/admin/master/tournaments/{id}/password", rt.wrapAdmin(rt.resetMasterTournamentPassword))
+	rt.router.Delete("/admin/master/tournaments/{id}", rt.wrapAdmin(rt.deleteMasterTournament))
 
 	// --- Auth admin torneo ---
 	rt.router.Post("/v1/ta/{slug}/login", rt.taLogin)
@@ -144,6 +146,78 @@ func (rt *_router) createMasterTournament(w http.ResponseWriter, r *http.Request
 		"adminUsername": adminUsername,
 		"adminPassword": password, // mostrata solo ora: in DB c'è solo l'hash
 	})
+}
+
+// resetMasterTournamentPassword reimposta la password admin di un torneo.
+// La password non è recuperabile (in DB c'è solo l'hash bcrypt): il master può
+// solo assegnarne una nuova. Body {password} opzionale — se vuoto ne generiamo
+// una casuale. In entrambi i casi la ritorniamo in chiaro UNA sola volta.
+func (rt *_router) resetMasterTournamentPassword(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if !rt.ensureSuperAdmin(w, ctx) {
+		return
+	}
+	eventID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || eventID <= 0 {
+		http.Error(w, `{"error":"bad_id"}`, http.StatusBadRequest)
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body) // body opzionale
+	password := strings.TrimSpace(body.Password)
+	if password == "" {
+		if password, err = randomPassword(9); err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+	} else if len(password) < 6 {
+		http.Error(w, `{"error":"password_too_short"}`, http.StatusBadRequest)
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	username, err := rt.store.SetTAAdminPassword(r.Context(), eventID, string(hash))
+	if errors.Is(err, errTANotFound) {
+		http.Error(w, `{"error":"tournament_not_found"}`, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot reset tournament password")
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"adminUsername": username,
+		"adminPassword": password,
+	})
+}
+
+// deleteMasterTournament elimina un torneo e tutti i suoi dati collegati.
+func (rt *_router) deleteMasterTournament(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if !rt.ensureSuperAdmin(w, ctx) {
+		return
+	}
+	eventID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || eventID <= 0 {
+		http.Error(w, `{"error":"bad_id"}`, http.StatusBadRequest)
+		return
+	}
+	// Invalidiamo le cache pubbliche PRIMA del delete (dopo, lo slug non esiste più).
+	rt.invalidateTournamentCaches(r, eventID)
+	if err := rt.store.DeleteTournament(r.Context(), eventID); err != nil {
+		if errors.Is(err, errTANotFound) {
+			http.Error(w, `{"error":"tournament_not_found"}`, http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot delete tournament")
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
 
