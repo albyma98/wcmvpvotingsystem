@@ -538,12 +538,25 @@ func (rt *_router) taGetSettings(w http.ResponseWriter, r *http.Request, eventID
 	writeJSON(w, http.StatusOK, map[string]interface{}{"settings": settings, "slug": slug})
 }
 
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
 func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, eventID int64) {
 	var st TASettings
 	if err := json.NewDecoder(r.Body).Decode(&st); err != nil {
 		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
 		return
 	}
+	// Punti classifica: interi non negativi, con un tetto ragionevole.
+	st.PointsPerWin = clampInt(st.PointsPerWin, 0, 100)
+	st.PointsPerLoss = clampInt(st.PointsPerLoss, 0, 100)
 	if err := rt.store.UpdateTASettings(r.Context(), eventID, st); err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return

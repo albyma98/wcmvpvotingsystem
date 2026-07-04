@@ -112,7 +112,7 @@ onUnmounted(() => clearInterval(timer))
         <section v-for="g in groups" :key="g.group" class="group-block">
           <h2>{{ g.group ? `Girone ${g.group}` : 'Classifica' }}</h2>
           <table>
-            <thead><tr><th></th><th class="tl">Squadra</th><th>G</th><th>V</th><th>P</th><th>Set</th></tr></thead>
+            <thead><tr><th></th><th class="tl">Squadra</th><th>G</th><th>V</th><th>P</th><th>Set</th><th class="pt">Pt</th></tr></thead>
             <tbody>
               <tr v-for="(row, i) in g.rows" :key="row.teamId" :class="{ top: i < 2 }">
                 <td class="pos">{{ i + 1 }}</td>
@@ -121,11 +121,12 @@ onUnmounted(() => clearInterval(timer))
                 <td class="w">{{ row.wins }}</td>
                 <td>{{ row.losses }}</td>
                 <td>{{ row.setsWon }}:{{ row.setsLost }}</td>
+                <td class="pt">{{ row.points }}</td>
               </tr>
             </tbody>
           </table>
         </section>
-        <p v-if="groups.length" class="legend">Primi 2 di ogni girone alla fase finale · Ordinamento: vittorie, quoziente set, quoziente punti</p>
+        <p v-if="groups.length" class="legend">Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti</p>
       </template>
 
       <!-- TABELLONE -->
@@ -201,6 +202,7 @@ h2 { font-size: 12px; letter-spacing: 1.6px; color: #F2B928; text-transform: upp
 .pos { color: rgba(255,255,255,.5); width: 28px; }
 .name { font-weight: 800; }
 .w { color: #F2B928; font-weight: 800; }
+.pt { font-weight: 900; color: #fff; }
 tr.top .pos { color: #00C897; font-weight: 900; }
 .legend { font-size: 11px; color: rgba(255,255,255,.4); }
 

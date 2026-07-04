@@ -739,12 +739,14 @@ func (s *Store) DeleteTASponsor(ctx context.Context, eventID, sponsorID int64) e
 // --- Impostazioni evento -------------------------------------------------------------
 
 type TASettings struct {
-	Name        string `json:"name"`
-	Format      string `json:"format"`
-	DateLabel   string `json:"dateLabel"`
-	Location    string `json:"location"`
-	StatusLabel string `json:"statusLabel"`
-	PhaseLabel  string `json:"phaseLabel"`
+	Name          string `json:"name"`
+	Format        string `json:"format"`
+	DateLabel     string `json:"dateLabel"`
+	Location      string `json:"location"`
+	StatusLabel   string `json:"statusLabel"`
+	PhaseLabel    string `json:"phaseLabel"`
+	PointsPerWin  int    `json:"pointsPerWin"`
+	PointsPerLoss int    `json:"pointsPerLoss"`
 }
 
 func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, string, error) {
@@ -752,16 +754,20 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 	var slug string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
-		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''), COALESCE(slug,'')
+		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
+		       COALESCE(points_per_win,3), COALESCE(points_per_loss,0), COALESCE(slug,'')
 		FROM events WHERE id = ?`, eventID).
-		Scan(&st.Name, &st.Format, &st.DateLabel, &st.Location, &st.StatusLabel, &st.PhaseLabel, &slug)
+		Scan(&st.Name, &st.Format, &st.DateLabel, &st.Location, &st.StatusLabel, &st.PhaseLabel,
+			&st.PointsPerWin, &st.PointsPerLoss, &slug)
 	return &st, slug, err
 }
 
 func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettings) error {
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE events SET name=?, format=?, date_label=?, location=?, status_label=?, phase_label=?
+		UPDATE events SET name=?, format=?, date_label=?, location=?, status_label=?, phase_label=?,
+		                  points_per_win=?, points_per_loss=?
 		WHERE id = ? AND type = 'tournament'`,
-		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel, eventID)
+		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel,
+		st.PointsPerWin, st.PointsPerLoss, eventID)
 	return err
 }

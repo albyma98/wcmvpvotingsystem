@@ -58,7 +58,7 @@ const overview = ref(null)
 const teams = ref([])
 const matches = ref([])
 const sponsors = ref([])
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '' })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', pointsPerWin: 3, pointsPerLoss: 0 })
 const busy = ref('')
 const notice = ref('')
 
@@ -402,6 +402,14 @@ async function saveSettings () {
           <label>Stato (pill) <input v-model="settings.statusLabel" placeholder="TORNEO IN CORSO" /></label>
           <label>Fase (pill) <input v-model="settings.phaseLabel" placeholder="FASE A GIRONI" /></label>
         </div>
+
+        <h3 class="settings-sub">Punti classifica (gironi)</h3>
+        <div class="settings-grid">
+          <label>Punti per vittoria <input type="number" min="0" max="100" v-model.number="settings.pointsPerWin" /></label>
+          <label>Punti per sconfitta <input type="number" min="0" max="100" v-model.number="settings.pointsPerLoss" /></label>
+        </div>
+        <p class="hint">Assegnati a ogni squadra per ogni partita di girone conclusa. La classifica ordina per punti totali, poi quoziente set e quoziente punti. La fase finale (tabellone) non è influenzata.</p>
+
         <button :disabled="busy === 'settings'" @click="saveSettings">{{ busy === 'settings' ? 'Salvo…' : 'Salva' }}</button>
         <p class="hint">Stato e fase sono le due pill nell'hero dei tifosi: cambiale quando avanzi il torneo (es. «FASE FINALE»).</p>
       </section>
@@ -458,6 +466,7 @@ textarea { width: 100%; font-family: inherit; }
 .ghost { background: transparent; border: 1px solid rgba(255,255,255,.2); color: #cbd5e1; border-radius: 7px; padding: 6px 12px; }
 .start { background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 800; }
 .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 4px; vertical-align: -2px; margin-left: 4px; }
+.settings-sub { margin: 18px 0 8px; font-size: 13px; font-weight: 800; letter-spacing: .3px; color: #f2b928; }
 .logo-row { align-items: center; }
 .logo-pick { background: #23232c; border: 1px dashed rgba(255,255,255,.25); border-radius: 8px; padding: 9px 14px; color: #e2e8f0; font-size: 13px; font-weight: 700; cursor: pointer; }
 .logo-pick:hover { border-color: #f2b928; }
