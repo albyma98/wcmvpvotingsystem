@@ -61,7 +61,8 @@ const teams = ref([])
 const matches = ref([])
 const sponsors = ref([])
 const gallery = ref([])
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0 })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, bracketQualifiers: 2, bracketThirdPlace: false })
+const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
 
@@ -140,6 +141,7 @@ async function score (matchId, action) {
   } else {
     const err = (await r.json().catch(() => ({}))).error
     if (err === 'set_tied') flash('Il set non può chiudersi in parità.')
+    else if (err === 'teams_not_ready') flash('Squadre non ancora definite: attendi l\'esito del turno precedente.')
   }
 }
 
@@ -238,6 +240,42 @@ async function saveSettings () {
   const r = await j('PUT', '/settings', { ...settings })
   busy.value = ''
   if (r.ok) flash('Impostazioni salvate — visibili ai tifosi al prossimo refresh.')
+}
+
+// ---------- fase finale ----------
+const bracketErrors = {
+  groups_not_finished: 'Prima concludi tutte le partite dei gironi.',
+  no_group_matches: 'Non ci sono partite di girone concluse.',
+  no_groups: 'Nessun girone trovato.',
+  not_enough_teams: 'Un girone ha meno squadre delle qualificate impostate.'
+}
+async function generateBracket () {
+  const nGroups = new Set(teams.value.map(t => t.groupName || '')).size
+  const q = settings.bracketQualifiers * nGroups
+  const isPow2 = q >= 2 && (q & (q - 1)) === 0
+  const msg = isPow2
+    ? `Genero il tabellone con ${q} squadre qualificate. ATTENZIONE: sostituisce l'eventuale tabellone esistente (punteggi della fase finale persi). Procedere?`
+    : `Con ${settings.bracketQualifiers} qualificate × ${nGroups} gironi = ${q} squadre: non è una potenza di 2 (servono 2, 4, 8, 16). Sistema gironi/qualificate. Provo comunque?`
+  if (!window.confirm(msg)) return
+  generatingBracket.value = true
+  try {
+    await j('PUT', '/settings', { ...settings }) // persisti qualificate/finalina prima di generare
+    const r = await j('POST', '/bracket/generate')
+    const data = await r.json().catch(() => ({}))
+    if (!r.ok) {
+      if (data.error?.startsWith('not_power_of_two')) {
+        flash(`Le squadre qualificate (${data.error.split(':')[1]}) devono essere una potenza di 2 (2/4/8/16).`)
+      } else {
+        flash(bracketErrors[data.error] || 'Generazione tabellone non riuscita.')
+      }
+      return
+    }
+    await loadMatches()
+    tab.value = 'matches'
+    flash(`Tabellone generato: ${data.created} partite.`)
+  } finally {
+    generatingBracket.value = false
+  }
 }
 </script>
 
@@ -439,7 +477,21 @@ async function saveSettings () {
         </div>
         <p class="hint">Assegnati a ogni squadra per ogni partita di girone conclusa. Il pareggio scatta quando la partita finisce con set pari (dove il formato lo prevede). La classifica ordina per punti totali, poi quoziente set e quoziente punti. La fase finale (tabellone) non è influenzata.</p>
 
-        <button :disabled="busy === 'settings'" @click="saveSettings">{{ busy === 'settings' ? 'Salvo…' : 'Salva' }}</button>
+        <h3 class="settings-sub">Fase finale (tabellone)</h3>
+        <div class="settings-grid">
+          <label>Qualificate per girone <input type="number" min="1" max="8" v-model.number="settings.bracketQualifiers" /></label>
+          <label class="check">
+            <input type="checkbox" v-model="settings.bracketThirdPlace" />
+            <span>Finale 3°/4° posto</span>
+          </label>
+        </div>
+        <p class="hint">A gironi conclusi, «Genera tabellone» crea in automatico gli incroci di quarti/semifinali/finale: primo turno con le squadre reali, i turni dopo con segnaposto («Vincente Q1») che si riempiono da soli man mano che le partite finiscono. Le squadre totali qualificate devono essere una potenza di 2 (2/4/8/16).</p>
+        <div class="bracket-actions">
+          <button :disabled="busy === 'settings'" @click="saveSettings">{{ busy === 'settings' ? 'Salvo…' : 'Salva impostazioni' }}</button>
+          <button class="gen" :disabled="generatingBracket" @click="generateBracket">
+            {{ generatingBracket ? 'Genero…' : '⚡ Genera tabellone' }}
+          </button>
+        </div>
         <p class="hint">Stato e fase sono le due pill nell'hero dei tifosi: cambiale quando avanzi il torneo (es. «FASE FINALE»).</p>
       </section>
     </template>
@@ -496,6 +548,11 @@ textarea { width: 100%; font-family: inherit; }
 .start { background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 800; }
 .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 4px; vertical-align: -2px; margin-left: 4px; }
 .settings-sub { margin: 18px 0 8px; font-size: 13px; font-weight: 800; letter-spacing: .3px; color: #f2b928; }
+.settings-grid label.check { flex-direction: row; align-items: center; gap: 8px; }
+.settings-grid label.check input { width: 20px; height: 20px; flex: none; }
+.bracket-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.bracket-actions .gen { background: linear-gradient(135deg, #FFD23F, #FF7A18); color: #14110A; font-weight: 900; }
+.bracket-actions .gen:disabled { opacity: .7; }
 .mod-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .mod-cell { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #15151b; }
 .mod-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }

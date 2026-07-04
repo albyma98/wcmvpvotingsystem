@@ -55,14 +55,24 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		!strings.Contains(err.Error(), "duplicate column") {
 		return fmt.Errorf("matches stage: %w", err)
 	}
-	// Punti classifica gironi, configurabili dal pannello (default: 3 a vittoria).
+	// Config gironi/bracket sull'evento + colonne bracket sulle partite (segnaposto
+	// "Vincente QF1" quando la squadra non è ancora nota, e link di avanzamento
+	// vincitore/perdente al turno successivo). Tutte idempotenti.
 	for _, alter := range []string{
 		`ALTER TABLE events ADD COLUMN points_per_win INTEGER NOT NULL DEFAULT 3`,
 		`ALTER TABLE events ADD COLUMN points_per_draw INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN points_per_loss INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE events ADD COLUMN bracket_qualifiers INTEGER NOT NULL DEFAULT 2`,
+		`ALTER TABLE events ADD COLUMN bracket_third_place INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE matches ADD COLUMN team_a_label TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE matches ADD COLUMN team_b_label TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE matches ADD COLUMN win_to_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE matches ADD COLUMN win_to_slot INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE matches ADD COLUMN lose_to_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE matches ADD COLUMN lose_to_slot INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
-			return fmt.Errorf("events points ensure (%s): %w", alter, err)
+			return fmt.Errorf("events/matches bracket ensure (%s): %w", alter, err)
 		}
 	}
 	stmts := []string{
@@ -111,11 +121,12 @@ func (s *Store) ListPublicMatches(ctx context.Context, slug string) ([]PublicMat
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id, m.court, m.scheduled_time, m.status, COALESCE(m.stage,''),
 		       COALESCE(ta.group_name,''), m.set_label, m.score_a, m.score_b, m.sets_json,
-		       ta.name, tb.name
+		       COALESCE(NULLIF(ta.name,''), m.team_a_label, ''),
+		       COALESCE(NULLIF(tb.name,''), m.team_b_label, '')
 		FROM matches m
 		JOIN events e ON e.id = m.event_id AND e.slug = ? AND e.type = 'tournament'
-		JOIN tournament_teams ta ON ta.id = m.team_a_id
-		JOIN tournament_teams tb ON tb.id = m.team_b_id
+		LEFT JOIN tournament_teams ta ON ta.id = m.team_a_id
+		LEFT JOIN tournament_teams tb ON tb.id = m.team_b_id
 		ORDER BY m.scheduled_at, m.court`, slug)
 	if err != nil {
 		return nil, err

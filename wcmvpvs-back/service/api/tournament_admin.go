@@ -59,6 +59,7 @@ func registerTournamentAdminRoutes(rt *_router) {
 	rt.router.Delete("/v1/ta/{slug}/sponsors/{id}", rt.wrapTA(rt.taDeleteSponsor))
 	rt.router.Get("/v1/ta/{slug}/settings", rt.wrapTA(rt.taGetSettings))
 	rt.router.Put("/v1/ta/{slug}/settings", rt.wrapTA(rt.taUpdateSettings))
+	rt.router.Post("/v1/ta/{slug}/bracket/generate", rt.wrapTA(rt.taGenerateBracket))
 }
 
 // ============================== MASTER ======================================
@@ -439,7 +440,7 @@ func (rt *_router) taScoreAction(w http.ResponseWriter, r *http.Request, eventID
 	case errors.Is(err, errTANotFound):
 		http.Error(w, `{"error":"match_not_found"}`, http.StatusNotFound)
 		return
-	case err != nil && (err.Error() == "set_tied" || err.Error() == "unknown_action"):
+	case err != nil && (err.Error() == "set_tied" || err.Error() == "unknown_action" || err.Error() == "teams_not_ready"):
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
 		return
 	case err != nil:
@@ -558,6 +559,7 @@ func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, even
 	st.PointsPerWin = clampInt(st.PointsPerWin, 0, 100)
 	st.PointsPerDraw = clampInt(st.PointsPerDraw, 0, 100)
 	st.PointsPerLoss = clampInt(st.PointsPerLoss, 0, 100)
+	st.BracketQualifiers = clampInt(st.BracketQualifiers, 1, 8)
 	if err := rt.store.UpdateTASettings(r.Context(), eventID, st); err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return

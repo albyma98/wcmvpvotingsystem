@@ -51,7 +51,9 @@
       "Bash(ls wcmvpvs-back/vendor/github.com/gorilla)",
       "Bash(ls wcmvpvs-back/vendor/nhooyr.io)",
       "Bash(ls wcmvpvs-back/vendor/github.com/coder)",
-      "Bash(go run *)"
+      "Bash(go run *)",
+      "Bash(mkdir -p \"C:/Users/Alberto/AppData/Local/Temp/claude/c--Users-Alberto-Desktop-wcmvpvotingsystem/386d2352-134f-4eb8-ae84-56a73155d34e/scratchpad/brtest\")",
+      "Bash(printf 'module brtest\\\\ngo 1.21\\\\nrequire modernc.org/sqlite v1.34.1\\\\n')"
     ]
   }
 }

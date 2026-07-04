@@ -569,10 +569,12 @@ func (s *Store) ListTAMatches(ctx context.Context, eventID int64) ([]TAMatch, er
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id, m.court, COALESCE(m.stage,''), m.scheduled_time, m.status, m.set_label,
 		       m.score_a, m.score_b, m.cur_a, m.cur_b, m.sets_json,
-		       m.team_a_id, m.team_b_id, ta.name, tb.name
+		       m.team_a_id, m.team_b_id,
+		       COALESCE(NULLIF(ta.name,''), m.team_a_label, ''),
+		       COALESCE(NULLIF(tb.name,''), m.team_b_label, '')
 		FROM matches m
-		JOIN tournament_teams ta ON ta.id = m.team_a_id
-		JOIN tournament_teams tb ON tb.id = m.team_b_id
+		LEFT JOIN tournament_teams ta ON ta.id = m.team_a_id
+		LEFT JOIN tournament_teams tb ON tb.id = m.team_b_id
 		WHERE m.event_id = ?
 		ORDER BY CASE m.status WHEN 'live' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END,
 		         m.scheduled_at, m.court`, eventID)
@@ -623,12 +625,16 @@ func (s *Store) ApplyScoreAction(ctx context.Context, eventID int64, matchID, ac
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var status, setLabel, setsJSON string
+	var status, setLabel, setsJSON, winToID, loseToID string
 	var scoreA, scoreB, curA, curB int
+	var teamAID, teamBID int64
+	var winToSlot, loseToSlot int
 	err = tx.QueryRowContext(ctx, `
-		SELECT status, set_label, sets_json, score_a, score_b, cur_a, cur_b
+		SELECT status, set_label, sets_json, score_a, score_b, cur_a, cur_b,
+		       team_a_id, team_b_id, win_to_id, win_to_slot, lose_to_id, lose_to_slot
 		FROM matches WHERE id = ? AND event_id = ?`, matchID, eventID).
-		Scan(&status, &setLabel, &setsJSON, &scoreA, &scoreB, &curA, &curB)
+		Scan(&status, &setLabel, &setsJSON, &scoreA, &scoreB, &curA, &curB,
+			&teamAID, &teamBID, &winToID, &winToSlot, &loseToID, &loseToSlot)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errTANotFound
 	}
@@ -639,6 +645,11 @@ func (s *Store) ApplyScoreAction(ctx context.Context, eventID int64, matchID, ac
 
 	switch action {
 	case "start":
+		// Una partita del tabellone non parte finché entrambe le squadre non
+		// sono note (arrivano dai turni precedenti via auto-avanzamento).
+		if teamAID == 0 || teamBID == 0 {
+			return fmt.Errorf("teams_not_ready")
+		}
 		status, setLabel, curA, curB = "live", "1° SET", 0, 0
 	case "point_a":
 		curA++
@@ -682,7 +693,39 @@ func (s *Store) ApplyScoreAction(ctx context.Context, eventID int64, matchID, ac
 		status, setLabel, string(encoded), scoreA, scoreB, curA, curB, matchID, eventID); err != nil {
 		return err
 	}
+
+	// Auto-avanzamento: alla chiusura di una partita del tabellone, il vincitore
+	// (e, se c'è finalina, il perdente) riempie lo slot del turno successivo.
+	if action == "finish" && scoreA != scoreB {
+		winner, loser := teamAID, teamBID
+		if scoreB > scoreA {
+			winner, loser = teamBID, teamAID
+		}
+		if winToID != "" && winner != 0 {
+			if err := advanceTeam(ctx, tx, eventID, winToID, winToSlot, winner); err != nil {
+				return err
+			}
+		}
+		if loseToID != "" && loser != 0 {
+			if err := advanceTeam(ctx, tx, eventID, loseToID, loseToSlot, loser); err != nil {
+				return err
+			}
+		}
+	}
 	return tx.Commit()
+}
+
+// advanceTeam scrive la squadra nello slot (0=A, 1=B) della partita target e
+// azzera l'etichetta segnaposto corrispondente. Nomi colonna fissi (non input).
+func advanceTeam(ctx context.Context, tx *sql.Tx, eventID int64, targetID string, slot int, teamID int64) error {
+	col, labelCol := "team_a_id", "team_a_label"
+	if slot == 1 {
+		col, labelCol = "team_b_id", "team_b_label"
+	}
+	_, err := tx.ExecContext(ctx,
+		`UPDATE matches SET `+col+` = ?, `+labelCol+` = '' WHERE id = ? AND event_id = ?`,
+		teamID, targetID, eventID)
+	return err
 }
 
 // --- Sponsor ----------------------------------------------------------------------
@@ -748,27 +791,40 @@ type TASettings struct {
 	PointsPerWin  int    `json:"pointsPerWin"`
 	PointsPerDraw int    `json:"pointsPerDraw"`
 	PointsPerLoss int    `json:"pointsPerLoss"`
+	// Fase finale: quante squadre passano per girone + finalina 3°/4° posto.
+	BracketQualifiers int  `json:"bracketQualifiers"`
+	BracketThirdPlace bool `json:"bracketThirdPlace"`
 }
 
 func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, string, error) {
 	var st TASettings
 	var slug string
+	var thirdPlace int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
 		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
-		       COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0), COALESCE(slug,'')
+		       COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0),
+		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0), COALESCE(slug,'')
 		FROM events WHERE id = ?`, eventID).
 		Scan(&st.Name, &st.Format, &st.DateLabel, &st.Location, &st.StatusLabel, &st.PhaseLabel,
-			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss, &slug)
+			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss,
+			&st.BracketQualifiers, &thirdPlace, &slug)
+	st.BracketThirdPlace = thirdPlace == 1
 	return &st, slug, err
 }
 
 func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettings) error {
+	thirdPlace := 0
+	if st.BracketThirdPlace {
+		thirdPlace = 1
+	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE events SET name=?, format=?, date_label=?, location=?, status_label=?, phase_label=?,
-		                  points_per_win=?, points_per_draw=?, points_per_loss=?
+		                  points_per_win=?, points_per_draw=?, points_per_loss=?,
+		                  bracket_qualifiers=?, bracket_third_place=?
 		WHERE id = ? AND type = 'tournament'`,
 		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel,
-		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss, eventID)
+		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss,
+		st.BracketQualifiers, thirdPlace, eventID)
 	return err
 }
