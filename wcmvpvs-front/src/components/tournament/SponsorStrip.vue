@@ -75,7 +75,8 @@ const marqueeTrack = computed(() => [...partnerSponsors.value, ...partnerSponsor
    stretchati per occupare la cella. I partner sono omessi (v-if sopra). --- */
 .sponsor-block.has-main {
   display: flex; flex-direction: column;
-  flex: 1 1 0; min-height: 0;   /* nel column di .tm-wrap: si prende lo spazio disponibile */
+  flex: none;                          /* niente crescita: altezza fissa, non si prende il fold */
+  height: clamp(100px, 22dvh, 200px);  /* altezza max relativa al display, con cap */
 }
 .has-main .sponsor-main {
   flex: 1; min-height: 0; align-items: stretch;
