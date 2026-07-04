@@ -138,11 +138,56 @@ onMounted(() => {
 onUnmounted(() => clearInterval(timer))
 
 // ---------- sponsor ----------
-const newSponsor = reactive({ name: '', tier: 'partner', url: '', brandColor: '' })
+const newSponsor = reactive({ name: '', tier: 'partner', url: '', brandColor: '', logoUrl: '' })
+const logoBusy = ref(false)
+
+// Ridimensiona l'immagine lato client (lato lungo max `maxSize`) e la converte
+// in data-URL: il logo viaggia inline nel JSON e finisce così in logo_url, senza
+// dipendere da uno storage su disco. WebP quando supportato, PNG di fallback:
+// entrambi preservano la trasparenza tipica dei loghi.
+function fileToLogoDataURL (file, maxSize = 400) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    const img = new Image()
+    reader.onload = () => { img.src = reader.result }
+    reader.onerror = () => reject(new Error('read'))
+    img.onerror = () => reject(new Error('decode'))
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
+      const w = Math.max(1, Math.round(img.width * scale))
+      const h = Math.max(1, Math.round(img.height * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+      let out = canvas.toDataURL('image/webp', 0.85)
+      if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/png')
+      resolve(out)
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+async function onLogoPick (e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) { flash('Seleziona un file immagine.'); e.target.value = ''; return }
+  logoBusy.value = true
+  try {
+    newSponsor.logoUrl = await fileToLogoDataURL(file, 400)
+  } catch { flash('Immagine non valida.') }
+  finally { logoBusy.value = false; e.target.value = '' }
+}
+
 async function createSponsor () {
   if (!newSponsor.name.trim()) return
   const r = await j('POST', '/sponsors', { ...newSponsor })
-  if (r.ok) { newSponsor.name = ''; newSponsor.url = ''; newSponsor.brandColor = ''; await loadSponsors(); flash('Sponsor aggiunto.') }
+  if (r.ok) {
+    newSponsor.name = ''; newSponsor.url = ''; newSponsor.brandColor = ''; newSponsor.logoUrl = ''
+    await loadSponsors(); flash('Sponsor aggiunto.')
+  } else {
+    const err = (await r.json().catch(() => ({}))).error
+    flash(err === 'logo_too_large' ? 'Logo troppo pesante.' : err && err.startsWith('logo') ? 'Logo non valido.' : 'Aggiunta non riuscita.')
+  }
 }
 async function deleteSponsor (id) {
   const r = await j('DELETE', `/sponsors/${id}`)
@@ -322,11 +367,26 @@ async function saveSettings () {
           <input v-model="newSponsor.name" placeholder="Nome sponsor" />
           <select v-model="newSponsor.tier"><option value="main">Main</option><option value="partner">Partner</option></select>
           <input v-model="newSponsor.brandColor" placeholder="#FF6B1A" style="max-width:110px" />
-          <input v-model="newSponsor.url" placeholder="https://…" />
+          <input v-model="newSponsor.url" placeholder="Sito: https://…" />
           <button @click="createSponsor">Aggiungi</button>
         </div>
+        <div class="form-row logo-row">
+          <label class="logo-pick">
+            {{ logoBusy ? 'Carico…' : 'Logo (immagine)' }}
+            <input type="file" accept="image/*" @change="onLogoPick" :disabled="logoBusy" hidden />
+          </label>
+          <div v-if="newSponsor.logoUrl" class="logo-preview">
+            <img :src="newSponsor.logoUrl" alt="anteprima logo" />
+            <button class="danger" @click="newSponsor.logoUrl = ''">Togli logo</button>
+          </div>
+          <span v-else class="hint">Facoltativo — PNG/JPG/WebP, ridimensionato in automatico.</span>
+        </div>
         <div v-for="s in sponsors" :key="s.id" class="row-match">
-          <span><b>{{ s.name }}</b> <small>[{{ s.tier }}]</small> <span v-if="s.brandColor" class="swatch" :style="{ background: s.brandColor }"></span></span>
+          <span class="sponsor-line">
+            <img v-if="s.logoUrl" :src="s.logoUrl" :alt="s.name" class="logo-thumb" />
+            <b>{{ s.name }}</b> <small>[{{ s.tier }}]</small>
+            <span v-if="s.brandColor" class="swatch" :style="{ background: s.brandColor }"></span>
+          </span>
           <button class="danger" @click="deleteSponsor(s.id)">Rimuovi</button>
         </div>
         <p class="hint">I «main» vanno nella riga grande fissa, i «partner» nel marquee che scorre.</p>
@@ -398,6 +458,14 @@ textarea { width: 100%; font-family: inherit; }
 .ghost { background: transparent; border: 1px solid rgba(255,255,255,.2); color: #cbd5e1; border-radius: 7px; padding: 6px 12px; }
 .start { background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 800; }
 .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 4px; vertical-align: -2px; margin-left: 4px; }
+.logo-row { align-items: center; }
+.logo-pick { background: #23232c; border: 1px dashed rgba(255,255,255,.25); border-radius: 8px; padding: 9px 14px; color: #e2e8f0; font-size: 13px; font-weight: 700; cursor: pointer; }
+.logo-pick:hover { border-color: #f2b928; }
+.logo-preview { display: flex; align-items: center; gap: 10px; }
+.logo-preview img { height: 40px; width: auto; max-width: 120px; object-fit: contain; background: #fff; border-radius: 6px; padding: 3px; }
+.logo-preview .danger { font-size: 12px; padding: 6px 10px; }
+.sponsor-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.logo-thumb { height: 26px; width: auto; max-width: 70px; object-fit: contain; background: #fff; border-radius: 5px; padding: 2px; flex: none; }
 /* --- console scoring: pulsanti da pollice, sole in faccia --- */
 .score-card { background: linear-gradient(180deg, rgba(139,32,38,.4), #15151b 60%); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 12px; }
 .sc-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #fca5a5; margin-bottom: 8px; }

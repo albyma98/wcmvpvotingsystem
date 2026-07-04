@@ -461,17 +461,61 @@ func (rt *_router) taListSponsors(w http.ResponseWriter, r *http.Request, eventI
 	writeJSON(w, http.StatusOK, map[string]interface{}{"sponsors": sponsors})
 }
 
+// maxSponsorLogoBytes limita la data-URL del logo sponsor (~500KB di immagine
+// dopo l'inflazione base64). Il pannello ridimensiona già a 400px lato client:
+// il cap è una difesa server-side contro payload fuori scala.
+const maxSponsorLogoBytes = 700 * 1024
+
+var allowedLogoDataPrefixes = []string{
+	"data:image/png", "data:image/jpeg", "data:image/jpg", "data:image/webp", "data:image/gif",
+}
+
+// sanitizeSponsorLogo valida il logo: accetta un URL http(s) o path assoluto
+// (link a immagine esterna) oppure una data-URL immagine (upload salvato inline,
+// nessuna dipendenza da storage su disco). Rifiuta data-URL non-immagine o
+// troppo pesanti e schemi non previsti (es. javascript:, data:text/html).
+func sanitizeSponsorLogo(raw string) (string, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(s, "data:") {
+		if len(s) > maxSponsorLogoBytes {
+			return "", fmt.Errorf("logo_too_large")
+		}
+		lower := strings.ToLower(s)
+		for _, p := range allowedLogoDataPrefixes {
+			if strings.HasPrefix(lower, p) {
+				return s, nil
+			}
+		}
+		return "", fmt.Errorf("logo_bad_type")
+	}
+	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "/") {
+		return s, nil
+	}
+	return "", fmt.Errorf("logo_bad_url")
+}
+
 func (rt *_router) taCreateSponsor(w http.ResponseWriter, r *http.Request, eventID int64) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxSponsorLogoBytes+4096)
 	var sp TASponsor
 	if err := json.NewDecoder(r.Body).Decode(&sp); err != nil || strings.TrimSpace(sp.Name) == "" {
 		http.Error(w, `{"error":"bad_input"}`, http.StatusBadRequest)
 		return
 	}
+	logo, err := sanitizeSponsorLogo(sp.LogoURL)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+	sp.LogoURL = logo
 	id, err := rt.store.CreateTASponsor(r.Context(), eventID, sp)
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
+	rt.invalidateTournamentCaches(r, eventID)
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": id})
 }
 
@@ -481,6 +525,7 @@ func (rt *_router) taDeleteSponsor(w http.ResponseWriter, r *http.Request, event
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
+	rt.invalidateTournamentCaches(r, eventID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
