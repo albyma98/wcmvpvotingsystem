@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
   sponsors: { type: Array, default: () => [] }
@@ -12,6 +12,39 @@ const partnerSponsors = computed(() =>
 
 // Track duplicato per loop marquee senza salti
 const marqueeTrack = computed(() => [...partnerSponsors.value, ...partnerSponsors.value])
+
+// Main sponsor: fino a 3 stanno insieme nel box. Oltre 3 diventa uno slideshow
+// a loop, pagine da 3, così ogni logo resta grande e leggibile a rotazione.
+const MAIN_PER_SLIDE = 3
+const SLIDE_MS = 4500
+const mainPages = computed(() => {
+  const pages = []
+  for (let i = 0; i < mainSponsors.value.length; i += MAIN_PER_SLIDE) {
+    pages.push(mainSponsors.value.slice(i, i + MAIN_PER_SLIDE))
+  }
+  return pages
+})
+const pageIndex = ref(0)
+const currentPage = computed(
+  () => mainPages.value[pageIndex.value] ?? mainPages.value[0] ?? []
+)
+
+let timer = null
+function stopSlides () { if (timer) { clearInterval(timer); timer = null } }
+function startSlides () {
+  stopSlides()
+  if (mainPages.value.length > 1) {
+    timer = setInterval(() => {
+      pageIndex.value = (pageIndex.value + 1) % mainPages.value.length
+    }, SLIDE_MS)
+  }
+}
+// (Ri)avvia quando il numero di pagine cambia; tieni l'indice in range.
+watch(() => mainPages.value.length, (n) => {
+  if (pageIndex.value >= n) pageIndex.value = 0
+  startSlides()
+}, { immediate: true })
+onBeforeUnmount(stopSlides)
 
 /**
  * Inventory a due livelli:
@@ -26,14 +59,18 @@ const marqueeTrack = computed(() => [...partnerSponsors.value, ...partnerSponsor
     <div class="label">Main Sponsor</div>
 
     <div class="sponsor-main" v-if="mainSponsors.length">
-      <component
-        v-for="s in mainSponsors" :key="s.id"
-        :is="s.url ? 'a' : 'span'" :href="s.url" target="_blank" rel="noopener"
-        class="sp-main-item"
-      >
-        <img v-if="s.logo" :src="s.logo" :alt="s.name" loading="lazy" />
-        <span v-else class="sp-text">{{ s.name }}</span>
-      </component>
+      <Transition name="sp-fade" mode="out-in">
+        <div class="sp-page" :key="pageIndex">
+          <component
+            v-for="s in currentPage" :key="s.id"
+            :is="s.url ? 'a' : 'span'" :href="s.url" target="_blank" rel="noopener"
+            class="sp-main-item"
+          >
+            <img v-if="s.logo" :src="s.logo" :alt="s.name" loading="lazy" />
+            <span v-else class="sp-text">{{ s.name }}</span>
+          </component>
+        </div>
+      </Transition>
     </div>
 
     <!-- Partner nascosti quando ci sono main sponsor: lo spazio va ai loghi main. -->
@@ -82,10 +119,19 @@ const marqueeTrack = computed(() => [...partnerSponsors.value, ...partnerSponsor
 .has-main .label { display: none; }    /* via la scritta: tutto lo spazio ai loghi */
 .has-main .sponsor-main {
   flex: 1; min-height: 0; align-items: stretch;
-  gap: clamp(6px,2vw,14px);
   margin-top: 0; padding: 0;           /* i loghi arrivano ai bordi del box */
 }
+.has-main .sp-page {
+  flex: 1; min-width: 0; display: flex; align-items: stretch;
+  justify-content: center; gap: clamp(6px,2vw,14px);
+}
 .has-main .sp-main-item { flex: 1 1 0; min-width: 0; align-items: stretch; }
+/* Slideshow main sponsor: dissolvenza tra le pagine */
+.sp-fade-enter-active, .sp-fade-leave-active { transition: opacity .45s ease; }
+.sp-fade-enter-from, .sp-fade-leave-to { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .sp-fade-enter-active, .sp-fade-leave-active { transition: none; }
+}
 .has-main .sponsor-main img {
   width: 100%; height: 100%; object-fit: fill; border-radius: 10px;
 }
