@@ -34,9 +34,13 @@ function onTile (tile) {
     <TournamentHero v-if="tournament" :tournament="tournament" />
 
     <div class="tm-wrap" v-if="!loading">
-      <LiveMatchCarousel :matches="liveMatches" />
-      <NextMatchCard v-if="nextMatch" :match="nextMatch" />
-      <TournamentTileGrid :tiles="tiles" @select="onTile" />
+      <!-- Gruppo superiore: distribuisce lo spazio residuo. -->
+      <div class="tm-main">
+        <LiveMatchCarousel :matches="liveMatches" />
+        <NextMatchCard v-if="nextMatch" :match="nextMatch" />
+        <TournamentTileGrid :tiles="tiles" @select="onTile" />
+      </div>
+      <!-- Sponsor: ancorata alla fine dell'above-the-fold. -->
       <SponsorStrip :sponsors="sponsors" />
     </div>
 
@@ -65,14 +69,23 @@ function onTile (tile) {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-evenly;
   padding: 0 14px calc(8px + env(safe-area-inset-bottom));
   gap: clamp(6px, 1dvh, 12px);
 }
-/* Anti-overlap: i figli non devono MAI restringersi sotto la loro altezza
-   naturale. Se il totale supera lo spazio, meglio un taglio pulito in fondo
-   che contenuti sovrapposti (il bug visto su Safari iOS). */
-.tm-wrap > * { flex-shrink: 0; }
+/* Gruppo superiore: assorbe tutto lo spazio residuo e distribuisce le sezioni,
+   così la sponsor box (flex:none) resta ancorata al bordo inferiore del fold.
+   overflow:hidden → su schermi bassi taglia pulito qui senza invadere la box. */
+.tm-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: clamp(6px, 1dvh, 12px);
+  overflow: hidden;
+}
+/* Anti-overlap: le sezioni non si restringono sotto la loro altezza naturale. */
+.tm-main > * { flex-shrink: 0; }
 .tm-loading {
   flex: 1;
   display: grid;
