@@ -36,20 +36,46 @@ func registerTournamentGalleryRoutes(rt *_router) {
 	rt.router.Delete("/v1/ta/{slug}/gallery/{id}", rt.wrapTA(rt.galleryAdminDelete))
 }
 
-// EnsureTournamentGalleryTables crea la tabella gallery (idempotente).
+// EnsureTournamentGalleryTables crea/riconcilia la tabella gallery (idempotente).
+// I DB predatanti il modello "torneo = event" hanno una `tournament_gallery`
+// legacy (colonna `tournament_id NOT NULL`, niente `event_id`/`path`) dalla
+// vecchia feature tornei: CREATE IF NOT EXISTS la lascerebbe com'è e gli INSERT
+// event-based fallirebbero. Come per teams/sponsors: reconcile + ALTER idempotenti.
 func (s *Store) EnsureTournamentGalleryTables() error {
-	_, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS tournament_gallery (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			event_id INTEGER NOT NULL,
-			path TEXT NOT NULL,
-			content_type TEXT NOT NULL DEFAULT '',
-			device_id TEXT NOT NULL DEFAULT '',
-			approved INTEGER NOT NULL DEFAULT 1,
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
-		);`)
-	if err != nil {
+	const createSQL = `CREATE TABLE tournament_gallery (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		event_id INTEGER NOT NULL,
+		path TEXT NOT NULL DEFAULT '',
+		content_type TEXT NOT NULL DEFAULT '',
+		device_id TEXT NOT NULL DEFAULT '',
+		approved INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS tournament_gallery (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		event_id INTEGER NOT NULL,
+		path TEXT NOT NULL DEFAULT '',
+		content_type TEXT NOT NULL DEFAULT '',
+		device_id TEXT NOT NULL DEFAULT '',
+		approved INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`); err != nil {
 		return fmt.Errorf("tournament gallery table: %w", err)
+	}
+	if err := s.reconcileTournamentTable("tournament_gallery", createSQL,
+		[]string{"id", "event_id", "path", "content_type", "device_id", "approved", "created_at"}); err != nil {
+		return err
+	}
+	// ALTER idempotenti: copre DB con event_id ma colonne mancanti.
+	for _, alter := range []string{
+		`ALTER TABLE tournament_gallery ADD COLUMN path TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_gallery ADD COLUMN content_type TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_gallery ADD COLUMN device_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_gallery ADD COLUMN approved INTEGER NOT NULL DEFAULT 1`,
+	} {
+		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("gallery column ensure (%s): %w", alter, err)
+		}
 	}
 	return nil
 }
@@ -182,6 +208,7 @@ func (rt *_router) galleryUpload(w http.ResponseWriter, r *http.Request) {
 
 	dir, err := galleryEventDir(eventID)
 	if err != nil {
+		rt.baseLogger.WithError(err).Error("gallery: cannot ensure storage dir")
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
@@ -192,12 +219,14 @@ func (rt *_router) galleryUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	fullPath := filepath.Join(dir, base64.RawURLEncoding.EncodeToString(nameBuf)+ext)
 	if err := os.WriteFile(fullPath, data, 0o644); err != nil {
+		rt.baseLogger.WithError(err).Error("gallery: cannot write file")
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
 
 	id, err := rt.store.InsertGalleryPhoto(eventID, fullPath, strings.ToLower(contentType), rt.deviceIDFromRequest(r))
 	if err != nil {
+		rt.baseLogger.WithError(err).WithField("eventID", eventID).Error("gallery: cannot insert photo")
 		_ = os.Remove(fullPath)
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return

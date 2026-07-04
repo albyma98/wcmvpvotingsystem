@@ -50,7 +50,8 @@
       "Bash(npm run *)",
       "Bash(ls wcmvpvs-back/vendor/github.com/gorilla)",
       "Bash(ls wcmvpvs-back/vendor/nhooyr.io)",
-      "Bash(ls wcmvpvs-back/vendor/github.com/coder)"
+      "Bash(ls wcmvpvs-back/vendor/github.com/coder)",
+      "Bash(go run *)"
     ]
   }
 }
