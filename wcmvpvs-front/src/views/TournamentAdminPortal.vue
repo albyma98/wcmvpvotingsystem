@@ -52,6 +52,7 @@ const tabs = [
   { id: 'teams', label: 'Squadre' },
   { id: 'operators', label: 'Operatori' },
   { id: 'sponsors', label: 'Sponsor' },
+  { id: 'gallery', label: 'Gallery' },
   { id: 'settings', label: 'Impostazioni' }
 ]
 
@@ -59,6 +60,7 @@ const overview = ref(null)
 const teams = ref([])
 const matches = ref([])
 const sponsors = ref([])
+const gallery = ref([])
 const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0 })
 const busy = ref('')
 const notice = ref('')
@@ -68,11 +70,22 @@ function flash (msg) { notice.value = msg; setTimeout(() => { if (notice.value =
 async function bootstrap (ov) {
   overview.value = ov
   Object.assign(settings, ov.settings)
-  await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadOperators()])
+  await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadOperators(), loadGallery()])
 }
 async function loadTeams () { const r = await j('GET', '/teams'); if (r.ok) teams.value = (await r.json()).teams }
 async function loadMatches () { const r = await j('GET', '/matches'); if (r.ok) matches.value = (await r.json()).matches }
 async function loadSponsors () { const r = await j('GET', '/sponsors'); if (r.ok) sponsors.value = (await r.json()).sponsors }
+// La lista gallery è l'endpoint pubblico (foto auto-pubblicate); il delete è admin.
+async function loadGallery () {
+  const r = await fetch(`/api/v1/tournaments/${props.slug}/gallery`)
+  if (r.ok) gallery.value = (await r.json()).photos ?? []
+}
+const galleryImg = id => `/api/v1/tournaments/${props.slug}/gallery/${id}/image`
+async function deleteGalleryPhoto (id) {
+  if (!window.confirm('Rimuovere questa foto dalla gallery?')) return
+  const r = await j('DELETE', `/gallery/${id}`)
+  if (r.ok) { await loadGallery(); flash('Foto rimossa.') }
+}
 
 // ---------- squadre ----------
 const newTeam = reactive({ name: '', shortName: '', city: '', groupName: '' })
@@ -135,7 +148,9 @@ async function score (matchId, action) {
 // (es. un operatore segna un punto da un altro campo).
 onMounted(checkAuth)
 useTournamentStream(props.slug, () => {
-  if (authed.value && (tab.value === 'live' || tab.value === 'matches')) loadMatches()
+  if (!authed.value) return
+  if (tab.value === 'live' || tab.value === 'matches') loadMatches()
+  else if (tab.value === 'gallery') loadGallery()
 })
 
 // ---------- sponsor ----------
@@ -393,6 +408,18 @@ async function saveSettings () {
         <p class="hint">I «main» vanno nella riga grande fissa, i «partner» nel marquee che scorre.</p>
       </section>
 
+      <!-- GALLERY (moderazione) -->
+      <section v-else-if="tab === 'gallery'" class="ta-body">
+        <p class="hint">Le foto sono pubblicate dai tifosi e visibili a tutti. Rimuovi qui quelle inappropriate: la rimozione è immediata su ogni dispositivo.</p>
+        <p v-if="!gallery.length" class="hint">Nessuna foto pubblicata dai tifosi al momento.</p>
+        <div v-else class="mod-grid">
+          <div v-for="p in gallery" :key="p.id" class="mod-cell">
+            <img :src="galleryImg(p.id)" alt="Foto tifoso" loading="lazy" />
+            <button class="mod-del" title="Rimuovi" @click="deleteGalleryPhoto(p.id)">🗑</button>
+          </div>
+        </div>
+      </section>
+
       <!-- IMPOSTAZIONI -->
       <section v-else class="ta-body">
         <div class="settings-grid">
@@ -469,6 +496,14 @@ textarea { width: 100%; font-family: inherit; }
 .start { background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 800; }
 .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 4px; vertical-align: -2px; margin-left: 4px; }
 .settings-sub { margin: 18px 0 8px; font-size: 13px; font-weight: 800; letter-spacing: .3px; color: #f2b928; }
+.mod-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mod-cell { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #15151b; }
+.mod-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mod-del {
+  position: absolute; top: 5px; right: 5px; width: 30px; height: 30px; border: none;
+  border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1;
+  background: rgba(220,38,38,.9); color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
 .logo-row { align-items: center; }
 .logo-pick { background: #23232c; border: 1px dashed rgba(255,255,255,.25); border-radius: 8px; padding: 9px 14px; color: #e2e8f0; font-size: 13px; font-weight: 700; cursor: pointer; }
 .logo-pick:hover { border-color: #f2b928; }
