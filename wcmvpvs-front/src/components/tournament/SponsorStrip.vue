@@ -76,7 +76,7 @@ const marqueeTrack = computed(() => [...partnerSponsors.value, ...partnerSponsor
 .sponsor-block.has-main {
   display: flex; flex-direction: column;
   flex: none;                          /* niente crescita: altezza fissa, non si prende il fold */
-  height: clamp(100px, 22dvh, 200px);  /* altezza max relativa al display, con cap */
+  height: clamp(80px, 17.6dvh, 160px); /* altezza max relativa al display, con cap */
   padding: clamp(5px,0.9dvh,8px);      /* box aderente ai loghi: niente padding in eccesso */
 }
 .has-main .label { display: none; }    /* via la scritta: tutto lo spazio ai loghi */
