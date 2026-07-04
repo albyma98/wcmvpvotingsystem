@@ -34,11 +34,14 @@ function onTile (tile) {
     <TournamentHero v-if="tournament" :tournament="tournament" />
 
     <div class="tm-wrap" v-if="!loading">
-      <!-- Gruppo superiore: distribuisce lo spazio residuo. -->
+      <!-- Gruppo superiore: carosello + prossima assorbono lo spazio in alto,
+           le tile restano ancorate appena sopra gli sponsor. -->
       <div class="tm-main">
-        <LiveMatchCarousel :matches="liveMatches" />
-        <NextMatchCard v-if="nextMatch" :match="nextMatch" />
-        <TournamentTileGrid :tiles="tiles" @select="onTile" />
+        <div class="tm-top">
+          <LiveMatchCarousel :matches="liveMatches" />
+          <NextMatchCard v-if="nextMatch" :match="nextMatch" />
+        </div>
+        <TournamentTileGrid class="tm-tiles" :tiles="tiles" @select="onTile" />
       </div>
       <!-- Sponsor: ancorata alla fine dell'above-the-fold. -->
       <SponsorStrip :sponsors="sponsors" />
@@ -80,12 +83,22 @@ function onTile (tile) {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-evenly;
-  gap: clamp(6px, 1dvh, 12px);
+  gap: clamp(8px, 1.4dvh, 16px);
   overflow: hidden;
 }
+/* Carosello + prossima partita: assorbono lo spazio in alto e si distribuiscono. */
+.tm-top {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: clamp(6px, 1dvh, 12px);
+}
 /* Anti-overlap: le sezioni non si restringono sotto la loro altezza naturale. */
-.tm-main > * { flex-shrink: 0; }
+.tm-top > * { flex-shrink: 0; }
+/* Le 8 tile: ancorate appena sopra gli sponsor, mai compresse. */
+.tm-tiles { flex-shrink: 0; }
 .tm-loading {
   flex: 1;
   display: grid;
