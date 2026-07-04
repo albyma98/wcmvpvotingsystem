@@ -77,11 +77,13 @@ const marqueeTrack = computed(() => [...partnerSponsors.value, ...partnerSponsor
   display: flex; flex-direction: column;
   flex: none;                          /* niente crescita: altezza fissa, non si prende il fold */
   height: clamp(100px, 22dvh, 200px);  /* altezza max relativa al display, con cap */
+  padding: clamp(5px,0.9dvh,8px);      /* box aderente ai loghi: niente padding in eccesso */
 }
 .has-main .label { display: none; }    /* via la scritta: tutto lo spazio ai loghi */
 .has-main .sponsor-main {
   flex: 1; min-height: 0; align-items: stretch;
-  gap: clamp(10px,3vw,22px);
+  gap: clamp(6px,2vw,14px);
+  margin-top: 0; padding: 0;           /* i loghi arrivano ai bordi del box */
 }
 .has-main .sp-main-item { flex: 1 1 0; min-width: 0; align-items: stretch; }
 .has-main .sponsor-main img {
