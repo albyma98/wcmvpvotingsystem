@@ -112,13 +112,14 @@ onUnmounted(() => clearInterval(timer))
         <section v-for="g in groups" :key="g.group" class="group-block">
           <h2>{{ g.group ? `Girone ${g.group}` : 'Classifica' }}</h2>
           <table>
-            <thead><tr><th></th><th class="tl">Squadra</th><th>G</th><th>V</th><th>P</th><th>Set</th><th class="pt">Pt</th></tr></thead>
+            <thead><tr><th></th><th class="tl">Squadra</th><th>G</th><th>V</th><th>N</th><th>P</th><th>Set</th><th class="pt">Pt</th></tr></thead>
             <tbody>
               <tr v-for="(row, i) in g.rows" :key="row.teamId" :class="{ top: i < 2 }">
                 <td class="pos">{{ i + 1 }}</td>
                 <td class="tl name">{{ row.team }}</td>
                 <td>{{ row.played }}</td>
                 <td class="w">{{ row.wins }}</td>
+                <td>{{ row.draws }}</td>
                 <td>{{ row.losses }}</td>
                 <td>{{ row.setsWon }}:{{ row.setsLost }}</td>
                 <td class="pt">{{ row.points }}</td>

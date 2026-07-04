@@ -57,6 +57,7 @@ func (s *Store) EnsureTournamentP1Tables() error {
 	// Punti classifica gironi, configurabili dal pannello (default: 3 a vittoria).
 	for _, alter := range []string{
 		`ALTER TABLE events ADD COLUMN points_per_win INTEGER NOT NULL DEFAULT 3`,
+		`ALTER TABLE events ADD COLUMN points_per_draw INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN points_per_loss INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
@@ -158,8 +159,9 @@ type StandingRow struct {
 	Short   string `json:"short,omitempty"`
 	Played  int    `json:"played"`
 	Wins    int    `json:"wins"`
+	Draws   int    `json:"draws"`
 	Losses  int    `json:"losses"`
-	Points  int    `json:"points"` // punti classifica: wins*perWin + losses*perLoss
+	Points  int    `json:"points"` // punti classifica: wins*perWin + draws*perDraw + losses*perLoss
 	SetsW   int    `json:"setsWon"`
 	SetsL   int    `json:"setsLost"`
 	PointsW int    `json:"pointsWon"`
@@ -175,10 +177,10 @@ type StandingsGroup struct {
 // gironi (stage = ''). Ordinamento: punti classifica, quoziente set, quoziente
 // punti. I punti per vittoria/sconfitta sono configurabili dal pannello admin.
 func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsGroup, error) {
-	var perWin, perLoss int
+	var perWin, perDraw, perLoss int
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(points_per_win,3), COALESCE(points_per_loss,0)
-		FROM events WHERE slug = ? AND type = 'tournament'`, slug).Scan(&perWin, &perLoss); err != nil {
+		SELECT COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0)
+		FROM events WHERE slug = ? AND type = 'tournament'`, slug).Scan(&perWin, &perDraw, &perLoss); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errTANotFound
 		}
@@ -235,12 +237,16 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 		a.SetsL += sb
 		b.SetsW += sb
 		b.SetsL += sa
-		if sa > sb {
+		switch {
+		case sa > sb:
 			a.Wins++
 			b.Losses++
-		} else {
+		case sb > sa:
 			b.Wins++
 			a.Losses++
+		default: // sa == sb: pareggio (dove il formato lo prevede)
+			a.Draws++
+			b.Draws++
 		}
 		for _, set := range decodeSets(setsJSON) {
 			parts := strings.SplitN(set, "-", 2)
@@ -261,7 +267,7 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 
 	byGroup := map[string][]StandingRow{}
 	for id, row := range teams {
-		row.Points = row.Wins*perWin + row.Losses*perLoss
+		row.Points = row.Wins*perWin + row.Draws*perDraw + row.Losses*perLoss
 		g := groupOf[id]
 		byGroup[g] = append(byGroup[g], *row)
 	}

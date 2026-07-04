@@ -58,7 +58,7 @@ const overview = ref(null)
 const teams = ref([])
 const matches = ref([])
 const sponsors = ref([])
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', pointsPerWin: 3, pointsPerLoss: 0 })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0 })
 const busy = ref('')
 const notice = ref('')
 
@@ -406,9 +406,10 @@ async function saveSettings () {
         <h3 class="settings-sub">Punti classifica (gironi)</h3>
         <div class="settings-grid">
           <label>Punti per vittoria <input type="number" min="0" max="100" v-model.number="settings.pointsPerWin" /></label>
+          <label>Punti per pareggio <input type="number" min="0" max="100" v-model.number="settings.pointsPerDraw" /></label>
           <label>Punti per sconfitta <input type="number" min="0" max="100" v-model.number="settings.pointsPerLoss" /></label>
         </div>
-        <p class="hint">Assegnati a ogni squadra per ogni partita di girone conclusa. La classifica ordina per punti totali, poi quoziente set e quoziente punti. La fase finale (tabellone) non è influenzata.</p>
+        <p class="hint">Assegnati a ogni squadra per ogni partita di girone conclusa. Il pareggio scatta quando la partita finisce con set pari (dove il formato lo prevede). La classifica ordina per punti totali, poi quoziente set e quoziente punti. La fase finale (tabellone) non è influenzata.</p>
 
         <button :disabled="busy === 'settings'" @click="saveSettings">{{ busy === 'settings' ? 'Salvo…' : 'Salva' }}</button>
         <p class="hint">Stato e fase sono le due pill nell'hero dei tifosi: cambiale quando avanzi il torneo (es. «FASE FINALE»).</p>

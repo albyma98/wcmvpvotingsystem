@@ -556,6 +556,7 @@ func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, even
 	}
 	// Punti classifica: interi non negativi, con un tetto ragionevole.
 	st.PointsPerWin = clampInt(st.PointsPerWin, 0, 100)
+	st.PointsPerDraw = clampInt(st.PointsPerDraw, 0, 100)
 	st.PointsPerLoss = clampInt(st.PointsPerLoss, 0, 100)
 	if err := rt.store.UpdateTASettings(r.Context(), eventID, st); err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
