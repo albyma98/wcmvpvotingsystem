@@ -154,9 +154,11 @@ func New(cfg Config) (Router, error) {
 		tapLive:        newTapLiveManager(),
 		tapLiveRematch: newTapLiveRematchManager(),
 
-		// Tournament Mode: store SQLite (raw *sql.DB condiviso) + cache TTL per il polling /live.
-		store:     NewStore(cfg.Database.SQLConn()),
-		liveCache: NewTTLCache(),
+		// Tournament Mode: store SQLite (raw *sql.DB condiviso) + cache TTL +
+		// hub SSE (push live al posto del polling, keyed per event ID).
+		store:         NewStore(cfg.Database.SQLConn()),
+		liveCache:     NewTTLCache(),
+		tournamentHub: newSSEHub(),
 	}, nil
 }
 
@@ -214,9 +216,10 @@ type _router struct {
 	tapLive        *tapLiveManager
 	tapLiveRematch *tapLiveRematchManager
 
-	// Tournament Mode (modalità torneo): data layer + cache del polling live.
-	store     *Store
-	liveCache *TTLCache
+	// Tournament Mode (modalità torneo): data layer + cache live + hub SSE.
+	store         *Store
+	liveCache     *TTLCache
+	tournamentHub *sseHub
 }
 
 type adminSession struct {

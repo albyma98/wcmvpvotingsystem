@@ -35,14 +35,15 @@ const MOCK = {
 
 
 /**
- * Home torneo: snapshot completo al mount + polling leggero della sola
- * sezione live (score/set) ogni 10s. Nessun websocket: per tornei 24h/weekend
- * il polling è più che sufficiente e azzera complessità infra (Lightsail-friendly).
+ * Home torneo: snapshot completo al mount + aggiornamenti live via SSE (push,
+ * niente polling). Il server notifica sullo stream a ogni scrittura e noi
+ * rifacciamo la sola fetch /live (payload ~1KB).
  *
- * GET /api/v1/tournaments/:slug/home   → snapshot completo
- * GET /api/v1/tournaments/:slug/live   → solo { liveMatches, nextMatch } (payload ~1KB)
+ * GET /api/v1/tournaments/:slug/home    → snapshot completo
+ * GET /api/v1/tournaments/:slug/live    → solo { liveMatches, nextMatch }
+ * GET /api/v1/tournaments/:slug/stream  → SSE: tick a ogni cambiamento
  */
-export function useTournamentHome (slug, { livePollMs = 10000, mock = false } = {}) {
+export function useTournamentHome (slug, { mock = false } = {}) {
   const tournament = ref(null)
   const liveMatches = ref([])
   const nextMatch = ref(null)
@@ -51,7 +52,8 @@ export function useTournamentHome (slug, { livePollMs = 10000, mock = false } = 
   const loading = ref(true)
   const error = ref(null)
 
-  let timer = null
+  let es = null
+  let esOpened = false
   let aborter = null
 
   async function fetchHome () {
@@ -107,12 +109,18 @@ export function useTournamentHome (slug, { livePollMs = 10000, mock = false } = 
 
   onMounted(() => {
     fetchHome()
-    timer = setInterval(pollLive, livePollMs)
+    if (!mock) {
+      try {
+        es = new EventSource(`/api/v1/tournaments/${slug}/stream`, { withCredentials: true })
+        es.addEventListener('update', pollLive)
+        es.addEventListener('open', () => { if (esOpened) pollLive(); esOpened = true })
+      } catch { es = null }
+    }
     document.addEventListener('visibilitychange', onVisibility)
   })
 
   onUnmounted(() => {
-    clearInterval(timer)
+    es?.close()
     aborter?.abort()
     document.removeEventListener('visibilitychange', onVisibility)
   })

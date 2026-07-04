@@ -4,7 +4,8 @@
 // scoping hard sull'evento lato backend.
 // Due anime: SETUP (pre-torneo, con calma) e LIVE (console scoring, mobile,
 // pulsanti grandi, undo sempre visibile).
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useTournamentStream } from '@/composables/useTournamentStream'
 
 const props = defineProps({ slug: { type: String, required: true } })
 
@@ -129,13 +130,13 @@ async function score (matchId, action) {
   }
 }
 
-// Refresh live leggero: la console può restare aperta ore a bordo campo.
-let timer = null
-onMounted(() => {
-  checkAuth()
-  timer = setInterval(() => { if (authed.value && tab.value === 'live' && !document.hidden) loadMatches() }, 15000)
+// Refresh live via SSE (push): la console può restare aperta ore a bordo campo.
+// Aggiorna il calendario partite quando l'admin è sui tab che lo mostrano
+// (es. un operatore segna un punto da un altro campo).
+onMounted(checkAuth)
+useTournamentStream(props.slug, () => {
+  if (authed.value && (tab.value === 'live' || tab.value === 'matches')) loadMatches()
 })
-onUnmounted(() => clearInterval(timer))
 
 // ---------- sponsor ----------
 const newSponsor = reactive({ name: '', tier: 'partner', url: '', brandColor: '', logoUrl: '' })

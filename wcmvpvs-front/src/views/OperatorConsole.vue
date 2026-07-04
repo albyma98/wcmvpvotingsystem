@@ -2,7 +2,8 @@
 // Console operatore campo (/op/:token) — il volontario del Campo 2.
 // Zero account: magic link + PIN a 6 cifre consegnati via WhatsApp dall'admin.
 // Vede e tocca SOLO le partite del suo campo (enforcement lato server).
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useTournamentStream } from '@/composables/useTournamentStream'
 
 const props = defineProps({ token: { type: String, required: true } })
 
@@ -21,6 +22,7 @@ const pin = ref('')
 const pinError = ref('')
 const court = ref('')
 const tournament = ref('')
+const slug = ref('')
 const matches = ref([])
 const notice = ref('')
 
@@ -32,6 +34,7 @@ async function loadState () {
   const data = await r.json()
   court.value = data.court
   tournament.value = data.tournament
+  slug.value = data.slug ?? ''
   matches.value = data.matches
   authed.value = true
   checked.value = true
@@ -60,12 +63,11 @@ const live = computed(() => matches.value.filter(m => m.status === 'live'))
 const scheduled = computed(() => matches.value.filter(m => m.status === 'scheduled'))
 const finished = computed(() => matches.value.filter(m => m.status === 'finished'))
 
-let timer = null
-onMounted(() => {
-  loadState()
-  timer = setInterval(() => { if (authed.value && !document.hidden) loadState() }, 15000)
-})
-onUnmounted(() => clearInterval(timer))
+// Aggiornamenti live via SSE (push): lo slug arriva dopo il login, il composable
+// si aggancia appena disponibile. Le partite di un altro campo o create
+// dall'admin compaiono senza refresh manuale.
+onMounted(loadState)
+useTournamentStream(slug, () => { if (authed.value) loadState() })
 </script>
 
 <template>

@@ -47,7 +47,10 @@
       "Bash(sed -n '/func \\(s \\\\*Store\\) getLiveMatches/,/^}/p' service/api/tournament_store.go)",
       "Bash(sed -n '/func \\(s \\\\*Store\\) getNextMatch/,/^}/p' service/api/tournament_store.go)",
       "Bash(go build *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(ls wcmvpvs-back/vendor/github.com/gorilla)",
+      "Bash(ls wcmvpvs-back/vendor/nhooyr.io)",
+      "Bash(ls wcmvpvs-back/vendor/github.com/coder)"
     ]
   }
 }

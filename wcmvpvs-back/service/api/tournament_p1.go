@@ -36,6 +36,7 @@ func registerTournamentP1Routes(rt *_router) {
 	// Pubblici (tifosi)
 	rt.router.Get("/v1/tournaments/{slug}/matches", rt.HandleTournamentMatches)
 	rt.router.Get("/v1/tournaments/{slug}/standings", rt.HandleTournamentStandings)
+	rt.router.Get("/v1/tournaments/{slug}/stream", rt.getTournamentStream) // SSE: push live
 
 	// Gestione operatori (admin torneo)
 	rt.router.Get("/v1/ta/{slug}/operators", rt.wrapTA(rt.taListOperators))
@@ -314,12 +315,15 @@ func (rt *_router) HandleTournamentStandings(w http.ResponseWriter, r *http.Requ
 }
 
 // invalidateTournamentCaches: dopo ogni scrittura la vista tifosi si aggiorna.
+// Oltre a bucare la cache TTL, notifica via SSE tutti i client connessi allo
+// stream dell'evento (push real-time al posto del polling).
 func (rt *_router) invalidateTournamentCaches(r *http.Request, eventID int64) {
 	if _, slug, err := rt.store.GetTASettings(r.Context(), eventID); err == nil && slug != "" {
 		rt.liveCache.Delete(slug)
 		rt.liveCache.Delete("matches:" + slug)
 		rt.liveCache.Delete("standings:" + slug)
 	}
+	rt.tournamentHub.Broadcast(int(eventID))
 }
 
 // ============================ OPERATORI CAMPO =================================
@@ -528,7 +532,7 @@ func (rt *_router) wrapOp(fn opHandler) http.HandlerFunc {
 }
 
 func (rt *_router) opState(w http.ResponseWriter, r *http.Request, op *opInfo) {
-	settings, _, err := rt.store.GetTASettings(r.Context(), op.EventID)
+	settings, slug, err := rt.store.GetTASettings(r.Context(), op.EventID)
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
@@ -545,7 +549,7 @@ func (rt *_router) opState(w http.ResponseWriter, r *http.Request, op *opInfo) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"tournament": settings.Name, "court": op.Court, "matches": mine,
+		"tournament": settings.Name, "slug": slug, "court": op.Court, "matches": mine,
 	})
 }
 

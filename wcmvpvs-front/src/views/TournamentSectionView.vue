@@ -2,7 +2,8 @@
 // Sezioni fan del torneo — stesse variabili visive della home (dark + gold).
 // Calendario, Classifiche e Tabellone sono dati veri dagli endpoint pubblici;
 // le altre sezioni restano placeholder finché non hanno contenuto (P2/P3).
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useTournamentStream } from '@/composables/useTournamentStream'
 
 const props = defineProps({
   slug: { type: String, required: true },
@@ -62,13 +63,9 @@ const byStage = computed(() => {
 const hasData = computed(() =>
   ['calendar', 'standings', 'bracket'].includes(props.section))
 
-// Le sezioni live si aggiornano da sole ogni 20s
-let timer = null
-onMounted(() => {
-  load()
-  timer = setInterval(() => { if (hasData.value && !document.hidden) load() }, 20000)
-})
-onUnmounted(() => clearInterval(timer))
+// Le sezioni live si aggiornano da sole via SSE (push, niente polling).
+onMounted(load)
+useTournamentStream(props.slug, () => { if (hasData.value) load() })
 </script>
 
 <template>
