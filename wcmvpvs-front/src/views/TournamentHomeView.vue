@@ -73,7 +73,7 @@ function onTile (tile) {
   display: flex;
   flex-direction: column;
   padding: 0 14px calc(8px + env(safe-area-inset-bottom));
-  gap: clamp(6px, 1dvh, 12px);
+  gap: clamp(10px, 1.7dvh, 18px);
 }
 /* Gruppo superiore: assorbe tutto lo spazio residuo e distribuisce le sezioni,
    così la sponsor box (flex:none) resta ancorata al bordo inferiore del fold.
