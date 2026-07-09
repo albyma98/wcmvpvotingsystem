@@ -5,6 +5,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useTournamentStream } from '@/composables/useTournamentStream'
 import TournamentGallery from '@/components/tournament/TournamentGallery.vue'
+import TournamentMvpVote from '@/components/tournament/TournamentMvpVote.vue'
 
 const props = defineProps({
   slug: { type: String, required: true },
@@ -87,6 +88,9 @@ useTournamentStream(props.slug, () => { if (hasData.value) load() })
         v-if="section === 'gallery'"
         :slug="slug" :photos="photos" @uploaded="load"
       />
+
+      <!-- VOTA MVP: componente autonomo (fetch/voto/live via device) -->
+      <TournamentMvpVote v-else-if="section === 'mvp'" :slug="slug" />
 
       <p v-else-if="hasData && loading" class="muted">Caricamento…</p>
       <p v-else-if="hasData && error" class="muted">{{ error }}</p>

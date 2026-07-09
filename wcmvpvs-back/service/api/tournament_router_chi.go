@@ -27,6 +27,10 @@ func registerTournamentRoutes(rt *_router) {
 		panic("tournament gallery tables: " + err.Error())
 	}
 	registerTournamentGalleryRoutes(rt)
+	if err := rt.store.EnsureTournamentMVPTables(); err != nil {
+		panic("tournament mvp tables: " + err.Error())
+	}
+	registerTournamentMVPRoutes(rt)
 
 	// Snapshot completo della home: chiamato una volta al load. Cache-Control 30s.
 	rt.router.Get("/v1/tournaments/{slug}/home", rt.HandleTournamentHome)
@@ -35,9 +39,4 @@ func registerTournamentRoutes(rt *_router) {
 	// Cache in-memory TTL 3s protegge SQLite dal thundering herd.
 	rt.router.Get("/v1/tournaments/{slug}/live", rt.HandleTournamentLive)
 
-	// --- Prossimi endpoint (placeholder — li costruiamo sezione per sezione) ---
-	// rt.router.Get("/v1/tournaments/{slug}/bracket", rt.HandleTournamentBracket)
-	// rt.router.Get("/v1/tournaments/{slug}/calendar", rt.HandleTournamentCalendar)
-	// rt.router.Get("/v1/tournaments/{slug}/standings", rt.HandleTournamentStandings)
-	// rt.router.Post("/v1/tournaments/{slug}/mvp/vote", rt.HandleTournamentMVPVote)
 }
