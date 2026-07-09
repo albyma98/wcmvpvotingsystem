@@ -53,6 +53,7 @@ const tabs = [
   { id: 'operators', label: 'Operatori' },
   { id: 'sponsors', label: 'Sponsor' },
   { id: 'gallery', label: 'Gallery' },
+  { id: 'mvp', label: 'MVP' },
   { id: 'settings', label: 'Impostazioni' }
 ]
 
@@ -61,6 +62,7 @@ const teams = ref([])
 const matches = ref([])
 const sponsors = ref([])
 const gallery = ref([])
+const mvp = ref(null)
 const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
 const generatingBracket = ref(false)
 const busy = ref('')
@@ -71,9 +73,10 @@ function flash (msg) { notice.value = msg; setTimeout(() => { if (notice.value =
 async function bootstrap (ov) {
   overview.value = ov
   Object.assign(settings, ov.settings)
-  await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadOperators(), loadGallery()])
+  await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadOperators(), loadGallery(), loadMvp()])
 }
 async function loadTeams () { const r = await j('GET', '/teams'); if (r.ok) teams.value = (await r.json()).teams }
+async function loadMvp () { const r = await j('GET', '/mvp'); if (r.ok) mvp.value = await r.json() }
 async function loadMatches () { const r = await j('GET', '/matches'); if (r.ok) matches.value = (await r.json()).matches }
 async function loadSponsors () { const r = await j('GET', '/sponsors'); if (r.ok) sponsors.value = (await r.json()).sponsors }
 // La lista gallery è l'endpoint pubblico (foto auto-pubblicate); il delete è admin.
@@ -87,6 +90,30 @@ async function deleteGalleryPhoto (id) {
   const r = await j('DELETE', `/gallery/${id}`)
   if (r.ok) { await loadGallery(); flash('Foto rimossa.') }
 }
+
+// ---------- mvp (monitoraggio votazioni) ----------
+const mvpTotal = computed(() => mvp.value?.totalVotes ?? 0)
+// Squadre ordinate per voti totali della squadra (più votate in cima), con i
+// giocatori ordinati per voti decrescenti. Ogni giocatore porta la % sul totale.
+const mvpTeams = computed(() => {
+  const teams = (mvp.value?.teams ?? []).map(t => {
+    const candidates = [...t.candidates].sort((a, b) => b.votes - a.votes)
+    const teamVotes = candidates.reduce((s, c) => s + c.votes, 0)
+    return { ...t, candidates, teamVotes }
+  })
+  return teams.sort((a, b) => b.teamVotes - a.teamVotes)
+})
+// Giocatore più votato in assoluto (il "leader" della votazione).
+const mvpLeader = computed(() => {
+  let best = null
+  for (const t of mvp.value?.teams ?? []) {
+    for (const c of t.candidates) {
+      if (c.votes > 0 && (!best || c.votes > best.votes)) best = { ...c, team: t.name }
+    }
+  }
+  return best
+})
+const mvpPct = votes => (mvpTotal.value ? Math.round((votes / mvpTotal.value) * 100) : 0)
 
 // ---------- squadre ----------
 const MAX_PLAYERS = 8
@@ -180,6 +207,7 @@ useTournamentStream(props.slug, () => {
   if (!authed.value) return
   if (tab.value === 'live' || tab.value === 'matches') loadMatches()
   else if (tab.value === 'gallery') loadGallery()
+  else if (tab.value === 'mvp') loadMvp()
 })
 
 // ---------- sponsor ----------
@@ -526,6 +554,42 @@ async function generateBracket () {
         </div>
       </section>
 
+      <!-- MVP: monitoraggio votazioni -->
+      <section v-else-if="tab === 'mvp'" class="ta-body">
+        <p class="hint">Andamento in tempo reale della votazione MVP del pubblico. I conteggi si aggiornano da soli man mano che i tifosi votano.</p>
+
+        <div class="mvp-summary">
+          <div class="mvp-stat">
+            <span class="num">{{ mvpTotal }}</span>
+            <span class="lbl">{{ mvpTotal === 1 ? 'voto totale' : 'voti totali' }}</span>
+          </div>
+          <div v-if="mvpLeader" class="mvp-leader">
+            <span class="crown">👑</span>
+            <div>
+              <b>{{ mvpLeader.name }}</b>
+              <small>{{ mvpLeader.team }} · {{ mvpLeader.votes }} voti · {{ mvpPct(mvpLeader.votes) }}%</small>
+            </div>
+          </div>
+        </div>
+
+        <p v-if="!mvpTeams.length" class="hint">Nessuna squadra con giocatori in rosa: aggiungi i giocatori dalla scheda «Squadre» per abilitare la votazione.</p>
+        <p v-else-if="!mvpTotal" class="hint">Ancora nessun voto. Appena i tifosi votano, qui vedrai i risultati per squadra.</p>
+
+        <div class="mvp-a-grid">
+          <section v-for="t in mvpTeams" :key="t.id" class="mvp-a-box">
+            <header class="mab-head">
+              <span class="mab-name">{{ t.name }}</span>
+              <span class="mab-total">{{ t.teamVotes }} <small>voti</small></span>
+            </header>
+            <div v-for="c in t.candidates" :key="c.id" class="mab-row" :class="{ lead: mvpLeader && c.id === mvpLeader.id }">
+              <span class="bar" :style="{ width: mvpPct(c.votes) + '%' }"></span>
+              <span class="mab-player">{{ c.name }}</span>
+              <span class="mab-count">{{ c.votes }} · {{ mvpPct(c.votes) }}%</span>
+            </div>
+          </section>
+        </div>
+      </section>
+
       <!-- IMPOSTAZIONI -->
       <section v-else class="ta-body">
         <div class="settings-grid">
@@ -632,6 +696,28 @@ textarea { width: 100%; font-family: inherit; }
 .roster-editor { background: #101017; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .roster-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px; }
 .chip { background: rgba(242,185,40,.12); border: 1px solid rgba(242,185,40,.3); color: #fbd34d; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; }
+/* MVP admin: monitoraggio votazioni */
+.mvp-summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 8px; }
+.mvp-stat { flex: none; background: #15151b; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 10px 16px; text-align: center; display: flex; flex-direction: column; }
+.mvp-stat .num { font-size: 26px; font-weight: 900; color: #f2b928; line-height: 1; font-variant-numeric: tabular-nums; }
+.mvp-stat .lbl { font-size: 10.5px; letter-spacing: .5px; color: #94a3b8; text-transform: uppercase; margin-top: 4px; }
+.mvp-leader { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 10px; background: linear-gradient(90deg, rgba(242,185,40,.16), rgba(242,185,40,.05)); border: 1px solid rgba(242,185,40,.35); border-radius: 12px; padding: 10px 14px; }
+.mvp-leader .crown { font-size: 24px; }
+.mvp-leader b { display: block; font-size: 15px; font-weight: 900; }
+.mvp-leader small { color: #94a3b8; font-size: 12px; }
+.mvp-a-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.mvp-a-box { background: #15151b; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; overflow: hidden; }
+.mab-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(242,185,40,.06); }
+.mab-name { font-weight: 900; font-size: 13px; text-transform: uppercase; letter-spacing: .3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mab-total { flex: none; color: #f2b928; font-weight: 800; font-size: 13px; font-variant-numeric: tabular-nums; }
+.mab-total small { color: #94a3b8; font-weight: 600; font-size: 10px; }
+.mab-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.04); overflow: hidden; }
+.mab-row:last-child { border-bottom: none; }
+.mab-row .bar { position: absolute; left: 0; top: 0; bottom: 0; z-index: 0; background: rgba(242,185,40,.12); transition: width .5s cubic-bezier(.22,1,.36,1); }
+.mab-row.lead .bar { background: rgba(242,185,40,.24); }
+.mab-player { position: relative; z-index: 1; font-size: 13.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mab-row.lead .mab-player { color: #ffe08a; }
+.mab-count { position: relative; z-index: 1; flex: none; font-size: 11.5px; font-weight: 800; color: #cbd5e1; font-variant-numeric: tabular-nums; }
 .row-match { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #15151b; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; }
 .row-match.done { opacity: .75; }
 .row-match small { color: #94a3b8; }

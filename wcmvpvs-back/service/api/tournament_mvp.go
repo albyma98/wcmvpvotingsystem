@@ -23,6 +23,8 @@ import (
 func registerTournamentMVPRoutes(rt *_router) {
 	rt.router.Get("/v1/tournaments/{slug}/mvp", rt.HandleTournamentMVP)
 	rt.router.Post("/v1/tournaments/{slug}/mvp/vote", rt.HandleTournamentMVPVote)
+	// Admin torneo: monitoraggio risultati votazione (scoping via wrapTA).
+	rt.router.Get("/v1/ta/{slug}/mvp", rt.wrapTA(rt.taMVPResults))
 }
 
 // EnsureTournamentMVPTables crea/riconcilia la tabella dei voti MVP (idempotente).
@@ -78,13 +80,24 @@ type MVPBoard struct {
 	MyVote     int64     `json:"myVote"` // playerId votato da questo device, 0 se nessuno
 }
 
-// GetMVPBoard ritorna la board completa per lo slug. Solo le squadre con almeno
-// un giocatore in rosa compaiono (sono le uniche votabili).
+// GetMVPBoard ritorna la board completa per lo slug (vista tifoso, con MyVote).
+// Solo le squadre con almeno un giocatore in rosa compaiono (le uniche votabili).
 func (s *Store) GetMVPBoard(ctx context.Context, slug, deviceID string) (*MVPBoard, error) {
 	eventID, err := s.EventIDBySlug(ctx, slug)
 	if err != nil {
 		return nil, err
 	}
+	return s.mvpBoardByEvent(ctx, eventID, deviceID)
+}
+
+// GetMVPResults ritorna la board per l'admin (per eventID, senza voto-device).
+func (s *Store) GetMVPResults(ctx context.Context, eventID int64) (*MVPBoard, error) {
+	return s.mvpBoardByEvent(ctx, eventID, "")
+}
+
+// mvpBoardByEvent costruisce la board dai voti dell'evento. Se deviceID != ""
+// popola anche MyVote (giocatore votato da quel device).
+func (s *Store) mvpBoardByEvent(ctx context.Context, eventID int64, deviceID string) (*MVPBoard, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT tp.id, tp.team_id, tt.name, tt.short_name, tt.group_name,
 		       tp.first_name, tp.last_name,
@@ -219,6 +232,17 @@ func (rt *_router) HandleTournamentMVPVote(w http.ResponseWriter, r *http.Reques
 	board, err := rt.store.GetMVPBoard(r.Context(), slug, deviceID)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "myVote": body.PlayerID})
+		return
+	}
+	writeJSON(w, http.StatusOK, board)
+}
+
+// taMVPResults: monitoraggio admin dell'andamento della votazione MVP.
+func (rt *_router) taMVPResults(w http.ResponseWriter, r *http.Request, eventID int64) {
+	board, err := rt.store.GetMVPResults(r.Context(), eventID)
+	if err != nil {
+		rt.baseLogger.WithError(err).WithField("eventID", eventID).Error("mvp results")
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, board)
