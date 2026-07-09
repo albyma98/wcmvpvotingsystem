@@ -116,6 +116,24 @@ func (s *Store) EnsureTournamentAdminTables() error {
 		[]string{"id", "event_id", "name", "logo_url", "url", "tier", "brand_color", "position", "active"}); err != nil {
 		return err
 	}
+	// I DB predatanti il modello "torneo = event" hanno una `tournament_players`
+	// legacy (colonna `tournament_id NOT NULL`, niente `event_id`/`first_name`/
+	// `last_name`) dalla vecchia feature tornei poi ripristinata: CREATE IF NOT
+	// EXISTS la lascerebbe com'è → gli INSERT/SELECT sui nuovi campi fallirebbero
+	// (500 su aggiungi-squadra e su lista squadre). Reconcile allo schema canonico.
+	if err := s.reconcileTournamentTable("tournament_players",
+		`CREATE TABLE tournament_players (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_id INTEGER NOT NULL,
+			team_id INTEGER NOT NULL,
+			first_name TEXT NOT NULL DEFAULT '',
+			last_name TEXT NOT NULL DEFAULT '',
+			position INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		[]string{"id", "event_id", "team_id", "first_name", "last_name", "position", "created_at"}); err != nil {
+		return err
+	}
 
 	// ALTER idempotenti (SQLite non ha IF NOT EXISTS su ADD COLUMN): garantiscono
 	// che tutte le colonne esistano anche su DB creati da versioni precedenti
@@ -127,6 +145,10 @@ func (s *Store) EnsureTournamentAdminTables() error {
 		`ALTER TABLE tournament_teams ADD COLUMN city TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tournament_teams ADD COLUMN logo_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tournament_teams ADD COLUMN group_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_players ADD COLUMN team_id INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tournament_players ADD COLUMN first_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_players ADD COLUMN last_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_players ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE tournament_sponsors ADD COLUMN logo_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tournament_sponsors ADD COLUMN url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tournament_sponsors ADD COLUMN tier TEXT NOT NULL DEFAULT 'partner'`,
