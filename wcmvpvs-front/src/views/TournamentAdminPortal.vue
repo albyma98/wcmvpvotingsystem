@@ -89,7 +89,12 @@ async function deleteGalleryPhoto (id) {
 }
 
 // ---------- squadre ----------
-const newTeam = reactive({ name: '', shortName: '', city: '', groupName: '' })
+const MAX_PLAYERS = 8
+// Rosa vuota: 8 coppie Nome/Cognome facoltative. Le coppie vuote vengono
+// scartate lato server, così si può inviare la griglia piena senza problemi.
+const blankRoster = () => Array.from({ length: MAX_PLAYERS }, () => ({ firstName: '', lastName: '' }))
+
+const newTeam = reactive({ name: '', shortName: '', city: '', groupName: '', players: blankRoster() })
 async function addTeam () {
   const name = newTeam.name.trim()
   if (!name) { flash('Inserisci il nome della squadra.'); return }
@@ -98,11 +103,13 @@ async function addTeam () {
     name,
     shortName: newTeam.shortName.trim(),
     city: newTeam.city.trim(),
-    groupName: newTeam.groupName.trim()
+    groupName: newTeam.groupName.trim(),
+    players: newTeam.players
   }] })
   busy.value = ''
   if (r.ok) {
     newTeam.name = ''; newTeam.shortName = ''; newTeam.city = ''; newTeam.groupName = ''
+    newTeam.players = blankRoster()
     await loadTeams()
     flash('Squadra aggiunta.')
   } else {
@@ -114,6 +121,26 @@ async function deleteTeam (id) {
   if (r.status === 409) { flash('Squadra usata in una partita: elimina prima la partita.'); return }
   if (r.ok) { await loadTeams(); flash('Squadra eliminata.') }
 }
+
+// ---------- rosa giocatori (squadre già create) ----------
+const editingRosterId = ref(null) // id squadra con l'editor rosa aperto
+const rosterDraft = ref(blankRoster())
+function openRoster (team) {
+  // Precarica i giocatori esistenti e completa fino a 8 righe.
+  const rows = (team.players || []).map(p => ({ firstName: p.firstName || '', lastName: p.lastName || '' }))
+  while (rows.length < MAX_PLAYERS) rows.push({ firstName: '', lastName: '' })
+  rosterDraft.value = rows.slice(0, MAX_PLAYERS)
+  editingRosterId.value = team.id
+}
+function closeRoster () { editingRosterId.value = null }
+async function saveRoster (teamId) {
+  busy.value = 'roster'
+  const r = await j('PUT', `/teams/${teamId}/players`, { players: rosterDraft.value })
+  busy.value = ''
+  if (r.ok) { editingRosterId.value = null; await loadTeams(); flash('Rosa salvata.') }
+  else flash('Errore nel salvataggio della rosa.')
+}
+const playerLabel = p => [p.firstName, p.lastName].filter(Boolean).join(' ')
 
 // ---------- calendario ----------
 const newMatch = reactive({ court: 'CAMPO 1', time: '', stage: '', teamAId: 0, teamBId: 0 })
@@ -374,6 +401,19 @@ async function generateBracket () {
             <input v-model="newTeam.city" placeholder="Città" @keyup.enter="addTeam" />
             <input v-model="newTeam.groupName" placeholder="Girone" maxlength="4" style="max-width:100px" @keyup.enter="addTeam" />
           </div>
+
+          <details class="roster-block">
+            <summary>Giocatori (facoltativi) — serviranno per la votazione MVP del pubblico</summary>
+            <p class="hint">Inserisci Nome e Cognome dei giocatori di questa squadra: fino a {{ MAX_PLAYERS }}, tutti facoltativi. Puoi anche aggiungerli in seguito.</p>
+            <div class="roster-grid">
+              <div v-for="(p, i) in newTeam.players" :key="i" class="roster-row">
+                <span class="roster-num">{{ i + 1 }}</span>
+                <input v-model="p.firstName" placeholder="Nome" />
+                <input v-model="p.lastName" placeholder="Cognome" />
+              </div>
+            </div>
+          </details>
+
           <button :disabled="busy === 'teams' || !newTeam.name.trim()" @click="addTeam">
             {{ busy === 'teams' ? 'Salvo…' : 'Aggiungi squadra' }}
           </button>
@@ -381,14 +421,42 @@ async function generateBracket () {
 
         <div class="team-list">
           <p v-if="!teams.length" class="hint">Nessuna squadra ancora. Aggiungi la prima qui sopra.</p>
-          <div v-for="t in teams" :key="t.id" class="row-match">
-            <span>
-              <b>{{ t.name }}</b>
-              <small v-if="t.shortName">({{ t.shortName }})</small>
-              <small v-if="t.city">· {{ t.city }}</small>
-              <small v-if="t.groupName">· Girone {{ t.groupName }}</small>
-            </span>
-            <button class="danger" @click="deleteTeam(t.id)">Elimina</button>
+          <div v-for="t in teams" :key="t.id" class="team-item">
+            <div class="row-match">
+              <span>
+                <b>{{ t.name }}</b>
+                <small v-if="t.shortName">({{ t.shortName }})</small>
+                <small v-if="t.city">· {{ t.city }}</small>
+                <small v-if="t.groupName">· Girone {{ t.groupName }}</small>
+                <small v-if="t.players && t.players.length" class="roster-count">· {{ t.players.length }} giocatori</small>
+              </span>
+              <span class="team-actions">
+                <button class="ghost" @click="editingRosterId === t.id ? closeRoster() : openRoster(t)">
+                  {{ editingRosterId === t.id ? 'Chiudi' : 'Rosa' }}
+                </button>
+                <button class="danger" @click="deleteTeam(t.id)">Elimina</button>
+              </span>
+            </div>
+
+            <div v-if="t.players && t.players.length && editingRosterId !== t.id" class="roster-chips">
+              <span v-for="p in t.players" :key="p.id" class="chip">{{ playerLabel(p) }}</span>
+            </div>
+
+            <div v-if="editingRosterId === t.id" class="roster-editor">
+              <div class="roster-grid">
+                <div v-for="(p, i) in rosterDraft" :key="i" class="roster-row">
+                  <span class="roster-num">{{ i + 1 }}</span>
+                  <input v-model="p.firstName" placeholder="Nome" />
+                  <input v-model="p.lastName" placeholder="Cognome" />
+                </div>
+              </div>
+              <div class="form-row">
+                <button :disabled="busy === 'roster'" @click="saveRoster(t.id)">
+                  {{ busy === 'roster' ? 'Salvo…' : 'Salva rosa' }}
+                </button>
+                <button class="ghost" @click="closeRoster">Annulla</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -551,11 +619,25 @@ textarea { width: 100%; font-family: inherit; }
 .team-form button { background: #f2b928; color: #111; border: none; border-radius: 8px; padding: 10px 16px; font-weight: 800; align-self: flex-start; }
 .team-form button:disabled { opacity: .5; cursor: default; }
 .team-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.team-item { display: flex; flex-direction: column; gap: 6px; }
+.team-actions { display: flex; gap: 6px; flex: none; }
+.roster-count { color: #f2b928 !important; }
+/* Blocco rosa nel form di aggiunta squadra */
+.roster-block { border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 4px 10px; }
+.roster-block > summary { cursor: pointer; font-size: 13px; font-weight: 700; color: #f2b928; padding: 6px 0; }
+.roster-grid { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.roster-row { display: flex; align-items: center; gap: 8px; }
+.roster-num { flex: none; width: 20px; text-align: center; color: #64748b; font-size: 13px; font-weight: 700; }
+.roster-row input { flex: 1; min-width: 0; background: #15151b; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 8px 10px; color: #fff; font-size: 14px; }
+.roster-editor { background: #101017; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.roster-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px; }
+.chip { background: rgba(242,185,40,.12); border: 1px solid rgba(242,185,40,.3); color: #fbd34d; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; }
 .row-match { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #15151b; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; }
 .row-match.done { opacity: .75; }
 .row-match small { color: #94a3b8; }
 .danger { background: transparent; border: 1px solid rgba(248,113,113,.4); color: #f87171; border-radius: 7px; padding: 5px 12px; }
 .ghost { background: transparent; border: 1px solid rgba(255,255,255,.2); color: #cbd5e1; border-radius: 7px; padding: 6px 12px; }
+.form-row button.ghost { background: transparent; color: #cbd5e1; } /* batte `.form-row button` (sfondo giallo) */
 .start { background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 800; }
 .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 4px; vertical-align: -2px; margin-left: 4px; }
 .settings-sub { margin: 18px 0 8px; font-size: 13px; font-weight: 800; letter-spacing: .3px; color: #f2b928; }

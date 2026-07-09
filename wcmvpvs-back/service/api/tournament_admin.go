@@ -49,6 +49,7 @@ func registerTournamentAdminRoutes(rt *_router) {
 	rt.router.Get("/v1/ta/{slug}/overview", rt.wrapTA(rt.taOverview))
 	rt.router.Get("/v1/ta/{slug}/teams", rt.wrapTA(rt.taListTeams))
 	rt.router.Post("/v1/ta/{slug}/teams", rt.wrapTA(rt.taCreateTeams))
+	rt.router.Put("/v1/ta/{slug}/teams/{id}/players", rt.wrapTA(rt.taSetTeamPlayers))
 	rt.router.Delete("/v1/ta/{slug}/teams/{id}", rt.wrapTA(rt.taDeleteTeam))
 	rt.router.Get("/v1/ta/{slug}/matches", rt.wrapTA(rt.taListMatches))
 	rt.router.Post("/v1/ta/{slug}/matches", rt.wrapTA(rt.taCreateMatch))
@@ -384,6 +385,31 @@ func (rt *_router) taDeleteTeam(w http.ResponseWriter, r *http.Request, eventID 
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// taSetTeamPlayers sostituisce l'intera rosa di una squadra: {players:[{firstName,lastName}]}.
+// Le coppie vuote vengono scartate lato store; la lista può quindi arrivare piena
+// di slot vuoti dal form (8 coppie fisse) senza problemi.
+func (rt *_router) taSetTeamPlayers(w http.ResponseWriter, r *http.Request, eventID int64) {
+	teamID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	var body struct {
+		Players []TAPlayer `json:"players"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
+		return
+	}
+	if err := rt.store.ReplaceTAPlayers(r.Context(), eventID, teamID, body.Players); err != nil {
+		if err == errTANotFound {
+			http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+			return
+		}
+		rt.baseLogger.WithError(err).WithField("eventID", eventID).Error("cannot replace tournament players")
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	rt.invalidateTournamentCaches(r, eventID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 

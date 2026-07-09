@@ -61,6 +61,19 @@ func (s *Store) EnsureTournamentAdminTables() error {
 			position INTEGER NOT NULL DEFAULT 0,
 			active INTEGER NOT NULL DEFAULT 1
 		);`,
+		// Rosa giocatori per squadra: Nome/Cognome facoltativi (max 8 lato UI),
+		// serviranno a popolare la votazione MVP del pubblico. Nessuna FK (schema
+		// minimale coerente col resto del mondo torneo); la pulizia è esplicita
+		// in DeleteTATeam/DeleteTournament.
+		`CREATE TABLE IF NOT EXISTS tournament_players (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_id INTEGER NOT NULL,
+			team_id INTEGER NOT NULL,
+			first_name TEXT NOT NULL DEFAULT '',
+			last_name TEXT NOT NULL DEFAULT '',
+			position INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);`,
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(q); err != nil {
@@ -402,6 +415,7 @@ func (s *Store) DeleteTournament(ctx context.Context, eventID int64) error {
 		`DELETE FROM tournament_admins WHERE event_id = ?`,
 		`DELETE FROM tournament_sponsors WHERE event_id = ?`,
 		`DELETE FROM matches WHERE event_id = ?`,
+		`DELETE FROM tournament_players WHERE event_id = ?`,
 		`DELETE FROM tournament_teams WHERE event_id = ?`,
 		`DELETE FROM event_tiles WHERE event_id = ?`,
 		`DELETE FROM events WHERE id = ? AND type = 'tournament'`,
@@ -480,12 +494,23 @@ func (s *Store) DeleteTASession(ctx context.Context, token string) {
 // --- Squadre -------------------------------------------------------------------
 
 type TATeam struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	ShortName string `json:"shortName"`
-	City      string `json:"city"`
-	GroupName string `json:"groupName"`
+	ID        int64      `json:"id"`
+	Name      string     `json:"name"`
+	ShortName string     `json:"shortName"`
+	City      string     `json:"city"`
+	GroupName string     `json:"groupName"`
+	Players   []TAPlayer `json:"players"`
 }
+
+// TAPlayer è un giocatore in rosa (Nome/Cognome facoltativi).
+type TAPlayer struct {
+	ID        int64  `json:"id"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+}
+
+// maxPlayersPerTeam limita la rosa lato server (la UI espone 8 coppie).
+const maxPlayersPerTeam = 8
 
 func (s *Store) ListTATeams(ctx context.Context, eventID int64) ([]TATeam, error) {
 	rows, err := s.db.QueryContext(ctx, `
@@ -496,14 +521,40 @@ func (s *Store) ListTATeams(ctx context.Context, eventID int64) ([]TATeam, error
 	}
 	defer rows.Close()
 	out := make([]TATeam, 0, 16)
+	idx := map[int64]int{}
 	for rows.Next() {
 		var t TATeam
 		if err := rows.Scan(&t.ID, &t.Name, &t.ShortName, &t.City, &t.GroupName); err != nil {
 			return nil, err
 		}
+		t.Players = []TAPlayer{}
+		idx[t.ID] = len(out)
 		out = append(out, t)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Rosa: una sola query per l'intero evento, raggruppata in memoria.
+	prows, err := s.db.QueryContext(ctx, `
+		SELECT id, team_id, first_name, last_name
+		FROM tournament_players WHERE event_id = ?
+		ORDER BY team_id, position, id`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer prows.Close()
+	for prows.Next() {
+		var p TAPlayer
+		var teamID int64
+		if err := prows.Scan(&p.ID, &teamID, &p.FirstName, &p.LastName); err != nil {
+			return nil, err
+		}
+		if i, ok := idx[teamID]; ok {
+			out[i].Players = append(out[i].Players, p)
+		}
+	}
+	return out, prows.Err()
 }
 
 func (s *Store) InsertTATeams(ctx context.Context, eventID int64, teams []TATeam) (int, error) {
@@ -518,15 +569,74 @@ func (s *Store) InsertTATeams(ctx context.Context, eventID int64, teams []TATeam
 		if name == "" {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `
+		res, err := tx.ExecContext(ctx, `
 			INSERT INTO tournament_teams (event_id, name, short_name, city, group_name)
 			VALUES (?, ?, ?, ?, ?)`,
-			eventID, name, strings.TrimSpace(t.ShortName), strings.TrimSpace(t.City), strings.TrimSpace(t.GroupName)); err != nil {
+			eventID, name, strings.TrimSpace(t.ShortName), strings.TrimSpace(t.City), strings.TrimSpace(t.GroupName))
+		if err != nil {
+			return 0, err
+		}
+		teamID, err := res.LastInsertId()
+		if err != nil {
+			return 0, err
+		}
+		if err := insertTAPlayers(ctx, tx, eventID, teamID, t.Players); err != nil {
 			return 0, err
 		}
 		n++
 	}
 	return n, tx.Commit()
+}
+
+// insertTAPlayers inserisce la rosa (scarta le coppie interamente vuote,
+// tronca a maxPlayersPerTeam). Condivisa da InsertTATeams e ReplaceTAPlayers.
+func insertTAPlayers(ctx context.Context, tx *sql.Tx, eventID, teamID int64, players []TAPlayer) error {
+	pos := 0
+	for _, p := range players {
+		first := strings.TrimSpace(p.FirstName)
+		last := strings.TrimSpace(p.LastName)
+		if first == "" && last == "" {
+			continue // coppia vuota: si salta, non è un giocatore
+		}
+		if pos >= maxPlayersPerTeam {
+			break
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO tournament_players (event_id, team_id, first_name, last_name, position)
+			VALUES (?, ?, ?, ?, ?)`,
+			eventID, teamID, first, last, pos); err != nil {
+			return err
+		}
+		pos++
+	}
+	return nil
+}
+
+// ReplaceTAPlayers sostituisce l'intera rosa di una squadra (delete + insert in tx).
+// Verifica che la squadra appartenga all'evento (scoping hard).
+func (s *Store) ReplaceTAPlayers(ctx context.Context, eventID, teamID int64, players []TAPlayer) error {
+	var owned int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(1) FROM tournament_teams WHERE id = ? AND event_id = ?`,
+		teamID, eventID).Scan(&owned); err != nil {
+		return err
+	}
+	if owned == 0 {
+		return errTANotFound
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM tournament_players WHERE event_id = ? AND team_id = ?`, eventID, teamID); err != nil {
+		return err
+	}
+	if err := insertTAPlayers(ctx, tx, eventID, teamID, players); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) DeleteTATeam(ctx context.Context, eventID, teamID int64) error {
@@ -540,9 +650,20 @@ func (s *Store) DeleteTATeam(ctx context.Context, eventID, teamID int64) error {
 	if used > 0 {
 		return fmt.Errorf("team_in_use")
 	}
-	_, err := s.db.ExecContext(ctx, `
-		DELETE FROM tournament_teams WHERE id = ? AND event_id = ?`, teamID, eventID)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM tournament_players WHERE event_id = ? AND team_id = ?`, eventID, teamID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM tournament_teams WHERE id = ? AND event_id = ?`, teamID, eventID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // --- Partite e scoring -----------------------------------------------------------
