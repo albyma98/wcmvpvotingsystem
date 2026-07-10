@@ -39,8 +39,25 @@
 
       <!-- BODY -->
       <div class="sp-body">
-        <!-- MATCH CARD -->
-        <div class="sp-match">
+        <!-- LIVE: se ci sono partite in corso prendono il posto di "Prossima
+             partita"; scroll orizzontale se più campi sono live insieme. -->
+        <div v-if="liveMatches.length" class="sp-live-row">
+          <div v-for="m in liveMatches" :key="m.id" class="sp-match sp-match-live">
+            <div class="sp-match-head">
+              <span class="sp-match-label live"><span class="sp-live-dot"></span> LIVE · {{ m.court }}</span>
+              <span class="sp-match-time">{{ m.setLabel }}</span>
+            </div>
+            <div class="sp-teams">
+              <div class="sp-team">{{ m.teamA.name }}</div>
+              <div class="sp-live-score">{{ m.cur ? m.cur.a : m.score.a }}<span>:</span>{{ m.cur ? m.cur.b : m.score.b }}</div>
+              <div class="sp-team away">{{ m.teamB.name }}</div>
+            </div>
+            <div class="sp-live-sets">Set {{ m.score.a }}–{{ m.score.b }}</div>
+          </div>
+        </div>
+
+        <!-- PROSSIMA PARTITA: solo quando NON c'è nulla live -->
+        <div v-else class="sp-match">
           <div class="sp-match-head">
             <span class="sp-match-label">⚡ PROSSIMA PARTITA</span>
             <span class="sp-match-time">ORE {{ nextMatch.time }}</span>
@@ -108,6 +125,7 @@ const props = defineProps({
   liveLabel:   { type: String, default: 'LIVE ORA' },
   signupLabel: { type: String, default: 'INFO EVENTO' },
   nextMatch:   { type: Object, default: () => ({ time: '—', home: '', away: '' }) },
+  liveMatches: { type: Array, default: () => [] },   // partite in corso: { id, court, teamA, teamB, score, cur, setLabel }
   // Dati reali dal torneo:
   tiles:       { type: Array, default: () => [] },   // { icon, label, sub, route }
   sponsors:    { type: Array, default: () => [] },    // { name, logo }
@@ -286,6 +304,28 @@ const stars = [
   font-weight: 700; font-size: 12px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
   border-radius: 50%; box-shadow: 0 0 14px rgba(255,122,26,.7); flex-shrink: 0;
 }
+
+/* LIVE nella home: card in corso (scroll orizzontale se più campi insieme) */
+.sp-live-row { display: flex; gap: 10px; margin-top: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.sp-live-row::-webkit-scrollbar { display: none; }
+.sp-live-row .sp-match { margin-top: 0; flex: 0 0 100%; scroll-snap-align: center; }
+.sp-match-live {
+  border-color: rgba(255,46,154,.6);
+  box-shadow: 0 0 0 1px rgba(255,46,154,.35) inset, 0 10px 30px rgba(255,46,154,.3);
+}
+.sp-match-label.live {
+  background: linear-gradient(90deg,#FF2E9A,#FF7A1A); color: #fff;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.sp-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: sp-livepulse 1.2s infinite ease-in-out; }
+@keyframes sp-livepulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.7)} }
+.sp-live-score {
+  flex-shrink: 0; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 26px; line-height: 1;
+  color: #fff; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 4px;
+  text-shadow: 0 0 14px rgba(255,46,154,.7);
+}
+.sp-live-score span { color: #FF2E9A; font-size: 20px; }
+.sp-live-sets { text-align: center; margin-top: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .1em; color: rgba(255,255,255,.6); }
 
 .sp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
 .sp-tile {

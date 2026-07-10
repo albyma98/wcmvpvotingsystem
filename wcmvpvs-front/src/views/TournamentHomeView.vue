@@ -52,6 +52,7 @@ function onSunsetNav (route) { emit('navigate', `/t/${props.slug}${route}`) }
     :date="tournament.dateLabel"
     :place="tournament.location"
     :next-match="sunsetNext"
+    :live-matches="liveMatches"
     :tiles="tiles"
     :sponsors="sponsors"
     @navigate="onSunsetNav"
