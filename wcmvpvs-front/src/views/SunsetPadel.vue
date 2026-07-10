@@ -21,10 +21,9 @@
           <span class="sp-status"><span class="sp-dot"></span> {{ status }}</span>
         </div>
 
-        <div class="sp-titlewrap">
+        <div class="sp-titlewrap" :class="{ 'has-logo': logo }">
           <img v-if="logo" :src="logo" class="sp-logo" :alt="`${brandTop} ${brandBottom}`" />
           <h1 v-else class="sp-brand">{{ brandTop }}<span class="sp-pad">{{ brandBottom }}</span></h1>
-          <div class="sp-subtitle">✨ {{ subtitle }} ✨</div>
         </div>
 
         <div class="sp-meta">
@@ -209,8 +208,13 @@ const stars = [
 @keyframes sp-pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
 
 .sp-titlewrap { position: relative; z-index: 4; text-align: center; margin-top: 10px; }
+/* Con logo: l'immagine è l'intestazione — copre il 90% della larghezza e si
+   estende in verticale fin sopra i box data/luogo. */
+.sp-titlewrap.has-logo { margin-top: 6px; }
 .sp-logo {
-  max-width: 78%; max-height: 96px; object-fit: contain;
+  display: block; margin: 0 auto;
+  width: 90%; max-width: 90%;
+  max-height: clamp(150px, 30dvh, 280px); object-fit: contain;
   filter: drop-shadow(0 3px 10px rgba(11,6,32,.55)) drop-shadow(0 0 18px rgba(255,255,255,.35));
 }
 .sp-brand {
@@ -226,11 +230,6 @@ const stars = [
   -webkit-background-clip: text; background-clip: text; color: transparent;
   -webkit-text-stroke: 1.5px rgba(11,6,32,.9);
   filter: drop-shadow(0 3px 0 rgba(11,6,32,.9)) drop-shadow(0 0 18px rgba(255,157,0,.55));
-}
-.sp-subtitle {
-  display: inline-block; margin-top: 10px; background: rgba(11,6,32,.85); color: #00E5FF;
-  font-weight: 700; font-size: 12px; letter-spacing: .16em; padding: 6px 18px; border-radius: 30px;
-  border: 1.5px solid rgba(255,255,255,.5); box-shadow: 0 0 16px rgba(0,229,255,.45);
 }
 .sp-meta { position: relative; z-index: 4; display: flex; justify-content: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 .sp-chip {
