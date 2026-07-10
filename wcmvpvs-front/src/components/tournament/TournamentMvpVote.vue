@@ -1,8 +1,8 @@
 <script setup>
 // Votazione MVP del pubblico — un box per squadra, i giocatori della rosa
-// cliccabili per votare. 1 voto per device (modificabile). I conteggi restano
-// nascosti finché il tifoso non vota: al voto si rivelano con le barre.
-// Stesso mood pop della home torneo (dark + gold).
+// cliccabili per votare. 1 voto per device (modificabile). Lato tifoso NON si
+// vedono conteggi/percentuali: solo i nomi e il proprio voto (✓). I risultati
+// sono visibili solo all'admin. Stesso mood pop della home torneo (dark + gold).
 import { computed, onMounted, ref } from 'vue'
 import { getOrCreateDeviceId } from '@/deviceId'
 import { useTournamentStream } from '@/composables/useTournamentStream'
@@ -12,7 +12,6 @@ const props = defineProps({
 })
 
 const teams = ref([])
-const totalVotes = ref(0)
 const myVote = ref(0)          // playerId votato da questo device (0 = nessuno)
 const loading = ref(true)
 const error = ref('')
@@ -22,15 +21,8 @@ const justVoted = ref('')      // nome appena votato → banner conferma
 const deviceId = getOrCreateDeviceId()
 const hasVoted = computed(() => myVote.value !== 0)
 
-// Barra risultati relativa al massimo (visivamente più leggibile del %-su-totale).
-const maxVotes = computed(() =>
-  teams.value.reduce((m, t) => t.candidates.reduce((mm, c) => Math.max(mm, c.votes), m), 0))
-const barWidth = c => (maxVotes.value ? Math.round((c.votes / maxVotes.value) * 100) : 0)
-const sharePct = c => (totalVotes.value ? Math.round((c.votes / totalVotes.value) * 100) : 0)
-
 function applyBoard (b) {
   teams.value = b.teams ?? []
-  totalVotes.value = b.totalVotes ?? 0
   myVote.value = b.myVote ?? 0
 }
 
@@ -71,7 +63,7 @@ async function vote (candidate) {
 }
 
 onMounted(load)
-// I conteggi si aggiornano live quando altri votano (SSE push).
+// Ricarica lo stato (incl. il proprio voto) quando qualcosa cambia (SSE push).
 useTournamentStream(() => props.slug, load)
 </script>
 
@@ -81,7 +73,6 @@ useTournamentStream(() => props.slug, load)
       <div class="trophy">🏆</div>
       <h2>Vota il tuo MVP</h2>
       <p>Scegli il giocatore più forte del torneo. Tocca un nome per votare — puoi cambiare quando vuoi.</p>
-      <div v-if="totalVotes" class="tally">{{ totalVotes }} {{ totalVotes === 1 ? 'voto' : 'voti' }} finora</div>
     </header>
 
     <transition name="pop">
@@ -98,7 +89,6 @@ useTournamentStream(() => props.slug, load)
       <section v-for="t in teams" :key="t.id" class="team-box">
         <header class="tb-head">
           <span class="tb-name">{{ t.name }}</span>
-          <span v-if="t.groupName" class="tb-group">Girone {{ t.groupName }}</span>
         </header>
         <ul class="tb-players">
           <li v-for="c in t.candidates" :key="c.id">
@@ -108,19 +98,9 @@ useTournamentStream(() => props.slug, load)
               :disabled="!!voting"
               @click="vote(c)"
             >
-              <!-- barra risultati: visibile solo dopo il voto -->
-              <span v-if="hasVoted" class="bar" :style="{ width: barWidth(c) + '%' }"></span>
               <span class="p-name">{{ c.name }}</span>
-              <span class="p-right">
-                <template v-if="voting === c.id">…</template>
-                <template v-else-if="myVote === c.id" >
-                  <span v-if="hasVoted" class="p-count">{{ c.votes }} · {{ sharePct(c) }}%</span>
-                  <span class="check">✓</span>
-                </template>
-                <template v-else-if="hasVoted">
-                  <span class="p-count">{{ c.votes }} · {{ sharePct(c) }}%</span>
-                </template>
-              </span>
+              <span v-if="voting === c.id" class="p-right">…</span>
+              <span v-else-if="myVote === c.id" class="p-right"><span class="check">✓</span></span>
             </button>
           </li>
         </ul>
@@ -141,11 +121,6 @@ useTournamentStream(() => props.slug, load)
   background-clip: text; color: transparent; text-transform: none;
 }
 .mvp-intro p { margin: 0 auto; max-width: 320px; font-size: 13px; color: rgba(255,255,255,.6); line-height: 1.45; }
-.tally {
-  display: inline-block; margin-top: 10px; font-size: 11px; font-weight: 800; letter-spacing: 1px;
-  color: #F2B928; background: rgba(242,185,40,.12); border: 1px solid rgba(242,185,40,.3);
-  padding: 4px 12px; border-radius: 999px; text-transform: uppercase;
-}
 
 /* Banner conferma voto */
 .voted-banner {
@@ -166,14 +141,11 @@ useTournamentStream(() => props.slug, load)
   display: flex; flex-direction: column;
 }
 .tb-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 6px;
   padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.07);
   background: rgba(242,185,40,.06);
 }
-.tb-name { font-weight: 900; font-size: 13.5px; letter-spacing: .3px; text-transform: uppercase;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tb-group { flex: none; font-size: 9px; font-weight: 800; letter-spacing: .8px; color: #F2B928;
-  background: rgba(242,185,40,.14); border-radius: 6px; padding: 2px 6px; }
+/* Nome squadra: pieno, può andare a capo (niente troncamento) */
+.tb-name { font-weight: 900; font-size: 14px; letter-spacing: .3px; text-transform: uppercase; line-height: 1.2; }
 
 .tb-players { list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 
@@ -181,8 +153,8 @@ useTournamentStream(() => props.slug, load)
 .player {
   position: relative; width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   background: #1E1E27; border: 1px solid rgba(255,255,255,.1); border-radius: 11px;
-  padding: 10px 12px; color: #fff; font-size: 13.5px; font-weight: 700; text-align: left;
-  overflow: hidden; transition: transform .12s ease, border-color .15s ease, background .15s ease;
+  padding: 11px 12px; color: #fff; font-size: 14px; font-weight: 700; text-align: left;
+  transition: transform .12s ease, border-color .15s ease, background .15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 .player:not(:disabled):active { transform: scale(.97); }
@@ -194,20 +166,12 @@ useTournamentStream(() => props.slug, load)
   background: linear-gradient(90deg, rgba(242,185,40,.28), rgba(242,185,40,.12));
   box-shadow: 0 0 0 1px rgba(242,185,40,.5) inset;
 }
-/* Barra risultati: riempimento dietro al testo */
-.bar {
-  position: absolute; left: 0; top: 0; bottom: 0; z-index: 0;
-  background: rgba(242,185,40,.16); border-radius: 11px 0 0 11px;
-  transition: width .5s cubic-bezier(.22,1,.36,1);
-}
-.player.chosen .bar { background: rgba(242,185,40,.3); }
-.p-name { position: relative; z-index: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.p-right { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 7px; flex: none; }
-.p-count { font-size: 11px; font-weight: 800; color: rgba(255,255,255,.7); font-variant-numeric: tabular-nums; }
-.player.chosen .p-count { color: #FFE08A; }
+/* Nome giocatore: sempre completo e leggibile, va a capo se serve */
+.p-name { flex: 1; min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
+.p-right { display: inline-flex; align-items: center; flex: none; }
 .check {
-  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
-  background: #F2B928; color: #14110A; font-size: 12px; font-weight: 900;
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  background: #F2B928; color: #14110A; font-size: 13px; font-weight: 900;
 }
 
 /* Transizione banner */
