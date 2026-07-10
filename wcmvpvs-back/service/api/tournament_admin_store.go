@@ -931,6 +931,9 @@ type TASettings struct {
 	Location      string `json:"location"`
 	StatusLabel   string `json:"statusLabel"`
 	PhaseLabel    string `json:"phaseLabel"`
+	// Intestazione della home tifosi: immagine (data-URL o URL) mostrata al posto
+	// del titolo testuale. Vuota = si usa il nome del torneo.
+	Logo          string `json:"logoUrl"`
 	PointsPerWin  int    `json:"pointsPerWin"`
 	PointsPerDraw int    `json:"pointsPerDraw"`
 	PointsPerLoss int    `json:"pointsPerLoss"`
@@ -954,12 +957,14 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
 		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
+		       COALESCE(logo_url,''),
 		       COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0),
 		       COALESCE(sets_best_of,3), COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1),
 		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0),
 		       COALESCE(fan_layout,'classic'), COALESCE(slug,'')
 		FROM events WHERE id = ?`, eventID).
 		Scan(&st.Name, &st.Format, &st.DateLabel, &st.Location, &st.StatusLabel, &st.PhaseLabel,
+			&st.Logo,
 			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss,
 			&st.SetsBestOf, &st.PointsPerTieWin, &st.PointsPerTieLoss,
 			&st.BracketQualifiers, &thirdPlace, &st.FanLayout, &slug)
@@ -974,11 +979,13 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE events SET name=?, format=?, date_label=?, location=?, status_label=?, phase_label=?,
+		                  logo_url=?,
 		                  points_per_win=?, points_per_draw=?, points_per_loss=?,
 		                  sets_best_of=?, points_per_tie_win=?, points_per_tie_loss=?,
 		                  bracket_qualifiers=?, bracket_third_place=?, fan_layout=?
 		WHERE id = ? AND type = 'tournament'`,
 		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel,
+		st.Logo,
 		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss,
 		st.SetsBestOf, st.PointsPerTieWin, st.PointsPerTieLoss,
 		st.BracketQualifiers, thirdPlace, st.FanLayout, eventID)

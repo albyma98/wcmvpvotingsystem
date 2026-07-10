@@ -63,7 +63,7 @@ const matches = ref([])
 const sponsors = ref([])
 const gallery = ref([])
 const mvp = ref(null)
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
 const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
@@ -295,7 +295,28 @@ async function saveSettings () {
   const r = await j('PUT', '/settings', { ...settings })
   busy.value = ''
   if (r.ok) flash('Impostazioni salvate — visibili ai tifosi al prossimo refresh.')
+  else {
+    const err = (await r.json().catch(() => ({}))).error
+    flash(err === 'logo_too_large' ? 'Immagine intestazione troppo pesante.'
+      : err && err.startsWith('logo') ? 'Immagine intestazione non valida.'
+      : 'Salvataggio non riuscito.')
+  }
 }
+
+// Intestazione home tifosi: carica un'immagine (ridimensionata lato client a
+// data-URL, lato lungo 800px) da mostrare al posto del titolo. Vuota = nome.
+const headerBusy = ref(false)
+async function onHeaderPick (e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) { flash('Seleziona un file immagine.'); e.target.value = ''; return }
+  headerBusy.value = true
+  try {
+    settings.logoUrl = await fileToLogoDataURL(file, 800)
+  } catch { flash('Immagine non valida.') }
+  finally { headerBusy.value = false; e.target.value = '' }
+}
+function removeHeader () { settings.logoUrl = '' }
 
 // ---------- fase finale ----------
 const bracketErrors = {
@@ -601,6 +622,22 @@ async function generateBracket () {
           <label>Fase (pill) <input v-model="settings.phaseLabel" placeholder="FASE A GIRONI" /></label>
         </div>
 
+        <h3 class="settings-sub">Intestazione home tifosi</h3>
+        <div class="header-img">
+          <div class="hi-preview" :class="{ empty: !settings.logoUrl }">
+            <img v-if="settings.logoUrl" :src="settings.logoUrl" alt="Intestazione torneo" />
+            <span v-else class="hi-fallback">{{ settings.name || 'Nome torneo' }}</span>
+          </div>
+          <div class="hi-actions">
+            <label class="hi-upload">
+              {{ headerBusy ? 'Carico…' : (settings.logoUrl ? 'Cambia immagine' : 'Carica immagine') }}
+              <input type="file" accept="image/*" :disabled="headerBusy" @change="onHeaderPick" hidden />
+            </label>
+            <button v-if="settings.logoUrl" class="ghost" @click="removeHeader">Rimuovi</button>
+          </div>
+        </div>
+        <p class="hint">Immagine mostrata in cima alla pagina tifosi al posto del titolo (es. il logo del torneo). Se non carichi nulla, viene usato il <b>nome del torneo</b>. L'immagine viene ridimensionata automaticamente.</p>
+
         <h3 class="settings-sub">Grafica home tifosi</h3>
         <div class="settings-grid">
           <label>Layout
@@ -709,6 +746,20 @@ textarea { width: 100%; font-family: inherit; }
 .roster-editor { background: #101017; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .roster-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px; }
 .chip { background: rgba(242,185,40,.12); border: 1px solid rgba(242,185,40,.3); color: #fbd34d; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; }
+/* Intestazione home tifosi (upload immagine-titolo) */
+.header-img { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.hi-preview {
+  flex: none; width: 200px; height: 90px; border-radius: 10px; overflow: hidden;
+  display: grid; place-items: center; border: 1px solid rgba(255,255,255,.14);
+  background: radial-gradient(120% 120% at 50% 0%, #2E4B6E 0%, #7A4A3A 55%, #15151b 100%);
+}
+.hi-preview.empty { background: #15151b; border-style: dashed; }
+.hi-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.hi-fallback { font-weight: 900; font-style: italic; text-transform: uppercase; font-size: 15px; color: #fff; letter-spacing: .5px; text-align: center; padding: 0 8px; }
+.hi-actions { display: flex; gap: 8px; align-items: center; }
+.hi-upload { background: #f2b928; color: #111; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 800; font-size: 14px; cursor: pointer; }
+.hi-upload input:disabled { cursor: default; }
+
 /* MVP admin: monitoraggio votazioni */
 .mvp-summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 8px; }
 .mvp-stat { flex: none; background: #15151b; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 10px 16px; text-align: center; display: flex; flex-direction: column; }

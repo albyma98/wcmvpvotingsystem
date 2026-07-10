@@ -47,6 +47,7 @@ function onSunsetNav (route) { emit('navigate', `/t/${props.slug}${route}`) }
     :status="tournament.statusLabel"
     :brand-top="brandTop"
     :brand-bottom="brandBottom"
+    :logo="tournament.logo"
     :subtitle="tournament.format"
     :date="tournament.dateLabel"
     :place="tournament.location"

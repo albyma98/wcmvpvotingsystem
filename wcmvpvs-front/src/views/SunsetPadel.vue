@@ -22,7 +22,8 @@
         </div>
 
         <div class="sp-titlewrap">
-          <h1 class="sp-brand">{{ brandTop }}<span class="sp-pad">{{ brandBottom }}</span></h1>
+          <img v-if="logo" :src="logo" class="sp-logo" :alt="`${brandTop} ${brandBottom}`" />
+          <h1 v-else class="sp-brand">{{ brandTop }}<span class="sp-pad">{{ brandBottom }}</span></h1>
           <div class="sp-subtitle">✨ {{ subtitle }} ✨</div>
         </div>
 
@@ -89,6 +90,7 @@ const props = defineProps({
   status:      { type: String, default: '' },
   brandTop:    { type: String, default: '' },
   brandBottom: { type: String, default: '' },
+  logo:        { type: String, default: '' },   // immagine intestazione (al posto del brand testuale)
   subtitle:    { type: String, default: '' },
   date:        { type: String, default: '' },
   place:       { type: String, default: '' },
@@ -207,6 +209,10 @@ const stars = [
 @keyframes sp-pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
 
 .sp-titlewrap { position: relative; z-index: 4; text-align: center; margin-top: 10px; }
+.sp-logo {
+  max-width: 78%; max-height: 96px; object-fit: contain;
+  filter: drop-shadow(0 3px 10px rgba(11,6,32,.55)) drop-shadow(0 0 18px rgba(255,255,255,.35));
+}
 .sp-brand {
   font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 40px; line-height: .92; margin: 0;
   background: linear-gradient(180deg,#fff 0%,#dfffff 35%,#b9f7ff 55%,#fff 100%);

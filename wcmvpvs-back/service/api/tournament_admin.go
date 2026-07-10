@@ -576,11 +576,20 @@ func clampInt(v, lo, hi int) int {
 }
 
 func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, eventID int64) {
+	// L'intestazione (logo) può essere una data-URL inline: alza il cap del body.
+	r.Body = http.MaxBytesReader(w, r.Body, maxSponsorLogoBytes+8192)
 	var st TASettings
 	if err := json.NewDecoder(r.Body).Decode(&st); err != nil {
 		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
 		return
 	}
+	// Intestazione home tifosi: valida come i loghi (data-URL immagine o URL).
+	logo, err := sanitizeSponsorLogo(st.Logo)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+	st.Logo = logo
 	// Punti classifica: interi non negativi, con un tetto ragionevole.
 	st.PointsPerWin = clampInt(st.PointsPerWin, 0, 100)
 	st.PointsPerDraw = clampInt(st.PointsPerDraw, 0, 100)
