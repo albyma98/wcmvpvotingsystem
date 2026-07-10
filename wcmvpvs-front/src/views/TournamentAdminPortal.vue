@@ -183,6 +183,30 @@ async function deleteMatch (id) {
   if (r.ok) { await loadMatches(); flash('Partita eliminata.') }
 }
 
+// ---------- modifica partita ----------
+const editingMatchId = ref(null)
+const matchDraft = reactive({ court: '', time: '', stage: '', teamAId: 0, teamBId: 0 })
+function openMatchEdit (m) {
+  editingMatchId.value = m.id
+  matchDraft.court = m.court || ''
+  matchDraft.time = m.time || ''
+  matchDraft.stage = m.stage || ''
+  matchDraft.teamAId = m.teamAId
+  matchDraft.teamBId = m.teamBId
+}
+function cancelMatchEdit () { editingMatchId.value = null }
+async function saveMatchEdit (id) {
+  if (!matchDraft.teamAId || !matchDraft.teamBId || matchDraft.teamAId === matchDraft.teamBId) {
+    flash('Scegli due squadre diverse.'); return
+  }
+  busy.value = 'matchedit'
+  const scheduledAt = new Date().toISOString().slice(0, 10) + 'T' + (matchDraft.time || '00:00')
+  const r = await j('PUT', `/matches/${id}`, { ...matchDraft, scheduledAt })
+  busy.value = ''
+  if (r.ok) { editingMatchId.value = null; await loadMatches(); flash('Partita aggiornata.') }
+  else flash('Modifica non riuscita.')
+}
+
 // ---------- console scoring ----------
 const liveMatches = computed(() => matches.value.filter(m => m.status === 'live'))
 const scheduledMatches = computed(() => matches.value.filter(m => m.status === 'scheduled'))
@@ -433,9 +457,35 @@ async function generateBracket () {
           <select v-model="newMatch.stage"><option value="">Girone</option><option>QUARTI</option><option>SEMIFINALE</option><option>FINALE 3° POSTO</option><option>FINALE</option></select>
           <button @click="createMatch">Aggiungi</button>
         </div>
-        <div v-for="m in matches" :key="m.id" class="row-match">
-          <span>{{ m.court }} · {{ m.time || '—' }} · {{ m.teamAName }} vs {{ m.teamBName }} <small>[{{ m.status }}]</small></span>
-          <button class="danger" @click="deleteMatch(m.id)">Elimina</button>
+        <div v-for="m in matches" :key="m.id" class="match-item">
+          <div v-if="editingMatchId !== m.id" class="row-match">
+            <span>
+              {{ m.court }} · {{ m.time || '—' }} · {{ m.teamAName }} vs {{ m.teamBName }}
+              <small v-if="m.stage">· {{ m.stage }}</small>
+              <small>[{{ m.status }}]</small>
+            </span>
+            <span class="team-actions">
+              <button class="ghost" @click="openMatchEdit(m)">Modifica</button>
+              <button class="danger" @click="deleteMatch(m.id)">Elimina</button>
+            </span>
+          </div>
+
+          <div v-else class="match-editor">
+            <div class="form-row">
+              <input v-model="matchDraft.court" placeholder="CAMPO 1" style="max-width:110px" />
+              <input v-model="matchDraft.time" placeholder="18:30" style="max-width:90px" />
+              <select v-model="matchDraft.stage"><option value="">Girone</option><option>QUARTI</option><option>SEMIFINALE</option><option>FINALE 3° POSTO</option><option>FINALE</option></select>
+            </div>
+            <div class="form-row">
+              <select v-model.number="matchDraft.teamAId"><option :value="0">Squadra A</option><option v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</option></select>
+              <select v-model.number="matchDraft.teamBId"><option :value="0">Squadra B</option><option v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</option></select>
+            </div>
+            <div class="form-row">
+              <button :disabled="busy === 'matchedit'" @click="saveMatchEdit(m.id)">{{ busy === 'matchedit' ? 'Salvo…' : 'Salva' }}</button>
+              <button class="ghost" @click="cancelMatchEdit">Annulla</button>
+            </div>
+            <p v-if="m.status !== 'scheduled'" class="hint">Attenzione: questa partita è «{{ m.status }}». Modificare le squadre può rendere incoerenti punteggi/classifica.</p>
+          </div>
         </div>
         <p v-if="!matches.length" class="hint">Nessuna partita. Prima importa le squadre, poi crea il calendario.</p>
       </section>
@@ -750,6 +800,8 @@ textarea { width: 100%; font-family: inherit; }
 .roster-num { flex: none; width: 20px; text-align: center; color: #64748b; font-size: 13px; font-weight: 700; }
 .roster-row input { flex: 1; min-width: 0; background: #15151b; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 8px 10px; color: #fff; font-size: 14px; }
 .roster-editor { background: #101017; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.match-item { display: flex; flex-direction: column; gap: 6px; }
+.match-editor { background: #101017; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .roster-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px; }
 .chip { background: rgba(242,185,40,.12); border: 1px solid rgba(242,185,40,.3); color: #fbd34d; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; }
 /* Intestazione home tifosi (upload immagine-titolo) */

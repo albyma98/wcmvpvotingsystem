@@ -753,6 +753,23 @@ func (s *Store) CreateTAMatch(ctx context.Context, eventID int64, court, timeLab
 	return id, err
 }
 
+// UpdateTAMatch modifica gli attributi editabili di una partita (campo, orario,
+// squadre, fase). Punteggi/stato restano invariati. errTANotFound se assente.
+func (s *Store) UpdateTAMatch(ctx context.Context, eventID int64, matchID, court, timeLabel, scheduledAt, stage string, teamA, teamB int64) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE matches SET court = ?, scheduled_time = ?, scheduled_at = ?, stage = ?, team_a_id = ?, team_b_id = ?
+		WHERE id = ? AND event_id = ?`,
+		court, timeLabel, scheduledAt, strings.TrimSpace(stage), teamA, teamB, matchID, eventID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return errTANotFound
+	}
+	return nil
+}
+
 func (s *Store) DeleteTAMatch(ctx context.Context, eventID int64, matchID string) error {
 	_, err := s.db.ExecContext(ctx, `
 		DELETE FROM matches WHERE id = ? AND event_id = ?`, matchID, eventID)

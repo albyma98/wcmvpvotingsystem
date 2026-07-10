@@ -53,6 +53,7 @@ func registerTournamentAdminRoutes(rt *_router) {
 	rt.router.Delete("/v1/ta/{slug}/teams/{id}", rt.wrapTA(rt.taDeleteTeam))
 	rt.router.Get("/v1/ta/{slug}/matches", rt.wrapTA(rt.taListMatches))
 	rt.router.Post("/v1/ta/{slug}/matches", rt.wrapTA(rt.taCreateMatch))
+	rt.router.Put("/v1/ta/{slug}/matches/{id}", rt.wrapTA(rt.taUpdateMatch))
 	rt.router.Delete("/v1/ta/{slug}/matches/{id}", rt.wrapTA(rt.taDeleteMatch))
 	rt.router.Post("/v1/ta/{slug}/matches/{id}/score", rt.wrapTA(rt.taScoreAction))
 	rt.router.Get("/v1/ta/{slug}/sponsors", rt.wrapTA(rt.taListSponsors))
@@ -442,6 +443,33 @@ func (rt *_router) taCreateMatch(w http.ResponseWriter, r *http.Request, eventID
 	}
 	rt.invalidateTournamentCaches(r, eventID)
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": id})
+}
+
+func (rt *_router) taUpdateMatch(w http.ResponseWriter, r *http.Request, eventID int64) {
+	var body struct {
+		Court       string `json:"court"`
+		Time        string `json:"time"`
+		ScheduledAt string `json:"scheduledAt"`
+		Stage       string `json:"stage"`
+		TeamAID     int64  `json:"teamAId"`
+		TeamBID     int64  `json:"teamBId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.TeamAID == 0 || body.TeamBID == 0 || body.TeamAID == body.TeamBID {
+		http.Error(w, `{"error":"bad_input"}`, http.StatusBadRequest)
+		return
+	}
+	err := rt.store.UpdateTAMatch(r.Context(), eventID, chi.URLParam(r, "id"),
+		body.Court, body.Time, body.ScheduledAt, body.Stage, body.TeamAID, body.TeamBID)
+	if errors.Is(err, errTANotFound) {
+		http.Error(w, `{"error":"match_not_found"}`, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	rt.invalidateTournamentCaches(r, eventID)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
 func (rt *_router) taDeleteMatch(w http.ResponseWriter, r *http.Request, eventID int64) {
