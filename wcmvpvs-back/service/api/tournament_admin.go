@@ -586,6 +586,7 @@ func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, even
 	st.PointsPerDraw = clampInt(st.PointsPerDraw, 0, 100)
 	st.PointsPerLoss = clampInt(st.PointsPerLoss, 0, 100)
 	st.PointsPerTieWin = clampInt(st.PointsPerTieWin, 0, 100)
+	st.PointsPerTieLoss = clampInt(st.PointsPerTieLoss, 0, 100)
 	// Formula set: solo al meglio dei 3 o dei 5.
 	if st.SetsBestOf != 5 {
 		st.SetsBestOf = 3

@@ -63,9 +63,10 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		`ALTER TABLE events ADD COLUMN points_per_draw INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN points_per_loss INTEGER NOT NULL DEFAULT 0`,
 		// Formula set: 3 = al meglio dei 3 (2 su 3), 5 = al meglio dei 5 (3 su 5).
-		// points_per_tie_win = punti a chi vince al tie-break (set decisivo).
+		// points_per_tie_win/loss = punti a chi vince/perde al tie-break (set decisivo).
 		`ALTER TABLE events ADD COLUMN sets_best_of INTEGER NOT NULL DEFAULT 3`,
 		`ALTER TABLE events ADD COLUMN points_per_tie_win INTEGER NOT NULL DEFAULT 2`,
+		`ALTER TABLE events ADD COLUMN points_per_tie_loss INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN bracket_qualifiers INTEGER NOT NULL DEFAULT 2`,
 		`ALTER TABLE events ADD COLUMN bracket_third_place INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE events ADD COLUMN fan_layout TEXT NOT NULL DEFAULT 'classic'`,
@@ -171,19 +172,20 @@ func (rt *_router) HandleTournamentMatches(w http.ResponseWriter, r *http.Reques
 // ============================ PUBBLICO: CLASSIFICHE ===========================
 
 type StandingRow struct {
-	TeamID  int64  `json:"teamId"`
-	Team    string `json:"team"`
-	Short   string `json:"short,omitempty"`
-	Played  int    `json:"played"`
-	Wins    int    `json:"wins"`
-	TieWins int    `json:"tieWins,omitempty"` // vittorie al tie-break (set decisivo)
-	Draws   int    `json:"draws"`
-	Losses  int    `json:"losses"`
-	Points  int    `json:"points"` // (wins-tieWins)*perWin + tieWins*perTieWin + draws*perDraw + losses*perLoss
-	SetsW   int    `json:"setsWon"`
-	SetsL   int    `json:"setsLost"`
-	PointsW int    `json:"pointsWon"`
-	PointsL int    `json:"pointsLost"`
+	TeamID    int64  `json:"teamId"`
+	Team      string `json:"team"`
+	Short     string `json:"short,omitempty"`
+	Played    int    `json:"played"`
+	Wins      int    `json:"wins"`
+	TieWins   int    `json:"tieWins,omitempty"` // vittorie al tie-break (set decisivo)
+	Draws     int    `json:"draws"`
+	Losses    int    `json:"losses"`
+	TieLosses int    `json:"tieLosses,omitempty"` // sconfitte al tie-break (set decisivo)
+	Points    int    `json:"points"`              // vedi ComputeStandings (tie-break separati da win/loss pieni)
+	SetsW     int    `json:"setsWon"`
+	SetsL     int    `json:"setsLost"`
+	PointsW   int    `json:"pointsWon"`
+	PointsL   int    `json:"pointsLost"`
 }
 
 type StandingsGroup struct {
@@ -195,12 +197,12 @@ type StandingsGroup struct {
 // gironi (stage = ''). Ordinamento: punti classifica, quoziente set, quoziente
 // punti. I punti per vittoria/sconfitta sono configurabili dal pannello admin.
 func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsGroup, error) {
-	var perWin, perDraw, perLoss, perTieWin, bestOf int
+	var perWin, perDraw, perLoss, perTieWin, perTieLoss, bestOf int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0),
-		       COALESCE(points_per_tie_win,2), COALESCE(sets_best_of,3)
+		       COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1), COALESCE(sets_best_of,3)
 		FROM events WHERE slug = ? AND type = 'tournament'`, slug).
-		Scan(&perWin, &perDraw, &perLoss, &perTieWin, &bestOf); err != nil {
+		Scan(&perWin, &perDraw, &perLoss, &perTieWin, &perTieLoss, &bestOf); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errTANotFound
 		}
@@ -273,12 +275,14 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 			b.Losses++
 			if tieBreak {
 				a.TieWins++
+				b.TieLosses++
 			}
 		case sb > sa:
 			b.Wins++
 			a.Losses++
 			if tieBreak {
 				b.TieWins++
+				a.TieLosses++
 			}
 		default: // sa == sb: pareggio (dove il formato lo prevede)
 			a.Draws++
@@ -303,9 +307,10 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 
 	byGroup := map[string][]StandingRow{}
 	for id, row := range teams {
-		// Le vittorie al tie-break valgono perTieWin; le altre perWin.
+		// Vittorie/sconfitte al tie-break valgono perTieWin/perTieLoss; le "piene" perWin/perLoss.
 		row.Points = (row.Wins-row.TieWins)*perWin + row.TieWins*perTieWin +
-			row.Draws*perDraw + row.Losses*perLoss
+			row.Draws*perDraw +
+			(row.Losses-row.TieLosses)*perLoss + row.TieLosses*perTieLoss
 		g := groupOf[id]
 		byGroup[g] = append(byGroup[g], *row)
 	}
