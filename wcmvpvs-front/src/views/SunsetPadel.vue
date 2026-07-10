@@ -214,7 +214,7 @@ const stars = [
 .sp-logo {
   display: block; margin: 0 auto;
   width: 90%; max-width: 90%;
-  max-height: clamp(150px, 30dvh, 280px); object-fit: contain;
+  max-height: clamp(135px, 27dvh, 252px); object-fit: contain;
   filter: drop-shadow(0 3px 10px rgba(11,6,32,.55)) drop-shadow(0 0 18px rgba(255,255,255,.35));
 }
 .sp-brand {
