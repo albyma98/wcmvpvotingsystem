@@ -119,8 +119,10 @@ type PublicMatch struct {
 	Stage    string   `json:"stage,omitempty"`
 	Group    string   `json:"group,omitempty"`
 	SetLabel string   `json:"setLabel,omitempty"`
-	ScoreA   int      `json:"scoreA"`
+	ScoreA   int      `json:"scoreA"` // set vinti
 	ScoreB   int      `json:"scoreB"`
+	CurA     int      `json:"curA"` // punti del set in corso (per il live nel calendario)
+	CurB     int      `json:"curB"`
 	Sets     []string `json:"sets"`
 	TeamA    string   `json:"teamA"`
 	TeamB    string   `json:"teamB"`
@@ -129,7 +131,7 @@ type PublicMatch struct {
 func (s *Store) ListPublicMatches(ctx context.Context, slug string) ([]PublicMatch, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id, m.court, m.scheduled_time, m.status, COALESCE(m.stage,''),
-		       COALESCE(ta.group_name,''), m.set_label, m.score_a, m.score_b, m.sets_json,
+		       COALESCE(ta.group_name,''), m.set_label, m.score_a, m.score_b, m.cur_a, m.cur_b, m.sets_json,
 		       COALESCE(NULLIF(ta.name,''), m.team_a_label, ''),
 		       COALESCE(NULLIF(tb.name,''), m.team_b_label, '')
 		FROM matches m
@@ -146,7 +148,7 @@ func (s *Store) ListPublicMatches(ctx context.Context, slug string) ([]PublicMat
 		var m PublicMatch
 		var setsJSON string
 		if err := rows.Scan(&m.ID, &m.Court, &m.Time, &m.Status, &m.Stage, &m.Group,
-			&m.SetLabel, &m.ScoreA, &m.ScoreB, &setsJSON, &m.TeamA, &m.TeamB); err != nil {
+			&m.SetLabel, &m.ScoreA, &m.ScoreB, &m.CurA, &m.CurB, &setsJSON, &m.TeamA, &m.TeamB); err != nil {
 			return nil, err
 		}
 		m.Sets = decodeSets(setsJSON)

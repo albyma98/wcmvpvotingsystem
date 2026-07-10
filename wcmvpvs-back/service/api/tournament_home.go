@@ -104,8 +104,11 @@ type TournamentPhase struct {
 func (rt *_router) HandleTournamentLive(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 
+	// Niente cache browser: con l'SSE il client rifà /live ad OGNI punto e deve
+	// vedere il valore fresco. Il liveCache in-memory (TTL 3s, bucato ad ogni
+	// scrittura da invalidateTournamentCaches) protegge comunque SQLite dai burst.
+	w.Header().Set("Cache-Control", "no-store")
 	if cached, ok := rt.liveCache.Get(slug); ok {
-		w.Header().Set("Cache-Control", "public, max-age=3")
 		_ = writeJSON(w, http.StatusOK, cached)
 		return
 	}
@@ -117,9 +120,6 @@ func (rt *_router) HandleTournamentLive(w http.ResponseWriter, r *http.Request) 
 	}
 
 	rt.liveCache.Set(slug, resp, 3*time.Second)
-
-	// Il client può cachare a sua volta: riduce richieste duplicate su reti d'arena instabili
-	w.Header().Set("Cache-Control", "public, max-age=3")
 	_ = writeJSON(w, http.StatusOK, resp)
 }
 

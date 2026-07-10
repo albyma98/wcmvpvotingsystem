@@ -91,7 +91,9 @@ export function useTournamentHome (slug, { mock = false } = {}) {
     try {
       aborter?.abort()
       aborter = new AbortController()
-      const res = await fetch(`/api/v1/tournaments/${slug}/live`, { signal: aborter.signal })
+      // no-store: l'SSE spinge ad ogni punto, il fetch NON deve tornare la
+      // risposta cachata dal browser (altrimenti il punteggio "salta" ogni ~3s)
+      const res = await fetch(`/api/v1/tournaments/${slug}/live`, { signal: aborter.signal, cache: 'no-store' })
       if (!res.ok) return
       const data = await res.json()
       liveMatches.value = data.liveMatches ?? []

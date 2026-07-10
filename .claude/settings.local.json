@@ -70,7 +70,8 @@
       "Bash(node /tmp/settings2_test.mjs)",
       "Bash(node /tmp/draws_test.mjs)",
       "Bash('/c/Program Files \\(x86\\)/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --force-device-scale-factor=1 --virtual-time-budget=3500 --screenshot=C:/Users/Alberto/AppData/Local/Temp/claude/c--Users-Alberto-Desktop-wcmvpvotingsystem/9878fd22-509a-41b5-a933-274d043d3bec/scratchpad/fill_wide.png --window-size=490,940 file:///C:/Users/Alberto/AppData/Local/Temp/claude/c--Users-Alberto-Desktop-wcmvpvotingsystem/9878fd22-509a-41b5-a933-274d043d3bec/scratchpad/fill.html)",
-      "Bash(node /tmp/matchupd_test.mjs)"
+      "Bash(node /tmp/matchupd_test.mjs)",
+      "Bash(node /tmp/pubmatch_test.mjs)"
     ]
   }
 }

@@ -30,14 +30,16 @@ async function load () {
   loading.value = true
   error.value = ''
   try {
+    // no-store: le viste live (calendario/classifiche) si aggiornano via SSE ad
+    // ogni punto; il fetch non deve tornare la copia cachata dal browser.
     if (props.section === 'standings') {
-      const r = await fetch(`/api/v1/tournaments/${props.slug}/standings`)
+      const r = await fetch(`/api/v1/tournaments/${props.slug}/standings`, { cache: 'no-store' })
       if (!r.ok) throw new Error(r.status)
       const data = await r.json()
       groups.value = data.groups ?? []
       allowDraws.value = data.allowDraws !== false
     } else if (props.section === 'calendar' || props.section === 'bracket') {
-      const r = await fetch(`/api/v1/tournaments/${props.slug}/matches`)
+      const r = await fetch(`/api/v1/tournaments/${props.slug}/matches`, { cache: 'no-store' })
       if (!r.ok) throw new Error(r.status)
       matches.value = (await r.json()).matches ?? []
     } else if (props.section === 'gallery') {
@@ -115,8 +117,15 @@ useTournamentStream(props.slug, () => { if (hasData.value) load() })
               <span :class="{ winner: m.status === 'finished' && m.scoreB > m.scoreA }">{{ m.teamB }}</span>
             </div>
             <div class="mr-score" v-if="m.status !== 'scheduled'">
-              <b>{{ m.scoreA }}</b><b>{{ m.scoreB }}</b>
-              <small v-if="m.sets.length">{{ m.sets.join(' ') }}</small>
+              <!-- LIVE: punti del set in corso (grandi) + set vinti e n° set -->
+              <template v-if="m.status === 'live'">
+                <b class="live-pt">{{ m.curA }}</b><b class="live-pt">{{ m.curB }}</b>
+                <small>{{ m.setLabel }} · Set {{ m.scoreA }}-{{ m.scoreB }}</small>
+              </template>
+              <template v-else>
+                <b>{{ m.scoreA }}</b><b>{{ m.scoreB }}</b>
+                <small v-if="m.sets.length">{{ m.sets.join(' ') }}</small>
+              </template>
             </div>
           </article>
         </section>
@@ -209,6 +218,7 @@ h2 { font-size: 12px; letter-spacing: 1.6px; color: #F2B928; text-transform: upp
 .mr-teams .winner { opacity: 1; color: #F2B928; }
 .mr-score { display: grid; grid-template-rows: auto auto auto; justify-items: end; font-variant-numeric: tabular-nums; }
 .mr-score b { font-size: 15px; line-height: 1.25; }
+.mr-score .live-pt { color: #F2B928; font-size: 19px; font-weight: 900; }
 .mr-score small { color: rgba(255,255,255,.45); font-size: 10px; grid-column: 1; }
 
 /* classifiche */
