@@ -262,8 +262,8 @@ const stars = [
 .sp-titlewrap.has-logo { margin-top: calc(4*var(--s)); }
 .sp-logo {
   display: block; margin: 0 auto;
-  width: 90%; max-width: 90%;
-  max-height: calc(150*var(--s)); object-fit: contain;
+  width: 100%; max-width: 100%;
+  max-height: calc(180*var(--s)); object-fit: contain;   /* ~+20% rispetto a prima */
   filter: drop-shadow(0 3px 10px rgba(11,6,32,.55)) drop-shadow(0 0 18px rgba(255,255,255,.35));
 }
 .sp-brand {

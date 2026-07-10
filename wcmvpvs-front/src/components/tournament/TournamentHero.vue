@@ -60,7 +60,7 @@ const restWords = () => props.tournament.name.split(' ').slice(1).join(' ')
     var(--hero-img);
 }
 .hero-brand { text-align: center; padding-top: 2px; }
-.hero-logo { max-height: clamp(44px, 8dvh, 72px); max-width: 70%; filter: drop-shadow(0 4px 14px rgba(0,0,0,.5)); }
+.hero-logo { max-height: clamp(53px, 9.6dvh, 86px); max-width: 84%; filter: drop-shadow(0 4px 14px rgba(0,0,0,.5)); } /* ~+20% */
 .hero-title {
   font-size: clamp(20px, 3.6dvh, 30px); font-weight: 900; font-style: italic; letter-spacing: .5px;
   line-height: .95; text-transform: uppercase; text-shadow: 0 3px 12px rgba(0,0,0,.6);
