@@ -67,6 +67,9 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		`ALTER TABLE events ADD COLUMN sets_best_of INTEGER NOT NULL DEFAULT 3`,
 		`ALTER TABLE events ADD COLUMN points_per_tie_win INTEGER NOT NULL DEFAULT 2`,
 		`ALTER TABLE events ADD COLUMN points_per_tie_loss INTEGER NOT NULL DEFAULT 1`,
+		// allow_draws: 1 = i pareggi (set pari) contano in classifica (colonna N),
+		// 0 = torneo senza pareggi (colonna N nascosta lato tifoso).
+		`ALTER TABLE events ADD COLUMN allow_draws INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN bracket_qualifiers INTEGER NOT NULL DEFAULT 2`,
 		`ALTER TABLE events ADD COLUMN bracket_third_place INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE events ADD COLUMN fan_layout TEXT NOT NULL DEFAULT 'classic'`,
@@ -196,18 +199,22 @@ type StandingsGroup struct {
 // ComputeStandings deriva le classifiche dalle sole partite CONCLUSE dei
 // gironi (stage = ''). Ordinamento: punti classifica, quoziente set, quoziente
 // punti. I punti per vittoria/sconfitta sono configurabili dal pannello admin.
-func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsGroup, error) {
-	var perWin, perDraw, perLoss, perTieWin, perTieLoss, bestOf int
+// Ritorna anche allowDraws: se il torneo non ammette pareggi, le partite con set
+// pari NON contano come pareggio e la colonna "N" è nascosta lato tifoso.
+func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsGroup, bool, error) {
+	var perWin, perDraw, perLoss, perTieWin, perTieLoss, bestOf, allowDrawsInt int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0),
-		       COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1), COALESCE(sets_best_of,3)
+		       COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1), COALESCE(sets_best_of,3),
+		       COALESCE(allow_draws,1)
 		FROM events WHERE slug = ? AND type = 'tournament'`, slug).
-		Scan(&perWin, &perDraw, &perLoss, &perTieWin, &perTieLoss, &bestOf); err != nil {
+		Scan(&perWin, &perDraw, &perLoss, &perTieWin, &perTieLoss, &bestOf, &allowDrawsInt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errTANotFound
+			return nil, false, errTANotFound
 		}
-		return nil, err
+		return nil, false, err
 	}
+	allowDraws := allowDrawsInt == 1
 	// Set necessari per vincere: 2 su 3, 3 su 5. Il tie-break è il set decisivo:
 	// vittoria "alla distanza" = vincitore a setsToWin, perdente a setsToWin-1.
 	setsToWin := (bestOf + 1) / 2
@@ -219,21 +226,21 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 		FROM tournament_teams tt
 		JOIN events e ON e.id = tt.event_id AND e.slug = ? AND e.type = 'tournament'`, slug)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for rows.Next() {
 		var id int64
 		var name, short, group string
 		if err := rows.Scan(&id, &name, &short, &group); err != nil {
 			rows.Close()
-			return nil, err
+			return nil, false, err
 		}
 		teams[id] = &StandingRow{TeamID: id, Team: name, Short: short}
 		groupOf[id] = group
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	mrows, err := s.db.QueryContext(ctx, `
@@ -242,7 +249,7 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 		JOIN events e ON e.id = m.event_id AND e.slug = ? AND e.type = 'tournament'
 		WHERE m.status = 'finished' AND COALESCE(m.stage,'') = ''`, slug)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer mrows.Close()
 	for mrows.Next() {
@@ -250,7 +257,7 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 		var sa, sb int
 		var setsJSON string
 		if err := mrows.Scan(&aID, &bID, &sa, &sb, &setsJSON); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		a, b := teams[aID], teams[bID]
 		if a == nil || b == nil {
@@ -284,9 +291,11 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 				b.TieWins++
 				a.TieLosses++
 			}
-		default: // sa == sb: pareggio (dove il formato lo prevede)
-			a.Draws++
-			b.Draws++
+		default: // sa == sb: pareggio, solo se il torneo li ammette
+			if allowDraws {
+				a.Draws++
+				b.Draws++
+			}
 		}
 		for _, set := range decodeSets(setsJSON) {
 			parts := strings.SplitN(set, "-", 2)
@@ -302,7 +311,7 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 		}
 	}
 	if err := mrows.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	byGroup := map[string][]StandingRow{}
@@ -336,7 +345,7 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 		out = append(out, StandingsGroup{Group: g, Rows: rowsG})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Group < out[j].Group })
-	return out, nil
+	return out, allowDraws, nil
 }
 
 func (rt *_router) HandleTournamentStandings(w http.ResponseWriter, r *http.Request) {
@@ -346,12 +355,12 @@ func (rt *_router) HandleTournamentStandings(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusOK, cached)
 		return
 	}
-	groups, err := rt.store.ComputeStandings(r.Context(), slug)
+	groups, allowDraws, err := rt.store.ComputeStandings(r.Context(), slug)
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
-	payload := map[string]interface{}{"groups": groups}
+	payload := map[string]interface{}{"groups": groups, "allowDraws": allowDraws}
 	rt.liveCache.Set(cacheKey, payload, 10*time.Second)
 	writeJSON(w, http.StatusOK, payload)
 }

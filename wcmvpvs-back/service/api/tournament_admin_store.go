@@ -943,6 +943,8 @@ type TASettings struct {
 	// PointsPerLoss < PointsPerTieLoss < PointsPerTieWin < PointsPerWin.
 	PointsPerTieWin  int `json:"pointsPerTieWin"`
 	PointsPerTieLoss int `json:"pointsPerTieLoss"`
+	// Se false, i pareggi non contano in classifica (colonna N nascosta ai tifosi).
+	AllowDraws bool `json:"allowDraws"`
 	// Fase finale: quante squadre passano per girone + finalina 3°/4° posto.
 	BracketQualifiers int  `json:"bracketQualifiers"`
 	BracketThirdPlace bool `json:"bracketThirdPlace"`
@@ -953,13 +955,14 @@ type TASettings struct {
 func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, string, error) {
 	var st TASettings
 	var slug string
-	var thirdPlace int
+	var thirdPlace, allowDraws int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
 		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
 		       COALESCE(logo_url,''),
 		       COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0),
 		       COALESCE(sets_best_of,3), COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1),
+		       COALESCE(allow_draws,1),
 		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0),
 		       COALESCE(fan_layout,'classic'), COALESCE(slug,'')
 		FROM events WHERE id = ?`, eventID).
@@ -967,8 +970,10 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 			&st.Logo,
 			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss,
 			&st.SetsBestOf, &st.PointsPerTieWin, &st.PointsPerTieLoss,
+			&allowDraws,
 			&st.BracketQualifiers, &thirdPlace, &st.FanLayout, &slug)
 	st.BracketThirdPlace = thirdPlace == 1
+	st.AllowDraws = allowDraws == 1
 	return &st, slug, err
 }
 
@@ -977,17 +982,21 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 	if st.BracketThirdPlace {
 		thirdPlace = 1
 	}
+	allowDraws := 0
+	if st.AllowDraws {
+		allowDraws = 1
+	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE events SET name=?, format=?, date_label=?, location=?, status_label=?, phase_label=?,
 		                  logo_url=?,
 		                  points_per_win=?, points_per_draw=?, points_per_loss=?,
-		                  sets_best_of=?, points_per_tie_win=?, points_per_tie_loss=?,
+		                  sets_best_of=?, points_per_tie_win=?, points_per_tie_loss=?, allow_draws=?,
 		                  bracket_qualifiers=?, bracket_third_place=?, fan_layout=?
 		WHERE id = ? AND type = 'tournament'`,
 		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel,
 		st.Logo,
 		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss,
-		st.SetsBestOf, st.PointsPerTieWin, st.PointsPerTieLoss,
+		st.SetsBestOf, st.PointsPerTieWin, st.PointsPerTieLoss, allowDraws,
 		st.BracketQualifiers, thirdPlace, st.FanLayout, eventID)
 	return err
 }

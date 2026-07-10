@@ -21,6 +21,7 @@ const titles = {
 
 const matches = ref([])
 const groups = ref([])
+const allowDraws = ref(true)   // classifica: mostrare la colonna pareggi "N"?
 const photos = ref([])
 const loading = ref(true)
 const error = ref('')
@@ -32,7 +33,9 @@ async function load () {
     if (props.section === 'standings') {
       const r = await fetch(`/api/v1/tournaments/${props.slug}/standings`)
       if (!r.ok) throw new Error(r.status)
-      groups.value = (await r.json()).groups ?? []
+      const data = await r.json()
+      groups.value = data.groups ?? []
+      allowDraws.value = data.allowDraws !== false
     } else if (props.section === 'calendar' || props.section === 'bracket') {
       const r = await fetch(`/api/v1/tournaments/${props.slug}/matches`)
       if (!r.ok) throw new Error(r.status)
@@ -125,14 +128,14 @@ useTournamentStream(props.slug, () => { if (hasData.value) load() })
         <section v-for="g in groups" :key="g.group" class="group-block">
           <h2>{{ g.group ? `Girone ${g.group}` : 'Classifica' }}</h2>
           <table>
-            <thead><tr><th></th><th class="tl">Squadra</th><th>G</th><th>V</th><th>N</th><th>P</th><th>Set</th><th class="pt">Pt</th></tr></thead>
+            <thead><tr><th></th><th class="tl">Squadra</th><th>G</th><th>V</th><th v-if="allowDraws">N</th><th>P</th><th>Set</th><th class="pt">Pt</th></tr></thead>
             <tbody>
               <tr v-for="(row, i) in g.rows" :key="row.teamId" :class="{ top: i < 2 }">
                 <td class="pos">{{ i + 1 }}</td>
                 <td class="tl name">{{ row.team }}</td>
                 <td>{{ row.played }}</td>
                 <td class="w">{{ row.wins }}</td>
-                <td>{{ row.draws }}</td>
+                <td v-if="allowDraws">{{ row.draws }}</td>
                 <td>{{ row.losses }}</td>
                 <td>{{ row.setsWon }}:{{ row.setsLost }}</td>
                 <td class="pt">{{ row.points }}</td>

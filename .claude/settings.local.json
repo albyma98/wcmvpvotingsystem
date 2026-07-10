@@ -67,7 +67,8 @@
       "Bash(node /tmp/settings_test.mjs)",
       "Bash(gofmt -w service/api/tournament_p1.go)",
       "Bash(node /tmp/tieloss_test.mjs)",
-      "Bash(node /tmp/settings2_test.mjs)"
+      "Bash(node /tmp/settings2_test.mjs)",
+      "Bash(node /tmp/draws_test.mjs)"
     ]
   }
 }

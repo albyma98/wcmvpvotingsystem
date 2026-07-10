@@ -114,7 +114,7 @@ func (s *Store) GenerateBracket(ctx context.Context, eventID int64, qualifiers i
 	}
 
 	// 2) classifiche per girone (già ordinate)
-	groups, err := s.ComputeStandings(ctx, slug)
+	groups, _, err := s.ComputeStandings(ctx, slug)
 	if err != nil {
 		return 0, err
 	}

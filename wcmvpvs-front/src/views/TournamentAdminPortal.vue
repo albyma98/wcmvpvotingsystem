@@ -63,7 +63,7 @@ const matches = ref([])
 const sponsors = ref([])
 const gallery = ref([])
 const mvp = ref(null)
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
 const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
@@ -662,13 +662,19 @@ async function generateBracket () {
 
         <h3 class="settings-sub">Punti classifica (gironi)</h3>
         <div class="settings-grid">
+          <label class="check">
+            <input type="checkbox" v-model="settings.allowDraws" />
+            <span>Consenti pareggi in classifica</span>
+          </label>
+        </div>
+        <div class="settings-grid">
           <label>Punti per vittoria <input type="number" min="0" max="100" v-model.number="settings.pointsPerWin" /></label>
           <label>Punti vittoria al tie-break <input type="number" min="0" max="100" v-model.number="settings.pointsPerTieWin" /></label>
           <label>Punti sconfitta al tie-break <input type="number" min="0" max="100" v-model.number="settings.pointsPerTieLoss" /></label>
-          <label>Punti per pareggio <input type="number" min="0" max="100" v-model.number="settings.pointsPerDraw" /></label>
+          <label v-if="settings.allowDraws">Punti per pareggio <input type="number" min="0" max="100" v-model.number="settings.pointsPerDraw" /></label>
           <label>Punti per sconfitta <input type="number" min="0" max="100" v-model.number="settings.pointsPerLoss" /></label>
         </div>
-        <p class="hint">Assegnati a ogni squadra per ogni partita di girone conclusa. Al <b>tie-break</b> ({{ settings.setsBestOf === 5 ? '3-2' : '2-1' }}) chi vince prende i «Punti vittoria al tie-break» e chi perde i «Punti sconfitta al tie-break», invece dei punti pieni. Il pareggio scatta quando la partita finisce con set pari (dove il formato lo prevede). La classifica ordina per punti totali, poi quoziente set e quoziente punti. La fase finale (tabellone) non è influenzata.</p>
+        <p class="hint">Assegnati a ogni squadra per ogni partita di girone conclusa. Al <b>tie-break</b> ({{ settings.setsBestOf === 5 ? '3-2' : '2-1' }}) chi vince prende i «Punti vittoria al tie-break» e chi perde i «Punti sconfitta al tie-break», invece dei punti pieni. {{ settings.allowDraws ? 'Il pareggio scatta quando la partita finisce con set pari (dove il formato lo prevede).' : 'I pareggi sono disattivati: le partite con set pari non contano come pareggio e la colonna «N» è nascosta ai tifosi.' }} La classifica ordina per punti totali, poi quoziente set e quoziente punti. La fase finale (tabellone) non è influenzata.</p>
 
         <h3 class="settings-sub">Fase finale (tabellone)</h3>
         <div class="settings-grid">
