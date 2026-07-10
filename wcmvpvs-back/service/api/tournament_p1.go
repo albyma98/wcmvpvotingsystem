@@ -62,6 +62,10 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		`ALTER TABLE events ADD COLUMN points_per_win INTEGER NOT NULL DEFAULT 3`,
 		`ALTER TABLE events ADD COLUMN points_per_draw INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN points_per_loss INTEGER NOT NULL DEFAULT 0`,
+		// Formula set: 3 = al meglio dei 3 (2 su 3), 5 = al meglio dei 5 (3 su 5).
+		// points_per_tie_win = punti a chi vince al tie-break (set decisivo).
+		`ALTER TABLE events ADD COLUMN sets_best_of INTEGER NOT NULL DEFAULT 3`,
+		`ALTER TABLE events ADD COLUMN points_per_tie_win INTEGER NOT NULL DEFAULT 2`,
 		`ALTER TABLE events ADD COLUMN bracket_qualifiers INTEGER NOT NULL DEFAULT 2`,
 		`ALTER TABLE events ADD COLUMN bracket_third_place INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE events ADD COLUMN fan_layout TEXT NOT NULL DEFAULT 'classic'`,
@@ -172,9 +176,10 @@ type StandingRow struct {
 	Short   string `json:"short,omitempty"`
 	Played  int    `json:"played"`
 	Wins    int    `json:"wins"`
+	TieWins int    `json:"tieWins,omitempty"` // vittorie al tie-break (set decisivo)
 	Draws   int    `json:"draws"`
 	Losses  int    `json:"losses"`
-	Points  int    `json:"points"` // punti classifica: wins*perWin + draws*perDraw + losses*perLoss
+	Points  int    `json:"points"` // (wins-tieWins)*perWin + tieWins*perTieWin + draws*perDraw + losses*perLoss
 	SetsW   int    `json:"setsWon"`
 	SetsL   int    `json:"setsLost"`
 	PointsW int    `json:"pointsWon"`
@@ -190,15 +195,20 @@ type StandingsGroup struct {
 // gironi (stage = ''). Ordinamento: punti classifica, quoziente set, quoziente
 // punti. I punti per vittoria/sconfitta sono configurabili dal pannello admin.
 func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsGroup, error) {
-	var perWin, perDraw, perLoss int
+	var perWin, perDraw, perLoss, perTieWin, bestOf int
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0)
-		FROM events WHERE slug = ? AND type = 'tournament'`, slug).Scan(&perWin, &perDraw, &perLoss); err != nil {
+		SELECT COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0),
+		       COALESCE(points_per_tie_win,2), COALESCE(sets_best_of,3)
+		FROM events WHERE slug = ? AND type = 'tournament'`, slug).
+		Scan(&perWin, &perDraw, &perLoss, &perTieWin, &bestOf); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errTANotFound
 		}
 		return nil, err
 	}
+	// Set necessari per vincere: 2 su 3, 3 su 5. Il tie-break è il set decisivo:
+	// vittoria "alla distanza" = vincitore a setsToWin, perdente a setsToWin-1.
+	setsToWin := (bestOf + 1) / 2
 
 	teams := map[int64]*StandingRow{}
 	groupOf := map[int64]string{}
@@ -250,13 +260,26 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 		a.SetsL += sb
 		b.SetsW += sb
 		b.SetsL += sa
+		// Tie-break = vittoria al set decisivo: il vincitore arriva a setsToWin
+		// e il perdente è a setsToWin-1 (2-1 nel 2 su 3, 3-2 nel 3 su 5).
+		hi, lo := sa, sb
+		if sb > sa {
+			hi, lo = sb, sa
+		}
+		tieBreak := hi == setsToWin && lo == setsToWin-1
 		switch {
 		case sa > sb:
 			a.Wins++
 			b.Losses++
+			if tieBreak {
+				a.TieWins++
+			}
 		case sb > sa:
 			b.Wins++
 			a.Losses++
+			if tieBreak {
+				b.TieWins++
+			}
 		default: // sa == sb: pareggio (dove il formato lo prevede)
 			a.Draws++
 			b.Draws++
@@ -280,7 +303,9 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 
 	byGroup := map[string][]StandingRow{}
 	for id, row := range teams {
-		row.Points = row.Wins*perWin + row.Draws*perDraw + row.Losses*perLoss
+		// Le vittorie al tie-break valgono perTieWin; le altre perWin.
+		row.Points = (row.Wins-row.TieWins)*perWin + row.TieWins*perTieWin +
+			row.Draws*perDraw + row.Losses*perLoss
 		g := groupOf[id]
 		byGroup[g] = append(byGroup[g], *row)
 	}

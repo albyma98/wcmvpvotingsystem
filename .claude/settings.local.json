@@ -62,7 +62,9 @@
       "Read(//c/Program Files \\(x86\\)/Google/Chrome/Application/**)",
       "Read(//c/Program Files/Google/Chrome/Application/**)",
       "Bash('/c/Program Files \\(x86\\)/Google/Chrome/Application/chrome.exe' --headless=new --disable-gpu --virtual-time-budget=4000 --screenshot=C:/Users/Alberto/AppData/Local/Temp/claude/c--Users-Alberto-Desktop-wcmvpvotingsystem/9878fd22-509a-41b5-a933-274d043d3bec/scratchpad/mvp_shotB.png --window-size=440,2600 file:///C:/Users/Alberto/AppData/Local/Temp/claude/c--Users-Alberto-Desktop-wcmvpvotingsystem/9878fd22-509a-41b5-a933-274d043d3bec/scratchpad/mvp_mock.html)",
-      "Bash(echo \"exit $?\")"
+      "Bash(echo \"exit $?\")",
+      "Bash(node /tmp/tiebreak_test.mjs)",
+      "Bash(node /tmp/settings_test.mjs)"
     ]
   }
 }
