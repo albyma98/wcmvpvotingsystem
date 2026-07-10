@@ -12,14 +12,20 @@ const emit = defineEmits(['uploaded'])
 
 const uploading = ref(false)
 const error = ref('')
-const viewer = ref(null) // id della foto aperta a tutto schermo
+const viewer = ref(null)        // id della foto aperta a tutto schermo
+const viewerLoading = ref(false) // la full si sta caricando nel visore
 const fileInput = ref(null)
 
+// Griglia = miniatura leggera (veloce anche con decine di foto); visore = full.
+const thumbUrl = id => `/api/v1/tournaments/${props.slug}/gallery/${id}/thumb`
 const imgUrl = id => `/api/v1/tournaments/${props.slug}/gallery/${id}/image`
 
-// Ridimensiona la foto lato client (lato lungo max 1440px) → data-URL leggera.
+// Genera dalla foto scelta due versioni (una decodifica, due render):
+//  - full: qualità alta per l'ingrandimento (lato lungo 2560px, così resta sotto
+//    il limite di 6MB del server senza rovinare la qualità sugli schermi phone)
+//  - thumb: miniatura piccola per la griglia (lato lungo 400px)
 // WebP quando supportato, JPEG di fallback (per le foto va benissimo).
-function filePhotoToDataURL (file, maxSize = 1440) {
+function makeImages (file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     const img = new Image()
@@ -27,19 +33,24 @@ function filePhotoToDataURL (file, maxSize = 1440) {
     reader.onerror = () => reject(new Error('read'))
     img.onerror = () => reject(new Error('decode'))
     img.onload = () => {
-      const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
-      const w = Math.max(1, Math.round(img.width * scale))
-      const h = Math.max(1, Math.round(img.height * scale))
-      const canvas = document.createElement('canvas')
-      canvas.width = w; canvas.height = h
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
-      let out = canvas.toDataURL('image/webp', 0.82)
-      if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.85)
-      resolve(out)
+      const render = (maxSize, quality) => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
+        const w = Math.max(1, Math.round(img.width * scale))
+        const h = Math.max(1, Math.round(img.height * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        let out = canvas.toDataURL('image/webp', quality)
+        if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', quality)
+        return out
+      }
+      resolve({ full: render(2560, 0.9), thumb: render(400, 0.72) })
     }
     reader.readAsDataURL(file)
   })
 }
+
+function openViewer (id) { viewer.value = id; viewerLoading.value = true }
 
 function pickPhoto () { fileInput.value?.click() }
 
@@ -51,11 +62,11 @@ async function onPhotoPick (e) {
   uploading.value = true
   error.value = ''
   try {
-    const image = await filePhotoToDataURL(file)
+    const { full, thumb } = await makeImages(file)
     const res = await fetch(`/api/v1/tournaments/${props.slug}/gallery`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image })
+      body: JSON.stringify({ image: full, thumb })
     })
     if (!res.ok) {
       const err = (await res.json().catch(() => ({}))).error
@@ -78,10 +89,10 @@ async function onPhotoPick (e) {
     </p>
     <div v-else class="grid">
       <button
-        v-for="p in photos" :key="p.id" class="thumb" @click="viewer = p.id"
+        v-for="p in photos" :key="p.id" class="thumb" @click="openViewer(p.id)"
         aria-label="Apri foto"
       >
-        <img :src="imgUrl(p.id)" alt="Foto del torneo" loading="lazy" />
+        <img :src="thumbUrl(p.id)" alt="Foto del torneo" loading="lazy" />
       </button>
     </div>
 
@@ -98,10 +109,17 @@ async function onPhotoPick (e) {
       accept="image/*" capture="environment" @change="onPhotoPick"
     />
 
-    <!-- Visore a tutto schermo -->
+    <!-- Visore a tutto schermo: miniatura sfocata subito, poi la full nitida -->
     <div v-if="viewer" class="viewer" @click="viewer = null">
       <button class="close" aria-label="Chiudi" @click="viewer = null">✕</button>
-      <img :src="imgUrl(viewer)" alt="Foto del torneo" />
+      <div class="stage" @click.stop>
+        <img class="blur" :src="thumbUrl(viewer)" alt="" aria-hidden="true" />
+        <img
+          class="full" :class="{ ready: !viewerLoading }" :src="imgUrl(viewer)"
+          alt="Foto del torneo" @load="viewerLoading = false"
+        />
+        <span v-if="viewerLoading" class="spinner" aria-label="Caricamento"></span>
+      </div>
     </div>
   </div>
 </template>
@@ -146,7 +164,20 @@ async function onPhotoPick (e) {
   position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.94);
   display: flex; align-items: center; justify-content: center; padding: 16px;
 }
-.viewer img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
+.stage { position: relative; max-width: 100%; max-height: 100%; display: flex; }
+.stage img { max-width: 100%; max-height: calc(100dvh - 32px); object-fit: contain; border-radius: 6px; display: block; }
+/* miniatura ingrandita = placeholder istantaneo, leggermente sfocato */
+.stage .blur { position: absolute; inset: 0; width: 100%; height: 100%; filter: blur(14px); transform: scale(1.02); }
+/* la full sopra: appare in dissolvenza quando è caricata */
+.stage .full { position: relative; opacity: 0; transition: opacity .25s ease; }
+.stage .full.ready { opacity: 1; }
+.spinner {
+  position: absolute; top: 50%; left: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px;
+  border: 3px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%;
+  animation: gal-spin .8s linear infinite;
+}
+@keyframes gal-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 .close {
   position: absolute; top: calc(env(safe-area-inset-top,0px) + 12px); right: 14px;
   width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;

@@ -84,7 +84,7 @@ async function loadGallery () {
   const r = await fetch(`/api/v1/tournaments/${props.slug}/gallery`)
   if (r.ok) gallery.value = (await r.json()).photos ?? []
 }
-const galleryImg = id => `/api/v1/tournaments/${props.slug}/gallery/${id}/image`
+const galleryImg = id => `/api/v1/tournaments/${props.slug}/gallery/${id}/thumb`
 async function deleteGalleryPhoto (id) {
   if (!window.confirm('Rimuovere questa foto dalla gallery?')) return
   const r = await j('DELETE', `/gallery/${id}`)
