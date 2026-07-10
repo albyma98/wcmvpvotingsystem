@@ -26,9 +26,11 @@ const photos = ref([])
 const loading = ref(true)
 const error = ref('')
 
-async function load () {
-  loading.value = true
-  error.value = ''
+// silent = refresh in background (tick SSE): aggiorna SOLO i dati senza toccare
+// `loading`/`error`, così Vue fa il diff sulle righe :key-ate e ridisegna solo il
+// punteggio cambiato — niente flash di ricaricamento dell'intera pagina.
+async function load (silent = false) {
+  if (!silent) { loading.value = true; error.value = '' }
   try {
     // no-store: le viste live (calendario/classifiche) si aggiornano via SSE ad
     // ogni punto; il fetch non deve tornare la copia cachata dal browser.
@@ -48,9 +50,9 @@ async function load () {
       photos.value = (await r.json()).photos ?? []
     }
   } catch (e) {
-    error.value = 'Dati non disponibili al momento.'
+    if (!silent) error.value = 'Dati non disponibili al momento.'
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -77,7 +79,8 @@ const hasData = computed(() =>
 
 // Le sezioni live si aggiornano da sole via SSE (push, niente polling).
 onMounted(load)
-useTournamentStream(props.slug, () => { if (hasData.value) load() })
+// Refresh SSE in modalità silent: aggiorna i dati senza il flash di "Caricamento…".
+useTournamentStream(props.slug, () => { if (hasData.value) load(true) })
 </script>
 
 <template>
