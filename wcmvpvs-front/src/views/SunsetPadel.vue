@@ -33,7 +33,7 @@
 
         <div class="sp-cta">
           <button class="sp-btn sp-btn-live" @click="$emit('live')">🔥 {{ liveLabel }}</button>
-          <button class="sp-btn sp-btn-signup" @click="$emit('signup')">{{ signupLabel }}</button>
+          <button class="sp-btn sp-btn-signup" @click="showSponsors = true">🤝 SPONSOR</button>
         </div>
       </div>
 
@@ -54,7 +54,7 @@
 
         <!-- GRID -->
         <div class="sp-grid">
-          <button v-for="(t, i) in tiles" :key="i" class="sp-tile" :class="'t' + (i % 8 + 1)"
+          <button v-for="(t, i) in visibleTiles" :key="i" class="sp-tile" :class="'t' + (i % 8 + 1)"
                   @click="$emit('navigate', t.route)">
             <div class="sp-tile-sheen"></div>
             <span class="sp-tile-icon">{{ tileIcon(t) }}</span>
@@ -63,18 +63,28 @@
           </button>
         </div>
 
-        <!-- SPONSORS -->
-        <div class="sp-sponsors-wrap" v-if="sponsorLogos().length">
-          <div class="sp-sponsor-title">CON IL SUPPORTO DI</div>
-          <div class="sp-sponsors">
-            <div v-for="(s, i) in sponsorLogos()" :key="i" class="sp-sponsor-box">
-              <img :src="s.logo" :alt="s.name" />
-            </div>
-          </div>
-        </div>
-
         <div class="sp-home"><span></span></div>
       </div>
+
+      <!-- MODALE SPONSOR (aperta dal bottone "Sponsor" in alto) -->
+      <transition name="sp-modal">
+        <div v-if="showSponsors" class="sp-modal-scrim" @click.self="showSponsors = false">
+          <div class="sp-modal">
+            <button class="sp-modal-x" @click="showSponsors = false" aria-label="Chiudi">✕</button>
+            <h3 class="sp-modal-title">✨ I NOSTRI SPONSOR ✨</h3>
+            <div v-if="sponsors.length" class="sp-modal-grid">
+              <component v-for="(s, i) in sponsors" :key="i"
+                         :is="s.url ? 'a' : 'div'" :href="s.url || undefined"
+                         :target="s.url ? '_blank' : undefined" :rel="s.url ? 'noopener' : undefined"
+                         class="sp-modal-sponsor" :class="{ main: s.tier === 'main' }">
+                <img v-if="s.logo" :src="s.logo" :alt="s.name" />
+                <span v-else class="sp-modal-name">{{ s.name }}</span>
+              </component>
+            </div>
+            <p v-else class="sp-modal-empty">Sponsor in arrivo.</p>
+          </div>
+        </div>
+      </transition>
     </div>
   </div>
 </template>
@@ -82,7 +92,9 @@
 <script setup>
 // Layout tifoso "Sunset" — grafica alternativa, stessi dati/navigazione della
 // home classica: il parent (TournamentHomeView) passa i dati reali e gestisce
-// gli eventi (navigate = route della tile, live/signup = scorciatoie).
+// gli eventi (navigate = route della tile, live = scorciatoia al calendario).
+import { ref, computed } from 'vue'
+
 defineEmits(['live', 'signup', 'navigate'])
 
 const props = defineProps({
@@ -101,9 +113,14 @@ const props = defineProps({
   sponsors:    { type: Array, default: () => [] },    // { name, logo }
 })
 
-// La griglia mostra i loghi degli sponsor (max 4 per non strabordare); se nessuno
-// ha un logo, la riga non compare.
-const sponsorLogos = () => props.sponsors.filter(s => s.logo).slice(0, 4)
+// Gli sponsor non stanno più in fondo alla home: si aprono in una modale dal
+// bottone "Sponsor" in alto (recupera spazio verticale).
+const showSponsors = ref(false)
+
+// Tile: nel layout Sunset nascondiamo "Regolamento" (/rules) e "Info evento"
+// (/event) per alleggerire la griglia.
+const hiddenTileRoutes = ['/rules', '/event']
+const visibleTiles = computed(() => props.tiles.filter(t => !hiddenTileRoutes.includes(t.route)))
 
 // Le icone della home classica sono chiavi (calendar, chart, …): qui le rendiamo
 // come emoji per restare nello stile "pop" del layout Sunset.
@@ -208,13 +225,13 @@ const stars = [
 @keyframes sp-pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
 
 .sp-titlewrap { position: relative; z-index: 4; text-align: center; margin-top: 10px; }
-/* Con logo: l'immagine è l'intestazione — copre il 90% della larghezza e si
-   estende in verticale fin sopra i box data/luogo. */
-.sp-titlewrap.has-logo { margin-top: 6px; }
+/* Con logo: l'immagine è l'intestazione — copre il 90% della larghezza, ma
+   contenuta in altezza così che l'header resti ~30% dello schermo. */
+.sp-titlewrap.has-logo { margin-top: 4px; }
 .sp-logo {
   display: block; margin: 0 auto;
   width: 90%; max-width: 90%;
-  max-height: clamp(135px, 27dvh, 252px); object-fit: contain;
+  max-height: clamp(84px, 17dvh, 150px); object-fit: contain;
   filter: drop-shadow(0 3px 10px rgba(11,6,32,.55)) drop-shadow(0 0 18px rgba(255,255,255,.35));
 }
 .sp-brand {
@@ -290,14 +307,40 @@ const stars = [
 .t7 { background: linear-gradient(160deg,#6dfff0,#00E5FF); }
 .t8 { background: linear-gradient(160deg,#ffb46b,#FF7A1A); color: #fff; }
 
-.sp-sponsors-wrap { margin-top: auto; }
-.sp-sponsor-title { text-align: center; font-size: 10px; letter-spacing: .18em; font-weight: 700; color: #fff; opacity: .4; margin: 10px 0 6px; }
-.sp-sponsors { display: flex; gap: 10px; padding-bottom: 8px; }
-.sp-sponsor-box {
-  flex: 1; background: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: center;
-  height: 42px; padding: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25); overflow: hidden;
-}
-.sp-sponsor-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.sp-home { display: flex; justify-content: center; padding: 4px 0 6px; }
+.sp-home { display: flex; justify-content: center; padding: 4px 0 6px; margin-top: auto; }
 .sp-home span { width: 120px; height: 4px; border-radius: 4px; background: #fff; opacity: .25; }
+
+/* MODALE SPONSOR */
+.sp-modal-scrim {
+  position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: rgba(6,3,18,.72); backdrop-filter: blur(4px);
+}
+.sp-modal {
+  position: relative; width: 100%; max-width: 360px; max-height: 82%; overflow-y: auto;
+  background: linear-gradient(180deg,#1c0f3d,#100826); border: 1.5px solid rgba(255,255,255,.16);
+  border-radius: 22px; padding: 22px 18px 20px; box-shadow: 0 20px 60px rgba(138,43,255,.4);
+}
+.sp-modal-x {
+  position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border-radius: 50%;
+  border: none; background: rgba(255,255,255,.12); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.sp-modal-title {
+  margin: 0 0 16px; text-align: center; font-size: 15px; font-weight: 800; letter-spacing: .08em; color: #00E5FF;
+}
+.sp-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sp-modal-sponsor {
+  display: flex; align-items: center; justify-content: center; text-decoration: none;
+  background: #fff; border-radius: 14px; min-height: 74px; padding: 10px; overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0,0,0,.3);
+}
+.sp-modal-sponsor.main { grid-column: 1 / -1; min-height: 92px; }
+.sp-modal-sponsor img { max-width: 100%; max-height: 68px; object-fit: contain; }
+.sp-modal-name { color: #0B0620; font-weight: 800; font-size: 14px; text-align: center; }
+.sp-modal-empty { text-align: center; color: rgba(255,255,255,.6); font-size: 13px; padding: 20px 0; }
+
+/* transizione modale */
+.sp-modal-enter-active, .sp-modal-leave-active { transition: opacity .2s ease; }
+.sp-modal-enter-active .sp-modal, .sp-modal-leave-active .sp-modal { transition: transform .25s cubic-bezier(.22,1.3,.5,1); }
+.sp-modal-enter-from, .sp-modal-leave-to { opacity: 0; }
+.sp-modal-enter-from .sp-modal, .sp-modal-leave-to .sp-modal { transform: translateY(24px) scale(.94); }
 </style>
