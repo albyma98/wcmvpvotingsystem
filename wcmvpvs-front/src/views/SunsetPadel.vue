@@ -31,10 +31,6 @@
           <div class="sp-chip">📍 {{ place }}</div>
         </div>
 
-        <div class="sp-cta">
-          <button class="sp-btn sp-btn-live" @click="$emit('live')">🔥 {{ liveLabel }}</button>
-          <button class="sp-btn sp-btn-signup" @click="showSponsors = true">🤝 SPONSOR</button>
-        </div>
       </div>
 
       <!-- BODY -->
@@ -72,7 +68,7 @@
         <!-- GRID -->
         <div class="sp-grid">
           <button v-for="(t, i) in visibleTiles" :key="i" class="sp-tile" :class="'t' + (i % 8 + 1)"
-                  @click="$emit('navigate', t.route)">
+                  @click="onTile(t)">
             <div class="sp-tile-sheen"></div>
             <span class="sp-tile-icon">{{ tileIcon(t) }}</span>
             <span class="sp-tile-label">{{ t.label }}</span>
@@ -83,7 +79,7 @@
         <div class="sp-home"><span></span></div>
       </div>
 
-      <!-- MODALE SPONSOR (aperta dal bottone "Sponsor" in alto) -->
+      <!-- MODALE SPONSOR (aperta dalla tile "Sponsor") -->
       <transition name="sp-modal">
         <div v-if="showSponsors" class="sp-modal-scrim" @click.self="showSponsors = false">
           <div class="sp-modal">
@@ -112,7 +108,7 @@
 // gli eventi (navigate = route della tile, live = scorciatoia al calendario).
 import { ref, computed } from 'vue'
 
-defineEmits(['live', 'signup', 'navigate'])
+const emit = defineEmits(['live', 'signup', 'navigate'])
 
 const props = defineProps({
   status:      { type: String, default: '' },
@@ -131,20 +127,32 @@ const props = defineProps({
   sponsors:    { type: Array, default: () => [] },    // { name, logo }
 })
 
-// Gli sponsor non stanno più in fondo alla home: si aprono in una modale dal
-// bottone "Sponsor" in alto (recupera spazio verticale).
+// Gli sponsor non stanno più in fondo alla home: si aprono in una modale dalla
+// tile "Sponsor" (che ha preso il posto di "Premi").
 const showSponsors = ref(false)
+const SPONSORS_ROUTE = '__sponsors__' // route sintetica: apre la modale invece di navigare
 
 // Tile: nel layout Sunset nascondiamo "Regolamento" (/rules) e "Info evento"
-// (/event) per alleggerire la griglia.
+// (/event); la tile "Premi" (/prizes) diventa "Sponsor" e apre la modale.
 const hiddenTileRoutes = ['/rules', '/event']
-const visibleTiles = computed(() => props.tiles.filter(t => !hiddenTileRoutes.includes(t.route)))
+const visibleTiles = computed(() =>
+  props.tiles
+    .filter(t => !hiddenTileRoutes.includes(t.route))
+    .map(t => t.route === '/prizes'
+      ? { ...t, label: 'Sponsor', sub: 'I nostri partner', icon: 'sponsor', route: SPONSORS_ROUTE }
+      : t))
+
+// Tap su una tile: la tile Sponsor apre la modale, le altre navigano.
+function onTile (t) {
+  if (t.route === SPONSORS_ROUTE) { showSponsors.value = true; return }
+  emit('navigate', t.route)
+}
 
 // Le icone della home classica sono chiavi (calendar, chart, …): qui le rendiamo
 // come emoji per restare nello stile "pop" del layout Sunset.
 const ICON_EMOJI = {
   calendar: '📅', chart: '📊', bracket: '🏆', star: '⭐',
-  trophy: '🎁', gallery: '📸', doc: '📋', info: 'ℹ️'
+  trophy: '🎁', gallery: '📸', doc: '📋', info: 'ℹ️', sponsor: '🤝'
 }
 const tileIcon = t => ICON_EMOJI[t.icon] || '▪️'
 
