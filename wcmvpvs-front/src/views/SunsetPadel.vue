@@ -373,8 +373,8 @@ const stars = [
 .sp-tile-label { font-weight: 700; font-size: calc(17.5*var(--s)); display: block; position: relative; z-index: 2; margin-top: calc(5*var(--s)); }
 .sp-tile-sub { font-size: calc(13*var(--s)); opacity: .7; font-weight: 600; display: block; position: relative; z-index: 2; }
 /* Tile Sponsor: il logo del Main sponsor riempie l'area icona/etichetta */
-.sp-tile.is-sponsor { background: #fff; color: #0B0620; }
-.sp-tile-sponsor-logo { max-width: 100%; max-height: calc(71*var(--s)); object-fit: contain; position: relative; z-index: 2; margin: calc(2*var(--s)) 0; }
+.sp-tile.is-sponsor { background: #fff; color: #0B0620; padding: calc(6*var(--s)) calc(4*var(--s)); }
+.sp-tile-sponsor-logo { max-width: 100%; max-height: calc(121*var(--s)); object-fit: contain; position: relative; z-index: 2; margin: calc(2*var(--s)) 0; }
 .sp-tile-sponsor-name { font-size: calc(18*var(--s)); }
 .t1 { background: linear-gradient(160deg,#6dfff0,#00E5FF); }
 .t2 { background: linear-gradient(160deg,#ff8fce,#FF2E9A); color: #fff; }
