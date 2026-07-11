@@ -6,6 +6,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { getOrCreateDeviceId } from '@/deviceId'
 import { useTournamentStream } from '@/composables/useTournamentStream'
+import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 
 const props = defineProps({
   slug: { type: String, required: true }
@@ -55,8 +56,11 @@ async function load () {
   }
 }
 
-async function vote (candidate) {
+async function vote (candidate, team) {
   if (voting.value) return
+  const gender = candidate.gender || activeGender.value
+  // Cambio voto o primo voto per questo slot-genere? (prima dell'aggiornamento board)
+  const changed = (gender === 'female' ? myVoteFemale.value : myVoteMale.value) !== 0
   voting.value = candidate.id
   try {
     const r = await fetch(`/api/v1/tournaments/${props.slug}/mvp/vote`, {
@@ -66,6 +70,15 @@ async function vote (candidate) {
     })
     if (!r.ok) throw new Error(r.status)
     applyBoard(await r.json())
+    posthogTrack(PH_EVENTS.TOURNAMENT_MVP_VOTED, {
+      tournament_slug: props.slug,
+      surface: 'tournament',
+      gender,
+      player_id: candidate.id,
+      team_id: team?.id,
+      team: team?.name,
+      changed,
+    })
     justVoted.value = candidate.name
     setTimeout(() => { if (justVoted.value === candidate.name) justVoted.value = '' }, 3200)
   } catch (e) {
@@ -135,7 +148,7 @@ useTournamentStream(() => props.slug, load)
                 class="player"
                 :class="{ chosen: activeVote === c.id, dim: hasVotedActive && activeVote !== c.id }"
                 :disabled="!!voting"
-                @click="vote(c)"
+                @click="vote(c, t)"
               >
                 <span class="p-name">{{ c.name }}</span>
                 <span v-if="voting === c.id" class="p-right">…</span>

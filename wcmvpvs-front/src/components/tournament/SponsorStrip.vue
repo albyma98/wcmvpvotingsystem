@@ -1,10 +1,41 @@
 <script setup>
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 
 const props = defineProps({
-  sponsors: { type: Array, default: () => [] }
+  sponsors: { type: Array, default: () => [] },
   // { id, name, logo?, url?, tier: 'main'|'partner', brandColor? }
+  tournamentSlug: { type: String, default: '' }
 })
+
+// sponsor_strip_shown: una volta, quando la strip riceve degli sponsor (impression aggregata).
+let shownTracked = false
+watch(
+  () => props.sponsors.length,
+  (n) => {
+    if (!n || shownTracked) return
+    shownTracked = true
+    posthogTrack(PH_EVENTS.TOURNAMENT_SPONSOR_SHOWN, {
+      tournament_slug: props.tournamentSlug,
+      surface: 'tournament',
+      sponsor_count: n,
+      main_count: props.sponsors.filter(s => s.tier === 'main').length,
+      partner_count: props.sponsors.filter(s => s.tier !== 'main').length,
+    })
+  },
+  { immediate: true },
+)
+
+function onSponsorClick (s) {
+  posthogTrack(PH_EVENTS.TOURNAMENT_SPONSOR_CLICKED, {
+    tournament_slug: props.tournamentSlug,
+    surface: 'tournament',
+    sponsor_id: s.id,
+    sponsor_name: s.name,
+    tier: s.tier || 'partner',
+    has_url: !!s.url,
+  })
+}
 
 const mainSponsors = computed(() => props.sponsors.filter(s => s.tier === 'main'))
 const partnerSponsors = computed(() =>
@@ -65,6 +96,7 @@ onBeforeUnmount(stopSlides)
             v-for="s in currentPage" :key="s.id"
             :is="s.url ? 'a' : 'span'" :href="s.url" target="_blank" rel="noopener"
             class="sp-main-item"
+            @click="onSponsorClick(s)"
           >
             <img v-if="s.logo" :src="s.logo" :alt="s.name" loading="lazy" />
             <span v-else class="sp-text">{{ s.name }}</span>
@@ -80,6 +112,7 @@ onBeforeUnmount(stopSlides)
           v-for="(s, i) in marqueeTrack" :key="`${s.id}-${i}`"
           :is="s.url ? 'a' : 'span'" :href="s.url" target="_blank" rel="noopener"
           class="sp-pill"
+          @click="onSponsorClick(s)"
         >
           <img v-if="s.logo" :src="s.logo" :alt="s.name" loading="lazy" />
           <span v-else-if="s.brandColor" class="dot" :style="{ background: s.brandColor }"></span>

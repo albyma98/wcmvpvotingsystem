@@ -67,37 +67,25 @@
 
         <!-- GRID -->
         <div class="sp-grid">
-          <button v-for="(t, i) in visibleTiles" :key="i" class="sp-tile" :class="'t' + (i % 8 + 1)"
+          <button v-for="(t, i) in visibleTiles" :key="i" class="sp-tile" :class="[('t' + (i % 8 + 1)), { 'is-sponsor': t.route === SPONSORS_ROUTE }]"
                   @click="onTile(t)">
             <div class="sp-tile-sheen"></div>
-            <span class="sp-tile-icon">{{ tileIcon(t) }}</span>
-            <span class="sp-tile-label">{{ t.label }}</span>
-            <span class="sp-tile-sub">{{ t.sub }}</span>
+            <template v-if="t.route === SPONSORS_ROUTE && t.sponsor">
+              <img v-if="t.sponsor.logo" class="sp-tile-sponsor-logo" :src="t.sponsor.logo" :alt="t.sponsor.name" />
+              <span v-else class="sp-tile-label sp-tile-sponsor-name">{{ t.sponsor.name }}</span>
+              <span class="sp-tile-sub">{{ t.sub }}</span>
+            </template>
+            <template v-else>
+              <span class="sp-tile-icon">{{ tileIcon(t) }}</span>
+              <span class="sp-tile-label">{{ t.label }}</span>
+              <span class="sp-tile-sub">{{ t.sub }}</span>
+            </template>
           </button>
         </div>
 
         <div class="sp-home"><span></span></div>
       </div>
 
-      <!-- MODALE SPONSOR (aperta dalla tile "Sponsor") -->
-      <transition name="sp-modal">
-        <div v-if="showSponsors" class="sp-modal-scrim" @click.self="showSponsors = false">
-          <div class="sp-modal">
-            <button class="sp-modal-x" @click="showSponsors = false" aria-label="Chiudi">✕</button>
-            <h3 class="sp-modal-title">✨ I NOSTRI SPONSOR ✨</h3>
-            <div v-if="sponsors.length" class="sp-modal-grid">
-              <component v-for="(s, i) in sponsors" :key="i"
-                         :is="s.url ? 'a' : 'div'" :href="s.url || undefined"
-                         :target="s.url ? '_blank' : undefined" :rel="s.url ? 'noopener' : undefined"
-                         class="sp-modal-sponsor" :class="{ main: s.tier === 'main' }">
-                <img v-if="s.logo" :src="s.logo" :alt="s.name" />
-                <span v-else class="sp-modal-name">{{ s.name }}</span>
-              </component>
-            </div>
-            <p v-else class="sp-modal-empty">Sponsor in arrivo.</p>
-          </div>
-        </div>
-      </transition>
     </div>
   </div>
 </template>
@@ -106,11 +94,13 @@
 // Layout tifoso "Sunset" — grafica alternativa, stessi dati/navigazione della
 // home classica: il parent (TournamentHomeView) passa i dati reali e gestisce
 // gli eventi (navigate = route della tile, live = scorciatoia al calendario).
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
+import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 
 const emit = defineEmits(['live', 'signup', 'navigate'])
 
 const props = defineProps({
+  tournamentSlug: { type: String, default: '' },
   status:      { type: String, default: '' },
   brandTop:    { type: String, default: '' },
   brandBottom: { type: String, default: '' },
@@ -127,25 +117,51 @@ const props = defineProps({
   sponsors:    { type: Array, default: () => [] },    // { name, logo }
 })
 
-// Gli sponsor non stanno più in fondo alla home: si aprono in una modale dalla
-// tile "Sponsor" (che ha preso il posto di "Premi").
-const showSponsors = ref(false)
-const SPONSORS_ROUTE = '__sponsors__' // route sintetica: apre la modale invece di navigare
+// Sponsor "della piattaforma": un solo Main sponsor, mostrato DENTRO la tile
+// (niente più modale). La tile "Premi" (/prizes) diventa la tile Sponsor.
+const mainSponsor = computed(() => props.sponsors.find(s => s.tier === 'main') || null)
+const SPONSORS_ROUTE = '__sponsors__' // route sintetica: identifica la tile sponsor
 
 // Tile: nel layout Sunset nascondiamo "Regolamento" (/rules) e "Info evento"
-// (/event); la tile "Premi" (/prizes) diventa "Sponsor" e apre la modale.
+// (/event); la tile "Premi" (/prizes) mostra il Main sponsor.
 const hiddenTileRoutes = ['/rules', '/event']
 const visibleTiles = computed(() =>
   props.tiles
     .filter(t => !hiddenTileRoutes.includes(t.route))
     .map(t => t.route === '/prizes'
-      ? { ...t, label: 'Sponsor', sub: 'I nostri partner', icon: 'sponsor', route: SPONSORS_ROUTE }
+      ? {
+          ...t,
+          label: mainSponsor.value?.name || 'Sponsor',
+          sub: 'sponsor della piattaforma',
+          icon: 'sponsor',
+          route: SPONSORS_ROUTE,
+          sponsor: mainSponsor.value,
+        }
       : t))
 
-// Tap su una tile: la tile Sponsor apre la modale, le altre navigano.
+// Tap su una tile: la tile Sponsor apre l'eventuale link dello sponsor (niente
+// modale); le altre navigano.
 function onTile (t) {
-  if (t.route === SPONSORS_ROUTE) { showSponsors.value = true; return }
+  if (t.route === SPONSORS_ROUTE) {
+    const s = mainSponsor.value
+    if (s) {
+      onSponsorClick(s)
+      if (s.url) window.open(s.url, '_blank', 'noopener')
+    }
+    return
+  }
   emit('navigate', t.route)
+}
+
+function onSponsorClick (s) {
+  posthogTrack(PH_EVENTS.TOURNAMENT_SPONSOR_CLICKED, {
+    tournament_slug: props.tournamentSlug,
+    surface: 'tournament',
+    sponsor_id: s.id,
+    sponsor_name: s.name,
+    tier: s.tier || 'partner',
+    has_url: !!s.url,
+  })
 }
 
 // Le icone della home classica sono chiavi (calendar, chart, …): qui le rendiamo
@@ -356,6 +372,10 @@ const stars = [
 .sp-tile-icon { font-size: calc(27*var(--s)); display: block; position: relative; z-index: 2; }
 .sp-tile-label { font-weight: 700; font-size: calc(17.5*var(--s)); display: block; position: relative; z-index: 2; margin-top: calc(5*var(--s)); }
 .sp-tile-sub { font-size: calc(13*var(--s)); opacity: .7; font-weight: 600; display: block; position: relative; z-index: 2; }
+/* Tile Sponsor: il logo del Main sponsor riempie l'area icona/etichetta */
+.sp-tile.is-sponsor { background: #fff; color: #0B0620; }
+.sp-tile-sponsor-logo { max-width: 84%; max-height: calc(42*var(--s)); object-fit: contain; position: relative; z-index: 2; margin: calc(2*var(--s)) 0; }
+.sp-tile-sponsor-name { font-size: calc(18*var(--s)); }
 .t1 { background: linear-gradient(160deg,#6dfff0,#00E5FF); }
 .t2 { background: linear-gradient(160deg,#ff8fce,#FF2E9A); color: #fff; }
 .t3 { background: linear-gradient(160deg,#fff58a,#ffd400); }

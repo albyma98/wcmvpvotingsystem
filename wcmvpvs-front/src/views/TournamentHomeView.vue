@@ -2,8 +2,9 @@
 // Adattato per l'app ArenaBoostX: il progetto non usa vue-router, la
 // navigazione è path-based e gestita da App.vue. Riceviamo lo slug come prop
 // ed emettiamo 'navigate' verso l'host, che chiama il suo navigateTo().
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useTournamentHome } from '@/composables/useTournamentHome'
+import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 import TournamentHero from '@/components/tournament/TournamentHero.vue'
 import LiveMatchCarousel from '@/components/tournament/LiveMatchCarousel.vue'
 import NextMatchCard from '@/components/tournament/NextMatchCard.vue'
@@ -22,7 +23,46 @@ const emit = defineEmits(['navigate'])
 const { tournament, liveMatches, nextMatch, tiles, sponsors, loading } =
   useTournamentHome(props.slug)
 
+// Contesto comune agli eventi PostHog della home torneo.
+const homeCtx = () => ({
+  tournament_slug: props.slug,
+  surface: 'tournament',
+  layout: tournament.value?.layout || 'classic',
+})
+
+// home_opened: una sola volta, appena arriva lo snapshot del torneo.
+let homeTracked = false
+watch(
+  tournament,
+  (t) => {
+    if (!t || homeTracked) return
+    homeTracked = true
+    posthogTrack(PH_EVENTS.TOURNAMENT_HOME_OPENED, {
+      ...homeCtx(),
+      status: t.statusLabel,
+      has_live_match: (liveMatches.value?.length ?? 0) > 0,
+      has_next_match: !!nextMatch.value,
+      tiles_count: tiles.value?.length ?? 0,
+      sponsors_count: sponsors.value?.length ?? 0,
+    })
+  },
+  { immediate: true },
+)
+
+// tile_selected: quale sezione apre il tifoso dalla home (segnale di navigazione).
+function trackTileSelected (route, extra = {}) {
+  const tile = (tiles.value || []).find((t) => t.route === route)
+  posthogTrack(PH_EVENTS.TOURNAMENT_TILE_SELECTED, {
+    ...homeCtx(),
+    tile_route: route,
+    tile_id: tile?.id,
+    tile_label: tile?.label,
+    ...extra,
+  })
+}
+
 function onTile (tile) {
+  trackTileSelected(tile.route, { source: 'tile' })
   emit('navigate', `/t/${props.slug}${tile.route}`)
 }
 
@@ -37,13 +77,17 @@ const sunsetNext = computed(() => ({
   away: nextMatch.value?.teamB?.name || '—'
 }))
 // Sunset usa le stesse route delle tile; live/signup sono scorciatoie.
-function onSunsetNav (route) { emit('navigate', `/t/${props.slug}${route}`) }
+function onSunsetNav (route) {
+  trackTileSelected(route, { source: 'sunset' })
+  emit('navigate', `/t/${props.slug}${route}`)
+}
 </script>
 
 <template>
   <!-- Layout SUNSET: grafica alternativa, stessi dati e navigazione. -->
   <SunsetPadel
     v-if="useSunset && !loading"
+    :tournament-slug="props.slug"
     :status="tournament.statusLabel"
     :brand-top="brandTop"
     :brand-bottom="brandBottom"
@@ -75,7 +119,7 @@ function onSunsetNav (route) { emit('navigate', `/t/${props.slug}${route}`) }
         <TournamentTileGrid class="tm-tiles" :tiles="tiles" @select="onTile" />
       </div>
       <!-- Sponsor: ancorata alla fine dell'above-the-fold. -->
-      <SponsorStrip :sponsors="sponsors" />
+      <SponsorStrip :sponsors="sponsors" :tournament-slug="props.slug" />
     </div>
 
     <div v-else class="tm-loading" aria-live="polite">Caricamento torneo…</div>

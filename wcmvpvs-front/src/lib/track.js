@@ -17,6 +17,15 @@ export const EVENTS = Object.freeze({
   BAR_MENU_OPENED: 'bar.menu_opened',
   BAR_CHECKOUT_STARTED: 'bar.checkout_started',
   BAR_ORDER_COMPLETED: 'bar.order_completed',
+  // Tornei (surface: 'tournament')
+  TOURNAMENT_HOME_OPENED: 'tournament.home_opened',
+  TOURNAMENT_TILE_SELECTED: 'tournament.tile_selected',
+  TOURNAMENT_SECTION_VIEWED: 'tournament.section_viewed',
+  TOURNAMENT_MVP_VOTED: 'tournament.mvp_voted',
+  TOURNAMENT_SPONSOR_SHOWN: 'tournament.sponsor_strip_shown',
+  TOURNAMENT_SPONSOR_CLICKED: 'tournament.sponsor_clicked',
+  TOURNAMENT_GALLERY_PHOTO_OPENED: 'tournament.gallery_photo_opened',
+  TOURNAMENT_GALLERY_UPLOAD: 'tournament.gallery_upload',
 });
 
 const SENSITIVE_KEY_PATTERNS = [

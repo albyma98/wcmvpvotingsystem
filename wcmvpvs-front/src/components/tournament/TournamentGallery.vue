@@ -3,6 +3,7 @@
 // acceso "SCATTA FOTO" che apre la fotocamera e pubblica. Le nuove foto degli
 // altri compaiono da sole (SSE, gestito dal parent che ricarica su tick).
 import { ref } from 'vue'
+import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 
 const props = defineProps({
   slug: { type: String, required: true },
@@ -50,7 +51,14 @@ function makeImages (file) {
   })
 }
 
-function openViewer (id) { viewer.value = id; viewerLoading.value = true }
+function openViewer (id) {
+  viewer.value = id; viewerLoading.value = true
+  posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_PHOTO_OPENED, {
+    tournament_slug: props.slug,
+    surface: 'tournament',
+    photo_id: id,
+  })
+}
 
 function pickPhoto () { fileInput.value?.click() }
 
@@ -73,6 +81,10 @@ async function onPhotoPick (e) {
       error.value = err === 'image_too_large' ? 'Foto troppo pesante.' : 'Pubblicazione non riuscita.'
       return
     }
+    posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_UPLOAD, {
+      tournament_slug: props.slug,
+      surface: 'tournament',
+    })
     emit('uploaded')
   } catch {
     error.value = 'Foto non valida.'

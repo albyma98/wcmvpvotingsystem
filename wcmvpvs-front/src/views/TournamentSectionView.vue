@@ -2,16 +2,31 @@
 // Sezioni fan del torneo — stesse variabili visive della home (dark + gold).
 // Calendario, Classifiche e Tabellone sono dati veri dagli endpoint pubblici;
 // le altre sezioni restano placeholder finché non hanno contenuto (P2/P3).
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useTournamentStream } from '@/composables/useTournamentStream'
 import TournamentGallery from '@/components/tournament/TournamentGallery.vue'
 import TournamentMvpVote from '@/components/tournament/TournamentMvpVote.vue'
+import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 
 const props = defineProps({
   slug: { type: String, required: true },
   section: { type: String, required: true }
 })
 const emit = defineEmits(['navigate'])
+
+// section_viewed: quale sezione apre il tifoso. immediate + watch così scatta
+// sia al mount sia quando cambia la sezione senza remount del componente.
+watch(
+  () => props.section,
+  (section) => {
+    posthogTrack(PH_EVENTS.TOURNAMENT_SECTION_VIEWED, {
+      tournament_slug: props.slug,
+      surface: 'tournament',
+      section,
+    })
+  },
+  { immediate: true },
+)
 
 const titles = {
   calendar: 'Calendario', standings: 'Classifiche', bracket: 'Tabellone',
