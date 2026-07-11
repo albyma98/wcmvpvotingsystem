@@ -16,6 +16,7 @@ const error = ref('')
 const viewer = ref(null)        // id della foto aperta a tutto schermo
 const viewerLoading = ref(false) // la full si sta caricando nel visore
 const fileInput = ref(null)
+const showConsent = ref(false)  // avviso liberatoria prima di aprire la fotocamera
 
 // Griglia = miniatura leggera (veloce anche con decine di foto); visore = full.
 const thumbUrl = id => `/api/v1/tournaments/${props.slug}/gallery/${id}/thumb`
@@ -60,7 +61,14 @@ function openViewer (id) {
   })
 }
 
-function pickPhoto () { fileInput.value?.click() }
+// Prima di aprire la fotocamera mostra la liberatoria: premere "SCATTA FOTO"
+// nell'avviso vale come accettazione (e apre la fotocamera nel gesto utente).
+function pickPhoto () { showConsent.value = true }
+function cancelShoot () { showConsent.value = false }
+function confirmShoot () {
+  showConsent.value = false
+  fileInput.value?.click()
+}
 
 async function onPhotoPick (e) {
   const file = e.target.files?.[0]
@@ -121,6 +129,22 @@ async function onPhotoPick (e) {
       accept="image/*" capture="environment" @change="onPhotoPick"
     />
 
+    <!-- Liberatoria: consenso prima di scattare -->
+    <div v-if="showConsent" class="consent-scrim" @click.self="cancelShoot">
+      <div class="consent-card" role="dialog" aria-modal="true">
+        <p class="consent-text">
+          <span class="consent-check" aria-hidden="true">☑</span>
+          Dichiaro di avere il diritto di pubblicare questa foto e di aver ottenuto, ove necessario,
+          il consenso delle persone riconoscibili presenti nell'immagine. Autorizzo gli organizzatori
+          a mostrare la foto all'interno della piattaforma e nelle pagine social del torneo.
+        </p>
+        <div class="consent-actions">
+          <button class="consent-later" @click="cancelShoot">Non ora</button>
+          <button class="consent-shoot" @click="confirmShoot">📷 SCATTA FOTO</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Visore a tutto schermo: miniatura sfocata subito, poi la full nitida -->
     <div v-if="viewer" class="viewer" @click="viewer = null">
       <button class="close" aria-label="Chiudi" @click="viewer = null">✕</button>
@@ -170,6 +194,34 @@ async function onPhotoPick (e) {
 .shoot .ico { font-size: 18px; }
 .err { pointer-events: auto; color: #fca5a5; font-size: 12px; margin: 0; }
 .hidden-file { display: none; }
+
+/* Liberatoria (consenso pubblicazione foto) */
+.consent-scrim {
+  position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.72);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  backdrop-filter: blur(2px);
+}
+.consent-card {
+  width: 100%; max-width: 380px; background: #17171F;
+  border: 1px solid rgba(255,255,255,.1); border-radius: 16px;
+  padding: 20px 18px 16px; box-shadow: 0 18px 44px rgba(0,0,0,.5);
+}
+.consent-text {
+  margin: 0 0 16px; font-size: 13px; line-height: 1.55;
+  color: rgba(255,255,255,.82); font-weight: 500;
+}
+.consent-check { color: #00C897; font-weight: 900; margin-right: 4px; }
+.consent-actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; }
+.consent-later {
+  border: none; background: transparent; color: rgba(255,255,255,.6);
+  font-size: 14px; font-weight: 700; padding: 10px 14px; cursor: pointer;
+}
+.consent-shoot {
+  border: none; border-radius: 999px; cursor: pointer;
+  padding: 12px 22px; font-size: 14.5px; font-weight: 900; letter-spacing: .4px;
+  color: #14110A; background: linear-gradient(135deg, #FFD23F, #FF7A18);
+  box-shadow: 0 6px 16px rgba(255,122,24,.4);
+}
 
 /* Visore */
 .viewer {
