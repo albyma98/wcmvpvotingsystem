@@ -88,7 +88,7 @@ function onSunsetNav (route) {
   <SunsetPadel
     v-if="useSunset && !loading"
     :tournament-slug="props.slug"
-    :prizes-image="tournament.prizesImage"
+    :prizes="tournament.prizes"
     :status="tournament.statusLabel"
     :brand-top="brandTop"
     :brand-bottom="brandBottom"

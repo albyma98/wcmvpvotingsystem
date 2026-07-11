@@ -77,7 +77,7 @@ type TournamentInfo struct {
 	Logo        string `json:"logo,omitempty"`
 	HeroImage   string `json:"heroImage,omitempty"`
 	Layout      string `json:"layout"` // 'classic' | 'sunset' — grafica home tifosi
-	PrizesImage string `json:"prizesImage,omitempty"` // immagine premi (modale Sunset)
+	Prizes      TournamentPrizes `json:"prizes"` // premi (modale Sunset)
 }
 
 type HomeResponse struct {

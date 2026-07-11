@@ -92,7 +92,16 @@
           <div class="sp-prizes-modal">
             <button class="sp-prizes-x" @click="showPrizes = false" aria-label="Chiudi">✕</button>
             <h3 class="sp-prizes-title">🏆 PREMI</h3>
-            <img v-if="prizesImage" :src="prizesImage" class="sp-prizes-img" alt="Premi del torneo" />
+            <div v-if="hasPrizes" class="sp-prizes-body">
+              <section v-for="sec in prizeSections" :key="sec.title" class="sp-prizes-sec">
+                <h4 class="sp-prizes-sub">{{ sec.title }}</h4>
+                <div v-for="(r, i) in sec.rows" :key="i" class="sp-prizes-row">
+                  <span class="sp-prizes-ic">{{ r.icon }}</span>
+                  <span class="sp-prizes-label">{{ r.label }}</span>
+                  <span class="sp-prizes-val">{{ r.value }}</span>
+                </div>
+              </section>
+            </div>
             <p v-else class="sp-prizes-empty">Premi in arrivo.</p>
           </div>
         </div>
@@ -113,7 +122,7 @@ const emit = defineEmits(['live', 'signup', 'navigate'])
 
 const props = defineProps({
   tournamentSlug: { type: String, default: '' },
-  prizesImage: { type: String, default: '' },   // immagine verticale premi (modale 🏆)
+  prizes: { type: Object, default: () => ({}) },   // premi per categoria (modale 🏆)
   status:      { type: String, default: '' },
   brandTop:    { type: String, default: '' },
   brandBottom: { type: String, default: '' },
@@ -133,12 +142,37 @@ const props = defineProps({
 // Sponsor "della piattaforma": un solo Main sponsor, mostrato DENTRO la tile
 // (niente più modale). La tile "Premi" (/prizes) diventa la tile Sponsor.
 const showPrizes = ref(false)   // modale Premi (🏆 in alto a destra)
+// Premi raggruppati per categoria, con le sole voci compilate (formattazione modale).
+const prizeSections = computed(() => {
+  const p = props.prizes || {}
+  const val = v => (typeof v === 'string' ? v.trim() : '')
+  const mk = rows => rows.filter(r => val(r.value)).map(r => ({ ...r, value: val(r.value) }))
+  const out = []
+  const classifica = mk([
+    { icon: '🥇', label: '1° classificato', value: p.first },
+    { icon: '🥈', label: '2° classificato', value: p.second },
+    { icon: '🥉', label: '3° classificato', value: p.third },
+  ])
+  if (classifica.length) out.push({ title: 'Classifica', rows: classifica })
+  const org = mk([
+    { icon: '♂', label: 'MVP maschile', value: p.orgMvpMale },
+    { icon: '♀', label: 'MVP femminile', value: p.orgMvpFemale },
+  ])
+  if (org.length) out.push({ title: 'MVP — scelti dagli organizzatori', rows: org })
+  const pub = mk([
+    { icon: '♂', label: 'MVP maschile', value: p.publicMvpMale },
+    { icon: '♀', label: 'MVP femminile', value: p.publicMvpFemale },
+  ])
+  if (pub.length) out.push({ title: 'MVP — voto del pubblico', rows: pub })
+  return out
+})
+const hasPrizes = computed(() => prizeSections.value.length > 0)
 function openPrizes () {
   showPrizes.value = true
   posthogTrack(PH_EVENTS.TOURNAMENT_PRIZES_OPENED, {
     tournament_slug: props.tournamentSlug,
     surface: 'tournament',
-    has_image: !!props.prizesImage,
+    has_prizes: hasPrizes.value,
   })
 }
 const mainSponsor = computed(() => props.sponsors.find(s => s.tier === 'main') || null)
@@ -455,19 +489,33 @@ const stars = [
   backdrop-filter: blur(3px);
 }
 .sp-prizes-modal {
-  position: relative; width: 100%; max-width: calc(360*var(--s));
-  display: flex; flex-direction: column; align-items: center; gap: calc(10*var(--s));
+  position: relative; width: 100%; max-width: calc(380*var(--s)); max-height: 84dvh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: calc(12*var(--s));
+  background: linear-gradient(180deg,#1B1030,#120A22); border: 1px solid rgba(255,255,255,.12);
+  border-radius: calc(20*var(--s)); padding: calc(20*var(--s)) calc(18*var(--s)) calc(22*var(--s));
+  box-shadow: 0 20px 50px rgba(0,0,0,.55);
 }
 .sp-prizes-x {
-  position: absolute; top: calc(-6*var(--s)); right: 0; width: calc(34*var(--s)); height: calc(34*var(--s));
-  border-radius: 50%; border: none; cursor: pointer; background: rgba(255,255,255,.16); color: #fff; font-size: calc(16*var(--s));
+  position: absolute; top: calc(10*var(--s)); right: calc(10*var(--s)); width: calc(32*var(--s)); height: calc(32*var(--s));
+  border-radius: 50%; border: none; cursor: pointer; background: rgba(255,255,255,.14); color: #fff; font-size: calc(15*var(--s));
 }
 .sp-prizes-title {
-  margin: 0; color: #fff; font-weight: 900; font-size: calc(16*var(--s)); letter-spacing: .06em;
+  margin: 0; text-align: center; color: #fff; font-weight: 900; font-size: calc(18*var(--s)); letter-spacing: .06em;
+  background: linear-gradient(180deg,#FFE08A,#F2B928); -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.sp-prizes-img {
-  width: 100%; max-height: 78dvh; object-fit: contain; border-radius: calc(14*var(--s));
-  box-shadow: 0 18px 44px rgba(0,0,0,.5);
+.sp-prizes-body { display: flex; flex-direction: column; gap: calc(14*var(--s)); }
+.sp-prizes-sec { display: flex; flex-direction: column; gap: calc(6*var(--s)); }
+.sp-prizes-sub {
+  margin: 0; font-size: calc(11*var(--s)); letter-spacing: .12em; text-transform: uppercase;
+  color: #F2B928; font-weight: 800;
 }
-.sp-prizes-empty { color: rgba(255,255,255,.65); font-size: calc(14*var(--s)); padding: calc(30*var(--s)) 0; }
+.sp-prizes-row {
+  display: flex; align-items: center; gap: calc(9*var(--s));
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08);
+  border-radius: calc(12*var(--s)); padding: calc(9*var(--s)) calc(12*var(--s));
+}
+.sp-prizes-ic { flex: none; font-size: calc(17*var(--s)); }
+.sp-prizes-label { flex: none; color: rgba(255,255,255,.7); font-size: calc(12.5*var(--s)); font-weight: 700; min-width: calc(96*var(--s)); }
+.sp-prizes-val { flex: 1; text-align: right; color: #fff; font-size: calc(13.5*var(--s)); font-weight: 800; }
+.sp-prizes-empty { text-align: center; color: rgba(255,255,255,.65); font-size: calc(14*var(--s)); padding: calc(24*var(--s)) 0; }
 </style>

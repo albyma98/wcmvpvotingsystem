@@ -64,7 +64,8 @@ const matches = ref([])
 const sponsors = ref([])
 const gallery = ref([])
 const mvp = ref(null)
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', prizesImageUrl: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
+const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', publicMvpMale: '', publicMvpFemale: '' })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
 const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
@@ -74,6 +75,7 @@ function flash (msg) { notice.value = msg; setTimeout(() => { if (notice.value =
 async function bootstrap (ov) {
   overview.value = ov
   Object.assign(settings, ov.settings)
+  ensurePrizes()
   await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadOperators(), loadGallery(), loadMvp()])
 }
 async function loadTeams () { const r = await j('GET', '/teams'); if (r.ok) teams.value = (await r.json()).teams }
@@ -352,20 +354,12 @@ async function onHeaderPick (e) {
 }
 function removeHeader () { settings.logoUrl = '' }
 
-// Immagine premi (verticale): mostrata nella modale "Premi" del layout Sunset.
-// Ridimensionata lato client (lato lungo 1200px) a data-URL, salvata nelle settings.
-const prizesBusy = ref(false)
-async function onPrizesPick (e) {
-  const file = e.target.files?.[0]
-  if (!file) return
-  if (!file.type.startsWith('image/')) { flash('Seleziona un file immagine.'); e.target.value = ''; return }
-  prizesBusy.value = true
-  try {
-    settings.prizesImageUrl = await fileToLogoDataURL(file, 1200)
-  } catch { flash('Immagine non valida.') }
-  finally { prizesBusy.value = false; e.target.value = '' }
+// Premi: assicura che l'oggetto abbia tutte le chiavi anche se il backend ne
+// omette qualcuna (difesa contro settings caricate parziali).
+function ensurePrizes () {
+  if (!settings.prizes || typeof settings.prizes !== 'object') settings.prizes = emptyPrizes()
+  else settings.prizes = { ...emptyPrizes(), ...settings.prizes }
 }
-function removePrizes () { settings.prizesImageUrl = '' }
 
 // ---------- fase finale ----------
 const bracketErrors = {
@@ -711,23 +705,28 @@ async function generateBracket () {
 
       <!-- PREMI -->
       <section v-else-if="tab === 'prizes'" class="ta-body">
-        <p class="hint">Carica un'immagine <b>verticale</b> con i premi del torneo: verrà mostrata ai tifosi nella modale «Premi» (icona 🏆 in alto a destra della home). Finché non carichi nulla, i tifosi vedranno «Premi in arrivo».</p>
-        <div class="prizes-editor">
-          <div class="prizes-preview" :class="{ empty: !settings.prizesImageUrl }">
-            <img v-if="settings.prizesImageUrl" :src="settings.prizesImageUrl" alt="Immagine premi" />
-            <span v-else>Nessuna immagine</span>
-          </div>
-          <div class="prizes-actions">
-            <label class="hi-upload">
-              {{ prizesBusy ? 'Carico…' : (settings.prizesImageUrl ? 'Cambia immagine' : 'Carica immagine') }}
-              <input type="file" accept="image/*" :disabled="prizesBusy" @change="onPrizesPick" hidden />
-            </label>
-            <button v-if="settings.prizesImageUrl" class="ghost" @click="removePrizes">Rimuovi</button>
-            <button class="primary" :disabled="busy === 'settings'" @click="saveSettings">
-              {{ busy === 'settings' ? 'Salvo…' : 'Salva' }}
-            </button>
-          </div>
+        <p class="hint">Compila i premi del torneo: verranno mostrati ai tifosi nella modale «Premi» (icona 🏆 in alto a destra della home Sunset). I campi lasciati vuoti non vengono mostrati; se sono tutti vuoti i tifosi vedranno «Premi in arrivo».</p>
+
+        <h3 class="settings-sub">Classifica</h3>
+        <div class="settings-grid">
+          <label>🥇 1° classificato <input v-model="settings.prizes.first" maxlength="200" placeholder="Es. Buono 300€ + medaglie" /></label>
+          <label>🥈 2° classificato <input v-model="settings.prizes.second" maxlength="200" placeholder="Es. Buono 150€" /></label>
+          <label>🥉 3° classificato <input v-model="settings.prizes.third" maxlength="200" placeholder="Es. Kit sportivo" /></label>
         </div>
+
+        <h3 class="settings-sub">MVP scelti dagli organizzatori</h3>
+        <div class="settings-grid">
+          <label>♂ MVP maschile <input v-model="settings.prizes.orgMvpMale" maxlength="200" placeholder="Es. Pallone ufficiale" /></label>
+          <label>♀ MVP femminile <input v-model="settings.prizes.orgMvpFemale" maxlength="200" placeholder="Es. Pallone ufficiale" /></label>
+        </div>
+
+        <h3 class="settings-sub">MVP scelti dal pubblico</h3>
+        <div class="settings-grid">
+          <label>♂ MVP maschile <input v-model="settings.prizes.publicMvpMale" maxlength="200" placeholder="Es. Buono cena per due" /></label>
+          <label>♀ MVP femminile <input v-model="settings.prizes.publicMvpFemale" maxlength="200" placeholder="Es. Buono cena per due" /></label>
+        </div>
+
+        <button :disabled="busy === 'settings'" @click="saveSettings">{{ busy === 'settings' ? 'Salvo…' : 'Salva premi' }}</button>
       </section>
 
       <!-- IMPOSTAZIONI -->
@@ -889,17 +888,6 @@ textarea { width: 100%; font-family: inherit; }
 .hi-actions { display: flex; gap: 8px; align-items: center; }
 .hi-upload { background: #f2b928; color: #111; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 800; font-size: 14px; cursor: pointer; }
 .hi-upload input:disabled { cursor: default; }
-/* Sezione Premi: anteprima verticale + azioni */
-.prizes-editor { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
-.prizes-preview {
-  flex: none; width: 180px; height: 300px; border-radius: 12px; overflow: hidden;
-  display: grid; place-items: center; border: 1px solid rgba(255,255,255,.14); background: #15151b;
-  color: rgba(255,255,255,.4); font-size: 13px;
-}
-.prizes-preview.empty { border-style: dashed; }
-.prizes-preview img { width: 100%; height: 100%; object-fit: cover; }
-.prizes-actions { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
-.prizes-actions .primary { background: #f2b928; color: #111; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 800; font-size: 14px; cursor: pointer; }
 
 /* MVP admin: monitoraggio votazioni */
 .mvp-summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 8px; }

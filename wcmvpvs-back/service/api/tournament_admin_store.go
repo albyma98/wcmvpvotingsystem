@@ -982,14 +982,56 @@ type TASettings struct {
 	BracketThirdPlace bool `json:"bracketThirdPlace"`
 	// Grafica della home tifosi: 'classic' | 'sunset'.
 	FanLayout string `json:"fanLayout"`
-	// Immagine verticale dei premi (data-URL o URL) mostrata nella modale "Premi"
-	// del layout Sunset. Vuota = "Premi in arrivo".
-	PrizesImage string `json:"prizesImageUrl"`
+	// Premi del torneo mostrati nella modale "Premi" del layout Sunset.
+	Prizes TournamentPrizes `json:"prizes"`
+}
+
+// TournamentPrizes raccoglie i premi per posizione/categoria (testo libero, es.
+// "Buono 200€"). Campo vuoto = categoria non mostrata ai tifosi.
+type TournamentPrizes struct {
+	First           string `json:"first"`           // 1° classificato
+	Second          string `json:"second"`          // 2° classificato
+	Third           string `json:"third"`           // 3° classificato
+	OrgMvpMale      string `json:"orgMvpMale"`      // MVP maschile (scelto dagli organizzatori)
+	OrgMvpFemale    string `json:"orgMvpFemale"`    // MVP femminile (organizzatori)
+	PublicMvpMale   string `json:"publicMvpMale"`   // MVP maschile (voto del pubblico)
+	PublicMvpFemale string `json:"publicMvpFemale"` // MVP femminile (voto del pubblico)
+}
+
+// decodeTournamentPrizes converte il JSON salvato in struct (vuoto se assente).
+func decodeTournamentPrizes(raw string) TournamentPrizes {
+	var p TournamentPrizes
+	raw = strings.TrimSpace(raw)
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &p)
+	}
+	return p
+}
+
+// sanitizeTournamentPrizes ripulisce ogni campo (trim + tetto lunghezza) per
+// evitare payload abnormi nel testo dei premi.
+func sanitizeTournamentPrizes(p TournamentPrizes) TournamentPrizes {
+	clip := func(s string) string {
+		s = strings.TrimSpace(s)
+		if len(s) > 200 {
+			s = s[:200]
+		}
+		return s
+	}
+	return TournamentPrizes{
+		First:           clip(p.First),
+		Second:          clip(p.Second),
+		Third:           clip(p.Third),
+		OrgMvpMale:      clip(p.OrgMvpMale),
+		OrgMvpFemale:    clip(p.OrgMvpFemale),
+		PublicMvpMale:   clip(p.PublicMvpMale),
+		PublicMvpFemale: clip(p.PublicMvpFemale),
+	}
 }
 
 func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, string, error) {
 	var st TASettings
-	var slug string
+	var slug, prizesJSON string
 	var thirdPlace, allowDraws int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
@@ -999,16 +1041,17 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 		       COALESCE(sets_best_of,3), COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1),
 		       COALESCE(allow_draws,1),
 		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0),
-		       COALESCE(fan_layout,'classic'), COALESCE(prizes_image_url,''), COALESCE(slug,'')
+		       COALESCE(fan_layout,'classic'), COALESCE(prizes_json,''), COALESCE(slug,'')
 		FROM events WHERE id = ?`, eventID).
 		Scan(&st.Name, &st.Format, &st.DateLabel, &st.Location, &st.StatusLabel, &st.PhaseLabel,
 			&st.Logo,
 			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss,
 			&st.SetsBestOf, &st.PointsPerTieWin, &st.PointsPerTieLoss,
 			&allowDraws,
-			&st.BracketQualifiers, &thirdPlace, &st.FanLayout, &st.PrizesImage, &slug)
+			&st.BracketQualifiers, &thirdPlace, &st.FanLayout, &prizesJSON, &slug)
 	st.BracketThirdPlace = thirdPlace == 1
 	st.AllowDraws = allowDraws == 1
+	st.Prizes = decodeTournamentPrizes(prizesJSON)
 	return &st, slug, err
 }
 
@@ -1021,17 +1064,18 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 	if st.AllowDraws {
 		allowDraws = 1
 	}
+	prizesJSON, _ := json.Marshal(st.Prizes)
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE events SET name=?, format=?, date_label=?, location=?, status_label=?, phase_label=?,
 		                  logo_url=?,
 		                  points_per_win=?, points_per_draw=?, points_per_loss=?,
 		                  sets_best_of=?, points_per_tie_win=?, points_per_tie_loss=?, allow_draws=?,
-		                  bracket_qualifiers=?, bracket_third_place=?, fan_layout=?, prizes_image_url=?
+		                  bracket_qualifiers=?, bracket_third_place=?, fan_layout=?, prizes_json=?
 		WHERE id = ? AND type = 'tournament'`,
 		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel,
 		st.Logo,
 		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss,
 		st.SetsBestOf, st.PointsPerTieWin, st.PointsPerTieLoss, allowDraws,
-		st.BracketQualifiers, thirdPlace, st.FanLayout, st.PrizesImage, eventID)
+		st.BracketQualifiers, thirdPlace, st.FanLayout, string(prizesJSON), eventID)
 	return err
 }

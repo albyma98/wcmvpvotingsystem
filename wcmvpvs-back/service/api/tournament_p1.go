@@ -73,9 +73,9 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		`ALTER TABLE events ADD COLUMN bracket_qualifiers INTEGER NOT NULL DEFAULT 2`,
 		`ALTER TABLE events ADD COLUMN bracket_third_place INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE events ADD COLUMN fan_layout TEXT NOT NULL DEFAULT 'classic'`,
-		// Immagine verticale dei premi (data-URL/URL) mostrata nella modale "Premi"
-		// dalla 🏆 in alto a destra del layout tifoso Sunset. Vuota = nessun premio.
-		`ALTER TABLE events ADD COLUMN prizes_image_url TEXT`,
+		// Premi del torneo (JSON): 1°/2°/3° classificato + MVP uomo/donna scelti
+		// da organizzatori e pubblico. Mostrati nella modale "Premi" (🏆) del layout Sunset.
+		`ALTER TABLE events ADD COLUMN prizes_json TEXT`,
 		`ALTER TABLE matches ADD COLUMN team_a_label TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE matches ADD COLUMN team_b_label TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE matches ADD COLUMN win_to_id TEXT NOT NULL DEFAULT ''`,
