@@ -15,7 +15,7 @@
               :style="{ top: st.top, left: st.left, fontSize: st.size, animationDelay: st.delay }">✦</span>
         <div class="sp-horizon"></div>
         <div class="sp-wave"></div>
-        <button class="sp-ball" type="button" aria-label="Premi" @click="showPrizes = true">🏆</button>
+        <button class="sp-ball" type="button" aria-label="Premi" @click="openPrizes">🏆</button>
 
         <div class="sp-top">
           <span class="sp-status"><span class="sp-dot"></span> {{ status }}</span>
@@ -133,6 +133,14 @@ const props = defineProps({
 // Sponsor "della piattaforma": un solo Main sponsor, mostrato DENTRO la tile
 // (niente più modale). La tile "Premi" (/prizes) diventa la tile Sponsor.
 const showPrizes = ref(false)   // modale Premi (🏆 in alto a destra)
+function openPrizes () {
+  showPrizes.value = true
+  posthogTrack(PH_EVENTS.TOURNAMENT_PRIZES_OPENED, {
+    tournament_slug: props.tournamentSlug,
+    surface: 'tournament',
+    has_image: !!props.prizesImage,
+  })
+}
 const mainSponsor = computed(() => props.sponsors.find(s => s.tier === 'main') || null)
 const SPONSORS_ROUTE = '__sponsors__' // route sintetica: identifica la tile sponsor
 

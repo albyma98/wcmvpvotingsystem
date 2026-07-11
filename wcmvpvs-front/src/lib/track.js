@@ -26,6 +26,7 @@ export const EVENTS = Object.freeze({
   TOURNAMENT_SPONSOR_CLICKED: 'tournament.sponsor_clicked',
   TOURNAMENT_GALLERY_PHOTO_OPENED: 'tournament.gallery_photo_opened',
   TOURNAMENT_GALLERY_UPLOAD: 'tournament.gallery_upload',
+  TOURNAMENT_PRIZES_OPENED: 'tournament.prizes_opened',
 });
 
 const SENSITIVE_KEY_PATTERNS = [
