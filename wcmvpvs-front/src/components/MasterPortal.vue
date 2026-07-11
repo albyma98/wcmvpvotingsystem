@@ -1082,7 +1082,7 @@ async function logout() {
 }
 
 async function fetchSummary() {
-  if (!isSuperAdmin.value || !token.value) return;
+  if (!isSuperAdmin.value) return;
   isLoadingSummary.value = true;
   try {
     const { data } = await apiClient.get('/admin/master/summary', authHeaders.value);
@@ -1225,7 +1225,7 @@ function normalizeMasterAnalytics(raw) {
 }
 
 async function fetchAnalytics() {
-  if (!isSuperAdmin.value || !token.value) return;
+  if (!isSuperAdmin.value) return;
   isLoadingAnalytics.value = true;
   analyticsError.value = '';
   try {
@@ -1248,7 +1248,7 @@ async function refreshDashboard() {
 }
 
 async function fetchOrganizations() {
-  if (!isSuperAdmin.value || !token.value) return;
+  if (!isSuperAdmin.value) return;
   isLoadingOrganizations.value = true;
   try {
     const { data } = await apiClient.get('/admin/master/organizations', authHeaders.value);
@@ -1262,7 +1262,7 @@ async function fetchOrganizations() {
 }
 
 async function fetchOrganizationDetail(id = selectedOrganizationId.value) {
-  if (!isSuperAdmin.value || !token.value || !id) return;
+  if (!isSuperAdmin.value || !id) return;
   isLoadingDetail.value = true;
   try {
     const { data } = await apiClient.get(`/admin/master/organizations/${id}`, authHeaders.value);
@@ -1317,7 +1317,7 @@ async function submitOrganizationForm() {
 }
 
 async function fetchQRRedirects() {
-  if (!isSuperAdmin.value || !token.value) return;
+  if (!isSuperAdmin.value) return;
   isLoadingQrRedirects.value = true;
   try {
     const { data } = await apiClient.get('/admin/master/qr-redirects', authHeaders.value);
