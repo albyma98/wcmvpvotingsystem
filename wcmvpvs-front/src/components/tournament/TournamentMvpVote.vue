@@ -12,18 +12,32 @@ const props = defineProps({
 })
 
 const teams = ref([])
-const myVote = ref(0)          // playerId votato da questo device (0 = nessuno)
+const myVoteMale = ref(0)      // playerId uomo votato da questo device (0 = nessuno)
+const myVoteFemale = ref(0)    // playerId donna votato da questo device (0 = nessuno)
+const activeGender = ref('male') // categoria mostrata (toggle Uomo/Donna)
 const loading = ref(true)
 const error = ref('')
 const voting = ref(0)          // playerId con POST in corso
 const justVoted = ref('')      // nome appena votato → banner conferma
 
 const deviceId = getOrCreateDeviceId()
-const hasVoted = computed(() => myVote.value !== 0)
+
+// Voto corrente per la categoria attiva e stato "ho già votato in questa categoria".
+const activeVote = computed(() => (activeGender.value === 'female' ? myVoteFemale.value : myVoteMale.value))
+const hasVotedActive = computed(() => activeVote.value !== 0)
+
+// Squadre con i soli candidati del genere attivo (scarta le squadre senza candidati di quel genere).
+const teamsForActive = computed(() => {
+  const g = activeGender.value
+  return (teams.value ?? [])
+    .map(t => ({ ...t, candidates: (t.candidates ?? []).filter(c => (c.gender || 'male') === g) }))
+    .filter(t => t.candidates.length)
+})
 
 function applyBoard (b) {
   teams.value = b.teams ?? []
-  myVote.value = b.myVote ?? 0
+  myVoteMale.value = b.myVoteMale ?? 0
+  myVoteFemale.value = b.myVoteFemale ?? 0
 }
 
 async function load () {
@@ -72,7 +86,7 @@ useTournamentStream(() => props.slug, load)
     <header class="mvp-intro">
       <div class="trophy">🏆</div>
       <h2>Vota il tuo MVP</h2>
-      <p>Scegli il giocatore più forte del torneo. Tocca un nome per votare — puoi cambiare quando vuoi.</p>
+      <p>Hai due voti: un MVP <b>uomo</b> e un MVP <b>donna</b>. Tocca un nome per votare — puoi cambiare quando vuoi.</p>
     </header>
 
     <transition name="pop">
@@ -85,27 +99,53 @@ useTournamentStream(() => props.slug, load)
       Le rose delle squadre non sono ancora disponibili. Torna più tardi!
     </p>
 
-    <div class="team-grid">
-      <section v-for="t in teams" :key="t.id" class="team-box">
-        <header class="tb-head">
-          <span class="tb-name">{{ t.name }}</span>
-        </header>
-        <ul class="tb-players">
-          <li v-for="c in t.candidates" :key="c.id">
-            <button
-              class="player"
-              :class="{ chosen: myVote === c.id, dim: hasVoted && myVote !== c.id }"
-              :disabled="!!voting"
-              @click="vote(c)"
-            >
-              <span class="p-name">{{ c.name }}</span>
-              <span v-if="voting === c.id" class="p-right">…</span>
-              <span v-else-if="myVote === c.id" class="p-right"><span class="check">✓</span></span>
-            </button>
-          </li>
-        </ul>
-      </section>
-    </div>
+    <template v-if="!loading && teams.length">
+      <!-- Toggle categoria: Uomo / Donna, con ✓ quando il voto è già espresso -->
+      <div class="gender-switch" role="tablist">
+        <button
+          class="gs-btn"
+          :class="{ active: activeGender === 'male' }"
+          role="tab"
+          @click="activeGender = 'male'"
+        >
+          Uomo <span v-if="myVoteMale" class="gs-check">✓</span>
+        </button>
+        <button
+          class="gs-btn"
+          :class="{ active: activeGender === 'female' }"
+          role="tab"
+          @click="activeGender = 'female'"
+        >
+          Donna <span v-if="myVoteFemale" class="gs-check">✓</span>
+        </button>
+      </div>
+
+      <p v-if="!teamsForActive.length" class="mvp-muted">
+        Nessun {{ activeGender === 'female' ? 'a giocatrice' : ' giocatore' }} in questa categoria.
+      </p>
+
+      <div class="team-grid">
+        <section v-for="t in teamsForActive" :key="t.id" class="team-box">
+          <header class="tb-head">
+            <span class="tb-name">{{ t.name }}</span>
+          </header>
+          <ul class="tb-players">
+            <li v-for="c in t.candidates" :key="c.id">
+              <button
+                class="player"
+                :class="{ chosen: activeVote === c.id, dim: hasVotedActive && activeVote !== c.id }"
+                :disabled="!!voting"
+                @click="vote(c)"
+              >
+                <span class="p-name">{{ c.name }}</span>
+                <span v-if="voting === c.id" class="p-right">…</span>
+                <span v-else-if="activeVote === c.id" class="p-right"><span class="check">✓</span></span>
+              </button>
+            </li>
+          </ul>
+        </section>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -131,6 +171,27 @@ useTournamentStream(() => props.slug, load)
 }
 .mvp-error { text-align: center; color: #FF8589; font-size: 13px; font-weight: 700; }
 .mvp-muted { text-align: center; color: rgba(255,255,255,.5); font-size: 14px; padding: 20px 0; }
+
+/* Toggle categoria Uomo/Donna */
+.gender-switch {
+  display: flex; gap: 6px; align-self: center; padding: 4px;
+  background: #15151b; border: 1px solid rgba(255,255,255,.1); border-radius: 999px;
+}
+.gs-btn {
+  display: inline-flex; align-items: center; gap: 6px; border: none; cursor: pointer;
+  background: transparent; color: rgba(255,255,255,.65); font-weight: 800; font-size: 14px;
+  padding: 8px 20px; border-radius: 999px; transition: background .15s ease, color .15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.gs-btn.active {
+  background: linear-gradient(180deg, #FFE08A, #F2B928); color: #14110A;
+  box-shadow: 0 4px 12px rgba(242,185,40,.3);
+}
+.gs-check {
+  display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
+  background: #00C897; color: #04150F; font-size: 10px; font-weight: 900;
+}
+.gs-btn.active .gs-check { background: #04150F; color: #F2B928; }
 
 /* Griglia squadre: 2 colonne, si adatta */
 .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }

@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -32,26 +33,121 @@ func registerTournamentMVPRoutes(rt *_router) {
 // legacy (colonna `tournament_id`, niente `event_id`): stesso trattamento di
 // teams/sponsors/players → reconcile allo schema canonico.
 func (s *Store) EnsureTournamentMVPTables() error {
+	// Schema canonico: un voto per (evento, device, GENERE) → il tifoso può
+	// votare un uomo e una donna, entrambi modificabili (upsert per slot-genere).
 	const createSQL = `CREATE TABLE tournament_mvp_votes (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		event_id INTEGER NOT NULL,
 		player_id INTEGER NOT NULL,
+		gender TEXT NOT NULL DEFAULT 'male',
 		device_id TEXT NOT NULL,
 		created_at TEXT NOT NULL DEFAULT (datetime('now')),
-		UNIQUE(event_id, device_id)
+		UNIQUE(event_id, device_id, gender)
 	)`
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS tournament_mvp_votes (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		event_id INTEGER NOT NULL,
 		player_id INTEGER NOT NULL,
+		gender TEXT NOT NULL DEFAULT 'male',
 		device_id TEXT NOT NULL,
 		created_at TEXT NOT NULL DEFAULT (datetime('now')),
-		UNIQUE(event_id, device_id)
+		UNIQUE(event_id, device_id, gender)
 	)`); err != nil {
 		return err
 	}
-	return s.reconcileTournamentTable("tournament_mvp_votes", createSQL,
-		[]string{"id", "event_id", "player_id", "device_id", "created_at"})
+	// Schema legacy "tournament_id" → canonico (event-based), copiando le colonne comuni.
+	if err := s.reconcileTournamentTable("tournament_mvp_votes", createSQL,
+		[]string{"id", "event_id", "player_id", "gender", "device_id", "created_at"}); err != nil {
+		return err
+	}
+	// Colonna gender sui DB pre-genere.
+	if _, err := s.db.Exec(`ALTER TABLE tournament_mvp_votes ADD COLUMN gender TEXT NOT NULL DEFAULT 'male'`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	// Backfill del genere dal giocatore votato.
+	if _, err := s.db.Exec(`UPDATE tournament_mvp_votes SET gender = COALESCE((SELECT tp.gender FROM tournament_players tp WHERE tp.id = tournament_mvp_votes.player_id), 'male') WHERE gender IS NULL OR gender = ''`); err != nil {
+		return err
+	}
+	// Migrazione unicità (event,device) → (event,device,gender): il vincolo è un
+	// UNIQUE di tabella (auto-index non droppabile), quindi si ricostruisce la
+	// tabella preservando i dati. Idempotente: si esegue solo se manca già.
+	has, err := s.mvpVotesHasGenderUnique()
+	if err != nil {
+		return err
+	}
+	if !has {
+		for _, q := range []string{
+			`ALTER TABLE tournament_mvp_votes RENAME TO tournament_mvp_votes_old`,
+			createSQL,
+			`INSERT INTO tournament_mvp_votes (id, event_id, player_id, gender, device_id, created_at)
+			 SELECT id, event_id, player_id, gender, device_id, created_at FROM tournament_mvp_votes_old`,
+			`DROP TABLE tournament_mvp_votes_old`,
+		} {
+			if _, err := s.db.Exec(q); err != nil {
+				return fmt.Errorf("mvp votes gender migration: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+// mvpVotesHasGenderUnique ritorna true se esiste un indice UNIQUE che copre
+// esattamente (event_id, device_id, gender) — cioè lo schema già migrato.
+func (s *Store) mvpVotesHasGenderUnique() (bool, error) {
+	rows, err := s.db.Query(`PRAGMA index_list(tournament_mvp_votes)`)
+	if err != nil {
+		return false, err
+	}
+	var uniqueIdx []string
+	for rows.Next() {
+		var seq, unique, partial int
+		var name, origin string
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			rows.Close()
+			return false, err
+		}
+		if unique == 1 {
+			uniqueIdx = append(uniqueIdx, name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return false, err
+	}
+	rows.Close()
+
+	for _, name := range uniqueIdx {
+		cols, err := s.indexColumns(name)
+		if err != nil {
+			return false, err
+		}
+		if len(cols) == 3 && cols["event_id"] && cols["device_id"] && cols["gender"] {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// indexColumns ritorna l'insieme dei nomi colonna coperti da un indice.
+func (s *Store) indexColumns(name string) (map[string]bool, error) {
+	rows, err := s.db.Query(`PRAGMA index_info(` + name + `)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cols := map[string]bool{}
+	for rows.Next() {
+		var seqno, cid int
+		var col sql.NullString
+		if err := rows.Scan(&seqno, &cid, &col); err != nil {
+			return nil, err
+		}
+		if col.Valid {
+			cols[col.String] = true
+		}
+	}
+	return cols, rows.Err()
 }
 
 // --- Store ------------------------------------------------------------------
@@ -79,7 +175,9 @@ type MVPTeam struct {
 type MVPBoard struct {
 	Teams      []MVPTeam `json:"teams"`
 	TotalVotes int       `json:"totalVotes"`
-	MyVote     int64     `json:"myVote"` // playerId votato da questo device, 0 se nessuno
+	// Voti di questo device: uno per slot-genere (0 se non ancora espresso).
+	MyVoteMale   int64 `json:"myVoteMale"`
+	MyVoteFemale int64 `json:"myVoteFemale"`
 }
 
 // GetMVPBoard ritorna la board completa per lo slug (vista tifoso, con MyVote).
@@ -144,13 +242,26 @@ func (s *Store) mvpBoardByEvent(ctx context.Context, eventID int64, deviceID str
 	}
 
 	if deviceID != "" {
-		var voted int64
-		err := s.db.QueryRowContext(ctx, `
-			SELECT player_id FROM tournament_mvp_votes WHERE event_id = ? AND device_id = ?`,
-			eventID, deviceID).Scan(&voted)
-		if err == nil {
-			board.MyVote = voted
-		} else if !errors.Is(err, sql.ErrNoRows) {
+		vrows, err := s.db.QueryContext(ctx, `
+			SELECT gender, player_id FROM tournament_mvp_votes WHERE event_id = ? AND device_id = ?`,
+			eventID, deviceID)
+		if err != nil {
+			return nil, err
+		}
+		defer vrows.Close()
+		for vrows.Next() {
+			var g string
+			var pid int64
+			if err := vrows.Scan(&g, &pid); err != nil {
+				return nil, err
+			}
+			if normalizeTAGender(g) == "female" {
+				board.MyVoteFemale = pid
+			} else {
+				board.MyVoteMale = pid
+			}
+		}
+		if err := vrows.Err(); err != nil {
 			return nil, err
 		}
 	}
@@ -164,23 +275,26 @@ func (s *Store) CastMVPVote(ctx context.Context, slug string, playerID int64, de
 	if err != nil {
 		return 0, err
 	}
-	// Il giocatore deve appartenere a questo torneo (anti-manomissione).
-	var owned int
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(1) FROM tournament_players WHERE id = ? AND event_id = ?`,
-		playerID, eventID).Scan(&owned); err != nil {
-		return 0, err
-	}
-	if owned == 0 {
+	// Il giocatore deve appartenere a questo torneo (anti-manomissione); il suo
+	// genere determina lo slot di voto (uomo/donna).
+	var gender string
+	err = s.db.QueryRowContext(ctx, `
+		SELECT gender FROM tournament_players WHERE id = ? AND event_id = ?`,
+		playerID, eventID).Scan(&gender)
+	if errors.Is(err, sql.ErrNoRows) {
 		return 0, errTANotFound
 	}
-	// Upsert: un voto per device, modificabile.
+	if err != nil {
+		return 0, err
+	}
+	gender = normalizeTAGender(gender)
+	// Upsert: un voto per (device, genere), modificabile.
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO tournament_mvp_votes (event_id, player_id, device_id)
-		VALUES (?, ?, ?)
-		ON CONFLICT(event_id, device_id) DO UPDATE SET
+		INSERT INTO tournament_mvp_votes (event_id, player_id, gender, device_id)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(event_id, device_id, gender) DO UPDATE SET
 			player_id = excluded.player_id, created_at = datetime('now')`,
-		eventID, playerID, deviceID); err != nil {
+		eventID, playerID, gender, deviceID); err != nil {
 		return 0, err
 	}
 	return eventID, nil
@@ -233,7 +347,7 @@ func (rt *_router) HandleTournamentMVPVote(w http.ResponseWriter, r *http.Reques
 	// Rispondi con la board aggiornata (evita un secondo GET dal client).
 	board, err := rt.store.GetMVPBoard(r.Context(), slug, deviceID)
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "myVote": body.PlayerID})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 		return
 	}
 	writeJSON(w, http.StatusOK, board)
