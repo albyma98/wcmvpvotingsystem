@@ -57,6 +57,39 @@ func (rt *_router) upsertMasterQRRedirect(w http.ResponseWriter, r *http.Request
 	_ = json.NewEncoder(w).Encode(entry)
 }
 
+func (rt *_router) setMasterQRRedirectActive(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if !rt.ensureSuperAdmin(w, ctx) {
+		return
+	}
+
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	if id <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var payload struct {
+		Active bool `json:"active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid qr redirect active payload")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := rt.db.SetQRRedirectActive(id, payload.Active); err != nil {
+		if err == sql.ErrNoRows {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ctx.Logger.WithError(err).Error("cannot update qr redirect active state")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (rt *_router) deleteMasterQRRedirect(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	if !rt.ensureSuperAdmin(w, ctx) {
 		return
@@ -101,6 +134,11 @@ func (rt *_router) handleQRRedirectNotFound(w http.ResponseWriter, r *http.Reque
 		}
 		ctx.Logger.WithError(err).Error("cannot resolve qr redirect")
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !redirect.Active {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 

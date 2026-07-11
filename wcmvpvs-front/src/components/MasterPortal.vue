@@ -609,6 +609,7 @@
                 <tr>
                   <th>Path QR</th>
                   <th>Redirect</th>
+                  <th>Stato</th>
                   <th>Collegato il</th>
                   <th>Arrivi da QR</th>
                   <th>Azioni</th>
@@ -618,9 +619,23 @@
                 <tr v-for="redirect in qrRedirects" :key="redirect.id">
                   <td><code>{{ redirect.source_path }}</code></td>
                   <td><code>{{ redirect.target_path }}</code></td>
+                  <td>
+                    <span class="status-badge" :class="redirect.active ? 'status-active' : 'status-inactive'">
+                      {{ redirect.active ? 'Attivo' : 'Disattivato' }}
+                    </span>
+                  </td>
                   <td>{{ formatDate(redirect.created_at) }}</td>
                   <td>{{ (redirect.hits ?? 0).toLocaleString('it-IT') }}</td>
                   <td class="actions">
+                    <button
+                      class="btn"
+                      :class="redirect.active ? 'ghost' : 'primary'"
+                      type="button"
+                      @click="toggleQRRedirect(redirect)"
+                      :disabled="isTogglingQrRedirect === redirect.id"
+                    >
+                      {{ isTogglingQrRedirect === redirect.id ? '…' : redirect.active ? 'Disattiva' : 'Attiva' }}
+                    </button>
                     <button class="btn outline" type="button" @click="openEditQRRedirect(redirect)">
                       Modifica
                     </button>
@@ -630,10 +645,10 @@
                   </td>
                 </tr>
                 <tr v-if="!qrRedirects.length && !isLoadingQrRedirects">
-                  <td colspan="5" class="empty">Nessun collegamento creato.</td>
+                  <td colspan="6" class="empty">Nessun collegamento creato.</td>
                 </tr>
                 <tr v-if="isLoadingQrRedirects">
-                  <td colspan="5" class="empty">Caricamento in corso…</td>
+                  <td colspan="6" class="empty">Caricamento in corso…</td>
                 </tr>
               </tbody>
             </table>
@@ -825,6 +840,7 @@ const isLoadingQrRedirects = ref(false);
 const qrRedirectsLoaded = ref(false);
 const isSavingQrRedirect = ref(false);
 const isDeletingQrRedirect = ref(false);
+const isTogglingQrRedirect = ref(null);
 const qrRedirectError = ref('');
 
 const authHeaders = computed(() => ({ headers: {} }));
@@ -1364,6 +1380,25 @@ async function submitQRRedirect() {
   }
 }
 
+async function toggleQRRedirect(redirect) {
+  if (!redirect?.id || isTogglingQrRedirect.value) return;
+  isTogglingQrRedirect.value = redirect.id;
+  qrRedirectError.value = '';
+  try {
+    await apiClient.put(
+      `/admin/master/qr-redirects/${redirect.id}/active`,
+      { active: !redirect.active },
+      authHeaders.value
+    );
+    redirect.active = !redirect.active;
+  } catch (error) {
+    qrRedirectError.value = 'Non siamo riusciti a cambiare lo stato del collegamento.';
+    console.error('Impossibile aggiornare lo stato del redirect QR', error);
+  } finally {
+    isTogglingQrRedirect.value = null;
+  }
+}
+
 async function deleteQRRedirect(redirect) {
   if (!redirect?.id) return;
   const confirmed = window.confirm(`Vuoi eliminare il redirect ${redirect.source_path}?`);
@@ -1653,6 +1688,25 @@ onMounted(() => {
   border-radius: 999px;
   font-weight: 700;
   font-size: 0.9rem;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.status-badge.status-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.status-inactive {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .sponsor-stats {

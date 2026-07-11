@@ -1178,6 +1178,7 @@ type QRRedirect struct {
 	ID         int    `json:"id"`
 	SourcePath string `json:"source_path"`
 	TargetPath string `json:"target_path"`
+	Active     bool   `json:"active"`
 	Hits       int    `json:"hits"`
 	CreatedAt  string `json:"created_at"`
 	UpdatedAt  string `json:"updated_at"`
@@ -1361,6 +1362,7 @@ type AppDatabase interface {
 	UpsertQRRedirect(sourcePath, targetPath string) (QRRedirect, error)
 	ListQRRedirects() ([]QRRedirect, error)
 	GetQRRedirectBySource(sourcePath string) (QRRedirect, error)
+	SetQRRedirectActive(id int, active bool) error
 	IncrementQRRedirectHit(id int) error
 	DeleteQRRedirect(id int) error
 	ListMarketingAudience(organizationID int, query string, acceptedTermsOnly bool) ([]MarketingAudienceEntry, error)
@@ -2827,6 +2829,11 @@ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 	}
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_qr_redirects_source ON qr_redirects(source_path);`); err != nil {
 		return fmt.Errorf("error ensuring qr_redirects source index: %w", err)
+	}
+	if _, err := db.Exec(`ALTER TABLE qr_redirects ADD COLUMN active INTEGER NOT NULL DEFAULT 1`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("error ensuring qr_redirects active column: %w", err)
+		}
 	}
 
 	return nil
@@ -6918,7 +6925,7 @@ ON CONFLICT(source_path) DO UPDATE SET target_path = excluded.target_path, updat
 }
 
 func (db *appdbimpl) ListQRRedirects() ([]QRRedirect, error) {
-	rows, err := db.c.Query(`SELECT id, source_path, target_path, hits, created_at, updated_at FROM qr_redirects ORDER BY datetime(updated_at) DESC, id DESC`)
+	rows, err := db.c.Query(`SELECT id, source_path, target_path, active, hits, created_at, updated_at FROM qr_redirects ORDER BY datetime(updated_at) DESC, id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -6927,7 +6934,7 @@ func (db *appdbimpl) ListQRRedirects() ([]QRRedirect, error) {
 	var redirects []QRRedirect
 	for rows.Next() {
 		var entry QRRedirect
-		if err := rows.Scan(&entry.ID, &entry.SourcePath, &entry.TargetPath, &entry.Hits, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
+		if err := rows.Scan(&entry.ID, &entry.SourcePath, &entry.TargetPath, &entry.Active, &entry.Hits, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
 			return nil, err
 		}
 		redirects = append(redirects, entry)
@@ -6941,11 +6948,29 @@ func (db *appdbimpl) GetQRRedirectBySource(sourcePath string) (QRRedirect, error
 		return QRRedirect{}, sql.ErrNoRows
 	}
 	var entry QRRedirect
-	err := db.c.QueryRow(`SELECT id, source_path, target_path, hits, created_at, updated_at FROM qr_redirects WHERE source_path = ?`, cleanSource).Scan(&entry.ID, &entry.SourcePath, &entry.TargetPath, &entry.Hits, &entry.CreatedAt, &entry.UpdatedAt)
+	err := db.c.QueryRow(`SELECT id, source_path, target_path, active, hits, created_at, updated_at FROM qr_redirects WHERE source_path = ?`, cleanSource).Scan(&entry.ID, &entry.SourcePath, &entry.TargetPath, &entry.Active, &entry.Hits, &entry.CreatedAt, &entry.UpdatedAt)
 	if err != nil {
 		return QRRedirect{}, err
 	}
 	return entry, nil
+}
+
+func (db *appdbimpl) SetQRRedirectActive(id int, active bool) error {
+	if id <= 0 {
+		return fmt.Errorf("invalid qr redirect id")
+	}
+	result, err := db.c.Exec(`UPDATE qr_redirects SET active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, active, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (db *appdbimpl) IncrementQRRedirectHit(id int) error {
