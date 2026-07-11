@@ -122,14 +122,15 @@ func (s *Store) getTournamentInfo(ctx context.Context, slug string) (*Tournament
 	const q = `
 		SELECT slug, COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
 		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
-		       COALESCE(logo_url,''), COALESCE(hero_image_url,''), COALESCE(fan_layout,'classic')
+		       COALESCE(logo_url,''), COALESCE(hero_image_url,''), COALESCE(fan_layout,'classic'),
+		       COALESCE(prizes_image_url,'')
 		FROM events
 		WHERE slug = ? AND type = 'tournament'
 		LIMIT 1`
 	var t TournamentInfo
 	err := s.db.QueryRowContext(ctx, q, slug).Scan(
 		&t.Slug, &t.Name, &t.Format, &t.DateLabel, &t.Location,
-		&t.StatusLabel, &t.PhaseLabel, &t.Logo, &t.HeroImage, &t.Layout,
+		&t.StatusLabel, &t.PhaseLabel, &t.Logo, &t.HeroImage, &t.Layout, &t.PrizesImage,
 	)
 	if err != nil {
 		return nil, err

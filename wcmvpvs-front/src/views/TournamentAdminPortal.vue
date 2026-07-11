@@ -54,6 +54,7 @@ const tabs = [
   { id: 'sponsors', label: 'Sponsor' },
   { id: 'gallery', label: 'Gallery' },
   { id: 'mvp', label: 'MVP' },
+  { id: 'prizes', label: 'Premi' },
   { id: 'settings', label: 'Impostazioni' }
 ]
 
@@ -63,7 +64,7 @@ const matches = ref([])
 const sponsors = ref([])
 const gallery = ref([])
 const mvp = ref(null)
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', prizesImageUrl: '', pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
 const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
@@ -350,6 +351,21 @@ async function onHeaderPick (e) {
   finally { headerBusy.value = false; e.target.value = '' }
 }
 function removeHeader () { settings.logoUrl = '' }
+
+// Immagine premi (verticale): mostrata nella modale "Premi" del layout Sunset.
+// Ridimensionata lato client (lato lungo 1200px) a data-URL, salvata nelle settings.
+const prizesBusy = ref(false)
+async function onPrizesPick (e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) { flash('Seleziona un file immagine.'); e.target.value = ''; return }
+  prizesBusy.value = true
+  try {
+    settings.prizesImageUrl = await fileToLogoDataURL(file, 1200)
+  } catch { flash('Immagine non valida.') }
+  finally { prizesBusy.value = false; e.target.value = '' }
+}
+function removePrizes () { settings.prizesImageUrl = '' }
 
 // ---------- fase finale ----------
 const bracketErrors = {
@@ -693,6 +709,27 @@ async function generateBracket () {
         </div>
       </section>
 
+      <!-- PREMI -->
+      <section v-else-if="tab === 'prizes'" class="ta-body">
+        <p class="hint">Carica un'immagine <b>verticale</b> con i premi del torneo: verrà mostrata ai tifosi nella modale «Premi» (icona 🏆 in alto a destra della home). Finché non carichi nulla, i tifosi vedranno «Premi in arrivo».</p>
+        <div class="prizes-editor">
+          <div class="prizes-preview" :class="{ empty: !settings.prizesImageUrl }">
+            <img v-if="settings.prizesImageUrl" :src="settings.prizesImageUrl" alt="Immagine premi" />
+            <span v-else>Nessuna immagine</span>
+          </div>
+          <div class="prizes-actions">
+            <label class="hi-upload">
+              {{ prizesBusy ? 'Carico…' : (settings.prizesImageUrl ? 'Cambia immagine' : 'Carica immagine') }}
+              <input type="file" accept="image/*" :disabled="prizesBusy" @change="onPrizesPick" hidden />
+            </label>
+            <button v-if="settings.prizesImageUrl" class="ghost" @click="removePrizes">Rimuovi</button>
+            <button class="primary" :disabled="busy === 'settings'" @click="saveSettings">
+              {{ busy === 'settings' ? 'Salvo…' : 'Salva' }}
+            </button>
+          </div>
+        </div>
+      </section>
+
       <!-- IMPOSTAZIONI -->
       <section v-else class="ta-body">
         <div class="settings-grid">
@@ -852,6 +889,17 @@ textarea { width: 100%; font-family: inherit; }
 .hi-actions { display: flex; gap: 8px; align-items: center; }
 .hi-upload { background: #f2b928; color: #111; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 800; font-size: 14px; cursor: pointer; }
 .hi-upload input:disabled { cursor: default; }
+/* Sezione Premi: anteprima verticale + azioni */
+.prizes-editor { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.prizes-preview {
+  flex: none; width: 180px; height: 300px; border-radius: 12px; overflow: hidden;
+  display: grid; place-items: center; border: 1px solid rgba(255,255,255,.14); background: #15151b;
+  color: rgba(255,255,255,.4); font-size: 13px;
+}
+.prizes-preview.empty { border-style: dashed; }
+.prizes-preview img { width: 100%; height: 100%; object-fit: cover; }
+.prizes-actions { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.prizes-actions .primary { background: #f2b928; color: #111; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 800; font-size: 14px; cursor: pointer; }
 
 /* MVP admin: monitoraggio votazioni */
 .mvp-summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 8px; }

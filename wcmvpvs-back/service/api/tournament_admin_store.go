@@ -982,6 +982,9 @@ type TASettings struct {
 	BracketThirdPlace bool `json:"bracketThirdPlace"`
 	// Grafica della home tifosi: 'classic' | 'sunset'.
 	FanLayout string `json:"fanLayout"`
+	// Immagine verticale dei premi (data-URL o URL) mostrata nella modale "Premi"
+	// del layout Sunset. Vuota = "Premi in arrivo".
+	PrizesImage string `json:"prizesImageUrl"`
 }
 
 func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, string, error) {
@@ -996,14 +999,14 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 		       COALESCE(sets_best_of,3), COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1),
 		       COALESCE(allow_draws,1),
 		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0),
-		       COALESCE(fan_layout,'classic'), COALESCE(slug,'')
+		       COALESCE(fan_layout,'classic'), COALESCE(prizes_image_url,''), COALESCE(slug,'')
 		FROM events WHERE id = ?`, eventID).
 		Scan(&st.Name, &st.Format, &st.DateLabel, &st.Location, &st.StatusLabel, &st.PhaseLabel,
 			&st.Logo,
 			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss,
 			&st.SetsBestOf, &st.PointsPerTieWin, &st.PointsPerTieLoss,
 			&allowDraws,
-			&st.BracketQualifiers, &thirdPlace, &st.FanLayout, &slug)
+			&st.BracketQualifiers, &thirdPlace, &st.FanLayout, &st.PrizesImage, &slug)
 	st.BracketThirdPlace = thirdPlace == 1
 	st.AllowDraws = allowDraws == 1
 	return &st, slug, err
@@ -1023,12 +1026,12 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 		                  logo_url=?,
 		                  points_per_win=?, points_per_draw=?, points_per_loss=?,
 		                  sets_best_of=?, points_per_tie_win=?, points_per_tie_loss=?, allow_draws=?,
-		                  bracket_qualifiers=?, bracket_third_place=?, fan_layout=?
+		                  bracket_qualifiers=?, bracket_third_place=?, fan_layout=?, prizes_image_url=?
 		WHERE id = ? AND type = 'tournament'`,
 		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel,
 		st.Logo,
 		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss,
 		st.SetsBestOf, st.PointsPerTieWin, st.PointsPerTieLoss, allowDraws,
-		st.BracketQualifiers, thirdPlace, st.FanLayout, eventID)
+		st.BracketQualifiers, thirdPlace, st.FanLayout, st.PrizesImage, eventID)
 	return err
 }

@@ -15,7 +15,7 @@
               :style="{ top: st.top, left: st.left, fontSize: st.size, animationDelay: st.delay }">✦</span>
         <div class="sp-horizon"></div>
         <div class="sp-wave"></div>
-        <div class="sp-ball"></div>
+        <button class="sp-ball" type="button" aria-label="Premi" @click="showPrizes = true">🏆</button>
 
         <div class="sp-top">
           <span class="sp-status"><span class="sp-dot"></span> {{ status }}</span>
@@ -86,6 +86,18 @@
         <div class="sp-home"><span></span></div>
       </div>
 
+      <!-- MODALE PREMI (aperta dalla 🏆 in alto a destra) -->
+      <transition name="sp-modal">
+        <div v-if="showPrizes" class="sp-prizes-scrim" @click.self="showPrizes = false">
+          <div class="sp-prizes-modal">
+            <button class="sp-prizes-x" @click="showPrizes = false" aria-label="Chiudi">✕</button>
+            <h3 class="sp-prizes-title">🏆 PREMI</h3>
+            <img v-if="prizesImage" :src="prizesImage" class="sp-prizes-img" alt="Premi del torneo" />
+            <p v-else class="sp-prizes-empty">Premi in arrivo.</p>
+          </div>
+        </div>
+      </transition>
+
     </div>
   </div>
 </template>
@@ -94,13 +106,14 @@
 // Layout tifoso "Sunset" — grafica alternativa, stessi dati/navigazione della
 // home classica: il parent (TournamentHomeView) passa i dati reali e gestisce
 // gli eventi (navigate = route della tile, live = scorciatoia al calendario).
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 
 const emit = defineEmits(['live', 'signup', 'navigate'])
 
 const props = defineProps({
   tournamentSlug: { type: String, default: '' },
+  prizesImage: { type: String, default: '' },   // immagine verticale premi (modale 🏆)
   status:      { type: String, default: '' },
   brandTop:    { type: String, default: '' },
   brandBottom: { type: String, default: '' },
@@ -119,6 +132,7 @@ const props = defineProps({
 
 // Sponsor "della piattaforma": un solo Main sponsor, mostrato DENTRO la tile
 // (niente più modale). La tile "Premi" (/prizes) diventa la tile Sponsor.
+const showPrizes = ref(false)   // modale Premi (🏆 in alto a destra)
 const mainSponsor = computed(() => props.sponsors.find(s => s.tier === 'main') || null)
 const SPONSORS_ROUTE = '__sponsors__' // route sintetica: identifica la tile sponsor
 
@@ -259,10 +273,14 @@ const stars = [
   background: repeating-linear-gradient(90deg,rgba(255,255,255,.35) 0 16px,rgba(255,255,255,0) 16px 32px);
 }
 .sp-ball {
-  position: absolute; top: calc(16*var(--s)); right: calc(18*var(--s)); width: calc(32*var(--s)); height: calc(32*var(--s)); border-radius: 50%; z-index: 6;
+  position: absolute; top: calc(16*var(--s)); right: calc(18*var(--s)); width: calc(38*var(--s)); height: calc(38*var(--s)); border-radius: 50%; z-index: 6;
   background: radial-gradient(circle at 32% 28%,#fff,#ffe9c7 22%,#C6FF3A 55%,#00E5FF 100%);
   box-shadow: 0 0 14px rgba(255,255,255,.7), 0 3px 0 rgba(0,0,0,.25);
+  border: none; padding: 0; cursor: pointer; display: grid; place-items: center;
+  font-size: calc(19*var(--s)); line-height: 1; -webkit-tap-highlight-color: transparent;
+  transition: transform .12s;
 }
+.sp-ball:active { transform: scale(.9); }
 .sp-top { position: relative; z-index: 4; }
 .sp-status {
   display: inline-flex; align-items: center; gap: calc(6*var(--s)); background: #0B0620; color: #C6FF3A;
@@ -421,4 +439,27 @@ const stars = [
 .sp-modal-enter-active .sp-modal, .sp-modal-leave-active .sp-modal { transition: transform .25s cubic-bezier(.22,1.3,.5,1); }
 .sp-modal-enter-from, .sp-modal-leave-to { opacity: 0; }
 .sp-modal-enter-from .sp-modal, .sp-modal-leave-to .sp-modal { transform: translateY(24px) scale(.94); }
+
+/* Modale Premi (immagine verticale caricata da admin) */
+.sp-prizes-scrim {
+  position: fixed; inset: 0; z-index: 40; background: rgba(6,3,18,.86);
+  display: flex; align-items: center; justify-content: center; padding: calc(18*var(--s));
+  backdrop-filter: blur(3px);
+}
+.sp-prizes-modal {
+  position: relative; width: 100%; max-width: calc(360*var(--s));
+  display: flex; flex-direction: column; align-items: center; gap: calc(10*var(--s));
+}
+.sp-prizes-x {
+  position: absolute; top: calc(-6*var(--s)); right: 0; width: calc(34*var(--s)); height: calc(34*var(--s));
+  border-radius: 50%; border: none; cursor: pointer; background: rgba(255,255,255,.16); color: #fff; font-size: calc(16*var(--s));
+}
+.sp-prizes-title {
+  margin: 0; color: #fff; font-weight: 900; font-size: calc(16*var(--s)); letter-spacing: .06em;
+}
+.sp-prizes-img {
+  width: 100%; max-height: 78dvh; object-fit: contain; border-radius: calc(14*var(--s));
+  box-shadow: 0 18px 44px rgba(0,0,0,.5);
+}
+.sp-prizes-empty { color: rgba(255,255,255,.65); font-size: calc(14*var(--s)); padding: calc(30*var(--s)) 0; }
 </style>
