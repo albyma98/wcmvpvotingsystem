@@ -1,4 +1,5 @@
 import posthog from 'posthog-js';
+import { getOrCreateDeviceId } from '../deviceId';
 
 const POSTHOG_HOST = 'https://eu.i.posthog.com';
 
@@ -26,7 +27,11 @@ export function initPostHog() {
       capture_pageview: false,
       capture_pageleave: false,
       disable_session_recording: false,
-      persistence: 'memory',
+      // Identità persistente (no cookie): il person_id coincide col device_id
+      // dell'app (localStorage, stabile tra sessioni). Abilita utenti unici reali
+      // e retention/ritornati. Segmentazione torneo via surface/tournament_slug.
+      persistence: 'localStorage',
+      bootstrap: { distinctID: getOrCreateDeviceId() },
       loaded: (instance) => {
         if (import.meta.env.DEV) {
           instance.debug?.(true);
