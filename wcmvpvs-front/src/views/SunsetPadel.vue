@@ -374,7 +374,7 @@ const stars = [
 .sp-tile-sub { font-size: calc(13*var(--s)); opacity: .7; font-weight: 600; display: block; position: relative; z-index: 2; }
 /* Tile Sponsor: il logo del Main sponsor riempie l'area icona/etichetta */
 .sp-tile.is-sponsor { background: #fff; color: #0B0620; }
-.sp-tile-sponsor-logo { max-width: 84%; max-height: calc(42*var(--s)); object-fit: contain; position: relative; z-index: 2; margin: calc(2*var(--s)) 0; }
+.sp-tile-sponsor-logo { max-width: 100%; max-height: calc(71*var(--s)); object-fit: contain; position: relative; z-index: 2; margin: calc(2*var(--s)) 0; }
 .sp-tile-sponsor-name { font-size: calc(18*var(--s)); }
 .t1 { background: linear-gradient(160deg,#6dfff0,#00E5FF); }
 .t2 { background: linear-gradient(160deg,#ff8fce,#FF2E9A); color: #fff; }
