@@ -103,23 +103,32 @@ const mvpTeams = computed(() => {
   })
   return teams.sort((a, b) => b.teamVotes - a.teamVotes)
 })
-// Giocatore più votato in assoluto (il "leader" della votazione).
-const mvpLeader = computed(() => {
+// Giocatore/i più votato/i. Con la votazione MVP separata uomo/donna mostriamo
+// due leader distinti; `mvpLeaderBy` scorre le rose filtrando per genere.
+const mvpLeaderBy = gender => {
   let best = null
   for (const t of mvp.value?.teams ?? []) {
     for (const c of t.candidates) {
+      if ((c.gender || 'male') !== gender) continue
       if (c.votes > 0 && (!best || c.votes > best.votes)) best = { ...c, team: t.name }
     }
   }
   return best
-})
+}
+const mvpLeaderMale = computed(() => mvpLeaderBy('male'))
+const mvpLeaderFemale = computed(() => mvpLeaderBy('female'))
+// Un candidato è "leader" se è l'MVP del suo genere (evidenziazione in lista).
+const isMvpLeader = c =>
+  (mvpLeaderMale.value && c.id === mvpLeaderMale.value.id) ||
+  (mvpLeaderFemale.value && c.id === mvpLeaderFemale.value.id)
+const genderLabel = g => ((g || 'male') === 'female' ? 'Femmina' : 'Maschio')
 const mvpPct = votes => (mvpTotal.value ? Math.round((votes / mvpTotal.value) * 100) : 0)
 
 // ---------- squadre ----------
 const MAX_PLAYERS = 8
 // Rosa vuota: 8 coppie Nome/Cognome facoltative. Le coppie vuote vengono
 // scartate lato server, così si può inviare la griglia piena senza problemi.
-const blankRoster = () => Array.from({ length: MAX_PLAYERS }, () => ({ firstName: '', lastName: '' }))
+const blankRoster = () => Array.from({ length: MAX_PLAYERS }, () => ({ firstName: '', lastName: '', gender: 'male' }))
 
 const newTeam = reactive({ name: '', shortName: '', city: '', groupName: '', players: blankRoster() })
 async function addTeam () {
@@ -154,8 +163,8 @@ const editingRosterId = ref(null) // id squadra con l'editor rosa aperto
 const rosterDraft = ref(blankRoster())
 function openRoster (team) {
   // Precarica i giocatori esistenti e completa fino a 8 righe.
-  const rows = (team.players || []).map(p => ({ firstName: p.firstName || '', lastName: p.lastName || '' }))
-  while (rows.length < MAX_PLAYERS) rows.push({ firstName: '', lastName: '' })
+  const rows = (team.players || []).map(p => ({ firstName: p.firstName || '', lastName: p.lastName || '', gender: p.gender === 'female' ? 'female' : 'male' }))
+  while (rows.length < MAX_PLAYERS) rows.push({ firstName: '', lastName: '', gender: 'male' })
   rosterDraft.value = rows.slice(0, MAX_PLAYERS)
   editingRosterId.value = team.id
 }
@@ -509,6 +518,10 @@ async function generateBracket () {
                 <span class="roster-num">{{ i + 1 }}</span>
                 <input v-model="p.firstName" placeholder="Nome" />
                 <input v-model="p.lastName" placeholder="Cognome" />
+                <span class="roster-gender">
+                  <label><input type="radio" :name="`ng-${i}`" value="male" v-model="p.gender" /> M</label>
+                  <label><input type="radio" :name="`ng-${i}`" value="female" v-model="p.gender" /> F</label>
+                </span>
               </div>
             </div>
           </details>
@@ -547,6 +560,10 @@ async function generateBracket () {
                   <span class="roster-num">{{ i + 1 }}</span>
                   <input v-model="p.firstName" placeholder="Nome" />
                   <input v-model="p.lastName" placeholder="Cognome" />
+                  <span class="roster-gender">
+                    <label><input type="radio" :name="`rg-${i}`" value="male" v-model="p.gender" /> M</label>
+                    <label><input type="radio" :name="`rg-${i}`" value="female" v-model="p.gender" /> F</label>
+                  </span>
                 </div>
               </div>
               <div class="form-row">
@@ -634,11 +651,26 @@ async function generateBracket () {
             <span class="num">{{ mvpTotal }}</span>
             <span class="lbl">{{ mvpTotal === 1 ? 'voto totale' : 'voti totali' }}</span>
           </div>
-          <div v-if="mvpLeader" class="mvp-leader">
+          <div class="mvp-leader" :class="{ empty: !mvpLeaderMale }">
             <span class="crown">👑</span>
             <div>
-              <b>{{ mvpLeader.name }}</b>
-              <small>{{ mvpLeader.team }} · {{ mvpLeader.votes }} voti · {{ mvpPct(mvpLeader.votes) }}%</small>
+              <span class="mvp-leader__tag">MVP Uomo</span>
+              <template v-if="mvpLeaderMale">
+                <b>{{ mvpLeaderMale.name }}</b>
+                <small>{{ mvpLeaderMale.team }} · {{ mvpLeaderMale.votes }} voti · {{ mvpPct(mvpLeaderMale.votes) }}%</small>
+              </template>
+              <small v-else>Ancora nessun voto</small>
+            </div>
+          </div>
+          <div class="mvp-leader" :class="{ empty: !mvpLeaderFemale }">
+            <span class="crown">👑</span>
+            <div>
+              <span class="mvp-leader__tag">MVP Donna</span>
+              <template v-if="mvpLeaderFemale">
+                <b>{{ mvpLeaderFemale.name }}</b>
+                <small>{{ mvpLeaderFemale.team }} · {{ mvpLeaderFemale.votes }} voti · {{ mvpPct(mvpLeaderFemale.votes) }}%</small>
+              </template>
+              <small v-else>Ancora nessun voto</small>
             </div>
           </div>
         </div>
@@ -652,9 +684,9 @@ async function generateBracket () {
               <span class="mab-name">{{ t.name }}</span>
               <span class="mab-total">{{ t.teamVotes }} <small>voti</small></span>
             </header>
-            <div v-for="c in t.candidates" :key="c.id" class="mab-row" :class="{ lead: mvpLeader && c.id === mvpLeader.id }">
+            <div v-for="c in t.candidates" :key="c.id" class="mab-row" :class="{ lead: isMvpLeader(c) }">
               <span class="bar" :style="{ width: mvpPct(c.votes) + '%' }"></span>
-              <span class="mab-player">{{ c.name }}</span>
+              <span class="mab-player">{{ c.name }} <small class="mab-gender">{{ (c.gender || 'male') === 'female' ? '♀' : '♂' }}</small></span>
               <span class="mab-count">{{ c.votes }} · {{ mvpPct(c.votes) }}%</span>
             </div>
           </section>
@@ -799,6 +831,9 @@ textarea { width: 100%; font-family: inherit; }
 .roster-row { display: flex; align-items: center; gap: 8px; }
 .roster-num { flex: none; width: 20px; text-align: center; color: #64748b; font-size: 13px; font-weight: 700; }
 .roster-row input { flex: 1; min-width: 0; background: #15151b; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 8px 10px; color: #fff; font-size: 14px; }
+.roster-gender { flex: none; display: flex; gap: 8px; }
+.roster-gender label { display: inline-flex; align-items: center; gap: 3px; font-size: 12.5px; color: #cbd5e1; cursor: pointer; }
+.roster-gender input[type="radio"] { flex: none; width: auto; margin: 0; accent-color: #f2b928; }
 .roster-editor { background: #101017; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .match-item { display: flex; flex-direction: column; gap: 6px; }
 .match-editor { background: #101017; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -824,9 +859,12 @@ textarea { width: 100%; font-family: inherit; }
 .mvp-stat .num { font-size: 26px; font-weight: 900; color: #f2b928; line-height: 1; font-variant-numeric: tabular-nums; }
 .mvp-stat .lbl { font-size: 10.5px; letter-spacing: .5px; color: #94a3b8; text-transform: uppercase; margin-top: 4px; }
 .mvp-leader { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 10px; background: linear-gradient(90deg, rgba(242,185,40,.16), rgba(242,185,40,.05)); border: 1px solid rgba(242,185,40,.35); border-radius: 12px; padding: 10px 14px; }
+.mvp-leader.empty { background: #15151b; border-color: rgba(255,255,255,.1); opacity: .75; }
 .mvp-leader .crown { font-size: 24px; }
 .mvp-leader b { display: block; font-size: 15px; font-weight: 900; }
 .mvp-leader small { color: #94a3b8; font-size: 12px; }
+.mvp-leader__tag { display: block; font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: #f2b928; font-weight: 800; margin-bottom: 2px; }
+.mab-gender { color: #94a3b8; font-weight: 700; font-size: 12px; }
 .mvp-a-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .mvp-a-box { background: #15151b; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; overflow: hidden; }
 .mab-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(242,185,40,.06); }

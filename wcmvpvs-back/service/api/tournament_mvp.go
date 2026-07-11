@@ -57,10 +57,12 @@ func (s *Store) EnsureTournamentMVPTables() error {
 // --- Store ------------------------------------------------------------------
 
 // MVPCandidate = un giocatore votabile con il suo conteggio voti corrente.
+// Gender ("male"/"female") consente all'admin di distinguere MVP uomo e donna.
 type MVPCandidate struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Votes int    `json:"votes"`
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Gender string `json:"gender"`
+	Votes  int    `json:"votes"`
 }
 
 // MVPTeam = una squadra partecipante con la sua rosa votabile.
@@ -100,7 +102,7 @@ func (s *Store) GetMVPResults(ctx context.Context, eventID int64) (*MVPBoard, er
 func (s *Store) mvpBoardByEvent(ctx context.Context, eventID int64, deviceID string) (*MVPBoard, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT tp.id, tp.team_id, tt.name, tt.short_name, tt.group_name,
-		       tp.first_name, tp.last_name,
+		       tp.first_name, tp.last_name, tp.gender,
 		       (SELECT COUNT(1) FROM tournament_mvp_votes v WHERE v.player_id = tp.id) AS votes
 		FROM tournament_players tp
 		JOIN tournament_teams tt ON tt.id = tp.team_id
@@ -115,9 +117,9 @@ func (s *Store) mvpBoardByEvent(ctx context.Context, eventID int64, deviceID str
 	idx := map[int64]int{} // team_id -> indice in Teams
 	for rows.Next() {
 		var pid, teamID int64
-		var teamName, shortName, groupName, first, last string
+		var teamName, shortName, groupName, first, last, gender string
 		var votes int
-		if err := rows.Scan(&pid, &teamID, &teamName, &shortName, &groupName, &first, &last, &votes); err != nil {
+		if err := rows.Scan(&pid, &teamID, &teamName, &shortName, &groupName, &first, &last, &gender, &votes); err != nil {
 			return nil, err
 		}
 		name := strings.TrimSpace(first + " " + last)
@@ -134,7 +136,7 @@ func (s *Store) mvpBoardByEvent(ctx context.Context, eventID int64, deviceID str
 			})
 		}
 		board.Teams[i].Candidates = append(board.Teams[i].Candidates,
-			MVPCandidate{ID: pid, Name: name, Votes: votes})
+			MVPCandidate{ID: pid, Name: name, Gender: normalizeTAGender(gender), Votes: votes})
 		board.TotalVotes += votes
 	}
 	if err := rows.Err(); err != nil {

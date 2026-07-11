@@ -71,6 +71,7 @@ func (s *Store) EnsureTournamentAdminTables() error {
 			team_id INTEGER NOT NULL,
 			first_name TEXT NOT NULL DEFAULT '',
 			last_name TEXT NOT NULL DEFAULT '',
+			gender TEXT NOT NULL DEFAULT 'male',
 			position INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);`,
@@ -128,10 +129,11 @@ func (s *Store) EnsureTournamentAdminTables() error {
 			team_id INTEGER NOT NULL,
 			first_name TEXT NOT NULL DEFAULT '',
 			last_name TEXT NOT NULL DEFAULT '',
+			gender TEXT NOT NULL DEFAULT 'male',
 			position INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
-		[]string{"id", "event_id", "team_id", "first_name", "last_name", "position", "created_at"}); err != nil {
+		[]string{"id", "event_id", "team_id", "first_name", "last_name", "gender", "position", "created_at"}); err != nil {
 		return err
 	}
 
@@ -148,6 +150,7 @@ func (s *Store) EnsureTournamentAdminTables() error {
 		`ALTER TABLE tournament_players ADD COLUMN team_id INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE tournament_players ADD COLUMN first_name TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tournament_players ADD COLUMN last_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tournament_players ADD COLUMN gender TEXT NOT NULL DEFAULT 'male'`,
 		`ALTER TABLE tournament_players ADD COLUMN position INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE tournament_sponsors ADD COLUMN logo_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE tournament_sponsors ADD COLUMN url TEXT NOT NULL DEFAULT ''`,
@@ -525,10 +528,22 @@ type TATeam struct {
 }
 
 // TAPlayer è un giocatore in rosa (Nome/Cognome facoltativi).
+// Gender ("male"/"female") serve alla votazione MVP separata uomo/donna.
 type TAPlayer struct {
 	ID        int64  `json:"id"`
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
+	Gender    string `json:"gender"`
+}
+
+// normalizeTAGender riduce l'input alle due categorie ammesse; default "male".
+func normalizeTAGender(g string) string {
+	switch strings.ToLower(strings.TrimSpace(g)) {
+	case "female", "f", "femmina", "donna":
+		return "female"
+	default:
+		return "male"
+	}
 }
 
 // maxPlayersPerTeam limita la rosa lato server (la UI espone 8 coppie).
@@ -559,7 +574,7 @@ func (s *Store) ListTATeams(ctx context.Context, eventID int64) ([]TATeam, error
 
 	// Rosa: una sola query per l'intero evento, raggruppata in memoria.
 	prows, err := s.db.QueryContext(ctx, `
-		SELECT id, team_id, first_name, last_name
+		SELECT id, team_id, first_name, last_name, gender
 		FROM tournament_players WHERE event_id = ?
 		ORDER BY team_id, position, id`, eventID)
 	if err != nil {
@@ -569,7 +584,7 @@ func (s *Store) ListTATeams(ctx context.Context, eventID int64) ([]TATeam, error
 	for prows.Next() {
 		var p TAPlayer
 		var teamID int64
-		if err := prows.Scan(&p.ID, &teamID, &p.FirstName, &p.LastName); err != nil {
+		if err := prows.Scan(&p.ID, &teamID, &p.FirstName, &p.LastName, &p.Gender); err != nil {
 			return nil, err
 		}
 		if i, ok := idx[teamID]; ok {
@@ -624,9 +639,9 @@ func insertTAPlayers(ctx context.Context, tx *sql.Tx, eventID, teamID int64, pla
 			break
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO tournament_players (event_id, team_id, first_name, last_name, position)
-			VALUES (?, ?, ?, ?, ?)`,
-			eventID, teamID, first, last, pos); err != nil {
+			INSERT INTO tournament_players (event_id, team_id, first_name, last_name, gender, position)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			eventID, teamID, first, last, normalizeTAGender(p.Gender), pos); err != nil {
 			return err
 		}
 		pos++
