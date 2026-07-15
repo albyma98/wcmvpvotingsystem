@@ -63,6 +63,14 @@ const live = computed(() => matches.value.filter(m => m.status === 'live'))
 const scheduled = computed(() => matches.value.filter(m => m.status === 'scheduled'))
 const finished = computed(() => matches.value.filter(m => m.status === 'finished'))
 
+// Link del tabellone da proiettare per il pubblico (view pubblica full-screen).
+const projectionUrl = computed(() =>
+  slug.value ? `${window.location.origin}/proietta/${slug.value}/${encodeURIComponent(court.value)}` : '')
+function copyProjection () {
+  if (!projectionUrl.value || !navigator.clipboard) return
+  navigator.clipboard.writeText(projectionUrl.value).then(() => flash('Link tabellone copiato.'), () => {})
+}
+
 // Aggiornamenti live via SSE (push): lo slug arriva dopo il login, il composable
 // si aggancia appena disponibile. Le partite di un altro campo o create
 // dall'admin compaiono senza refresh manuale.
@@ -87,6 +95,18 @@ useTournamentStream(slug, () => { if (authed.value) loadState() })
         <p>{{ tournament }}</p>
       </header>
       <p v-if="notice" class="op-notice">{{ notice }}</p>
+
+      <!-- Tabellone da proiettare per il pubblico -->
+      <div v-if="projectionUrl" class="proj-link">
+        <div class="pl-text">
+          <b>📺 Tabellone pubblico</b>
+          <small>Aprilo sul monitor/proiettore rivolto agli spettatori: mostra il punteggio live e la classifica.</small>
+        </div>
+        <div class="pl-actions">
+          <a class="pl-open" :href="projectionUrl" target="_blank" rel="noopener">Apri</a>
+          <button class="pl-copy" @click="copyProjection">Copia link</button>
+        </div>
+      </div>
 
       <article v-for="m in live" :key="m.id" class="score-card">
         <div class="sc-head"><span class="dot"></span>{{ m.setLabel }}</div>
@@ -141,6 +161,13 @@ useTournamentStream(slug, () => { if (authed.value) loadState() })
 .op-head h1 { font-size: 24px; margin: 0; color: #f2b928; }
 .op-head p { margin: 2px 0 0; color: #94a3b8; font-size: 13px; }
 .op-notice { background: rgba(242,185,40,.12); border: 1px solid rgba(242,185,40,.35); color: #fbd34d; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.proj-link { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #15151b; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 11px 12px; }
+.proj-link .pl-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.proj-link .pl-text b { font-size: 14px; }
+.proj-link .pl-text small { color: #94a3b8; font-size: 12px; line-height: 1.35; }
+.proj-link .pl-actions { display: flex; gap: 6px; flex: none; }
+.proj-link .pl-open { background: #f2b928; color: #111; text-decoration: none; border-radius: 8px; padding: 9px 16px; font-weight: 800; font-size: 13px; }
+.proj-link .pl-copy { background: transparent; border: 1px solid rgba(255,255,255,.22); color: #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 13px; }
 .hint { color: #94a3b8; font-size: 13.5px; }
 .center { text-align: center; padding-top: 18vh; }
 h3 { margin: 12px 0 2px; font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }

@@ -39,6 +39,11 @@
       v-else-if="appView === 'operator'"
       :token="operatorToken"
     />
+    <ScoreboardProjection
+      v-else-if="appView === 'projection'"
+      :slug="projectionSlug"
+      :court="projectionCourt"
+    />
     <TournamentSectionView
       v-else-if="appView === 'tournament' && tournamentSection"
       :slug="tournamentSlug"
@@ -76,6 +81,7 @@ const DevStackItDemo = defineAsyncComponent(() => import('./views/DevStackItDemo
 const TournamentHomeView = defineAsyncComponent(() => import('./views/TournamentHomeView.vue'));
 const TournamentAdminPortal = defineAsyncComponent(() => import('./views/TournamentAdminPortal.vue'));
 const OperatorConsole = defineAsyncComponent(() => import('./views/OperatorConsole.vue'));
+const ScoreboardProjection = defineAsyncComponent(() => import('./views/ScoreboardProjection.vue'));
 const TournamentSectionView = defineAsyncComponent(() => import('./views/TournamentSectionView.vue'));
 
 // Admin components loaded only when the URL matches an admin route
@@ -158,6 +164,16 @@ const isOperatorPath = computed(
 const operatorToken = computed(() =>
   isOperatorPath.value ? pathSegments.value[1] : '',
 );
+// /proietta/:slug/:court → tabellone da proiettare (pubblico, full-screen)
+const isProjectionPath = computed(
+  () => pathSegments.value[0] === 'proietta' && pathSegments.value.length >= 2,
+);
+const projectionSlug = computed(() =>
+  isProjectionPath.value ? pathSegments.value[1] : '',
+);
+const projectionCourt = computed(() =>
+  isProjectionPath.value ? decodeURIComponent(pathSegments.value[2] ?? '') : '',
+);
 const tournamentSlug = computed(() =>
   isTournamentPath.value ? pathSegments.value[1] : '',
 );
@@ -173,6 +189,9 @@ const appView = computed(() => {
   // chrome dell'app club (App.vue non ha header/nav globali: "bare" è implicito).
   if (isOperatorPath.value) {
     return 'operator';
+  }
+  if (isProjectionPath.value) {
+    return 'projection';
   }
   if (isTournamentAdminPath.value) {
     return 'tournament-admin';
