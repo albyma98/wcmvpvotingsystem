@@ -13,8 +13,10 @@ const props = defineProps({
 })
 
 const teams = ref([])
+const byGender = ref(true)     // true = MVP uomo/donna (2 voti), false = MVP unico (1 voto)
 const myVoteMale = ref(0)      // playerId uomo votato da questo device (0 = nessuno)
 const myVoteFemale = ref(0)    // playerId donna votato da questo device (0 = nessuno)
+const myVote = ref(0)          // playerId votato in modalità MVP unico (0 = nessuno)
 const activeGender = ref('male') // categoria mostrata (toggle Uomo/Donna)
 const loading = ref(true)
 const error = ref('')
@@ -23,12 +25,22 @@ const justVoted = ref('')      // nome appena votato → banner conferma
 
 const deviceId = getOrCreateDeviceId()
 
-// Voto corrente per la categoria attiva e stato "ho già votato in questa categoria".
-const activeVote = computed(() => (activeGender.value === 'female' ? myVoteFemale.value : myVoteMale.value))
+// Voto corrente e stato "ho già votato". In modalità unica c'è un solo voto;
+// in modalità separata dipende dalla categoria (Uomo/Donna) attiva.
+const activeVote = computed(() => {
+  if (!byGender.value) return myVote.value
+  return activeGender.value === 'female' ? myVoteFemale.value : myVoteMale.value
+})
 const hasVotedActive = computed(() => activeVote.value !== 0)
 
-// Squadre con i soli candidati del genere attivo (scarta le squadre senza candidati di quel genere).
+// Squadre votabili: in modalità unica tutti i candidati; in modalità separata
+// solo quelli del genere attivo (scartando le squadre senza candidati adatti).
 const teamsForActive = computed(() => {
+  if (!byGender.value) {
+    return (teams.value ?? [])
+      .map(t => ({ ...t, candidates: t.candidates ?? [] }))
+      .filter(t => t.candidates.length)
+  }
   const g = activeGender.value
   return (teams.value ?? [])
     .map(t => ({ ...t, candidates: (t.candidates ?? []).filter(c => (c.gender || 'male') === g) }))
@@ -37,8 +49,10 @@ const teamsForActive = computed(() => {
 
 function applyBoard (b) {
   teams.value = b.teams ?? []
+  byGender.value = b.byGender !== false
   myVoteMale.value = b.myVoteMale ?? 0
   myVoteFemale.value = b.myVoteFemale ?? 0
+  myVote.value = b.myVote ?? 0
 }
 
 async function load () {
@@ -59,8 +73,8 @@ async function load () {
 async function vote (candidate, team) {
   if (voting.value) return
   const gender = candidate.gender || activeGender.value
-  // Cambio voto o primo voto per questo slot-genere? (prima dell'aggiornamento board)
-  const changed = (gender === 'female' ? myVoteFemale.value : myVoteMale.value) !== 0
+  // Cambio voto o primo voto per questo slot? (prima dell'aggiornamento board)
+  const changed = activeVote.value !== 0
   voting.value = candidate.id
   try {
     const r = await fetch(`/api/v1/tournaments/${props.slug}/mvp/vote`, {
@@ -99,7 +113,8 @@ useTournamentStream(() => props.slug, load)
     <header class="mvp-intro">
       <div class="trophy">🏆</div>
       <h2>Vota il tuo MVP</h2>
-      <p>Hai due voti: un MVP <b>uomo</b> e un MVP <b>donna</b>. Tocca un nome per votare — puoi cambiare quando vuoi.</p>
+      <p v-if="byGender">Hai due voti: un MVP <b>uomo</b> e un MVP <b>donna</b>. Tocca un nome per votare — puoi cambiare quando vuoi.</p>
+      <p v-else>Hai <b>un voto</b>. Tocca il nome del giocatore che ti ha impressionato di più — puoi cambiare quando vuoi.</p>
     </header>
 
     <transition name="pop">
@@ -113,8 +128,9 @@ useTournamentStream(() => props.slug, load)
     </p>
 
     <template v-if="!loading && teams.length">
-      <!-- Toggle categoria: Uomo / Donna, con ✓ quando il voto è già espresso -->
-      <div class="gender-switch" role="tablist">
+      <!-- Toggle categoria: Uomo / Donna, con ✓ quando il voto è già espresso.
+           Nascosto in modalità MVP unico (un solo voto, nessuna distinzione). -->
+      <div v-if="byGender" class="gender-switch" role="tablist">
         <button
           class="gs-btn"
           :class="{ active: activeGender === 'male' }"
@@ -133,7 +149,7 @@ useTournamentStream(() => props.slug, load)
         </button>
       </div>
 
-      <p v-if="!teamsForActive.length" class="mvp-muted">
+      <p v-if="byGender && !teamsForActive.length" class="mvp-muted">
         Nessun {{ activeGender === 'female' ? 'a giocatrice' : ' giocatore' }} in questa categoria.
       </p>
 

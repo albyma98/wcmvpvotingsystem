@@ -70,6 +70,9 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		// allow_draws: 1 = i pareggi (set pari) contano in classifica (colonna N),
 		// 0 = torneo senza pareggi (colonna N nascosta lato tifoso).
 		`ALTER TABLE events ADD COLUMN allow_draws INTEGER NOT NULL DEFAULT 1`,
+		// mvp_by_gender: 1 = votazione MVP separata uomo/donna (2 voti per device),
+		// 0 = MVP unico indipendente dal sesso (1 voto per device).
+		`ALTER TABLE events ADD COLUMN mvp_by_gender INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN bracket_qualifiers INTEGER NOT NULL DEFAULT 2`,
 		`ALTER TABLE events ADD COLUMN bracket_third_place INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE events ADD COLUMN fan_layout TEXT NOT NULL DEFAULT 'classic'`,

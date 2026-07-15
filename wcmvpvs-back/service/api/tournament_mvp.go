@@ -175,9 +175,13 @@ type MVPTeam struct {
 type MVPBoard struct {
 	Teams      []MVPTeam `json:"teams"`
 	TotalVotes int       `json:"totalVotes"`
+	// ByGender: true = MVP separato uomo/donna (2 voti), false = MVP unico (1 voto).
+	ByGender bool `json:"byGender"`
 	// Voti di questo device: uno per slot-genere (0 se non ancora espresso).
 	MyVoteMale   int64 `json:"myVoteMale"`
 	MyVoteFemale int64 `json:"myVoteFemale"`
+	// MyVote: voto del device nella modalità MVP unico (slot 'any'), 0 se assente.
+	MyVote int64 `json:"myVote"`
 }
 
 // GetMVPBoard ritorna la board completa per lo slug (vista tifoso, con MyVote).
@@ -198,10 +202,23 @@ func (s *Store) GetMVPResults(ctx context.Context, eventID int64) (*MVPBoard, er
 // mvpBoardByEvent costruisce la board dai voti dell'evento. Se deviceID != ""
 // popola anche MyVote (giocatore votato da quel device).
 func (s *Store) mvpBoardByEvent(ctx context.Context, eventID int64, deviceID string) (*MVPBoard, error) {
+	// Modalità votazione: separata per genere (slot 'male'/'female') o unica
+	// (slot 'any'). Il filtro sui voti isola la modalità corrente, così i voti
+	// eventualmente residui dell'altra modalità non inquinano i conteggi.
+	var byGender int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(mvp_by_gender,1) FROM events WHERE id = ?`, eventID).Scan(&byGender); err != nil {
+		return nil, err
+	}
+	voteFilter := `v.gender IN ('male','female')`
+	if byGender == 0 {
+		voteFilter = `v.gender = 'any'`
+	}
+
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT tp.id, tp.team_id, tt.name, tt.short_name, tt.group_name,
 		       tp.first_name, tp.last_name, tp.gender,
-		       (SELECT COUNT(1) FROM tournament_mvp_votes v WHERE v.player_id = tp.id) AS votes
+		       (SELECT COUNT(1) FROM tournament_mvp_votes v WHERE v.player_id = tp.id AND `+voteFilter+`) AS votes
 		FROM tournament_players tp
 		JOIN tournament_teams tt ON tt.id = tp.team_id
 		WHERE tp.event_id = ?
@@ -211,7 +228,7 @@ func (s *Store) mvpBoardByEvent(ctx context.Context, eventID int64, deviceID str
 	}
 	defer rows.Close()
 
-	board := &MVPBoard{Teams: []MVPTeam{}}
+	board := &MVPBoard{Teams: []MVPTeam{}, ByGender: byGender == 1}
 	idx := map[int64]int{} // team_id -> indice in Teams
 	for rows.Next() {
 		var pid, teamID int64
@@ -255,9 +272,12 @@ func (s *Store) mvpBoardByEvent(ctx context.Context, eventID int64, deviceID str
 			if err := vrows.Scan(&g, &pid); err != nil {
 				return nil, err
 			}
-			if normalizeTAGender(g) == "female" {
+			switch {
+			case g == "any":
+				board.MyVote = pid
+			case normalizeTAGender(g) == "female":
 				board.MyVoteFemale = pid
-			} else {
+			default:
 				board.MyVoteMale = pid
 			}
 		}
@@ -276,7 +296,7 @@ func (s *Store) CastMVPVote(ctx context.Context, slug string, playerID int64, de
 		return 0, err
 	}
 	// Il giocatore deve appartenere a questo torneo (anti-manomissione); il suo
-	// genere determina lo slot di voto (uomo/donna).
+	// genere determina lo slot di voto (uomo/donna) nella modalità separata.
 	var gender string
 	err = s.db.QueryRowContext(ctx, `
 		SELECT gender FROM tournament_players WHERE id = ? AND event_id = ?`,
@@ -287,14 +307,25 @@ func (s *Store) CastMVPVote(ctx context.Context, slug string, playerID int64, de
 	if err != nil {
 		return 0, err
 	}
-	gender = normalizeTAGender(gender)
-	// Upsert: un voto per (device, genere), modificabile.
+	// Slot di voto: nella modalità MVP unico (mvp_by_gender=0) c'è un solo slot
+	// 'any' per device (1 voto totale); nella modalità separata lo slot è il
+	// genere del giocatore (fino a 2 voti: uno uomo, uno donna).
+	var byGender int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(mvp_by_gender,1) FROM events WHERE id = ?`, eventID).Scan(&byGender); err != nil {
+		return 0, err
+	}
+	slot := normalizeTAGender(gender)
+	if byGender == 0 {
+		slot = "any"
+	}
+	// Upsert: un voto per (device, slot), modificabile.
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO tournament_mvp_votes (event_id, player_id, gender, device_id)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(event_id, device_id, gender) DO UPDATE SET
 			player_id = excluded.player_id, created_at = datetime('now')`,
-		eventID, playerID, gender, deviceID); err != nil {
+		eventID, playerID, slot, deviceID); err != nil {
 		return 0, err
 	}
 	return eventID, nil

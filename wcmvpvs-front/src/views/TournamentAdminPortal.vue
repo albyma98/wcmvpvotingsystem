@@ -65,7 +65,7 @@ const sponsors = ref([])
 const gallery = ref([])
 const mvp = ref(null)
 const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', publicMvpMale: '', publicMvpFemale: '' })
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
 const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
@@ -120,10 +120,24 @@ const mvpLeaderBy = gender => {
 }
 const mvpLeaderMale = computed(() => mvpLeaderBy('male'))
 const mvpLeaderFemale = computed(() => mvpLeaderBy('female'))
-// Un candidato è "leader" se è l'MVP del suo genere (evidenziazione in lista).
-const isMvpLeader = c =>
-  (mvpLeaderMale.value && c.id === mvpLeaderMale.value.id) ||
-  (mvpLeaderFemale.value && c.id === mvpLeaderFemale.value.id)
+// Modalità della votazione (dal board): true = uomo/donna, false = MVP unico.
+const mvpModeByGender = computed(() => mvp.value?.byGender !== false)
+// MVP unico: il giocatore più votato in assoluto (indipendente dal sesso).
+const mvpLeaderOverall = computed(() => {
+  let best = null
+  for (const t of mvp.value?.teams ?? []) {
+    for (const c of t.candidates) {
+      if (c.votes > 0 && (!best || c.votes > best.votes)) best = { ...c, team: t.name }
+    }
+  }
+  return best
+})
+// Un candidato è "leader" (evidenziato in lista): l'MVP del suo genere nella
+// modalità separata, oppure l'MVP assoluto nella modalità unica.
+const isMvpLeader = c => mvpModeByGender.value
+  ? ((mvpLeaderMale.value && c.id === mvpLeaderMale.value.id) ||
+     (mvpLeaderFemale.value && c.id === mvpLeaderFemale.value.id))
+  : (mvpLeaderOverall.value && c.id === mvpLeaderOverall.value.id)
 const genderLabel = g => ((g || 'male') === 'female' ? 'Femmina' : 'Maschio')
 const mvpPct = votes => (mvpTotal.value ? Math.round((votes / mvpTotal.value) * 100) : 0)
 
@@ -676,24 +690,37 @@ async function generateBracket () {
             <span class="num">{{ mvpTotal }}</span>
             <span class="lbl">{{ mvpTotal === 1 ? 'voto totale' : 'voti totali' }}</span>
           </div>
-          <div class="mvp-leader" :class="{ empty: !mvpLeaderMale }">
-            <span class="crown">👑</span>
-            <div>
-              <span class="mvp-leader__tag">MVP Uomo</span>
-              <template v-if="mvpLeaderMale">
-                <b>{{ mvpLeaderMale.name }}</b>
-                <small>{{ mvpLeaderMale.team }} · {{ mvpLeaderMale.votes }} voti · {{ mvpPct(mvpLeaderMale.votes) }}%</small>
-              </template>
-              <small v-else>Ancora nessun voto</small>
+          <template v-if="mvpModeByGender">
+            <div class="mvp-leader" :class="{ empty: !mvpLeaderMale }">
+              <span class="crown">👑</span>
+              <div>
+                <span class="mvp-leader__tag">MVP Uomo</span>
+                <template v-if="mvpLeaderMale">
+                  <b>{{ mvpLeaderMale.name }}</b>
+                  <small>{{ mvpLeaderMale.team }} · {{ mvpLeaderMale.votes }} voti · {{ mvpPct(mvpLeaderMale.votes) }}%</small>
+                </template>
+                <small v-else>Ancora nessun voto</small>
+              </div>
             </div>
-          </div>
-          <div class="mvp-leader" :class="{ empty: !mvpLeaderFemale }">
+            <div class="mvp-leader" :class="{ empty: !mvpLeaderFemale }">
+              <span class="crown">👑</span>
+              <div>
+                <span class="mvp-leader__tag">MVP Donna</span>
+                <template v-if="mvpLeaderFemale">
+                  <b>{{ mvpLeaderFemale.name }}</b>
+                  <small>{{ mvpLeaderFemale.team }} · {{ mvpLeaderFemale.votes }} voti · {{ mvpPct(mvpLeaderFemale.votes) }}%</small>
+                </template>
+                <small v-else>Ancora nessun voto</small>
+              </div>
+            </div>
+          </template>
+          <div v-else class="mvp-leader" :class="{ empty: !mvpLeaderOverall }">
             <span class="crown">👑</span>
             <div>
-              <span class="mvp-leader__tag">MVP Donna</span>
-              <template v-if="mvpLeaderFemale">
-                <b>{{ mvpLeaderFemale.name }}</b>
-                <small>{{ mvpLeaderFemale.team }} · {{ mvpLeaderFemale.votes }} voti · {{ mvpPct(mvpLeaderFemale.votes) }}%</small>
+              <span class="mvp-leader__tag">MVP</span>
+              <template v-if="mvpLeaderOverall">
+                <b>{{ mvpLeaderOverall.name }}</b>
+                <small>{{ mvpLeaderOverall.team }} · {{ mvpLeaderOverall.votes }} voti · {{ mvpPct(mvpLeaderOverall.votes) }}%</small>
               </template>
               <small v-else>Ancora nessun voto</small>
             </div>
@@ -792,6 +819,17 @@ async function generateBracket () {
           </label>
         </div>
         <p class="hint">Vince la partita chi arriva prima a {{ settings.setsBestOf === 5 ? '3 set (su 5)' : '2 set (su 3)' }}. Il <b>tie-break</b> è il set decisivo: {{ settings.setsBestOf === 5 ? '3-2' : '2-1' }}.</p>
+
+        <h3 class="settings-sub">Votazione MVP (pubblico)</h3>
+        <div class="settings-grid">
+          <label>Modalità
+            <select v-model="settings.mvpByGender">
+              <option :value="true">MVP Uomo + MVP Donna (2 voti)</option>
+              <option :value="false">MVP unico (1 voto)</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint">{{ settings.mvpByGender ? 'Il tifoso ha due voti: un MVP uomo e un MVP donna (in base al sesso indicato nella rosa).' : 'Il tifoso ha un solo voto per il miglior giocatore, indipendentemente dal sesso.' }} Conviene deciderla <b>prima</b> che inizi la votazione. Salva e ricarica la pagina tifosi.</p>
 
         <h3 class="settings-sub">Punti classifica (gironi)</h3>
         <div class="settings-grid">
