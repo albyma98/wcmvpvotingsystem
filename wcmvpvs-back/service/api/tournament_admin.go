@@ -49,6 +49,7 @@ func registerTournamentAdminRoutes(rt *_router) {
 	rt.router.Get("/v1/ta/{slug}/overview", rt.wrapTA(rt.taOverview))
 	rt.router.Get("/v1/ta/{slug}/teams", rt.wrapTA(rt.taListTeams))
 	rt.router.Post("/v1/ta/{slug}/teams", rt.wrapTA(rt.taCreateTeams))
+	rt.router.Put("/v1/ta/{slug}/teams/{id}", rt.wrapTA(rt.taUpdateTeam))
 	rt.router.Put("/v1/ta/{slug}/teams/{id}/players", rt.wrapTA(rt.taSetTeamPlayers))
 	rt.router.Delete("/v1/ta/{slug}/teams/{id}", rt.wrapTA(rt.taDeleteTeam))
 	rt.router.Get("/v1/ta/{slug}/matches", rt.wrapTA(rt.taListMatches))
@@ -375,6 +376,37 @@ func (rt *_router) taCreateTeams(w http.ResponseWriter, r *http.Request, eventID
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"inserted": n})
+}
+
+// taUpdateTeam modifica una squadra già creata (nome, sigla, città, girone).
+// La rosa si modifica a parte via taSetTeamPlayers.
+func (rt *_router) taUpdateTeam(w http.ResponseWriter, r *http.Request, eventID int64) {
+	teamID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	var body struct {
+		Name      string `json:"name"`
+		ShortName string `json:"shortName"`
+		City      string `json:"city"`
+		GroupName string `json:"groupName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
+		return
+	}
+	err := rt.store.UpdateTATeam(r.Context(), eventID, teamID, body.Name, body.ShortName, body.City, body.GroupName)
+	if err != nil {
+		switch {
+		case err == errTANotFound:
+			http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+		case err.Error() == "name_required":
+			http.Error(w, `{"error":"name_required"}`, http.StatusBadRequest)
+		default:
+			rt.baseLogger.WithError(err).WithField("eventID", eventID).Error("cannot update tournament team")
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		}
+		return
+	}
+	rt.invalidateTournamentCaches(r, eventID)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
 func (rt *_router) taDeleteTeam(w http.ResponseWriter, r *http.Request, eventID int64) {

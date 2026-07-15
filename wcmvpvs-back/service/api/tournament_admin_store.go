@@ -676,6 +676,27 @@ func (s *Store) ReplaceTAPlayers(ctx context.Context, eventID, teamID int64, pla
 	return tx.Commit()
 }
 
+// UpdateTATeam modifica gli attributi editabili di una squadra (nome, sigla,
+// città, girone). La rosa NON è toccata (si modifica con ReplaceTAPlayers).
+// errTANotFound se la squadra non appartiene all'evento; "name_required" se vuoto.
+func (s *Store) UpdateTATeam(ctx context.Context, eventID, teamID int64, name, shortName, city, groupName string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("name_required")
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE tournament_teams SET name = ?, short_name = ?, city = ?, group_name = ?
+		WHERE id = ? AND event_id = ?`,
+		name, strings.TrimSpace(shortName), strings.TrimSpace(city), strings.TrimSpace(groupName), teamID, eventID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errTANotFound
+	}
+	return nil
+}
+
 func (s *Store) DeleteTATeam(ctx context.Context, eventID, teamID int64) error {
 	// Rifiuta se la squadra è usata in una partita: integrità prima di tutto.
 	var used int

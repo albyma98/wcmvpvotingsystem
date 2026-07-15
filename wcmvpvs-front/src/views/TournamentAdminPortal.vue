@@ -175,10 +175,37 @@ async function deleteTeam (id) {
   if (r.ok) { await loadTeams(); flash('Squadra eliminata.') }
 }
 
+// ---------- modifica squadra (nome, sigla, città, girone) ----------
+const editingTeamId = ref(null)
+const teamDraft = reactive({ name: '', shortName: '', city: '', groupName: '' })
+function openTeamEdit (t) {
+  if (editingRosterId.value === t.id) closeRoster() // non tenere aperti entrambi gli editor
+  editingTeamId.value = t.id
+  teamDraft.name = t.name || ''
+  teamDraft.shortName = t.shortName || ''
+  teamDraft.city = t.city || ''
+  teamDraft.groupName = t.groupName || ''
+}
+function cancelTeamEdit () { editingTeamId.value = null }
+async function saveTeamEdit (id) {
+  if (!teamDraft.name.trim()) { flash('Il nome della squadra è obbligatorio.'); return }
+  busy.value = 'teamedit'
+  const r = await j('PUT', `/teams/${id}`, {
+    name: teamDraft.name.trim(),
+    shortName: teamDraft.shortName.trim(),
+    city: teamDraft.city.trim(),
+    groupName: teamDraft.groupName.trim()
+  })
+  busy.value = ''
+  if (r.ok) { editingTeamId.value = null; await loadTeams(); flash('Squadra aggiornata.') }
+  else flash('Modifica non riuscita.')
+}
+
 // ---------- rosa giocatori (squadre già create) ----------
 const editingRosterId = ref(null) // id squadra con l'editor rosa aperto
 const rosterDraft = ref(blankRoster())
 function openRoster (team) {
+  if (editingTeamId.value === team.id) cancelTeamEdit() // non tenere aperti entrambi gli editor
   // Precarica i giocatori esistenti e completa fino a 8 righe.
   const rows = (team.players || []).map(p => ({ firstName: p.firstName || '', lastName: p.lastName || '', gender: p.gender === 'female' ? 'female' : 'male' }))
   while (rows.length < MAX_PLAYERS) rows.push({ firstName: '', lastName: '', gender: 'male' })
@@ -582,6 +609,9 @@ async function generateBracket () {
                 <small v-if="t.players && t.players.length" class="roster-count">· {{ t.players.length }} giocatori</small>
               </span>
               <span class="team-actions">
+                <button class="ghost" @click="editingTeamId === t.id ? cancelTeamEdit() : openTeamEdit(t)">
+                  {{ editingTeamId === t.id ? 'Chiudi' : 'Modifica' }}
+                </button>
                 <button class="ghost" @click="editingRosterId === t.id ? closeRoster() : openRoster(t)">
                   {{ editingRosterId === t.id ? 'Chiudi' : 'Rosa' }}
                 </button>
@@ -589,7 +619,25 @@ async function generateBracket () {
               </span>
             </div>
 
-            <div v-if="t.players && t.players.length && editingRosterId !== t.id" class="roster-chips">
+            <!-- Editor squadra: nome, sigla, città, girone -->
+            <div v-if="editingTeamId === t.id" class="team-editor">
+              <div class="form-row">
+                <input v-model="teamDraft.name" placeholder="Nome squadra *" @keyup.enter="saveTeamEdit(t.id)" />
+                <input v-model="teamDraft.shortName" placeholder="Sigla" maxlength="6" style="max-width:120px" @keyup.enter="saveTeamEdit(t.id)" />
+              </div>
+              <div class="form-row">
+                <input v-model="teamDraft.city" placeholder="Città" @keyup.enter="saveTeamEdit(t.id)" />
+                <input v-model="teamDraft.groupName" placeholder="Girone" maxlength="4" style="max-width:100px" @keyup.enter="saveTeamEdit(t.id)" />
+              </div>
+              <div class="form-row">
+                <button :disabled="busy === 'teamedit'" @click="saveTeamEdit(t.id)">
+                  {{ busy === 'teamedit' ? 'Salvo…' : 'Salva' }}
+                </button>
+                <button class="ghost" @click="cancelTeamEdit">Annulla</button>
+              </div>
+            </div>
+
+            <div v-if="t.players && t.players.length && editingRosterId !== t.id && editingTeamId !== t.id" class="roster-chips">
               <span v-for="p in t.players" :key="p.id" class="chip">{{ playerLabel(p) }}</span>
             </div>
 
@@ -925,7 +973,7 @@ textarea { width: 100%; font-family: inherit; }
 .roster-gender input[type="radio"] { flex: none; width: auto; margin: 0; accent-color: #f2b928; }
 .roster-editor { background: #101017; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .match-item { display: flex; flex-direction: column; gap: 6px; }
-.match-editor { background: #101017; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.match-editor, .team-editor { background: #101017; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .roster-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px; }
 .chip { background: rgba(242,185,40,.12); border: 1px solid rgba(242,185,40,.3); color: #fbd34d; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; }
 /* Intestazione home tifosi (upload immagine-titolo) */
