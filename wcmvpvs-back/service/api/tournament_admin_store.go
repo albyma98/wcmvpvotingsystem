@@ -721,6 +721,7 @@ type TAMatch struct {
 	TeamBID   int64    `json:"teamBId"`
 	TeamAName string   `json:"teamAName"`
 	TeamBName string   `json:"teamBName"`
+	IsAnchor  bool     `json:"isAnchor"` // partita "inizio torneo" (taglio del ciclo cronologico)
 }
 
 func (s *Store) ListTAMatches(ctx context.Context, eventID int64) ([]TAMatch, error) {
@@ -729,13 +730,18 @@ func (s *Store) ListTAMatches(ctx context.Context, eventID int64) ([]TAMatch, er
 		       m.score_a, m.score_b, m.cur_a, m.cur_b, m.sets_json,
 		       m.team_a_id, m.team_b_id,
 		       COALESCE(NULLIF(ta.name,''), m.team_a_label, ''),
-		       COALESCE(NULLIF(tb.name,''), m.team_b_label, '')
+		       COALESCE(NULLIF(tb.name,''), m.team_b_label, ''),
+		       m.is_anchor
 		FROM matches m
 		LEFT JOIN tournament_teams ta ON ta.id = m.team_a_id
 		LEFT JOIN tournament_teams tb ON tb.id = m.team_b_id
 		WHERE m.event_id = ?
 		ORDER BY CASE m.status WHEN 'live' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END,
-		         m.scheduled_at, m.court`, eventID)
+		         CASE WHEN m.scheduled_time >= COALESCE(
+		                (SELECT a.scheduled_time FROM matches a
+		                   WHERE a.event_id = m.event_id AND a.is_anchor = 1 LIMIT 1), '')
+		              THEN 0 ELSE 1 END,
+		         m.scheduled_time, m.court`, eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -746,7 +752,7 @@ func (s *Store) ListTAMatches(ctx context.Context, eventID int64) ([]TAMatch, er
 		var setsJSON string
 		if err := rows.Scan(&m.ID, &m.Court, &m.Stage, &m.Time, &m.Status, &m.SetLabel,
 			&m.ScoreA, &m.ScoreB, &m.CurA, &m.CurB, &setsJSON,
-			&m.TeamAID, &m.TeamBID, &m.TeamAName, &m.TeamBName); err != nil {
+			&m.TeamAID, &m.TeamBID, &m.TeamAName, &m.TeamBName, &m.IsAnchor); err != nil {
 			return nil, err
 		}
 		m.Sets = decodeSets(setsJSON)
@@ -783,6 +789,35 @@ func (s *Store) UpdateTAMatch(ctx context.Context, eventID int64, matchID, court
 		return errTANotFound
 	}
 	return nil
+}
+
+// SetTAMatchAnchor imposta (on=true) o rimuove (on=false) la partita "inizio
+// torneo". L'àncora è unica per evento: impostarne una azzera tutte le altre
+// nella stessa transazione. errTANotFound se la partita non è dell'evento.
+func (s *Store) SetTAMatchAnchor(ctx context.Context, eventID int64, matchID string, on bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE matches SET is_anchor = 0 WHERE event_id = ?`, eventID); err != nil {
+		return err
+	}
+	anchor := 0
+	if on {
+		anchor = 1
+	}
+	res, err := tx.ExecContext(ctx,
+		`UPDATE matches SET is_anchor = ? WHERE id = ? AND event_id = ?`, anchor, matchID, eventID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errTANotFound
+	}
+	return tx.Commit()
 }
 
 func (s *Store) DeleteTAMatch(ctx context.Context, eventID int64, matchID string) error {

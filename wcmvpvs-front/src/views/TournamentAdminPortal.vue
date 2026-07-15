@@ -194,6 +194,15 @@ async function deleteMatch (id) {
   const r = await j('DELETE', `/matches/${id}`)
   if (r.ok) { await loadMatches(); flash('Partita eliminata.') }
 }
+// Segna/desegna la partita "inizio torneo": il suo orario diventa il taglio del
+// ciclo cronologico (le partite dopo mezzanotte non scavalcano più quelle serali).
+// Ne può esistere una sola: il backend azzera le altre.
+async function toggleAnchor (m) {
+  const on = !m.isAnchor
+  const r = await j('PUT', `/matches/${m.id}/anchor`, { anchor: on })
+  if (r.ok) { await loadMatches(); flash(on ? 'Impostata come inizio torneo.' : 'Inizio torneo rimosso.') }
+  else flash('Operazione non riuscita.')
+}
 
 // ---------- modifica partita ----------
 const editingMatchId = ref(null)
@@ -468,6 +477,7 @@ async function generateBracket () {
 
       <!-- CALENDARIO -->
       <section v-else-if="tab === 'matches'" class="ta-body">
+        <p class="hint">🏁 Segna una partita come <b>inizio torneo</b>: il suo orario diventa il taglio del calendario. Le partite dopo mezzanotte (es. le 02:00) restano così in coda alla giornata invece di scavalcare quelle serali. Ne puoi impostare una sola.</p>
         <div class="form-row">
           <input v-model="newMatch.court" placeholder="CAMPO 1" style="max-width:110px" />
           <input v-model="newMatch.time" placeholder="18:30" style="max-width:90px" />
@@ -479,11 +489,16 @@ async function generateBracket () {
         <div v-for="m in matches" :key="m.id" class="match-item">
           <div v-if="editingMatchId !== m.id" class="row-match">
             <span>
+              <span v-if="m.isAnchor" class="anchor-flag" title="Inizio torneo: da qui parte il calendario">🏁</span>
               {{ m.court }} · {{ m.time || '—' }} · {{ m.teamAName }} vs {{ m.teamBName }}
               <small v-if="m.stage">· {{ m.stage }}</small>
               <small>[{{ m.status }}]</small>
             </span>
             <span class="team-actions">
+              <button class="ghost" :class="{ 'anchor-on': m.isAnchor }" @click="toggleAnchor(m)"
+                      :title="m.isAnchor ? 'Rimuovi «inizio torneo»' : 'Segna come inizio torneo (taglio del calendario)'">
+                🏁 {{ m.isAnchor ? 'Inizio ✓' : 'Inizio' }}
+              </button>
               <button class="ghost" @click="openMatchEdit(m)">Modifica</button>
               <button class="danger" @click="deleteMatch(m.id)">Elimina</button>
             </span>
@@ -919,6 +934,8 @@ textarea { width: 100%; font-family: inherit; }
 .row-match small { color: #94a3b8; }
 .danger { background: transparent; border: 1px solid rgba(248,113,113,.4); color: #f87171; border-radius: 7px; padding: 5px 12px; }
 .ghost { background: transparent; border: 1px solid rgba(255,255,255,.2); color: #cbd5e1; border-radius: 7px; padding: 6px 12px; }
+.ghost.anchor-on { border-color: #f2b928; color: #f2b928; background: rgba(242,185,40,.1); }
+.anchor-flag { margin-right: 4px; }
 .form-row button.ghost { background: transparent; color: #cbd5e1; } /* batte `.form-row button` (sfondo giallo) */
 .start { background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 800; }
 .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 4px; vertical-align: -2px; margin-left: 4px; }

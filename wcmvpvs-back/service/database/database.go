@@ -2679,6 +2679,7 @@ func ensureTournamentTables(db *sql.DB) error {
 		stage TEXT NOT NULL DEFAULT '',
 		scheduled_time TEXT NOT NULL DEFAULT '',
 		scheduled_at TEXT,
+		is_anchor INTEGER NOT NULL DEFAULT 0,
 		team_a_id INTEGER NOT NULL,
 		team_b_id INTEGER NOT NULL,
 		FOREIGN KEY (event_id) REFERENCES events(id)

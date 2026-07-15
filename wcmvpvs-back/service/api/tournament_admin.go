@@ -54,6 +54,7 @@ func registerTournamentAdminRoutes(rt *_router) {
 	rt.router.Get("/v1/ta/{slug}/matches", rt.wrapTA(rt.taListMatches))
 	rt.router.Post("/v1/ta/{slug}/matches", rt.wrapTA(rt.taCreateMatch))
 	rt.router.Put("/v1/ta/{slug}/matches/{id}", rt.wrapTA(rt.taUpdateMatch))
+	rt.router.Put("/v1/ta/{slug}/matches/{id}/anchor", rt.wrapTA(rt.taSetMatchAnchor))
 	rt.router.Delete("/v1/ta/{slug}/matches/{id}", rt.wrapTA(rt.taDeleteMatch))
 	rt.router.Post("/v1/ta/{slug}/matches/{id}/score", rt.wrapTA(rt.taScoreAction))
 	rt.router.Get("/v1/ta/{slug}/sponsors", rt.wrapTA(rt.taListSponsors))
@@ -460,6 +461,29 @@ func (rt *_router) taUpdateMatch(w http.ResponseWriter, r *http.Request, eventID
 	}
 	err := rt.store.UpdateTAMatch(r.Context(), eventID, chi.URLParam(r, "id"),
 		body.Court, body.Time, body.ScheduledAt, body.Stage, body.TeamAID, body.TeamBID)
+	if errors.Is(err, errTANotFound) {
+		http.Error(w, `{"error":"match_not_found"}`, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	rt.invalidateTournamentCaches(r, eventID)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// taSetMatchAnchor marca/smarca una partita come "inizio torneo" (àncora del
+// calendario). Al più una per evento: lo store azzera le altre.
+func (rt *_router) taSetMatchAnchor(w http.ResponseWriter, r *http.Request, eventID int64) {
+	var body struct {
+		Anchor bool `json:"anchor"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
+		return
+	}
+	err := rt.store.SetTAMatchAnchor(r.Context(), eventID, chi.URLParam(r, "id"), body.Anchor)
 	if errors.Is(err, errTANotFound) {
 		http.Error(w, `{"error":"match_not_found"}`, http.StatusNotFound)
 		return

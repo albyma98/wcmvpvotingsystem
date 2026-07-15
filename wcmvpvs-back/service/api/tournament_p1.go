@@ -82,6 +82,11 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		`ALTER TABLE matches ADD COLUMN win_to_slot INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN lose_to_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE matches ADD COLUMN lose_to_slot INTEGER NOT NULL DEFAULT 0`,
+		// is_anchor: la partita "inizio torneo". Il suo orario è il taglio del
+		// ciclo cronologico: le partite con orario >= àncora restano nel giorno,
+		// quelle con orario < àncora (es. dopo mezzanotte) scivolano in coda.
+		// Al più una per evento (garantito da SetTAMatchAnchor).
+		`ALTER TABLE matches ADD COLUMN is_anchor INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("events/matches bracket ensure (%s): %w", alter, err)
@@ -141,7 +146,12 @@ func (s *Store) ListPublicMatches(ctx context.Context, slug string) ([]PublicMat
 		JOIN events e ON e.id = m.event_id AND e.slug = ? AND e.type = 'tournament'
 		LEFT JOIN tournament_teams ta ON ta.id = m.team_a_id
 		LEFT JOIN tournament_teams tb ON tb.id = m.team_b_id
-		ORDER BY m.scheduled_at, m.court`, slug)
+		ORDER BY
+		  CASE WHEN m.scheduled_time >= COALESCE(
+		         (SELECT a.scheduled_time FROM matches a
+		            WHERE a.event_id = m.event_id AND a.is_anchor = 1 LIMIT 1), '')
+		       THEN 0 ELSE 1 END,
+		  m.scheduled_time, m.court`, slug)
 	if err != nil {
 		return nil, err
 	}
