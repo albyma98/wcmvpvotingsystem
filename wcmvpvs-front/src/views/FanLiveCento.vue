@@ -109,8 +109,6 @@
         </section>
       </main>
 
-      <div class="powered">Powered by <b>ArenaBoostX</b> · MVP System</div>
-
       <!-- Overlay + spend sheet (inline, stile cento) -->
       <div class="overlay" :class="{ open: activeSheet }" @click="closeSheets"></div>
 
@@ -1826,20 +1824,25 @@ main {
 .toast {
   position: absolute;
   left: 50%;
-  bottom: 24px;
+  bottom: calc(20px + env(safe-area-inset-bottom));
   transform: translate(-50%, 20px);
   z-index: 200;
+  width: max-content;
+  max-width: calc(100% - 32px);
   background: var(--red);
   color: #fff;
   font-size: 13px;
   font-weight: 800;
-  padding: 12px 19px;
-  border-radius: 999px;
+  padding: 11px 18px;
+  border-radius: 16px;
+  text-align: center;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
   box-shadow: 0 4px 0 var(--red-deep), 0 10px 24px rgba(228, 33, 46, 0.3);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s ease, transform 0.25s ease;
-  white-space: nowrap;
 }
 .toast.show {
   opacity: 1;
