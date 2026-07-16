@@ -1827,7 +1827,7 @@ main {
   bottom: calc(20px + env(safe-area-inset-bottom));
   transform: translate(-50%, 20px);
   z-index: 200;
-  width: max-content;
+  width: fit-content;
   max-width: calc(100% - 32px);
   background: var(--red);
   color: #fff;
@@ -1838,7 +1838,7 @@ main {
   text-align: center;
   line-height: 1.35;
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   box-shadow: 0 4px 0 var(--red-deep), 0 10px 24px rgba(228, 33, 46, 0.3);
   opacity: 0;
   pointer-events: none;
