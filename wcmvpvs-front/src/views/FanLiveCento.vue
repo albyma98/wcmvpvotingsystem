@@ -152,13 +152,12 @@
             :key="mission.key"
             class="row-item"
             type="button"
-            :disabled="doneKeys.includes(mission.key)"
             @click="onMission(mission)"
           >
             <span class="avatar">{{ mission.emoji }}</span>
             <span class="row-copy"><b>{{ mission.title }}</b><span>{{ mission.subtitle }}</span></span>
             <span class="row-pts">
-              <template v-if="doneKeys.includes(mission.key)">✓</template>
+              <template v-if="mission.key === 'vote' && hasVoted">✓</template>
               <template v-else>+{{ mission.pts }} <span class="coin"></span></template>
             </span>
           </button>
@@ -190,6 +189,51 @@
         </div>
       </div>
 
+      <!-- Overlay gioco a schermo pieno -->
+      <div v-if="activeGameId" class="game-overlay">
+        <header class="game-head">
+          <button class="close" type="button" aria-label="Indietro" @click="closeGame">←</button>
+          <div class="game-title">{{ games[activeGameId]?.title }}</div>
+          <button class="close" type="button" aria-label="Chiudi" @click="closeGame">✕</button>
+        </header>
+        <div class="game-stage">
+          <ReactionTestGame
+            v-if="activeGameId === 'reaction'"
+            class="game-fill"
+            @claim="onGameClaim"
+            @exit="closeGame"
+          />
+          <QuickQuizGame
+            v-else-if="activeGameId === 'quiz'"
+            class="game-fill"
+            :event-id="eventId"
+            @claim="onGameClaim"
+            @exit="closeGame"
+          />
+          <TapChallenge
+            v-else-if="activeGameId === 'tap'"
+            class="game-fill"
+            :event-id="eventId"
+            @claim="onGameClaim"
+            @exit="closeGame"
+          />
+          <SponsorRushGame
+            v-else-if="activeGameId === 'sponsor-rush'"
+            class="game-fill"
+            @claim="onGameClaim"
+            @exit="closeGame"
+          />
+          <MemoryFlashGame
+            v-else-if="activeGameId === 'memory-flash'"
+            class="game-fill"
+            :wallet-coins="totalCoins"
+            @claim="onGameClaim"
+            @spend="onGameSpend"
+            @exit="closeGame"
+          />
+        </div>
+      </div>
+
       <!-- Toast -->
       <div class="toast" :class="{ show: toastMsg }">{{ toastMsg }}</div>
     </div>
@@ -204,8 +248,15 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
+
+// Giochi reali riusati da EarnCoinsModal (lazy-load: pesano).
+const ReactionTestGame = defineAsyncComponent(() => import('../components/ReactionTestGame.vue'));
+const QuickQuizGame = defineAsyncComponent(() => import('../components/QuickQuizGame.vue'));
+const TapChallenge = defineAsyncComponent(() => import('../components/minigames/TapChallenge.vue'));
+const SponsorRushGame = defineAsyncComponent(() => import('../components/minigames/SponsorRushGame.vue'));
+const MemoryFlashGame = defineAsyncComponent(() => import('../components/minigames/MemoryFlashGame.vue'));
 import {
   apiClient,
   fetchFanProfile,
@@ -250,7 +301,17 @@ const isVoting = ref(false);
 const doneKeys = ref([]); // missioni completate (persistite per evento)
 
 const activeSheet = ref('');
+const activeGameId = ref(null);
 const isLeaderboardOpen = ref(false);
+
+// Registry giochi reali (titolo + reward indicativa mostrata nella lista).
+const games = {
+  reaction: { title: 'Reaction Test', reward: 10 },
+  quiz: { title: 'Quiz Lampo', reward: 15 },
+  tap: { title: 'Tap Challenge', reward: 8 },
+  'sponsor-rush': { title: 'Sponsor Rush', reward: 12 },
+  'memory-flash': { title: 'Memory Flash', reward: 8 },
+};
 const redeeming = ref('');
 const toastMsg = ref('');
 let toastTimer = null;
@@ -303,18 +364,21 @@ const players = computed(() => {
   });
 });
 
-/* ---------- Missioni "Guadagna" (stile fan-live-cento) ---------- */
+/* ---------- Missioni "Guadagna" (aprono i giochi reali) ---------- */
 const earnMissions = computed(() => [
   { key: 'vote', emoji: '🏆', title: "Vota l'MVP", subtitle: 'Un voto per partita', pts: 10, opensMvp: true },
+  { key: 'reaction', emoji: '⚡', title: 'Reaction Test', subtitle: 'Testa i riflessi', pts: 10, game: 'reaction' },
+  { key: 'quiz', emoji: '🧠', title: 'Quiz Lampo', subtitle: 'Domande sul match', pts: 15, game: 'quiz' },
+  { key: 'tap', emoji: '👆', title: 'Tap Challenge', subtitle: '10 secondi a martello', pts: 8, game: 'tap' },
   {
-    key: 'rush',
-    emoji: '⚡',
+    key: 'sponsor-rush',
+    emoji: '🏷️',
     title: rushSponsor.value ? `Sponsor Rush · ${rushSponsor.value.name}` : 'Sponsor Rush',
-    subtitle: '15 secondi',
-    pts: 50,
+    subtitle: 'Prendi i loghi al volo',
+    pts: 12,
+    game: 'sponsor-rush',
   },
-  { key: 'quiz', emoji: '❓', title: 'Quiz del match', subtitle: '3 domande sul match', pts: 20 },
-  { key: 'pronostico', emoji: '📊', title: 'Pronostico finale', subtitle: 'Indovina lo scarto finale', pts: 15 },
+  { key: 'memory-flash', emoji: '🧩', title: 'Memory Flash', subtitle: 'Memorizza le coppie', pts: 8, game: 'memory-flash' },
 ]);
 
 /* ---------- Sponsor rush / partner ---------- */
@@ -417,21 +481,49 @@ function markDone(key) {
   }
 }
 
-async function onMission(mission) {
-  if (doneKeys.value.includes(mission.key)) {
-    toast('Già completata ✓');
-    return;
-  }
+function onMission(mission) {
   // "Vota l'MVP" apre la lista giocatori; le monete arrivano col voto reale.
   if (mission.opensMvp) {
     openSheet('mvp');
     return;
   }
-  // TODO(backend): sponsor rush/quiz/pronostico sono missioni demo; accreditano sul wallet reale.
-  markDone(mission.key);
-  await grantCoins(mission.pts);
-  closeSheets();
-  toast(`+${mission.pts} monete · ${mission.title}`);
+  if (mission.game) {
+    openGame(mission.game);
+  }
+}
+
+/* ---------- Giochi reali (overlay a schermo pieno) ---------- */
+function openGame(id) {
+  if (!games[id]) return;
+  activeSheet.value = '';
+  activeGameId.value = id;
+}
+function closeGame() {
+  const wasGame = Boolean(activeGameId.value);
+  activeGameId.value = null;
+  if (wasGame) {
+    openSheet('earn'); // torna alla lista giochi
+  }
+}
+// Ogni gioco emette @claim { coins, keepOpen } al termine.
+async function onGameClaim(payload) {
+  const coins = Math.max(0, Number(payload?.coins) || 0);
+  if (coins) {
+    await grantCoins(coins);
+    toast(`+${coins} monete`);
+  }
+  if (!payload?.keepOpen) {
+    closeGame();
+  }
+}
+// Memory Flash può spendere monete (@spend).
+async function onGameSpend(payload) {
+  const coins = Math.max(0, Number(payload?.coins) || 0);
+  if (!coins) return;
+  setCoins(totalCoins.value - coins);
+  if (props.eventId) {
+    await syncGuestCoins(props.eventId, totalCoins.value);
+  }
 }
 
 /* ---------- Voto MVP (lista reale + voto reale) ---------- */
@@ -587,7 +679,12 @@ function stopCoinsStream() {
 
 /* ---------- Esc per chiudere ---------- */
 function onKeydown(e) {
-  if (e.key === 'Escape') closeSheets();
+  if (e.key !== 'Escape') return;
+  if (activeGameId.value) {
+    closeGame();
+    return;
+  }
+  closeSheets();
 }
 
 /* ---------- Lifecycle ---------- */
@@ -1296,6 +1393,45 @@ main {
   width: 14px;
   height: 14px;
 }
+/* Overlay gioco a schermo pieno */
+.game-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 150;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.game-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.game-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.game-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding: 12px;
+  overflow: hidden;
+}
+.game-fill {
+  width: 100%;
+  height: 100%;
+}
+
 .toast {
   position: absolute;
   left: 50%;
