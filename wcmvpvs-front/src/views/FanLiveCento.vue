@@ -307,8 +307,6 @@
         </div>
       </div>
 
-      <!-- Toast -->
-      <div class="toast" :class="{ show: toastMsg }">{{ toastMsg }}</div>
     </div>
 
     <!-- Classifica tifosi (componente reale) -->
@@ -399,8 +397,6 @@ const games = {
   'memory-flash': { title: 'Memory Flash', reward: 8 },
 };
 const redeeming = ref('');
-const toastMsg = ref('');
-let toastTimer = null;
 let coinsStream = null;
 
 /* ---------- Derivati header ---------- */
@@ -495,19 +491,12 @@ const rewards = ref([
   { key: 'next_ticket', emoji: '🎟️', title: 'Biglietto prossimo match', subtitle: 'Settore tifosi', cost: 300 },
 ]);
 
-/* ---------- Sheets / toast ---------- */
+/* ---------- Sheets ---------- */
 function openSheet(id) {
   activeSheet.value = id;
 }
 function closeSheets() {
   activeSheet.value = '';
-}
-function toast(msg) {
-  toastMsg.value = msg;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toastMsg.value = '';
-  }, 2200);
 }
 
 /* ---------- Wallet ---------- */
@@ -616,7 +605,6 @@ async function onGameClaim(payload) {
   const coins = Math.max(0, Number(payload?.coins) || 0);
   if (coins) {
     await grantCoins(coins);
-    toast(`+${coins} monete`);
   }
   if (!payload?.keepOpen) {
     closeGame();
@@ -659,7 +647,6 @@ async function castVote(player) {
   try {
     const response = await vote({ eventId: props.eventId, playerId: player.id });
     if (!response?.ok) {
-      toast(response?.message || 'Voto non registrato. Riprova.');
       return;
     }
     hasVoted.value = true;
@@ -670,12 +657,9 @@ async function castVote(player) {
     if (!doneKeys.value.includes('vote')) {
       markDone('vote');
       await grantCoins(10);
-      toast(`Voto registrato: ${player.name} · +10 monete`);
-    } else {
-      toast(`Voto aggiornato: ${player.name}`);
     }
   } catch (error) {
-    toast('Si è verificato un errore. Riprova.');
+    // voto non riuscito: nessuna azione
   } finally {
     isVoting.value = false;
   }
@@ -796,7 +780,6 @@ function onSponsorClick(sponsor) {
 async function redeem(reward) {
   if (redeeming.value) return;
   if (totalCoins.value < reward.cost) {
-    toast('Monete insufficienti');
     return;
   }
   redeeming.value = reward.key;
@@ -807,13 +790,11 @@ async function redeem(reward) {
     } else if (ok) {
       setCoins(totalCoins.value - reward.cost);
     } else {
-      toast('Riscatto non riuscito');
       return;
     }
     closeSheets();
-    toast(`Riscattato: ${reward.title}`);
   } catch (error) {
-    toast('Riscatto non riuscito');
+    // riscatto non riuscito: nessuna azione
   } finally {
     redeeming.value = '';
   }
@@ -885,7 +866,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
-  clearTimeout(toastTimer);
   stopCoinsStream();
 });
 
@@ -1821,36 +1801,6 @@ main {
   height: 100%;
 }
 
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(28px + env(safe-area-inset-bottom));
-  transform: translateX(-50%) translateY(16px);
-  z-index: 400;
-  display: inline-block;
-  width: auto;
-  height: auto;
-  max-width: min(88vw, 360px);
-  background: var(--red);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
-  padding: 11px 18px;
-  border-radius: 16px;
-  text-align: center;
-  line-height: 1.35;
-  white-space: normal;
-  overflow-wrap: break-word;
-  box-shadow: 0 4px 0 var(--red-deep), 0 10px 24px rgba(228, 33, 46, 0.3);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-.toast.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .status::before,
   .rush-reward {
@@ -1858,7 +1808,6 @@ main {
   }
   .sheet,
   .overlay,
-  .toast,
   .tile,
   .rush,
   .row-item {

@@ -81,7 +81,9 @@
       "Bash(grep -n 'class=\"toast\"\\\\|</div>\\\\s*$\\\\|<div class=\"phone\"\\\\|class=\"cento-root\"\\\\|FansLeaderboardModal\\\\|VolleyCourtModal\\\\|game-overlay' FanLiveCento.vue)",
       "Bash(sed -n '/^\\\\.phone {/,/^}/p' FanLiveCento.vue)",
       "Bash(sed -n '/^\\\\.cento-root {/,/^}/p' FanLiveCento.vue)",
-      "Bash(netstat -ano)"
+      "Bash(netstat -ano)",
+      "Bash(sed -n '/^\\\\.toast {/,/^}/p' FanLiveCento.vue)",
+      "Bash(sed -n '/^\\\\.toast\\\\.show {/,/^}/p' FanLiveCento.vue)"
     ]
   }
 }
