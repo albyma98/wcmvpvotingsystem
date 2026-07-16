@@ -13,43 +13,21 @@
             <span>{{ venueLabel }}</span>
           </div>
         </div>
-        <button ref="walletEl" class="wallet" type="button" aria-label="Saldo monete" @click="openEarn">
+        <button class="wallet" type="button" aria-label="Saldo monete" @click="openSheet('earn')">
           <span class="coin"></span> <span>{{ totalCoins }}</span>
         </button>
       </header>
 
       <main>
-        <!-- Scoreboard -->
-        <section class="scoreboard" aria-label="Punteggio live">
-          <div class="live-row">
-            <span class="live-pill"><span class="live-dot"></span>LIVE</span>
-            <span v-if="competitionLabel" class="comp">{{ competitionLabel }}</span>
-          </div>
-          <div class="teams">
-            <div class="team">
-              <div class="team-badge">{{ homeBadge }}</div>
-              <div class="team-name">{{ homeName }}</div>
-            </div>
-            <div class="setscore">
-              <span class="sep">vs</span>
-            </div>
-            <div class="team right">
-              <div class="team-badge">{{ awayBadge }}</div>
-              <div class="team-name">{{ awayName }}</div>
-            </div>
-          </div>
-          <div class="set-label">{{ matchLabel }}</div>
-        </section>
-
         <!-- Grid -->
         <div class="grid">
-          <!-- MVP: delega il voto reale al parent (feature-select 'vote-mvp' → NewUiVoteModal) -->
-          <button class="tile tile-mvp" type="button" @click="onVoteMvp">
+          <!-- MVP: sheet inline con giocatori reali + voto reale -->
+          <button class="tile tile-mvp" type="button" @click="openSheet('mvp')">
             <b>{{ hasVoted ? 'Il tuo MVP' : "Vota l'MVP del pubblico" }}</b>
             <p>{{ hasVoted ? 'Grazie per il voto!' : 'Il tuo voto vale +10 monete' }}</p>
             <div class="mvp-photo">
               <span class="status">{{ hasVoted ? 'Voto registrato' : 'Votazioni aperte' }}</span>
-              <img v-if="hasVoted && votedPlayerImageUrl" :src="votedPlayerImageUrl" :alt="votedPlayerName" class="mvp-img" />
+              <img v-if="hasVoted && displayVotedImage" :src="displayVotedImage" :alt="displayVotedName" class="mvp-img" />
               <svg v-else width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8B95AB" stroke-width="1.5">
                 <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
               </svg>
@@ -57,7 +35,7 @@
             <span class="btn-vote">{{ hasVoted ? votedButtonLabel : 'Vota ora' }}</span>
           </button>
 
-          <button class="tile" type="button" @click="openEarn">
+          <button class="tile" type="button" @click="openSheet('earn')">
             <div class="tile-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" /></svg>
             </div>
@@ -94,8 +72,8 @@
           </div>
         </button>
 
-        <!-- Sponsor rush → riusa la stessa superficie earn (minigiochi sponsor) -->
-        <button v-if="rushSponsor" class="rush" type="button" @click="openEarn">
+        <!-- Sponsor rush → apre lo sheet Guadagna -->
+        <button v-if="rushSponsor" class="rush" type="button" @click="openSheet('earn')">
           <span class="rush-icon">{{ rushSponsor.badge }}</span>
           <span class="rush-copy">
             <b>Sponsor Rush · {{ rushSponsor.name }}</b>
@@ -104,23 +82,88 @@
           <span class="rush-reward">+50 <span class="coin"></span></span>
         </button>
 
-        <!-- Sponsors -->
-        <div v-if="sponsors.length" class="sponsor-strip">
-          <span class="label">PARTNER</span>
-          <button
-            v-for="sponsor in sponsors.slice(0, 3)"
-            :key="sponsor.id"
-            class="sponsor-chip"
-            type="button"
-            @click="onSponsorClick(sponsor)"
-          >{{ sponsor.name }}</button>
-        </div>
+        <!-- Sponsors (spazio ampliato al posto dello scoreboard) -->
+        <section v-if="sponsors.length" class="sponsors">
+          <div class="sponsors-head">
+            <span class="label">PARTNER UFFICIALI</span>
+          </div>
+          <div class="sponsor-grid">
+            <button
+              v-for="sponsor in sponsors.slice(0, 6)"
+              :key="sponsor.id"
+              class="sponsor-chip"
+              type="button"
+              @click="onSponsorClick(sponsor)"
+            >{{ sponsor.name }}</button>
+          </div>
+        </section>
       </main>
 
       <div class="powered">Powered by <b>ArenaBoostX</b> · MVP System</div>
 
       <!-- Overlay + spend sheet (inline, stile cento) -->
       <div class="overlay" :class="{ open: activeSheet }" @click="closeSheets"></div>
+
+      <!-- MVP: lista giocatori reale -->
+      <div class="sheet" :class="{ open: activeSheet === 'mvp' }" role="dialog" aria-label="Vota MVP">
+        <div class="grabber"></div>
+        <div class="sheet-head">
+          <div>
+            <div class="sheet-title">Vota l'MVP del pubblico</div>
+            <div class="sheet-sub">Un voto per partita · +10 monete</div>
+          </div>
+          <button class="close" type="button" @click="closeSheets">✕</button>
+        </div>
+        <div class="sheet-body">
+          <div v-if="isLoadingPlayers" class="sheet-empty">Caricamento giocatori…</div>
+          <div v-else-if="playersError" class="sheet-empty error">{{ playersError }}</div>
+          <div v-else-if="!players.length" class="sheet-empty">Nessun giocatore disponibile.</div>
+          <button
+            v-for="player in players"
+            :key="player.id"
+            class="row-item"
+            type="button"
+            :disabled="isVoting"
+            @click="castVote(player)"
+          >
+            <span class="avatar">
+              <img v-if="player.image" :src="player.image" :alt="player.name" />
+              <template v-else>{{ player.number || player.badge }}</template>
+            </span>
+            <span class="row-copy"><b>{{ player.name }}</b><span>{{ player.subtitle }}</span></span>
+            <span class="chip-mint">{{ votedPlayerId === player.id ? 'Votato' : 'Vota' }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Guadagna: missioni del match -->
+      <div class="sheet" :class="{ open: activeSheet === 'earn' }" role="dialog" aria-label="Guadagna monete">
+        <div class="grabber"></div>
+        <div class="sheet-head">
+          <div>
+            <div class="sheet-title">Guadagna monete</div>
+            <div class="sheet-sub">Completa le missioni del match</div>
+          </div>
+          <button class="close" type="button" @click="closeSheets">✕</button>
+        </div>
+        <div class="sheet-body">
+          <button
+            v-for="mission in earnMissions"
+            :key="mission.key"
+            class="row-item"
+            type="button"
+            :disabled="doneKeys.includes(mission.key)"
+            @click="onMission(mission)"
+          >
+            <span class="avatar">{{ mission.emoji }}</span>
+            <span class="row-copy"><b>{{ mission.title }}</b><span>{{ mission.subtitle }}</span></span>
+            <span class="row-pts">
+              <template v-if="doneKeys.includes(mission.key)">✓</template>
+              <template v-else>+{{ mission.pts }} <span class="coin"></span></template>
+            </span>
+          </button>
+        </div>
+      </div>
 
       <div class="sheet" :class="{ open: activeSheet === 'spend' }" role="dialog" aria-label="Spendi monete">
         <div class="grabber"></div>
@@ -151,14 +194,7 @@
       <div class="toast" :class="{ show: toastMsg }">{{ toastMsg }}</div>
     </div>
 
-    <!-- Superfici reali riusate da LiveExperienceHome -->
-    <EarnCoinsModal
-      v-model="isEarnOpen"
-      :event-id="eventId"
-      :wallet-coins="totalCoins"
-      :wallet-target-el="walletEl"
-      @coins-earned="handleCoinsEarned"
-    />
+    <!-- Classifica tifosi (componente reale) -->
     <FansLeaderboardModal
       v-model="isLeaderboardOpen"
       :top-list="leaderboardTop3"
@@ -169,12 +205,12 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import EarnCoinsModal from '../components/EarnCoinsModal.vue';
 import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
 import {
   apiClient,
   fetchFanProfile,
   fetchVoteStatus,
+  vote,
   syncGuestCoins,
   redeemFanReward,
   resolveApiUrl,
@@ -195,27 +231,32 @@ const props = defineProps({
   registrationPromptSignal: { type: Number, default: 0 },
 });
 
-const emit = defineEmits(['feature-select']);
-
 const WALLET_STORAGE_KEY = 'wallet:coins';
 
 /* ---------- Stato ---------- */
 const totalCoins = ref(0);
 const hasVoted = ref(false);
+const votedPlayerId = ref(null);
+const localVoted = ref(null); // giocatore votato in questa sessione (feedback immediato)
 const leaderboardTop3 = ref([]);
 const leaderboardUser = ref(null);
 const sponsors = ref([]);
-const walletEl = ref(null);
+
+const rawPlayers = ref([]);
+const isLoadingPlayers = ref(false);
+const playersError = ref('');
+const isVoting = ref(false);
+
+const doneKeys = ref([]); // missioni completate (persistite per evento)
 
 const activeSheet = ref('');
-const isEarnOpen = ref(false);
 const isLeaderboardOpen = ref(false);
 const redeeming = ref('');
 const toastMsg = ref('');
 let toastTimer = null;
 let coinsStream = null;
 
-/* ---------- Derivati scoreboard/header ---------- */
+/* ---------- Derivati header ---------- */
 function initials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '—';
@@ -224,20 +265,57 @@ function initials(name) {
 const homeName = computed(() =>
   String(props.activeEvent?.team1_name || props.teamName || 'TEAM').trim(),
 );
-const awayName = computed(() => String(props.activeEvent?.team2_name || 'Ospiti').trim());
 const homeBadge = computed(() => initials(homeName.value));
-const awayBadge = computed(() => initials(awayName.value));
 const venueLabel = computed(() =>
   String(props.activeEvent?.venue || 'Esperienza ufficiale').trim() || 'Esperienza ufficiale',
 );
-// TODO(backend): nessun campo giornata/competizione nell'evento; mostrato solo se disponibile.
-const competitionLabel = computed(() => String(props.activeEvent?.competition || '').trim());
 
+/* ---------- Giocatore votato (locale o da prop parent) ---------- */
+const displayVotedImage = computed(() => localVoted.value?.image || props.votedPlayerImageUrl);
+const displayVotedName = computed(() => localVoted.value?.name || props.votedPlayerName);
 const votedButtonLabel = computed(() => {
-  const num = props.votedPlayerNumber === '' || props.votedPlayerNumber == null ? '' : `#${props.votedPlayerNumber} `;
-  const label = props.votedPlayerLastName || props.votedPlayerName;
+  const number = localVoted.value?.number ?? props.votedPlayerNumber;
+  const num = number === '' || number == null ? '' : `#${number} `;
+  const label = localVoted.value?.lastName || props.votedPlayerLastName || localVoted.value?.name || props.votedPlayerName;
   return label ? `${num}${label}`.trim() : 'Modifica voto';
 });
+
+/* ---------- Giocatori (lista MVP reale) ---------- */
+const players = computed(() => {
+  const list = Array.isArray(rawPlayers.value) ? rawPlayers.value : [];
+  const calledUp = list.filter((p) => p?.is_called_up === true);
+  const source = calledUp.length ? calledUp : list;
+  return source.map((p) => {
+    const first = String(p?.first_name || '').trim();
+    const last = String(p?.last_name || '').trim();
+    const name = last ? `${first ? `${first[0]}. ` : ''}${last}` : first || 'Giocatore';
+    const role = String(p?.role || p?.position || '').trim();
+    const number = p?.jersey_number == null ? '' : String(p.jersey_number);
+    return {
+      id: Number(p?.id),
+      name,
+      lastName: last,
+      subtitle: role || (number ? `Maglia #${number}` : 'In campo'),
+      number,
+      badge: initials(`${first} ${last}`),
+      image: String(p?.image_url || '').trim(),
+    };
+  });
+});
+
+/* ---------- Missioni "Guadagna" (stile fan-live-cento) ---------- */
+const earnMissions = computed(() => [
+  { key: 'vote', emoji: '🏆', title: "Vota l'MVP", subtitle: 'Un voto per partita', pts: 10, opensMvp: true },
+  {
+    key: 'rush',
+    emoji: '⚡',
+    title: rushSponsor.value ? `Sponsor Rush · ${rushSponsor.value.name}` : 'Sponsor Rush',
+    subtitle: '15 secondi',
+    pts: 50,
+  },
+  { key: 'quiz', emoji: '❓', title: 'Quiz del match', subtitle: '3 domande sul match', pts: 20 },
+  { key: 'pronostico', emoji: '📊', title: 'Pronostico finale', subtitle: 'Indovina lo scarto finale', pts: 15 },
+]);
 
 /* ---------- Sponsor rush / partner ---------- */
 const rushSponsor = computed(() => {
@@ -305,28 +383,104 @@ async function loadFanProfile() {
   }
 }
 
-// EarnCoinsModal emette il totale di monete guadagnate; applichiamo il pattern addCoins.
-async function handleCoinsEarned(coins) {
-  const delta = Number(coins) || 0;
-  if (!delta) return;
-  setCoins(totalCoins.value + delta);
+// Accredita monete sul wallet reale (localStorage + sync guest).
+async function grantCoins(delta) {
+  const amount = Number(delta) || 0;
+  if (!amount) return;
+  setCoins(totalCoins.value + amount);
   if (props.eventId) {
     await syncGuestCoins(props.eventId, totalCoins.value);
-  }
-  if (delta > 0) {
-    toast(`+${delta} monete`);
   }
   refreshLeaderboard();
 }
 
-/* ---------- Voto MVP (delegato al parent) ---------- */
-function onVoteMvp() {
-  emit('feature-select', 'vote-mvp');
+/* ---------- Missioni completate (persistite per evento) ---------- */
+function doneStorageKey() {
+  return `cento:done:${props.eventId || 'anon'}`;
+}
+function loadDoneKeys() {
+  try {
+    const raw = window.localStorage.getItem(doneStorageKey());
+    const parsed = raw ? JSON.parse(raw) : [];
+    doneKeys.value = Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    doneKeys.value = [];
+  }
+}
+function markDone(key) {
+  if (doneKeys.value.includes(key)) return;
+  doneKeys.value = [...doneKeys.value, key];
+  try {
+    window.localStorage.setItem(doneStorageKey(), JSON.stringify(doneKeys.value));
+  } catch (error) {
+    /* localStorage non disponibile */
+  }
+}
+
+async function onMission(mission) {
+  if (doneKeys.value.includes(mission.key)) {
+    toast('Già completata ✓');
+    return;
+  }
+  // "Vota l'MVP" apre la lista giocatori; le monete arrivano col voto reale.
+  if (mission.opensMvp) {
+    openSheet('mvp');
+    return;
+  }
+  // TODO(backend): sponsor rush/quiz/pronostico sono missioni demo; accreditano sul wallet reale.
+  markDone(mission.key);
+  await grantCoins(mission.pts);
+  closeSheets();
+  toast(`+${mission.pts} monete · ${mission.title}`);
+}
+
+/* ---------- Voto MVP (lista reale + voto reale) ---------- */
+async function loadPlayers() {
+  isLoadingPlayers.value = true;
+  playersError.value = '';
+  try {
+    const { data } = await apiClient.get('/public/players');
+    const payload = Array.isArray(data?.players) ? data.players : Array.isArray(data) ? data : [];
+    rawPlayers.value = Array.isArray(payload) ? payload : [];
+  } catch (error) {
+    playersError.value = 'Impossibile caricare i giocatori. Riprova.';
+    rawPlayers.value = [];
+  } finally {
+    isLoadingPlayers.value = false;
+  }
 }
 async function loadVoteStatus() {
   if (!props.eventId) return;
   const status = await fetchVoteStatus(props.eventId);
   hasVoted.value = Boolean(status?.hasVoted);
+  votedPlayerId.value = status?.playerId ?? null;
+}
+async function castVote(player) {
+  if (isVoting.value || !player?.id || !props.eventId) return;
+  isVoting.value = true;
+  try {
+    const response = await vote({ eventId: props.eventId, playerId: player.id });
+    if (!response?.ok) {
+      toast(response?.message || 'Voto non registrato. Riprova.');
+      return;
+    }
+    hasVoted.value = true;
+    votedPlayerId.value = player.id;
+    localVoted.value = { name: player.name, lastName: player.lastName, number: player.number, image: player.image };
+    closeSheets();
+    // +10 monete solo al primo voto del match.
+    if (!doneKeys.value.includes('vote')) {
+      markDone('vote');
+      await grantCoins(10);
+      toast(`Voto registrato: ${player.name} · +10 monete`);
+    } else {
+      toast(`Voto aggiornato: ${player.name}`);
+    }
+  } catch (error) {
+    toast('Si è verificato un errore. Riprova.');
+  } finally {
+    isVoting.value = false;
+  }
 }
 
 /* ---------- Leaderboard ---------- */
@@ -350,12 +504,6 @@ async function refreshLeaderboard() {
 function openLeaderboard() {
   refreshLeaderboard();
   isLeaderboardOpen.value = true;
-}
-
-/* ---------- Earn ---------- */
-function openEarn() {
-  closeSheets();
-  isEarnOpen.value = true;
 }
 
 /* ---------- Sponsors ---------- */
@@ -445,8 +593,10 @@ function onKeydown(e) {
 /* ---------- Lifecycle ---------- */
 function bootstrap() {
   totalCoins.value = readStoredCoins();
+  loadDoneKeys();
   loadFanProfile();
   loadVoteStatus();
+  loadPlayers();
   refreshLeaderboard();
   loadSponsors();
   stopCoinsStream();
@@ -612,119 +762,9 @@ main {
   gap: 10px;
 }
 
-/* Scoreboard */
-.scoreboard {
-  flex: none;
-  background: linear-gradient(165deg, var(--card-2), var(--card) 70%);
-  border: 1px solid var(--line-strong);
-  border-radius: 18px;
-  padding: 12px 14px;
-  position: relative;
-  overflow: hidden;
-}
-.scoreboard::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(90% 70% at 50% 0%, rgba(255, 77, 87, 0.08), transparent 65%);
-  pointer-events: none;
-}
-.live-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  position: relative;
-  min-height: 20px;
-}
-.live-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: var(--mint);
-  background: var(--mint-soft);
-  border: 1px solid rgba(255, 77, 87, 0.32);
-  padding: 4px 9px;
-  border-radius: 999px;
-}
-.live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--mint);
-  animation: pulse 1.7s ease-in-out infinite;
-}
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.45; transform: scale(0.8); }
-}
-.comp {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-}
-.teams {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 10px;
-  position: relative;
-}
-.team {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.team.right {
-  flex-direction: row-reverse;
-  text-align: right;
-}
-.team-badge {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Fraunces', serif;
-  font-weight: 650;
-  font-size: 13px;
-  background: var(--card-2);
-  border: 1px solid var(--line-strong);
-}
-.team-name {
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1.2;
-}
-.setscore {
-  font-family: 'Fraunces', serif;
-  font-weight: 750;
-  font-size: 28px;
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-variant-numeric: tabular-nums;
-}
-.setscore .sep {
-  color: var(--muted);
-  font-size: 18px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.set-label {
-  text-align: center;
-  margin-top: 6px;
-  font-size: 10.5px;
-  color: var(--muted);
-  position: relative;
 }
 
 /* Grid */
@@ -1022,25 +1062,33 @@ main {
   50% { transform: scale(1.05); }
 }
 
-/* Sponsor strip */
-.sponsor-strip {
+/* Sponsors (blocco ampliato) */
+.sponsors {
   flex: none;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
   padding: 2px 2px 4px;
 }
-.sponsor-strip .label {
+.sponsors-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sponsors-head .label {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.12em;
   color: var(--muted);
-  flex: none;
+}
+.sponsor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
 }
 .sponsor-chip {
-  flex: 1;
   min-width: 0;
-  height: 34px;
+  height: 44px;
   border-radius: 10px;
   background: var(--card);
   border: 1px solid var(--line);
@@ -1056,6 +1104,11 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   padding: 0 8px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sponsor-chip:hover {
+  border-color: rgba(255, 77, 87, 0.32);
+  background: var(--card-2);
 }
 .powered {
   flex: none;
@@ -1187,6 +1240,31 @@ main {
   font-family: 'Fraunces', serif;
   font-weight: 650;
   font-size: 16px;
+  overflow: hidden;
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chip-mint {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mint);
+  background: var(--mint-soft);
+  border: 1px solid rgba(255, 77, 87, 0.32);
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+.sheet-empty {
+  padding: 18px 4px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.sheet-empty.error {
+  color: var(--mint);
 }
 .row-copy {
   flex: 1;
