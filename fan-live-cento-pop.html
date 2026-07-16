@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Benedetto XIV Live · Powered by ABX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,750;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FFF7F2;
+    --card:#FFFFFF;
+    --ink:#23161A;
+    --muted:#8C7A80;
+    --red:#E4212E;
+    --red-deep:#C0121F;
+    --red-soft:#FFE8E6;
+    --red-line:#FFD2CE;
+    --gold:#F5B321;
+    --gold-deep:#D18E00;
+    --gold-soft:#FFF3D6;
+    --line:#F1E4E0;
+    --shadow:0 3px 0 rgba(35,22,26,.10);
+    --shadow-red:0 4px 0 var(--red-deep);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:'Inter',system-ui,sans-serif;
+    background:#F3E9E4;color:var(--ink);
+    display:flex;justify-content:center;
+    overflow:hidden;
+  }
+  .phone{
+    width:100%;max-width:430px;
+    height:100dvh;
+    background:
+      radial-gradient(90% 40% at 50% -6%, #FFE3DE, transparent 62%),
+      var(--bg);
+    display:flex;flex-direction:column;
+    position:relative;overflow:hidden;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    flex:none;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;
+  }
+  .club{display:flex;align-items:center;gap:9px}
+  .club-logo{
+    width:36px;height:36px;border-radius:12px;
+    background:var(--red);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-weight:900;font-size:15px;color:#fff;
+    box-shadow:var(--shadow-red);
+    transform:rotate(-4deg);
+  }
+  .club-name{line-height:1.15}
+  .club-name b{font-size:13px;font-weight:800;display:block;letter-spacing:-.01em}
+  .club-name span{font-size:10px;color:var(--muted);font-weight:600}
+  .wallet{
+    display:flex;align-items:center;gap:6px;
+    background:var(--gold-soft);
+    border:2px solid var(--gold);
+    border-radius:999px;padding:6px 13px 6px 8px;
+    font-weight:800;font-size:14px;font-family:inherit;
+    font-variant-numeric:tabular-nums;
+    color:var(--gold-deep);cursor:pointer;
+    box-shadow:0 3px 0 rgba(209,142,0,.25);
+  }
+  .coin{
+    width:17px;height:17px;border-radius:50%;flex:none;
+    background:radial-gradient(circle at 34% 30%,#FFE293,#F0A81C 68%,#C67F00);
+    box-shadow:inset 0 -1.5px 2px rgba(0,0,0,.22), 0 0 0 2px #fff;
+  }
+
+  .top-right{display:flex;align-items:center;gap:8px}
+  .profile-btn{
+    width:36px;height:36px;border-radius:50%;flex:none;
+    background:#fff;border:2px solid var(--red-line);
+    color:var(--red);cursor:pointer;font-family:inherit;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:var(--shadow);
+    transition:transform .12s ease, border-color .15s ease;
+  }
+  .profile-btn:active{transform:translateY(2px);box-shadow:none}
+  .profile-btn:hover{border-color:var(--red)}
+
+  main{
+    flex:1;min-height:0;
+    padding:6px 12px 10px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+
+  /* ---------- Scoreboard ---------- */
+  .scoreboard{
+    flex:none;
+    background:linear-gradient(150deg,var(--red) 0%,var(--red-deep) 100%);
+    border-radius:22px;
+    padding:13px 15px;
+    position:relative;overflow:hidden;
+    color:#fff;
+    box-shadow:0 5px 0 #8F0D17;
+  }
+  .scoreboard::before{
+    content:"";position:absolute;right:-32px;top:-38px;
+    width:130px;height:130px;border-radius:50%;
+    border:14px solid rgba(255,255,255,.10);
+  }
+  .scoreboard::after{
+    content:"";position:absolute;left:-24px;bottom:-52px;
+    width:100px;height:100px;border-radius:50%;
+    background:rgba(255,255,255,.07);
+  }
+  .live-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;position:relative;z-index:1}
+  .live-pill{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:10px;font-weight:800;letter-spacing:.14em;
+    color:var(--red);background:#fff;
+    padding:4px 10px;border-radius:999px;
+  }
+  .live-dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:pulse 1.5s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.75)}}
+  .comp{font-size:10px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.75)}
+  .teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;position:relative;z-index:1}
+  .team{display:flex;align-items:center;gap:8px;min-width:0}
+  .team.right{flex-direction:row-reverse;text-align:right}
+  .team-badge{
+    width:36px;height:36px;border-radius:12px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-weight:750;font-size:13px;
+    background:#fff;color:var(--red);
+    transform:rotate(-3deg);
+  }
+  .team.right .team-badge{transform:rotate(3deg);background:rgba(255,255,255,.18);color:#fff;border:2px solid rgba(255,255,255,.4)}
+  .team-name{font-size:11.5px;font-weight:700;line-height:1.2}
+  .setscore{
+    font-family:'Fraunces',serif;font-weight:900;
+    font-size:31px;display:flex;align-items:baseline;gap:6px;
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em;
+  }
+  .setscore .sep{color:rgba(255,255,255,.55);font-size:21px;font-weight:600}
+  .set-label{text-align:center;margin-top:7px;font-size:10.5px;color:rgba(255,255,255,.8);position:relative;z-index:1;font-weight:600}
+  .set-label b{color:#fff;font-weight:800}
+
+  /* ---------- Grid ---------- */
+  .grid{
+    flex:1;min-height:0;
+    display:grid;
+    grid-template-columns:1.15fr 1fr;
+    grid-template-rows:1fr 1fr;
+    gap:10px;
+  }
+  .tile{
+    background:var(--card);
+    border:2px solid var(--line);
+    border-radius:20px;
+    padding:13px;
+    display:flex;flex-direction:column;
+    text-align:left;color:var(--ink);
+    font-family:inherit;cursor:pointer;
+    transition:transform .12s ease, border-color .15s ease;
+    min-height:0;overflow:hidden;
+    box-shadow:var(--shadow);
+  }
+  .tile:active{transform:scale(.98) translateY(2px);box-shadow:none}
+  .tile:hover{border-color:var(--red-line)}
+  .tile-mvp{grid-row:1 / 3;border-color:var(--red-line);background:linear-gradient(175deg,#fff 55%,var(--red-soft))}
+  .tile-icon{
+    width:34px;height:34px;border-radius:11px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--red-soft);color:var(--red);
+    margin-bottom:9px;
+    transform:rotate(-4deg);
+  }
+  .tile b{font-size:14px;font-weight:800;letter-spacing:-.01em}
+  .tile p{font-size:11px;color:var(--muted);line-height:1.4;margin-top:3px;font-weight:500}
+  .tile .spacer{flex:1;min-height:4px}
+  .tile-cta{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;color:var(--red)}
+  .mvp-photo{
+    flex:1;min-height:0;margin:9px 0;
+    border-radius:14px;
+    background:
+      radial-gradient(80% 80% at 50% 20%, #FFDCD8, #FFC7C1),
+      var(--red-soft);
+    border:2px solid var(--red-line);
+    display:flex;align-items:center;justify-content:center;
+    position:relative;
+  }
+  .mvp-photo svg{opacity:.55}
+  .status{
+    position:absolute;top:8px;left:8px;
+    font-size:9.5px;font-weight:800;color:#fff;
+    background:var(--red);
+    padding:4px 9px;border-radius:999px;
+    display:flex;align-items:center;gap:5px;
+  }
+  .status::before{content:"";width:5px;height:5px;border-radius:50%;background:#fff;animation:pulse 1.5s ease-in-out infinite}
+  .btn-vote{
+    border:none;border-radius:13px;padding:12px;width:100%;
+    background:var(--red);
+    color:#fff;font-family:inherit;font-size:13.5px;font-weight:800;
+    box-shadow:var(--shadow-red);
+    pointer-events:none;letter-spacing:.01em;
+  }
+  .lb-mini{margin-top:8px;display:flex;flex-direction:column;gap:5px;min-height:0;overflow:hidden}
+  .lb-mini-row{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700}
+  .rank{
+    width:20px;height:20px;border-radius:7px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    font-size:9.5px;font-weight:800;font-variant-numeric:tabular-nums;
+    background:var(--bg);color:var(--muted);border:2px solid var(--line);
+  }
+  .rank.r1{background:var(--gold);color:#5A3C00;border:none;transform:rotate(-5deg)}
+  .rank.r2{background:#D7DEE8;color:#3A4557;border:none;transform:rotate(3deg)}
+  .rank.r3{background:#E8A25F;color:#59300B;border:none;transform:rotate(-3deg)}
+  .lb-mini-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lb-mini-pts{color:var(--gold-deep);font-variant-numeric:tabular-nums;font-weight:800;font-size:11px}
+
+  /* ---------- Sponsor rush ---------- */
+  .rush{
+    flex:none;
+    display:flex;align-items:center;gap:11px;
+    background:var(--ink);
+    border:none;
+    border-radius:20px;
+    padding:12px 14px;cursor:pointer;
+    position:relative;overflow:hidden;
+    font-family:inherit;color:#fff;text-align:left;
+    transition:transform .12s ease;
+    box-shadow:0 4px 0 #0D0608;
+  }
+  .rush:active{transform:scale(.98) translateY(2px);box-shadow:none}
+  .rush::before{
+    content:"";position:absolute;right:-18px;top:-22px;
+    width:80px;height:80px;border-radius:50%;
+    background:rgba(228,33,46,.35);
+  }
+  .rush-icon{
+    width:36px;height:36px;border-radius:11px;flex:none;
+    background:#fff;display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-weight:900;font-size:16px;color:var(--ink);
+    transform:rotate(-4deg);
+  }
+  .rush-copy{flex:1;min-width:0;position:relative}
+  .rush-copy b{font-size:12.5px;font-weight:800;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rush-copy span{font-size:10.5px;color:rgba(255,255,255,.65);font-weight:500}
+  .rush-reward{
+    display:flex;align-items:center;gap:5px;flex:none;
+    background:var(--gold);
+    padding:6px 11px;border-radius:999px;
+    font-weight:800;font-size:12.5px;color:#4A3000;
+    font-variant-numeric:tabular-nums;
+    animation:reward 2.4s ease-in-out infinite;
+    position:relative;
+  }
+  .rush-reward .coin{width:13px;height:13px;box-shadow:inset 0 -1.5px 2px rgba(0,0,0,.22)}
+  @keyframes reward{0%,100%{transform:scale(1) rotate(0deg)}50%{transform:scale(1.07) rotate(-2deg)}}
+
+  /* ---------- Sponsor strip ---------- */
+  .sponsor-strip{flex:none;display:flex;align-items:center;gap:8px;padding:2px 2px 0}
+  .sponsor-strip .label{font-size:9px;font-weight:800;letter-spacing:.12em;color:var(--muted);flex:none}
+  .sponsor-chip{
+    flex:1;height:34px;border-radius:11px;
+    background:var(--card);border:2px solid var(--line);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-size:12.5px;font-weight:750;
+    color:var(--ink);opacity:.8;
+  }
+  .powered{flex:none;text-align:center;font-size:9.5px;color:var(--muted);padding:6px 0 8px;letter-spacing:.04em;font-weight:600}
+  .powered b{color:var(--red);font-weight:800}
+
+  /* ---------- Sheets ---------- */
+  .overlay{
+    position:absolute;inset:0;z-index:100;
+    background:rgba(35,22,26,.42);
+    backdrop-filter:blur(3px);
+    opacity:0;pointer-events:none;
+    transition:opacity .22s ease;
+  }
+  .overlay.open{opacity:1;pointer-events:auto}
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;z-index:101;
+    background:var(--bg);
+    border-radius:26px 26px 0 0;
+    padding:10px 18px calc(18px + env(safe-area-inset-bottom));
+    max-height:82%;
+    display:flex;flex-direction:column;
+    transform:translateY(105%);
+    transition:transform .28s cubic-bezier(.32,.72,.28,1);
+    box-shadow:0 -8px 30px rgba(35,22,26,.18);
+  }
+  .sheet.open{transform:translateY(0)}
+  .grabber{width:38px;height:5px;border-radius:99px;background:var(--red-line);margin:0 auto 12px;flex:none}
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex:none}
+  .sheet-title{font-family:'Fraunces',serif;font-size:19px;font-weight:750;letter-spacing:-.01em}
+  .sheet-sub{font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:500}
+  .close{
+    width:32px;height:32px;border-radius:50%;border:2px solid var(--line);
+    background:#fff;color:var(--muted);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;flex:none;font-family:inherit;font-weight:700;
+  }
+  .sheet-body{overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:9px;padding-bottom:4px}
+  .row-item{
+    display:flex;align-items:center;gap:11px;
+    background:#fff;border:2px solid var(--line);
+    border-radius:15px;padding:11px 13px;
+    font-family:inherit;color:var(--ink);text-align:left;cursor:pointer;
+    transition:border-color .15s ease, transform .1s ease;width:100%;
+    box-shadow:var(--shadow);
+  }
+  .row-item:active{transform:translateY(2px);box-shadow:none}
+  .row-item:hover{border-color:var(--red-line)}
+  .avatar{
+    width:38px;height:38px;border-radius:12px;flex:none;
+    background:var(--red-soft);border:2px solid var(--red-line);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-weight:750;font-size:14px;color:var(--red);
+    transform:rotate(-3deg);
+  }
+  .row-copy{flex:1;min-width:0}
+  .row-copy b{font-size:13.5px;font-weight:800;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row-copy span{font-size:11px;color:var(--muted);font-weight:500}
+  .row-pts{
+    display:flex;align-items:center;gap:5px;flex:none;
+    font-weight:800;font-size:13px;color:var(--gold-deep);
+    font-variant-numeric:tabular-nums;
+  }
+  .row-pts .coin{width:14px;height:14px}
+  .chip-mint{
+    flex:none;font-size:11px;font-weight:800;color:#fff;
+    background:var(--red);
+    padding:6px 12px;border-radius:999px;
+    box-shadow:0 2px 0 var(--red-deep);
+  }
+  .me-row{background:var(--red-soft);border-color:var(--red-line)}
+  .toast{
+    position:absolute;left:50%;bottom:24px;transform:translate(-50%,20px);
+    z-index:200;background:var(--red);color:#fff;
+    font-size:13px;font-weight:800;padding:12px 19px;border-radius:999px;
+    box-shadow:0 4px 0 var(--red-deep), 0 10px 24px rgba(228,33,46,.3);
+    opacity:0;pointer-events:none;
+    transition:opacity .25s ease, transform .25s ease;
+    white-space:nowrap;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+
+  @media (prefers-reduced-motion: reduce){
+    .live-dot,.rush-reward,.status::before{animation:none}
+    .sheet,.overlay,.toast,.tile,.rush,.row-item{transition:none}
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="club">
+      <div class="club-logo">B14</div>
+      <div class="club-name">
+        <b>Benedetto XIV Live</b>
+        <span>Baltur Arena · Esperienza ufficiale</span>
+      </div>
+    </div>
+    <div class="top-right">
+      <button class="wallet" onclick="openSheet('earn')" aria-label="Saldo monete">
+        <span class="coin"></span> <span id="balance">0</span>
+      </button>
+      <button class="profile-btn" onclick="openSheet('profile')" aria-label="Profilo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Scoreboard -->
+    <section class="scoreboard" aria-label="Punteggio live">
+      <div class="live-row">
+        <span class="live-pill"><span class="live-dot"></span>LIVE</span>
+        <span class="comp">SERIE A2 · GIORNATA 12</span>
+      </div>
+      <div class="teams">
+        <div class="team">
+          <div class="team-badge">CEN</div>
+          <div class="team-name">Benedetto XIV Cento</div>
+        </div>
+        <div class="setscore">72<span class="sep">–</span>68</div>
+        <div class="team right">
+          <div class="team-badge">URA</div>
+          <div class="team-name">Urania Milano</div>
+        </div>
+      </div>
+      <div class="set-label">3° quarto · <b>05:42</b> sul cronometro</div>
+    </section>
+
+    <!-- Grid -->
+    <div class="grid">
+
+      <button class="tile tile-mvp" onclick="openSheet('mvp')">
+        <b>Vota l'MVP del pubblico</b>
+        <p>Il tuo voto vale +10 monete</p>
+        <div class="mvp-photo">
+          <span class="status">Votazioni aperte</span>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#E4212E" stroke-width="1.5">
+            <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+        </div>
+        <span class="btn-vote">Vota ora</span>
+      </button>
+
+      <button class="tile" onclick="openSheet('earn')">
+        <div class="tile-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>
+        </div>
+        <b>Guadagna</b>
+        <p>Quiz e sfide sponsor</p>
+        <div class="spacer"></div>
+        <span class="tile-cta">Gioca →</span>
+      </button>
+
+      <button class="tile" onclick="openSheet('spend')">
+        <div class="tile-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 7v13"/></svg>
+        </div>
+        <b>Spendi</b>
+        <p>Premi e merch del club</p>
+        <div class="spacer"></div>
+        <span class="tile-cta">Riscatta →</span>
+      </button>
+
+    </div>
+
+    <!-- Leaderboard -->
+    <button class="tile" style="flex:none" onclick="openSheet('lb')">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <b>Classifica tifosi</b>
+        <span class="tile-cta">Vedi tutti →</span>
+      </div>
+      <div class="lb-mini">
+        <div class="lb-mini-row"><span class="rank r1">1</span><span class="lb-mini-name">Biancorosso64</span><span class="lb-mini-pts">58</span></div>
+        <div class="lb-mini-row"><span class="rank r2">2</span><span class="lb-mini-name">CentoWall</span><span class="lb-mini-pts">46</span></div>
+        <div class="lb-mini-row"><span class="rank r3">3</span><span class="lb-mini-name">Ross</span><span class="lb-mini-pts">36</span></div>
+      </div>
+    </button>
+
+    <!-- Sponsor rush -->
+    <button class="rush" onclick="openSheet('rush')">
+      <span class="rush-icon">W</span>
+      <span class="rush-copy">
+        <b>Sponsor Rush · WearingCash</b>
+        <span>15 secondi, monete subito</span>
+      </span>
+      <span class="rush-reward">+50 <span class="coin"></span></span>
+    </button>
+
+    <!-- Sponsors -->
+    <div class="sponsor-strip">
+      <span class="label">PARTNER</span>
+      <div class="sponsor-chip">Cash</div>
+      <div class="sponsor-chip">Parco Comm.</div>
+    </div>
+
+  </main>
+
+  <div class="powered">Powered by <b>ArenaBoostX</b> · MVP System</div>
+
+  <!-- Overlay + sheets -->
+  <div class="overlay" id="overlay" onclick="closeSheets()"></div>
+
+  <div class="sheet" id="sheet-mvp" role="dialog" aria-label="Vota MVP">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Vota l'MVP del pubblico</div><div class="sheet-sub">Un voto per partita · +10 monete</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <button class="row-item" onclick="vote('Greco')"><span class="avatar">7</span><span class="row-copy"><b>M. Greco</b><span>Guardia · 19 punti</span></span><span class="chip-mint">Vota</span></button>
+      <button class="row-item" onclick="vote('Rizzo')"><span class="avatar">14</span><span class="row-copy"><b>A. Rizzo</b><span>Ala · 14 punti, 8 rimbalzi</span></span><span class="chip-mint">Vota</span></button>
+      <button class="row-item" onclick="vote('Conte')"><span class="avatar">3</span><span class="row-copy"><b>L. Conte</b><span>Playmaker · 9 assist</span></span><span class="chip-mint">Vota</span></button>
+      <button class="row-item" onclick="vote('Vitale')"><span class="avatar">11</span><span class="row-copy"><b>S. Vitale</b><span>Centro · 3 stoppate</span></span><span class="chip-mint">Vota</span></button>
+    </div>
+  </div>
+
+  <div class="sheet" id="sheet-earn" role="dialog" aria-label="Guadagna monete">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Guadagna monete</div><div class="sheet-sub">Completa le missioni del match</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <button class="row-item" onclick="earn(10,'Voto MVP')"><span class="avatar">🏆</span><span class="row-copy"><b>Vota l'MVP</b><span>Un voto per partita</span></span><span class="row-pts">+10 <span class="coin"></span></span></button>
+      <button class="row-item" onclick="earn(50,'Sponsor Rush')"><span class="avatar">⚡</span><span class="row-copy"><b>Sponsor Rush · WearingCash</b><span>15 secondi</span></span><span class="row-pts">+50 <span class="coin"></span></span></button>
+      <button class="row-item" onclick="earn(20,'Quiz')"><span class="avatar">?</span><span class="row-copy"><b>Quiz del match</b><span>3 domande sul match</span></span><span class="row-pts">+20 <span class="coin"></span></span></button>
+      <button class="row-item" onclick="earn(15,'Pronostico')"><span class="avatar">📊</span><span class="row-copy"><b>Pronostico finale</b><span>Indovina lo scarto finale</span></span><span class="row-pts">+15 <span class="coin"></span></span></button>
+    </div>
+  </div>
+
+  <div class="sheet" id="sheet-spend" role="dialog" aria-label="Spendi monete">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Spendi le tue monete</div><div class="sheet-sub">Premi offerti dal club e dagli sponsor</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <button class="row-item"><span class="avatar">🎁</span><span class="row-copy"><b>Sconto 10% · WearingCash</b><span>Codice valido 7 giorni</span></span><span class="row-pts">80 <span class="coin"></span></span></button>
+      <button class="row-item"><span class="avatar">🏀</span><span class="row-copy"><b>Pallone A2 autografato</b><span>Estrazione a fine partita</span></span><span class="row-pts">150 <span class="coin"></span></span></button>
+      <button class="row-item"><span class="avatar">🎟️</span><span class="row-copy"><b>Biglietto prossimo match</b><span>Settore tifosi</span></span><span class="row-pts">300 <span class="coin"></span></span></button>
+    </div>
+  </div>
+
+  <div class="sheet" id="sheet-lb" role="dialog" aria-label="Classifica tifosi">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Classifica tifosi</div><div class="sheet-sub">Aggiornata in tempo reale</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="row-item"><span class="rank r1" style="width:27px;height:27px;font-size:11px">1</span><span class="row-copy"><b>Biancorosso64</b></span><span class="row-pts">58 <span class="coin"></span></span></div>
+      <div class="row-item"><span class="rank r2" style="width:27px;height:27px;font-size:11px">2</span><span class="row-copy"><b>CentoWall</b></span><span class="row-pts">46 <span class="coin"></span></span></div>
+      <div class="row-item"><span class="rank r3" style="width:27px;height:27px;font-size:11px">3</span><span class="row-copy"><b>Ross</b></span><span class="row-pts">36 <span class="coin"></span></span></div>
+      <div class="row-item"><span class="rank" style="width:27px;height:27px;font-size:11px">4</span><span class="row-copy"><b>MartaCento</b></span><span class="row-pts">31 <span class="coin"></span></span></div>
+      <div class="row-item"><span class="rank" style="width:27px;height:27px;font-size:11px">5</span><span class="row-copy"><b>BalturBoy</b></span><span class="row-pts">27 <span class="coin"></span></span></div>
+      <div class="row-item me-row"><span class="rank" style="width:27px;height:27px;font-size:11px;color:var(--red);border-color:var(--red-line)">—</span><span class="row-copy"><b>Tu</b><span>Vota e gioca per entrare in classifica</span></span><span class="row-pts" id="me-pts">0 <span class="coin"></span></span></div>
+    </div>
+  </div>
+
+  <div class="sheet" id="sheet-profile" role="dialog" aria-label="Profilo">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Il tuo profilo</div><div class="sheet-sub">Ospite · non registrato</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0 6px">
+        <div style="width:74px;height:74px;border-radius:50%;background:var(--red-soft);border:2px solid var(--red-line);display:flex;align-items:center;justify-content:center;transform:rotate(-3deg)">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#E4212E" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);font-weight:500;text-align:center;max-width:260px;line-height:1.5">Registrati per salvare le tue monete, entrare in classifica e riscattare i premi.</p>
+      </div>
+      <button class="row-item" onclick="toast('Demo: qui si apre la registrazione')" style="justify-content:center;background:var(--red);border-color:var(--red);box-shadow:0 3px 0 var(--red-deep)">
+        <b style="color:#fff;font-size:14px">Crea il tuo profilo</b>
+      </button>
+      <button class="row-item" onclick="toast('Demo: qui si apre il login')" style="justify-content:center">
+        <b style="font-size:13.5px">Ho già un account</b>
+      </button>
+      <p style="font-size:10px;color:var(--muted);text-align:center;padding:4px 12px 0;line-height:1.5">Dati trattati secondo la privacy policy del club · GDPR compliant</p>
+    </div>
+  </div>
+
+  <div class="sheet" id="sheet-rush" role="dialog" aria-label="Sponsor Rush">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Sponsor Rush · WearingCash</div><div class="sheet-sub">Guarda 15 secondi, guadagna 50 monete</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div style="border-radius:16px;background:var(--ink);height:170px;display:flex;align-items:center;justify-content:center;flex:none;position:relative;overflow:hidden">
+        <div style="position:absolute;right:-18px;top:-22px;width:90px;height:90px;border-radius:50%;background:rgba(228,33,46,.35)"></div>
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 0 var(--red-deep);position:relative">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
+        </div>
+      </div>
+      <button class="row-item" onclick="earn(50,'Sponsor Rush')" style="justify-content:center;background:var(--red);border-color:var(--red);box-shadow:0 3px 0 var(--red-deep)">
+        <b style="color:#fff;font-size:14px">Avvia e guadagna +50</b>
+      </button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+  let balance = 0;
+  const done = new Set();
+
+  function openSheet(id){
+    closeSheets(true);
+    document.getElementById('overlay').classList.add('open');
+    document.getElementById('sheet-'+id).classList.add('open');
+  }
+  function closeSheets(keepOverlay){
+    document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
+    if(!keepOverlay) document.getElementById('overlay').classList.remove('open');
+  }
+  function updateBalance(){
+    document.getElementById('balance').textContent = balance;
+    document.getElementById('me-pts').innerHTML = balance + ' <span class="coin"></span>';
+  }
+  function toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._h);
+    t._h = setTimeout(()=>t.classList.remove('show'), 2200);
+  }
+  function earn(pts, key){
+    if(done.has(key)){ toast('Già completata ✓'); return; }
+    done.add(key);
+    balance += pts;
+    updateBalance();
+    closeSheets();
+    toast('+' + pts + ' monete · ' + key);
+  }
+  function vote(name){
+    if(done.has('Voto MVP')){ toast('Hai già votato ✓'); closeSheets(); return; }
+    done.add('Voto MVP');
+    balance += 10;
+    updateBalance();
+    closeSheets();
+    toast('Voto registrato: ' + name + ' · +10 monete');
+  }
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSheets(); });
+</script>
+</body>
+</html>
