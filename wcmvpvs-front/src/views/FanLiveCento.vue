@@ -1822,13 +1822,15 @@ main {
 }
 
 .toast {
-  position: absolute;
+  position: fixed;
   left: 50%;
-  bottom: calc(20px + env(safe-area-inset-bottom));
-  transform: translate(-50%, 20px);
-  z-index: 200;
-  width: fit-content;
-  max-width: calc(100% - 32px);
+  bottom: calc(28px + env(safe-area-inset-bottom));
+  transform: translateX(-50%) translateY(16px);
+  z-index: 400;
+  display: inline-block;
+  width: auto;
+  height: auto;
+  max-width: min(88vw, 360px);
   background: var(--red);
   color: #fff;
   font-size: 13px;
@@ -1846,7 +1848,7 @@ main {
 }
 .toast.show {
   opacity: 1;
-  transform: translate(-50%, 0);
+  transform: translateX(-50%) translateY(0);
 }
 
 @media (prefers-reduced-motion: reduce) {

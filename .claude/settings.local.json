@@ -77,7 +77,11 @@
       "PowerShell($paths = @\\(\\); foreach \\($n in @\\('gcc.exe','x86_64-w64-mingw32-gcc.exe','clang.exe','cc.exe'\\)\\) { $c = Get-Command $n -ErrorAction SilentlyContinue; if \\($c\\) { $paths += $c.Source } }; Get-ChildItem -Path 'C:\\\\','C:\\\\Program Files','C:\\\\Program Files \\(x86\\)','C:\\\\msys64','C:\\\\mingw64','C:\\\\TDM-GCC-64' -Filter 'gcc.exe' -Recurse -ErrorAction SilentlyContinue -Depth 4 | Select-Object -First 5 -ExpandProperty FullName; $paths)",
       "Bash(\"/c/Program Files \\(x86\\)/Google/Chrome/Application/chrome.exe\" --headless=new --disable-gpu --hide-scrollbars --screenshot=\"C:\\\\Users\\\\Alberto\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Alberto-Desktop-wcmvpvotingsystem\\\\fd9616af-29bf-4d5c-a09e-d3d8ceefde2f\\\\scratchpad\\\\proj.png\" --window-size=1920,1080 \"file:///C:/Users/Alberto/AppData/Local/Temp/claude/c--Users-Alberto-Desktop-wcmvpvotingsystem/fd9616af-29bf-4d5c-a09e-d3d8ceefde2f/scratchpad/proj_mock.html\")",
       "Bash(cd /c/Users/Alberto/Desktop/wcmvpvotingsystem/wcmvpvs-front/src/views *)",
-      "Read(//c/Users/Alberto/AppData/Local/Temp/claude/c--Users-Alberto-Desktop-wcmvpvotingsystem/ed1577a2-335b-487f-b797-b8f551bcc070/scratchpad/**)"
+      "Read(//c/Users/Alberto/AppData/Local/Temp/claude/c--Users-Alberto-Desktop-wcmvpvotingsystem/ed1577a2-335b-487f-b797-b8f551bcc070/scratchpad/**)",
+      "Bash(grep -n 'class=\"toast\"\\\\|</div>\\\\s*$\\\\|<div class=\"phone\"\\\\|class=\"cento-root\"\\\\|FansLeaderboardModal\\\\|VolleyCourtModal\\\\|game-overlay' FanLiveCento.vue)",
+      "Bash(sed -n '/^\\\\.phone {/,/^}/p' FanLiveCento.vue)",
+      "Bash(sed -n '/^\\\\.cento-root {/,/^}/p' FanLiveCento.vue)",
+      "Bash(netstat -ano)"
     ]
   }
 }
