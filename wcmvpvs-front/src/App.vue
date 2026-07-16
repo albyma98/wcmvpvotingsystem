@@ -31,6 +31,27 @@
         @voted="handleNewUiPlayerVoted"
       />
     </template>
+    <template v-else-if="appView === 'newui-cento'">
+      <FanLiveCento
+        :event-id="resolvedEventId"
+        :team-name="newUiTeamName"
+        :team-logo-url="newUiTeamLogoUrl"
+        :match-label="newUiMatchLabel"
+        :voted-player-image-url="newUiSelectedPlayerImageUrl"
+        :voted-player-name="newUiSelectedPlayerName"
+        :voted-player-last-name="newUiSelectedPlayerLastName"
+        :voted-player-number="newUiSelectedPlayerNumber"
+        :registration-prompt-signal="newUiRegistrationPromptSignal"
+        :active-event="activeEvent"
+        @feature-select="handleNewUiFeatureSelect"
+      />
+      <NewUiVoteModal
+        v-if="showNewUiVoteModal"
+        :event-id="resolvedEventId"
+        @close="showNewUiVoteModal = false"
+        @voted="handleNewUiPlayerVoted"
+      />
+    </template>
     <TournamentAdminPortal
       v-else-if="appView === 'tournament-admin'"
       :slug="tournamentAdminSlug"
@@ -75,6 +96,9 @@ import NewUiVoteModal from './components/NewUiVoteModal.vue';
 
 // Dev playground components
 const DevStackItDemo = defineAsyncComponent(() => import('./views/DevStackItDemo.vue'));
+
+// Layout fan alternativo (/:slug/new), caricato solo quando serve.
+const FanLiveCento = defineAsyncComponent(() => import('./views/FanLiveCento.vue'));
 
 // Tournament Mode — caricato solo su /t/:slug, così il bundle del torneo
 // non pesa sul time-to-interactive dell'app club (deep-link da QR in arena).
@@ -121,6 +145,14 @@ const isNewUiPath = computed(() => {
   }
   return segments[0] === 'newui' || segments[segments.length - 1] === 'newui';
 });
+
+// /:slug/new → layout fan alternativo (FanLiveCento), variante di newui.
+const isNewUiCentoPath = computed(() => {
+  const segments = pathSegments.value;
+  return segments.length >= 1 && segments[segments.length - 1] === 'new';
+});
+
+const isNewUiLikeView = (view) => view === 'newui' || view === 'newui-cento';
 
 const organizationSlug = computed(() => {
   if (pathSegments.value.length) {
@@ -223,6 +255,9 @@ const appView = computed(() => {
   }
   if (currentPath.value.includes('/partner')) {
     return 'partner';
+  }
+  if (isNewUiCentoPath.value) {
+    return 'newui-cento';
   }
   if (isNewUiPath.value) {
     return 'newui';
@@ -389,7 +424,7 @@ async function fetchNewUiPlayerById(playerId) {
 }
 
 async function hydrateNewUiVote() {
-  if (appView.value !== 'newui' || !resolvedEventId.value) {
+  if (!isNewUiLikeView(appView.value) || !resolvedEventId.value) {
     newUiSelectedPlayer.value = null;
     return;
   }
@@ -421,7 +456,7 @@ async function hydrateNewUiVote() {
 }
 
 async function fetchActiveEvent() {
-  if (appView.value !== 'public' && appView.value !== 'newui') {
+  if (appView.value !== 'public' && !isNewUiLikeView(appView.value)) {
     return;
   }
 
@@ -476,7 +511,7 @@ function navigateTo(path, replace = false) {
 
 onMounted(() => {
   window.addEventListener('popstate', handlePopState, { passive: true });
-  if (appView.value === 'public' || appView.value === 'newui') {
+  if (appView.value === 'public' || isNewUiLikeView(appView.value)) {
     fetchActiveEvent();
   }
 });
@@ -486,7 +521,7 @@ onBeforeUnmount(() => {
 });
 
 watch(appView, (view) => {
-  if (view === 'public' || view === 'newui') {
+  if (view === 'public' || isNewUiLikeView(view)) {
     fetchActiveEvent();
   } else {
     activeEvent.value = null;

@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Benedetto XIV Live · Powered by ABX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650;9..144,750&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#120D0F;
+    --card:#1D1518;
+    --card-2:#271B1F;
+    --line:rgba(255,255,255,.07);
+    --line-strong:rgba(255,255,255,.13);
+    --text:#F2F5FA;
+    --muted:#8B95AB;
+    --mint:#FF4D57;
+    --mint-dark:#D91E2E;
+    --mint-soft:rgba(255,77,87,.12);
+    --gold:#F0C24B;
+    --gold-soft:rgba(240,194,75,.14);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:'Inter',system-ui,sans-serif;
+    background:#05080F;color:var(--text);
+    display:flex;justify-content:center;
+    overflow:hidden;
+  }
+  .phone{
+    width:100%;max-width:430px;
+    height:100dvh;
+    background:
+      radial-gradient(120% 50% at 50% -8%, rgba(255,77,87,.09), transparent 60%),
+      var(--bg);
+    display:flex;flex-direction:column;
+    position:relative;overflow:hidden;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    flex:none;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;
+    border-bottom:1px solid var(--line);
+  }
+  .club{display:flex;align-items:center;gap:9px}
+  .club-logo{
+    width:34px;height:34px;border-radius:10px;
+    background:linear-gradient(140deg,#FFFFFF,#F0E4E4);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-weight:750;font-size:17px;color:#C41722;
+    letter-spacing:-.5px;
+  }
+  .club-name{line-height:1.15}
+  .club-name b{font-size:13px;font-weight:700;display:block}
+  .club-name span{font-size:10px;color:var(--muted);font-weight:500}
+  .wallet{
+    display:flex;align-items:center;gap:6px;
+    background:var(--gold-soft);
+    border:1px solid rgba(240,194,75,.3);
+    border-radius:999px;padding:6px 12px 6px 8px;
+    font-weight:700;font-size:14px;
+    font-variant-numeric:tabular-nums;
+    color:var(--gold);font-family:inherit;cursor:pointer;
+  }
+  .coin{
+    width:17px;height:17px;border-radius:50%;flex:none;
+    background:radial-gradient(circle at 34% 30%,#FBE29A,#E5AE33 68%,#B8841F);
+    box-shadow:inset 0 -1.5px 2px rgba(0,0,0,.3), 0 0 0 1px rgba(240,194,75,.4);
+  }
+
+  main{
+    flex:1;min-height:0;
+    padding:12px 12px 10px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+
+  /* ---------- Scoreboard (compact) ---------- */
+  .scoreboard{
+    flex:none;
+    background:linear-gradient(165deg,var(--card-2),var(--card) 70%);
+    border:1px solid var(--line-strong);
+    border-radius:18px;
+    padding:12px 14px;
+    position:relative;overflow:hidden;
+  }
+  .scoreboard::after{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(90% 70% at 50% 0%, rgba(255,77,87,.08), transparent 65%);
+    pointer-events:none;
+  }
+  .live-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;position:relative}
+  .live-pill{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:10px;font-weight:700;letter-spacing:.14em;
+    color:var(--mint);background:var(--mint-soft);
+    border:1px solid rgba(255,77,87,.32);
+    padding:4px 9px;border-radius:999px;
+  }
+  .live-dot{width:6px;height:6px;border-radius:50%;background:var(--mint);animation:pulse 1.7s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
+  .comp{font-size:10px;font-weight:600;letter-spacing:.1em;color:var(--muted)}
+  .teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;position:relative}
+  .team{display:flex;align-items:center;gap:8px;min-width:0}
+  .team.right{flex-direction:row-reverse;text-align:right}
+  .team-badge{
+    width:34px;height:34px;border-radius:10px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-weight:650;font-size:14px;
+    background:var(--card-2);border:1px solid var(--line-strong);
+  }
+  .team-name{font-size:11.5px;font-weight:600;line-height:1.2}
+  .setscore{
+    font-family:'Fraunces',serif;font-weight:750;
+    font-size:28px;display:flex;align-items:baseline;gap:6px;
+    font-variant-numeric:tabular-nums;
+  }
+  .setscore .sep{color:var(--muted);font-size:20px;font-weight:500}
+  .set-label{text-align:center;margin-top:6px;font-size:10.5px;color:var(--muted);position:relative}
+  .set-label b{color:var(--text);font-weight:600}
+
+  /* ---------- Main grid (fills remaining height) ---------- */
+  .grid{
+    flex:1;min-height:0;
+    display:grid;
+    grid-template-columns:1.15fr 1fr;
+    grid-template-rows:1fr 1fr;
+    gap:10px;
+  }
+  .tile{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:13px;
+    display:flex;flex-direction:column;
+    text-align:left;color:var(--text);
+    font-family:inherit;cursor:pointer;
+    transition:border-color .15s ease, background .15s ease, transform .1s ease;
+    min-height:0;overflow:hidden;
+  }
+  .tile:active{transform:scale(.985)}
+  .tile:hover{border-color:rgba(255,77,87,.38);background:var(--card-2)}
+  .tile-mvp{grid-row:1 / 3;border-color:rgba(255,77,87,.32);position:relative}
+  .tile-mvp::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 60% at 50% 110%, rgba(255,77,87,.09), transparent 60%);
+  }
+  .tile-icon{
+    width:32px;height:32px;border-radius:10px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--mint-soft);color:var(--mint);
+    margin-bottom:9px;
+  }
+  .tile b{font-size:14px;font-weight:700;letter-spacing:-.01em}
+  .tile p{font-size:11px;color:var(--muted);line-height:1.4;margin-top:3px}
+  .tile .spacer{flex:1;min-height:4px}
+  .tile-cta{
+    display:inline-flex;align-items:center;gap:5px;
+    font-size:12px;font-weight:700;color:var(--mint);
+  }
+  .mvp-photo{
+    flex:1;min-height:0;margin:9px 0;
+    border-radius:12px;
+    background:linear-gradient(160deg,#3A252B,#221619);
+    border:1px solid var(--line-strong);
+    display:flex;align-items:center;justify-content:center;
+    position:relative;
+  }
+  .mvp-photo svg{opacity:.45}
+  .status{
+    position:absolute;top:8px;left:8px;
+    font-size:9.5px;font-weight:700;color:var(--mint);
+    background:rgba(11,17,32,.7);border:1px solid rgba(255,77,87,.32);
+    padding:3px 8px;border-radius:999px;
+    display:flex;align-items:center;gap:5px;
+    backdrop-filter:blur(4px);
+  }
+  .status::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--mint)}
+  .btn-vote{
+    border:none;border-radius:11px;padding:11px;width:100%;
+    background:linear-gradient(180deg,var(--mint),var(--mint-dark));
+    color:#FFF6F6;font-family:inherit;font-size:13.5px;font-weight:700;
+    box-shadow:0 5px 16px rgba(217,30,46,.3);
+    pointer-events:none;
+  }
+  .lb-mini{margin-top:8px;display:flex;flex-direction:column;gap:5px;min-height:0;overflow:hidden}
+  .lb-mini-row{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600}
+  .rank{
+    width:19px;height:19px;border-radius:6px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    font-size:9.5px;font-weight:700;font-variant-numeric:tabular-nums;
+    background:var(--card-2);color:var(--muted);border:1px solid var(--line);
+  }
+  .rank.r1{background:linear-gradient(160deg,#F5D77A,#C89A2E);color:#231A05;border:none}
+  .rank.r2{background:linear-gradient(160deg,#DDE4EE,#9AA6BA);color:#1B2230;border:none}
+  .rank.r3{background:linear-gradient(160deg,#E0A164,#A5652C);color:#2A1608;border:none}
+  .lb-mini-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lb-mini-pts{color:var(--gold);font-variant-numeric:tabular-nums;font-weight:700;font-size:11px}
+
+  /* ---------- Sponsor rush ---------- */
+  .rush{
+    flex:none;
+    display:flex;align-items:center;gap:11px;
+    background:linear-gradient(120deg,var(--card-2),var(--card));
+    border:1px solid rgba(255,77,87,.32);
+    border-radius:16px;
+    padding:11px 13px;cursor:pointer;
+    position:relative;overflow:hidden;
+    font-family:inherit;color:var(--text);text-align:left;
+    transition:transform .1s ease;
+  }
+  .rush:active{transform:scale(.985)}
+  .rush::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--mint)}
+  .rush-icon{
+    width:36px;height:36px;border-radius:10px;flex:none;
+    background:#fff;display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-weight:750;font-size:16px;color:#C41722;
+  }
+  .rush-copy{flex:1;min-width:0}
+  .rush-copy b{font-size:12.5px;font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rush-copy span{font-size:10.5px;color:var(--muted)}
+  .rush-reward{
+    display:flex;align-items:center;gap:5px;flex:none;
+    background:var(--gold-soft);border:1px solid rgba(240,194,75,.3);
+    padding:5px 10px;border-radius:999px;
+    font-weight:700;font-size:12.5px;color:var(--gold);
+    font-variant-numeric:tabular-nums;
+    animation:reward 2.6s ease-in-out infinite;
+  }
+  .rush-reward .coin{width:13px;height:13px}
+  @keyframes reward{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+
+  /* ---------- Sponsor strip ---------- */
+  .sponsor-strip{
+    flex:none;
+    display:flex;align-items:center;gap:8px;
+    padding:2px 2px 4px;
+  }
+  .sponsor-strip .label{font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--muted);flex:none}
+  .sponsor-chip{
+    flex:1;height:34px;border-radius:10px;
+    background:var(--card);border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-size:12.5px;font-weight:650;
+    color:rgba(242,245,250,.7);
+  }
+  .powered{flex:none;text-align:center;font-size:9.5px;color:var(--muted);padding-bottom:8px;letter-spacing:.04em}
+  .powered b{color:var(--mint);font-weight:600}
+
+  /* ---------- Modals (bottom sheets) ---------- */
+  .overlay{
+    position:absolute;inset:0;z-index:100;
+    background:rgba(4,7,14,.6);
+    backdrop-filter:blur(3px);
+    opacity:0;pointer-events:none;
+    transition:opacity .22s ease;
+  }
+  .overlay.open{opacity:1;pointer-events:auto}
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;z-index:101;
+    background:var(--card);
+    border:1px solid var(--line-strong);border-bottom:none;
+    border-radius:22px 22px 0 0;
+    padding:10px 18px calc(18px + env(safe-area-inset-bottom));
+    max-height:82%;
+    display:flex;flex-direction:column;
+    transform:translateY(105%);
+    transition:transform .28s cubic-bezier(.32,.72,.28,1);
+  }
+  .sheet.open{transform:translateY(0)}
+  .grabber{width:38px;height:4px;border-radius:99px;background:var(--line-strong);margin:0 auto 12px;flex:none}
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex:none}
+  .sheet-title{font-size:16px;font-weight:700;letter-spacing:-.01em}
+  .sheet-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .close{
+    width:30px;height:30px;border-radius:50%;border:1px solid var(--line-strong);
+    background:transparent;color:var(--muted);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;flex:none;font-family:inherit;
+  }
+  .sheet-body{overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:9px;padding-bottom:4px}
+  .row-item{
+    display:flex;align-items:center;gap:11px;
+    background:var(--card-2);border:1px solid var(--line);
+    border-radius:13px;padding:11px 13px;
+    font-family:inherit;color:var(--text);text-align:left;cursor:pointer;
+    transition:border-color .15s ease;width:100%;
+  }
+  .row-item:hover{border-color:rgba(255,77,87,.42)}
+  .avatar{
+    width:38px;height:38px;border-radius:11px;flex:none;
+    background:linear-gradient(160deg,#3A252B,#221619);
+    border:1px solid var(--line-strong);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-weight:650;font-size:14px;
+  }
+  .row-copy{flex:1;min-width:0}
+  .row-copy b{font-size:13.5px;font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row-copy span{font-size:11px;color:var(--muted)}
+  .row-pts{
+    display:flex;align-items:center;gap:5px;flex:none;
+    font-weight:700;font-size:13px;color:var(--gold);
+    font-variant-numeric:tabular-nums;
+  }
+  .row-pts .coin{width:14px;height:14px}
+  .chip-mint{
+    flex:none;font-size:11px;font-weight:700;color:var(--mint);
+    background:var(--mint-soft);border:1px solid rgba(255,77,87,.32);
+    padding:5px 10px;border-radius:999px;
+  }
+  .me-row{background:var(--mint-soft);border-color:rgba(255,77,87,.32)}
+  .toast{
+    position:absolute;left:50%;bottom:24px;transform:translate(-50%,20px);
+    z-index:200;background:var(--mint);color:#FFF6F6;
+    font-size:13px;font-weight:700;padding:11px 18px;border-radius:999px;
+    box-shadow:0 8px 24px rgba(255,77,87,.38);
+    opacity:0;pointer-events:none;
+    transition:opacity .25s ease, transform .25s ease;
+    white-space:nowrap;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+
+  @media (prefers-reduced-motion: reduce){
+    .live-dot,.rush-reward{animation:none}
+    .sheet,.overlay,.toast{transition:none}
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="club">
+      <div class="club-logo">B14</div>
+      <div class="club-name">
+        <b>Benedetto XIV Live</b>
+        <span>Baltur Arena · Esperienza ufficiale</span>
+      </div>
+    </div>
+    <button class="wallet" onclick="openSheet('earn')" aria-label="Saldo monete">
+      <span class="coin"></span> <span id="balance">0</span>
+    </button>
+  </header>
+
+  <main>
+
+    <!-- Scoreboard -->
+    <section class="scoreboard" aria-label="Punteggio live">
+      <div class="live-row">
+        <span class="live-pill"><span class="live-dot"></span>LIVE</span>
+        <span class="comp">SERIE A2 · GIORNATA 12</span>
+      </div>
+      <div class="teams">
+        <div class="team">
+          <div class="team-badge">CEN</div>
+          <div class="team-name">Benedetto XIV Cento</div>
+        </div>
+        <div class="setscore">72<span class="sep">–</span>68</div>
+        <div class="team right">
+          <div class="team-badge">URA</div>
+          <div class="team-name">Urania Milano</div>
+        </div>
+      </div>
+      <div class="set-label">3° quarto · <b>05:42</b> sul cronometro</div>
+    </section>
+
+    <!-- Grid -->
+    <div class="grid">
+
+      <button class="tile tile-mvp" onclick="openSheet('mvp')">
+        <b>Vota l'MVP del pubblico</b>
+        <p>Il tuo voto vale +10 monete</p>
+        <div class="mvp-photo">
+          <span class="status">Votazioni aperte</span>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8B95AB" stroke-width="1.5">
+            <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+        </div>
+        <span class="btn-vote">Vota ora</span>
+      </button>
+
+      <button class="tile" onclick="openSheet('earn')">
+        <div class="tile-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>
+        </div>
+        <b>Guadagna</b>
+        <p>Quiz e sfide sponsor</p>
+        <div class="spacer"></div>
+        <span class="tile-cta">Gioca →</span>
+      </button>
+
+      <button class="tile" onclick="openSheet('spend')">
+        <div class="tile-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 7v13"/></svg>
+        </div>
+        <b>Spendi</b>
+        <p>Premi e merch del club</p>
+        <div class="spacer"></div>
+        <span class="tile-cta">Riscatta →</span>
+      </button>
+
+    </div>
+
+    <!-- Leaderboard tile (full width, compact) -->
+    <button class="tile" style="flex:none" onclick="openSheet('lb')">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <b>Classifica tifosi</b>
+        <span class="tile-cta">Vedi tutti →</span>
+      </div>
+      <div class="lb-mini">
+        <div class="lb-mini-row"><span class="rank r1">1</span><span class="lb-mini-name">Biancorosso64</span><span class="lb-mini-pts">58</span></div>
+        <div class="lb-mini-row"><span class="rank r2">2</span><span class="lb-mini-name">CentoWall</span><span class="lb-mini-pts">46</span></div>
+        <div class="lb-mini-row"><span class="rank r3">3</span><span class="lb-mini-name">Ross</span><span class="lb-mini-pts">36</span></div>
+      </div>
+    </button>
+
+    <!-- Sponsor rush -->
+    <button class="rush" onclick="openSheet('rush')">
+      <span class="rush-icon">W</span>
+      <span class="rush-copy">
+        <b>Sponsor Rush · WearingCash</b>
+        <span>15 secondi, monete subito</span>
+      </span>
+      <span class="rush-reward">+50 <span class="coin"></span></span>
+    </button>
+
+    <!-- Sponsors -->
+    <div class="sponsor-strip">
+      <span class="label">PARTNER</span>
+      <div class="sponsor-chip">Cash</div>
+      <div class="sponsor-chip">Parco Comm.</div>
+    </div>
+
+  </main>
+
+  <div class="powered">Powered by <b>ArenaBoostX</b> · MVP System</div>
+
+  <!-- Overlay + sheets -->
+  <div class="overlay" id="overlay" onclick="closeSheets()"></div>
+
+  <div class="sheet" id="sheet-mvp" role="dialog" aria-label="Vota MVP">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Vota l'MVP del pubblico</div><div class="sheet-sub">Un voto per partita · +10 monete</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <button class="row-item" onclick="vote('Greco')"><span class="avatar">7</span><span class="row-copy"><b>M. Greco</b><span>Guardia · 19 punti</span></span><span class="chip-mint">Vota</span></button>
+      <button class="row-item" onclick="vote('Rizzo')"><span class="avatar">14</span><span class="row-copy"><b>A. Rizzo</b><span>Ala · 14 punti, 8 rimbalzi</span></span><span class="chip-mint">Vota</span></button>
+      <button class="row-item" onclick="vote('Conte')"><span class="avatar">3</span><span class="row-copy"><b>L. Conte</b><span>Playmaker · 9 assist</span></span><span class="chip-mint">Vota</span></button>
+      <button class="row-item" onclick="vote('Vitale')"><span class="avatar">11</span><span class="row-copy"><b>S. Vitale</b><span>Centro · 3 stoppate</span></span><span class="chip-mint">Vota</span></button>
+    </div>
+  </div>
+
+  <div class="sheet" id="sheet-earn" role="dialog" aria-label="Guadagna monete">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Guadagna monete</div><div class="sheet-sub">Completa le missioni del match</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <button class="row-item" onclick="earn(10,'Voto MVP')"><span class="avatar">🏆</span><span class="row-copy"><b>Vota l'MVP</b><span>Un voto per partita</span></span><span class="row-pts">+10 <span class="coin"></span></span></button>
+      <button class="row-item" onclick="earn(50,'Sponsor Rush')"><span class="avatar">⚡</span><span class="row-copy"><b>Sponsor Rush · WearingCash</b><span>15 secondi</span></span><span class="row-pts">+50 <span class="coin"></span></span></button>
+      <button class="row-item" onclick="earn(20,'Quiz')"><span class="avatar">?</span><span class="row-copy"><b>Quiz del match</b><span>3 domande sul match</span></span><span class="row-pts">+20 <span class="coin"></span></span></button>
+      <button class="row-item" onclick="earn(15,'Pronostico')"><span class="avatar">📊</span><span class="row-copy"><b>Pronostico finale</b><span>Indovina lo scarto finale</span></span><span class="row-pts">+15 <span class="coin"></span></span></button>
+    </div>
+  </div>
+
+  <div class="sheet" id="sheet-spend" role="dialog" aria-label="Spendi monete">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Spendi le tue monete</div><div class="sheet-sub">Premi offerti dal club e dagli sponsor</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <button class="row-item"><span class="avatar">🎁</span><span class="row-copy"><b>Sconto 10% · WearingCash</b><span>Codice valido 7 giorni</span></span><span class="row-pts">80 <span class="coin"></span></span></button>
+      <button class="row-item"><span class="avatar">🏐</span><span class="row-copy"><b>Pallone A2 autografato</b><span>Estrazione a fine partita</span></span><span class="row-pts">150 <span class="coin"></span></span></button>
+      <button class="row-item"><span class="avatar">🎟️</span><span class="row-copy"><b>Biglietto prossimo match</b><span>Settore tifosi</span></span><span class="row-pts">300 <span class="coin"></span></span></button>
+    </div>
+  </div>
+
+  <div class="sheet" id="sheet-lb" role="dialog" aria-label="Classifica tifosi">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Classifica tifosi</div><div class="sheet-sub">Aggiornata in tempo reale</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="row-item"><span class="rank r1" style="width:26px;height:26px;font-size:11px">1</span><span class="row-copy"><b>Biancorosso64</b></span><span class="row-pts">58 <span class="coin"></span></span></div>
+      <div class="row-item"><span class="rank r2" style="width:26px;height:26px;font-size:11px">2</span><span class="row-copy"><b>CentoWall</b></span><span class="row-pts">46 <span class="coin"></span></span></div>
+      <div class="row-item"><span class="rank r3" style="width:26px;height:26px;font-size:11px">3</span><span class="row-copy"><b>Ross</b></span><span class="row-pts">36 <span class="coin"></span></span></div>
+      <div class="row-item"><span class="rank" style="width:26px;height:26px;font-size:11px">4</span><span class="row-copy"><b>MartaCento</b></span><span class="row-pts">31 <span class="coin"></span></span></div>
+      <div class="row-item"><span class="rank" style="width:26px;height:26px;font-size:11px">5</span><span class="row-copy"><b>BalturBoy</b></span><span class="row-pts">27 <span class="coin"></span></span></div>
+      <div class="row-item me-row"><span class="rank" style="width:26px;height:26px;font-size:11px;color:var(--mint);border-color:rgba(255,77,87,.38)">—</span><span class="row-copy"><b>Tu</b><span>Vota e gioca per entrare in classifica</span></span><span class="row-pts" id="me-pts">0 <span class="coin"></span></span></div>
+    </div>
+  </div>
+
+  <div class="sheet" id="sheet-rush" role="dialog" aria-label="Sponsor Rush">
+    <div class="grabber"></div>
+    <div class="sheet-head">
+      <div><div class="sheet-title">Sponsor Rush · WearingCash</div><div class="sheet-sub">Guarda 15 secondi, guadagna 50 monete</div></div>
+      <button class="close" onclick="closeSheets()">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div style="border-radius:14px;background:linear-gradient(160deg,#3A252B,#221619);border:1px solid var(--line-strong);height:170px;display:flex;align-items:center;justify-content:center;flex:none">
+        <div style="width:54px;height:54px;border-radius:50%;background:var(--mint);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(255,77,87,.38)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#04110C"><path d="M8 5v14l11-7z"/></svg>
+        </div>
+      </div>
+      <button class="row-item" onclick="earn(50,'Sponsor Rush')" style="justify-content:center;background:var(--mint-soft);border-color:rgba(255,77,87,.38)">
+        <b style="color:var(--mint);font-size:14px">Avvia e guadagna +50</b>
+      </button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+  let balance = 0;
+  const done = new Set();
+
+  function openSheet(id){
+    closeSheets(true);
+    document.getElementById('overlay').classList.add('open');
+    document.getElementById('sheet-'+id).classList.add('open');
+  }
+  function closeSheets(keepOverlay){
+    document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));
+    if(!keepOverlay) document.getElementById('overlay').classList.remove('open');
+  }
+  function updateBalance(){
+    document.getElementById('balance').textContent = balance;
+    document.getElementById('me-pts').innerHTML = balance + ' <span class="coin"></span>';
+  }
+  function toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._h);
+    t._h = setTimeout(()=>t.classList.remove('show'), 2200);
+  }
+  function earn(pts, key){
+    if(done.has(key)){ toast('Già completata ✓'); return; }
+    done.add(key);
+    balance += pts;
+    updateBalance();
+    closeSheets();
+    toast('+' + pts + ' monete · ' + key);
+  }
+  function vote(name){
+    if(done.has('Voto MVP')){ toast('Hai già votato ✓'); closeSheets(); return; }
+    done.add('Voto MVP');
+    balance += 10;
+    updateBalance();
+    closeSheets();
+    toast('Voto registrato: ' + name + ' · +10 monete');
+  }
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSheets(); });
+</script>
+</body>
+</html>
