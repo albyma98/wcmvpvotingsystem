@@ -94,7 +94,10 @@
               class="sponsor-chip"
               type="button"
               @click="onSponsorClick(sponsor)"
-            >{{ sponsor.name }}</button>
+            >
+              <img v-if="sponsor.imageUrl" :src="sponsor.imageUrl" :alt="sponsor.name || 'Sponsor'" />
+              <span v-else>{{ sponsor.name }}</span>
+            </button>
           </div>
         </section>
       </main>
@@ -599,19 +602,28 @@ function openLeaderboard() {
 }
 
 /* ---------- Sponsors ---------- */
+// Stessa normalizzazione di LiveExperienceHome: sponsor = logo (logo_data/image_url).
+function normalizeSponsor(item, index) {
+  const imageUrl = String(item?.logo_data || item?.image_url || item?.imageUrl || '').trim();
+  if (!imageUrl) return null;
+  const priorityRaw = Number(item?.priority ?? item?.order_index ?? item?.order ?? item?.display_order);
+  return {
+    id: Number(item?.id) || index + 1,
+    name: String(item?.name || '').trim(),
+    imageUrl,
+    linkUrl: String(item?.link_url || item?.linkUrl || '').trim(),
+    priority: Number.isFinite(priorityRaw) ? priorityRaw : Number.POSITIVE_INFINITY,
+    insertedIndex: index,
+  };
+}
 async function loadSponsors() {
   try {
     const { data } = await apiClient.get('/sponsors');
-    const list = Array.isArray(data?.sponsors) ? data.sponsors : Array.isArray(data) ? data : [];
+    const list = Array.isArray(data) ? data : Array.isArray(data?.sponsors) ? data.sponsors : [];
     sponsors.value = list
-      .map((s) => ({
-        id: Number(s?.id) || s?.name,
-        name: String(s?.name || s?.sponsor_name || '').trim(),
-        priority: Number(s?.priority) || 0,
-        url: String(s?.website_url || s?.url || '').trim(),
-      }))
-      .filter((s) => s.name)
-      .sort((a, b) => b.priority - a.priority);
+      .map((item, index) => normalizeSponsor(item, index))
+      .filter(Boolean)
+      .sort((a, b) => (a.priority !== b.priority ? a.priority - b.priority : a.insertedIndex - b.insertedIndex));
   } catch (error) {
     sponsors.value = [];
   }
@@ -622,8 +634,8 @@ function onSponsorClick(sponsor) {
       .post(`/events/${props.eventId}/sponsors/${sponsor.id}/click`, { at: new Date().toISOString() })
       .catch(() => {});
   }
-  if (sponsor?.url) {
-    window.open(sponsor.url, '_blank', 'noopener');
+  if (sponsor?.linkUrl) {
+    window.open(sponsor.linkUrl, '_blank', 'noopener');
   }
 }
 
@@ -1202,6 +1214,11 @@ main {
   text-overflow: ellipsis;
   padding: 0 8px;
   transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sponsor-chip img {
+  max-width: 100%;
+  max-height: 30px;
+  object-fit: contain;
 }
 .sponsor-chip:hover {
   border-color: rgba(255, 77, 87, 0.32);
