@@ -13,9 +13,16 @@
             <span>{{ venueLabel }}</span>
           </div>
         </div>
-        <button class="wallet" type="button" aria-label="Saldo monete" @click="openSheet('earn')">
-          <span class="coin"></span> <span>{{ totalCoins }}</span>
-        </button>
+        <div class="top-right">
+          <button class="wallet" type="button" aria-label="Saldo monete" @click="openSheet('earn')">
+            <span class="coin"></span> <span>{{ totalCoins }}</span>
+          </button>
+          <button class="profile-btn" type="button" aria-label="Profilo" @click="openProfile">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <main>
@@ -192,6 +199,71 @@
         </div>
       </div>
 
+      <!-- Profilo (come LiveExperienceHome: nickname + saldo + QR lotteria) -->
+      <div class="sheet" :class="{ open: activeSheet === 'profile' }" role="dialog" aria-label="Profilo">
+        <div class="grabber"></div>
+        <div class="sheet-head">
+          <div>
+            <div class="sheet-title">Il tuo profilo</div>
+            <div class="sheet-sub">{{ isRegistered ? 'Account tifoso' : 'Ospite · non registrato' }}</div>
+          </div>
+          <button class="close" type="button" @click="closeSheets">✕</button>
+        </div>
+        <div class="sheet-body">
+          <div class="profile-hero">
+            <div class="profile-avatar">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#E4212E" stroke-width="1.8" stroke-linecap="round">
+                <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
+              </svg>
+            </div>
+            <div>
+              <div class="profile-label">Nickname</div>
+              <div class="profile-nick">{{ profileNickname }}</div>
+            </div>
+          </div>
+
+          <button class="row-item profile-toggle" type="button" @click="toggleNicknameEditor">
+            <b>Modifica nickname</b>
+          </button>
+          <div v-if="isNicknameEditorOpen" class="nick-editor">
+            <input
+              v-model.trim="nicknameDraft"
+              type="text"
+              minlength="3"
+              maxlength="24"
+              placeholder="Inserisci nickname"
+              class="nick-input"
+              @keyup.enter="submitNickname"
+            />
+            <button
+              class="chip-mint nick-save"
+              type="button"
+              :disabled="isSavingNickname || !canSubmitNickname"
+              @click="submitNickname"
+            >
+              {{ isSavingNickname ? 'Salvataggio…' : 'Aggiorna' }}
+            </button>
+          </div>
+          <p v-if="nicknameError" class="nick-msg error">{{ nicknameError }}</p>
+          <p v-else-if="nicknameSuccess" class="nick-msg ok">{{ nicknameSuccess }}</p>
+
+          <div class="coin-balance">
+            <span class="coin-balance-label">Saldo monete</span>
+            <span class="coin-balance-val">{{ totalCoins }} <span class="coin"></span></span>
+          </div>
+
+          <div class="lottery-box">
+            <div class="lottery-title">QR Lotteria MVP</div>
+            <template v-if="lotteryCode">
+              <div class="lottery-code">{{ lotteryCode }}</div>
+              <img v-if="lotteryQrUrl" :src="lotteryQrUrl" alt="QR lotteria" class="lottery-qr" />
+              <p class="lottery-hint">Resta fino a fine partita per ritirare il premio.</p>
+            </template>
+            <p v-else class="lottery-empty">Vota l'MVP per ottenere il tuo QR lotteria personale.</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Overlay gioco a schermo pieno -->
       <div v-if="activeGameId" class="game-overlay">
         <header class="game-head">
@@ -267,9 +339,14 @@ import {
   vote,
   syncGuestCoins,
   redeemFanReward,
+  updateFanNickname,
   resolveApiUrl,
   getOrganizationSlug,
 } from '../api';
+
+const FAN_NICKNAME_MIN_LEN = 3;
+const FAN_NICKNAME_MAX_LEN = 24;
+const FAN_NICKNAME_PATTERN = /^[A-Za-z0-9._ -]+$/;
 
 const props = defineProps({
   eventId: { type: Number, default: 0 },
@@ -289,6 +366,14 @@ const WALLET_STORAGE_KEY = 'wallet:coins';
 
 /* ---------- Stato ---------- */
 const totalCoins = ref(0);
+const isRegistered = ref(false);
+const fanNickname = ref('');
+const fanLotteryTicket = ref(null);
+const nicknameDraft = ref('');
+const isNicknameEditorOpen = ref(false);
+const isSavingNickname = ref(false);
+const nicknameError = ref('');
+const nicknameSuccess = ref('');
 const hasVoted = ref(false);
 const votedPlayerId = ref(null);
 const localVoted = ref(null); // giocatore votato in questa sessione (feedback immediato)
@@ -342,6 +427,20 @@ const votedButtonLabel = computed(() => {
   const num = number === '' || number == null ? '' : `#${number} `;
   const label = localVoted.value?.lastName || props.votedPlayerLastName || localVoted.value?.name || props.votedPlayerName;
   return label ? `${num}${label}`.trim() : 'Modifica voto';
+});
+
+/* ---------- Profilo (come LiveExperienceHome) ---------- */
+const profileNickname = computed(() => {
+  if (fanNickname.value.trim()) return fanNickname.value.trim();
+  return isRegistered.value ? 'Tifoso' : 'Ospite';
+});
+const canSubmitNickname = computed(
+  () => !isSavingNickname.value && nicknameDraft.value.trim() !== fanNickname.value.trim(),
+);
+const lotteryCode = computed(() => String(fanLotteryTicket.value?.ticket_code || '').trim());
+const lotteryQrUrl = computed(() => {
+  const qr = String(fanLotteryTicket.value?.qr_data || '').trim();
+  return qr ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(qr)}` : '';
 });
 
 /* ---------- Giocatori (lista MVP reale) ---------- */
@@ -440,11 +539,17 @@ async function loadFanProfile() {
   if (!props.eventId) return;
   const { ok, data } = await fetchFanProfile(props.eventId);
   if (!ok || !data) return;
+  isRegistered.value = Boolean(data.registered);
   if (data.registered) {
     setCoins(Number(data.wallet) || 0);
   } else {
     setCoins(Math.max(totalCoins.value, Number(data.guest_coins) || 0));
   }
+  fanNickname.value = String(data.user?.nickname || '').trim();
+  if (!isNicknameEditorOpen.value) {
+    nicknameDraft.value = fanNickname.value;
+  }
+  fanLotteryTicket.value = data.lottery_ticket || null;
   if (data.user_rank) {
     leaderboardUser.value = data.user_rank;
   }
@@ -599,6 +704,56 @@ async function refreshLeaderboard() {
 function openLeaderboard() {
   refreshLeaderboard();
   isLeaderboardOpen.value = true;
+}
+
+/* ---------- Profilo ---------- */
+function openProfile() {
+  nicknameDraft.value = fanNickname.value.trim();
+  isNicknameEditorOpen.value = false;
+  nicknameError.value = '';
+  nicknameSuccess.value = '';
+  loadFanProfile();
+  openSheet('profile');
+}
+function toggleNicknameEditor() {
+  isNicknameEditorOpen.value = !isNicknameEditorOpen.value;
+  if (!isNicknameEditorOpen.value) {
+    nicknameError.value = '';
+    nicknameSuccess.value = '';
+  }
+}
+function validateNickname(raw) {
+  const n = String(raw || '').trim();
+  if (!n) return { valid: false, message: 'Il nickname non può essere vuoto.' };
+  if (n.length < FAN_NICKNAME_MIN_LEN) return { valid: false, message: 'Il nickname deve avere almeno 3 caratteri.' };
+  if (n.length > FAN_NICKNAME_MAX_LEN) return { valid: false, message: 'Il nickname può avere massimo 24 caratteri.' };
+  if (!FAN_NICKNAME_PATTERN.test(n)) return { valid: false, message: 'Usa solo lettere, numeri, spazio, punto, trattino o underscore.' };
+  return { valid: true, nickname: n };
+}
+async function submitNickname() {
+  nicknameError.value = '';
+  nicknameSuccess.value = '';
+  const check = validateNickname(nicknameDraft.value);
+  if (!check.valid) {
+    nicknameError.value = check.message;
+    return;
+  }
+  if (check.nickname === fanNickname.value.trim()) {
+    nicknameSuccess.value = 'Nessuna modifica da salvare.';
+    return;
+  }
+  isSavingNickname.value = true;
+  const response = await updateFanNickname(check.nickname);
+  isSavingNickname.value = false;
+  if (!response?.ok) {
+    nicknameError.value = response?.message || 'Impossibile aggiornare il nickname.';
+    return;
+  }
+  fanNickname.value = String(response.data?.user?.nickname || check.nickname).trim();
+  nicknameDraft.value = fanNickname.value;
+  nicknameSuccess.value = response.data?.message || 'Nickname aggiornato';
+  isNicknameEditorOpen.value = false;
+  refreshLeaderboard();
 }
 
 /* ---------- Sponsors ---------- */
@@ -864,6 +1019,34 @@ watch(
   flex: none;
   background: radial-gradient(circle at 34% 30%, #ffe293, #f0a81c 68%, #c67f00);
   box-shadow: inset 0 -1.5px 2px rgba(0, 0, 0, 0.22), 0 0 0 2px #fff;
+}
+.top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.profile-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex: none;
+  background: #fff;
+  border: 2px solid var(--red-line);
+  color: var(--red);
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow);
+  transition: transform 0.12s ease, border-color 0.15s ease;
+}
+.profile-btn:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+.profile-btn:hover {
+  border-color: var(--red);
 }
 
 main {
@@ -1444,6 +1627,160 @@ main {
   padding: 6px 12px;
   border-radius: 999px;
   box-shadow: 0 2px 0 var(--red-deep);
+}
+.chip-mint:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Profilo */
+.profile-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 6px;
+}
+.profile-avatar {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--red-soft);
+  border: 2px solid var(--red-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-3deg);
+}
+.profile-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.profile-nick {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 750;
+  color: var(--ink);
+  line-height: 1.1;
+}
+.profile-toggle {
+  justify-content: center;
+}
+.nick-editor {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.nick-input {
+  flex: 1;
+  min-width: 0;
+  border-radius: 13px;
+  border: 2px solid var(--line);
+  background: #fff;
+  padding: 11px 13px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.nick-input:focus {
+  border-color: var(--red-line);
+}
+.nick-save {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.nick-msg {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 0 2px;
+}
+.nick-msg.error {
+  color: var(--red);
+}
+.nick-msg.ok {
+  color: var(--gold-deep);
+}
+.coin-balance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--gold-soft);
+  border: 2px solid var(--gold);
+  border-radius: 15px;
+  padding: 12px 15px;
+  box-shadow: 0 3px 0 rgba(209, 142, 0, 0.2);
+}
+.coin-balance-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold-deep);
+}
+.coin-balance-val {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Fraunces', serif;
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--gold-deep);
+  font-variant-numeric: tabular-nums;
+}
+.lottery-box {
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 15px;
+  padding: 14px 15px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.lottery-title {
+  font-family: 'Fraunces', serif;
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--ink);
+}
+.lottery-code {
+  font-family: 'Fraunces', serif;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: var(--red);
+}
+.lottery-qr {
+  width: 168px;
+  height: 168px;
+  border-radius: 14px;
+  border: 2px solid var(--line);
+  background: #fff;
+  padding: 8px;
+  align-self: center;
+}
+.lottery-hint {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold-deep);
+  background: var(--gold-soft);
+  border-radius: 10px;
+  padding: 8px 11px;
+}
+.lottery-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.5;
 }
 
 /* Overlay gioco a schermo pieno */
