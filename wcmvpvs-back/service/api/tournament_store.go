@@ -88,12 +88,17 @@ func (s *Store) GetTournamentHome(ctx context.Context, slug string) (*HomeRespon
 	if err != nil {
 		return nil, err
 	}
+	shopProducts, err := s.getShopProducts(ctx, info.Slug)
+	if err != nil {
+		return nil, err
+	}
 	return &HomeResponse{
-		Tournament:  *info,
-		LiveMatches: live,
-		NextMatch:   next,
-		Tiles:       tiles,
-		Sponsors:    sponsors,
+		Tournament:   *info,
+		LiveMatches:  live,
+		NextMatch:    next,
+		Tiles:        tiles,
+		Sponsors:     sponsors,
+		ShopProducts: shopProducts,
 	}, nil
 }
 
@@ -138,6 +143,32 @@ func (s *Store) getTournamentInfo(ctx context.Context, slug string) (*Tournament
 		return nil, err
 	}
 	return &t, nil
+}
+
+func (s *Store) getShopProducts(ctx context.Context, slug string) ([]TournamentShopProduct, error) {
+	const q = `
+		SELECT p.id, p.image_url, p.title, p.description, p.price_cents, p.extras_json
+		FROM tournament_shop_products p
+		JOIN events e ON e.id = p.event_id AND e.slug = ? AND e.type = 'tournament'
+		WHERE p.active = 1
+		ORDER BY p.position, p.id`
+	rows, err := s.db.QueryContext(ctx, q, slug)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]TournamentShopProduct, 0, 8)
+	for rows.Next() {
+		var product TournamentShopProduct
+		var extrasJSON string
+		if err := rows.Scan(&product.ID, &product.ImageURL, &product.Title, &product.Description,
+			&product.PriceCents, &extrasJSON); err != nil {
+			return nil, err
+		}
+		product.Extras = decodeTournamentShopExtras(extrasJSON)
+		out = append(out, product)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) getLiveMatches(ctx context.Context, slug string) ([]LiveMatch, error) {

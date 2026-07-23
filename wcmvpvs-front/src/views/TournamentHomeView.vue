@@ -20,7 +20,7 @@ const emit = defineEmits(['navigate'])
 
 // Dati reali dal backend: snapshot su /home + polling di /live ogni 10s
 // (partite in corso e prossima partita si aggiornano da sole).
-const { tournament, liveMatches, nextMatch, tiles, sponsors, loading } =
+const { tournament, liveMatches, nextMatch, tiles, sponsors, shopProducts, loading } =
   useTournamentHome(props.slug)
 
 // Contesto comune agli eventi PostHog della home torneo.
@@ -100,6 +100,7 @@ function onSunsetNav (route) {
     :live-matches="liveMatches"
     :tiles="tiles"
     :sponsors="sponsors"
+    :shop-products="shopProducts"
     @navigate="onSunsetNav"
     @live="onSunsetNav('/calendar')"
     @signup="onSunsetNav('/event')"

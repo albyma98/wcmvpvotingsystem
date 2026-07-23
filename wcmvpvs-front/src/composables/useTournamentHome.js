@@ -30,7 +30,8 @@ const MOCK = {
     { id: 6, name: 'GELATERIA ONDA', tier: 'partner', brandColor: '#FF6B9D' },
     { id: 7, name: 'BAGNO 54', tier: 'partner', brandColor: '#F97316' },
     { id: 8, name: 'SPORT CAFÈ', tier: 'partner', brandColor: '#8B5CF6' }
-  ]
+  ],
+  shopProducts: []
 }
 
 
@@ -49,6 +50,7 @@ export function useTournamentHome (slug, { mock = false } = {}) {
   const nextMatch = ref(null)
   const tiles = ref([])
   const sponsors = ref([])
+  const shopProducts = ref([])
   const loading = ref(true)
   const error = ref(null)
 
@@ -65,6 +67,7 @@ export function useTournamentHome (slug, { mock = false } = {}) {
       nextMatch.value = MOCK.nextMatch
       tiles.value = MOCK.tiles
       sponsors.value = MOCK.sponsors
+      shopProducts.value = MOCK.shopProducts
       loading.value = false
       return
     }
@@ -77,6 +80,7 @@ export function useTournamentHome (slug, { mock = false } = {}) {
       nextMatch.value = data.nextMatch ?? null
       tiles.value = data.tiles ?? []
       sponsors.value = data.sponsors ?? []
+      shopProducts.value = data.shopProducts ?? []
     } catch (e) {
       error.value = e
     } finally {
@@ -127,5 +131,5 @@ export function useTournamentHome (slug, { mock = false } = {}) {
     document.removeEventListener('visibilitychange', onVisibility)
   })
 
-  return { tournament, liveMatches, nextMatch, tiles, sponsors, loading, error, refresh: fetchHome }
+  return { tournament, liveMatches, nextMatch, tiles, sponsors, shopProducts, loading, error, refresh: fetchHome }
 }

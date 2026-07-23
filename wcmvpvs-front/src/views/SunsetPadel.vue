@@ -107,6 +107,41 @@
         </div>
       </transition>
 
+      <!-- MODALE SHOP -->
+      <transition name="sp-modal">
+        <div v-if="showShop" class="sp-shop-scrim" @click.self="showShop = false">
+          <div class="sp-shop-modal" role="dialog" aria-modal="true" aria-label="Shop">
+            <button class="sp-shop-x" type="button" @click="showShop = false" aria-label="Chiudi">✕</button>
+            <div class="sp-shop-heading">
+              <span>🛍️</span>
+              <div>
+                <h3>SHOP</h3>
+                <p>I prodotti del torneo</p>
+              </div>
+            </div>
+            <div v-if="shopProducts.length" class="sp-shop-list">
+              <article v-for="product in shopProducts" :key="product.id" class="sp-shop-product">
+                <img :src="product.imageUrl" :alt="product.title || 'Prodotto Shop'" />
+                <div class="sp-shop-copy">
+                  <div class="sp-shop-line">
+                    <h4 v-if="product.title">{{ product.title }}</h4>
+                    <strong>{{ formatEuro(product.priceCents) }}</strong>
+                  </div>
+                  <p v-if="product.description">{{ product.description }}</p>
+                  <div v-if="product.extras?.length" class="sp-shop-extras">
+                    <div v-for="extra in product.extras" :key="`${product.id}-${extra.title}`">
+                      <span>+ {{ extra.title }}</span>
+                      <b>{{ formatEuro(extra.priceCents) }}</b>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+            <p v-else class="sp-shop-empty">Nessun prodotto disponibile al momento.</p>
+          </div>
+        </div>
+      </transition>
+
     </div>
   </div>
 </template>
@@ -137,11 +172,15 @@ const props = defineProps({
   // Dati reali dal torneo:
   tiles:       { type: Array, default: () => [] },   // { icon, label, sub, route }
   sponsors:    { type: Array, default: () => [] },    // { name, logo }
+  shopProducts:{ type: Array, default: () => [] },    // { imageUrl, title?, description?, priceCents, extras[] }
 })
 
 // Sponsor "della piattaforma": un solo Main sponsor, mostrato DENTRO la tile
 // (niente più modale). La tile "Premi" (/prizes) diventa la tile Sponsor.
 const showPrizes = ref(false)   // modale Premi (🏆 in alto a destra)
+const showShop = ref(false)
+const formatEuro = cents =>
+  new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100)
 // Premi raggruppati per categoria, con le sole voci compilate (formattazione modale).
 const prizeSections = computed(() => {
   const p = props.prizes || {}
@@ -204,6 +243,10 @@ const visibleTiles = computed(() => [
 // Tap su una tile: la tile Sponsor apre l'eventuale link dello sponsor (niente
 // modale); le altre navigano.
 function onTile (t) {
+  if (t.route === '/shop') {
+    showShop.value = true
+    return
+  }
   if (t.route === SPONSORS_ROUTE) {
     const s = mainSponsor.value
     if (s) {
@@ -525,4 +568,63 @@ const stars = [
 .sp-prizes-label { flex: none; color: rgba(255,255,255,.7); font-size: calc(12.5*var(--s)); font-weight: 700; min-width: calc(96*var(--s)); }
 .sp-prizes-val { flex: 1; text-align: right; color: #fff; font-size: calc(13.5*var(--s)); font-weight: 800; }
 .sp-prizes-empty { text-align: center; color: rgba(255,255,255,.65); font-size: calc(14*var(--s)); padding: calc(24*var(--s)) 0; }
+
+/* Modale Shop: un prodotto per riga, immagini orizzontali uniformi. */
+.sp-shop-scrim {
+  position: fixed; inset: 0; z-index: 45; display: flex; align-items: center; justify-content: center;
+  padding: calc(16*var(--s)); background: rgba(6,3,18,.88); backdrop-filter: blur(4px);
+}
+.sp-shop-modal {
+  position: relative; width: 100%; max-width: calc(398*var(--s)); max-height: 88dvh; overflow: hidden;
+  display: flex; flex-direction: column; gap: calc(12*var(--s));
+  border: 1px solid rgba(255,255,255,.14); border-radius: calc(22*var(--s));
+  padding: calc(18*var(--s)); background: linear-gradient(180deg,#22113f,#100826);
+  box-shadow: 0 24px 70px rgba(0,0,0,.65), 0 0 40px rgba(255,46,154,.18);
+}
+.sp-shop-x {
+  position: absolute; z-index: 2; top: calc(10*var(--s)); right: calc(10*var(--s));
+  width: calc(32*var(--s)); height: calc(32*var(--s)); border: none; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(255,255,255,.13); color: #fff;
+  font-size: calc(15*var(--s)); cursor: pointer;
+}
+.sp-shop-heading { display: flex; align-items: center; gap: calc(10*var(--s)); padding-right: calc(36*var(--s)); }
+.sp-shop-heading > span { font-size: calc(30*var(--s)); }
+.sp-shop-heading h3 {
+  margin: 0; font-family: 'Fredoka', sans-serif; font-size: calc(22*var(--s)); letter-spacing: .08em;
+  background: linear-gradient(90deg,#FF2E9A,#FF7A1A,#C6FF3A);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.sp-shop-heading p { margin: calc(1*var(--s)) 0 0; color: rgba(255,255,255,.55); font-size: calc(11.5*var(--s)); }
+.sp-shop-list {
+  min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: calc(10*var(--s));
+  padding-right: calc(2*var(--s)); scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent;
+}
+.sp-shop-product {
+  flex: none; display: grid; grid-template-columns: calc(120*var(--s)) minmax(0,1fr); gap: calc(11*var(--s));
+  align-items: start; padding: calc(8*var(--s)); border-radius: calc(15*var(--s));
+  background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1);
+}
+.sp-shop-product > img {
+  width: calc(120*var(--s)); aspect-ratio: 16 / 9; object-fit: cover; display: block;
+  border-radius: calc(10*var(--s)); background: #0B0620;
+}
+.sp-shop-copy { min-width: 0; }
+.sp-shop-line { display: flex; align-items: flex-start; justify-content: space-between; gap: calc(7*var(--s)); }
+.sp-shop-line h4 {
+  min-width: 0; margin: 0; color: #fff; font-size: calc(13.5*var(--s)); line-height: 1.15;
+  font-weight: 800; overflow-wrap: anywhere;
+}
+.sp-shop-line strong { flex: none; color: #C6FF3A; font-size: calc(13.5*var(--s)); white-space: nowrap; }
+.sp-shop-copy > p {
+  margin: calc(4*var(--s)) 0 0; color: rgba(255,255,255,.62); font-size: calc(10.5*var(--s));
+  line-height: 1.3; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.sp-shop-extras {
+  display: flex; flex-direction: column; gap: calc(3*var(--s)); margin-top: calc(6*var(--s));
+  padding-top: calc(5*var(--s)); border-top: 1px solid rgba(255,255,255,.08);
+}
+.sp-shop-extras > div { display: flex; justify-content: space-between; gap: calc(6*var(--s)); font-size: calc(10*var(--s)); }
+.sp-shop-extras span { color: rgba(255,255,255,.7); overflow-wrap: anywhere; }
+.sp-shop-extras b { flex: none; color: #FFB3DD; white-space: nowrap; }
+.sp-shop-empty { margin: 0; padding: calc(34*var(--s)) calc(8*var(--s)); text-align: center; color: rgba(255,255,255,.6); font-size: calc(13*var(--s)); }
 </style>

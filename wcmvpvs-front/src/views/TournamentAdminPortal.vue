@@ -51,6 +51,7 @@ const tabs = [
   { id: 'matches', label: 'Calendario' },
   { id: 'teams', label: 'Squadre' },
   { id: 'operators', label: 'Operatori' },
+  { id: 'shop', label: 'Shop' },
   { id: 'sponsors', label: 'Sponsor' },
   { id: 'gallery', label: 'Gallery' },
   { id: 'mvp', label: 'MVP' },
@@ -62,6 +63,7 @@ const overview = ref(null)
 const teams = ref([])
 const matches = ref([])
 const sponsors = ref([])
+const shopProducts = ref([])
 const gallery = ref([])
 const mvp = ref(null)
 const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', publicMvpMale: '', publicMvpFemale: '' })
@@ -76,12 +78,13 @@ async function bootstrap (ov) {
   overview.value = ov
   Object.assign(settings, ov.settings)
   ensurePrizes()
-  await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadOperators(), loadGallery(), loadMvp()])
+  await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadShopProducts(), loadOperators(), loadGallery(), loadMvp()])
 }
 async function loadTeams () { const r = await j('GET', '/teams'); if (r.ok) teams.value = (await r.json()).teams }
 async function loadMvp () { const r = await j('GET', '/mvp'); if (r.ok) mvp.value = await r.json() }
 async function loadMatches () { const r = await j('GET', '/matches'); if (r.ok) matches.value = (await r.json()).matches }
 async function loadSponsors () { const r = await j('GET', '/sponsors'); if (r.ok) sponsors.value = (await r.json()).sponsors }
+async function loadShopProducts () { const r = await j('GET', '/shop'); if (r.ok) shopProducts.value = (await r.json()).products ?? [] }
 // La lista gallery è l'endpoint pubblico (foto auto-pubblicate); il delete è admin.
 async function loadGallery () {
   const r = await fetch(`/api/v1/tournaments/${props.slug}/gallery`)
@@ -351,6 +354,132 @@ async function createSponsor () {
 async function deleteSponsor (id) {
   const r = await j('DELETE', `/sponsors/${id}`)
   if (r.ok) { await loadSponsors(); flash('Sponsor rimosso.') }
+}
+
+// ---------- shop ----------
+const blankShopExtra = () => ({ title: '', price: '' })
+const newShopProduct = reactive({
+  imageUrl: '',
+  title: '',
+  description: '',
+  price: '',
+  extras: [blankShopExtra()]
+})
+const shopImageBusy = ref(false)
+
+// Ritaglio centrale 16:9: ogni prodotto arriva al backend già con una vera
+// immagine orizzontale uniforme, leggera e pronta per la modale dei tifosi.
+function fileToHorizontalDataURL (file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    const img = new Image()
+    reader.onload = () => { img.src = reader.result }
+    reader.onerror = () => reject(new Error('read'))
+    img.onerror = () => reject(new Error('decode'))
+    img.onload = () => {
+      const ratio = 16 / 9
+      let sx = 0; let sy = 0; let sw = img.width; let sh = img.height
+      if (img.width / img.height > ratio) {
+        sw = img.height * ratio
+        sx = (img.width - sw) / 2
+      } else {
+        sh = img.width / ratio
+        sy = (img.height - sh) / 2
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = 960
+      canvas.height = 540
+      canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
+      let out = canvas.toDataURL('image/webp', 0.82)
+      if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.85)
+      resolve(out)
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+async function onShopImagePick (e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    flash('Seleziona un file immagine.')
+    e.target.value = ''
+    return
+  }
+  shopImageBusy.value = true
+  try {
+    newShopProduct.imageUrl = await fileToHorizontalDataURL(file)
+  } catch {
+    flash('Immagine prodotto non valida.')
+  } finally {
+    shopImageBusy.value = false
+    e.target.value = ''
+  }
+}
+
+function addShopExtra () {
+  if (newShopProduct.extras.length < 12) newShopProduct.extras.push(blankShopExtra())
+}
+function removeShopExtra (index) {
+  newShopProduct.extras.splice(index, 1)
+  if (!newShopProduct.extras.length) newShopProduct.extras.push(blankShopExtra())
+}
+function euroToCents (value) {
+  const amount = Number(String(value ?? '').replace(',', '.'))
+  return Number.isFinite(amount) ? Math.round(amount * 100) : 0
+}
+function formatEuro (cents) {
+  return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100)
+}
+function resetShopForm () {
+  newShopProduct.imageUrl = ''
+  newShopProduct.title = ''
+  newShopProduct.description = ''
+  newShopProduct.price = ''
+  newShopProduct.extras.splice(0, newShopProduct.extras.length, blankShopExtra())
+}
+async function createShopProduct () {
+  if (!newShopProduct.imageUrl) { flash('Carica l’immagine orizzontale del prodotto.'); return }
+  const priceCents = euroToCents(newShopProduct.price)
+  if (priceCents <= 0) { flash('Inserisci un prezzo valido maggiore di zero.'); return }
+  const extras = []
+  for (const extra of newShopProduct.extras) {
+    const title = extra.title.trim()
+    const extraPrice = euroToCents(extra.price)
+    if (!title && !extra.price) continue
+    if (!title || extraPrice <= 0) {
+      flash('Ogni extra deve avere sia il titolo sia un prezzo valido.')
+      return
+    }
+    extras.push({ title, priceCents: extraPrice })
+  }
+  busy.value = 'shop'
+  const r = await j('POST', '/shop', {
+    imageUrl: newShopProduct.imageUrl,
+    title: newShopProduct.title.trim(),
+    description: newShopProduct.description.trim(),
+    priceCents,
+    extras
+  })
+  busy.value = ''
+  if (r.ok) {
+    resetShopForm()
+    await loadShopProducts()
+    flash('Prodotto aggiunto allo Shop.')
+    return
+  }
+  const err = (await r.json().catch(() => ({}))).error
+  flash(err === 'logo_too_large' ? 'Immagine troppo pesante.'
+    : err === 'bad_extra' ? 'Controlla titoli e prezzi degli extra.'
+    : 'Prodotto non salvato.')
+}
+async function deleteShopProduct (id) {
+  if (!window.confirm('Rimuovere questo prodotto dallo Shop?')) return
+  const r = await j('DELETE', `/shop/${id}`)
+  if (r.ok) {
+    await loadShopProducts()
+    flash('Prodotto rimosso.')
+  }
 }
 
 // ---------- operatori campo ----------
@@ -683,6 +812,75 @@ async function generateBracket () {
             <button class="ghost" @click="copy(opLink(o.token))">Copia link</button>
             <button class="danger" @click="deleteOperator(o.id)">Revoca</button>
           </span>
+        </div>
+      </section>
+
+      <!-- SHOP -->
+      <section v-else-if="tab === 'shop'" class="ta-body">
+        <p class="hint">Crea i prodotti mostrati nella modale Shop della home Sunset. Immagine e prezzo sono obbligatori; titolo, descrizione ed extra sono facoltativi.</p>
+
+        <div class="shop-editor">
+          <div class="shop-image-editor">
+            <div class="shop-image-preview" :class="{ empty: !newShopProduct.imageUrl }">
+              <img v-if="newShopProduct.imageUrl" :src="newShopProduct.imageUrl" alt="Anteprima prodotto" />
+              <span v-else>Immagine orizzontale 16:9</span>
+            </div>
+            <div class="shop-image-actions">
+              <label class="shop-upload">
+                {{ shopImageBusy ? 'Elaborazione…' : (newShopProduct.imageUrl ? 'Cambia immagine' : 'Carica immagine *') }}
+                <input type="file" accept="image/*" :disabled="shopImageBusy" @change="onShopImagePick" hidden />
+              </label>
+              <button v-if="newShopProduct.imageUrl" class="ghost" type="button" @click="newShopProduct.imageUrl = ''">Rimuovi</button>
+            </div>
+          </div>
+
+          <div class="shop-main-fields">
+            <label>Titolo <span>(opzionale)</span>
+              <input v-model="newShopProduct.title" maxlength="120" placeholder="Es. Panino special" />
+            </label>
+            <label>Prezzo *
+              <div class="price-field"><span>€</span><input v-model="newShopProduct.price" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0,00" /></div>
+            </label>
+            <label class="shop-description">Descrizione <span>(opzionale)</span>
+              <textarea v-model="newShopProduct.description" maxlength="600" rows="3" placeholder="Descrivi brevemente il prodotto"></textarea>
+            </label>
+          </div>
+
+          <div class="shop-extras">
+            <div class="shop-extras-head">
+              <div><b>Extra</b> <span>(opzionali)</span></div>
+              <button class="ghost" type="button" @click="addShopExtra">+ Aggiungi extra</button>
+            </div>
+            <div v-for="(extra, index) in newShopProduct.extras" :key="index" class="shop-extra-row">
+              <input v-model="extra.title" maxlength="80" placeholder="Titolo extra (es. Bacon)" />
+              <div class="price-field"><span>€</span><input v-model="extra.price" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0,00" /></div>
+              <button class="danger" type="button" aria-label="Rimuovi extra" @click="removeShopExtra(index)">×</button>
+            </div>
+          </div>
+
+          <button class="shop-save" :disabled="busy === 'shop' || shopImageBusy" @click="createShopProduct">
+            {{ busy === 'shop' ? 'Salvataggio…' : 'Aggiungi prodotto' }}
+          </button>
+        </div>
+
+        <h3>Prodotti caricati</h3>
+        <p v-if="!shopProducts.length" class="hint">Non hai ancora caricato prodotti.</p>
+        <div v-else class="shop-admin-list">
+          <article v-for="product in shopProducts" :key="product.id" class="shop-admin-product">
+            <img :src="product.imageUrl" :alt="product.title || 'Prodotto Shop'" />
+            <div class="shop-admin-copy">
+              <b v-if="product.title">{{ product.title }}</b>
+              <b v-else class="shop-untitled">Prodotto senza titolo</b>
+              <p v-if="product.description">{{ product.description }}</p>
+              <div v-if="product.extras?.length" class="shop-admin-extras">
+                <span v-for="extra in product.extras" :key="`${product.id}-${extra.title}`">
+                  + {{ extra.title }} {{ formatEuro(extra.priceCents) }}
+                </span>
+              </div>
+            </div>
+            <strong class="shop-admin-price">{{ formatEuro(product.priceCents) }}</strong>
+            <button class="danger" type="button" @click="deleteShopProduct(product.id)">Rimuovi</button>
+          </article>
         </div>
       </section>
 
@@ -1071,6 +1269,119 @@ textarea { width: 100%; font-family: inherit; }
 .logo-preview .danger { font-size: 12px; padding: 6px 10px; }
 .sponsor-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .logo-thumb { height: 26px; width: auto; max-width: 70px; object-fit: contain; background: #fff; border-radius: 5px; padding: 2px; flex: none; }
+
+/* Shop torneo */
+.shop-editor {
+  display: grid;
+  grid-template-columns: minmax(280px, 420px) minmax(320px, 1fr);
+  gap: 18px;
+  align-items: start;
+  background: #101017;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 14px;
+  padding: 16px;
+}
+.shop-image-editor { display: flex; flex-direction: column; gap: 10px; }
+.shop-image-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: #15151b;
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  font-weight: 700;
+}
+.shop-image-preview.empty { border-style: dashed; }
+.shop-image-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.shop-image-actions { display: flex; align-items: center; gap: 8px; }
+.shop-upload {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f2b928;
+  color: #111;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.shop-main-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 220px); gap: 12px; }
+.shop-main-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #e2e8f0;
+  font-weight: 700;
+}
+.shop-main-fields label > span,
+.shop-extras span { color: #64748b; font-size: 12px; font-weight: 500; }
+.shop-main-fields input,
+.shop-main-fields textarea,
+.shop-extra-row input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #15151b;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 8px;
+  padding: 10px 11px;
+  color: #fff;
+  font: inherit;
+}
+.shop-description { grid-column: 1 / -1; }
+.price-field {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  background: #15151b;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 8px;
+}
+.price-field > span { padding-left: 11px; color: #f2b928; font-weight: 900; }
+.price-field input { border: none; background: transparent; min-width: 0; }
+.shop-extras {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding-top: 14px;
+}
+.shop-extras-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.shop-extra-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(130px, 220px) auto; gap: 8px; align-items: center; }
+.shop-extra-row .danger { width: 36px; height: 36px; padding: 0; font-size: 20px; }
+.shop-save {
+  grid-column: 1 / -1;
+  justify-self: start;
+  border: none;
+  border-radius: 9px;
+  padding: 11px 20px;
+  background: #f2b928;
+  color: #111;
+  font-weight: 900;
+}
+.shop-save:disabled { opacity: .55; cursor: default; }
+.shop-admin-list { display: flex; flex-direction: column; gap: 10px; }
+.shop-admin-product {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 12px;
+  background: #15151b;
+}
+.shop-admin-product > img { width: 180px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 9px; }
+.shop-admin-copy { min-width: 0; }
+.shop-admin-copy > b { display: block; font-size: 15px; }
+.shop-admin-copy p { margin: 4px 0 0; color: #94a3b8; font-size: 13px; white-space: pre-wrap; }
+.shop-untitled { color: #64748b; font-style: italic; }
+.shop-admin-extras { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.shop-admin-extras span { padding: 3px 7px; border-radius: 999px; background: rgba(242,185,40,.1); color: #fbd34d; }
+.shop-admin-price { color: #f2b928; font-size: 17px; white-space: nowrap; }
 /* --- console scoring: pulsanti da pollice, sole in faccia --- */
 .score-card { background: linear-gradient(180deg, rgba(139,32,38,.4), #15151b 60%); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 12px; }
 .sc-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #fca5a5; margin-bottom: 8px; }
@@ -1090,5 +1401,15 @@ textarea { width: 100%; font-family: inherit; }
 
 @media (max-width: 600px) {
   .settings-grid { grid-template-columns: 1fr; }
+  .shop-editor { grid-template-columns: 1fr; padding: 12px; }
+  .shop-main-fields { grid-template-columns: 1fr; }
+  .shop-description { grid-column: auto; }
+  .shop-extras { grid-column: auto; }
+  .shop-extra-row { grid-template-columns: minmax(0, 1fr) 120px auto; }
+  .shop-save { grid-column: auto; width: 100%; }
+  .shop-admin-product { grid-template-columns: 110px minmax(0, 1fr) auto; gap: 9px; }
+  .shop-admin-product > img { width: 110px; }
+  .shop-admin-product > .danger { grid-column: 1 / -1; justify-self: end; }
+  .shop-admin-price { font-size: 14px; }
 }
 </style>

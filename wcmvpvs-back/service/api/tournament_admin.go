@@ -61,6 +61,9 @@ func registerTournamentAdminRoutes(rt *_router) {
 	rt.router.Get("/v1/ta/{slug}/sponsors", rt.wrapTA(rt.taListSponsors))
 	rt.router.Post("/v1/ta/{slug}/sponsors", rt.wrapTA(rt.taCreateSponsor))
 	rt.router.Delete("/v1/ta/{slug}/sponsors/{id}", rt.wrapTA(rt.taDeleteSponsor))
+	rt.router.Get("/v1/ta/{slug}/shop", rt.wrapTA(rt.taListShopProducts))
+	rt.router.Post("/v1/ta/{slug}/shop", rt.wrapTA(rt.taCreateShopProduct))
+	rt.router.Delete("/v1/ta/{slug}/shop/{id}", rt.wrapTA(rt.taDeleteShopProduct))
 	rt.router.Get("/v1/ta/{slug}/settings", rt.wrapTA(rt.taGetSettings))
 	rt.router.Put("/v1/ta/{slug}/settings", rt.wrapTA(rt.taUpdateSettings))
 	rt.router.Post("/v1/ta/{slug}/bracket/generate", rt.wrapTA(rt.taGenerateBracket))
@@ -224,7 +227,6 @@ func (rt *_router) deleteMasterTournament(w http.ResponseWriter, r *http.Request
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
-
 
 // ========================== AUTH ADMIN TORNEO ================================
 
@@ -633,6 +635,93 @@ func (rt *_router) taCreateSponsor(w http.ResponseWriter, r *http.Request, event
 func (rt *_router) taDeleteSponsor(w http.ResponseWriter, r *http.Request, eventID int64) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err := rt.store.DeleteTASponsor(r.Context(), eventID, id); err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	rt.invalidateTournamentCaches(r, eventID)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+func (rt *_router) taListShopProducts(w http.ResponseWriter, r *http.Request, eventID int64) {
+	products, err := rt.store.ListTAShopProducts(r.Context(), eventID)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"products": products})
+}
+
+func sanitizeShopText(raw string, max int) string {
+	value := strings.TrimSpace(raw)
+	if len([]rune(value)) > max {
+		value = string([]rune(value)[:max])
+	}
+	return value
+}
+
+func sanitizeShopExtras(extras []TournamentShopExtra) ([]TournamentShopExtra, error) {
+	if len(extras) > 12 {
+		extras = extras[:12]
+	}
+	out := make([]TournamentShopExtra, 0, len(extras))
+	for _, extra := range extras {
+		title := sanitizeShopText(extra.Title, 80)
+		if title == "" && extra.PriceCents == 0 {
+			continue
+		}
+		if title == "" || extra.PriceCents <= 0 || extra.PriceCents > 100000000 {
+			return nil, fmt.Errorf("bad_extra")
+		}
+		out = append(out, TournamentShopExtra{Title: title, PriceCents: extra.PriceCents})
+	}
+	return out, nil
+}
+
+func (rt *_router) taCreateShopProduct(w http.ResponseWriter, r *http.Request, eventID int64) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxSponsorLogoBytes+16384)
+	var product TournamentShopProduct
+	if err := json.NewDecoder(r.Body).Decode(&product); err != nil {
+		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
+		return
+	}
+	image, err := sanitizeSponsorLogo(product.ImageURL)
+	if err != nil || image == "" {
+		code := "image_required"
+		if err != nil {
+			code = err.Error()
+		}
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, code), http.StatusBadRequest)
+		return
+	}
+	if product.PriceCents <= 0 || product.PriceCents > 100000000 {
+		http.Error(w, `{"error":"bad_price"}`, http.StatusBadRequest)
+		return
+	}
+	extras, err := sanitizeShopExtras(product.Extras)
+	if err != nil {
+		http.Error(w, `{"error":"bad_extra"}`, http.StatusBadRequest)
+		return
+	}
+	product.ImageURL = image
+	product.Title = sanitizeShopText(product.Title, 120)
+	product.Description = sanitizeShopText(product.Description, 600)
+	product.Extras = extras
+	id, err := rt.store.CreateTAShopProduct(r.Context(), eventID, product)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	rt.invalidateTournamentCaches(r, eventID)
+	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": id})
+}
+
+func (rt *_router) taDeleteShopProduct(w http.ResponseWriter, r *http.Request, eventID int64) {
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err := rt.store.DeleteTAShopProduct(r.Context(), eventID, id); err != nil {
+		if errors.Is(err, errTANotFound) {
+			http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
+			return
+		}
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}

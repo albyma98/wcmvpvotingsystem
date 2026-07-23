@@ -66,26 +66,41 @@ type Sponsor struct {
 	BrandColor string `json:"brandColor,omitempty"` // usato dal marquee quando manca il logo
 }
 
+type TournamentShopExtra struct {
+	Title      string `json:"title"`
+	PriceCents int    `json:"priceCents"`
+}
+
+type TournamentShopProduct struct {
+	ID          int64                 `json:"id"`
+	ImageURL    string                `json:"imageUrl"`
+	Title       string                `json:"title,omitempty"`
+	Description string                `json:"description,omitempty"`
+	PriceCents  int                   `json:"priceCents"`
+	Extras      []TournamentShopExtra `json:"extras"`
+}
+
 type TournamentInfo struct {
-	Slug        string `json:"slug"`
-	Name        string `json:"name"`
-	Format      string `json:"format"`      // "BEACH VOLLEY 4X4"
-	DateLabel   string `json:"dateLabel"`   // "8 - 11 GIUGNO 2024"
-	Location    string `json:"location"`    // "LIDO DI CLASSE, RA"
-	StatusLabel string `json:"statusLabel"` // "TORNEO IN CORSO"
-	PhaseLabel  string `json:"phaseLabel"`  // "FASE A GIRONI"
-	Logo        string `json:"logo,omitempty"`
-	HeroImage   string `json:"heroImage,omitempty"`
-	Layout      string `json:"layout"` // 'classic' | 'sunset' — grafica home tifosi
+	Slug        string           `json:"slug"`
+	Name        string           `json:"name"`
+	Format      string           `json:"format"`      // "BEACH VOLLEY 4X4"
+	DateLabel   string           `json:"dateLabel"`   // "8 - 11 GIUGNO 2024"
+	Location    string           `json:"location"`    // "LIDO DI CLASSE, RA"
+	StatusLabel string           `json:"statusLabel"` // "TORNEO IN CORSO"
+	PhaseLabel  string           `json:"phaseLabel"`  // "FASE A GIRONI"
+	Logo        string           `json:"logo,omitempty"`
+	HeroImage   string           `json:"heroImage,omitempty"`
+	Layout      string           `json:"layout"` // 'classic' | 'sunset' — grafica home tifosi
 	Prizes      TournamentPrizes `json:"prizes"` // premi (modale Sunset)
 }
 
 type HomeResponse struct {
-	Tournament  TournamentInfo `json:"tournament"`
-	LiveMatches []LiveMatch    `json:"liveMatches"`
-	NextMatch   *NextMatch     `json:"nextMatch,omitempty"`
-	Tiles       []Tile         `json:"tiles"`
-	Sponsors    []Sponsor      `json:"sponsors"`
+	Tournament   TournamentInfo          `json:"tournament"`
+	LiveMatches  []LiveMatch             `json:"liveMatches"`
+	NextMatch    *NextMatch              `json:"nextMatch,omitempty"`
+	Tiles        []Tile                  `json:"tiles"`
+	Sponsors     []Sponsor               `json:"sponsors"`
+	ShopProducts []TournamentShopProduct `json:"shopProducts"`
 }
 
 type LiveResponse struct {

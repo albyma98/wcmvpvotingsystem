@@ -93,7 +93,31 @@ func TestTournamentCRUD_ForeignKeysEnabled(t *testing.T) {
 		t.Fatalf("GetTournamentLive: %v", err)
 	}
 
-	// 6) DELETE partita
+	// 6) SHOP: persistenza admin e inclusione nello snapshot pubblico.
+	productID, err := store.CreateTAShopProduct(ctx, evID, TournamentShopProduct{
+		ImageURL:   "data:image/webp;base64,dGVzdA==",
+		Title:      "Panino",
+		PriceCents: 750,
+		Extras: []TournamentShopExtra{
+			{Title: "Bacon", PriceCents: 150},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateTAShopProduct: %v", err)
+	}
+	shop, err := store.ListTAShopProducts(ctx, evID)
+	if err != nil || len(shop) != 1 || len(shop[0].Extras) != 1 {
+		t.Fatalf("ListTAShopProducts: products=%+v err=%v", shop, err)
+	}
+	home, err := store.GetTournamentHome(ctx, "test-cup")
+	if err != nil || len(home.ShopProducts) != 1 || home.ShopProducts[0].PriceCents != 750 {
+		t.Fatalf("GetTournamentHome shop: home=%+v err=%v", home, err)
+	}
+	if err := store.DeleteTAShopProduct(ctx, evID, productID); err != nil {
+		t.Fatalf("DeleteTAShopProduct: %v", err)
+	}
+
+	// 7) DELETE partita
 	if err := store.DeleteTAMatch(ctx, evID, matchID); err != nil {
 		t.Fatalf("DeleteTAMatch: %v", err)
 	}

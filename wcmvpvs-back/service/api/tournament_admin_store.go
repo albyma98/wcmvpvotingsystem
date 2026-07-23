@@ -61,6 +61,18 @@ func (s *Store) EnsureTournamentAdminTables() error {
 			position INTEGER NOT NULL DEFAULT 0,
 			active INTEGER NOT NULL DEFAULT 1
 		);`,
+		`CREATE TABLE IF NOT EXISTS tournament_shop_products (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_id INTEGER NOT NULL,
+			image_url TEXT NOT NULL,
+			title TEXT NOT NULL DEFAULT '',
+			description TEXT NOT NULL DEFAULT '',
+			price_cents INTEGER NOT NULL,
+			extras_json TEXT NOT NULL DEFAULT '[]',
+			position INTEGER NOT NULL DEFAULT 0,
+			active INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);`,
 		// Rosa giocatori per squadra: Nome/Cognome facoltativi (max 8 lato UI),
 		// serviranno a popolare la votazione MVP del pubblico. Nessuna FK (schema
 		// minimale coerente col resto del mondo torneo); la pulizia è esplicita
@@ -438,6 +450,7 @@ func (s *Store) DeleteTournament(ctx context.Context, eventID int64) error {
 		`DELETE FROM court_operators WHERE event_id = ?`,
 		`DELETE FROM tournament_admin_sessions WHERE event_id = ?`,
 		`DELETE FROM tournament_admins WHERE event_id = ?`,
+		`DELETE FROM tournament_shop_products WHERE event_id = ?`,
 		`DELETE FROM tournament_sponsors WHERE event_id = ?`,
 		`DELETE FROM matches WHERE event_id = ?`,
 		`DELETE FROM tournament_players WHERE event_id = ?`,
@@ -1010,15 +1023,80 @@ func (s *Store) DeleteTASponsor(ctx context.Context, eventID, sponsorID int64) e
 	return err
 }
 
+// --- Shop -------------------------------------------------------------------------
+
+func decodeTournamentShopExtras(raw string) []TournamentShopExtra {
+	if strings.TrimSpace(raw) == "" {
+		return []TournamentShopExtra{}
+	}
+	var extras []TournamentShopExtra
+	if err := json.Unmarshal([]byte(raw), &extras); err != nil || extras == nil {
+		return []TournamentShopExtra{}
+	}
+	return extras
+}
+
+func (s *Store) ListTAShopProducts(ctx context.Context, eventID int64) ([]TournamentShopProduct, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, image_url, title, description, price_cents, extras_json
+		FROM tournament_shop_products
+		WHERE event_id = ? AND active = 1
+		ORDER BY position, id`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]TournamentShopProduct, 0, 8)
+	for rows.Next() {
+		var product TournamentShopProduct
+		var extrasJSON string
+		if err := rows.Scan(&product.ID, &product.ImageURL, &product.Title, &product.Description,
+			&product.PriceCents, &extrasJSON); err != nil {
+			return nil, err
+		}
+		product.Extras = decodeTournamentShopExtras(extrasJSON)
+		out = append(out, product)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateTAShopProduct(ctx context.Context, eventID int64, product TournamentShopProduct) (int64, error) {
+	extrasJSON, err := json.Marshal(product.Extras)
+	if err != nil {
+		return 0, err
+	}
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO tournament_shop_products
+			(event_id, image_url, title, description, price_cents, extras_json)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		eventID, product.ImageURL, product.Title, product.Description, product.PriceCents, string(extrasJSON))
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) DeleteTAShopProduct(ctx context.Context, eventID, productID int64) error {
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM tournament_shop_products WHERE id = ? AND event_id = ?`, productID, eventID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errTANotFound
+	}
+	return nil
+}
+
 // --- Impostazioni evento -------------------------------------------------------------
 
 type TASettings struct {
-	Name          string `json:"name"`
-	Format        string `json:"format"`
-	DateLabel     string `json:"dateLabel"`
-	Location      string `json:"location"`
-	StatusLabel   string `json:"statusLabel"`
-	PhaseLabel    string `json:"phaseLabel"`
+	Name        string `json:"name"`
+	Format      string `json:"format"`
+	DateLabel   string `json:"dateLabel"`
+	Location    string `json:"location"`
+	StatusLabel string `json:"statusLabel"`
+	PhaseLabel  string `json:"phaseLabel"`
 	// Intestazione della home tifosi: immagine (data-URL o URL) mostrata al posto
 	// del titolo testuale. Vuota = si usa il nome del torneo.
 	Logo          string `json:"logoUrl"`
