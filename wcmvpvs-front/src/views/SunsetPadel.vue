@@ -67,24 +67,48 @@
 
         <!-- GRID -->
         <div class="sp-grid">
-          <button v-for="(t, i) in visibleTiles" :key="i" class="sp-tile" :class="[('t' + (i % 8 + 1)), { 'is-sponsor': t.route === SPONSORS_ROUTE }]"
+          <button v-for="(t, i) in visibleTiles" :key="i" class="sp-tile" :class="'t' + (i % 8 + 1)"
                   @click="onTile(t)">
             <div class="sp-tile-sheen"></div>
-            <template v-if="t.route === SPONSORS_ROUTE && t.sponsor">
-              <img v-if="t.sponsor.logo" class="sp-tile-sponsor-logo" :src="t.sponsor.logo" :alt="t.sponsor.name" />
-              <span v-else class="sp-tile-label sp-tile-sponsor-name">{{ t.sponsor.name }}</span>
-              <span class="sp-tile-sub">{{ t.sub }}</span>
-            </template>
-            <template v-else>
-              <span class="sp-tile-icon">{{ tileIcon(t) }}</span>
-              <span class="sp-tile-label">{{ t.label }}</span>
-              <span class="sp-tile-sub">{{ t.sub }}</span>
-            </template>
+            <span class="sp-tile-icon">{{ tileIcon(t) }}</span>
+            <span class="sp-tile-label">{{ t.label }}</span>
+            <span v-if="t.sub" class="sp-tile-sub">{{ t.sub }}</span>
           </button>
         </div>
 
         <div class="sp-home"><span></span></div>
       </div>
+
+      <!-- MODALE SPONSOR -->
+      <transition name="sp-modal">
+        <div v-if="showSponsors" class="sp-modal-scrim" @click.self="showSponsors = false">
+          <div class="sp-modal" role="dialog" aria-modal="true" aria-label="Gli Sponsor">
+            <button class="sp-modal-x" type="button" @click="showSponsors = false" aria-label="Chiudi">✕</button>
+            <h3 class="sp-modal-title">🤝 GLI SPONSOR</h3>
+            <div v-if="sponsors.length" class="sp-modal-grid">
+              <template v-for="sponsor in sponsors" :key="sponsor.id">
+                <a
+                  v-if="sponsor.url"
+                  class="sp-modal-sponsor"
+                  :class="{ main: sponsor.tier === 'main' }"
+                  :href="sponsor.url"
+                  target="_blank"
+                  rel="noopener"
+                  @click="onSponsorClick(sponsor)"
+                >
+                  <img v-if="sponsor.logo" :src="sponsor.logo" :alt="sponsor.name" />
+                  <span v-else class="sp-modal-name">{{ sponsor.name }}</span>
+                </a>
+                <div v-else class="sp-modal-sponsor" :class="{ main: sponsor.tier === 'main' }">
+                  <img v-if="sponsor.logo" :src="sponsor.logo" :alt="sponsor.name" />
+                  <span v-else class="sp-modal-name">{{ sponsor.name }}</span>
+                </div>
+              </template>
+            </div>
+            <p v-else class="sp-modal-empty">Nessuno sponsor disponibile.</p>
+          </div>
+        </div>
+      </transition>
 
       <!-- MODALE PREMI (aperta dalla 🏆 in alto a destra) -->
       <transition name="sp-modal">
@@ -253,6 +277,7 @@ const props = defineProps({
 // (niente più modale). La tile "Premi" (/prizes) diventa la tile Sponsor.
 const showPrizes = ref(false)   // modale Premi (🏆 in alto a destra)
 const showShop = ref(false)
+const showSponsors = ref(false)
 const selectedShopProduct = ref(null)
 const selectedShopExtras = ref([])
 const shopReservationStep = ref('summary')
@@ -362,11 +387,10 @@ function openPrizes () {
     has_prizes: hasPrizes.value,
   })
 }
-const mainSponsor = computed(() => props.sponsors.find(s => s.tier === 'main') || null)
 const SPONSORS_ROUTE = '__sponsors__' // route sintetica: identifica la tile sponsor
 
 // Tile: nel layout Sunset nascondiamo "Regolamento" (/rules) e "Info evento"
-// (/event); la tile "Premi" (/prizes) mostra il Main sponsor.
+// (/event); la tile "Premi" (/prizes) diventa l'accesso alla modale sponsor.
 const hiddenTileRoutes = ['/rules', '/event']
 const sunsetExtraTiles = [
   { id: 'shop', icon: 'shop', label: 'Shop', sub: 'Scopri i prodotti', route: '/shop' },
@@ -378,11 +402,10 @@ const visibleTiles = computed(() => [
     .map(t => t.route === '/prizes'
       ? {
           ...t,
-          label: mainSponsor.value?.name || 'Sponsor',
-          sub: 'sponsor della piattaforma',
+          label: 'Gli Sponsor',
+          sub: '',
           icon: 'sponsor',
           route: SPONSORS_ROUTE,
-          sponsor: mainSponsor.value,
         }
       : t),
   ...sunsetExtraTiles,
@@ -396,11 +419,7 @@ function onTile (t) {
     return
   }
   if (t.route === SPONSORS_ROUTE) {
-    const s = mainSponsor.value
-    if (s) {
-      onSponsorClick(s)
-      if (s.url) window.open(s.url, '_blank', 'noopener')
-    }
+    showSponsors.value = true
     return
   }
   emit('navigate', t.route)
