@@ -113,6 +113,15 @@ func TestTournamentCRUD_ForeignKeysEnabled(t *testing.T) {
 	if err != nil || len(home.ShopProducts) != 1 || home.ShopProducts[0].PriceCents != 750 {
 		t.Fatalf("GetTournamentHome shop: home=%+v err=%v", home, err)
 	}
+	if _, err := store.CreateTournamentShopReservation(
+		ctx, "test-cup", productID, []string{"Bacon"}, "Mario", "Rossi", "+39 333 1234567",
+	); err != nil {
+		t.Fatalf("CreateTournamentShopReservation: %v", err)
+	}
+	reservations, err := store.ListTAShopReservations(ctx, evID)
+	if err != nil || len(reservations) != 1 || reservations[0].TotalPriceCents != 900 {
+		t.Fatalf("ListTAShopReservations: reservations=%+v err=%v", reservations, err)
+	}
 	if err := store.DeleteTAShopProduct(ctx, evID, productID); err != nil {
 		t.Fatalf("DeleteTAShopProduct: %v", err)
 	}

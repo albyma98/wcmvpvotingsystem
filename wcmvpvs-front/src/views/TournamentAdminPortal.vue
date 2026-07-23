@@ -64,6 +64,7 @@ const teams = ref([])
 const matches = ref([])
 const sponsors = ref([])
 const shopProducts = ref([])
+const shopReservations = ref([])
 const gallery = ref([])
 const mvp = ref(null)
 const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', publicMvpMale: '', publicMvpFemale: '' })
@@ -78,13 +79,14 @@ async function bootstrap (ov) {
   overview.value = ov
   Object.assign(settings, ov.settings)
   ensurePrizes()
-  await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadShopProducts(), loadOperators(), loadGallery(), loadMvp()])
+  await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadShopProducts(), loadShopReservations(), loadOperators(), loadGallery(), loadMvp()])
 }
 async function loadTeams () { const r = await j('GET', '/teams'); if (r.ok) teams.value = (await r.json()).teams }
 async function loadMvp () { const r = await j('GET', '/mvp'); if (r.ok) mvp.value = await r.json() }
 async function loadMatches () { const r = await j('GET', '/matches'); if (r.ok) matches.value = (await r.json()).matches }
 async function loadSponsors () { const r = await j('GET', '/sponsors'); if (r.ok) sponsors.value = (await r.json()).sponsors }
 async function loadShopProducts () { const r = await j('GET', '/shop'); if (r.ok) shopProducts.value = (await r.json()).products ?? [] }
+async function loadShopReservations () { const r = await j('GET', '/shop/reservations'); if (r.ok) shopReservations.value = (await r.json()).reservations ?? [] }
 // La lista gallery è l'endpoint pubblico (foto auto-pubblicate); il delete è admin.
 async function loadGallery () {
   const r = await fetch(`/api/v1/tournaments/${props.slug}/gallery`)
@@ -297,6 +299,7 @@ useTournamentStream(props.slug, () => {
   if (tab.value === 'live' || tab.value === 'matches') loadMatches()
   else if (tab.value === 'gallery') loadGallery()
   else if (tab.value === 'mvp') loadMvp()
+  else if (tab.value === 'shop') loadShopReservations()
 })
 
 // ---------- sponsor ----------
@@ -431,6 +434,15 @@ function euroToCents (value) {
 function formatEuro (cents) {
   return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100)
 }
+function formatReservationDate (value) {
+  if (!value) return ''
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T') + 'Z'
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('it-IT', {
+    dateStyle: 'short', timeStyle: 'short'
+  }).format(date)
+}
+const phoneHref = phone => `tel:${String(phone || '').replace(/[^\d+]/g, '')}`
 function resetShopForm () {
   newShopProduct.imageUrl = ''
   newShopProduct.title = ''
@@ -880,6 +892,32 @@ async function generateBracket () {
             </div>
             <strong class="shop-admin-price">{{ formatEuro(product.priceCents) }}</strong>
             <button class="danger" type="button" @click="deleteShopProduct(product.id)">Rimuovi</button>
+          </article>
+        </div>
+
+        <div class="shop-reservations-head">
+          <div>
+            <h3>Prenotazioni ricevute</h3>
+            <p class="hint">Contatta il cliente al numero indicato per concordare pagamento e consegna.</p>
+          </div>
+          <button class="ghost" type="button" @click="loadShopReservations">Aggiorna</button>
+        </div>
+        <p v-if="!shopReservations.length" class="hint">Non sono ancora arrivate prenotazioni.</p>
+        <div v-else class="shop-reservation-list">
+          <article v-for="reservation in shopReservations" :key="reservation.id" class="shop-reservation">
+            <img :src="reservation.productImageUrl" :alt="reservation.productTitle || 'Prodotto Shop'" />
+            <div class="shop-reservation-product">
+              <b>{{ reservation.productTitle || 'Prodotto Shop' }}</b>
+              <span v-for="extra in reservation.selectedExtras" :key="`${reservation.id}-${extra.title}`">
+                + {{ extra.title }} {{ formatEuro(extra.priceCents) }}
+              </span>
+              <small>{{ formatReservationDate(reservation.createdAt) }}</small>
+            </div>
+            <div class="shop-reservation-customer">
+              <b>{{ reservation.firstName }} {{ reservation.lastName }}</b>
+              <a :href="phoneHref(reservation.phone)">☎ {{ reservation.phone }}</a>
+            </div>
+            <strong class="shop-admin-price">{{ formatEuro(reservation.totalPriceCents) }}</strong>
           </article>
         </div>
       </section>
@@ -1382,6 +1420,30 @@ textarea { width: 100%; font-family: inherit; }
 .shop-admin-extras { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .shop-admin-extras span { padding: 3px 7px; border-radius: 999px; background: rgba(242,185,40,.1); color: #fbd34d; }
 .shop-admin-price { color: #f2b928; font-size: 17px; white-space: nowrap; }
+.shop-reservations-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+  margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.1);
+}
+.shop-reservations-head h3 { margin: 0 0 3px; }
+.shop-reservations-head p { margin: 0; }
+.shop-reservation-list { display: flex; flex-direction: column; gap: 9px; }
+.shop-reservation {
+  display: grid; grid-template-columns: 120px minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  align-items: center; gap: 13px; padding: 10px;
+  background: linear-gradient(90deg, rgba(242,185,40,.09), #15151b 28%);
+  border: 1px solid rgba(242,185,40,.22); border-radius: 12px;
+}
+.shop-reservation > img { width: 120px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; }
+.shop-reservation-product,
+.shop-reservation-customer { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.shop-reservation-product > b,
+.shop-reservation-customer > b { overflow-wrap: anywhere; }
+.shop-reservation-product > span { color: #fbd34d; font-size: 12px; }
+.shop-reservation-product > small { color: #64748b; font-size: 11px; margin-top: 2px; }
+.shop-reservation-customer a {
+  width: fit-content; color: #67e8f9; font-weight: 800; text-decoration: none;
+  padding: 4px 8px; border-radius: 7px; background: rgba(34,211,238,.09);
+}
 /* --- console scoring: pulsanti da pollice, sole in faccia --- */
 .score-card { background: linear-gradient(180deg, rgba(139,32,38,.4), #15151b 60%); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 12px; }
 .sc-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #fca5a5; margin-bottom: 8px; }
@@ -1411,5 +1473,9 @@ textarea { width: 100%; font-family: inherit; }
   .shop-admin-product > img { width: 110px; }
   .shop-admin-product > .danger { grid-column: 1 / -1; justify-self: end; }
   .shop-admin-price { font-size: 14px; }
+  .shop-reservations-head { align-items: flex-start; }
+  .shop-reservation { grid-template-columns: 90px minmax(0, 1fr) auto; gap: 9px; }
+  .shop-reservation > img { width: 90px; }
+  .shop-reservation-customer { grid-column: 1 / 3; }
 }
 </style>

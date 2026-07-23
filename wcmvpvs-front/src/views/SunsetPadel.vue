@@ -120,7 +120,7 @@
               </div>
             </div>
             <div v-if="shopProducts.length" class="sp-shop-list">
-              <article v-for="product in shopProducts" :key="product.id" class="sp-shop-product">
+              <button v-for="product in shopProducts" :key="product.id" type="button" class="sp-shop-product" @click="openShopProduct(product)">
                 <img :src="product.imageUrl" :alt="product.title || 'Prodotto Shop'" />
                 <div class="sp-shop-copy">
                   <div class="sp-shop-line">
@@ -135,9 +135,83 @@
                     </div>
                   </div>
                 </div>
-              </article>
+                <span class="sp-shop-open" aria-hidden="true">›</span>
+              </button>
             </div>
             <p v-else class="sp-shop-empty">Nessun prodotto disponibile al momento.</p>
+          </div>
+        </div>
+      </transition>
+
+      <!-- RIEPILOGO E PRENOTAZIONE PRODOTTO -->
+      <transition name="sp-modal">
+        <div v-if="selectedShopProduct" class="sp-product-scrim" @click.self="closeShopProduct">
+          <div class="sp-product-modal" role="dialog" aria-modal="true" aria-label="Riepilogo prodotto">
+            <button class="sp-shop-x" type="button" @click="closeShopProduct" aria-label="Chiudi">✕</button>
+
+            <template v-if="shopReservationStep === 'summary'">
+              <img class="sp-product-image" :src="selectedShopProduct.imageUrl" :alt="selectedShopProduct.title || 'Prodotto Shop'" />
+              <div class="sp-product-titleline">
+                <h3>{{ selectedShopProduct.title || 'Prodotto Shop' }}</h3>
+                <strong>{{ formatEuro(selectedShopProduct.priceCents) }}</strong>
+              </div>
+              <p v-if="selectedShopProduct.description" class="sp-product-description">{{ selectedShopProduct.description }}</p>
+
+              <fieldset v-if="selectedShopProduct.extras?.length" class="sp-product-options">
+                <legend>Scegli gli extra</legend>
+                <label v-for="extra in selectedShopProduct.extras" :key="extra.title">
+                  <input v-model="selectedShopExtras" type="checkbox" :value="extra.title" />
+                  <span>{{ extra.title }}</span>
+                  <b>+ {{ formatEuro(extra.priceCents) }}</b>
+                </label>
+              </fieldset>
+
+              <div class="sp-product-total">
+                <span>Totale prenotazione</span>
+                <strong>{{ formatEuro(shopReservationTotal) }}</strong>
+              </div>
+              <div class="sp-product-actions">
+                <button class="secondary" type="button" @click="closeShopProduct">Chiudi</button>
+                <button class="primary" type="button" @click="startShopReservation">Acquista</button>
+              </div>
+            </template>
+
+            <form v-else-if="shopReservationStep === 'contact'" class="sp-reservation-form" @submit.prevent="submitShopReservation">
+              <div class="sp-reservation-heading">
+                <span>📞</span>
+                <div>
+                  <h3>Prenota il prodotto</h3>
+                  <p>Lascia i tuoi dati: verrai contattato per completare l’acquisto.</p>
+                </div>
+              </div>
+              <label>Nome *
+                <input v-model.trim="shopReservationForm.firstName" maxlength="80" autocomplete="given-name" required />
+              </label>
+              <label>Cognome *
+                <input v-model.trim="shopReservationForm.lastName" maxlength="80" autocomplete="family-name" required />
+              </label>
+              <label>Telefono *
+                <input v-model.trim="shopReservationForm.phone" type="tel" maxlength="30" autocomplete="tel" inputmode="tel" placeholder="+39…" required />
+              </label>
+              <div class="sp-reservation-recap">
+                <span>{{ selectedShopProduct.title || 'Prodotto Shop' }}</span>
+                <strong>{{ formatEuro(shopReservationTotal) }}</strong>
+              </div>
+              <p v-if="shopReservationError" class="sp-reservation-error">{{ shopReservationError }}</p>
+              <div class="sp-product-actions">
+                <button class="secondary" type="button" :disabled="shopReservationBusy" @click="shopReservationStep = 'summary'">Indietro</button>
+                <button class="primary" type="submit" :disabled="shopReservationBusy">
+                  {{ shopReservationBusy ? 'Invio…' : 'Conferma prenotazione' }}
+                </button>
+              </div>
+            </form>
+
+            <div v-else class="sp-reservation-success">
+              <span>✓</span>
+              <h3>Prenotazione inviata</h3>
+              <p>L’organizzatore ti contatterà al numero indicato per completare l’acquisto.</p>
+              <button class="primary" type="button" @click="finishShopReservation">Chiudi</button>
+            </div>
           </div>
         </div>
       </transition>
@@ -150,7 +224,7 @@
 // Layout tifoso "Sunset" — grafica alternativa, stessi dati/navigazione della
 // home classica: il parent (TournamentHomeView) passa i dati reali e gestisce
 // gli eventi (navigate = route della tile, live = scorciatoia al calendario).
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 
 const emit = defineEmits(['live', 'signup', 'navigate'])
@@ -179,8 +253,82 @@ const props = defineProps({
 // (niente più modale). La tile "Premi" (/prizes) diventa la tile Sponsor.
 const showPrizes = ref(false)   // modale Premi (🏆 in alto a destra)
 const showShop = ref(false)
+const selectedShopProduct = ref(null)
+const selectedShopExtras = ref([])
+const shopReservationStep = ref('summary')
+const shopReservationBusy = ref(false)
+const shopReservationError = ref('')
+const shopReservationForm = reactive({ firstName: '', lastName: '', phone: '' })
 const formatEuro = cents =>
   new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format((cents || 0) / 100)
+const shopReservationTotal = computed(() => {
+  const product = selectedShopProduct.value
+  if (!product) return 0
+  const extras = (product.extras || []).filter(extra => selectedShopExtras.value.includes(extra.title))
+  return (product.priceCents || 0) + extras.reduce((total, extra) => total + (extra.priceCents || 0), 0)
+})
+function openShopProduct (product) {
+  selectedShopProduct.value = product
+  selectedShopExtras.value = []
+  shopReservationStep.value = 'summary'
+  shopReservationError.value = ''
+  shopReservationForm.firstName = ''
+  shopReservationForm.lastName = ''
+  shopReservationForm.phone = ''
+}
+function closeShopProduct () {
+  if (shopReservationBusy.value) return
+  selectedShopProduct.value = null
+  selectedShopExtras.value = []
+  shopReservationStep.value = 'summary'
+  shopReservationError.value = ''
+}
+function startShopReservation () {
+  shopReservationStep.value = 'contact'
+  shopReservationError.value = ''
+}
+function validReservationPhone (phone) {
+  const clean = phone.trim()
+  return clean.length >= 6 && clean.length <= 30 &&
+    /^[+0-9 ().-]+$/.test(clean) && (clean.match(/\d/g)?.length || 0) >= 6
+}
+async function submitShopReservation () {
+  const product = selectedShopProduct.value
+  if (!product || shopReservationBusy.value) return
+  if (!shopReservationForm.firstName || !shopReservationForm.lastName) {
+    shopReservationError.value = 'Inserisci nome e cognome.'
+    return
+  }
+  if (!validReservationPhone(shopReservationForm.phone)) {
+    shopReservationError.value = 'Inserisci un numero di telefono valido.'
+    return
+  }
+  shopReservationBusy.value = true
+  shopReservationError.value = ''
+  try {
+    const response = await fetch(`/api/v1/tournaments/${props.tournamentSlug}/shop/reservations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId: product.id,
+        extraTitles: selectedShopExtras.value,
+        firstName: shopReservationForm.firstName,
+        lastName: shopReservationForm.lastName,
+        phone: shopReservationForm.phone,
+      }),
+    })
+    if (!response.ok) throw new Error('reservation_failed')
+    shopReservationStep.value = 'success'
+  } catch {
+    shopReservationError.value = 'Prenotazione non riuscita. Riprova tra poco.'
+  } finally {
+    shopReservationBusy.value = false
+  }
+}
+function finishShopReservation () {
+  closeShopProduct()
+  showShop.value = false
+}
 // Premi raggruppati per categoria, con le sole voci compilate (formattazione modale).
 const prizeSections = computed(() => {
   const p = props.prizes || {}
@@ -600,10 +748,12 @@ const stars = [
   padding-right: calc(2*var(--s)); scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent;
 }
 .sp-shop-product {
-  flex: none; display: grid; grid-template-columns: calc(120*var(--s)) minmax(0,1fr); gap: calc(11*var(--s));
+  width: 100%; flex: none; display: grid; grid-template-columns: calc(120*var(--s)) minmax(0,1fr) auto; gap: calc(11*var(--s));
   align-items: start; padding: calc(8*var(--s)); border-radius: calc(15*var(--s));
   background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1);
+  color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background .15s, transform .12s;
 }
+.sp-shop-product:active { transform: scale(.985); background: rgba(255,255,255,.12); }
 .sp-shop-product > img {
   width: calc(120*var(--s)); aspect-ratio: 16 / 9; object-fit: cover; display: block;
   border-radius: calc(10*var(--s)); background: #0B0620;
@@ -626,5 +776,82 @@ const stars = [
 .sp-shop-extras > div { display: flex; justify-content: space-between; gap: calc(6*var(--s)); font-size: calc(10*var(--s)); }
 .sp-shop-extras span { color: rgba(255,255,255,.7); overflow-wrap: anywhere; }
 .sp-shop-extras b { flex: none; color: #FFB3DD; white-space: nowrap; }
+.sp-shop-open { align-self: center; color: #C6FF3A; font-size: calc(24*var(--s)); font-weight: 800; }
 .sp-shop-empty { margin: 0; padding: calc(34*var(--s)) calc(8*var(--s)); text-align: center; color: rgba(255,255,255,.6); font-size: calc(13*var(--s)); }
+
+/* Secondo livello: riepilogo prodotto, contatto e conferma. */
+.sp-product-scrim {
+  position: fixed; inset: 0; z-index: 55; display: flex; align-items: center; justify-content: center;
+  padding: calc(16*var(--s)); background: rgba(6,3,18,.93); backdrop-filter: blur(5px);
+}
+.sp-product-modal {
+  position: relative; width: 100%; max-width: calc(390*var(--s)); max-height: 90dvh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: calc(12*var(--s));
+  padding: calc(18*var(--s)); border-radius: calc(22*var(--s));
+  background: linear-gradient(180deg,#241246,#100826); border: 1px solid rgba(255,255,255,.15);
+  box-shadow: 0 26px 80px rgba(0,0,0,.7), 0 0 35px rgba(138,43,255,.25);
+}
+.sp-product-image { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: calc(14*var(--s)); display: block; }
+.sp-product-titleline { display: flex; align-items: flex-start; justify-content: space-between; gap: calc(10*var(--s)); }
+.sp-product-titleline h3 { margin: 0; color: #fff; font-size: calc(20*var(--s)); line-height: 1.1; overflow-wrap: anywhere; }
+.sp-product-titleline strong { flex: none; color: #C6FF3A; font-size: calc(18*var(--s)); }
+.sp-product-description { margin: 0; color: rgba(255,255,255,.68); font-size: calc(12.5*var(--s)); line-height: 1.4; white-space: pre-wrap; }
+.sp-product-options {
+  margin: 0; padding: calc(10*var(--s)); border: 1px solid rgba(255,255,255,.1);
+  border-radius: calc(13*var(--s)); display: flex; flex-direction: column; gap: calc(6*var(--s));
+}
+.sp-product-options legend { padding: 0 calc(5*var(--s)); color: #FFB3DD; font-size: calc(11.5*var(--s)); font-weight: 800; }
+.sp-product-options label {
+  display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: calc(8*var(--s));
+  padding: calc(7*var(--s)); border-radius: calc(9*var(--s)); background: rgba(255,255,255,.05); cursor: pointer;
+}
+.sp-product-options input {
+  position: static; opacity: 1; pointer-events: auto; appearance: auto;
+  width: calc(17*var(--s)); height: calc(17*var(--s)); margin: 0; accent-color: #FF2E9A;
+}
+.sp-product-options span { color: #fff; font-size: calc(12.5*var(--s)); overflow-wrap: anywhere; }
+.sp-product-options b { color: #FFB3DD; font-size: calc(12*var(--s)); white-space: nowrap; }
+.sp-product-total,
+.sp-reservation-recap {
+  display: flex; align-items: center; justify-content: space-between; gap: calc(10*var(--s));
+  padding: calc(11*var(--s)) calc(12*var(--s)); border-radius: calc(12*var(--s));
+  background: rgba(198,255,58,.09); border: 1px solid rgba(198,255,58,.25);
+}
+.sp-product-total span, .sp-reservation-recap span { color: rgba(255,255,255,.75); font-size: calc(12*var(--s)); }
+.sp-product-total strong, .sp-reservation-recap strong { color: #C6FF3A; font-size: calc(17*var(--s)); white-space: nowrap; }
+.sp-product-actions { display: grid; grid-template-columns: 1fr 1fr; gap: calc(9*var(--s)); }
+.sp-product-actions button,
+.sp-reservation-success button {
+  border: none; border-radius: calc(12*var(--s)); padding: calc(11*var(--s));
+  font: inherit; font-size: calc(13*var(--s)); font-weight: 900; cursor: pointer;
+}
+.sp-product-actions .secondary { background: rgba(255,255,255,.11); color: #fff; }
+.sp-product-actions .primary,
+.sp-reservation-success .primary {
+  background: linear-gradient(135deg,#C6FF3A,#00E5FF); color: #0B0620;
+  box-shadow: 0 5px 18px rgba(0,229,255,.22);
+}
+.sp-product-actions button:disabled { opacity: .55; cursor: default; }
+.sp-reservation-form { display: flex; flex-direction: column; gap: calc(10*var(--s)); }
+.sp-reservation-heading { display: flex; gap: calc(10*var(--s)); align-items: flex-start; padding-right: calc(28*var(--s)); }
+.sp-reservation-heading > span { font-size: calc(28*var(--s)); }
+.sp-reservation-heading h3 { margin: 0; color: #fff; font-size: calc(19*var(--s)); }
+.sp-reservation-heading p { margin: calc(3*var(--s)) 0 0; color: rgba(255,255,255,.6); font-size: calc(11.5*var(--s)); line-height: 1.35; }
+.sp-reservation-form > label { display: flex; flex-direction: column; gap: calc(5*var(--s)); color: #fff; font-size: calc(11.5*var(--s)); font-weight: 800; }
+.sp-reservation-form input {
+  display: block; width: 100%; height: auto; box-sizing: border-box; margin: 0;
+  border: 1px solid rgba(255,255,255,.15); border-radius: calc(10*var(--s));
+  padding: calc(10*var(--s)); background: rgba(255,255,255,.08); color: #fff;
+  font: inherit; font-size: calc(13*var(--s)); outline: none;
+}
+.sp-reservation-form input:focus { border-color: #00E5FF; box-shadow: 0 0 0 2px rgba(0,229,255,.12); }
+.sp-reservation-error { margin: 0; color: #fca5a5; font-size: calc(11.5*var(--s)); text-align: center; }
+.sp-reservation-success { display: flex; flex-direction: column; align-items: center; gap: calc(10*var(--s)); text-align: center; padding: calc(22*var(--s)) calc(6*var(--s)) calc(6*var(--s)); }
+.sp-reservation-success > span {
+  width: calc(58*var(--s)); height: calc(58*var(--s)); border-radius: 50%; display: grid; place-items: center;
+  color: #0B0620; background: linear-gradient(135deg,#C6FF3A,#00E5FF); font-size: calc(30*var(--s)); font-weight: 900;
+}
+.sp-reservation-success h3 { margin: 0; color: #fff; font-size: calc(20*var(--s)); }
+.sp-reservation-success p { margin: 0; color: rgba(255,255,255,.65); font-size: calc(12.5*var(--s)); line-height: 1.4; }
+.sp-reservation-success button { width: 100%; margin-top: calc(6*var(--s)); }
 </style>

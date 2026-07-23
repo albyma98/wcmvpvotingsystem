@@ -34,6 +34,7 @@ func registerTournamentRoutes(rt *_router) {
 
 	// Snapshot completo della home: chiamato una volta al load. Cache-Control 30s.
 	rt.router.Get("/v1/tournaments/{slug}/home", rt.HandleTournamentHome)
+	rt.router.Post("/v1/tournaments/{slug}/shop/reservations", rt.HandleTournamentShopReservation)
 
 	// Polling leggero dello stato live: ogni 10s dai device in tribuna.
 	// Cache in-memory TTL 3s protegge SQLite dal thundering herd.

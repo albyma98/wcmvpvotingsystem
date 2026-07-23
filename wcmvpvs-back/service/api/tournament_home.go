@@ -14,6 +14,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -152,6 +153,67 @@ func (rt *_router) HandleTournamentHome(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Cache-Control", "public, max-age=30")
 	_ = writeJSON(w, http.StatusOK, resp)
+}
+
+func validShopReservationPhone(phone string) bool {
+	if len(phone) < 6 || len(phone) > 30 {
+		return false
+	}
+	digits := 0
+	for _, char := range phone {
+		if char >= '0' && char <= '9' {
+			digits++
+			continue
+		}
+		if !strings.ContainsRune("+ -().", char) {
+			return false
+		}
+	}
+	return digits >= 6
+}
+
+// HandleTournamentShopReservation registra una richiesta di prenotazione.
+// Non esegue pagamenti: l'organizzatore vede il contatto nel proprio pannello
+// e conclude direttamente con il cliente.
+func (rt *_router) HandleTournamentShopReservation(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+	var body struct {
+		ProductID   int64    `json:"productId"`
+		ExtraTitles []string `json:"extraTitles"`
+		FirstName   string   `json:"firstName"`
+		LastName    string   `json:"lastName"`
+		Phone       string   `json:"phone"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
+		return
+	}
+	body.FirstName = sanitizeShopText(body.FirstName, 80)
+	body.LastName = sanitizeShopText(body.LastName, 80)
+	body.Phone = strings.TrimSpace(body.Phone)
+	if body.ProductID <= 0 || body.FirstName == "" || body.LastName == "" || !validShopReservationPhone(body.Phone) {
+		http.Error(w, `{"error":"bad_input"}`, http.StatusBadRequest)
+		return
+	}
+	id, err := rt.store.CreateTournamentShopReservation(
+		r.Context(), chi.URLParam(r, "slug"), body.ProductID, body.ExtraTitles,
+		body.FirstName, body.LastName, body.Phone,
+	)
+	if err != nil {
+		switch {
+		case err == errTANotFound:
+			http.Error(w, `{"error":"product_not_found"}`, http.StatusNotFound)
+		case err.Error() == "invalid_extra":
+			http.Error(w, `{"error":"invalid_extra"}`, http.StatusBadRequest)
+		default:
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		}
+		return
+	}
+	if eventID, lookupErr := rt.store.EventIDBySlug(r.Context(), chi.URLParam(r, "slug")); lookupErr == nil {
+		rt.tournamentHub.Broadcast(int(eventID))
+	}
+	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": id, "ok": true})
 }
 
 // decodeSets converte la colonna sets_json (es. `["21-18","18-21"]`) in slice.

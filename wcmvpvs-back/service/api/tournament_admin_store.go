@@ -73,6 +73,21 @@ func (s *Store) EnsureTournamentAdminTables() error {
 			active INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);`,
+		`CREATE TABLE IF NOT EXISTS tournament_shop_reservations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_id INTEGER NOT NULL,
+			product_id INTEGER NOT NULL,
+			product_title TEXT NOT NULL DEFAULT '',
+			product_image_url TEXT NOT NULL DEFAULT '',
+			base_price_cents INTEGER NOT NULL,
+			selected_extras_json TEXT NOT NULL DEFAULT '[]',
+			total_price_cents INTEGER NOT NULL,
+			first_name TEXT NOT NULL,
+			last_name TEXT NOT NULL,
+			phone TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'new',
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);`,
 		// Rosa giocatori per squadra: Nome/Cognome facoltativi (max 8 lato UI),
 		// serviranno a popolare la votazione MVP del pubblico. Nessuna FK (schema
 		// minimale coerente col resto del mondo torneo); la pulizia è esplicita
@@ -450,6 +465,7 @@ func (s *Store) DeleteTournament(ctx context.Context, eventID int64) error {
 		`DELETE FROM court_operators WHERE event_id = ?`,
 		`DELETE FROM tournament_admin_sessions WHERE event_id = ?`,
 		`DELETE FROM tournament_admins WHERE event_id = ?`,
+		`DELETE FROM tournament_shop_reservations WHERE event_id = ?`,
 		`DELETE FROM tournament_shop_products WHERE event_id = ?`,
 		`DELETE FROM tournament_sponsors WHERE event_id = ?`,
 		`DELETE FROM matches WHERE event_id = ?`,
@@ -1086,6 +1102,111 @@ func (s *Store) DeleteTAShopProduct(ctx context.Context, eventID, productID int6
 		return errTANotFound
 	}
 	return nil
+}
+
+type TournamentShopReservation struct {
+	ID              int64                 `json:"id"`
+	ProductID       int64                 `json:"productId"`
+	ProductTitle    string                `json:"productTitle"`
+	ProductImageURL string                `json:"productImageUrl"`
+	BasePriceCents  int                   `json:"basePriceCents"`
+	SelectedExtras  []TournamentShopExtra `json:"selectedExtras"`
+	TotalPriceCents int                   `json:"totalPriceCents"`
+	FirstName       string                `json:"firstName"`
+	LastName        string                `json:"lastName"`
+	Phone           string                `json:"phone"`
+	Status          string                `json:"status"`
+	CreatedAt       string                `json:"createdAt"`
+}
+
+func (s *Store) CreateTournamentShopReservation(
+	ctx context.Context,
+	slug string,
+	productID int64,
+	extraTitles []string,
+	firstName, lastName, phone string,
+) (int64, error) {
+	var eventID int64
+	var title, imageURL, extrasJSON string
+	var basePrice int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT e.id, p.title, p.image_url, p.price_cents, p.extras_json
+		FROM tournament_shop_products p
+		JOIN events e ON e.id = p.event_id
+		WHERE e.slug = ? AND e.type = 'tournament' AND p.id = ? AND p.active = 1`,
+		slug, productID).Scan(&eventID, &title, &imageURL, &basePrice, &extrasJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, errTANotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	available := decodeTournamentShopExtras(extrasJSON)
+	wanted := make(map[string]bool, len(extraTitles))
+	for _, extraTitle := range extraTitles {
+		clean := strings.TrimSpace(extraTitle)
+		if clean != "" {
+			wanted[clean] = true
+		}
+	}
+	selected := make([]TournamentShopExtra, 0, len(wanted))
+	total := basePrice
+	for _, extra := range available {
+		if wanted[extra.Title] {
+			selected = append(selected, extra)
+			total += extra.PriceCents
+			delete(wanted, extra.Title)
+		}
+	}
+	if len(wanted) != 0 {
+		return 0, fmt.Errorf("invalid_extra")
+	}
+	selectedJSON, err := json.Marshal(selected)
+	if err != nil {
+		return 0, err
+	}
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO tournament_shop_reservations
+			(event_id, product_id, product_title, product_image_url, base_price_cents,
+			 selected_extras_json, total_price_cents, first_name, last_name, phone)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		eventID, productID, title, imageURL, basePrice, string(selectedJSON), total,
+		firstName, lastName, phone)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) ListTAShopReservations(ctx context.Context, eventID int64) ([]TournamentShopReservation, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, product_id, product_title, product_image_url, base_price_cents,
+		       selected_extras_json, total_price_cents, first_name, last_name,
+		       phone, status, created_at
+		FROM tournament_shop_reservations
+		WHERE event_id = ?
+		ORDER BY id DESC`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]TournamentShopReservation, 0, 16)
+	for rows.Next() {
+		var reservation TournamentShopReservation
+		var extrasJSON string
+		if err := rows.Scan(
+			&reservation.ID, &reservation.ProductID, &reservation.ProductTitle,
+			&reservation.ProductImageURL, &reservation.BasePriceCents, &extrasJSON,
+			&reservation.TotalPriceCents, &reservation.FirstName, &reservation.LastName,
+			&reservation.Phone, &reservation.Status, &reservation.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		reservation.SelectedExtras = decodeTournamentShopExtras(extrasJSON)
+		out = append(out, reservation)
+	}
+	return out, rows.Err()
 }
 
 // --- Impostazioni evento -------------------------------------------------------------

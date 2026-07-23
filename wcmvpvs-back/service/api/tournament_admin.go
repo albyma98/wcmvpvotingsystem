@@ -64,6 +64,7 @@ func registerTournamentAdminRoutes(rt *_router) {
 	rt.router.Get("/v1/ta/{slug}/shop", rt.wrapTA(rt.taListShopProducts))
 	rt.router.Post("/v1/ta/{slug}/shop", rt.wrapTA(rt.taCreateShopProduct))
 	rt.router.Delete("/v1/ta/{slug}/shop/{id}", rt.wrapTA(rt.taDeleteShopProduct))
+	rt.router.Get("/v1/ta/{slug}/shop/reservations", rt.wrapTA(rt.taListShopReservations))
 	rt.router.Get("/v1/ta/{slug}/settings", rt.wrapTA(rt.taGetSettings))
 	rt.router.Put("/v1/ta/{slug}/settings", rt.wrapTA(rt.taUpdateSettings))
 	rt.router.Post("/v1/ta/{slug}/bracket/generate", rt.wrapTA(rt.taGenerateBracket))
@@ -727,6 +728,15 @@ func (rt *_router) taDeleteShopProduct(w http.ResponseWriter, r *http.Request, e
 	}
 	rt.invalidateTournamentCaches(r, eventID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+func (rt *_router) taListShopReservations(w http.ResponseWriter, r *http.Request, eventID int64) {
+	reservations, err := rt.store.ListTAShopReservations(r.Context(), eventID)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"reservations": reservations})
 }
 
 func (rt *_router) taGetSettings(w http.ResponseWriter, r *http.Request, eventID int64) {
