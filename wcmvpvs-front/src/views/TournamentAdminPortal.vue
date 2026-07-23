@@ -919,7 +919,17 @@ async function generateBracket () {
 </template>
 
 <style scoped>
-.ta-page { min-height: 100dvh; background: #0a0a0e; color: #f1f5f9; padding: 16px; max-width: 760px; margin: 0 auto; font-size: 14.5px; }
+.ta-page {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  background: #0a0a0e;
+  color: #f1f5f9;
+  padding: clamp(16px, 2vw, 32px);
+  font-size: 14.5px;
+}
 .ta-login { max-width: 340px; margin: 12vh auto 0; display: flex; flex-direction: column; gap: 10px; text-align: center; }
 .ta-login h1 { font-size: 22px; margin: 0; }
 .ta-login .slug { color: #f2b928; margin: 0 0 8px; font-weight: 700; }
@@ -1026,6 +1036,20 @@ textarea { width: 100%; font-family: inherit; }
 .start { background: #16a34a; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 800; }
 .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 4px; vertical-align: -2px; margin-left: 4px; }
 .settings-sub { margin: 18px 0 8px; font-size: 13px; font-weight: 800; letter-spacing: .3px; color: #f2b928; }
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 360px));
+  align-items: start;
+  gap: 12px;
+}
+.settings-grid label {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.settings-grid input,
+.settings-grid select { width: 100%; box-sizing: border-box; }
 .settings-grid label.check { flex-direction: row; align-items: center; gap: 8px; }
 .settings-grid label.check input { width: 20px; height: 20px; flex: none; }
 .bracket-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
@@ -1063,4 +1087,8 @@ textarea { width: 100%; font-family: inherit; }
 .close-set { background: #1d4ed8; color: #fff; border: none; border-radius: 8px; padding: 9px 14px; font-weight: 800; font-size: 13px; }
 .finish { background: transparent; border: 1px solid rgba(248,113,113,.5); color: #f87171; border-radius: 8px; padding: 7px 14px; font-size: 12px; }
 .ta-loading { text-align: center; color: #94a3b8; padding-top: 20vh; }
+
+@media (max-width: 600px) {
+  .settings-grid { grid-template-columns: 1fr; }
+}
 </style>
