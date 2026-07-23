@@ -31,7 +31,7 @@ watch(
 const titles = {
   calendar: 'Calendario', standings: 'Classifiche', bracket: 'Tabellone',
   mvp: 'Vota MVP', prizes: 'Premi', gallery: 'Gallery',
-  rules: 'Regolamento', event: 'Info Evento'
+  rules: 'Regolamento', event: 'Info Evento', shop: 'Shop', example: 'Esempio'
 }
 
 const matches = ref([])

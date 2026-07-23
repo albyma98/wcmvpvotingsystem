@@ -181,8 +181,12 @@ const SPONSORS_ROUTE = '__sponsors__' // route sintetica: identifica la tile spo
 // Tile: nel layout Sunset nascondiamo "Regolamento" (/rules) e "Info evento"
 // (/event); la tile "Premi" (/prizes) mostra il Main sponsor.
 const hiddenTileRoutes = ['/rules', '/event']
-const visibleTiles = computed(() =>
-  props.tiles
+const sunsetExtraTiles = [
+  { id: 'shop', icon: 'shop', label: 'Shop', sub: 'Scopri i prodotti', route: '/shop' },
+  { id: 'example', icon: 'example', label: 'Esempio', sub: 'Scopri di più', route: '/example' },
+]
+const visibleTiles = computed(() => [
+  ...props.tiles
     .filter(t => !hiddenTileRoutes.includes(t.route))
     .map(t => t.route === '/prizes'
       ? {
@@ -193,7 +197,9 @@ const visibleTiles = computed(() =>
           route: SPONSORS_ROUTE,
           sponsor: mainSponsor.value,
         }
-      : t))
+      : t),
+  ...sunsetExtraTiles,
+])
 
 // Tap su una tile: la tile Sponsor apre l'eventuale link dello sponsor (niente
 // modale); le altre navigano.
@@ -224,7 +230,8 @@ function onSponsorClick (s) {
 // come emoji per restare nello stile "pop" del layout Sunset.
 const ICON_EMOJI = {
   calendar: '📅', chart: '📊', bracket: '🏆', star: '⭐',
-  trophy: '🎁', gallery: '📸', doc: '📋', info: 'ℹ️', sponsor: '🤝'
+  trophy: '🎁', gallery: '📸', doc: '📋', info: 'ℹ️', sponsor: '🤝',
+  shop: '🛍️', example: '✨'
 }
 const tileIcon = t => ICON_EMOJI[t.icon] || '▪️'
 
