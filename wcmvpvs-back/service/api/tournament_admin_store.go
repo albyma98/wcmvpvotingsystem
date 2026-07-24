@@ -1276,6 +1276,7 @@ type TournamentPrizes struct {
 	OrgMvpFemale    string `json:"orgMvpFemale"`    // MVP femminile (organizzatori)
 	PublicMvpMale   string `json:"publicMvpMale"`   // MVP maschile (voto del pubblico)
 	PublicMvpFemale string `json:"publicMvpFemale"` // MVP femminile (voto del pubblico)
+	PublicMvp       string `json:"publicMvp"`       // MVP unico (voto del pubblico)
 }
 
 // decodeTournamentPrizes converte il JSON salvato in struct (vuoto se assente).
@@ -1306,6 +1307,7 @@ func sanitizeTournamentPrizes(p TournamentPrizes) TournamentPrizes {
 		OrgMvpFemale:    clip(p.OrgMvpFemale),
 		PublicMvpMale:   clip(p.PublicMvpMale),
 		PublicMvpFemale: clip(p.PublicMvpFemale),
+		PublicMvp:       clip(p.PublicMvp),
 	}
 }
 

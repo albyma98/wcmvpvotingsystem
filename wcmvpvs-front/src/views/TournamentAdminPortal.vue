@@ -67,7 +67,7 @@ const shopProducts = ref([])
 const shopReservations = ref([])
 const gallery = ref([])
 const mvp = ref(null)
-const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', publicMvpMale: '', publicMvpFemale: '' })
+const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', publicMvpMale: '', publicMvpFemale: '', publicMvp: '' })
 const defaultStandingsLegend = 'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'
 const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', organizerLogoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, tournamentStarted: false, bracketQualifiers: 2, bracketThirdPlace: false, standingsLegendText: defaultStandingsLegend, fanLayout: 'classic' })
 const generatingBracket = ref(false)
@@ -1062,9 +1062,13 @@ async function generateBracket () {
 
         <h3 class="settings-sub">MVP scelti dal pubblico</h3>
         <div class="settings-grid">
-          <label>♂ MVP maschile <input v-model="settings.prizes.publicMvpMale" maxlength="200" placeholder="Es. Buono cena per due" /></label>
-          <label>♀ MVP femminile <input v-model="settings.prizes.publicMvpFemale" maxlength="200" placeholder="Es. Buono cena per due" /></label>
+          <template v-if="settings.mvpByGender">
+            <label>♂ MVP maschile <input v-model="settings.prizes.publicMvpMale" maxlength="200" placeholder="Es. Buono cena per due" /></label>
+            <label>♀ MVP femminile <input v-model="settings.prizes.publicMvpFemale" maxlength="200" placeholder="Es. Buono cena per due" /></label>
+          </template>
+          <label v-else>⭐ MVP (unico) <input v-model="settings.prizes.publicMvp" maxlength="200" placeholder="Es. Buono cena per due" /></label>
         </div>
+        <p class="hint">Il premio mostrato segue la modalità scelta nelle impostazioni della votazione MVP.</p>
 
         <button :disabled="busy === 'settings'" @click="saveSettings">{{ busy === 'settings' ? 'Salvo…' : 'Salva premi' }}</button>
       </section>

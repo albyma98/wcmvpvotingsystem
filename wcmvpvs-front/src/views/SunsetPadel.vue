@@ -277,6 +277,7 @@ const props = defineProps({
   brandBottom: { type: String, default: '' },
   logo:        { type: String, default: '' },   // immagine intestazione (al posto del brand testuale)
   organizerLogo: { type: String, default: '' },
+  mvpByGender: { type: Boolean, default: true },
   subtitle:    { type: String, default: '' },
   date:        { type: String, default: '' },
   place:       { type: String, default: '' },
@@ -388,10 +389,12 @@ const prizeSections = computed(() => {
     { icon: '♀', label: 'MVP femminile', value: p.orgMvpFemale },
   ])
   if (org.length) out.push({ title: 'MVP — scelti dagli organizzatori', rows: org })
-  const pub = mk([
-    { icon: '♂', label: 'MVP maschile', value: p.publicMvpMale },
-    { icon: '♀', label: 'MVP femminile', value: p.publicMvpFemale },
-  ])
+  const pub = props.mvpByGender
+    ? mk([
+        { icon: '♂', label: 'MVP maschile', value: p.publicMvpMale },
+        { icon: '♀', label: 'MVP femminile', value: p.publicMvpFemale },
+      ])
+    : mk([{ icon: '⭐', label: 'MVP', value: p.publicMvp }])
   if (pub.length) out.push({ title: 'MVP — voto del pubblico', rows: pub })
   return out
 })

@@ -4,7 +4,7 @@ const MOCK = {
   tournament: {
     slug: 'sunset-beach-cup', name: 'Sunset Beach Cup', format: 'BEACH VOLLEY 4X4',
     dateLabel: '8 - 11 GIUGNO 2024', location: 'LIDO DI CLASSE, RA',
-    statusLabel: 'TORNEO IN CORSO', phaseLabel: 'FASE A GIRONI', logo: null, organizerLogo: null, heroImage: null, started: true
+    statusLabel: 'TORNEO IN CORSO', phaseLabel: 'FASE A GIRONI', logo: null, organizerLogo: null, heroImage: null, started: true, mvpByGender: true
   },
   liveMatches: [
     { id: 'm1', court: 'CAMPO 2', teamA: { name: 'Mambo Beach' }, teamB: { name: 'Netbreakers' }, score: { a: 1, b: 1 }, setLabel: '1° SET', sets: ['21-18', '18-21'] },

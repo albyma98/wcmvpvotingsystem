@@ -94,6 +94,7 @@ type TournamentInfo struct {
 	HeroImage     string           `json:"heroImage,omitempty"`
 	Layout        string           `json:"layout"` // 'classic' | 'sunset' — grafica home tifosi
 	Started       bool             `json:"started"`
+	MvpByGender   bool             `json:"mvpByGender"`
 	Prizes        TournamentPrizes `json:"prizes"` // premi (modale Sunset)
 }
 
