@@ -21,6 +21,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+var errTournamentNotStarted = errors.New("tournament not started")
+
 func registerTournamentMVPRoutes(rt *_router) {
 	rt.router.Get("/v1/tournaments/{slug}/mvp", rt.HandleTournamentMVP)
 	rt.router.Post("/v1/tournaments/{slug}/mvp/vote", rt.HandleTournamentMVPVote)
@@ -173,8 +175,9 @@ type MVPTeam struct {
 // MVPBoard = payload pubblico della votazione: squadre con rosa+conteggi,
 // totale voti e (se noto) il giocatore già votato da questo device.
 type MVPBoard struct {
-	Teams      []MVPTeam `json:"teams"`
-	TotalVotes int       `json:"totalVotes"`
+	Teams             []MVPTeam `json:"teams"`
+	TotalVotes        int       `json:"totalVotes"`
+	TournamentStarted bool      `json:"tournamentStarted"`
 	// ByGender: true = MVP separato uomo/donna (2 voti), false = MVP unico (1 voto).
 	ByGender bool `json:"byGender"`
 	// Voti di questo device: uno per slot-genere (0 se non ancora espresso).
@@ -202,6 +205,10 @@ func (s *Store) GetMVPResults(ctx context.Context, eventID int64) (*MVPBoard, er
 // mvpBoardByEvent costruisce la board dai voti dell'evento. Se deviceID != ""
 // popola anche MyVote (giocatore votato da quel device).
 func (s *Store) mvpBoardByEvent(ctx context.Context, eventID int64, deviceID string) (*MVPBoard, error) {
+	started, err := s.IsTournamentStarted(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
 	// Modalità votazione: separata per genere (slot 'male'/'female') o unica
 	// (slot 'any'). Il filtro sui voti isola la modalità corrente, così i voti
 	// eventualmente residui dell'altra modalità non inquinano i conteggi.
@@ -228,7 +235,7 @@ func (s *Store) mvpBoardByEvent(ctx context.Context, eventID int64, deviceID str
 	}
 	defer rows.Close()
 
-	board := &MVPBoard{Teams: []MVPTeam{}, ByGender: byGender == 1}
+	board := &MVPBoard{Teams: []MVPTeam{}, ByGender: byGender == 1, TournamentStarted: started}
 	idx := map[int64]int{} // team_id -> indice in Teams
 	for rows.Next() {
 		var pid, teamID int64
@@ -294,6 +301,13 @@ func (s *Store) CastMVPVote(ctx context.Context, slug string, playerID int64, de
 	eventID, err := s.EventIDBySlug(ctx, slug)
 	if err != nil {
 		return 0, err
+	}
+	started, err := s.IsTournamentStarted(ctx, eventID)
+	if err != nil {
+		return 0, err
+	}
+	if !started {
+		return 0, errTournamentNotStarted
 	}
 	// Il giocatore deve appartenere a questo torneo (anti-manomissione); il suo
 	// genere determina lo slot di voto (uomo/donna) nella modalità separata.
@@ -364,6 +378,10 @@ func (rt *_router) HandleTournamentMVPVote(w http.ResponseWriter, r *http.Reques
 	}
 	eventID, err := rt.store.CastMVPVote(r.Context(), slug, body.PlayerID, deviceID)
 	if err != nil {
+		if errors.Is(err, errTournamentNotStarted) {
+			http.Error(w, `{"error":"tournament_not_started"}`, http.StatusConflict)
+			return
+		}
 		if errors.Is(err, errTANotFound) {
 			http.Error(w, `{"error":"not_found"}`, http.StatusNotFound)
 			return

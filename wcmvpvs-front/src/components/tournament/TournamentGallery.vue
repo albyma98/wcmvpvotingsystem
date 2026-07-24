@@ -7,7 +7,8 @@ import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 
 const props = defineProps({
   slug: { type: String, required: true },
-  photos: { type: Array, default: () => [] }
+  photos: { type: Array, default: () => [] },
+  started: { type: Boolean, default: true }
 })
 const emit = defineEmits(['uploaded'])
 
@@ -63,7 +64,10 @@ function openViewer (id) {
 
 // Prima di aprire la fotocamera mostra la liberatoria: premere "SCATTA FOTO"
 // nell'avviso vale come accettazione (e apre la fotocamera nel gesto utente).
-function pickPhoto () { showConsent.value = true }
+function pickPhoto () {
+  if (!props.started) return
+  showConsent.value = true
+}
 function cancelShoot () { showConsent.value = false }
 function confirmShoot () {
   showConsent.value = false
@@ -86,7 +90,8 @@ async function onPhotoPick (e) {
     })
     if (!res.ok) {
       const err = (await res.json().catch(() => ({}))).error
-      error.value = err === 'image_too_large' ? 'Foto troppo pesante.' : 'Pubblicazione non riuscita.'
+      if (err === 'tournament_not_started') error.value = 'Il torneo non è ancora iniziato.'
+      else error.value = err === 'image_too_large' ? 'Foto troppo pesante.' : 'Pubblicazione non riuscita.'
       return
     }
     posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_UPLOAD, {
@@ -105,7 +110,7 @@ async function onPhotoPick (e) {
 <template>
   <div class="gallery">
     <p v-if="!photos.length" class="empty">
-      Ancora nessuna foto. Scatta la prima del torneo! 📸
+      {{ started ? 'Ancora nessuna foto. Scatta la prima del torneo! 📸' : 'Le foto saranno disponibili quando inizierà il torneo.' }}
     </p>
     <div v-else class="grid">
       <button
@@ -118,7 +123,8 @@ async function onPhotoPick (e) {
 
     <!-- Pill acceso: scatta e pubblica -->
     <div class="shoot-bar">
-      <button class="shoot" :disabled="uploading" @click="pickPhoto">
+      <p v-if="!started" class="locked">🔒 Il torneo non è ancora iniziato</p>
+      <button class="shoot" :disabled="uploading || !started" @click="pickPhoto">
         <span class="ico">📷</span>{{ uploading ? 'PUBBLICO…' : 'SCATTA FOTO' }}
       </button>
       <p v-if="error" class="err">{{ error }}</p>
@@ -192,6 +198,7 @@ async function onPhotoPick (e) {
 }
 .shoot:disabled { opacity: .7; cursor: default; }
 .shoot .ico { font-size: 18px; }
+.locked { pointer-events: auto; color: #FFD66B; font-size: 12px; font-weight: 800; margin: 0; }
 .err { pointer-events: auto; color: #fca5a5; font-size: 12px; margin: 0; }
 .hidden-file { display: none; }
 

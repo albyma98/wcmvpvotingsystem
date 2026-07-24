@@ -40,6 +40,7 @@ const allowDraws = ref(true)   // classifica: mostrare la colonna pareggi "N"?
 const qualifiersPerGroup = ref(2)
 const standingsLegendText = ref('Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti')
 const photos = ref([])
+const tournamentStarted = ref(false)
 const loading = ref(true)
 const error = ref('')
 
@@ -66,7 +67,9 @@ async function load (silent = false) {
     } else if (props.section === 'gallery') {
       const r = await fetch(`/api/v1/tournaments/${props.slug}/gallery`)
       if (!r.ok) throw new Error(r.status)
-      photos.value = (await r.json()).photos ?? []
+      const data = await r.json()
+      photos.value = data.photos ?? []
+      tournamentStarted.value = data.tournamentStarted !== false
     }
   } catch (e) {
     if (!silent) error.value = 'Dati non disponibili al momento.'
@@ -113,7 +116,7 @@ useTournamentStream(props.slug, () => { if (hasData.value) load(true) })
       <!-- GALLERY: sempre montata (niente flash di "Caricamento" sui refresh live) -->
       <TournamentGallery
         v-if="section === 'gallery'"
-        :slug="slug" :photos="photos" @uploaded="load"
+        :slug="slug" :photos="photos" :started="tournamentStarted" @uploaded="load"
       />
 
       <!-- VOTA MVP: componente autonomo (fetch/voto/live via device) -->

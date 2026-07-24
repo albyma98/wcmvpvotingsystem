@@ -22,6 +22,7 @@ const loading = ref(true)
 const error = ref('')
 const voting = ref(0)          // playerId con POST in corso
 const justVoted = ref('')      // nome appena votato → banner conferma
+const tournamentStarted = ref(true)
 
 const deviceId = getOrCreateDeviceId()
 
@@ -50,6 +51,7 @@ const teamsForActive = computed(() => {
 function applyBoard (b) {
   teams.value = b.teams ?? []
   byGender.value = b.byGender !== false
+  tournamentStarted.value = b.tournamentStarted !== false
   myVoteMale.value = b.myVoteMale ?? 0
   myVoteFemale.value = b.myVoteFemale ?? 0
   myVote.value = b.myVote ?? 0
@@ -71,7 +73,7 @@ async function load () {
 }
 
 async function vote (candidate, team) {
-  if (voting.value) return
+  if (voting.value || !tournamentStarted.value) return
   const gender = candidate.gender || activeGender.value
   // Cambio voto o primo voto per questo slot? (prima dell'aggiornamento board)
   const changed = activeVote.value !== 0
@@ -82,7 +84,11 @@ async function vote (candidate, team) {
       headers: { 'Content-Type': 'application/json', 'X-Device-ID': deviceId },
       body: JSON.stringify({ playerId: candidate.id })
     })
-    if (!r.ok) throw new Error(r.status)
+    if (!r.ok) {
+      const payload = await r.json().catch(() => ({}))
+      if (payload.error === 'tournament_not_started') tournamentStarted.value = false
+      throw new Error(payload.error || r.status)
+    }
     applyBoard(await r.json())
     posthogTrack(PH_EVENTS.TOURNAMENT_MVP_VOTED, {
       tournament_slug: props.slug,
@@ -96,7 +102,9 @@ async function vote (candidate, team) {
     justVoted.value = candidate.name
     setTimeout(() => { if (justVoted.value === candidate.name) justVoted.value = '' }, 3200)
   } catch (e) {
-    error.value = 'Voto non registrato, riprova.'
+    error.value = e.message === 'tournament_not_started'
+      ? 'Il torneo non è ancora iniziato.'
+      : 'Voto non registrato, riprova.'
     setTimeout(() => { error.value = '' }, 2500)
   } finally {
     voting.value = 0
@@ -116,6 +124,10 @@ useTournamentStream(() => props.slug, load)
       <p v-if="byGender">Hai due voti: un MVP <b>uomo</b> e un MVP <b>donna</b>. Tocca un nome per votare — puoi cambiare quando vuoi.</p>
       <p v-else>Hai <b>un voto</b>. Tocca il nome del giocatore che ti ha impressionato di più — puoi cambiare quando vuoi.</p>
     </header>
+
+    <p v-if="!tournamentStarted" class="mvp-locked">
+      🔒 Il torneo non è ancora iniziato. Le votazioni MVP apriranno all'inizio.
+    </p>
 
     <transition name="pop">
       <div v-if="justVoted" class="voted-banner">✓ Hai votato <b>{{ justVoted }}</b></div>
@@ -163,7 +175,7 @@ useTournamentStream(() => props.slug, load)
               <button
                 class="player"
                 :class="{ chosen: activeVote === c.id, dim: hasVotedActive && activeVote !== c.id }"
-                :disabled="!!voting"
+                :disabled="!!voting || !tournamentStarted"
                 @click="vote(c, t)"
               >
                 <span class="p-name">{{ c.name }}</span>
@@ -199,6 +211,11 @@ useTournamentStream(() => props.slug, load)
   box-shadow: 0 8px 22px rgba(0,200,151,.35);
 }
 .mvp-error { text-align: center; color: #FF8589; font-size: 13px; font-weight: 700; }
+.mvp-locked {
+  margin: 0; padding: 12px 14px; border: 1px solid rgba(242,185,40,.35);
+  border-radius: 12px; background: rgba(242,185,40,.1); color: #FFD66B;
+  text-align: center; font-size: 13px; font-weight: 800; line-height: 1.4;
+}
 .mvp-muted { text-align: center; color: rgba(255,255,255,.5); font-size: 14px; padding: 20px 0; }
 
 /* Toggle categoria Uomo/Donna */

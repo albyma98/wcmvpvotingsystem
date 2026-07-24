@@ -196,7 +196,14 @@ func (rt *_router) galleryList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"photos": photos})
+	started, err := rt.store.IsTournamentStarted(r.Context(), eventID)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"photos": photos, "tournamentStarted": started,
+	})
 }
 
 func (rt *_router) galleryUpload(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +211,15 @@ func (rt *_router) galleryUpload(w http.ResponseWriter, r *http.Request) {
 	eventID, err := rt.store.EventIDBySlug(r.Context(), slug)
 	if err != nil {
 		http.Error(w, `{"error":"tournament_not_found"}`, http.StatusNotFound)
+		return
+	}
+	started, err := rt.store.IsTournamentStarted(r.Context(), eventID)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	if !started {
+		http.Error(w, `{"error":"tournament_not_started"}`, http.StatusConflict)
 		return
 	}
 

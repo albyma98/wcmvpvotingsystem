@@ -115,7 +115,7 @@ func (s *Store) GetTournamentLive(ctx context.Context, slug string) (*LiveRespon
 	}
 	next, _ := s.getNextMatch(ctx, slug)
 	return &LiveResponse{
-		Tournament:  &TournamentPhase{StatusLabel: info.StatusLabel, PhaseLabel: info.PhaseLabel},
+		Tournament:  &TournamentPhase{StatusLabel: info.StatusLabel, PhaseLabel: info.PhaseLabel, Started: info.Started},
 		LiveMatches: live,
 		NextMatch:   next,
 	}, nil
@@ -128,7 +128,7 @@ func (s *Store) getTournamentInfo(ctx context.Context, slug string) (*Tournament
 		SELECT slug, COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
 		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
 		       COALESCE(logo_url,''), COALESCE(hero_image_url,''), COALESCE(fan_layout,'classic'),
-		       COALESCE(prizes_json,'')
+		       COALESCE(tournament_started,1), COALESCE(prizes_json,'')
 		FROM events
 		WHERE slug = ? AND type = 'tournament'
 		LIMIT 1`
@@ -136,7 +136,7 @@ func (s *Store) getTournamentInfo(ctx context.Context, slug string) (*Tournament
 	var prizesJSON string
 	err := s.db.QueryRowContext(ctx, q, slug).Scan(
 		&t.Slug, &t.Name, &t.Format, &t.DateLabel, &t.Location,
-		&t.StatusLabel, &t.PhaseLabel, &t.Logo, &t.HeroImage, &t.Layout, &prizesJSON,
+		&t.StatusLabel, &t.PhaseLabel, &t.Logo, &t.HeroImage, &t.Layout, &t.Started, &prizesJSON,
 	)
 	t.Prizes = decodeTournamentPrizes(prizesJSON)
 	if err != nil {

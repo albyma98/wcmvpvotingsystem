@@ -168,6 +168,9 @@ func (s *Store) EnsureTournamentAdminTables() error {
 	// che tutte le colonne esistano anche su DB creati da versioni precedenti
 	// (difesa contro drift dello schema → evita "no such column" mascherato da 500).
 	for _, alter := range []string{
+		// Default 1 preserva il comportamento dei tornei esistenti; i nuovi
+		// vengono creati esplicitamente con le azioni dei tifosi disabilitate.
+		`ALTER TABLE events ADD COLUMN tournament_started INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE matches ADD COLUMN cur_a INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN cur_b INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE tournament_teams ADD COLUMN short_name TEXT NOT NULL DEFAULT ''`,
@@ -335,8 +338,9 @@ func (s *Store) CreateTournament(ctx context.Context, in TournamentCreateInput, 
 
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO events (organization_id, team1_id, team2_id, start_datetime, location,
-		                    slug, name, format, date_label, status_label, phase_label, type)
-		VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, 'TORNEO IN ARRIVO', 'ISCRIZIONI', 'tournament')`,
+		                    slug, name, format, date_label, status_label, phase_label, type,
+		                    tournament_started)
+		VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, 'TORNEO IN ARRIVO', 'ISCRIZIONI', 'tournament', 0)`,
 		sysOrgID, sysTeamID, sysTeamID, in.Location, in.Slug, in.Name, in.Format, in.DateLabel)
 	if err != nil {
 		return 0, err
@@ -510,6 +514,17 @@ func (s *Store) EventIDBySlug(ctx context.Context, slug string) (int64, error) {
 		return 0, errTANotFound
 	}
 	return id, err
+}
+
+func (s *Store) IsTournamentStarted(ctx context.Context, eventID int64) (bool, error) {
+	var started int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(tournament_started,1)
+		FROM events WHERE id = ? AND type = 'tournament'`, eventID).Scan(&started)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, errTANotFound
+	}
+	return started == 1, err
 }
 
 func (s *Store) CreateTASession(ctx context.Context, adminID, eventID int64, ttl time.Duration) (string, error) {
@@ -1235,6 +1250,8 @@ type TASettings struct {
 	// Modalità votazione MVP del pubblico: true = MVP uomo + MVP donna (2 voti per
 	// device), false = MVP unico indipendente dal sesso (1 voto per device).
 	MvpByGender bool `json:"mvpByGender"`
+	// Se false, i tifosi possono consultare il torneo ma non votare o caricare foto.
+	TournamentStarted bool `json:"tournamentStarted"`
 	// Fase finale: quante squadre passano per girone + finalina 3°/4° posto.
 	BracketQualifiers int  `json:"bracketQualifiers"`
 	BracketThirdPlace bool `json:"bracketThirdPlace"`
@@ -1292,14 +1309,14 @@ func sanitizeTournamentPrizes(p TournamentPrizes) TournamentPrizes {
 func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, string, error) {
 	var st TASettings
 	var slug, prizesJSON string
-	var thirdPlace, allowDraws, mvpByGender int
+	var thirdPlace, allowDraws, mvpByGender, tournamentStarted int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
 		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
 		       COALESCE(logo_url,''),
 		       COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0),
 		       COALESCE(sets_best_of,3), COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1),
-		       COALESCE(allow_draws,1), COALESCE(mvp_by_gender,1),
+		       COALESCE(allow_draws,1), COALESCE(mvp_by_gender,1), COALESCE(tournament_started,1),
 		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0),
 		       COALESCE(standings_legend_text,'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'),
 		       COALESCE(fan_layout,'classic'), COALESCE(prizes_json,''), COALESCE(slug,'')
@@ -1308,12 +1325,13 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 			&st.Logo,
 			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss,
 			&st.SetsBestOf, &st.PointsPerTieWin, &st.PointsPerTieLoss,
-			&allowDraws, &mvpByGender,
+			&allowDraws, &mvpByGender, &tournamentStarted,
 			&st.BracketQualifiers, &thirdPlace, &st.StandingsLegendText,
 			&st.FanLayout, &prizesJSON, &slug)
 	st.BracketThirdPlace = thirdPlace == 1
 	st.AllowDraws = allowDraws == 1
 	st.MvpByGender = mvpByGender == 1
+	st.TournamentStarted = tournamentStarted == 1
 	st.Prizes = decodeTournamentPrizes(prizesJSON)
 	return &st, slug, err
 }
@@ -1331,12 +1349,17 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 	if st.MvpByGender {
 		mvpByGender = 1
 	}
+	tournamentStarted := 0
+	if st.TournamentStarted {
+		tournamentStarted = 1
+	}
 	prizesJSON, _ := json.Marshal(st.Prizes)
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE events SET name=?, format=?, date_label=?, location=?, status_label=?, phase_label=?,
 		                  logo_url=?,
 		                  points_per_win=?, points_per_draw=?, points_per_loss=?,
 		                  sets_best_of=?, points_per_tie_win=?, points_per_tie_loss=?, allow_draws=?, mvp_by_gender=?,
+		                  tournament_started=?,
 		                  bracket_qualifiers=?, bracket_third_place=?, standings_legend_text=?,
 		                  fan_layout=?, prizes_json=?
 		WHERE id = ? AND type = 'tournament'`,
@@ -1344,6 +1367,7 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 		st.Logo,
 		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss,
 		st.SetsBestOf, st.PointsPerTieWin, st.PointsPerTieLoss, allowDraws, mvpByGender,
+		tournamentStarted,
 		st.BracketQualifiers, thirdPlace, st.StandingsLegendText,
 		st.FanLayout, string(prizesJSON), eventID)
 	return err

@@ -4,7 +4,7 @@ const MOCK = {
   tournament: {
     slug: 'sunset-beach-cup', name: 'Sunset Beach Cup', format: 'BEACH VOLLEY 4X4',
     dateLabel: '8 - 11 GIUGNO 2024', location: 'LIDO DI CLASSE, RA',
-    statusLabel: 'TORNEO IN CORSO', phaseLabel: 'FASE A GIRONI', logo: null, heroImage: null
+    statusLabel: 'TORNEO IN CORSO', phaseLabel: 'FASE A GIRONI', logo: null, heroImage: null, started: true
   },
   liveMatches: [
     { id: 'm1', court: 'CAMPO 2', teamA: { name: 'Mambo Beach' }, teamB: { name: 'Netbreakers' }, score: { a: 1, b: 1 }, setLabel: '1° SET', sets: ['21-18', '18-21'] },
@@ -102,9 +102,10 @@ export function useTournamentHome (slug, { mock = false } = {}) {
       const data = await res.json()
       liveMatches.value = data.liveMatches ?? []
       if (data.nextMatch !== undefined) nextMatch.value = data.nextMatch
-      if (data.tournament?.phaseLabel && tournament.value) {
-        tournament.value.phaseLabel = data.tournament.phaseLabel
-        tournament.value.statusLabel = data.tournament.statusLabel
+      if (data.tournament && tournament.value) {
+        if (data.tournament.phaseLabel !== undefined) tournament.value.phaseLabel = data.tournament.phaseLabel
+        if (data.tournament.statusLabel !== undefined) tournament.value.statusLabel = data.tournament.statusLabel
+        if (data.tournament.started !== undefined) tournament.value.started = data.tournament.started
       }
     } catch { /* polling silenzioso: il prossimo tick riprova */ }
   }

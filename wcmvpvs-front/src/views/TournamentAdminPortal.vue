@@ -69,7 +69,7 @@ const gallery = ref([])
 const mvp = ref(null)
 const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', publicMvpMale: '', publicMvpFemale: '' })
 const defaultStandingsLegend = 'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, bracketQualifiers: 2, bracketThirdPlace: false, standingsLegendText: defaultStandingsLegend, fanLayout: 'classic' })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, tournamentStarted: false, bracketQualifiers: 2, bracketThirdPlace: false, standingsLegendText: defaultStandingsLegend, fanLayout: 'classic' })
 const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
@@ -1058,6 +1058,18 @@ async function generateBracket () {
 
       <!-- IMPOSTAZIONI -->
       <section v-else class="ta-body">
+        <h3 class="settings-sub">Stato del torneo</h3>
+        <div class="settings-grid">
+          <label class="check">
+            <input type="checkbox" v-model="settings.tournamentStarted" />
+            <span>Torneo iniziato</span>
+          </label>
+        </div>
+        <p class="hint">
+          Se disattivato, i tifosi possono consultare la pagina ma non possono votare l'MVP
+          né caricare immagini nella Gallery.
+        </p>
+
         <div class="settings-grid">
           <label>Nome <input v-model="settings.name" /></label>
           <label>Formato <input v-model="settings.format" /></label>

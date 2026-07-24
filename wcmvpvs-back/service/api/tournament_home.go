@@ -92,6 +92,7 @@ type TournamentInfo struct {
 	Logo        string           `json:"logo,omitempty"`
 	HeroImage   string           `json:"heroImage,omitempty"`
 	Layout      string           `json:"layout"` // 'classic' | 'sunset' — grafica home tifosi
+	Started     bool             `json:"started"`
 	Prizes      TournamentPrizes `json:"prizes"` // premi (modale Sunset)
 }
 
@@ -113,6 +114,7 @@ type LiveResponse struct {
 type TournamentPhase struct {
 	StatusLabel string `json:"statusLabel"`
 	PhaseLabel  string `json:"phaseLabel"`
+	Started     bool   `json:"started"`
 }
 
 // HandleTournamentLive risponde al polling dei device in tribuna.
