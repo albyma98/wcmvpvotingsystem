@@ -786,6 +786,7 @@ func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, even
 		st.SetsBestOf = 3
 	}
 	st.BracketQualifiers = clampInt(st.BracketQualifiers, 1, 8)
+	st.StandingsLegendText = sanitizeShopText(st.StandingsLegendText, 300)
 	if st.FanLayout != "sunset" {
 		st.FanLayout = "classic"
 	}

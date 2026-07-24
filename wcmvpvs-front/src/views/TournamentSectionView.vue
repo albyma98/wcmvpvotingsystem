@@ -37,6 +37,8 @@ const titles = {
 const matches = ref([])
 const groups = ref([])
 const allowDraws = ref(true)   // classifica: mostrare la colonna pareggi "N"?
+const qualifiersPerGroup = ref(2)
+const standingsLegendText = ref('Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti')
 const photos = ref([])
 const loading = ref(true)
 const error = ref('')
@@ -55,6 +57,8 @@ async function load (silent = false) {
       const data = await r.json()
       groups.value = data.groups ?? []
       allowDraws.value = data.allowDraws !== false
+      qualifiersPerGroup.value = Math.max(1, Number(data.qualifiersPerGroup) || 2)
+      standingsLegendText.value = typeof data.legendText === 'string' ? data.legendText : standingsLegendText.value
     } else if (props.section === 'calendar' || props.section === 'bracket') {
       const r = await fetch(`/api/v1/tournaments/${props.slug}/matches`, { cache: 'no-store' })
       if (!r.ok) throw new Error(r.status)
@@ -157,7 +161,7 @@ useTournamentStream(props.slug, () => { if (hasData.value) load(true) })
           <table>
             <thead><tr><th></th><th class="tl">Squadra</th><th>G</th><th>V</th><th v-if="allowDraws">N</th><th>P</th><th>Set</th><th class="pt">Pt</th></tr></thead>
             <tbody>
-              <tr v-for="(row, i) in g.rows" :key="row.teamId" :class="{ top: i < 2 }">
+              <tr v-for="(row, i) in g.rows" :key="row.teamId" :class="{ top: i < qualifiersPerGroup }">
                 <td class="pos">{{ i + 1 }}</td>
                 <td class="tl name">{{ row.team }}</td>
                 <td>{{ row.played }}</td>
@@ -170,7 +174,7 @@ useTournamentStream(props.slug, () => { if (hasData.value) load(true) })
             </tbody>
           </table>
         </section>
-        <p v-if="groups.length" class="legend">Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti</p>
+        <p v-if="groups.length && standingsLegendText" class="legend">{{ standingsLegendText }}</p>
       </template>
 
       <!-- TABELLONE -->

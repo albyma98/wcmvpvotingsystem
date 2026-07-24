@@ -75,6 +75,7 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		`ALTER TABLE events ADD COLUMN mvp_by_gender INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN bracket_qualifiers INTEGER NOT NULL DEFAULT 2`,
 		`ALTER TABLE events ADD COLUMN bracket_third_place INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE events ADD COLUMN standings_legend_text TEXT NOT NULL DEFAULT 'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'`,
 		`ALTER TABLE events ADD COLUMN fan_layout TEXT NOT NULL DEFAULT 'classic'`,
 		// Premi del torneo (JSON): 1°/2°/3° classificato + MVP uomo/donna scelti
 		// da organizzatori e pubblico. Mostrati nella modale "Premi" (🏆) del layout Sunset.
@@ -215,7 +216,7 @@ type StandingsGroup struct {
 }
 
 // ComputeStandings deriva le classifiche dalle sole partite CONCLUSE dei
-// gironi (stage = ''). Ordinamento: punti classifica, quoziente set, quoziente
+// gironi (stage = ”). Ordinamento: punti classifica, quoziente set, quoziente
 // punti. I punti per vittoria/sconfitta sono configurabili dal pannello admin.
 // Ritorna anche allowDraws: se il torneo non ammette pareggi, le partite con set
 // pari NON contano come pareggio e la colonna "N" è nascosta lato tifoso.
@@ -378,9 +379,40 @@ func (rt *_router) HandleTournamentStandings(w http.ResponseWriter, r *http.Requ
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
-	payload := map[string]interface{}{"groups": groups, "allowDraws": allowDraws}
+	qualifiers, legendText, err := rt.store.GetStandingsDisplaySettings(r.Context(), slug)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	payload := map[string]interface{}{
+		"groups": groups, "allowDraws": allowDraws,
+		"qualifiersPerGroup": qualifiers, "legendText": legendText,
+	}
 	rt.liveCache.Set(cacheKey, payload, 10*time.Second)
 	writeJSON(w, http.StatusOK, payload)
+}
+
+func (s *Store) GetStandingsDisplaySettings(ctx context.Context, slug string) (int, string, error) {
+	const defaultLegend = "Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti"
+	var qualifiers int
+	var legendText string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(bracket_qualifiers,2), COALESCE(standings_legend_text, ?)
+		FROM events WHERE slug = ? AND type = 'tournament'`,
+		defaultLegend, slug).Scan(&qualifiers, &legendText)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", errTANotFound
+	}
+	if err != nil {
+		return 0, "", err
+	}
+	if qualifiers < 1 {
+		qualifiers = 1
+	}
+	if qualifiers > 8 {
+		qualifiers = 8
+	}
+	return qualifiers, legendText, nil
 }
 
 // invalidateTournamentCaches: dopo ogni scrittura la vista tifosi si aggiorna.

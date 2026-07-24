@@ -68,7 +68,8 @@ const shopReservations = ref([])
 const gallery = ref([])
 const mvp = ref(null)
 const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', publicMvpMale: '', publicMvpFemale: '' })
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, bracketQualifiers: 2, bracketThirdPlace: false, fanLayout: 'classic' })
+const defaultStandingsLegend = 'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, bracketQualifiers: 2, bracketThirdPlace: false, standingsLegendText: defaultStandingsLegend, fanLayout: 'classic' })
 const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
@@ -1138,6 +1139,9 @@ async function generateBracket () {
             <input type="checkbox" v-model="settings.bracketThirdPlace" />
             <span>Finale 3°/4° posto</span>
           </label>
+          <label class="settings-wide">Testo informativo sotto la classifica
+            <textarea v-model="settings.standingsLegendText" maxlength="300" rows="2" :placeholder="defaultStandingsLegend"></textarea>
+          </label>
         </div>
         <p class="hint">A gironi conclusi, «Genera tabellone» crea in automatico gli incroci di quarti/semifinali/finale: primo turno con le squadre reali, i turni dopo con segnaposto («Vincente Q1») che si riempiono da soli man mano che le partite finiscono. Le squadre totali qualificate devono essere una potenza di 2 (2/4/8/16).</p>
         <div class="bracket-actions">
@@ -1286,6 +1290,8 @@ textarea { width: 100%; font-family: inherit; }
 }
 .settings-grid input,
 .settings-grid select { width: 100%; box-sizing: border-box; }
+.settings-grid .settings-wide { grid-column: 1 / -1; width: min(100%, 732px); }
+.settings-grid .settings-wide textarea { box-sizing: border-box; resize: vertical; }
 .settings-grid label.check { flex-direction: row; align-items: center; gap: 8px; }
 .settings-grid label.check input { width: 20px; height: 20px; flex: none; }
 .bracket-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }

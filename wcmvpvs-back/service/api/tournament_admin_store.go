@@ -1238,6 +1238,8 @@ type TASettings struct {
 	// Fase finale: quante squadre passano per girone + finalina 3°/4° posto.
 	BracketQualifiers int  `json:"bracketQualifiers"`
 	BracketThirdPlace bool `json:"bracketThirdPlace"`
+	// Testo informativo mostrato sotto la classifica pubblica.
+	StandingsLegendText string `json:"standingsLegendText"`
 	// Grafica della home tifosi: 'classic' | 'sunset'.
 	FanLayout string `json:"fanLayout"`
 	// Premi del torneo mostrati nella modale "Premi" del layout Sunset.
@@ -1299,6 +1301,7 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 		       COALESCE(sets_best_of,3), COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1),
 		       COALESCE(allow_draws,1), COALESCE(mvp_by_gender,1),
 		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0),
+		       COALESCE(standings_legend_text,'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'),
 		       COALESCE(fan_layout,'classic'), COALESCE(prizes_json,''), COALESCE(slug,'')
 		FROM events WHERE id = ?`, eventID).
 		Scan(&st.Name, &st.Format, &st.DateLabel, &st.Location, &st.StatusLabel, &st.PhaseLabel,
@@ -1306,7 +1309,8 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss,
 			&st.SetsBestOf, &st.PointsPerTieWin, &st.PointsPerTieLoss,
 			&allowDraws, &mvpByGender,
-			&st.BracketQualifiers, &thirdPlace, &st.FanLayout, &prizesJSON, &slug)
+			&st.BracketQualifiers, &thirdPlace, &st.StandingsLegendText,
+			&st.FanLayout, &prizesJSON, &slug)
 	st.BracketThirdPlace = thirdPlace == 1
 	st.AllowDraws = allowDraws == 1
 	st.MvpByGender = mvpByGender == 1
@@ -1333,12 +1337,14 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 		                  logo_url=?,
 		                  points_per_win=?, points_per_draw=?, points_per_loss=?,
 		                  sets_best_of=?, points_per_tie_win=?, points_per_tie_loss=?, allow_draws=?, mvp_by_gender=?,
-		                  bracket_qualifiers=?, bracket_third_place=?, fan_layout=?, prizes_json=?
+		                  bracket_qualifiers=?, bracket_third_place=?, standings_legend_text=?,
+		                  fan_layout=?, prizes_json=?
 		WHERE id = ? AND type = 'tournament'`,
 		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel,
 		st.Logo,
 		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss,
 		st.SetsBestOf, st.PointsPerTieWin, st.PointsPerTieLoss, allowDraws, mvpByGender,
-		st.BracketQualifiers, thirdPlace, st.FanLayout, string(prizesJSON), eventID)
+		st.BracketQualifiers, thirdPlace, st.StandingsLegendText,
+		st.FanLayout, string(prizesJSON), eventID)
 	return err
 }
