@@ -212,7 +212,12 @@ func (s *Store) getNextMatch(ctx context.Context, slug string) (*NextMatch, erro
 		JOIN tournament_teams ta ON ta.id = m.team_a_id
 		JOIN tournament_teams tb ON tb.id = m.team_b_id
 		WHERE m.status = 'scheduled'
-		ORDER BY m.scheduled_at ASC
+		ORDER BY
+		  CASE WHEN m.scheduled_time >= COALESCE(
+		         (SELECT a.scheduled_time FROM matches a
+		            WHERE a.event_id = m.event_id AND a.is_anchor = 1 LIMIT 1), '')
+		       THEN 0 ELSE 1 END,
+		  m.scheduled_time, m.court
 		LIMIT 1`
 	var n NextMatch
 	err := s.db.QueryRowContext(ctx, q, slug).Scan(
