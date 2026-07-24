@@ -384,10 +384,12 @@ const prizeSections = computed(() => {
     { icon: '🥉', label: '3° classificato', value: p.third },
   ])
   if (classifica.length) out.push({ title: 'Classifica', rows: classifica })
-  const org = mk([
-    { icon: '♂', label: 'MVP maschile', value: p.orgMvpMale },
-    { icon: '♀', label: 'MVP femminile', value: p.orgMvpFemale },
-  ])
+  const org = props.mvpByGender
+    ? mk([
+        { icon: '♂', label: 'MVP maschile', value: p.orgMvpMale },
+        { icon: '♀', label: 'MVP femminile', value: p.orgMvpFemale },
+      ])
+    : mk([{ icon: '⭐', label: 'MVP', value: p.orgMvp }])
   if (org.length) out.push({ title: 'MVP — scelti dagli organizzatori', rows: org })
   const pub = props.mvpByGender
     ? mk([
