@@ -561,7 +561,7 @@ func (rt *_router) taScoreAction(w http.ResponseWriter, r *http.Request, eventID
 		return
 	}
 	// Il polling dei tifosi deve vedere il punto SUBITO, non a fine TTL.
-	rt.invalidateTournamentCaches(r, eventID)
+	rt.invalidateTournamentScoreCaches(r, eventID, body.Action == "finish" || body.Action == "reopen")
 	matches, _ := rt.store.ListTAMatches(r.Context(), eventID)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "matches": matches})
 }

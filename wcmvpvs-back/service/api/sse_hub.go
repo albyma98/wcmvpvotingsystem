@@ -6,20 +6,20 @@ import "sync"
 // Subscribers receive a signal on Broadcast and can use it to push updates to clients.
 type sseHub struct {
 	mu      sync.Mutex
-	clients map[int]map[chan struct{}]struct{}
+	clients map[int]map[chan string]struct{}
 }
 
 func newSSEHub() *sseHub {
-	return &sseHub{clients: make(map[int]map[chan struct{}]struct{})}
+	return &sseHub{clients: make(map[int]map[chan string]struct{})}
 }
 
 // Subscribe registers a new subscriber for the given key.
 // Returns a receive-only channel and an unsubscribe function that must be called when done.
-func (h *sseHub) Subscribe(key int) (<-chan struct{}, func()) {
-	ch := make(chan struct{}, 1)
+func (h *sseHub) Subscribe(key int) (<-chan string, func()) {
+	ch := make(chan string, 1)
 	h.mu.Lock()
 	if h.clients[key] == nil {
-		h.clients[key] = make(map[chan struct{}]struct{})
+		h.clients[key] = make(map[chan string]struct{})
 	}
 	h.clients[key][ch] = struct{}{}
 	h.mu.Unlock()
@@ -40,8 +40,14 @@ func (h *sseHub) Subscribe(key int) (<-chan struct{}, func()) {
 // Broadcast sends a notification to all subscribers for the given key.
 // Non-blocking: drops the signal for any subscriber whose buffer is already full.
 func (h *sseHub) Broadcast(key int) {
+	h.BroadcastEvent(key, "update")
+}
+
+// BroadcastEvent invia anche il tipo di aggiornamento. I consumer che non ne
+// hanno bisogno continuano semplicemente a trattarlo come un normale segnale.
+func (h *sseHub) BroadcastEvent(key int, eventType string) {
 	h.mu.Lock()
-	chs := make([]chan struct{}, 0, len(h.clients[key]))
+	chs := make([]chan string, 0, len(h.clients[key]))
 	for ch := range h.clients[key] {
 		chs = append(chs, ch)
 	}
@@ -49,8 +55,20 @@ func (h *sseHub) Broadcast(key int) {
 
 	for _, ch := range chs {
 		select {
-		case ch <- struct{}{}:
+		case ch <- eventType:
 		default:
+			// Un aggiornamento classifica non deve essere perso dietro a un
+			// normale punto già in coda: sostituisce il segnale meno importante.
+			if eventType == "standings" {
+				select {
+				case <-ch:
+				default:
+				}
+				select {
+				case ch <- eventType:
+				default:
+				}
+			}
 		}
 	}
 }

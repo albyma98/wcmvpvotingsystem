@@ -102,7 +102,13 @@ const hasData = computed(() =>
 // Le sezioni live si aggiornano da sole via SSE (push, niente polling).
 onMounted(load)
 // Refresh SSE in modalità silent: aggiorna i dati senza il flash di "Caricamento…".
-useTournamentStream(props.slug, () => { if (hasData.value) load(true) })
+useTournamentStream(props.slug, (update) => {
+  if (!hasData.value) return
+  // I punti live aggiornano calendario/tabellone, ma non modificano la
+  // classifica finché la partita non viene conclusa (o riaperta).
+  if (props.section === 'standings' && update?.standings === false) return
+  load(true)
+})
 </script>
 
 <template>

@@ -22,7 +22,11 @@ export function useTournamentStream (slugSource, onUpdate) {
     try {
       es = new EventSource(`/api/v1/tournaments/${slug}/stream`, { withCredentials: true })
     } catch { es = null; return }
-    es.addEventListener('update', () => onUpdate())
+    es.addEventListener('update', (event) => {
+      let update
+      try { update = JSON.parse(event.data || '{}') } catch { update = undefined }
+      onUpdate(update)
+    })
     es.addEventListener('open', () => {
       if (opened) onUpdate()   // riconnessione: recupera ciò che è cambiato mentre eravamo giù
       opened = true

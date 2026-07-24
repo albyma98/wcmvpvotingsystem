@@ -359,7 +359,17 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 			if ra != rb {
 				return ra > rb
 			}
-			return ratio(a.PointsW, a.PointsL) > ratio(b.PointsW, b.PointsL)
+			rpa, rpb := ratio(a.PointsW, a.PointsL), ratio(b.PointsW, b.PointsL)
+			if rpa != rpb {
+				return rpa > rpb
+			}
+			// Ultimo criterio deterministico: evita che squadre perfettamente
+			// pari si scambino per l'ordine casuale di iterazione delle mappe Go.
+			nameA, nameB := strings.ToLower(a.Team), strings.ToLower(b.Team)
+			if nameA != nameB {
+				return nameA < nameB
+			}
+			return a.TeamID < b.TeamID
 		})
 		out = append(out, StandingsGroup{Group: g, Rows: rowsG})
 	}
@@ -424,7 +434,25 @@ func (rt *_router) invalidateTournamentCaches(r *http.Request, eventID int64) {
 		rt.liveCache.Delete("matches:" + slug)
 		rt.liveCache.Delete("standings:" + slug)
 	}
-	rt.tournamentHub.Broadcast(int(eventID))
+	rt.tournamentHub.BroadcastEvent(int(eventID), "standings")
+}
+
+// invalidateTournamentScoreCaches aggiorna sempre live e calendario, ma
+// invalida/notifica la classifica soltanto quando una partita viene conclusa
+// o riaperta. I singoli punti e i set intermedi non cambiano la classifica.
+func (rt *_router) invalidateTournamentScoreCaches(r *http.Request, eventID int64, standingsChanged bool) {
+	if _, slug, err := rt.store.GetTASettings(r.Context(), eventID); err == nil && slug != "" {
+		rt.liveCache.Delete(slug)
+		rt.liveCache.Delete("matches:" + slug)
+		if standingsChanged {
+			rt.liveCache.Delete("standings:" + slug)
+		}
+	}
+	eventType := "score"
+	if standingsChanged {
+		eventType = "standings"
+	}
+	rt.tournamentHub.BroadcastEvent(int(eventID), eventType)
 }
 
 // ============================ OPERATORI CAMPO =================================
@@ -688,7 +716,7 @@ func (rt *_router) opScore(w http.ResponseWriter, r *http.Request, op *opInfo) {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
-	rt.invalidateTournamentCaches(r, op.EventID)
+	rt.invalidateTournamentScoreCaches(r, op.EventID, body.Action == "finish" || body.Action == "reopen")
 	state, _ := rt.store.ListTAMatches(r.Context(), op.EventID)
 	mine := make([]TAMatch, 0, 8)
 	for _, m := range state {

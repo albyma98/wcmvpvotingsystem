@@ -53,8 +53,9 @@ func (rt *_router) getTournamentStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-ch:
-			fmt.Fprintf(w, "event: update\ndata: {}\n\n")
+		case eventType := <-ch:
+			standingsChanged := eventType == "standings"
+			fmt.Fprintf(w, "event: update\ndata: {\"standings\":%t}\n\n", standingsChanged)
 			flusher.Flush()
 		case <-keepalive.C:
 			fmt.Fprintf(w, ": keepalive\n\n")
