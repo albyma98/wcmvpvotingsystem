@@ -20,7 +20,7 @@ const emit = defineEmits(['navigate'])
 
 // Dati reali dal backend: snapshot su /home + polling di /live ogni 10s
 // (partite in corso e prossima partita si aggiornano da sole).
-const { tournament, liveMatches, nextMatch, tiles, sponsors, shopProducts, loading } =
+const { tournament, liveMatches, nextMatch, tiles, sponsors, shopProducts, loading, error } =
   useTournamentHome(props.slug)
 
 // Contesto comune agli eventi PostHog della home torneo.
@@ -44,6 +44,22 @@ watch(
       has_next_match: !!nextMatch.value,
       tiles_count: tiles.value?.length ?? 0,
       sponsors_count: sponsors.value?.length ?? 0,
+    })
+  },
+  { immediate: true },
+)
+
+let homeErrorTracked = false
+watch(
+  error,
+  (loadError) => {
+    if (!loadError || homeErrorTracked) return
+    homeErrorTracked = true
+    posthogTrack(PH_EVENTS.TOURNAMENT_HOME_LOAD_FAILED, {
+      tournament_slug: props.slug,
+      surface: 'tournament',
+      layout: tournament.value?.layout || 'unknown',
+      reason: String(loadError?.message || 'request_failed'),
     })
   },
   { immediate: true },

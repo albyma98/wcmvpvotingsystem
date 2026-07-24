@@ -97,9 +97,9 @@
 
       <!-- MODALE SPONSOR -->
       <transition name="sp-modal">
-        <div v-if="showSponsors" class="sp-modal-scrim" @click.self="showSponsors = false">
+        <div v-if="showSponsors" class="sp-modal-scrim" @click.self="closeSponsors('scrim')">
           <div class="sp-modal" role="dialog" aria-modal="true" aria-label="Gli Sponsor">
-            <button class="sp-modal-x" type="button" @click="showSponsors = false" aria-label="Chiudi">✕</button>
+            <button class="sp-modal-x" type="button" @click="closeSponsors('button')" aria-label="Chiudi">✕</button>
             <h3 class="sp-modal-title">🤝 GLI SPONSOR</h3>
             <div v-if="sponsors.length" class="sp-modal-grid">
               <template v-for="sponsor in sponsors" :key="sponsor.id">
@@ -128,9 +128,9 @@
 
       <!-- MODALE PREMI (aperta dalla 🏆 in alto a destra) -->
       <transition name="sp-modal">
-        <div v-if="showPrizes" class="sp-prizes-scrim" @click.self="showPrizes = false">
+        <div v-if="showPrizes" class="sp-prizes-scrim" @click.self="closePrizes('scrim')">
           <div class="sp-prizes-modal">
-            <button class="sp-prizes-x" @click="showPrizes = false" aria-label="Chiudi">✕</button>
+            <button class="sp-prizes-x" @click="closePrizes('button')" aria-label="Chiudi">✕</button>
             <h3 class="sp-prizes-title">🏆 PREMI</h3>
             <div v-if="hasPrizes" class="sp-prizes-body">
               <section v-for="sec in prizeSections" :key="sec.title" class="sp-prizes-sec">
@@ -149,9 +149,9 @@
 
       <!-- MODALE SHOP -->
       <transition name="sp-modal">
-        <div v-if="showShop" class="sp-shop-scrim" @click.self="showShop = false">
+        <div v-if="showShop" class="sp-shop-scrim" @click.self="closeShop('scrim')">
           <div class="sp-shop-modal" role="dialog" aria-modal="true" aria-label="Shop">
-            <button class="sp-shop-x" type="button" @click="showShop = false" aria-label="Chiudi">✕</button>
+            <button class="sp-shop-x" type="button" @click="closeShop('button')" aria-label="Chiudi">✕</button>
             <div class="sp-shop-heading">
               <span>🛍️</span>
               <div>
@@ -185,9 +185,9 @@
 
       <!-- RIEPILOGO E PRENOTAZIONE PRODOTTO -->
       <transition name="sp-modal">
-        <div v-if="selectedShopProduct" class="sp-product-scrim" @click.self="closeShopProduct">
+        <div v-if="selectedShopProduct" class="sp-product-scrim" @click.self="closeShopProduct('scrim')">
           <div class="sp-product-modal" role="dialog" aria-modal="true" aria-label="Riepilogo prodotto">
-            <button class="sp-shop-x" type="button" @click="closeShopProduct" aria-label="Chiudi">✕</button>
+            <button class="sp-shop-x" type="button" @click="closeShopProduct('button')" aria-label="Chiudi">✕</button>
 
             <template v-if="shopReservationStep === 'summary'">
               <img class="sp-product-image" :src="selectedShopProduct.imageUrl" :alt="selectedShopProduct.title || 'Prodotto Shop'" />
@@ -200,7 +200,7 @@
               <fieldset v-if="selectedShopProduct.extras?.length" class="sp-product-options">
                 <legend>Scegli gli extra</legend>
                 <label v-for="extra in selectedShopProduct.extras" :key="extra.title">
-                  <input v-model="selectedShopExtras" type="checkbox" :value="extra.title" />
+                  <input v-model="selectedShopExtras" type="checkbox" :value="extra.title" @change="onShopExtraToggle($event.target.checked)" />
                   <span>{{ extra.title }}</span>
                   <b>+ {{ formatEuro(extra.priceCents) }}</b>
                 </label>
@@ -211,7 +211,7 @@
                 <strong>{{ formatEuro(shopReservationTotal) }}</strong>
               </div>
               <div class="sp-product-actions">
-                <button class="secondary" type="button" @click="closeShopProduct">Chiudi</button>
+                <button class="secondary" type="button" @click="closeShopProduct('summary_button')">Chiudi</button>
                 <button class="primary" type="button" @click="startShopReservation">Acquista</button>
               </div>
             </template>
@@ -239,7 +239,7 @@
               </div>
               <p v-if="shopReservationError" class="sp-reservation-error">{{ shopReservationError }}</p>
               <div class="sp-product-actions">
-                <button class="secondary" type="button" :disabled="shopReservationBusy" @click="shopReservationStep = 'summary'">Indietro</button>
+                <button class="secondary" type="button" :disabled="shopReservationBusy" @click="backToShopSummary">Indietro</button>
                 <button class="primary" type="submit" :disabled="shopReservationBusy">
                   {{ shopReservationBusy ? 'Invio…' : 'Conferma prenotazione' }}
                 </button>
@@ -264,7 +264,7 @@
 // Layout tifoso "Sunset" — grafica alternativa, stessi dati/navigazione della
 // home classica: il parent (TournamentHomeView) passa i dati reali e gestisce
 // gli eventi (navigate = route della tile, live = scorciatoia al calendario).
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 
 const emit = defineEmits(['live', 'signup', 'navigate'])
@@ -290,6 +290,46 @@ const props = defineProps({
   sponsors:    { type: Array, default: () => [] },    // { name, logo }
   shopProducts:{ type: Array, default: () => [] },    // { imageUrl, title?, description?, priceCents, extras[] }
 })
+
+const sunsetCtx = () => ({
+  tournament_slug: props.tournamentSlug,
+  surface: 'tournament',
+  layout: 'sunset',
+})
+const trackSunset = (event, properties = {}) =>
+  posthogTrack(event, { ...sunsetCtx(), ...properties })
+const trackModalClosed = (modal, method, properties = {}) =>
+  trackSunset(PH_EVENTS.TOURNAMENT_MODAL_CLOSED, { modal, method, ...properties })
+
+const shownLiveMatches = new Set()
+watch(
+  () => props.liveMatches,
+  (matches) => {
+    for (const match of matches || []) {
+      const key = String(match.id || `${match.court}-${match.teamA?.name}-${match.teamB?.name}`)
+      if (shownLiveMatches.has(key)) continue
+      shownLiveMatches.add(key)
+      trackSunset(PH_EVENTS.TOURNAMENT_LIVE_MATCH_SHOWN, {
+        match_id: match.id,
+        court: match.court,
+      })
+    }
+  },
+  { immediate: true, deep: true },
+)
+
+const shownNextMatches = new Set()
+watch(
+  () => props.nextMatch,
+  (match) => {
+    if (!match || !match.time || match.time === '—') return
+    const key = `${match.time}|${match.home}|${match.away}`
+    if (shownNextMatches.has(key)) return
+    shownNextMatches.add(key)
+    trackSunset(PH_EVENTS.TOURNAMENT_NEXT_MATCH_SHOWN, { scheduled_time: match.time })
+  },
+  { immediate: true, deep: true },
+)
 
 // Sponsor "della piattaforma": un solo Main sponsor, mostrato DENTRO la tile
 // (niente più modale). La tile "Premi" (/prizes) diventa la tile Sponsor.
@@ -318,9 +358,20 @@ function openShopProduct (product) {
   shopReservationForm.firstName = ''
   shopReservationForm.lastName = ''
   shopReservationForm.phone = ''
+  trackSunset(PH_EVENTS.TOURNAMENT_SHOP_PRODUCT_OPENED, {
+    product_id: product.id,
+    price_cents: product.priceCents,
+    extras_count: product.extras?.length || 0,
+  })
 }
-function closeShopProduct () {
+function closeShopProduct (method = 'button') {
   if (shopReservationBusy.value) return
+  if (selectedShopProduct.value) {
+    trackModalClosed('shop_product', method, {
+      product_id: selectedShopProduct.value.id,
+      step: shopReservationStep.value,
+    })
+  }
   selectedShopProduct.value = null
   selectedShopExtras.value = []
   shopReservationStep.value = 'summary'
@@ -329,6 +380,27 @@ function closeShopProduct () {
 function startShopReservation () {
   shopReservationStep.value = 'contact'
   shopReservationError.value = ''
+  trackSunset(PH_EVENTS.TOURNAMENT_SHOP_CHECKOUT_STARTED, {
+    product_id: selectedShopProduct.value?.id,
+    total_cents: shopReservationTotal.value,
+    extras_count: selectedShopExtras.value.length,
+  })
+}
+function backToShopSummary () {
+  trackSunset(PH_EVENTS.TOURNAMENT_SHOP_CHECKOUT_CANCELLED, {
+    product_id: selectedShopProduct.value?.id,
+    method: 'back',
+    total_cents: shopReservationTotal.value,
+  })
+  shopReservationStep.value = 'summary'
+}
+function onShopExtraToggle (selected) {
+  trackSunset(PH_EVENTS.TOURNAMENT_SHOP_EXTRA_TOGGLED, {
+    product_id: selectedShopProduct.value?.id,
+    selected,
+    extras_count: selectedShopExtras.value.length,
+    total_cents: shopReservationTotal.value,
+  })
 }
 function validReservationPhone (phone) {
   const clean = phone.trim()
@@ -340,10 +412,16 @@ async function submitShopReservation () {
   if (!product || shopReservationBusy.value) return
   if (!shopReservationForm.firstName || !shopReservationForm.lastName) {
     shopReservationError.value = 'Inserisci nome e cognome.'
+    trackSunset(PH_EVENTS.TOURNAMENT_SHOP_RESERVATION_FAILED, {
+      product_id: product.id, reason: 'missing_name',
+    })
     return
   }
   if (!validReservationPhone(shopReservationForm.phone)) {
     shopReservationError.value = 'Inserisci un numero di telefono valido.'
+    trackSunset(PH_EVENTS.TOURNAMENT_SHOP_RESERVATION_FAILED, {
+      product_id: product.id, reason: 'invalid_phone',
+    })
     return
   }
   shopReservationBusy.value = true
@@ -360,17 +438,26 @@ async function submitShopReservation () {
         phone: shopReservationForm.phone,
       }),
     })
-    if (!response.ok) throw new Error('reservation_failed')
+    if (!response.ok) throw new Error(`http_${response.status}`)
     shopReservationStep.value = 'success'
-  } catch {
+    trackSunset(PH_EVENTS.TOURNAMENT_SHOP_RESERVATION_COMPLETED, {
+      product_id: product.id,
+      total_cents: shopReservationTotal.value,
+      extras_count: selectedShopExtras.value.length,
+    })
+  } catch (error) {
     shopReservationError.value = 'Prenotazione non riuscita. Riprova tra poco.'
+    trackSunset(PH_EVENTS.TOURNAMENT_SHOP_RESERVATION_FAILED, {
+      product_id: product.id,
+      reason: error?.message || 'request_failed',
+    })
   } finally {
     shopReservationBusy.value = false
   }
 }
 function finishShopReservation () {
-  closeShopProduct()
-  showShop.value = false
+  closeShopProduct('success_button')
+  closeShop('reservation_completed')
 }
 // Premi raggruppati per categoria, con le sole voci compilate (formattazione modale).
 const prizeSections = computed(() => {
@@ -403,11 +490,11 @@ const prizeSections = computed(() => {
 const hasPrizes = computed(() => prizeSections.value.length > 0)
 function openPrizes () {
   showPrizes.value = true
-  posthogTrack(PH_EVENTS.TOURNAMENT_PRIZES_OPENED, {
-    tournament_slug: props.tournamentSlug,
-    surface: 'tournament',
-    has_prizes: hasPrizes.value,
-  })
+  trackSunset(PH_EVENTS.TOURNAMENT_PRIZES_OPENED, { has_prizes: hasPrizes.value })
+}
+function closePrizes (method) {
+  showPrizes.value = false
+  trackModalClosed('prizes', method)
 }
 const SPONSORS_ROUTE = '__sponsors__' // route sintetica: identifica la tile sponsor
 
@@ -448,20 +535,54 @@ const visibleTiles = computed(() => {
 function onTile (t) {
   if (t.disabled) return
   if (t.route === '/shop') {
-    showShop.value = true
+    openShop(t)
     return
   }
   if (t.route === SPONSORS_ROUTE) {
-    showSponsors.value = true
+    openSponsors(t)
     return
   }
   emit('navigate', t.route)
 }
 
+function trackSunsetTile (tile) {
+  trackSunset(PH_EVENTS.TOURNAMENT_TILE_SELECTED, {
+    tile_route: tile.route,
+    tile_id: tile.id,
+    tile_label: tile.label,
+    source: 'sunset',
+  })
+}
+function openShop (tile) {
+  showShop.value = true
+  trackSunsetTile(tile)
+  trackSunset(PH_EVENTS.TOURNAMENT_SHOP_OPENED, {
+    products_count: props.shopProducts.length,
+  })
+}
+function closeShop (method) {
+  showShop.value = false
+  trackModalClosed('shop', method, { products_count: props.shopProducts.length })
+}
+function openSponsors (tile) {
+  showSponsors.value = true
+  trackSunsetTile(tile)
+  trackSunset(PH_EVENTS.TOURNAMENT_SPONSORS_OPENED, {
+    sponsor_count: props.sponsors.length,
+  })
+  trackSunset(PH_EVENTS.TOURNAMENT_SPONSOR_SHOWN, {
+    source: 'sponsors_modal',
+    sponsor_count: props.sponsors.length,
+    main_count: props.sponsors.filter(s => s.tier === 'main').length,
+    partner_count: props.sponsors.filter(s => s.tier !== 'main').length,
+  })
+}
+function closeSponsors (method) {
+  showSponsors.value = false
+  trackModalClosed('sponsors', method)
+}
 function onSponsorClick (s) {
-  posthogTrack(PH_EVENTS.TOURNAMENT_SPONSOR_CLICKED, {
-    tournament_slug: props.tournamentSlug,
-    surface: 'tournament',
+  trackSunset(PH_EVENTS.TOURNAMENT_SPONSOR_CLICKED, {
     sponsor_id: s.id,
     sponsor_name: s.name,
     tier: s.tier || 'partner',

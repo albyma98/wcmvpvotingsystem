@@ -9,7 +9,8 @@ import { useTournamentStream } from '@/composables/useTournamentStream'
 import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 
 const props = defineProps({
-  slug: { type: String, required: true }
+  slug: { type: String, required: true },
+  layout: { type: String, default: 'unknown' }
 })
 
 const teams = ref([])
@@ -67,6 +68,12 @@ async function load () {
     error.value = ''
   } catch (e) {
     error.value = 'Votazione non disponibile al momento.'
+    posthogTrack(PH_EVENTS.TOURNAMENT_MVP_LOAD_FAILED, {
+      tournament_slug: props.slug,
+      surface: 'tournament',
+      layout: props.layout,
+      reason: String(e?.message || 'request_failed'),
+    })
   } finally {
     loading.value = false
   }
@@ -78,6 +85,15 @@ async function vote (candidate, team) {
   // Cambio voto o primo voto per questo slot? (prima dell'aggiornamento board)
   const changed = activeVote.value !== 0
   voting.value = candidate.id
+  posthogTrack(PH_EVENTS.TOURNAMENT_MVP_VOTE_STARTED, {
+    tournament_slug: props.slug,
+    surface: 'tournament',
+    layout: props.layout,
+    gender,
+    player_id: candidate.id,
+    team_id: team?.id,
+    changed,
+  })
   try {
     const r = await fetch(`/api/v1/tournaments/${props.slug}/mvp/vote`, {
       method: 'POST',
@@ -93,6 +109,7 @@ async function vote (candidate, team) {
     posthogTrack(PH_EVENTS.TOURNAMENT_MVP_VOTED, {
       tournament_slug: props.slug,
       surface: 'tournament',
+      layout: props.layout,
       gender,
       player_id: candidate.id,
       team_id: team?.id,
@@ -102,6 +119,15 @@ async function vote (candidate, team) {
     justVoted.value = candidate.name
     setTimeout(() => { if (justVoted.value === candidate.name) justVoted.value = '' }, 3200)
   } catch (e) {
+    posthogTrack(PH_EVENTS.TOURNAMENT_MVP_VOTE_FAILED, {
+      tournament_slug: props.slug,
+      surface: 'tournament',
+      layout: props.layout,
+      gender,
+      player_id: candidate.id,
+      team_id: team?.id,
+      reason: String(e?.message || 'request_failed'),
+    })
     error.value = e.message === 'tournament_not_started'
       ? 'Il torneo non è ancora iniziato.'
       : 'Voto non registrato, riprova.'

@@ -14,15 +14,30 @@ const props = defineProps({
 })
 const emit = defineEmits(['navigate'])
 
+const tournamentLayout = ref('')
+
+async function loadTournamentContext () {
+  try {
+    const response = await fetch(`/api/v1/tournaments/${props.slug}/home`)
+    if (!response.ok) throw new Error(response.status)
+    const data = await response.json()
+    tournamentLayout.value = data.tournament?.layout || 'classic'
+  } catch {
+    tournamentLayout.value = 'unknown'
+  }
+}
+
 // section_viewed: quale sezione apre il tifoso. immediate + watch così scatta
 // sia al mount sia quando cambia la sezione senza remount del componente.
 watch(
-  () => props.section,
-  (section) => {
+  [() => props.section, tournamentLayout],
+  ([section, layout]) => {
+    if (!layout) return
     posthogTrack(PH_EVENTS.TOURNAMENT_SECTION_VIEWED, {
       tournament_slug: props.slug,
       surface: 'tournament',
       section,
+      layout,
     })
   },
   { immediate: true },
@@ -72,7 +87,16 @@ async function load (silent = false) {
       tournamentStarted.value = data.tournamentStarted !== false
     }
   } catch (e) {
-    if (!silent) error.value = 'Dati non disponibili al momento.'
+    if (!silent) {
+      error.value = 'Dati non disponibili al momento.'
+      posthogTrack(PH_EVENTS.TOURNAMENT_SECTION_LOAD_FAILED, {
+        tournament_slug: props.slug,
+        surface: 'tournament',
+        section: props.section,
+        layout: tournamentLayout.value || 'unknown',
+        reason: String(e?.message || 'request_failed'),
+      })
+    }
   } finally {
     if (!silent) loading.value = false
   }
@@ -100,7 +124,10 @@ const hasData = computed(() =>
   ['calendar', 'standings', 'bracket', 'gallery'].includes(props.section))
 
 // Le sezioni live si aggiornano da sole via SSE (push, niente polling).
-onMounted(load)
+onMounted(() => {
+  loadTournamentContext()
+  load()
+})
 // Refresh SSE in modalità silent: aggiorna i dati senza il flash di "Caricamento…".
 useTournamentStream(props.slug, (update) => {
   if (!hasData.value) return
@@ -109,12 +136,22 @@ useTournamentStream(props.slug, (update) => {
   if (props.section === 'standings' && update?.standings === false) return
   load(true)
 })
+
+function goBack () {
+  posthogTrack(PH_EVENTS.TOURNAMENT_SECTION_BACK, {
+    tournament_slug: props.slug,
+    surface: 'tournament',
+    section: props.section,
+    layout: tournamentLayout.value || 'unknown',
+  })
+  emit('navigate', `/t/${props.slug}`)
+}
 </script>
 
 <template>
   <div class="section-page">
     <header class="section-head">
-      <button class="back" @click="emit('navigate', `/t/${props.slug}`)" aria-label="Indietro">‹</button>
+      <button class="back" @click="goBack" aria-label="Indietro">‹</button>
       <h1>{{ titles[props.section] || props.section }}</h1>
     </header>
 
@@ -122,11 +159,16 @@ useTournamentStream(props.slug, (update) => {
       <!-- GALLERY: sempre montata (niente flash di "Caricamento" sui refresh live) -->
       <TournamentGallery
         v-if="section === 'gallery'"
-        :slug="slug" :photos="photos" :started="tournamentStarted" @uploaded="load"
+        :slug="slug" :photos="photos" :started="tournamentStarted"
+        :layout="tournamentLayout || 'unknown'" @uploaded="load"
       />
 
       <!-- VOTA MVP: componente autonomo (fetch/voto/live via device) -->
-      <TournamentMvpVote v-else-if="section === 'mvp'" :slug="slug" />
+      <TournamentMvpVote
+        v-else-if="section === 'mvp'"
+        :slug="slug"
+        :layout="tournamentLayout || 'unknown'"
+      />
 
       <p v-else-if="hasData && loading" class="muted">Caricamento…</p>
       <p v-else-if="hasData && error" class="muted">{{ error }}</p>

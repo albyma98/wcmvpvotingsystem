@@ -8,7 +8,8 @@ import { track as posthogTrack, EVENTS as PH_EVENTS } from '@/lib/track'
 const props = defineProps({
   slug: { type: String, required: true },
   photos: { type: Array, default: () => [] },
-  started: { type: Boolean, default: true }
+  started: { type: Boolean, default: true },
+  layout: { type: String, default: 'unknown' }
 })
 const emit = defineEmits(['uploaded'])
 
@@ -58,8 +59,20 @@ function openViewer (id) {
   posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_PHOTO_OPENED, {
     tournament_slug: props.slug,
     surface: 'tournament',
+    layout: props.layout,
     photo_id: id,
   })
+}
+function closeViewer (method) {
+  posthogTrack(PH_EVENTS.TOURNAMENT_MODAL_CLOSED, {
+    tournament_slug: props.slug,
+    surface: 'tournament',
+    layout: props.layout,
+    modal: 'gallery_photo',
+    method,
+    photo_id: viewer.value,
+  })
+  viewer.value = null
 }
 
 // Prima di aprire la fotocamera mostra la liberatoria: premere "SCATTA FOTO"
@@ -67,20 +80,60 @@ function openViewer (id) {
 function pickPhoto () {
   if (!props.started) return
   showConsent.value = true
+  posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_CAPTURE_OPENED, {
+    tournament_slug: props.slug,
+    surface: 'tournament',
+    layout: props.layout,
+  })
 }
-function cancelShoot () { showConsent.value = false }
+function cancelShoot () {
+  showConsent.value = false
+  posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_CAPTURE_CANCELLED, {
+    tournament_slug: props.slug,
+    surface: 'tournament',
+    layout: props.layout,
+    stage: 'consent',
+  })
+}
 function confirmShoot () {
   showConsent.value = false
+  posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_CAPTURE_CONFIRMED, {
+    tournament_slug: props.slug,
+    surface: 'tournament',
+    layout: props.layout,
+  })
   fileInput.value?.click()
 }
 
 async function onPhotoPick (e) {
   const file = e.target.files?.[0]
   e.target.value = ''
-  if (!file) return
-  if (!file.type.startsWith('image/')) { error.value = 'Seleziona un\'immagine.'; return }
+  if (!file) {
+    posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_CAPTURE_CANCELLED, {
+      tournament_slug: props.slug,
+      surface: 'tournament',
+      layout: props.layout,
+      stage: 'picker',
+    })
+    return
+  }
+  if (!file.type.startsWith('image/')) {
+    error.value = 'Seleziona un\'immagine.'
+    posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_UPLOAD_FAILED, {
+      tournament_slug: props.slug,
+      surface: 'tournament',
+      layout: props.layout,
+      reason: 'invalid_file_type',
+    })
+    return
+  }
   uploading.value = true
   error.value = ''
+  posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_UPLOAD_STARTED, {
+    tournament_slug: props.slug,
+    surface: 'tournament',
+    layout: props.layout,
+  })
   try {
     const { full, thumb } = await makeImages(file)
     const res = await fetch(`/api/v1/tournaments/${props.slug}/gallery`, {
@@ -92,15 +145,28 @@ async function onPhotoPick (e) {
       const err = (await res.json().catch(() => ({}))).error
       if (err === 'tournament_not_started') error.value = 'Il torneo non è ancora iniziato.'
       else error.value = err === 'image_too_large' ? 'Foto troppo pesante.' : 'Pubblicazione non riuscita.'
+      posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_UPLOAD_FAILED, {
+        tournament_slug: props.slug,
+        surface: 'tournament',
+        layout: props.layout,
+        reason: err || `http_${res.status}`,
+      })
       return
     }
     posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_UPLOAD, {
       tournament_slug: props.slug,
       surface: 'tournament',
+      layout: props.layout,
     })
     emit('uploaded')
-  } catch {
+  } catch (uploadError) {
     error.value = 'Foto non valida.'
+    posthogTrack(PH_EVENTS.TOURNAMENT_GALLERY_UPLOAD_FAILED, {
+      tournament_slug: props.slug,
+      surface: 'tournament',
+      layout: props.layout,
+      reason: String(uploadError?.message || 'processing_failed'),
+    })
   } finally {
     uploading.value = false
   }
@@ -152,8 +218,8 @@ async function onPhotoPick (e) {
     </div>
 
     <!-- Visore a tutto schermo: miniatura sfocata subito, poi la full nitida -->
-    <div v-if="viewer" class="viewer" @click="viewer = null">
-      <button class="close" aria-label="Chiudi" @click="viewer = null">✕</button>
+    <div v-if="viewer" class="viewer" @click="closeViewer('scrim')">
+      <button class="close" aria-label="Chiudi" @click.stop="closeViewer('button')">✕</button>
       <div class="stage" @click.stop>
         <img class="blur" :src="thumbUrl(viewer)" alt="" aria-hidden="true" />
         <img
