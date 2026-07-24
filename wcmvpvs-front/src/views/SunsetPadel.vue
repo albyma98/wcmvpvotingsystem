@@ -396,8 +396,9 @@ const sunsetExtraTiles = [
   { id: 'shop', icon: 'shop', label: 'Shop', sub: 'Scopri i prodotti', route: '/shop' },
   { id: 'example', icon: 'example', label: 'Esempio', sub: 'Scopri di più', route: '/example' },
 ]
-const visibleTiles = computed(() => [
-  ...props.tiles
+const visibleTiles = computed(() => {
+  const tiles = [
+    ...props.tiles
     .filter(t => !hiddenTileRoutes.includes(t.route))
     .map(t => t.route === '/prizes'
       ? {
@@ -408,8 +409,17 @@ const visibleTiles = computed(() => [
           route: SPONSORS_ROUTE,
         }
       : t),
-  ...sunsetExtraTiles,
-])
+    ...sunsetExtraTiles,
+  ]
+  const sponsorsIndex = tiles.findIndex(t => t.route === SPONSORS_ROUTE)
+  const shopIndex = tiles.findIndex(t => t.route === '/shop')
+  if (sponsorsIndex !== -1 && shopIndex !== -1) {
+    const sponsorTile = tiles[sponsorsIndex]
+    tiles[sponsorsIndex] = tiles[shopIndex]
+    tiles[shopIndex] = sponsorTile
+  }
+  return tiles
+})
 
 // Tap su una tile: la tile Sponsor apre l'eventuale link dello sponsor (niente
 // modale); le altre navigano.
