@@ -69,7 +69,7 @@ const gallery = ref([])
 const mvp = ref(null)
 const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', publicMvpMale: '', publicMvpFemale: '' })
 const defaultStandingsLegend = 'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, tournamentStarted: false, bracketQualifiers: 2, bracketThirdPlace: false, standingsLegendText: defaultStandingsLegend, fanLayout: 'classic' })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', organizerLogoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, tournamentStarted: false, bracketQualifiers: 2, bracketThirdPlace: false, standingsLegendText: defaultStandingsLegend, fanLayout: 'classic' })
 const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
@@ -525,8 +525,8 @@ async function saveSettings () {
   if (r.ok) flash('Impostazioni salvate — visibili ai tifosi al prossimo refresh.')
   else {
     const err = (await r.json().catch(() => ({}))).error
-    flash(err === 'logo_too_large' ? 'Immagine intestazione troppo pesante.'
-      : err && err.startsWith('logo') ? 'Immagine intestazione non valida.'
+    flash(err === 'logo_too_large' ? 'Logo troppo pesante.'
+      : err && err.startsWith('logo') ? 'Logo non valido.'
       : 'Salvataggio non riuscito.')
   }
 }
@@ -545,6 +545,19 @@ async function onHeaderPick (e) {
   finally { headerBusy.value = false; e.target.value = '' }
 }
 function removeHeader () { settings.logoUrl = '' }
+
+const organizerLogoBusy = ref(false)
+async function onOrganizerLogoPick (e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) { flash('Seleziona un file immagine.'); e.target.value = ''; return }
+  organizerLogoBusy.value = true
+  try {
+    settings.organizerLogoUrl = await fileToLogoDataURL(file, 600)
+  } catch { flash('Immagine non valida.') }
+  finally { organizerLogoBusy.value = false; e.target.value = '' }
+}
+function removeOrganizerLogo () { settings.organizerLogoUrl = '' }
 
 // Premi: assicura che l'oggetto abbia tutte le chiavi anche se il backend ne
 // omette qualcuna (difesa contro settings caricate parziali).
@@ -1095,6 +1108,22 @@ async function generateBracket () {
         </div>
         <p class="hint">Immagine mostrata in cima alla pagina tifosi al posto del titolo (es. il logo del torneo). Se non carichi nulla, viene usato il <b>nome del torneo</b>. L'immagine viene ridimensionata automaticamente.</p>
 
+        <h3 class="settings-sub">Logo organizzatore</h3>
+        <div class="header-img">
+          <div class="hi-preview organizer-preview" :class="{ empty: !settings.organizerLogoUrl }">
+            <img v-if="settings.organizerLogoUrl" :src="settings.organizerLogoUrl" alt="Logo organizzatore" />
+            <span v-else class="hi-fallback">Logo organizzatore</span>
+          </div>
+          <div class="hi-actions">
+            <label class="hi-upload">
+              {{ organizerLogoBusy ? 'Carico…' : (settings.organizerLogoUrl ? 'Cambia logo' : 'Carica logo') }}
+              <input type="file" accept="image/*" :disabled="organizerLogoBusy" @change="onOrganizerLogoPick" hidden />
+            </label>
+            <button v-if="settings.organizerLogoUrl" class="ghost" @click="removeOrganizerLogo">Rimuovi</button>
+          </div>
+        </div>
+        <p class="hint">Viene mostrato nella tile non cliccabile in basso a destra della home Sunset.</p>
+
         <h3 class="settings-sub">Grafica home tifosi</h3>
         <div class="settings-grid">
           <label>Layout
@@ -1247,6 +1276,8 @@ textarea { width: 100%; font-family: inherit; }
 }
 .hi-preview.empty { background: #15151b; border-style: dashed; }
 .hi-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.hi-preview.organizer-preview { background: #fff; padding: 8px; box-sizing: border-box; }
+.hi-preview.organizer-preview.empty { background: #15151b; }
 .hi-fallback { font-weight: 900; font-style: italic; text-transform: uppercase; font-size: 15px; color: #fff; letter-spacing: .5px; text-align: center; padding: 0 8px; }
 .hi-actions { display: flex; gap: 8px; align-items: center; }
 .hi-upload { background: #f2b928; color: #111; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 800; font-size: 14px; cursor: pointer; }

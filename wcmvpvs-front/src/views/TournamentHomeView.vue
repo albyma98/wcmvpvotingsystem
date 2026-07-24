@@ -93,6 +93,7 @@ function onSunsetNav (route) {
     :brand-top="brandTop"
     :brand-bottom="brandBottom"
     :logo="tournament.logo"
+    :organizer-logo="tournament.organizerLogo"
     :subtitle="tournament.format"
     :date="tournament.dateLabel"
     :place="tournament.location"

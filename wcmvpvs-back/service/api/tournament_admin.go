@@ -760,7 +760,7 @@ func clampInt(v, lo, hi int) int {
 
 func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, eventID int64) {
 	// L'intestazione (logo) può essere una data-URL inline: alza il cap del body.
-	r.Body = http.MaxBytesReader(w, r.Body, maxSponsorLogoBytes+8192)
+	r.Body = http.MaxBytesReader(w, r.Body, maxSponsorLogoBytes*2+16384)
 	var st TASettings
 	if err := json.NewDecoder(r.Body).Decode(&st); err != nil {
 		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
@@ -773,6 +773,12 @@ func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, even
 		return
 	}
 	st.Logo = logo
+	organizerLogo, err := sanitizeSponsorLogo(st.OrganizerLogo)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+	st.OrganizerLogo = organizerLogo
 	// Premi: testo libero per categoria, con limite per campo (anti-abuso).
 	st.Prizes = sanitizeTournamentPrizes(st.Prizes)
 	// Punti classifica: interi non negativi, con un tetto ragionevole.

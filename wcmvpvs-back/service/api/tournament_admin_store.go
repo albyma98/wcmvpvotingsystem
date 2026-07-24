@@ -171,6 +171,7 @@ func (s *Store) EnsureTournamentAdminTables() error {
 		// Default 1 preserva il comportamento dei tornei esistenti; i nuovi
 		// vengono creati esplicitamente con le azioni dei tifosi disabilitate.
 		`ALTER TABLE events ADD COLUMN tournament_started INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE events ADD COLUMN organizer_logo_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE matches ADD COLUMN cur_a INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN cur_b INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE tournament_teams ADD COLUMN short_name TEXT NOT NULL DEFAULT ''`,
@@ -1235,7 +1236,9 @@ type TASettings struct {
 	PhaseLabel  string `json:"phaseLabel"`
 	// Intestazione della home tifosi: immagine (data-URL o URL) mostrata al posto
 	// del titolo testuale. Vuota = si usa il nome del torneo.
-	Logo          string `json:"logoUrl"`
+	Logo string `json:"logoUrl"`
+	// Logo dell'organizzatore mostrato nella tile in basso a destra del layout Sunset.
+	OrganizerLogo string `json:"organizerLogoUrl"`
 	PointsPerWin  int    `json:"pointsPerWin"`
 	PointsPerDraw int    `json:"pointsPerDraw"`
 	PointsPerLoss int    `json:"pointsPerLoss"`
@@ -1313,7 +1316,7 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
 		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
-		       COALESCE(logo_url,''),
+		       COALESCE(logo_url,''), COALESCE(organizer_logo_url,''),
 		       COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0),
 		       COALESCE(sets_best_of,3), COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1),
 		       COALESCE(allow_draws,1), COALESCE(mvp_by_gender,1), COALESCE(tournament_started,1),
@@ -1322,7 +1325,7 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 		       COALESCE(fan_layout,'classic'), COALESCE(prizes_json,''), COALESCE(slug,'')
 		FROM events WHERE id = ?`, eventID).
 		Scan(&st.Name, &st.Format, &st.DateLabel, &st.Location, &st.StatusLabel, &st.PhaseLabel,
-			&st.Logo,
+			&st.Logo, &st.OrganizerLogo,
 			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss,
 			&st.SetsBestOf, &st.PointsPerTieWin, &st.PointsPerTieLoss,
 			&allowDraws, &mvpByGender, &tournamentStarted,
@@ -1356,7 +1359,7 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 	prizesJSON, _ := json.Marshal(st.Prizes)
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE events SET name=?, format=?, date_label=?, location=?, status_label=?, phase_label=?,
-		                  logo_url=?,
+		                  logo_url=?, organizer_logo_url=?,
 		                  points_per_win=?, points_per_draw=?, points_per_loss=?,
 		                  sets_best_of=?, points_per_tie_win=?, points_per_tie_loss=?, allow_draws=?, mvp_by_gender=?,
 		                  tournament_started=?,
@@ -1364,7 +1367,7 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 		                  fan_layout=?, prizes_json=?
 		WHERE id = ? AND type = 'tournament'`,
 		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel,
-		st.Logo,
+		st.Logo, st.OrganizerLogo,
 		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss,
 		st.SetsBestOf, st.PointsPerTieWin, st.PointsPerTieLoss, allowDraws, mvpByGender,
 		tournamentStarted,

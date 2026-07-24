@@ -67,12 +67,28 @@
 
         <!-- GRID -->
         <div class="sp-grid">
-          <button v-for="(t, i) in visibleTiles" :key="i" class="sp-tile" :class="'t' + (i % 8 + 1)"
-                  @click="onTile(t)">
+          <button
+            v-for="(t, i) in visibleTiles" :key="t.id || i" type="button"
+            class="sp-tile"
+            :class="['t' + (i % 8 + 1), { 'is-organizer': t.organizer }]"
+            :disabled="t.disabled"
+            @click="onTile(t)"
+          >
             <div class="sp-tile-sheen"></div>
-            <span class="sp-tile-icon">{{ tileIcon(t) }}</span>
-            <span class="sp-tile-label">{{ t.label }}</span>
-            <span v-if="t.sub" class="sp-tile-sub">{{ t.sub }}</span>
+            <template v-if="t.organizer">
+              <img
+                v-if="organizerLogo"
+                class="sp-organizer-logo"
+                :src="organizerLogo"
+                alt="Logo organizzatore"
+              />
+              <span v-else class="sp-organizer-placeholder">Logo organizzatore</span>
+            </template>
+            <template v-else>
+              <span class="sp-tile-icon">{{ tileIcon(t) }}</span>
+              <span class="sp-tile-label">{{ t.label }}</span>
+              <span v-if="t.sub" class="sp-tile-sub">{{ t.sub }}</span>
+            </template>
           </button>
         </div>
 
@@ -260,6 +276,7 @@ const props = defineProps({
   brandTop:    { type: String, default: '' },
   brandBottom: { type: String, default: '' },
   logo:        { type: String, default: '' },   // immagine intestazione (al posto del brand testuale)
+  organizerLogo: { type: String, default: '' },
   subtitle:    { type: String, default: '' },
   date:        { type: String, default: '' },
   place:       { type: String, default: '' },
@@ -394,7 +411,7 @@ const SPONSORS_ROUTE = '__sponsors__' // route sintetica: identifica la tile spo
 const hiddenTileRoutes = ['/rules', '/event']
 const sunsetExtraTiles = [
   { id: 'shop', icon: 'shop', label: 'Shop', sub: 'Scopri i prodotti', route: '/shop' },
-  { id: 'example', icon: 'example', label: 'Esempio', sub: 'Scopri di più', route: '/example' },
+  { id: 'organizer', organizer: true, disabled: true, label: 'Logo organizzatore' },
 ]
 const visibleTiles = computed(() => {
   const tiles = [
@@ -424,6 +441,7 @@ const visibleTiles = computed(() => {
 // Tap su una tile: la tile Sponsor apre l'eventuale link dello sponsor (niente
 // modale); le altre navigano.
 function onTile (t) {
+  if (t.disabled) return
   if (t.route === '/shop') {
     showShop.value = true
     return
@@ -451,7 +469,7 @@ function onSponsorClick (s) {
 const ICON_EMOJI = {
   calendar: '📅', chart: '📊', bracket: '🏆', star: '⭐',
   trophy: '🎁', gallery: '📸', doc: '📋', info: 'ℹ️', sponsor: '🤝',
-  shop: '🛍️', example: '✨'
+  shop: '🛍️'
 }
 const tileIcon = t => ICON_EMOJI[t.icon] || '▪️'
 
@@ -655,10 +673,24 @@ const stars = [
   box-shadow: 0 5px 0 rgba(0,0,0,.18), 0 10px 24px rgba(0,0,0,.28);
 }
 .sp-tile:active { transform: translateY(3px) scale(.98); }
+.sp-tile:disabled { cursor: default; opacity: 1; }
+.sp-tile:disabled:active { transform: none; }
 .sp-tile-sheen { position: absolute; top: 0; left: 0; right: 0; height: 45%; background: linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0)); }
 .sp-tile-icon { font-size: calc(27*var(--s)); display: block; position: relative; z-index: 2; }
 .sp-tile-label { font-weight: 700; font-size: calc(17.5*var(--s)); display: block; position: relative; z-index: 2; margin-top: calc(5*var(--s)); }
 .sp-tile-sub { font-size: calc(13*var(--s)); opacity: .7; font-weight: 600; display: block; position: relative; z-index: 2; }
+.sp-tile.is-organizer {
+  background: #fff; color: #0B0620; padding: calc(8*var(--s));
+}
+.sp-organizer-logo {
+  position: relative; z-index: 2; display: block;
+  width: 100%; height: 100%; max-height: calc(112*var(--s));
+  object-fit: contain;
+}
+.sp-organizer-placeholder {
+  position: relative; z-index: 2; font-size: calc(14*var(--s)); font-weight: 800;
+  line-height: 1.15; text-transform: uppercase; color: rgba(11,6,32,.45);
+}
 /* Tile Sponsor: il logo del Main sponsor riempie l'area icona/etichetta */
 .sp-tile.is-sponsor { background: #fff; color: #0B0620; padding: calc(6*var(--s)) calc(4*var(--s)); }
 .sp-tile-sponsor-logo { max-width: 100%; max-height: calc(121*var(--s)); object-fit: contain; position: relative; z-index: 2; margin: calc(2*var(--s)) 0; }
