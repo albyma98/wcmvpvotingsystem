@@ -23,6 +23,7 @@ func registerTournamentRoutes(rt *_router) {
 		panic("tournament p1 tables: " + err.Error())
 	}
 	registerTournamentP1Routes(rt)
+	rt.resumeBracketAutoGenerations()
 	if err := rt.store.EnsureTournamentGalleryTables(); err != nil {
 		panic("tournament gallery tables: " + err.Error())
 	}

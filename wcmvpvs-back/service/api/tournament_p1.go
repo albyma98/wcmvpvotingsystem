@@ -47,6 +47,7 @@ func registerTournamentP1Routes(rt *_router) {
 	rt.router.Post("/v1/op/{token}/login", rt.opLogin)
 	rt.router.Get("/v1/op/{token}/state", rt.wrapOp(rt.opState))
 	rt.router.Post("/v1/op/{token}/matches/{id}/score", rt.wrapOp(rt.opScore))
+	rt.router.Post("/v1/op/{token}/bracket/decision", rt.wrapOp(rt.opBracketDecision))
 }
 
 // EnsureTournamentP1Tables: colonna stage + tabelle operatori (idempotente).
@@ -77,6 +78,8 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		`ALTER TABLE events ADD COLUMN bracket_third_place INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE events ADD COLUMN standings_legend_text TEXT NOT NULL DEFAULT 'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'`,
 		`ALTER TABLE events ADD COLUMN fan_layout TEXT NOT NULL DEFAULT 'classic'`,
+		`ALTER TABLE events ADD COLUMN bracket_auto_generate_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE events ADD COLUMN bracket_auto_generate_state INTEGER NOT NULL DEFAULT 0`,
 		// Premi del torneo (JSON): 1°/2°/3° classificato + MVP uomo/donna scelti
 		// da organizzatori e pubblico. Mostrati nella modale "Premi" (🏆) del layout Sunset.
 		`ALTER TABLE events ADD COLUMN prizes_json TEXT`,
@@ -455,6 +458,76 @@ func (rt *_router) invalidateTournamentScoreCaches(r *http.Request, eventID int6
 	rt.tournamentHub.BroadcastEvent(int(eventID), eventType)
 }
 
+func (rt *_router) invalidateTournamentBracketCaches(ctx context.Context, eventID int64) {
+	if _, slug, err := rt.store.GetTASettings(ctx, eventID); err == nil && slug != "" {
+		rt.liveCache.Delete(slug)
+		rt.liveCache.Delete("matches:" + slug)
+		rt.liveCache.Delete("standings:" + slug)
+	}
+	rt.tournamentHub.BroadcastEvent(int(eventID), "standings")
+}
+
+func (rt *_router) generatePendingBracket(ctx context.Context, eventID int64, requireDue bool) (bool, error) {
+	claimed, err := rt.store.ClaimBracketAutoGeneration(ctx, eventID, requireDue)
+	if err != nil || !claimed {
+		return false, err
+	}
+	st, _, err := rt.store.GetTASettings(ctx, eventID)
+	if err == nil {
+		_, err = rt.store.GenerateBracket(ctx, eventID, st.BracketQualifiers, st.BracketThirdPlace)
+	}
+	rt.store.FinishClaimedBracketGeneration(ctx, eventID, err == nil)
+	if err != nil {
+		return false, err
+	}
+	rt.invalidateTournamentBracketCaches(ctx, eventID)
+	return true, nil
+}
+
+func (rt *_router) armBracketAutoGeneration(eventID int64, prompt BracketAutoPrompt) {
+	if !prompt.Pending {
+		return
+	}
+	delay := time.Until(time.UnixMilli(prompt.DeadlineMs))
+	if delay < 0 {
+		delay = 0
+	}
+	time.AfterFunc(delay, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if _, err := rt.generatePendingBracket(ctx, eventID, true); err != nil {
+			rt.baseLogger.WithError(err).WithField("eventID", eventID).Error("automatic bracket generation failed")
+		}
+	})
+}
+
+func (rt *_router) resumeBracketAutoGenerations() {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		prompts, err := rt.store.ListBracketAutoPrompts(ctx)
+		if err != nil {
+			rt.baseLogger.WithError(err).Error("cannot resume automatic bracket generations")
+			return
+		}
+		for eventID, prompt := range prompts {
+			rt.armBracketAutoGeneration(eventID, prompt)
+		}
+	}()
+}
+
+func (rt *_router) maybeScheduleBracketAutoGeneration(ctx context.Context, eventID int64) BracketAutoPrompt {
+	prompt, created, err := rt.store.ScheduleBracketAutoGeneration(ctx, eventID)
+	if err != nil {
+		rt.baseLogger.WithError(err).WithField("eventID", eventID).Error("cannot schedule automatic bracket generation")
+		return BracketAutoPrompt{}
+	}
+	if created {
+		rt.armBracketAutoGeneration(eventID, prompt)
+	}
+	return prompt
+}
+
 // ============================ OPERATORI CAMPO =================================
 
 type CourtOperator struct {
@@ -677,8 +750,13 @@ func (rt *_router) opState(w http.ResponseWriter, r *http.Request, op *opInfo) {
 			mine = append(mine, m)
 		}
 	}
+	prompt := rt.store.GetBracketAutoPrompt(r.Context(), op.EventID)
+	if prompt.Pending {
+		rt.armBracketAutoGeneration(op.EventID, prompt)
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"tournament": settings.Name, "slug": slug, "court": op.Court, "matches": mine,
+		"bracketPrompt": prompt,
 	})
 }
 
@@ -717,6 +795,13 @@ func (rt *_router) opScore(w http.ResponseWriter, r *http.Request, op *opInfo) {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
+	if body.Action == "reopen" {
+		rt.store.ResetBracketAutoGeneration(r.Context(), op.EventID)
+	}
+	prompt := BracketAutoPrompt{}
+	if body.Action == "finish" {
+		prompt = rt.maybeScheduleBracketAutoGeneration(r.Context(), op.EventID)
+	}
 	rt.invalidateTournamentScoreCaches(r, op.EventID, body.Action == "finish" || body.Action == "reopen")
 	state, _ := rt.store.ListTAMatches(r.Context(), op.EventID)
 	mine := make([]TAMatch, 0, 8)
@@ -725,7 +810,35 @@ func (rt *_router) opScore(w http.ResponseWriter, r *http.Request, op *opInfo) {
 			mine = append(mine, m)
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "matches": mine})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "matches": mine, "bracketPrompt": prompt})
+}
+
+func (rt *_router) opBracketDecision(w http.ResponseWriter, r *http.Request, op *opInfo) {
+	var body struct {
+		Action string `json:"action"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
+		return
+	}
+	switch body.Action {
+	case "decline":
+		if err := rt.store.DeclineBracketAutoGeneration(r.Context(), op.EventID); err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		rt.tournamentHub.BroadcastEvent(int(op.EventID), "score")
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "generated": false})
+	case "generate":
+		generated, err := rt.generatePendingBracket(r.Context(), op.EventID, false)
+		if err != nil {
+			http.Error(w, `{"error":"generation_failed"}`, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "generated": generated})
+	default:
+		http.Error(w, `{"error":"bad_action"}`, http.StatusBadRequest)
+	}
 }
 
 // Nota: reqcontext importato per coerenza di firma con gli altri file api.

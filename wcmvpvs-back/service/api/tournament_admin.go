@@ -578,6 +578,12 @@ func (rt *_router) taScoreAction(w http.ResponseWriter, r *http.Request, eventID
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
+	if body.Action == "reopen" {
+		rt.store.ResetBracketAutoGeneration(r.Context(), eventID)
+	}
+	if body.Action == "finish" {
+		rt.maybeScheduleBracketAutoGeneration(r.Context(), eventID)
+	}
 	// Il polling dei tifosi deve vedere il punto SUBITO, non a fine TTL.
 	rt.invalidateTournamentScoreCaches(r, eventID, body.Action == "finish" || body.Action == "reopen")
 	matches, _ := rt.store.ListTAMatches(r.Context(), eventID)

@@ -2,7 +2,7 @@
 // Console operatore campo (/op/:token) — il volontario del Campo 2.
 // Zero account: magic link + PIN a 6 cifre consegnati via WhatsApp dall'admin.
 // Vede e tocca SOLO le partite del suo campo (enforcement lato server).
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useTournamentStream } from '@/composables/useTournamentStream'
 
 const props = defineProps({ token: { type: String, required: true } })
@@ -25,6 +25,9 @@ const tournament = ref('')
 const slug = ref('')
 const matches = ref([])
 const notice = ref('')
+const bracketPrompt = ref(null)
+const bracketDecisionBusy = ref(false)
+const clockNow = ref(Date.now())
 
 function flash (m) { notice.value = m; setTimeout(() => { if (notice.value === m) notice.value = '' }, 2500) }
 
@@ -36,6 +39,7 @@ async function loadState () {
   tournament.value = data.tournament
   slug.value = data.slug ?? ''
   matches.value = data.matches
+  bracketPrompt.value = data.bracketPrompt?.pending ? data.bracketPrompt : null
   authed.value = true
   checked.value = true
 }
@@ -51,7 +55,9 @@ async function doLogin () {
 async function score (matchId, action) {
   const r = await j('POST', `/matches/${matchId}/score`, { action })
   if (r.ok) {
-    matches.value = (await r.json()).matches
+    const data = await r.json()
+    matches.value = data.matches
+    bracketPrompt.value = data.bracketPrompt?.pending ? data.bracketPrompt : bracketPrompt.value
   } else {
     const err = (await r.json().catch(() => ({}))).error
     if (err === 'set_tied') flash('Il set non può chiudersi in parità.')
@@ -70,6 +76,24 @@ async function undoLastSet (match) {
 const live = computed(() => matches.value.filter(m => m.status === 'live'))
 const scheduled = computed(() => matches.value.filter(m => m.status === 'scheduled'))
 const finished = computed(() => matches.value.filter(m => m.status === 'finished'))
+const bracketCountdown = computed(() => Math.max(
+  0,
+  Math.ceil(((bracketPrompt.value?.deadlineMs || 0) - clockNow.value) / 1000)
+))
+
+async function decideBracket (action) {
+  bracketDecisionBusy.value = true
+  const r = await j('POST', '/bracket/decision', { action })
+  bracketDecisionBusy.value = false
+  if (!r.ok) {
+    flash('Decisione non applicata. Riprova.')
+    await loadState()
+    return
+  }
+  bracketPrompt.value = null
+  flash(action === 'generate' ? 'Tabellone generato.' : 'Generazione automatica annullata.')
+  await loadState()
+}
 
 // Link del tabellone da proiettare per il pubblico (view pubblica full-screen).
 const projectionUrl = computed(() =>
@@ -82,7 +106,12 @@ function copyProjection () {
 // Aggiornamenti live via SSE (push): lo slug arriva dopo il login, il composable
 // si aggancia appena disponibile. Le partite di un altro campo o create
 // dall'admin compaiono senza refresh manuale.
-onMounted(loadState)
+let clockTimer
+onMounted(() => {
+  loadState()
+  clockTimer = window.setInterval(() => { clockNow.value = Date.now() }, 250)
+})
+onUnmounted(() => window.clearInterval(clockTimer))
 useTournamentStream(slug, () => { if (authed.value) loadState() })
 </script>
 
@@ -103,6 +132,18 @@ useTournamentStream(slug, () => { if (authed.value) loadState() })
         <p>{{ tournament }}</p>
       </header>
       <p v-if="notice" class="op-notice">{{ notice }}</p>
+
+      <div v-if="bracketPrompt" class="bracket-confirm" role="dialog" aria-modal="true" aria-labelledby="bracket-confirm-title">
+        <div class="bracket-confirm-card">
+          <div class="bracket-timer">{{ bracketCountdown }}</div>
+          <h2 id="bracket-confirm-title">Creare il tabellone?</h2>
+          <p>Tutte le partite dei gironi sono concluse. Tra {{ bracketCountdown }} secondi il tabellone verrà generato automaticamente.</p>
+          <div class="bracket-confirm-actions">
+            <button class="bracket-no" :disabled="bracketDecisionBusy" @click="decideBracket('decline')">No</button>
+            <button class="bracket-yes" :disabled="bracketDecisionBusy" @click="decideBracket('generate')">Sì, crea ora</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Tabellone da proiettare per il pubblico -->
       <div v-if="projectionUrl" class="proj-link">
@@ -170,6 +211,27 @@ useTournamentStream(slug, () => { if (authed.value) loadState() })
 .op-head h1 { font-size: 24px; margin: 0; color: #f2b928; }
 .op-head p { margin: 2px 0 0; color: #94a3b8; font-size: 13px; }
 .op-notice { background: rgba(242,185,40,.12); border: 1px solid rgba(242,185,40,.35); color: #fbd34d; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.bracket-confirm {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+  padding: 20px; background: rgba(0,0,0,.78); backdrop-filter: blur(5px);
+}
+.bracket-confirm-card {
+  width: min(100%, 390px); padding: 22px; border-radius: 18px; text-align: center;
+  background: #15151b; border: 1px solid rgba(242,185,40,.45);
+  box-shadow: 0 24px 80px rgba(0,0,0,.65);
+}
+.bracket-timer {
+  width: 66px; height: 66px; margin: 0 auto 12px; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(242,185,40,.13);
+  border: 2px solid #f2b928; color: #f2b928; font-size: 28px; font-weight: 900;
+}
+.bracket-confirm-card h2 { margin: 0 0 8px; font-size: 22px; }
+.bracket-confirm-card p { margin: 0; color: #cbd5e1; font-size: 14px; line-height: 1.5; }
+.bracket-confirm-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 9px; margin-top: 18px; }
+.bracket-confirm-actions button { border-radius: 10px; padding: 12px 10px; font-weight: 850; border: none; }
+.bracket-confirm-actions button:disabled { opacity: .55; }
+.bracket-no { background: #2a2a33; color: #f1f5f9; }
+.bracket-yes { background: #f2b928; color: #111; }
 .proj-link { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #15151b; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 11px 12px; }
 .proj-link .pl-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .proj-link .pl-text b { font-size: 14px; }
