@@ -62,6 +62,36 @@ const shownGroup = computed(() => {
   return groups.value[0]
 })
 
+// La fase finale inizia solo quando tutti gli incontri dei gironi sono chiusi
+// e il tabellone è stato effettivamente generato. Fino a quel momento resta
+// visibile la classifica, anche dopo l'ultima gara ma prima della generazione.
+const finalStageMatches = computed(() =>
+  matches.value.filter(match => String(match.stage || '').trim())
+)
+const finalPhase = computed(() => {
+  const groupMatches = matches.value.filter(match => !String(match.stage || '').trim())
+  return finalStageMatches.value.length > 0 &&
+    groupMatches.length > 0 &&
+    groupMatches.every(match => match.status === 'finished')
+})
+
+const stageOrder = ['OTTAVI', 'QUARTI', 'SEMIFINALE', 'FINALE 3° POSTO', 'FINALE']
+const bracketRounds = computed(() => {
+  const byStage = new Map()
+  for (const match of finalStageMatches.value) {
+    const stage = String(match.stage || 'FASE FINALE').trim().toUpperCase()
+    if (!byStage.has(stage)) byStage.set(stage, [])
+    byStage.get(stage).push(match)
+  }
+  return [...byStage.entries()]
+    .sort(([a], [b]) => {
+      const ai = stageOrder.indexOf(a)
+      const bi = stageOrder.indexOf(b)
+      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi)
+    })
+    .map(([stage, roundMatches]) => ({ stage, matches: roundMatches }))
+})
+
 onMounted(load)
 useTournamentStream(() => props.slug, load)
 </script>
@@ -107,23 +137,52 @@ useTournamentStream(() => props.slug, load)
       </div>
     </main>
 
-    <!-- 20%: CLASSIFICA -->
-    <aside class="standings">
-      <h2>{{ shownGroup && shownGroup.group ? `Girone ${shownGroup.group}` : 'Classifica' }}</h2>
-      <table v-if="shownGroup && shownGroup.rows.length">
-        <thead>
-          <tr><th class="c">#</th><th class="tl">Squadra</th><th class="c">G</th><th class="c">Pt</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="(row, i) in shownGroup.rows" :key="row.teamId" :class="{ top: i < qualifiersPerGroup }">
-            <td class="c pos">{{ i + 1 }}</td>
-            <td class="tl name">{{ row.team }}</td>
-            <td class="c">{{ row.played }}</td>
-            <td class="c pt">{{ row.points }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-else class="st-empty">La classifica apparirà dopo le prime partite concluse.</p>
+    <!-- 20%: classifica nei gironi, tabellone dopo la conclusione dei gironi -->
+    <aside class="standings" :class="{ 'bracket-mode': finalPhase, dense: finalStageMatches.length > 8 }">
+      <template v-if="finalPhase">
+        <h2>Tabellone</h2>
+        <div class="bracket-rounds">
+          <section v-for="round in bracketRounds" :key="round.stage" class="bracket-round">
+            <h3>{{ round.stage }}</h3>
+            <article
+              v-for="match in round.matches"
+              :key="match.id"
+              class="bracket-match"
+              :class="[`is-${match.status}`]"
+            >
+              <div class="bracket-meta">
+                <span>{{ match.court || 'Campo da definire' }}</span>
+                <b v-if="match.status === 'live'">LIVE</b>
+                <span v-else-if="match.time">{{ match.time }}</span>
+              </div>
+              <div class="bracket-team" :class="{ winner: match.status === 'finished' && match.scoreA > match.scoreB }">
+                <span>{{ match.teamA || 'Da definire' }}</span><b>{{ match.status === 'scheduled' ? '–' : match.scoreA }}</b>
+              </div>
+              <div class="bracket-team" :class="{ winner: match.status === 'finished' && match.scoreB > match.scoreA }">
+                <span>{{ match.teamB || 'Da definire' }}</span><b>{{ match.status === 'scheduled' ? '–' : match.scoreB }}</b>
+              </div>
+            </article>
+          </section>
+        </div>
+      </template>
+
+      <template v-else>
+        <h2>{{ shownGroup && shownGroup.group ? `Girone ${shownGroup.group}` : 'Classifica' }}</h2>
+        <table v-if="shownGroup && shownGroup.rows.length">
+          <thead>
+            <tr><th class="c">#</th><th class="tl">Squadra</th><th class="c">G</th><th class="c">Pt</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in shownGroup.rows" :key="row.teamId" :class="{ top: i < qualifiersPerGroup }">
+              <td class="c pos">{{ i + 1 }}</td>
+              <td class="tl name">{{ row.team }}</td>
+              <td class="c">{{ row.played }}</td>
+              <td class="c pt">{{ row.points }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="st-empty">La classifica apparirà dopo le prime partite concluse.</p>
+      </template>
     </aside>
   </div>
 </template>
@@ -238,4 +297,42 @@ useTournamentStream(() => props.slug, load)
 .standings tr.top td.pos { color: #f2b928; }
 .standings tr.top td.name { color: #fff; }
 .st-empty { color: #64748b; font-size: 2vh; text-align: center; margin-top: 3vh; line-height: 1.4; }
+
+/* Tabellone compatto della fase finale: tutti i turni restano visibili nel
+   pannello laterale del proiettore, senza richiedere interazione o scroll. */
+.bracket-rounds { min-height: 0; display: flex; flex-direction: column; gap: .7vh; overflow: hidden; }
+.bracket-round { display: flex; flex-direction: column; gap: .35vh; }
+.bracket-round h3 {
+  margin: 0; color: #94a3b8; font-size: 1.35vh; font-weight: 900;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.bracket-match {
+  padding: .5vh .55vw; border-radius: .6vh; background: rgba(255,255,255,.045);
+  border: 1px solid rgba(255,255,255,.08);
+}
+.bracket-match.is-live {
+  border-color: rgba(229,72,77,.8); background: rgba(229,72,77,.12);
+  box-shadow: 0 0 1.2vh rgba(229,72,77,.18);
+}
+.bracket-meta {
+  display: flex; justify-content: space-between; gap: .4vw; margin-bottom: .2vh;
+  color: #64748b; font-size: 1.05vh; font-weight: 800; text-transform: uppercase;
+}
+.bracket-meta b { color: #f87171; letter-spacing: .08em; }
+.bracket-team {
+  display: flex; align-items: center; justify-content: space-between; gap: .45vw;
+  color: #cbd5e1; font-size: 1.45vh; font-weight: 750; line-height: 1.25;
+}
+.bracket-team span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bracket-team b { color: #94a3b8; font-size: 1.6vh; font-variant-numeric: tabular-nums; }
+.bracket-team.winner { color: #fff; font-weight: 900; }
+.bracket-team.winner b { color: #f2b928; }
+.standings.dense { padding-top: 1.5vh; padding-bottom: 1.5vh; }
+.standings.dense h2 { margin-bottom: .8vh; font-size: 2.3vh; }
+.standings.dense .bracket-rounds { gap: .35vh; }
+.standings.dense .bracket-round { gap: .18vh; }
+.standings.dense .bracket-match { padding-top: .22vh; padding-bottom: .22vh; }
+.standings.dense .bracket-meta { display: none; }
+.standings.dense .bracket-team { font-size: 1.15vh; line-height: 1.15; }
+.standings.dense .bracket-team b { font-size: 1.25vh; }
 </style>
