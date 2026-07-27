@@ -82,22 +82,50 @@ async function saveRoster () {
 const blankMatch = () => ({ court: courts.value[0] || 'CAMPO 1', time: '', stage: '', teamAId: 0, teamBId: 0 })
 const matchForm = reactive(blankMatch())
 const editingMatchId = ref('')
+const suggestedMatchTime = ref('')
 watch(courts, values => {
   if (!values.includes(matchForm.court)) matchForm.court = values[0]
 }, { immediate: true })
 
-function suggestedTime () {
-  let latest = -1
-  for (const match of matches.value.filter(item => !item.stage)) {
-    const parts = /^(\d{1,2}):([0-5]\d)$/.exec(match.time || '')
-    if (parts) latest = Math.max(latest, Number(parts[1]) * 60 + Number(parts[2]))
+function matchTimeMinutes (value) {
+  const match = /^(\d{1,2}):([0-5]\d)$/.exec(String(value || '').trim())
+  if (!match || Number(match[1]) > 23) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+function prefillNextGroupMatchTime () {
+  // Se l'operatore modifica manualmente l'orario, gli aggiornamenti live
+  // non devono sovrascriverlo.
+  if (matchForm.time && matchForm.time !== suggestedMatchTime.value) return
+
+  const groupMatches = matches.value.filter(match =>
+    !String(match.stage || '').trim() && matchTimeMinutes(match.time) !== null
+  )
+  if (!groupMatches.length) {
+    if (matchForm.time === suggestedMatchTime.value) matchForm.time = ''
+    suggestedMatchTime.value = ''
+    return
   }
-  if (latest < 0) return ''
+
+  // Gestisce correttamente anche tornei che proseguono dopo mezzanotte:
+  // l'eventuale partita àncora indica da dove inizia la giornata sportiva.
+  const anchor = groupMatches.find(match => match.isAnchor)
+  const anchorMinutes = anchor ? matchTimeMinutes(anchor.time) : null
+  let latest = -1
+  for (const match of groupMatches) {
+    const minutes = matchTimeMinutes(match.time)
+    const orderedMinutes = anchorMinutes !== null && minutes < anchorMinutes
+      ? minutes + 24 * 60
+      : minutes
+    if (orderedMinutes > latest) latest = orderedMinutes
+  }
+
   const next = (latest + 30) % 1440
-  return `${String(Math.floor(next / 60)).padStart(2, '0')}:${String(next % 60).padStart(2, '0')}`
+  const suggestion = `${String(Math.floor(next / 60)).padStart(2, '0')}:${String(next % 60).padStart(2, '0')}`
+  suggestedMatchTime.value = suggestion
+  matchForm.time = suggestion
 }
 watch(matches, () => {
-  if (!editingMatchId.value && !matchForm.time) matchForm.time = suggestedTime()
+  if (!editingMatchId.value) prefillNextGroupMatchTime()
 }, { immediate: true })
 function editMatch (match) {
   editingMatchId.value = match.id
@@ -109,7 +137,6 @@ function editMatch (match) {
 function resetMatch () {
   editingMatchId.value = ''
   Object.assign(matchForm, blankMatch())
-  matchForm.time = suggestedTime()
 }
 async function saveMatch () {
   if (!matchForm.teamAId || !matchForm.teamBId || matchForm.teamAId === matchForm.teamBId) {
@@ -120,6 +147,8 @@ async function saveMatch () {
   const path = editingMatchId.value ? `/calendar/${editingMatchId.value}` : '/calendar'
   const method = editingMatchId.value ? 'PUT' : 'POST'
   if (await mutate(method, path, { ...matchForm, scheduledAt }, editingMatchId.value ? 'Partita aggiornata.' : 'Partita aggiunta.')) {
+    // Rimane vuoto per pochi istanti: il reload aggiorna matches e il watcher
+    // inserisce il nuovo suggerimento calcolato includendo la partita salvata.
     resetMatch()
   }
 }
@@ -190,6 +219,9 @@ const mvpTeams = computed(() => (mvp.value.teams || []).map(team => ({
         <input v-model="matchForm.time" placeholder="18:30" />
         <select v-model="matchForm.stage"><option value="">Girone</option><option>OTTAVI</option><option>QUARTI</option><option>SEMIFINALE</option><option>FINALE 3° POSTO</option><option>FINALE</option></select>
       </div>
+      <small v-if="!editingMatchId && !matchForm.stage && suggestedMatchTime && matchForm.time === suggestedMatchTime" class="time-hint">
+        Orario suggerito automaticamente: 30 minuti dopo l’ultima partita del girone.
+      </small>
       <select v-model.number="matchForm.teamAId"><option :value="0">Squadra A</option><option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option></select>
       <select v-model.number="matchForm.teamBId"><option :value="0">Squadra B</option><option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option></select>
       <div class="actions">
@@ -229,6 +261,7 @@ h2 { margin:6px 0 2px; font-size:20px; color:#f2b928; }
 .logo-picker { display:flex; align-items:center; gap:9px; width:max-content; max-width:100%; cursor:pointer; color:#fbd34d; font-size:12px; font-weight:750; }
 .logo-picker img { width:34px; height:34px; object-fit:contain; border-radius:7px; background:#fff; }
 .logo-picker input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.time-hint { color:#fbd34d; line-height:1.35; }
 details summary { cursor:pointer; color:#f2b928; font-weight:750; padding:5px 0; }
 .player-row { display:grid; grid-template-columns:22px 1fr 1fr 54px; gap:6px; align-items:center; margin-top:6px; }
 .player-row > span { color:#64748b; text-align:center; font-size:12px; }
