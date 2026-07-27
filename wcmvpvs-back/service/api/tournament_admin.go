@@ -347,6 +347,7 @@ func (rt *_router) taListTeams(w http.ResponseWriter, r *http.Request, eventID i
 // taCreateTeams accetta {teams:[{name,shortName,city,groupName}]} oppure
 // {csv:"Nome;Sigla;Città;Girone\n..."} — l'import CSV è il flusso principale.
 func (rt *_router) taCreateTeams(w http.ResponseWriter, r *http.Request, eventID int64) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxSponsorLogoBytes+65536)
 	var body struct {
 		Teams []TATeam `json:"teams"`
 		CSV   string   `json:"csv"`
@@ -372,6 +373,14 @@ func (rt *_router) taCreateTeams(w http.ResponseWriter, r *http.Request, eventID
 			teams = append(teams, t)
 		}
 	}
+	for i := range teams {
+		logo, err := sanitizeSponsorLogo(teams[i].LogoURL)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+			return
+		}
+		teams[i].LogoURL = logo
+	}
 	n, err := rt.store.InsertTATeams(r.Context(), eventID, teams)
 	if err != nil {
 		rt.baseLogger.WithError(err).WithField("eventID", eventID).Error("cannot insert tournament teams")
@@ -384,18 +393,25 @@ func (rt *_router) taCreateTeams(w http.ResponseWriter, r *http.Request, eventID
 // taUpdateTeam modifica una squadra già creata (nome, sigla, città, girone).
 // La rosa si modifica a parte via taSetTeamPlayers.
 func (rt *_router) taUpdateTeam(w http.ResponseWriter, r *http.Request, eventID int64) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxSponsorLogoBytes+4096)
 	teamID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	var body struct {
 		Name      string `json:"name"`
 		ShortName string `json:"shortName"`
 		City      string `json:"city"`
+		LogoURL   string `json:"logoUrl"`
 		GroupName string `json:"groupName"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
 		return
 	}
-	err := rt.store.UpdateTATeam(r.Context(), eventID, teamID, body.Name, body.ShortName, body.City, body.GroupName)
+	logo, err := sanitizeSponsorLogo(body.LogoURL)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+	err = rt.store.UpdateTATeam(r.Context(), eventID, teamID, body.Name, body.ShortName, body.City, logo, body.GroupName)
 	if err != nil {
 		switch {
 		case err == errTANotFound:
@@ -760,6 +776,27 @@ func clampInt(v, lo, hi int) int {
 	return v
 }
 
+func normalizeTournamentCourts(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, raw := range values {
+		name := sanitizeShopText(raw, 40)
+		key := strings.ToLower(name)
+		if name == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, name)
+		if len(out) == 20 {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return []string{"CAMPO 1"}
+	}
+	return out
+}
+
 func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, eventID int64) {
 	// L'intestazione (logo) può essere una data-URL inline: alza il cap del body.
 	r.Body = http.MaxBytesReader(w, r.Body, maxSponsorLogoBytes*2+16384)
@@ -794,6 +831,7 @@ func (rt *_router) taUpdateSettings(w http.ResponseWriter, r *http.Request, even
 		st.SetsBestOf = 3
 	}
 	st.BracketQualifiers = clampInt(st.BracketQualifiers, 1, 8)
+	st.Courts = normalizeTournamentCourts(st.Courts)
 	st.StandingsLegendText = sanitizeShopText(st.StandingsLegendText, 300)
 	if st.FanLayout != "sunset" {
 		st.FanLayout = "classic"

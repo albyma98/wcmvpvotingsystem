@@ -44,9 +44,15 @@
               <span class="sp-match-time">{{ m.setLabel }}</span>
             </div>
             <div class="sp-teams">
-              <div class="sp-team">{{ m.teamA.name }}</div>
+              <div class="sp-team">
+                <img v-if="m.teamA.logo" :src="m.teamA.logo" :alt="m.teamA.name" class="sp-team-logo" />
+                <span>{{ m.teamA.name }}</span>
+              </div>
               <div class="sp-live-score">{{ m.cur ? m.cur.a : m.score.a }}<span>:</span>{{ m.cur ? m.cur.b : m.score.b }}</div>
-              <div class="sp-team away">{{ m.teamB.name }}</div>
+              <div class="sp-team away">
+                <img v-if="m.teamB.logo" :src="m.teamB.logo" :alt="m.teamB.name" class="sp-team-logo" />
+                <span>{{ m.teamB.name }}</span>
+              </div>
             </div>
             <div class="sp-live-sets">Set {{ m.score.a }}–{{ m.score.b }}</div>
           </div>
@@ -59,9 +65,15 @@
             <span class="sp-match-time">ORE {{ nextMatch.time }}</span>
           </div>
           <div class="sp-teams">
-            <div class="sp-team home" v-html="nextMatch.home"></div>
+            <div class="sp-team home">
+              <img v-if="nextMatch.home.logo" :src="nextMatch.home.logo" :alt="nextMatch.home.name" class="sp-team-logo" />
+              <span>{{ nextMatch.home.name }}</span>
+            </div>
             <div class="sp-vs">VS</div>
-            <div class="sp-team away" v-html="nextMatch.away"></div>
+            <div class="sp-team away">
+              <img v-if="nextMatch.away.logo" :src="nextMatch.away.logo" :alt="nextMatch.away.name" class="sp-team-logo" />
+              <span>{{ nextMatch.away.name }}</span>
+            </div>
           </div>
         </div>
 
@@ -283,7 +295,7 @@ const props = defineProps({
   place:       { type: String, default: '' },
   liveLabel:   { type: String, default: 'LIVE ORA' },
   signupLabel: { type: String, default: 'INFO EVENTO' },
-  nextMatch:   { type: Object, default: () => ({ time: '—', home: '', away: '' }) },
+  nextMatch:   { type: Object, default: () => ({ time: '—', home: { name: '' }, away: { name: '' } }) },
   liveMatches: { type: Array, default: () => [] },   // partite in corso: { id, court, teamA, teamB, score, cur, setLabel }
   // Dati reali dal torneo:
   tiles:       { type: Array, default: () => [] },   // { icon, label, sub, route }
@@ -758,9 +770,14 @@ const stars = [
 .sp-teams { display: flex; align-items: center; justify-content: space-between; gap: calc(8*var(--s)); }
 .sp-team {
   flex: 1; text-align: center; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: calc(17*var(--s)); line-height: 1.2;
+  display: flex; align-items: center; justify-content: center; gap: calc(6*var(--s)); min-width: 0;
   background: linear-gradient(180deg,#fff,#d9c8ff); -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .sp-team.away { background: linear-gradient(180deg,#fff,#9dfff0); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sp-team-logo {
+  width: calc(29*var(--s)); height: calc(29*var(--s)); flex: none; border-radius: 50%;
+  object-fit: cover; background: #fff; border: 1px solid rgba(255,255,255,.4);
+}
 .sp-vs {
   background: radial-gradient(circle at 30% 30%,#fff,#FF7A1A 60%,#FF2E9A); color: #0B0620; font-family: 'Fredoka', sans-serif;
   font-weight: 700; font-size: calc(12*var(--s)); width: calc(34*var(--s)); height: calc(34*var(--s)); display: flex; align-items: center; justify-content: center;

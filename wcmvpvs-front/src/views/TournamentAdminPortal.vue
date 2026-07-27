@@ -4,7 +4,7 @@
 // scoping hard sull'evento lato backend.
 // Due anime: SETUP (pre-torneo, con calma) e LIVE (console scoring, mobile,
 // pulsanti grandi, undo sempre visibile).
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useTournamentStream } from '@/composables/useTournamentStream'
 
 const props = defineProps({ slug: { type: String, required: true } })
@@ -69,7 +69,19 @@ const gallery = ref([])
 const mvp = ref(null)
 const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', orgMvp: '', publicMvpMale: '', publicMvpFemale: '', publicMvp: '' })
 const defaultStandingsLegend = 'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', logoUrl: '', organizerLogoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, tournamentStarted: false, bracketQualifiers: 2, bracketThirdPlace: false, standingsLegendText: defaultStandingsLegend, fanLayout: 'classic' })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', courts: ['CAMPO 1'], logoUrl: '', organizerLogoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, tournamentStarted: false, bracketQualifiers: 2, bracketThirdPlace: false, standingsLegendText: defaultStandingsLegend, fanLayout: 'classic' })
+const courtOptions = computed(() => {
+  const seen = new Set()
+  const courts = (Array.isArray(settings.courts) ? settings.courts : [])
+    .map(value => String(value || '').trim())
+    .filter(value => {
+      const key = value.toLocaleLowerCase()
+      if (!value || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  return courts.length ? courts : ['CAMPO 1']
+})
 const generatingBracket = ref(false)
 const busy = ref('')
 const notice = ref('')
@@ -79,6 +91,7 @@ function flash (msg) { notice.value = msg; setTimeout(() => { if (notice.value =
 async function bootstrap (ov) {
   overview.value = ov
   Object.assign(settings, ov.settings)
+  if (!Array.isArray(settings.courts) || !settings.courts.length) settings.courts = ['CAMPO 1']
   ensurePrizes()
   await Promise.all([loadTeams(), loadMatches(), loadSponsors(), loadShopProducts(), loadShopReservations(), loadOperators(), loadGallery(), loadMvp()])
 }
@@ -153,7 +166,8 @@ const MAX_PLAYERS = 8
 // scartate lato server, così si può inviare la griglia piena senza problemi.
 const blankRoster = () => Array.from({ length: MAX_PLAYERS }, () => ({ firstName: '', lastName: '', gender: 'male' }))
 
-const newTeam = reactive({ name: '', shortName: '', city: '', groupName: '', players: blankRoster() })
+const newTeam = reactive({ name: '', shortName: '', city: '', logoUrl: '', groupName: '', players: blankRoster() })
+const teamLogoBusy = ref(false)
 async function addTeam () {
   const name = newTeam.name.trim()
   if (!name) { flash('Inserisci il nome della squadra.'); return }
@@ -162,12 +176,13 @@ async function addTeam () {
     name,
     shortName: newTeam.shortName.trim(),
     city: newTeam.city.trim(),
+    logoUrl: newTeam.logoUrl,
     groupName: newTeam.groupName.trim(),
     players: newTeam.players
   }] })
   busy.value = ''
   if (r.ok) {
-    newTeam.name = ''; newTeam.shortName = ''; newTeam.city = ''; newTeam.groupName = ''
+    newTeam.name = ''; newTeam.shortName = ''; newTeam.city = ''; newTeam.logoUrl = ''; newTeam.groupName = ''
     newTeam.players = blankRoster()
     await loadTeams()
     flash('Squadra aggiunta.')
@@ -183,13 +198,15 @@ async function deleteTeam (id) {
 
 // ---------- modifica squadra (nome, sigla, città, girone) ----------
 const editingTeamId = ref(null)
-const teamDraft = reactive({ name: '', shortName: '', city: '', groupName: '' })
+const teamDraft = reactive({ name: '', shortName: '', city: '', logoUrl: '', groupName: '' })
+const teamDraftLogoBusy = ref(false)
 function openTeamEdit (t) {
   if (editingRosterId.value === t.id) closeRoster() // non tenere aperti entrambi gli editor
   editingTeamId.value = t.id
   teamDraft.name = t.name || ''
   teamDraft.shortName = t.shortName || ''
   teamDraft.city = t.city || ''
+  teamDraft.logoUrl = t.logoUrl || ''
   teamDraft.groupName = t.groupName || ''
 }
 function cancelTeamEdit () { editingTeamId.value = null }
@@ -200,6 +217,7 @@ async function saveTeamEdit (id) {
     name: teamDraft.name.trim(),
     shortName: teamDraft.shortName.trim(),
     city: teamDraft.city.trim(),
+    logoUrl: teamDraft.logoUrl,
     groupName: teamDraft.groupName.trim()
   })
   busy.value = ''
@@ -254,6 +272,11 @@ async function toggleAnchor (m) {
 // ---------- modifica partita ----------
 const editingMatchId = ref(null)
 const matchDraft = reactive({ court: '', time: '', stage: '', teamAId: 0, teamBId: 0 })
+const matchCourtOptions = computed(() =>
+  matchDraft.court && !courtOptions.value.includes(matchDraft.court)
+    ? [...courtOptions.value, matchDraft.court]
+    : courtOptions.value
+)
 function openMatchEdit (m) {
   editingMatchId.value = m.id
   matchDraft.court = m.court || ''
@@ -367,6 +390,28 @@ async function deleteSponsor (id) {
   const r = await j('DELETE', `/sponsors/${id}`)
   if (r.ok) { await loadSponsors(); flash('Sponsor rimosso.') }
 }
+
+async function loadTeamLogo (event, target, busyRef) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    flash('Seleziona un file immagine.')
+    event.target.value = ''
+    return
+  }
+  busyRef.value = true
+  try {
+    target.logoUrl = await fileToLogoDataURL(file, 180)
+  } catch {
+    flash('Icona squadra non valida.')
+  } finally {
+    busyRef.value = false
+    event.target.value = ''
+  }
+}
+
+const onTeamLogoPick = event => loadTeamLogo(event, newTeam, teamLogoBusy)
+const onTeamDraftLogoPick = event => loadTeamLogo(event, teamDraft, teamDraftLogoBusy)
 
 // ---------- shop ----------
 const blankShopExtra = () => ({ title: '', price: '' })
@@ -526,7 +571,22 @@ const opLink = t => `${window.location.origin}/op/${t}`
 function copy (text) { navigator.clipboard?.writeText(text) }
 
 // ---------- impostazioni ----------
+watch(courtOptions, courts => {
+  if (!courts.includes(newMatch.court)) newMatch.court = courts[0]
+  if (!courts.includes(newOperator.court)) newOperator.court = courts[0]
+}, { immediate: true })
+
+function addCourtSetting () {
+  if (!Array.isArray(settings.courts)) settings.courts = []
+  if (settings.courts.length < 20) settings.courts.push('')
+}
+function removeCourtSetting (index) {
+  settings.courts.splice(index, 1)
+  if (!settings.courts.length) settings.courts.push('CAMPO 1')
+}
+
 async function saveSettings () {
+  settings.courts = [...courtOptions.value]
   busy.value = 'settings'
   const r = await j('PUT', '/settings', { ...settings })
   busy.value = ''
@@ -684,7 +744,9 @@ async function generateBracket () {
       <section v-else-if="tab === 'matches'" class="ta-body">
         <p class="hint">🏁 Segna una partita come <b>inizio torneo</b>: il suo orario diventa il taglio del calendario. Le partite dopo mezzanotte (es. le 02:00) restano così in coda alla giornata invece di scavalcare quelle serali. Ne puoi impostare una sola.</p>
         <div class="form-row">
-          <input v-model="newMatch.court" placeholder="CAMPO 1" style="max-width:110px" />
+          <select v-model="newMatch.court" :disabled="courtOptions.length === 1" style="max-width:150px">
+            <option v-for="court in courtOptions" :key="court" :value="court">{{ court }}</option>
+          </select>
           <input v-model="newMatch.time" placeholder="18:30" style="max-width:90px" />
           <select v-model.number="newMatch.teamAId"><option :value="0">Squadra A</option><option v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</option></select>
           <select v-model.number="newMatch.teamBId"><option :value="0">Squadra B</option><option v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</option></select>
@@ -711,7 +773,9 @@ async function generateBracket () {
 
           <div v-else class="match-editor">
             <div class="form-row">
-              <input v-model="matchDraft.court" placeholder="CAMPO 1" style="max-width:110px" />
+              <select v-model="matchDraft.court" :disabled="matchCourtOptions.length === 1" style="max-width:150px">
+                <option v-for="court in matchCourtOptions" :key="court" :value="court">{{ court }}</option>
+              </select>
               <input v-model="matchDraft.time" placeholder="18:30" style="max-width:90px" />
               <select v-model="matchDraft.stage"><option value="">Girone</option><option>QUARTI</option><option>SEMIFINALE</option><option>FINALE 3° POSTO</option><option>FINALE</option></select>
             </div>
@@ -731,9 +795,20 @@ async function generateBracket () {
 
       <!-- SQUADRE -->
       <section v-else-if="tab === 'teams'" class="ta-body">
-        <p class="hint">Aggiungi una squadra alla volta. Solo il nome è obbligatorio; sigla, città e girone sono facoltativi.</p>
+        <p class="hint">Aggiungi una squadra alla volta. Solo il nome è obbligatorio; icona, sigla, città e girone sono facoltativi.</p>
         <div class="team-form">
           <input v-model="newTeam.name" placeholder="Nome squadra *" @keyup.enter="addTeam" />
+          <div class="team-logo-row">
+            <label class="logo-pick">
+              {{ teamLogoBusy ? 'Carico…' : 'Icona squadra' }}
+              <input type="file" accept="image/*" :disabled="teamLogoBusy" hidden @change="onTeamLogoPick" />
+            </label>
+            <div v-if="newTeam.logoUrl" class="team-logo-preview">
+              <img :src="newTeam.logoUrl" alt="Anteprima icona squadra" />
+              <button class="danger" type="button" @click="newTeam.logoUrl = ''">Togli</button>
+            </div>
+            <span v-else class="hint">Immagine piccola, ridimensionata automaticamente.</span>
+          </div>
           <div class="form-row">
             <input v-model="newTeam.shortName" placeholder="Sigla (es. MAMBO)" maxlength="6" style="max-width:150px" @keyup.enter="addTeam" />
             <input v-model="newTeam.city" placeholder="Città" @keyup.enter="addTeam" />
@@ -765,12 +840,15 @@ async function generateBracket () {
           <p v-if="!teams.length" class="hint">Nessuna squadra ancora. Aggiungi la prima qui sopra.</p>
           <div v-for="t in teams" :key="t.id" class="team-item">
             <div class="row-match">
-              <span>
+              <span class="team-summary">
+                <img v-if="t.logoUrl" :src="t.logoUrl" :alt="t.name" class="team-logo-thumb" />
+                <span>
                 <b>{{ t.name }}</b>
                 <small v-if="t.shortName">({{ t.shortName }})</small>
                 <small v-if="t.city">· {{ t.city }}</small>
                 <small v-if="t.groupName">· Girone {{ t.groupName }}</small>
                 <small v-if="t.players && t.players.length" class="roster-count">· {{ t.players.length }} giocatori</small>
+                </span>
               </span>
               <span class="team-actions">
                 <button class="ghost" @click="editingTeamId === t.id ? cancelTeamEdit() : openTeamEdit(t)">
@@ -785,6 +863,17 @@ async function generateBracket () {
 
             <!-- Editor squadra: nome, sigla, città, girone -->
             <div v-if="editingTeamId === t.id" class="team-editor">
+              <div class="team-logo-row">
+                <label class="logo-pick">
+                  {{ teamDraftLogoBusy ? 'Carico…' : 'Cambia icona' }}
+                  <input type="file" accept="image/*" :disabled="teamDraftLogoBusy" hidden @change="onTeamDraftLogoPick" />
+                </label>
+                <div v-if="teamDraft.logoUrl" class="team-logo-preview">
+                  <img :src="teamDraft.logoUrl" alt="Anteprima icona squadra" />
+                  <button class="danger" type="button" @click="teamDraft.logoUrl = ''">Togli</button>
+                </div>
+                <span v-else class="hint">Nessuna icona.</span>
+              </div>
               <div class="form-row">
                 <input v-model="teamDraft.name" placeholder="Nome squadra *" @keyup.enter="saveTeamEdit(t.id)" />
                 <input v-model="teamDraft.shortName" placeholder="Sigla" maxlength="6" style="max-width:120px" @keyup.enter="saveTeamEdit(t.id)" />
@@ -832,7 +921,9 @@ async function generateBracket () {
       <section v-else-if="tab === 'operators'" class="ta-body">
         <p class="hint">Un link per campo: mandalo su WhatsApp al volontario insieme al PIN. Revocabile in ogni momento.</p>
         <div class="form-row">
-          <input v-model="newOperator.court" placeholder="CAMPO 1" style="max-width:130px" />
+          <select v-model="newOperator.court" :disabled="courtOptions.length === 1" style="max-width:160px">
+            <option v-for="court in courtOptions" :key="court" :value="court">{{ court }}</option>
+          </select>
           <input v-model="newOperator.label" placeholder="Nome operatore (opzionale)" />
           <button @click="createOperator">Genera link</button>
         </div>
@@ -1108,6 +1199,16 @@ async function generateBracket () {
           <label>Fase (pill) <input v-model="settings.phaseLabel" placeholder="FASE A GIRONI" /></label>
         </div>
 
+        <h3 class="settings-sub">Campi disponibili</h3>
+        <div class="court-settings">
+          <div v-for="(_, index) in settings.courts" :key="index" class="court-setting-row">
+            <input v-model="settings.courts[index]" maxlength="40" :placeholder="`Nome campo ${index + 1}`" />
+            <button v-if="settings.courts.length > 1" type="button" class="danger" @click="removeCourtSetting(index)">Rimuovi</button>
+          </div>
+          <button type="button" class="ghost" :disabled="settings.courts.length >= 20" @click="addCourtSetting">+ Aggiungi campo</button>
+        </div>
+        <p class="hint">Questi nomi saranno usati nelle select del Calendario e degli Operatori. Con un solo campo verrà preselezionato automaticamente.</p>
+
         <h3 class="settings-sub">Intestazione home tifosi</h3>
         <div class="header-img">
           <div class="hi-preview" :class="{ empty: !settings.logoUrl }">
@@ -1266,6 +1367,14 @@ textarea { width: 100%; font-family: inherit; }
 .team-form button:disabled { opacity: .5; cursor: default; }
 .team-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
 .team-item { display: flex; flex-direction: column; gap: 6px; }
+.team-summary { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+.team-logo-thumb, .team-logo-preview img {
+  width: 38px; height: 38px; flex: none; border-radius: 50%; object-fit: cover;
+  background: #fff; border: 1px solid rgba(255,255,255,.18);
+}
+.team-logo-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.team-logo-preview { display: flex; align-items: center; gap: 8px; }
+.team-logo-preview .danger { padding: 6px 10px; font-size: 12px; background: transparent; color: #f87171; }
 .team-actions { display: flex; gap: 6px; flex: none; }
 .roster-count { color: #f2b928 !important; }
 /* Blocco rosa nel form di aggiunta squadra */
@@ -1353,6 +1462,12 @@ textarea { width: 100%; font-family: inherit; }
 .settings-grid .settings-wide textarea { box-sizing: border-box; resize: vertical; }
 .settings-grid label.check { flex-direction: row; align-items: center; gap: 8px; }
 .settings-grid label.check input { width: 20px; height: 20px; flex: none; }
+.court-settings { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.court-setting-row { display: flex; align-items: center; gap: 8px; width: min(100%, 520px); }
+.court-setting-row input {
+  flex: 1; min-width: 0; box-sizing: border-box; background: #15151b;
+  border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 9px 11px; color: #fff;
+}
 .bracket-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .bracket-actions .gen { background: linear-gradient(135deg, #FFD23F, #FF7A18); color: #14110A; font-weight: 900; }
 .bracket-actions .gen:disabled { opacity: .7; }

@@ -1,7 +1,7 @@
 <script setup>
 // v4: layout typography-led. Nel contesto torneo le squadre raramente hanno
-// un logo: il nome È l'identità. Il logo resta supportato (modalità club):
-// se team.logo è presente viene mostrato sopra il nome, altrimenti solo testo.
+// un logo: il nome È l'identità. Se team.logo è presente viene mostrato come
+// piccola icona accanto al nome, altrimenti resta il solo testo.
 const props = defineProps({
   team: { type: Object, required: true },   // { name, logo?, sub? }
   size: { type: String, default: 'lg' }     // 'lg' | 'md'
@@ -10,22 +10,25 @@ const props = defineProps({
 
 <template>
   <div class="team">
-    <div v-if="team.logo" class="team-logo" :class="`team-logo--${size}`">
-      <img :src="team.logo" :alt="team.name" loading="lazy" />
+    <div class="team-identity">
+      <div v-if="team.logo" class="team-logo" :class="`team-logo--${size}`">
+        <img :src="team.logo" :alt="team.name" loading="lazy" />
+      </div>
+      <div class="team-name" :class="`team-name--${size}`">{{ team.name }}</div>
     </div>
-    <div class="team-name" :class="`team-name--${size}`">{{ team.name }}</div>
     <div class="team-sub" v-if="team.sub">{{ team.sub }}</div>
   </div>
 </template>
 
 <style scoped>
 .team { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; }
+.team-identity { display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; max-width: 100%; }
 .team-logo {
   border-radius: 50%; background: #0D0D12; border: 2px solid rgba(255,255,255,.14);
-  display: grid; place-items: center; overflow: hidden; margin-bottom: 4px;
+  display: grid; place-items: center; overflow: hidden; flex: none;
 }
-.team-logo--lg { width: clamp(38px,6.8dvh,58px); height: clamp(38px,6.8dvh,58px); }
-.team-logo--md { width: clamp(36px,6.4dvh,54px); height: clamp(36px,6.4dvh,54px); }
+.team-logo--lg { width: clamp(28px,4.5dvh,38px); height: clamp(28px,4.5dvh,38px); }
+.team-logo--md { width: clamp(25px,4dvh,34px); height: clamp(25px,4dvh,34px); }
 .team-logo img { width: 100%; height: 100%; object-fit: cover; }
 /* Senza logo il nome porta l'identità: corpo maggiore, max 2 righe */
 .team-name {

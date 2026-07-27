@@ -173,6 +173,7 @@ func (s *Store) EnsureTournamentAdminTables() error {
 		// vengono creati esplicitamente con le azioni dei tifosi disabilitate.
 		`ALTER TABLE events ADD COLUMN tournament_started INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN organizer_logo_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE events ADD COLUMN courts_json TEXT NOT NULL DEFAULT '["CAMPO 1"]'`,
 		`ALTER TABLE matches ADD COLUMN cur_a INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN cur_b INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE tournament_teams ADD COLUMN short_name TEXT NOT NULL DEFAULT ''`,
@@ -569,6 +570,7 @@ type TATeam struct {
 	Name      string     `json:"name"`
 	ShortName string     `json:"shortName"`
 	City      string     `json:"city"`
+	LogoURL   string     `json:"logoUrl"`
 	GroupName string     `json:"groupName"`
 	Players   []TAPlayer `json:"players"`
 }
@@ -597,7 +599,7 @@ const maxPlayersPerTeam = 8
 
 func (s *Store) ListTATeams(ctx context.Context, eventID int64) ([]TATeam, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, short_name, city, group_name
+		SELECT id, name, short_name, city, logo_url, group_name
 		FROM tournament_teams WHERE event_id = ? ORDER BY group_name, name COLLATE NOCASE`, eventID)
 	if err != nil {
 		return nil, err
@@ -607,7 +609,7 @@ func (s *Store) ListTATeams(ctx context.Context, eventID int64) ([]TATeam, error
 	idx := map[int64]int{}
 	for rows.Next() {
 		var t TATeam
-		if err := rows.Scan(&t.ID, &t.Name, &t.ShortName, &t.City, &t.GroupName); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.ShortName, &t.City, &t.LogoURL, &t.GroupName); err != nil {
 			return nil, err
 		}
 		t.Players = []TAPlayer{}
@@ -653,9 +655,10 @@ func (s *Store) InsertTATeams(ctx context.Context, eventID int64, teams []TATeam
 			continue
 		}
 		res, err := tx.ExecContext(ctx, `
-			INSERT INTO tournament_teams (event_id, name, short_name, city, group_name)
-			VALUES (?, ?, ?, ?, ?)`,
-			eventID, name, strings.TrimSpace(t.ShortName), strings.TrimSpace(t.City), strings.TrimSpace(t.GroupName))
+			INSERT INTO tournament_teams (event_id, name, short_name, city, logo_url, group_name)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			eventID, name, strings.TrimSpace(t.ShortName), strings.TrimSpace(t.City),
+			strings.TrimSpace(t.LogoURL), strings.TrimSpace(t.GroupName))
 		if err != nil {
 			return 0, err
 		}
@@ -725,15 +728,16 @@ func (s *Store) ReplaceTAPlayers(ctx context.Context, eventID, teamID int64, pla
 // UpdateTATeam modifica gli attributi editabili di una squadra (nome, sigla,
 // città, girone). La rosa NON è toccata (si modifica con ReplaceTAPlayers).
 // errTANotFound se la squadra non appartiene all'evento; "name_required" se vuoto.
-func (s *Store) UpdateTATeam(ctx context.Context, eventID, teamID int64, name, shortName, city, groupName string) error {
+func (s *Store) UpdateTATeam(ctx context.Context, eventID, teamID int64, name, shortName, city, logoURL, groupName string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return fmt.Errorf("name_required")
 	}
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE tournament_teams SET name = ?, short_name = ?, city = ?, group_name = ?
+		UPDATE tournament_teams SET name = ?, short_name = ?, city = ?, logo_url = ?, group_name = ?
 		WHERE id = ? AND event_id = ?`,
-		name, strings.TrimSpace(shortName), strings.TrimSpace(city), strings.TrimSpace(groupName), teamID, eventID)
+		name, strings.TrimSpace(shortName), strings.TrimSpace(city), strings.TrimSpace(logoURL),
+		strings.TrimSpace(groupName), teamID, eventID)
 	if err != nil {
 		return err
 	}
@@ -1269,6 +1273,8 @@ type TASettings struct {
 	Location    string `json:"location"`
 	StatusLabel string `json:"statusLabel"`
 	PhaseLabel  string `json:"phaseLabel"`
+	// Campi disponibili nelle select di calendario e operatori.
+	Courts []string `json:"courts"`
 	// Intestazione della home tifosi: immagine (data-URL o URL) mostrata al posto
 	// del titolo testuale. Vuota = si usa il nome del torneo.
 	Logo string `json:"logoUrl"`
@@ -1350,7 +1356,7 @@ func sanitizeTournamentPrizes(p TournamentPrizes) TournamentPrizes {
 
 func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, string, error) {
 	var st TASettings
-	var slug, prizesJSON string
+	var slug, prizesJSON, courtsJSON string
 	var thirdPlace, allowDraws, mvpByGender, tournamentStarted int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
@@ -1361,7 +1367,8 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 		       COALESCE(allow_draws,1), COALESCE(mvp_by_gender,1), COALESCE(tournament_started,1),
 		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0),
 		       COALESCE(standings_legend_text,'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'),
-		       COALESCE(fan_layout,'classic'), COALESCE(prizes_json,''), COALESCE(slug,'')
+		       COALESCE(fan_layout,'classic'), COALESCE(prizes_json,''),
+		       COALESCE(courts_json,'["CAMPO 1"]'), COALESCE(slug,'')
 		FROM events WHERE id = ?`, eventID).
 		Scan(&st.Name, &st.Format, &st.DateLabel, &st.Location, &st.StatusLabel, &st.PhaseLabel,
 			&st.Logo, &st.OrganizerLogo,
@@ -1369,12 +1376,15 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 			&st.SetsBestOf, &st.PointsPerTieWin, &st.PointsPerTieLoss,
 			&allowDraws, &mvpByGender, &tournamentStarted,
 			&st.BracketQualifiers, &thirdPlace, &st.StandingsLegendText,
-			&st.FanLayout, &prizesJSON, &slug)
+			&st.FanLayout, &prizesJSON, &courtsJSON, &slug)
 	st.BracketThirdPlace = thirdPlace == 1
 	st.AllowDraws = allowDraws == 1
 	st.MvpByGender = mvpByGender == 1
 	st.TournamentStarted = tournamentStarted == 1
 	st.Prizes = decodeTournamentPrizes(prizesJSON)
+	if err := json.Unmarshal([]byte(courtsJSON), &st.Courts); err != nil || len(st.Courts) == 0 {
+		st.Courts = []string{"CAMPO 1"}
+	}
 	return &st, slug, err
 }
 
@@ -1396,6 +1406,7 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 		tournamentStarted = 1
 	}
 	prizesJSON, _ := json.Marshal(st.Prizes)
+	courtsJSON, _ := json.Marshal(st.Courts)
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE events SET name=?, format=?, date_label=?, location=?, status_label=?, phase_label=?,
 		                  logo_url=?, organizer_logo_url=?,
@@ -1403,7 +1414,7 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 		                  sets_best_of=?, points_per_tie_win=?, points_per_tie_loss=?, allow_draws=?, mvp_by_gender=?,
 		                  tournament_started=?,
 		                  bracket_qualifiers=?, bracket_third_place=?, standings_legend_text=?,
-		                  fan_layout=?, prizes_json=?
+		                  fan_layout=?, prizes_json=?, courts_json=?
 		WHERE id = ? AND type = 'tournament'`,
 		st.Name, st.Format, st.DateLabel, st.Location, st.StatusLabel, st.PhaseLabel,
 		st.Logo, st.OrganizerLogo,
@@ -1411,6 +1422,6 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 		st.SetsBestOf, st.PointsPerTieWin, st.PointsPerTieLoss, allowDraws, mvpByGender,
 		tournamentStarted,
 		st.BracketQualifiers, thirdPlace, st.StandingsLegendText,
-		st.FanLayout, string(prizesJSON), eventID)
+		st.FanLayout, string(prizesJSON), string(courtsJSON), eventID)
 	return err
 }

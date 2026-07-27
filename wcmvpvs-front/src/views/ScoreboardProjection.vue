@@ -15,6 +15,7 @@ const props = defineProps({
 const matches = ref([])
 const groups = ref([])
 const allowDraws = ref(true)
+const qualifiersPerGroup = ref(2)
 const tournamentName = ref('')
 const loading = ref(true)
 
@@ -29,6 +30,7 @@ async function load () {
       const s = await sr.json()
       groups.value = s.groups ?? []
       allowDraws.value = s.allowDraws !== false
+      qualifiersPerGroup.value = Math.max(1, Number(s.qualifiersPerGroup) || 2)
     }
   } catch (e) { /* mantiene i dati precedenti in caso di blip di rete */ }
   finally { loading.value = false }
@@ -113,7 +115,7 @@ useTournamentStream(() => props.slug, load)
           <tr><th class="c">#</th><th class="tl">Squadra</th><th class="c">G</th><th class="c">Pt</th></tr>
         </thead>
         <tbody>
-          <tr v-for="(row, i) in shownGroup.rows" :key="row.teamId" :class="{ top: i < 2 }">
+          <tr v-for="(row, i) in shownGroup.rows" :key="row.teamId" :class="{ top: i < qualifiersPerGroup }">
             <td class="c pos">{{ i + 1 }}</td>
             <td class="tl name">{{ row.team }}</td>
             <td class="c">{{ row.played }}</td>

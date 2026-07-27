@@ -89,8 +89,8 @@ const brandTop = computed(() => (tournament.value?.name || '').split(' ')[0] || 
 const brandBottom = computed(() => (tournament.value?.name || '').split(' ').slice(1).join(' '))
 const sunsetNext = computed(() => ({
   time: nextMatch.value?.time || '—',
-  home: nextMatch.value?.teamA?.name || '—',
-  away: nextMatch.value?.teamB?.name || '—'
+  home: nextMatch.value?.teamA || { name: '—' },
+  away: nextMatch.value?.teamB || { name: '—' }
 }))
 // Sunset usa le stesse route delle tile; live/signup sono scorciatoie.
 function onSunsetNav (route) {

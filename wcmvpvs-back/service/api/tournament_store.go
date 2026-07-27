@@ -207,8 +207,8 @@ func (s *Store) getLiveMatches(ctx context.Context, slug string) ([]LiveMatch, e
 func (s *Store) getNextMatch(ctx context.Context, slug string) (*NextMatch, error) {
 	const q = `
 		SELECT m.court, m.scheduled_time,
-		       ta.name, COALESCE(ta.city,''),
-		       tb.name, COALESCE(tb.city,'')
+		       ta.name, COALESCE(ta.city,''), COALESCE(ta.logo_url,''),
+		       tb.name, COALESCE(tb.city,''), COALESCE(tb.logo_url,'')
 		FROM matches m
 		JOIN events e  ON e.id = m.event_id AND e.slug = ? AND e.type = 'tournament'
 		JOIN tournament_teams ta ON ta.id = m.team_a_id
@@ -223,7 +223,8 @@ func (s *Store) getNextMatch(ctx context.Context, slug string) (*NextMatch, erro
 		LIMIT 1`
 	var n NextMatch
 	err := s.db.QueryRowContext(ctx, q, slug).Scan(
-		&n.Court, &n.Time, &n.TeamA.Name, &n.TeamA.Sub, &n.TeamB.Name, &n.TeamB.Sub,
+		&n.Court, &n.Time, &n.TeamA.Name, &n.TeamA.Sub, &n.TeamA.Logo,
+		&n.TeamB.Name, &n.TeamB.Sub, &n.TeamB.Logo,
 	)
 	if err != nil {
 		return nil, err // sql.ErrNoRows gestito dal chiamante come "nessuna prossima"
