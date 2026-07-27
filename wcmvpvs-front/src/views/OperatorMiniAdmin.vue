@@ -221,6 +221,10 @@ h2 { margin:6px 0 2px; font-size:20px; color:#f2b928; }
 .mini-notice { position:sticky; top:6px; z-index:5; margin:0; padding:9px 12px; border-radius:9px; background:#3b3219; color:#fde68a; }
 .mini-card { background:#15151b; border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:9px; }
 .form-card input,.form-card select,.player-row input,.player-row select { box-sizing:border-box; width:100%; min-width:0; background:#0d0d12; border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:10px; color:#fff; }
+/* Materialize globale nasconde i select nativi: nella console operatore
+   devono restare visibili e utilizzabili anche da smartphone. */
+.mini-section select { display:block; height:auto; appearance:auto; -webkit-appearance:menulist; }
+.mini-section option { background:#15151b; color:#fff; }
 .form-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
 .logo-picker { display:flex; align-items:center; gap:9px; width:max-content; max-width:100%; cursor:pointer; color:#fbd34d; font-size:12px; font-weight:750; }
 .logo-picker img { width:34px; height:34px; object-fit:contain; border-radius:7px; background:#fff; }
