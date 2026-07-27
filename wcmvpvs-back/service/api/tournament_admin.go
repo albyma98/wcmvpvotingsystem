@@ -553,7 +553,9 @@ func (rt *_router) taScoreAction(w http.ResponseWriter, r *http.Request, eventID
 	case errors.Is(err, errTANotFound):
 		http.Error(w, `{"error":"match_not_found"}`, http.StatusNotFound)
 		return
-	case err != nil && (err.Error() == "set_tied" || err.Error() == "unknown_action" || err.Error() == "teams_not_ready"):
+	case err != nil && (err.Error() == "set_tied" || err.Error() == "unknown_action" ||
+		err.Error() == "teams_not_ready" || err.Error() == "no_closed_set" ||
+		err.Error() == "current_set_started"):
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
 		return
 	case err != nil:

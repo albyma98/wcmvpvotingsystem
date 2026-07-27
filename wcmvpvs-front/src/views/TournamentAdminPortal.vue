@@ -288,7 +288,15 @@ async function score (matchId, action) {
     const err = (await r.json().catch(() => ({}))).error
     if (err === 'set_tied') flash('Il set non può chiudersi in parità.')
     else if (err === 'teams_not_ready') flash('Squadre non ancora definite: attendi l\'esito del turno precedente.')
+    else if (err === 'no_closed_set') flash('Non ci sono set chiusi da annullare.')
+    else if (err === 'current_set_started') flash('Annulla prima tutti i punti del set in corso.')
   }
+}
+
+async function undoLastSet (match) {
+  if (!window.confirm(`Annullare l'ultimo set chiuso (${match.sets.at(-1)})? Il punteggio tornerà modificabile.`)) return
+  if (!window.confirm('Seconda conferma: vuoi davvero annullare l’ultimo set chiuso?')) return
+  await score(match.id, 'undo_last_set')
 }
 
 // Refresh live via SSE (push): la console può restare aperta ore a bordo campo.
@@ -646,6 +654,7 @@ async function generateBracket () {
               <div class="sets">{{ m.scoreA }} : {{ m.scoreB }}</div>
               <div class="setlist">{{ m.sets.join(' | ') || '—' }}</div>
               <button class="close-set" @click="score(m.id, 'close_set')">Chiudi set</button>
+              <button v-if="m.sets.length" class="undo-set" @click="undoLastSet(m)">Annulla ultimo set</button>
               <button class="finish" @click="score(m.id, 'finish')">Fine partita</button>
             </div>
             <div class="sc-team">
@@ -1514,6 +1523,7 @@ textarea { width: 100%; font-family: inherit; }
 .sc-mid .sets { font-size: 22px; font-weight: 900; color: #f2b928; }
 .sc-mid .setlist { font-size: 12px; color: #94a3b8; }
 .close-set { background: #1d4ed8; color: #fff; border: none; border-radius: 8px; padding: 9px 14px; font-weight: 800; font-size: 13px; }
+.undo-set { background: transparent; border: 1px solid rgba(251,191,36,.55); color: #fbbf24; border-radius: 8px; padding: 7px 11px; font-size: 12px; font-weight: 700; }
 .finish { background: transparent; border: 1px solid rgba(248,113,113,.5); color: #f87171; border-radius: 8px; padding: 7px 14px; font-size: 12px; }
 .ta-loading { text-align: center; color: #94a3b8; padding-top: 20vh; }
 

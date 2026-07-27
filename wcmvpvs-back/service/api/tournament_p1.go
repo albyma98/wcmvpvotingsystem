@@ -709,8 +709,9 @@ func (rt *_router) opScore(w http.ResponseWriter, r *http.Request, op *opInfo) {
 		return
 	}
 	if err := rt.store.ApplyScoreAction(r.Context(), op.EventID, matchID, body.Action); err != nil {
-		if err.Error() == "set_tied" {
-			http.Error(w, `{"error":"set_tied"}`, http.StatusBadRequest)
+		if err.Error() == "set_tied" || err.Error() == "no_closed_set" ||
+			err.Error() == "current_set_started" {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
 			return
 		}
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)

@@ -84,6 +84,25 @@ func TestTournamentCRUD_ForeignKeysEnabled(t *testing.T) {
 	if err := store.ApplyScoreAction(ctx, evID, matchID, "point_a"); err != nil {
 		t.Fatalf("ApplyScoreAction point_a: %v", err)
 	}
+	if err := store.ApplyScoreAction(ctx, evID, matchID, "close_set"); err != nil {
+		t.Fatalf("ApplyScoreAction close_set: %v", err)
+	}
+	if err := store.ApplyScoreAction(ctx, evID, matchID, "undo_last_set"); err != nil {
+		t.Fatalf("ApplyScoreAction undo_last_set: %v", err)
+	}
+	var status, setLabel, setsJSON string
+	var scoreA, scoreB, curA, curB int
+	if err := db.QueryRow(`
+		SELECT status, set_label, sets_json, score_a, score_b, cur_a, cur_b
+		FROM matches WHERE id = ?`, matchID).
+		Scan(&status, &setLabel, &setsJSON, &scoreA, &scoreB, &curA, &curB); err != nil {
+		t.Fatalf("read score after undo_last_set: %v", err)
+	}
+	if status != "live" || setLabel != "1° SET" || setsJSON != "[]" ||
+		scoreA != 0 || scoreB != 0 || curA != 1 || curB != 0 {
+		t.Fatalf("undo_last_set state: status=%q label=%q sets=%q score=%d:%d current=%d:%d",
+			status, setLabel, setsJSON, scoreA, scoreB, curA, curB)
+	}
 
 	// 5) READ pubblico (join su tournament_teams + matches)
 	if _, err := store.GetTournamentHome(ctx, "test-cup"); err != nil {

@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -893,7 +894,8 @@ func (s *Store) DeleteTAMatch(ctx context.Context, eventID int64, matchID string
 }
 
 // ApplyScoreAction esegue un'azione della console scoring in transazione.
-// Azioni: start, point_a, point_b, undo_a, undo_b, close_set, finish, reopen.
+// Azioni: start, point_a, point_b, undo_a, undo_b, close_set,
+// undo_last_set, finish, reopen.
 func (s *Store) ApplyScoreAction(ctx context.Context, eventID int64, matchID, action string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -950,6 +952,39 @@ func (s *Store) ApplyScoreAction(ctx context.Context, eventID int64, matchID, ac
 			scoreB++
 		}
 		curA, curB = 0, 0
+		setLabel = fmt.Sprintf("%d° SET", len(sets)+1)
+	case "undo_last_set":
+		if len(sets) == 0 {
+			return fmt.Errorf("no_closed_set")
+		}
+		// Non cancellare implicitamente i punti già segnati nel set successivo:
+		// l'operatore deve prima annullarli con i normali comandi punto.
+		if curA != 0 || curB != 0 {
+			return fmt.Errorf("current_set_started")
+		}
+		last := sets[len(sets)-1]
+		parts := strings.SplitN(last, "-", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid_set_score")
+		}
+		lastA, errA := strconv.Atoi(parts[0])
+		lastB, errB := strconv.Atoi(parts[1])
+		if errA != nil || errB != nil || lastA == lastB {
+			return fmt.Errorf("invalid_set_score")
+		}
+		sets = sets[:len(sets)-1]
+		curA, curB = lastA, lastB
+		if lastA > lastB {
+			if scoreA <= 0 {
+				return fmt.Errorf("invalid_set_score")
+			}
+			scoreA--
+		} else {
+			if scoreB <= 0 {
+				return fmt.Errorf("invalid_set_score")
+			}
+			scoreB--
+		}
 		setLabel = fmt.Sprintf("%d° SET", len(sets)+1)
 	case "finish":
 		status = "finished"
