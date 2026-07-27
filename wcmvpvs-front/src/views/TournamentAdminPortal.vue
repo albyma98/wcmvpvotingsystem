@@ -97,7 +97,13 @@ async function bootstrap (ov) {
 }
 async function loadTeams () { const r = await j('GET', '/teams'); if (r.ok) teams.value = (await r.json()).teams }
 async function loadMvp () { const r = await j('GET', '/mvp'); if (r.ok) mvp.value = await r.json() }
-async function loadMatches () { const r = await j('GET', '/matches'); if (r.ok) matches.value = (await r.json()).matches }
+async function loadMatches () {
+  const r = await j('GET', '/matches')
+  if (r.ok) {
+    matches.value = (await r.json()).matches
+    prefillNextGroupMatchTime()
+  }
+}
 async function loadSponsors () { const r = await j('GET', '/sponsors'); if (r.ok) sponsors.value = (await r.json()).sponsors }
 async function loadShopProducts () { const r = await j('GET', '/shop'); if (r.ok) shopProducts.value = (await r.json()).products ?? [] }
 async function loadShopReservations () { const r = await j('GET', '/shop/reservations'); if (r.ok) shopReservations.value = (await r.json()).reservations ?? [] }
@@ -248,6 +254,44 @@ const playerLabel = p => [p.firstName, p.lastName].filter(Boolean).join(' ')
 
 // ---------- calendario ----------
 const newMatch = reactive({ court: 'CAMPO 1', time: '', stage: '', teamAId: 0, teamBId: 0 })
+const suggestedMatchTime = ref('')
+
+function matchTimeMinutes (value) {
+  const match = /^(\d{1,2}):([0-5]\d)$/.exec(String(value || '').trim())
+  if (!match || Number(match[1]) > 23) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
+function prefillNextGroupMatchTime () {
+  // Un valore modificato manualmente non viene mai sovrascritto dai refresh SSE.
+  if (newMatch.time && newMatch.time !== suggestedMatchTime.value) return
+
+  const groupMatches = matches.value.filter(match =>
+    !String(match.stage || '').trim() && matchTimeMinutes(match.time) !== null
+  )
+  if (!groupMatches.length) {
+    if (newMatch.time === suggestedMatchTime.value) newMatch.time = ''
+    suggestedMatchTime.value = ''
+    return
+  }
+
+  // Se è stata impostata l'àncora di inizio torneo, gli orari dopo mezzanotte
+  // appartengono alla coda della stessa giornata e ricevono +24 ore nel confronto.
+  const anchor = groupMatches.find(match => match.isAnchor)
+  const anchorMinutes = anchor ? matchTimeMinutes(anchor.time) : null
+  let lastMinutes = -1
+  for (const match of groupMatches) {
+    const minutes = matchTimeMinutes(match.time)
+    const orderedMinutes = anchorMinutes !== null && minutes < anchorMinutes ? minutes + 24 * 60 : minutes
+    if (orderedMinutes > lastMinutes) lastMinutes = orderedMinutes
+  }
+
+  const nextMinutes = (lastMinutes + 30) % (24 * 60)
+  const suggestion = `${String(Math.floor(nextMinutes / 60)).padStart(2, '0')}:${String(nextMinutes % 60).padStart(2, '0')}`
+  suggestedMatchTime.value = suggestion
+  newMatch.time = suggestion
+}
+
 async function createMatch () {
   if (!newMatch.teamAId || !newMatch.teamBId || newMatch.teamAId === newMatch.teamBId) { flash('Scegli due squadre diverse.'); return }
   const scheduledAt = new Date().toISOString().slice(0, 10) + 'T' + (newMatch.time || '00:00')
@@ -753,6 +797,9 @@ async function generateBracket () {
           <select v-model="newMatch.stage"><option value="">Girone</option><option>QUARTI</option><option>SEMIFINALE</option><option>FINALE 3° POSTO</option><option>FINALE</option></select>
           <button @click="createMatch">Aggiungi</button>
         </div>
+        <p v-if="!newMatch.stage && suggestedMatchTime && newMatch.time === suggestedMatchTime" class="hint next-time-hint">
+          Orario suggerito automaticamente: 30 minuti dopo l’ultima partita del girone.
+        </p>
         <div v-for="m in matches" :key="m.id" class="match-item">
           <div v-if="editingMatchId !== m.id" class="row-match">
             <span>
