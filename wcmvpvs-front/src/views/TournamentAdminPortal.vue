@@ -810,7 +810,10 @@ async function generateBracket () {
           <div v-if="editingMatchId !== m.id" class="row-match">
             <span>
               <span v-if="m.isAnchor" class="anchor-flag" title="Inizio torneo: da qui parte il calendario">🏁</span>
-              {{ m.court }} · {{ m.time || '—' }} · {{ m.teamAName }} vs {{ m.teamBName }}
+              {{ m.court }} · {{ m.time || '—' }} ·
+              <span class="calendar-team"><img v-if="m.teamALogo" :src="m.teamALogo" :alt="m.teamAName" />{{ m.teamAName }}</span>
+              vs
+              <span class="calendar-team"><img v-if="m.teamBLogo" :src="m.teamBLogo" :alt="m.teamBName" />{{ m.teamBName }}</span>
               <small v-if="m.stage">· {{ m.stage }}</small>
               <small>[{{ m.status }}]</small>
             </span>
@@ -1431,6 +1434,8 @@ textarea { width: 100%; font-family: inherit; }
   width: 38px; height: 38px; flex: none; border-radius: 50%; object-fit: cover;
   background: #fff; border: 1px solid rgba(255,255,255,.18);
 }
+.calendar-team { display: inline-flex; align-items: center; gap: 5px; vertical-align: middle; }
+.calendar-team img { width: 24px; height: 24px; flex: none; object-fit: contain; border-radius: 50%; background: #fff; }
 .team-logo-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .team-logo-preview { display: flex; align-items: center; gap: 8px; }
 .team-logo-preview .danger { padding: 6px 10px; font-size: 12px; background: transparent; color: #f87171; }

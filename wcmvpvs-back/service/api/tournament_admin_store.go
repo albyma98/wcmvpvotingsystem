@@ -792,6 +792,8 @@ type TAMatch struct {
 	TeamBID   int64    `json:"teamBId"`
 	TeamAName string   `json:"teamAName"`
 	TeamBName string   `json:"teamBName"`
+	TeamALogo string   `json:"teamALogo,omitempty"`
+	TeamBLogo string   `json:"teamBLogo,omitempty"`
 	IsAnchor  bool     `json:"isAnchor"` // partita "inizio torneo" (taglio del ciclo cronologico)
 }
 
@@ -802,6 +804,7 @@ func (s *Store) ListTAMatches(ctx context.Context, eventID int64) ([]TAMatch, er
 		       m.team_a_id, m.team_b_id,
 		       COALESCE(NULLIF(ta.name,''), m.team_a_label, ''),
 		       COALESCE(NULLIF(tb.name,''), m.team_b_label, ''),
+		       COALESCE(ta.logo_url,''), COALESCE(tb.logo_url,''),
 		       m.is_anchor
 		FROM matches m
 		LEFT JOIN tournament_teams ta ON ta.id = m.team_a_id
@@ -823,7 +826,8 @@ func (s *Store) ListTAMatches(ctx context.Context, eventID int64) ([]TAMatch, er
 		var setsJSON string
 		if err := rows.Scan(&m.ID, &m.Court, &m.Stage, &m.Time, &m.Status, &m.SetLabel,
 			&m.ScoreA, &m.ScoreB, &m.CurA, &m.CurB, &setsJSON,
-			&m.TeamAID, &m.TeamBID, &m.TeamAName, &m.TeamBName, &m.IsAnchor); err != nil {
+			&m.TeamAID, &m.TeamBID, &m.TeamAName, &m.TeamBName,
+			&m.TeamALogo, &m.TeamBLogo, &m.IsAnchor); err != nil {
 			return nil, err
 		}
 		m.Sets = decodeSets(setsJSON)

@@ -175,7 +175,9 @@ useTournamentStream(() => props.slug, load)
           <tbody>
             <tr v-for="(row, i) in shownGroup.rows" :key="row.teamId" :class="{ top: i < qualifiersPerGroup }">
               <td class="c pos">{{ i + 1 }}</td>
-              <td class="tl name">{{ row.team }}</td>
+              <td class="tl name">
+                <span class="standing-team"><img v-if="row.logoUrl" :src="row.logoUrl" :alt="row.team" />{{ row.team }}</span>
+              </td>
               <td class="c">{{ row.played }}</td>
               <td class="c pt">{{ row.points }}</td>
             </tr>
@@ -292,6 +294,11 @@ useTournamentStream(() => props.slug, load)
 .standings .c { text-align: center; }
 .standings .tl { text-align: left; }
 .standings td.name { overflow-wrap: anywhere; line-height: 1.15; }
+.standing-team { display: inline-flex; align-items: center; gap: .4vw; }
+.standing-team img {
+  width: 2.4vh; height: 2.4vh; flex: none; object-fit: contain;
+  border-radius: 50%; background: #fff;
+}
 .standings td.pos { color: #94a3b8; }
 .standings td.pt { color: #f2b928; font-weight: 900; }
 .standings tr.top td.pos { color: #f2b928; }

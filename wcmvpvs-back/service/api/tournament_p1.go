@@ -139,20 +139,22 @@ func (s *Store) EnsureTournamentP1Tables() error {
 // ============================ PUBBLICO: PARTITE ==============================
 
 type PublicMatch struct {
-	ID       string   `json:"id"`
-	Court    string   `json:"court"`
-	Time     string   `json:"time"`
-	Status   string   `json:"status"`
-	Stage    string   `json:"stage,omitempty"`
-	Group    string   `json:"group,omitempty"`
-	SetLabel string   `json:"setLabel,omitempty"`
-	ScoreA   int      `json:"scoreA"` // set vinti
-	ScoreB   int      `json:"scoreB"`
-	CurA     int      `json:"curA"` // punti del set in corso (per il live nel calendario)
-	CurB     int      `json:"curB"`
-	Sets     []string `json:"sets"`
-	TeamA    string   `json:"teamA"`
-	TeamB    string   `json:"teamB"`
+	ID        string   `json:"id"`
+	Court     string   `json:"court"`
+	Time      string   `json:"time"`
+	Status    string   `json:"status"`
+	Stage     string   `json:"stage,omitempty"`
+	Group     string   `json:"group,omitempty"`
+	SetLabel  string   `json:"setLabel,omitempty"`
+	ScoreA    int      `json:"scoreA"` // set vinti
+	ScoreB    int      `json:"scoreB"`
+	CurA      int      `json:"curA"` // punti del set in corso (per il live nel calendario)
+	CurB      int      `json:"curB"`
+	Sets      []string `json:"sets"`
+	TeamA     string   `json:"teamA"`
+	TeamB     string   `json:"teamB"`
+	TeamALogo string   `json:"teamALogo,omitempty"`
+	TeamBLogo string   `json:"teamBLogo,omitempty"`
 }
 
 func (s *Store) ListPublicMatches(ctx context.Context, slug string) ([]PublicMatch, error) {
@@ -160,7 +162,8 @@ func (s *Store) ListPublicMatches(ctx context.Context, slug string) ([]PublicMat
 		SELECT m.id, m.court, m.scheduled_time, m.status, COALESCE(m.stage,''),
 		       COALESCE(ta.group_name,''), m.set_label, m.score_a, m.score_b, m.cur_a, m.cur_b, m.sets_json,
 		       COALESCE(NULLIF(ta.name,''), m.team_a_label, ''),
-		       COALESCE(NULLIF(tb.name,''), m.team_b_label, '')
+		       COALESCE(NULLIF(tb.name,''), m.team_b_label, ''),
+		       COALESCE(ta.logo_url,''), COALESCE(tb.logo_url,'')
 		FROM matches m
 		JOIN events e ON e.id = m.event_id AND e.slug = ? AND e.type = 'tournament'
 		LEFT JOIN tournament_teams ta ON ta.id = m.team_a_id
@@ -180,7 +183,8 @@ func (s *Store) ListPublicMatches(ctx context.Context, slug string) ([]PublicMat
 		var m PublicMatch
 		var setsJSON string
 		if err := rows.Scan(&m.ID, &m.Court, &m.Time, &m.Status, &m.Stage, &m.Group,
-			&m.SetLabel, &m.ScoreA, &m.ScoreB, &m.CurA, &m.CurB, &setsJSON, &m.TeamA, &m.TeamB); err != nil {
+			&m.SetLabel, &m.ScoreA, &m.ScoreB, &m.CurA, &m.CurB, &setsJSON,
+			&m.TeamA, &m.TeamB, &m.TeamALogo, &m.TeamBLogo); err != nil {
 			return nil, err
 		}
 		m.Sets = decodeSets(setsJSON)
@@ -212,6 +216,7 @@ type StandingRow struct {
 	TeamID    int64  `json:"teamId"`
 	Team      string `json:"team"`
 	Short     string `json:"short,omitempty"`
+	LogoURL   string `json:"logoUrl,omitempty"`
 	Played    int    `json:"played"`
 	Wins      int    `json:"wins"`
 	TieWins   int    `json:"tieWins,omitempty"` // vittorie al tie-break (set decisivo)
@@ -256,7 +261,7 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 	teams := map[int64]*StandingRow{}
 	groupOf := map[int64]string{}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tt.id, tt.name, tt.short_name, tt.group_name
+		SELECT tt.id, tt.name, tt.short_name, COALESCE(tt.logo_url,''), tt.group_name
 		FROM tournament_teams tt
 		JOIN events e ON e.id = tt.event_id AND e.slug = ? AND e.type = 'tournament'`, slug)
 	if err != nil {
@@ -264,12 +269,12 @@ func (s *Store) ComputeStandings(ctx context.Context, slug string) ([]StandingsG
 	}
 	for rows.Next() {
 		var id int64
-		var name, short, group string
-		if err := rows.Scan(&id, &name, &short, &group); err != nil {
+		var name, short, logoURL, group string
+		if err := rows.Scan(&id, &name, &short, &logoURL, &group); err != nil {
 			rows.Close()
 			return nil, false, err
 		}
-		teams[id] = &StandingRow{TeamID: id, Team: name, Short: short}
+		teams[id] = &StandingRow{TeamID: id, Team: name, Short: short, LogoURL: logoURL}
 		groupOf[id] = group
 	}
 	rows.Close()

@@ -230,7 +230,12 @@ const mvpTeams = computed(() => (mvp.value.teams || []).map(team => ({
       </div>
     </div>
     <article v-for="match in matches" :key="match.id" class="mini-card match-row">
-      <div><b>{{ match.teamAName }} vs {{ match.teamBName }}</b><small>{{ match.court }} · {{ match.time || '—' }} · {{ match.stage || 'Girone' }} · {{ match.status }}</small></div>
+      <div>
+        <b class="match-team"><img v-if="match.teamALogo" :src="match.teamALogo" :alt="match.teamAName" />{{ match.teamAName }}</b>
+        <small>vs</small>
+        <b class="match-team"><img v-if="match.teamBLogo" :src="match.teamBLogo" :alt="match.teamBName" />{{ match.teamBName }}</b>
+        <small>{{ match.court }} · {{ match.time || '—' }} · {{ match.stage || 'Girone' }} · {{ match.status }}</small>
+      </div>
       <div class="actions"><button class="secondary" @click="editMatch(match)">Modifica</button><button class="danger" @click="deleteMatch(match)">Elimina</button></div>
     </article>
   </section>
@@ -272,6 +277,8 @@ button:disabled { opacity:.5; }
 .danger { background:transparent; color:#f87171; border:1px solid rgba(248,113,113,.35); }
 .row-head,.match-row,.actions,.mvp-title { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .row-head > div,.match-row > div { min-width:0; display:flex; flex-direction:column; }
+.match-team { display:flex; align-items:center; gap:7px; }
+.match-team img { width:24px; height:24px; flex:none; object-fit:contain; border-radius:50%; background:#fff; }
 small { color:#94a3b8; font-size:11px; }
 .chips { display:flex; flex-wrap:wrap; gap:5px; }
 .chips span { padding:3px 8px; border-radius:999px; background:rgba(242,185,40,.1); color:#fbd34d; font-size:11px; }

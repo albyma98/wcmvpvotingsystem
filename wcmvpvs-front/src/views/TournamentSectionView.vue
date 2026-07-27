@@ -186,8 +186,12 @@ function goBack () {
               <small v-if="m.stage" class="stage">{{ m.stage }}</small>
             </div>
             <div class="mr-teams">
-              <span :class="{ winner: m.status === 'finished' && m.scoreA > m.scoreB }">{{ m.teamA }}</span>
-              <span :class="{ winner: m.status === 'finished' && m.scoreB > m.scoreA }">{{ m.teamB }}</span>
+              <span class="team-line" :class="{ winner: m.status === 'finished' && m.scoreA > m.scoreB }">
+                <img v-if="m.teamALogo" :src="m.teamALogo" :alt="m.teamA" />{{ m.teamA }}
+              </span>
+              <span class="team-line" :class="{ winner: m.status === 'finished' && m.scoreB > m.scoreA }">
+                <img v-if="m.teamBLogo" :src="m.teamBLogo" :alt="m.teamB" />{{ m.teamB }}
+              </span>
             </div>
             <div class="mr-score" v-if="m.status !== 'scheduled'">
               <!-- LIVE: punti del set in corso (grandi) + set vinti e n° set -->
@@ -214,7 +218,9 @@ function goBack () {
             <tbody>
               <tr v-for="(row, i) in g.rows" :key="row.teamId" :class="{ top: i < qualifiersPerGroup }">
                 <td class="pos">{{ i + 1 }}</td>
-                <td class="tl name">{{ row.team }}</td>
+                <td class="tl name">
+                  <span class="standing-team"><img v-if="row.logoUrl" :src="row.logoUrl" :alt="row.team" />{{ row.team }}</span>
+                </td>
                 <td>{{ row.played }}</td>
                 <td class="w">{{ row.wins }}</td>
                 <td v-if="allowDraws">{{ row.draws }}</td>
@@ -288,6 +294,8 @@ h2 { font-size: 12px; letter-spacing: 1.6px; color: #F2B928; text-transform: upp
 .stage { color: #F2B928; font-size: 9.5px; letter-spacing: 1px; font-weight: 800; }
 .mr-teams { display: flex; flex-direction: column; gap: 3px; font-weight: 800; font-size: 13.5px; min-width: 0; }
 .mr-teams span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85; }
+.mr-teams .team-line { display: flex; align-items: center; gap: 7px; }
+.team-line img { width: 22px; height: 22px; flex: none; object-fit: contain; border-radius: 50%; background: #fff; }
 .mr-teams .winner { opacity: 1; color: #F2B928; }
 .mr-score { display: grid; grid-template-rows: auto auto auto; justify-items: end; font-variant-numeric: tabular-nums; }
 .mr-score b { font-size: 15px; line-height: 1.25; }
@@ -301,6 +309,8 @@ h2 { font-size: 12px; letter-spacing: 1.6px; color: #F2B928; text-transform: upp
 .tl { text-align: left !important; padding-left: 12px !important; }
 .pos { color: rgba(255,255,255,.5); width: 28px; }
 .name { font-weight: 800; }
+.standing-team { display: inline-flex; align-items: center; gap: 7px; }
+.standing-team img { width: 24px; height: 24px; flex: none; object-fit: contain; border-radius: 50%; background: #fff; }
 .w { color: #F2B928; font-weight: 800; }
 .pt { font-weight: 900; color: #fff; }
 tr.top .pos { color: #00C897; font-weight: 900; }
