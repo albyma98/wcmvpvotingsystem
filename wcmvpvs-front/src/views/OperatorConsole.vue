@@ -1,9 +1,10 @@
 <script setup>
-// Console operatore campo (/op/:token) — il volontario del Campo 2.
-// Zero account: magic link + PIN a 6 cifre consegnati via WhatsApp dall'admin.
-// Vede e tocca SOLO le partite del suo campo (enforcement lato server).
+// Console operatore (/op/:token): campo, squadre/rose, calendario o monitor MVP.
+// Zero account: magic link + PIN a 6 cifre consegnati dall'admin.
+// Il ruolo limita dati e azioni anche lato server.
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useTournamentStream } from '@/composables/useTournamentStream'
+import OperatorMiniAdmin from './OperatorMiniAdmin.vue'
 
 const props = defineProps({ token: { type: String, required: true } })
 
@@ -21,6 +22,8 @@ const checked = ref(false)
 const pin = ref('')
 const pinError = ref('')
 const court = ref('')
+const role = ref('court')
+const operatorData = ref({})
 const tournament = ref('')
 const slug = ref('')
 const matches = ref([])
@@ -35,11 +38,13 @@ async function loadState () {
   const r = await j('GET', '/state')
   if (!r.ok) { authed.value = false; checked.value = true; return }
   const data = await r.json()
-  court.value = data.court
+  role.value = data.role || 'court'
+  operatorData.value = data
+  court.value = data.court || ''
   tournament.value = data.tournament
   slug.value = data.slug ?? ''
-  matches.value = data.matches
-  bracketPrompt.value = data.bracketPrompt?.pending ? data.bracketPrompt : null
+  matches.value = data.matches ?? []
+  bracketPrompt.value = role.value === 'court' && data.bracketPrompt?.pending ? data.bracketPrompt : null
   authed.value = true
   checked.value = true
 }
@@ -76,6 +81,11 @@ async function undoLastSet (match) {
 const live = computed(() => matches.value.filter(m => m.status === 'live'))
 const scheduled = computed(() => matches.value.filter(m => m.status === 'scheduled'))
 const finished = computed(() => matches.value.filter(m => m.status === 'finished'))
+const areaTitle = computed(() => ({
+  teams: 'Squadre e rose',
+  calendar: 'Calendario',
+  mvp: 'Andamento MVP'
+})[role.value] || court.value || 'Console Campo')
 const bracketCountdown = computed(() => Math.max(
   0,
   Math.ceil(((bracketPrompt.value?.deadlineMs || 0) - clockNow.value) / 1000)
@@ -128,11 +138,20 @@ useTournamentStream(slug, () => { if (authed.value) loadState() })
 
     <template v-else-if="authed">
       <header class="op-head">
-        <h1>{{ court }}</h1>
+        <h1>{{ areaTitle }}</h1>
         <p>{{ tournament }}</p>
       </header>
       <p v-if="notice" class="op-notice">{{ notice }}</p>
 
+      <OperatorMiniAdmin
+        v-if="role !== 'court'"
+        :token="token"
+        :role="role"
+        :data="operatorData"
+        @reload="loadState"
+      />
+
+      <template v-else>
       <div v-if="bracketPrompt" class="bracket-confirm" role="dialog" aria-modal="true" aria-labelledby="bracket-confirm-title">
         <div class="bracket-confirm-card">
           <div class="bracket-timer">{{ bracketCountdown }}</div>
@@ -194,6 +213,7 @@ useTournamentStream(slug, () => { if (authed.value) loadState() })
         <span>{{ m.teamAName }} <b>{{ m.scoreA }}:{{ m.scoreB }}</b> {{ m.teamBName }}</span>
         <button class="ghost" @click="score(m.id, 'reopen')">Riapri</button>
       </div>
+      </template>
     </template>
 
     <p v-else class="hint center">Caricamento…</p>

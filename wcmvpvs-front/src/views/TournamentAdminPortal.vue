@@ -592,13 +592,19 @@ async function deleteShopProduct (id) {
   }
 }
 
-// ---------- operatori campo ----------
+// ---------- operatori con accesso limitato ----------
 const operators = ref([])
-const newOperator = reactive({ court: 'CAMPO 1', label: '' })
+const newOperator = reactive({ role: 'court', court: 'CAMPO 1', label: '' })
 const createdOperator = ref(null)
+const operatorRoleLabel = role => ({
+  court: 'Operatore campo',
+  teams: 'Squadre e rose',
+  calendar: 'Calendario',
+  mvp: 'Monitor MVP'
+}[role || 'court'] || role)
 async function loadOperators () { const r = await j('GET', '/operators'); if (r.ok) operators.value = (await r.json()).operators }
 async function createOperator () {
-  if (!newOperator.court.trim()) return
+  if (newOperator.role === 'court' && !newOperator.court.trim()) return
   const r = await j('POST', '/operators', { ...newOperator })
   if (r.ok) {
     createdOperator.value = await r.json()
@@ -964,23 +970,29 @@ async function generateBracket () {
         </div>
       </section>
 
-      <!-- OPERATORI CAMPO -->
+      <!-- OPERATORI E MINI-AREE -->
       <section v-else-if="tab === 'operators'" class="ta-body">
-        <p class="hint">Un link per campo: mandalo su WhatsApp al volontario insieme al PIN. Revocabile in ogni momento.</p>
+        <p class="hint">Genera accessi separati e revocabili. L’operatore campo mantiene la console punteggio; gli altri ruoli vedono soltanto la mini-area assegnata.</p>
         <div class="form-row">
-          <select v-model="newOperator.court" :disabled="courtOptions.length === 1" style="max-width:160px">
+          <select v-model="newOperator.role" style="max-width:190px">
+            <option value="court">Operatore campo</option>
+            <option value="teams">Squadre e rose</option>
+            <option value="calendar">Calendario partite</option>
+            <option value="mvp">Monitor andamento MVP</option>
+          </select>
+          <select v-if="newOperator.role === 'court'" v-model="newOperator.court" :disabled="courtOptions.length === 1" style="max-width:160px">
             <option v-for="court in courtOptions" :key="court" :value="court">{{ court }}</option>
           </select>
           <input v-model="newOperator.label" placeholder="Nome operatore (opzionale)" />
           <button @click="createOperator">Genera link</button>
         </div>
         <div v-if="createdOperator" class="op-created">
-          <p><b>{{ createdOperator.operator.court }}</b> — consegna questi due dati:</p>
+          <p><b>{{ operatorRoleLabel(createdOperator.operator.role) }}</b><span v-if="createdOperator.operator.role === 'court'"> · {{ createdOperator.operator.court }}</span> — consegna questi due dati:</p>
           <div class="cred"><code>{{ opLink(createdOperator.operator.token) }}</code><button @click="copy(opLink(createdOperator.operator.token))">Copia link</button></div>
           <div class="cred"><code>PIN {{ createdOperator.operator.pin }}</code><button @click="copy(createdOperator.operator.pin)">Copia PIN</button></div>
         </div>
         <div v-for="o in operators" :key="o.id" class="row-match">
-          <span><b>{{ o.court }}</b> <small v-if="o.label">· {{ o.label }}</small> <small>· PIN {{ o.pin }}</small></span>
+          <span><b>{{ operatorRoleLabel(o.role) }}</b> <small v-if="o.role === 'court'">· {{ o.court }}</small> <small v-if="o.label">· {{ o.label }}</small> <small>· PIN {{ o.pin }}</small></span>
           <span style="display:flex;gap:6px">
             <button class="ghost" @click="copy(opLink(o.token))">Copia link</button>
             <button class="danger" @click="deleteOperator(o.id)">Revoca</button>

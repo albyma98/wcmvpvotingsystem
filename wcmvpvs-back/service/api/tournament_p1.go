@@ -48,6 +48,13 @@ func registerTournamentP1Routes(rt *_router) {
 	rt.router.Get("/v1/op/{token}/state", rt.wrapOp(rt.opState))
 	rt.router.Post("/v1/op/{token}/matches/{id}/score", rt.wrapOp(rt.opScore))
 	rt.router.Post("/v1/op/{token}/bracket/decision", rt.wrapOp(rt.opBracketDecision))
+	rt.router.Post("/v1/op/{token}/teams", rt.wrapOp(rt.opCreateTeam))
+	rt.router.Put("/v1/op/{token}/teams/{id}", rt.wrapOp(rt.opUpdateTeam))
+	rt.router.Put("/v1/op/{token}/teams/{id}/players", rt.wrapOp(rt.opSetTeamPlayers))
+	rt.router.Delete("/v1/op/{token}/teams/{id}", rt.wrapOp(rt.opDeleteTeam))
+	rt.router.Post("/v1/op/{token}/calendar", rt.wrapOp(rt.opCreateMatch))
+	rt.router.Put("/v1/op/{token}/calendar/{id}", rt.wrapOp(rt.opUpdateMatch))
+	rt.router.Delete("/v1/op/{token}/calendar/{id}", rt.wrapOp(rt.opDeleteMatch))
 }
 
 // EnsureTournamentP1Tables: colonna stage + tabelle operatori (idempotente).
@@ -105,6 +112,7 @@ func (s *Store) EnsureTournamentP1Tables() error {
 			event_id INTEGER NOT NULL,
 			court TEXT NOT NULL,
 			label TEXT NOT NULL DEFAULT '',
+			role TEXT NOT NULL DEFAULT 'court',
 			token TEXT NOT NULL UNIQUE,
 			pin TEXT NOT NULL,
 			active INTEGER NOT NULL DEFAULT 1,
@@ -120,6 +128,10 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		if _, err := s.db.Exec(q); err != nil {
 			return fmt.Errorf("court operators tables: %w", err)
 		}
+	}
+	if _, err := s.db.Exec(`ALTER TABLE court_operators ADD COLUMN role TEXT NOT NULL DEFAULT 'court'`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return fmt.Errorf("court operators role: %w", err)
 	}
 	return nil
 }
@@ -534,6 +546,7 @@ type CourtOperator struct {
 	ID     int64  `json:"id"`
 	Court  string `json:"court"`
 	Label  string `json:"label"`
+	Role   string `json:"role"`
 	Token  string `json:"token"`
 	PIN    string `json:"pin"`
 	Active bool   `json:"active"`
@@ -541,8 +554,8 @@ type CourtOperator struct {
 
 func (s *Store) ListOperators(ctx context.Context, eventID int64) ([]CourtOperator, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, court, label, token, pin, active
-		FROM court_operators WHERE event_id = ? ORDER BY court, id`, eventID)
+		SELECT id, court, label, COALESCE(role,'court'), token, pin, active
+		FROM court_operators WHERE event_id = ? ORDER BY role, court, id`, eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -551,7 +564,7 @@ func (s *Store) ListOperators(ctx context.Context, eventID int64) ([]CourtOperat
 	for rows.Next() {
 		var o CourtOperator
 		var act int
-		if err := rows.Scan(&o.ID, &o.Court, &o.Label, &o.Token, &o.PIN, &act); err != nil {
+		if err := rows.Scan(&o.ID, &o.Court, &o.Label, &o.Role, &o.Token, &o.PIN, &act); err != nil {
 			return nil, err
 		}
 		o.Active = act == 1
@@ -560,7 +573,7 @@ func (s *Store) ListOperators(ctx context.Context, eventID int64) ([]CourtOperat
 	return out, rows.Err()
 }
 
-func (s *Store) CreateOperator(ctx context.Context, eventID int64, court, label string) (*CourtOperator, error) {
+func (s *Store) CreateOperator(ctx context.Context, eventID int64, role, court, label string) (*CourtOperator, error) {
 	buf := make([]byte, 12)
 	if _, err := rand.Read(buf); err != nil {
 		return nil, err
@@ -572,13 +585,13 @@ func (s *Store) CreateOperator(ctx context.Context, eventID int64, court, label 
 	}
 	pin := fmt.Sprintf("%06d", pinN.Int64())
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO court_operators (event_id, court, label, token, pin) VALUES (?, ?, ?, ?, ?)`,
-		eventID, strings.TrimSpace(court), strings.TrimSpace(label), token, pin)
+		INSERT INTO court_operators (event_id, court, label, role, token, pin) VALUES (?, ?, ?, ?, ?, ?)`,
+		eventID, strings.TrimSpace(court), strings.TrimSpace(label), role, token, pin)
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	return &CourtOperator{ID: id, Court: court, Label: label, Token: token, PIN: pin, Active: true}, nil
+	return &CourtOperator{ID: id, Court: court, Label: label, Role: role, Token: token, PIN: pin, Active: true}, nil
 }
 
 func (s *Store) DeleteOperator(ctx context.Context, eventID, opID int64) error {
@@ -595,6 +608,7 @@ type opInfo struct {
 	ID      int64
 	EventID int64
 	Court   string
+	Role    string
 	PIN     string
 	Active  bool
 }
@@ -603,8 +617,8 @@ func (s *Store) GetOperatorByToken(ctx context.Context, token string) (*opInfo, 
 	var o opInfo
 	var act int
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, event_id, court, pin, active FROM court_operators WHERE token = ?`,
-		token).Scan(&o.ID, &o.EventID, &o.Court, &o.PIN, &act)
+		SELECT id, event_id, court, COALESCE(role,'court'), pin, active FROM court_operators WHERE token = ?`,
+		token).Scan(&o.ID, &o.EventID, &o.Court, &o.Role, &o.PIN, &act)
 	if err != nil {
 		return nil, err
 	}
@@ -654,12 +668,22 @@ func (rt *_router) taCreateOperator(w http.ResponseWriter, r *http.Request, even
 	var body struct {
 		Court string `json:"court"`
 		Label string `json:"label"`
+		Role  string `json:"role"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Court) == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, `{"error":"bad_input"}`, http.StatusBadRequest)
 		return
 	}
-	op, err := rt.store.CreateOperator(r.Context(), eventID, body.Court, body.Label)
+	role := strings.ToLower(strings.TrimSpace(body.Role))
+	if role == "" {
+		role = "court"
+	}
+	if role != "court" && role != "teams" && role != "calendar" && role != "mvp" ||
+		role == "court" && strings.TrimSpace(body.Court) == "" {
+		http.Error(w, `{"error":"bad_input"}`, http.StatusBadRequest)
+		return
+	}
+	op, err := rt.store.CreateOperator(r.Context(), eventID, role, body.Court, body.Label)
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
@@ -705,7 +729,7 @@ func (rt *_router) opLogin(w http.ResponseWriter, r *http.Request) {
 		Name: opCookieName, Value: sess, Path: "/",
 		MaxAge: int(opSessionTTL.Seconds()), HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode,
 	})
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "court": op.Court})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "court": op.Court, "role": op.Role})
 }
 
 type opHandler func(w http.ResponseWriter, r *http.Request, op *opInfo)
@@ -739,28 +763,58 @@ func (rt *_router) opState(w http.ResponseWriter, r *http.Request, op *opInfo) {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
-	matches, err := rt.store.ListTAMatches(r.Context(), op.EventID)
-	if err != nil {
-		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
-		return
+	payload := map[string]interface{}{
+		"tournament": settings.Name, "slug": slug, "court": op.Court, "role": op.Role,
 	}
-	mine := make([]TAMatch, 0, 8)
-	for _, m := range matches {
-		if strings.EqualFold(m.Court, op.Court) {
-			mine = append(mine, m)
+	switch op.Role {
+	case "teams":
+		teams, err := rt.store.ListTATeams(r.Context(), op.EventID)
+		if err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
 		}
+		payload["teams"] = teams
+	case "calendar":
+		teams, teamErr := rt.store.ListTATeams(r.Context(), op.EventID)
+		matches, matchErr := rt.store.ListTAMatches(r.Context(), op.EventID)
+		if teamErr != nil || matchErr != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		payload["teams"], payload["matches"], payload["courts"] = teams, matches, settings.Courts
+	case "mvp":
+		board, err := rt.store.GetMVPResults(r.Context(), op.EventID)
+		if err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		payload["mvp"] = board
+	default:
+		matches, err := rt.store.ListTAMatches(r.Context(), op.EventID)
+		if err != nil {
+			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			return
+		}
+		mine := make([]TAMatch, 0, 8)
+		for _, m := range matches {
+			if strings.EqualFold(m.Court, op.Court) {
+				mine = append(mine, m)
+			}
+		}
+		prompt := rt.store.GetBracketAutoPrompt(r.Context(), op.EventID)
+		if prompt.Pending {
+			rt.armBracketAutoGeneration(op.EventID, prompt)
+		}
+		payload["matches"], payload["bracketPrompt"] = mine, prompt
 	}
-	prompt := rt.store.GetBracketAutoPrompt(r.Context(), op.EventID)
-	if prompt.Pending {
-		rt.armBracketAutoGeneration(op.EventID, prompt)
-	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"tournament": settings.Name, "slug": slug, "court": op.Court, "matches": mine,
-		"bracketPrompt": prompt,
-	})
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func (rt *_router) opScore(w http.ResponseWriter, r *http.Request, op *opInfo) {
+	if op.Role != "court" {
+		http.Error(w, `{"error":"wrong_role"}`, http.StatusForbidden)
+		return
+	}
 	matchID := chi.URLParam(r, "id")
 	var body struct {
 		Action string `json:"action"`
@@ -814,6 +868,10 @@ func (rt *_router) opScore(w http.ResponseWriter, r *http.Request, op *opInfo) {
 }
 
 func (rt *_router) opBracketDecision(w http.ResponseWriter, r *http.Request, op *opInfo) {
+	if op.Role != "court" {
+		http.Error(w, `{"error":"wrong_role"}`, http.StatusForbidden)
+		return
+	}
 	var body struct {
 		Action string `json:"action"`
 	}
@@ -839,6 +897,161 @@ func (rt *_router) opBracketDecision(w http.ResponseWriter, r *http.Request, op 
 	default:
 		http.Error(w, `{"error":"bad_action"}`, http.StatusBadRequest)
 	}
+}
+
+func (rt *_router) opCreateTeam(w http.ResponseWriter, r *http.Request, op *opInfo) {
+	if op.Role != "teams" {
+		http.Error(w, `{"error":"wrong_role"}`, http.StatusForbidden)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxSponsorLogoBytes+65536)
+	var team TATeam
+	if err := json.NewDecoder(r.Body).Decode(&team); err != nil || strings.TrimSpace(team.Name) == "" {
+		http.Error(w, `{"error":"bad_input"}`, http.StatusBadRequest)
+		return
+	}
+	logo, err := sanitizeSponsorLogo(team.LogoURL)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+	team.LogoURL = logo
+	if _, err := rt.store.InsertTATeams(r.Context(), op.EventID, []TATeam{team}); err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	rt.invalidateTournamentBracketCaches(r.Context(), op.EventID)
+	writeJSON(w, http.StatusCreated, map[string]interface{}{"ok": true})
+}
+
+func (rt *_router) opUpdateTeam(w http.ResponseWriter, r *http.Request, op *opInfo) {
+	if op.Role != "teams" {
+		http.Error(w, `{"error":"wrong_role"}`, http.StatusForbidden)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxSponsorLogoBytes+4096)
+	teamID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	var team TATeam
+	if err := json.NewDecoder(r.Body).Decode(&team); err != nil {
+		http.Error(w, `{"error":"bad_json"}`, http.StatusBadRequest)
+		return
+	}
+	logo, err := sanitizeSponsorLogo(team.LogoURL)
+	if err == nil {
+		err = rt.store.UpdateTATeam(r.Context(), op.EventID, teamID,
+			team.Name, team.ShortName, team.City, logo, team.GroupName)
+	}
+	if err != nil {
+		http.Error(w, `{"error":"update_failed"}`, http.StatusBadRequest)
+		return
+	}
+	rt.invalidateTournamentBracketCaches(r.Context(), op.EventID)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+func (rt *_router) opSetTeamPlayers(w http.ResponseWriter, r *http.Request, op *opInfo) {
+	if op.Role != "teams" {
+		http.Error(w, `{"error":"wrong_role"}`, http.StatusForbidden)
+		return
+	}
+	teamID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	var body struct {
+		Players []TAPlayer `json:"players"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil ||
+		rt.store.ReplaceTAPlayers(r.Context(), op.EventID, teamID, body.Players) != nil {
+		http.Error(w, `{"error":"update_failed"}`, http.StatusBadRequest)
+		return
+	}
+	rt.invalidateTournamentBracketCaches(r.Context(), op.EventID)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+func (rt *_router) opDeleteTeam(w http.ResponseWriter, r *http.Request, op *opInfo) {
+	if op.Role != "teams" {
+		http.Error(w, `{"error":"wrong_role"}`, http.StatusForbidden)
+		return
+	}
+	teamID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err := rt.store.DeleteTATeam(r.Context(), op.EventID, teamID); err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "team_in_use" {
+			status = http.StatusConflict
+		}
+		http.Error(w, `{"error":"team_in_use"}`, status)
+		return
+	}
+	rt.invalidateTournamentBracketCaches(r.Context(), op.EventID)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+type opMatchInput struct {
+	Court       string `json:"court"`
+	Time        string `json:"time"`
+	ScheduledAt string `json:"scheduledAt"`
+	Stage       string `json:"stage"`
+	TeamAID     int64  `json:"teamAId"`
+	TeamBID     int64  `json:"teamBId"`
+}
+
+func decodeOpMatchInput(w http.ResponseWriter, r *http.Request) (opMatchInput, bool) {
+	var body opMatchInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Court) == "" ||
+		body.TeamAID == 0 || body.TeamBID == 0 || body.TeamAID == body.TeamBID {
+		http.Error(w, `{"error":"bad_input"}`, http.StatusBadRequest)
+		return body, false
+	}
+	return body, true
+}
+
+func (rt *_router) opCreateMatch(w http.ResponseWriter, r *http.Request, op *opInfo) {
+	if op.Role != "calendar" {
+		http.Error(w, `{"error":"wrong_role"}`, http.StatusForbidden)
+		return
+	}
+	body, ok := decodeOpMatchInput(w, r)
+	if !ok {
+		return
+	}
+	id, err := rt.store.CreateTAMatch(r.Context(), op.EventID, body.Court, body.Time,
+		body.ScheduledAt, body.Stage, body.TeamAID, body.TeamBID)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	rt.invalidateTournamentBracketCaches(r.Context(), op.EventID)
+	writeJSON(w, http.StatusCreated, map[string]interface{}{"ok": true, "id": id})
+}
+
+func (rt *_router) opUpdateMatch(w http.ResponseWriter, r *http.Request, op *opInfo) {
+	if op.Role != "calendar" {
+		http.Error(w, `{"error":"wrong_role"}`, http.StatusForbidden)
+		return
+	}
+	body, ok := decodeOpMatchInput(w, r)
+	if !ok {
+		return
+	}
+	if err := rt.store.UpdateTAMatch(r.Context(), op.EventID, chi.URLParam(r, "id"),
+		body.Court, body.Time, body.ScheduledAt, body.Stage, body.TeamAID, body.TeamBID); err != nil {
+		http.Error(w, `{"error":"update_failed"}`, http.StatusBadRequest)
+		return
+	}
+	rt.invalidateTournamentBracketCaches(r.Context(), op.EventID)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+func (rt *_router) opDeleteMatch(w http.ResponseWriter, r *http.Request, op *opInfo) {
+	if op.Role != "calendar" {
+		http.Error(w, `{"error":"wrong_role"}`, http.StatusForbidden)
+		return
+	}
+	if err := rt.store.DeleteTAMatch(r.Context(), op.EventID, chi.URLParam(r, "id")); err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	rt.invalidateTournamentBracketCaches(r.Context(), op.EventID)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
 // Nota: reqcontext importato per coerenza di firma con gli altri file api.
