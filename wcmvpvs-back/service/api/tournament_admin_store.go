@@ -174,6 +174,9 @@ func (s *Store) EnsureTournamentAdminTables() error {
 		`ALTER TABLE events ADD COLUMN tournament_started INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN organizer_logo_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE events ADD COLUMN courts_json TEXT NOT NULL DEFAULT '["CAMPO 1"]'`,
+		// Modalita del riconoscimento MVP assegnato dall'organizzatore, separata
+		// dalla modalita della votazione pubblica (mvp_by_gender).
+		`ALTER TABLE events ADD COLUMN organizer_mvp_by_gender INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE matches ADD COLUMN cur_a INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE matches ADD COLUMN cur_b INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE tournament_teams ADD COLUMN short_name TEXT NOT NULL DEFAULT ''`,
@@ -1298,6 +1301,9 @@ type TASettings struct {
 	// Modalità votazione MVP del pubblico: true = MVP uomo + MVP donna (2 voti per
 	// device), false = MVP unico indipendente dal sesso (1 voto per device).
 	MvpByGender bool `json:"mvpByGender"`
+	// Modalita MVP scelto dall'organizzatore: true = un uomo e una donna,
+	// false = un unico MVP indipendentemente dal sesso.
+	OrganizerMvpByGender bool `json:"organizerMvpByGender"`
 	// Se false, i tifosi possono consultare il torneo ma non votare o caricare foto.
 	TournamentStarted bool `json:"tournamentStarted"`
 	// Fase finale: quante squadre passano per girone + finalina 3°/4° posto.
@@ -1361,14 +1367,15 @@ func sanitizeTournamentPrizes(p TournamentPrizes) TournamentPrizes {
 func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, string, error) {
 	var st TASettings
 	var slug, prizesJSON, courtsJSON string
-	var thirdPlace, allowDraws, mvpByGender, tournamentStarted int
+	var thirdPlace, allowDraws, mvpByGender, organizerMvpByGender, tournamentStarted int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(name,''), COALESCE(format,''), COALESCE(date_label,''),
 		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
 		       COALESCE(logo_url,''), COALESCE(organizer_logo_url,''),
 		       COALESCE(points_per_win,3), COALESCE(points_per_draw,1), COALESCE(points_per_loss,0),
 		       COALESCE(sets_best_of,3), COALESCE(points_per_tie_win,2), COALESCE(points_per_tie_loss,1),
-		       COALESCE(allow_draws,1), COALESCE(mvp_by_gender,1), COALESCE(tournament_started,1),
+		       COALESCE(allow_draws,1), COALESCE(mvp_by_gender,1),
+		       COALESCE(organizer_mvp_by_gender,1), COALESCE(tournament_started,1),
 		       COALESCE(bracket_qualifiers,2), COALESCE(bracket_third_place,0),
 		       COALESCE(standings_legend_text,'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'),
 		       COALESCE(fan_layout,'classic'), COALESCE(prizes_json,''),
@@ -1378,12 +1385,13 @@ func (s *Store) GetTASettings(ctx context.Context, eventID int64) (*TASettings, 
 			&st.Logo, &st.OrganizerLogo,
 			&st.PointsPerWin, &st.PointsPerDraw, &st.PointsPerLoss,
 			&st.SetsBestOf, &st.PointsPerTieWin, &st.PointsPerTieLoss,
-			&allowDraws, &mvpByGender, &tournamentStarted,
+			&allowDraws, &mvpByGender, &organizerMvpByGender, &tournamentStarted,
 			&st.BracketQualifiers, &thirdPlace, &st.StandingsLegendText,
 			&st.FanLayout, &prizesJSON, &courtsJSON, &slug)
 	st.BracketThirdPlace = thirdPlace == 1
 	st.AllowDraws = allowDraws == 1
 	st.MvpByGender = mvpByGender == 1
+	st.OrganizerMvpByGender = organizerMvpByGender == 1
 	st.TournamentStarted = tournamentStarted == 1
 	st.Prizes = decodeTournamentPrizes(prizesJSON)
 	if err := json.Unmarshal([]byte(courtsJSON), &st.Courts); err != nil || len(st.Courts) == 0 {
@@ -1405,6 +1413,10 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 	if st.MvpByGender {
 		mvpByGender = 1
 	}
+	organizerMvpByGender := 0
+	if st.OrganizerMvpByGender {
+		organizerMvpByGender = 1
+	}
 	tournamentStarted := 0
 	if st.TournamentStarted {
 		tournamentStarted = 1
@@ -1416,6 +1428,7 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 		                  logo_url=?, organizer_logo_url=?,
 		                  points_per_win=?, points_per_draw=?, points_per_loss=?,
 		                  sets_best_of=?, points_per_tie_win=?, points_per_tie_loss=?, allow_draws=?, mvp_by_gender=?,
+		                  organizer_mvp_by_gender=?,
 		                  tournament_started=?,
 		                  bracket_qualifiers=?, bracket_third_place=?, standings_legend_text=?,
 		                  fan_layout=?, prizes_json=?, courts_json=?
@@ -1424,6 +1437,7 @@ func (s *Store) UpdateTASettings(ctx context.Context, eventID int64, st TASettin
 		st.Logo, st.OrganizerLogo,
 		st.PointsPerWin, st.PointsPerDraw, st.PointsPerLoss,
 		st.SetsBestOf, st.PointsPerTieWin, st.PointsPerTieLoss, allowDraws, mvpByGender,
+		organizerMvpByGender,
 		tournamentStarted,
 		st.BracketQualifiers, thirdPlace, st.StandingsLegendText,
 		st.FanLayout, string(prizesJSON), string(courtsJSON), eventID)

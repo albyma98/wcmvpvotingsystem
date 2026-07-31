@@ -81,6 +81,8 @@ func (s *Store) EnsureTournamentP1Tables() error {
 		// mvp_by_gender: 1 = votazione MVP separata uomo/donna (2 voti per device),
 		// 0 = MVP unico indipendente dal sesso (1 voto per device).
 		`ALTER TABLE events ADD COLUMN mvp_by_gender INTEGER NOT NULL DEFAULT 1`,
+		// Configurazione indipendente del premio MVP deciso dall'organizzatore.
+		`ALTER TABLE events ADD COLUMN organizer_mvp_by_gender INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE events ADD COLUMN bracket_qualifiers INTEGER NOT NULL DEFAULT 2`,
 		`ALTER TABLE events ADD COLUMN bracket_third_place INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE events ADD COLUMN standings_legend_text TEXT NOT NULL DEFAULT 'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'`,

@@ -111,6 +111,7 @@ function onSunsetNav (route) {
     :logo="tournament.logo"
     :organizer-logo="tournament.organizerLogo"
     :mvp-by-gender="tournament.mvpByGender"
+    :organizer-mvp-by-gender="tournament.organizerMvpByGender"
     :subtitle="tournament.format"
     :date="tournament.dateLabel"
     :place="tournament.location"

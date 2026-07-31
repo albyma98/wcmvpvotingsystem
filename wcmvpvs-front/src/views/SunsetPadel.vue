@@ -290,6 +290,7 @@ const props = defineProps({
   logo:        { type: String, default: '' },   // immagine intestazione (al posto del brand testuale)
   organizerLogo: { type: String, default: '' },
   mvpByGender: { type: Boolean, default: true },
+  organizerMvpByGender: { type: Boolean, default: true },
   subtitle:    { type: String, default: '' },
   date:        { type: String, default: '' },
   place:       { type: String, default: '' },
@@ -483,7 +484,7 @@ const prizeSections = computed(() => {
     { icon: '🥉', label: '3° classificato', value: p.third },
   ])
   if (classifica.length) out.push({ title: 'Classifica', rows: classifica })
-  const org = props.mvpByGender
+  const org = props.organizerMvpByGender
     ? mk([
         { icon: '♂', label: 'MVP maschile', value: p.orgMvpMale },
         { icon: '♀', label: 'MVP femminile', value: p.orgMvpFemale },

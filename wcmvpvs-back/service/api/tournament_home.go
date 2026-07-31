@@ -82,20 +82,21 @@ type TournamentShopProduct struct {
 }
 
 type TournamentInfo struct {
-	Slug          string           `json:"slug"`
-	Name          string           `json:"name"`
-	Format        string           `json:"format"`      // "BEACH VOLLEY 4X4"
-	DateLabel     string           `json:"dateLabel"`   // "8 - 11 GIUGNO 2024"
-	Location      string           `json:"location"`    // "LIDO DI CLASSE, RA"
-	StatusLabel   string           `json:"statusLabel"` // "TORNEO IN CORSO"
-	PhaseLabel    string           `json:"phaseLabel"`  // "FASE A GIRONI"
-	Logo          string           `json:"logo,omitempty"`
-	OrganizerLogo string           `json:"organizerLogo,omitempty"`
-	HeroImage     string           `json:"heroImage,omitempty"`
-	Layout        string           `json:"layout"` // 'classic' | 'sunset' — grafica home tifosi
-	Started       bool             `json:"started"`
-	MvpByGender   bool             `json:"mvpByGender"`
-	Prizes        TournamentPrizes `json:"prizes"` // premi (modale Sunset)
+	Slug                 string           `json:"slug"`
+	Name                 string           `json:"name"`
+	Format               string           `json:"format"`      // "BEACH VOLLEY 4X4"
+	DateLabel            string           `json:"dateLabel"`   // "8 - 11 GIUGNO 2024"
+	Location             string           `json:"location"`    // "LIDO DI CLASSE, RA"
+	StatusLabel          string           `json:"statusLabel"` // "TORNEO IN CORSO"
+	PhaseLabel           string           `json:"phaseLabel"`  // "FASE A GIRONI"
+	Logo                 string           `json:"logo,omitempty"`
+	OrganizerLogo        string           `json:"organizerLogo,omitempty"`
+	HeroImage            string           `json:"heroImage,omitempty"`
+	Layout               string           `json:"layout"` // 'classic' | 'sunset' — grafica home tifosi
+	Started              bool             `json:"started"`
+	MvpByGender          bool             `json:"mvpByGender"`
+	OrganizerMvpByGender bool             `json:"organizerMvpByGender"`
+	Prizes               TournamentPrizes `json:"prizes"` // premi (modale Sunset)
 }
 
 type HomeResponse struct {

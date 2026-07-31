@@ -129,7 +129,8 @@ func (s *Store) getTournamentInfo(ctx context.Context, slug string) (*Tournament
 		       COALESCE(location,''), COALESCE(status_label,''), COALESCE(phase_label,''),
 		       COALESCE(logo_url,''), COALESCE(organizer_logo_url,''),
 		       COALESCE(hero_image_url,''), COALESCE(fan_layout,'classic'),
-		       COALESCE(tournament_started,1), COALESCE(mvp_by_gender,1), COALESCE(prizes_json,'')
+		       COALESCE(tournament_started,1), COALESCE(mvp_by_gender,1),
+		       COALESCE(organizer_mvp_by_gender,1), COALESCE(prizes_json,'')
 		FROM events
 		WHERE slug = ? AND type = 'tournament'
 		LIMIT 1`
@@ -138,7 +139,7 @@ func (s *Store) getTournamentInfo(ctx context.Context, slug string) (*Tournament
 	err := s.db.QueryRowContext(ctx, q, slug).Scan(
 		&t.Slug, &t.Name, &t.Format, &t.DateLabel, &t.Location,
 		&t.StatusLabel, &t.PhaseLabel, &t.Logo, &t.OrganizerLogo,
-		&t.HeroImage, &t.Layout, &t.Started, &t.MvpByGender, &prizesJSON,
+		&t.HeroImage, &t.Layout, &t.Started, &t.MvpByGender, &t.OrganizerMvpByGender, &prizesJSON,
 	)
 	t.Prizes = decodeTournamentPrizes(prizesJSON)
 	if err != nil {

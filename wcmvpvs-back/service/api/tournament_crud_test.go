@@ -104,15 +104,41 @@ func TestTournamentCRUD_ForeignKeysEnabled(t *testing.T) {
 			status, setLabel, setsJSON, scoreA, scoreB, curA, curB)
 	}
 
-	// 5) READ pubblico (join su tournament_teams + matches)
-	if _, err := store.GetTournamentHome(ctx, "test-cup"); err != nil {
+	// 5) Le modalita MVP pubblico/organizzatore sono indipendenti e arrivano
+	// correttamente fino alla home pubblica.
+	settings, _, err := store.GetTASettings(ctx, evID)
+	if err != nil {
+		t.Fatalf("GetTASettings: %v", err)
+	}
+	settings.MvpByGender = true
+	settings.OrganizerMvpByGender = false
+	settings.Prizes.OrgMvp = "Premio MVP assoluto"
+	if err := store.UpdateTASettings(ctx, evID, *settings); err != nil {
+		t.Fatalf("UpdateTASettings MVP modes: %v", err)
+	}
+	savedSettings, _, err := store.GetTASettings(ctx, evID)
+	if err != nil {
+		t.Fatalf("GetTASettings after update: %v", err)
+	}
+	if !savedSettings.MvpByGender || savedSettings.OrganizerMvpByGender {
+		t.Fatalf("modalita MVP non indipendenti: pubblico=%v organizzatore=%v",
+			savedSettings.MvpByGender, savedSettings.OrganizerMvpByGender)
+	}
+
+	// 6) READ pubblico (join su tournament_teams + matches)
+	home, err := store.GetTournamentHome(ctx, "test-cup")
+	if err != nil {
 		t.Fatalf("GetTournamentHome: %v", err)
+	}
+	if !home.Tournament.MvpByGender || home.Tournament.OrganizerMvpByGender {
+		t.Fatalf("modalita MVP home errate: pubblico=%v organizzatore=%v",
+			home.Tournament.MvpByGender, home.Tournament.OrganizerMvpByGender)
 	}
 	if _, err := store.GetTournamentLive(ctx, "test-cup"); err != nil {
 		t.Fatalf("GetTournamentLive: %v", err)
 	}
 
-	// 6) SHOP: persistenza admin e inclusione nello snapshot pubblico.
+	// 7) SHOP: persistenza admin e inclusione nello snapshot pubblico.
 	productID, err := store.CreateTAShopProduct(ctx, evID, TournamentShopProduct{
 		ImageURL:   "data:image/webp;base64,dGVzdA==",
 		Title:      "Panino",
@@ -128,7 +154,7 @@ func TestTournamentCRUD_ForeignKeysEnabled(t *testing.T) {
 	if err != nil || len(shop) != 1 || len(shop[0].Extras) != 1 {
 		t.Fatalf("ListTAShopProducts: products=%+v err=%v", shop, err)
 	}
-	home, err := store.GetTournamentHome(ctx, "test-cup")
+	home, err = store.GetTournamentHome(ctx, "test-cup")
 	if err != nil || len(home.ShopProducts) != 1 || home.ShopProducts[0].PriceCents != 750 {
 		t.Fatalf("GetTournamentHome shop: home=%+v err=%v", home, err)
 	}
@@ -145,7 +171,7 @@ func TestTournamentCRUD_ForeignKeysEnabled(t *testing.T) {
 		t.Fatalf("DeleteTAShopProduct: %v", err)
 	}
 
-	// 7) DELETE partita
+	// 8) DELETE partita
 	if err := store.DeleteTAMatch(ctx, evID, matchID); err != nil {
 		t.Fatalf("DeleteTAMatch: %v", err)
 	}

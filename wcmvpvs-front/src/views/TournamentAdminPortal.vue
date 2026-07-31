@@ -69,7 +69,7 @@ const gallery = ref([])
 const mvp = ref(null)
 const emptyPrizes = () => ({ first: '', second: '', third: '', orgMvpMale: '', orgMvpFemale: '', orgMvp: '', publicMvpMale: '', publicMvpFemale: '', publicMvp: '' })
 const defaultStandingsLegend = 'Primi 2 di ogni girone alla fase finale · Ordinamento: punti, quoziente set, quoziente punti'
-const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', courts: ['CAMPO 1'], logoUrl: '', organizerLogoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, tournamentStarted: false, bracketQualifiers: 2, bracketThirdPlace: false, standingsLegendText: defaultStandingsLegend, fanLayout: 'classic' })
+const settings = reactive({ name: '', format: '', dateLabel: '', location: '', statusLabel: '', phaseLabel: '', courts: ['CAMPO 1'], logoUrl: '', organizerLogoUrl: '', prizes: emptyPrizes(), pointsPerWin: 3, pointsPerDraw: 1, pointsPerLoss: 0, setsBestOf: 3, pointsPerTieWin: 2, pointsPerTieLoss: 1, allowDraws: true, mvpByGender: true, organizerMvpByGender: true, tournamentStarted: false, bracketQualifiers: 2, bracketThirdPlace: false, standingsLegendText: defaultStandingsLegend, fanLayout: 'classic' })
 const courtOptions = computed(() => {
   const seen = new Set()
   const courts = (Array.isArray(settings.courts) ? settings.courts : [])
@@ -1218,7 +1218,7 @@ async function generateBracket () {
 
         <h3 class="settings-sub">MVP scelti dagli organizzatori</h3>
         <div class="settings-grid">
-          <template v-if="settings.mvpByGender">
+          <template v-if="settings.organizerMvpByGender">
             <label>♂ MVP maschile <input v-model="settings.prizes.orgMvpMale" maxlength="200" placeholder="Es. Pallone ufficiale" /></label>
             <label>♀ MVP femminile <input v-model="settings.prizes.orgMvpFemale" maxlength="200" placeholder="Es. Pallone ufficiale" /></label>
           </template>
@@ -1233,7 +1233,7 @@ async function generateBracket () {
           </template>
           <label v-else>⭐ MVP (unico) <input v-model="settings.prizes.publicMvp" maxlength="200" placeholder="Es. Buono cena per due" /></label>
         </div>
-        <p class="hint">Il premio mostrato segue la modalità scelta nelle impostazioni della votazione MVP.</p>
+        <p class="hint">I premi mostrati seguono separatamente la modalità del voto pubblico e quella scelta dall'organizzatore.</p>
 
         <button :disabled="busy === 'settings'" @click="saveSettings">{{ busy === 'settings' ? 'Salvo…' : 'Salva premi' }}</button>
       </section>
@@ -1335,6 +1335,17 @@ async function generateBracket () {
           </label>
         </div>
         <p class="hint">{{ settings.mvpByGender ? 'Il tifoso ha due voti: un MVP uomo e un MVP donna (in base al sesso indicato nella rosa).' : 'Il tifoso ha un solo voto per il miglior giocatore, indipendentemente dal sesso.' }} Conviene deciderla <b>prima</b> che inizi la votazione. Salva e ricarica la pagina tifosi.</p>
+
+        <h3 class="settings-sub">MVP scelto dall'organizzatore</h3>
+        <div class="settings-grid">
+          <label>Modalità
+            <select v-model="settings.organizerMvpByGender">
+              <option :value="true">MVP Uomo + MVP Donna</option>
+              <option :value="false">MVP unico</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint">{{ settings.organizerMvpByGender ? "L'organizzatore assegna due riconoscimenti: MVP uomo e MVP donna." : "L'organizzatore assegna un solo riconoscimento MVP, indipendentemente dal sesso." }} Questa scelta è indipendente dalla votazione del pubblico e determina quali premi vengono mostrati ai tifosi.</p>
 
         <h3 class="settings-sub">Punti classifica (gironi)</h3>
         <div class="settings-grid">
