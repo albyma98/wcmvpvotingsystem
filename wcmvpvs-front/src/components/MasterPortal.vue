@@ -563,7 +563,9 @@
           </div>
         </div>
 
-        <MasterTournamentsSection v-if="activeSection === 'tournaments'" />
+        <MasterClubsSection v-if="activeSection === 'clubs'" />
+
+        <MasterTournamentsSection v-else-if="activeSection === 'tournaments'" />
 
         <div v-else-if="activeSection === 'qr-redirects'" class="qr-redirects-view">
           <header class="section-header">
@@ -778,6 +780,7 @@ const isSuperAdmin = computed(() => activeRole.value === 'superadmin');
 const tabs = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'organizations', label: 'Società' },
+  { id: 'clubs', label: 'Club Hub' },
   { id: 'tournaments', label: 'Tornei' },
   { id: 'qr-redirects', label: 'QR Redirect' },
 ];
@@ -785,6 +788,8 @@ const activeSection = ref('dashboard');
 
 const MasterTournamentsSection = defineAsyncComponent(() =>
   import('./master/MasterTournamentsSection.vue'));
+const MasterClubsSection = defineAsyncComponent(() =>
+  import('./master/MasterClubsSection.vue'));
 
 const loginForm = reactive({ username: '', password: '' });
 const isLoggingIn = ref(false);

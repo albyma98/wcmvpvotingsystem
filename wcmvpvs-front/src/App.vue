@@ -52,6 +52,15 @@
         @voted="handleNewUiPlayerVoted"
       />
     </template>
+    <ClubAdminPortal
+      v-else-if="appView === 'club-admin'"
+      :slug="clubSlug"
+    />
+    <ClubHomeView
+      v-else-if="appView === 'club'"
+      :slug="clubSlug"
+      :team-slug="clubTeamSlug"
+    />
     <TournamentAdminPortal
       v-else-if="appView === 'tournament-admin'"
       :slug="tournamentAdminSlug"
@@ -108,6 +117,10 @@ const OperatorConsole = defineAsyncComponent(() => import('./views/OperatorConso
 const ScoreboardProjection = defineAsyncComponent(() => import('./views/ScoreboardProjection.vue'));
 const TournamentSectionView = defineAsyncComponent(() => import('./views/TournamentSectionView.vue'));
 
+// Club Hub — verticale annuale multi-squadra, separato da Live e Tournament.
+const ClubHomeView = defineAsyncComponent(() => import('./views/ClubHomeView.vue'));
+const ClubAdminPortal = defineAsyncComponent(() => import('./views/ClubAdminPortal.vue'));
+
 // Admin components loaded only when the URL matches an admin route
 const AdminPortal = defineAsyncComponent(() => import('./components/AdminPortal.vue'));
 const MasterPortal = defineAsyncComponent(() => import('./components/MasterPortal.vue'));
@@ -136,6 +149,15 @@ const pathSegments = computed(() =>
     .split('/')
     .map((part) => part.trim())
     .filter(Boolean),
+);
+
+const isClubPath = computed(() => pathSegments.value[0] === 'club' && pathSegments.value.length >= 2);
+const isClubAdminPath = computed(() => pathSegments.value[0] === 'club-admin' && pathSegments.value.length >= 2);
+const clubSlug = computed(() =>
+  isClubPath.value || isClubAdminPath.value ? pathSegments.value[1] : '',
+);
+const clubTeamSlug = computed(() =>
+  isClubPath.value && pathSegments.value[2] === 'team' ? (pathSegments.value[3] ?? '') : '',
 );
 
 const isNewUiPath = computed(() => {
@@ -224,6 +246,12 @@ const appView = computed(() => {
   }
   if (isProjectionPath.value) {
     return 'projection';
+  }
+  if (isClubAdminPath.value) {
+    return 'club-admin';
+  }
+  if (isClubPath.value) {
+    return 'club';
   }
   if (isTournamentAdminPath.value) {
     return 'tournament-admin';

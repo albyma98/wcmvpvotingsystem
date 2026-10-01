@@ -206,6 +206,10 @@ func (rt *_router) Handler() chi.Router {
 	// non supporta Mount). Caddy/nginx strippano /api → qui /v1/tournaments/...
 	registerTournamentRoutes(rt)
 
+	// Club Hub — terzo verticale: sito annuale multi-squadra, CMS dedicato e
+	// provisioning dal portale master. Non condivide sessioni con Live/Tournament.
+	registerClubRoutes(rt)
+
 	rt.router.NotFound(rt.wrap(rt.handleQRRedirectNotFound))
 
 	return rt.router

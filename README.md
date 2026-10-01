@@ -1,5 +1,27 @@
 # wcmvpvotingsystem
 
+## ArenaBoostX Club — portale annuale multi-squadra
+
+Il repository include un terzo verticale separato da Live e Tournament:
+
+- `/club/{slug}`: sito pubblico annuale della società;
+- `/club/{slug}/team/{teamSlug}`: calendario, risultati, roster e contenuti della categoria;
+- `/club-admin/{slug}`: CMS dedicato alla società;
+- `/admin/master` → **Club Hub**: provisioning centrale, credenziali e gestione delle installazioni.
+
+Dal Master è possibile creare in un solo passaggio l'organizzazione, il Club Hub,
+le categorie iniziali e l'account del responsabile. Il CMS Club gestisce per ora:
+
+- identità, colori, logo e hero della homepage;
+- squadre/categorie e relativi roster;
+- annunci e notizie, globali o assegnati a una squadra;
+- photo gallery;
+- calendario, risultati e punteggi.
+
+Le tabelle `club_*`, le sessioni `club_admin_session` e le API `/v1/clubs/*` e
+`/v1/club-admin/*` sono dedicate a questo verticale. Il collegamento con il core
+avviene tramite `club_sites.organization_id`.
+
 ## Creazione di un nuovo admin
 
 ### 1. Creare il primo amministratore
