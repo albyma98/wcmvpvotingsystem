@@ -174,6 +174,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admin/master/organizations", rt.wrapAdmin(rt.createMasterOrganization))
 	rt.router.Get("/admin/master/organizations/{id}", rt.wrapAdmin(rt.getMasterOrganizationDetail))
 	rt.router.Put("/admin/master/organizations/{id}", rt.wrapAdmin(rt.updateMasterOrganization))
+	rt.router.Delete("/admin/master/organizations/{id}", rt.wrapAdmin(rt.deleteMasterOrganization))
 	rt.router.Get("/admin/master/qr-redirects", rt.wrapAdmin(rt.listMasterQRRedirects))
 	rt.router.Post("/admin/master/qr-redirects", rt.wrapAdmin(rt.upsertMasterQRRedirect))
 	rt.router.Put("/admin/master/qr-redirects/{id}/active", rt.wrapAdmin(rt.setMasterQRRedirectActive))

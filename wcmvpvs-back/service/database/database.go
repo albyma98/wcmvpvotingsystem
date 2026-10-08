@@ -1270,6 +1270,7 @@ type AppDatabase interface {
 	ListOrganizations() ([]Organization, error)
 	GetOrganization(id int) (Organization, error)
 	GetOrganizationBySlug(slug string) (Organization, error)
+	DeleteOrganizationData(id int) ([]int, error)
 	GetOrganizationStats(id int) (OrganizationStats, error)
 	GetMasterDashboardSummary() (MasterDashboardSummary, error)
 	GetMasterAnalytics() (MasterAnalytics, error)

@@ -4,7 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -198,4 +201,80 @@ func (rt *_router) getMasterOrganizationDetail(w http.ResponseWriter, r *http.Re
 		Organization database.Organization      `json:"organization"`
 		Stats        database.OrganizationStats `json:"stats"`
 	}{Organization: org, Stats: stats})
+}
+
+func (rt *_router) deleteMasterOrganization(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if !rt.ensureSuperAdmin(w, ctx) {
+		return
+	}
+	orgID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil || orgID <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	var payload struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || strings.TrimSpace(payload.Password) == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !rt.allowLoginRequest(ctx.AdminUsername, clientIPFromRequest(r)) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
+	admin, err := rt.db.GetAdminByID(ctx.AdminID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot verify superadmin before deleting organization")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !strings.EqualFold(admin.Role, "superadmin") || !adminPasswordMatches(admin.PasswordHash, payload.Password) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	eventIDs, err := rt.db.DeleteOrganizationData(orgID)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			w.WriteHeader(http.StatusNotFound)
+		case errors.Is(err, database.ErrProtectedOrganization), errors.Is(err, database.ErrOrganizationSharedData):
+			w.WriteHeader(http.StatusConflict)
+		default:
+			ctx.Logger.WithError(err).WithField("organization_id", orgID).Error("cannot delete organization")
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		return
+	}
+
+	rt.adminSessionsMu.Lock()
+	for token, session := range rt.adminSessions {
+		if session.OrganizationID == orgID {
+			delete(rt.adminSessions, token)
+		}
+	}
+	rt.adminSessionsMu.Unlock()
+	rt.partnerSessionsMu.Lock()
+	for token, session := range rt.partnerSessions {
+		if session.OrganizationID == orgID {
+			delete(rt.partnerSessions, token)
+		}
+	}
+	rt.partnerSessionsMu.Unlock()
+
+	mediaCleanupFailed := false
+	for _, eventID := range eventIDs {
+		for _, mediaDir := range []string{"selfies", "story-videos"} {
+			path := filepath.Join("tmp", mediaDir, fmt.Sprintf("event_%d", eventID))
+			if err := os.RemoveAll(path); err != nil {
+				mediaCleanupFailed = true
+				ctx.Logger.WithError(err).WithField("path", path).Warn("cannot remove organization event media")
+			}
+		}
+	}
+	ctx.Logger.WithField("organization_id", orgID).Info("organization permanently deleted")
+	_ = json.NewEncoder(w).Encode(struct {
+		MediaCleanupFailed bool `json:"media_cleanup_failed"`
+	}{MediaCleanupFailed: mediaCleanupFailed})
 }

@@ -408,6 +408,8 @@
             </div>
           </header>
 
+          <p v-if="organizationDeleteNotice" class="delete-notice" role="status">{{ organizationDeleteNotice }}</p>
+
           <div v-if="organizationFormVisible" class="card form-card">
             <header>
               <h3>{{ organizationFormMode === 'create' ? 'Crea società' : 'Modifica società' }}</h3>
@@ -550,6 +552,9 @@
                     <button class="btn outline" type="button" @click="openEditOrganization(org)">
                       Modifica
                     </button>
+                    <button class="btn danger-outline" type="button" @click="openDeleteOrganization(org)">
+                      Elimina
+                    </button>
                   </td>
                 </tr>
                 <tr v-if="!organizations.length && !isLoadingOrganizations">
@@ -561,6 +566,31 @@
               </tbody>
             </table>
           </div>
+        </div>
+
+        <div v-if="organizationToDelete" class="delete-overlay" @click.self="closeDeleteOrganization">
+          <section class="card delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-organization-title">
+            <h2 id="delete-organization-title">Elimina definitivamente la società</h2>
+            <p>Stai per eliminare <strong>{{ organizationToDelete.name }}</strong> (ID {{ organizationToDelete.id }}), inclusi eventi, voti, fan, sponsor, contenuti e account collegati. L'operazione non può essere annullata.</p>
+            <form @submit.prevent="confirmDeleteOrganization">
+              <label for="delete-organization-password">Conferma con la password del superadmin</label>
+              <input
+                id="delete-organization-password"
+                v-model="deleteOrganizationPassword"
+                type="password"
+                autocomplete="current-password"
+                required
+                autofocus
+              />
+              <p v-if="deleteOrganizationError" class="error" role="alert">{{ deleteOrganizationError }}</p>
+              <div class="delete-dialog__actions">
+                <button class="btn outline" type="button" :disabled="isDeletingOrganization" @click="closeDeleteOrganization">Annulla</button>
+                <button class="btn danger" type="submit" :disabled="isDeletingOrganization || !deleteOrganizationPassword">
+                  {{ isDeletingOrganization ? 'Eliminazione…' : 'Elimina definitivamente' }}
+                </button>
+              </div>
+            </form>
+          </section>
         </div>
 
         <MasterClubsSection v-if="activeSection === 'clubs'" />
@@ -837,6 +867,11 @@ const organizationFormVisible = ref(false);
 const organizationFormMode = ref('create');
 const isSavingOrganization = ref(false);
 const organizationFormError = ref('');
+const organizationToDelete = ref(null);
+const deleteOrganizationPassword = ref('');
+const deleteOrganizationError = ref('');
+const organizationDeleteNotice = ref('');
+const isDeletingOrganization = ref(false);
 
 const qrRedirectForm = reactive({ id: null, source_path: '', target_path: '', original_source_path: '' });
 const qrRedirectFormMode = ref('create');
@@ -904,6 +939,58 @@ function openEditQRRedirect(redirect) {
 function closeOrganizationForm() {
   organizationFormVisible.value = false;
   organizationFormError.value = '';
+}
+
+function openDeleteOrganization(org) {
+  organizationToDelete.value = org;
+  deleteOrganizationPassword.value = '';
+  deleteOrganizationError.value = '';
+  organizationDeleteNotice.value = '';
+}
+
+function closeDeleteOrganization() {
+  if (isDeletingOrganization.value) return;
+  organizationToDelete.value = null;
+  deleteOrganizationPassword.value = '';
+  deleteOrganizationError.value = '';
+}
+
+async function confirmDeleteOrganization() {
+  const org = organizationToDelete.value;
+  if (!org || !deleteOrganizationPassword.value || isDeletingOrganization.value) return;
+  isDeletingOrganization.value = true;
+  deleteOrganizationError.value = '';
+  try {
+    const { data } = await apiClient.delete(`/admin/master/organizations/${org.id}`, {
+      ...authHeaders.value,
+      data: { password: deleteOrganizationPassword.value },
+    });
+    organizationToDelete.value = null;
+    if (organizationForm.id === org.id) closeOrganizationForm();
+    if (selectedOrganizationId.value === org.id) {
+      selectedOrganizationId.value = 0;
+      organizationDetail.value = null;
+    }
+    organizations.value = organizations.value.filter((item) => item.id !== org.id);
+    organizationDeleteNotice.value = data?.media_cleanup_failed
+      ? `${org.name} eliminata dal database. Alcuni file multimediali non sono stati rimossi: controlla i log del server.`
+      : `${org.name} e i suoi dati sono stati eliminati definitivamente.`;
+    await Promise.all([fetchOrganizations(), fetchSummary(), fetchAnalytics()]);
+  } catch (error) {
+    const status = error?.response?.status;
+    deleteOrganizationError.value = status === 403
+      ? 'Password del superadmin non corretta.'
+      : status === 404
+        ? 'Società non trovata.'
+        : status === 409
+          ? 'La società contiene dati condivisi o protetti e non può essere eliminata automaticamente.'
+          : status === 429
+            ? 'Troppi tentativi. Attendi qualche minuto e riprova.'
+            : 'Eliminazione non riuscita. Nessun dato è stato rimosso.';
+  } finally {
+    deleteOrganizationPassword.value = '';
+    isDeletingOrganization.value = false;
+  }
 }
 
 function onOrganizationLogoFileChange(event) {
@@ -1096,6 +1183,9 @@ async function logout() {
   masterAnalytics.value = createEmptyAnalytics();
   organizationsLoaded.value = false;
   selectedOrganizationId.value = 0;
+  organizationToDelete.value = null;
+  deleteOrganizationPassword.value = '';
+  organizationDeleteNotice.value = '';
   activeSection.value = 'dashboard';
   qrRedirects.value = [];
   qrRedirectsLoaded.value = false;
@@ -2054,6 +2144,45 @@ dl dd {
   color: #b91c1c;
   margin-top: 0.5rem;
 }
+
+.btn.danger-outline {
+  border: 1px solid #fecaca;
+  background: #fff;
+  color: #b91c1c;
+}
+
+.btn.danger {
+  background: #b91c1c;
+  color: #fff;
+}
+
+.delete-notice {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.delete-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.delete-dialog {
+  width: min(100%, 520px);
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+
+.delete-dialog h2 { margin-top: 0; }
+.delete-dialog form { display: grid; gap: 0.6rem; }
+.delete-dialog input { width: 100%; box-sizing: border-box; padding: 0.7rem; }
+.delete-dialog__actions { display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 0.8rem; flex-wrap: wrap; }
 
 @media (max-width: 640px) {
   .master-header,
