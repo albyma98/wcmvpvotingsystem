@@ -4717,9 +4717,12 @@ func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) 
 	var barEnabled int
 	var rosterSchema int
 	var teamID sql.NullInt64
-	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &org.City, &org.LogoURL, &isActive, &rosterSchema, &teamID, &org.SMSCost, &org.FreeSMS, &barEnabled, &org.CreatedAt, &org.UpdatedAt); err != nil {
+	var city, logoURL sql.NullString
+	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &city, &logoURL, &isActive, &rosterSchema, &teamID, &org.SMSCost, &org.FreeSMS, &barEnabled, &org.CreatedAt, &org.UpdatedAt); err != nil {
 		return Organization{}, err
 	}
+	org.City = city.String
+	org.LogoURL = logoURL.String
 	org.IsActive = isActive != 0
 	org.BarEnabled = barEnabled != 0
 	org.RosterSchema = normalizeRosterSchema(rosterSchema)
