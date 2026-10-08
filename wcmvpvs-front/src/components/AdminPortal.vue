@@ -27,6 +27,7 @@
           :groups="navigationGroups"
           :active-section="section"
           :organization-slug="organizationSlug"
+          :organization-name="organizationName"
           @select="selectSection"
           @lottery="goToLottery"
           @logout="logout"
@@ -3178,6 +3179,7 @@ const filteredCouponEvents = computed(() => {
 
 const activeUsername = ref(localStorage.getItem("adminUsername") || "");
 const activeRole = ref(localStorage.getItem("adminRole") || "");
+const organizationName = ref("");
 const isAuthenticated = computed(() => Boolean(activeUsername.value));
 const isSuperAdmin = computed(() => activeRole.value === "superadmin");
 const isStaff = computed(() => activeRole.value === "staff");
@@ -4621,6 +4623,7 @@ async function logout() {
   try { await apiClient.post("/admin/logout"); } catch (_) { /* ignora errori di rete */ }
   activeUsername.value = "";
   activeRole.value = "";
+  organizationName.value = "";
   isBarFeatureEnabled.value = true;
   localStorage.removeItem("adminUsername");
   localStorage.removeItem("adminRole");
@@ -6266,7 +6269,7 @@ async function loadAll() {
   if (!isAuthenticated.value) {
     return;
   }
-  await Promise.all([loadEvents(), loadTeams()]);
+  await Promise.all([loadEvents(), loadTeams(), loadOrganizationName()]);
   await loadPlayers();
   if (isSuperAdmin.value) {
     await Promise.all([loadAdmins(), loadSponsors(), loadPartners()]);
@@ -6282,6 +6285,24 @@ async function loadAll() {
   }
   resetForms();
 }
+
+async function loadOrganizationName() {
+  try {
+    const { data } = await apiClient.get("/admin/me", authHeaders.value);
+    organizationName.value = String(data?.organization_name || "").trim();
+  } catch (error) {
+    if (error?.response?.status === 401) {
+      handleUnauthorized();
+    }
+  }
+}
+
+watch(() => props.organizationSlug, () => {
+  organizationName.value = "";
+  if (isAuthenticated.value) {
+    loadOrganizationName();
+  }
+});
 
 async function createTeam() {
   if (!newTeamName.value) {

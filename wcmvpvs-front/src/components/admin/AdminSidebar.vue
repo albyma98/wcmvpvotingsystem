@@ -1,21 +1,9 @@
 <template>
   <nav class="sidebar">
     <div class="sidebar__brand">
-      <div class="sidebar__logo">
-        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-          <circle cx="14" cy="14" r="13" stroke="url(#sg)" stroke-width="2"/>
-          <path d="M9 14l3.5 3.5L19 10" stroke="#0284c7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-          <defs>
-            <linearGradient id="sg" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#0284c7"/>
-              <stop offset="1" stop-color="#6366f1"/>
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
       <div class="sidebar__brand-text">
-        <span class="sidebar__brand-name">MVP Admin</span>
-        <span v-if="organizationSlug" class="sidebar__org">{{ organizationSlug }}</span>
+        <span class="sidebar__brand-name">ABX ADMIN</span>
+        <span v-if="organizationName || organizationSlug" class="sidebar__org" :title="organizationName || organizationSlug">{{ organizationName || organizationSlug }}</span>
       </div>
     </div>
 
@@ -24,18 +12,19 @@
     <div class="sidebar__nav">
       <div v-for="group in groups" :key="group.label" class="sidebar__group">
         <p class="sidebar__group-label">{{ group.label }}</p>
-        <button
-          v-for="item in group.items"
-          :key="item.id"
-          type="button"
-          class="sidebar__item"
-          :class="{ active: activeSection === item.id }"
-          @click="$emit('select', item.id)"
-        >
-          <span class="sidebar__item-icon">{{ sectionIcons[item.id] || '◆' }}</span>
-          <span class="sidebar__item-label">{{ item.label }}</span>
-          <span v-if="activeSection === item.id" class="sidebar__item-indicator" />
-        </button>
+        <div class="sidebar__group-items">
+          <button
+            v-for="item in group.items"
+            :key="item.id"
+            type="button"
+            class="sidebar__item"
+            :class="{ active: activeSection === item.id }"
+            :aria-pressed="activeSection === item.id"
+            @click="$emit('select', item.id)"
+          >
+            <span class="sidebar__item-label">{{ item.label }}</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -53,15 +42,8 @@
 </template>
 
 <script setup>
-defineProps({ groups: Array, activeSection: String, organizationSlug: String });
+defineProps({ groups: Array, activeSection: String, organizationSlug: String, organizationName: String });
 defineEmits(['select', 'lottery', 'logout']);
-
-const sectionIcons = {
-  dashboard: '⊞', events: '📅', sponsors: '🏷', coupons: '🎟',
-  selfies: '📸', teams: '🏐', players: '👤', closing: '🔒',
-  results: '📊', history: '🗂', bar: '🍺', partners: '🤝',
-  admins: '🛡', marketing: '📣',
-};
 </script>
 
 <style scoped>
@@ -75,26 +57,15 @@ const sectionIcons = {
 .sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
-  padding: 1.5rem 1.25rem 1.25rem;
+  min-height: 74px;
+  padding: 0.8rem 1rem;
 }
 
-.sidebar__logo {
-  flex-shrink: 0;
-  width: 42px; height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #e0f2fe;
-  border: 1px solid #bae6fd;
-  border-radius: 12px;
-}
-
-.sidebar__brand-text { display: flex; flex-direction: column; gap: 0.1rem; }
+.sidebar__brand-text { display: flex; flex-direction: column; min-width: 0; gap: 0.15rem; }
 
 .sidebar__brand-name {
   font-family: 'Barlow Condensed', 'Impact', sans-serif;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -102,11 +73,15 @@ const sectionIcons = {
 }
 
 .sidebar__org {
-  font-size: 0.72rem;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 0.82rem;
   color: #0284c7;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .sidebar__divider {
@@ -117,20 +92,27 @@ const sectionIcons = {
 
 .sidebar__nav {
   flex: 1;
-  padding: 0.75rem;
+  min-height: 0;
+  padding: 0.55rem 0.7rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  overflow-y: auto;
-  scrollbar-width: none;
+  gap: 0.55rem;
+  overflow: hidden;
 }
-.sidebar__nav::-webkit-scrollbar { display: none; }
 
-.sidebar__group { display: flex; flex-direction: column; gap: 0.15rem; }
+.sidebar__group { min-width: 0; }
+
+.sidebar__group-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+
+.sidebar__group-items > :only-child { grid-column: 1 / -1; }
 
 .sidebar__group-label {
-  margin: 0 0 0.35rem 0.5rem;
-  font-size: 0.64rem;
+  margin: 0 0 0.25rem 0.3rem;
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -141,17 +123,19 @@ const sectionIcons = {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  justify-content: center;
+  min-height: 38px;
   width: 100%;
-  padding: 0.58rem 0.75rem;
-  border-radius: 10px;
-  border: 0;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
   background: transparent;
   color: #64748b;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
+  line-height: 1.15;
   font-weight: 500;
   cursor: pointer;
-  text-align: left;
+  text-align: center;
   transition: all 0.18s ease;
   font-family: inherit;
   overflow: hidden;
@@ -165,41 +149,32 @@ const sectionIcons = {
 .sidebar__item.active {
   background: #e0f2fe;
   color: #0284c7;
-  border: 1px solid #bae6fd;
+  border-color: #bae6fd;
   font-weight: 600;
 }
 
-.sidebar__item-icon { font-size: 1rem; width: 1.25rem; text-align: center; flex-shrink: 0; }
-.sidebar__item-label { flex: 1; font-family: 'IBM Plex Sans', system-ui, sans-serif; }
-
-.sidebar__item-indicator {
-  position: absolute;
-  right: 0; top: 50%;
-  transform: translateY(-50%);
-  width: 3px; height: 60%;
-  background: linear-gradient(180deg, #0284c7, #6366f1);
-  border-radius: 3px 0 0 3px;
-}
+.sidebar__item-label { font-family: 'IBM Plex Sans', system-ui, sans-serif; }
 
 .sidebar__footer {
-  padding: 0.75rem;
-  display: flex;
-  flex-direction: column;
+  padding: 0.55rem 0.7rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.4rem;
 }
 
 .sidebar__action {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 36px;
   width: 100%;
-  padding: 0.6rem 0.75rem;
-  border-radius: 10px;
-  border: 0;
-  font-size: 0.875rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  text-align: left;
+  text-align: center;
   font-family: inherit;
   transition: all 0.18s ease;
 }
@@ -217,4 +192,8 @@ const sectionIcons = {
   border: 1px solid #fecaca;
 }
 .sidebar__action--logout:hover { background: #fecaca; }
+
+@media (max-height: 720px) {
+  .sidebar__nav { overflow-y: auto; }
+}
 </style>

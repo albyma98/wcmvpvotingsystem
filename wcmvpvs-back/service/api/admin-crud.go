@@ -1211,10 +1211,19 @@ func (rt *_router) partnerLogout(w http.ResponseWriter, r *http.Request, ctx req
 }
 
 func (rt *_router) adminMe(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	organizationName := ctx.OrganizationSlug
+	if ctx.OrganizationID > 0 {
+		if org, err := rt.db.GetOrganization(ctx.OrganizationID); err == nil {
+			organizationName = org.Name
+		} else {
+			ctx.Logger.WithError(err).Warn("cannot load organization name for admin")
+		}
+	}
 	_ = json.NewEncoder(w).Encode(struct {
-		Username string `json:"username"`
-		Role     string `json:"role"`
-	}{Username: ctx.AdminUsername, Role: ctx.AdminRole})
+		Username         string `json:"username"`
+		Role             string `json:"role"`
+		OrganizationName string `json:"organization_name"`
+	}{Username: ctx.AdminUsername, Role: ctx.AdminRole, OrganizationName: organizationName})
 }
 
 func (rt *_router) partnerLogin(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

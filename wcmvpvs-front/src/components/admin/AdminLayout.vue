@@ -36,12 +36,10 @@ defineEmits(['close-mobile']);
   position: sticky;
   top: 0;
   height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--sidebar-bg, #ffffff);
   border-right: 1px solid rgba(15, 23, 42, 0.08);
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
   z-index: 50;
 }
 
