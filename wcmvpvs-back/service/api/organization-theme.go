@@ -28,8 +28,9 @@ func (rt *_router) getOrganizationTheme(w http.ResponseWriter, r *http.Request, 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(struct {
+		LogoURL        string `json:"logo_url"`
 		PrimaryColor   string `json:"primary_color"`
 		SecondaryColor string `json:"secondary_color"`
 		TertiaryColor  string `json:"tertiary_color"`
-	}{org.PrimaryColor, org.SecondaryColor, org.TertiaryColor})
+	}{org.LogoURL, org.PrimaryColor, org.SecondaryColor, org.TertiaryColor})
 }

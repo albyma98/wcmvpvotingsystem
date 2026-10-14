@@ -4,8 +4,8 @@
       <!-- Top bar -->
       <header class="topbar">
         <div class="club">
-          <div class="club-logo">
-            <img v-if="teamLogoUrl" :src="teamLogoUrl" :alt="homeName" />
+          <div class="club-logo" :class="{ 'has-logo': homeLogoUrl }">
+            <img v-if="homeLogoUrl" :src="homeLogoUrl" :alt="homeName" />
             <template v-else>{{ homeBadge }}</template>
           </div>
           <div class="club-name">
@@ -363,9 +363,12 @@ const props = defineProps({
 const WALLET_STORAGE_KEY = 'wallet:coins';
 
 const organizationColors = ref(normalizeOrganizationColors());
+const organizationLogoUrl = ref('');
+const homeLogoUrl = computed(() => props.organizationSlug ? organizationLogoUrl.value : props.teamLogoUrl);
 const themeStyle = computed(() => organizationThemeStyle(organizationColors.value));
 watch(() => props.organizationSlug, async (slug, previous, onCleanup) => {
   organizationColors.value = normalizeOrganizationColors();
+  organizationLogoUrl.value = '';
   if (!slug) return;
   const controller = new AbortController();
   onCleanup(() => controller.abort());
@@ -374,9 +377,12 @@ watch(() => props.organizationSlug, async (slug, previous, onCleanup) => {
       params: { organization_slug: slug },
       signal: controller.signal,
     });
-    if (!controller.signal.aborted) organizationColors.value = normalizeOrganizationColors(data);
+    if (!controller.signal.aborted) {
+      organizationColors.value = normalizeOrganizationColors(data);
+      organizationLogoUrl.value = String(data?.logo_url || '').trim();
+    }
   } catch (error) {
-    if (!controller.signal.aborted) console.error('Impossibile caricare i colori della società', error);
+    if (!controller.signal.aborted) console.error('Impossibile caricare logo e colori della società', error);
   }
 }, { immediate: true });
 
@@ -975,10 +981,13 @@ watch(
   transform: rotate(-4deg);
   overflow: hidden;
 }
+.club-logo.has-logo {
+  transform: none;
+}
 .club-logo img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .club-name {
   line-height: 1.15;

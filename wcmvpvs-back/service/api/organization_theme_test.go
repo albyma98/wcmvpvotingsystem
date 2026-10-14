@@ -29,7 +29,7 @@ func TestMasterOrganizationColorsAndPublicTheme(t *testing.T) {
 	router := &_router{db: db, baseLogger: logrus.New()}
 	ctx := reqcontext.RequestContext{AdminRole: "superadmin", Logger: logrus.New()}
 	create := httptest.NewRecorder()
-	router.createMasterOrganization(create, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"Theme club","slug":"theme-club","primary_color":"#123456","secondary_color":"#abcdef","tertiary_color":"#fedcba"}`)), ctx)
+	router.createMasterOrganization(create, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"Theme club","slug":"theme-club","logo_url":"https://example.com/logo.png","primary_color":"#123456","secondary_color":"#abcdef","tertiary_color":"#fedcba"}`)), ctx)
 	if create.Code != http.StatusCreated {
 		t.Fatalf("create status: %d", create.Code)
 	}
@@ -37,13 +37,13 @@ func TestMasterOrganizationColorsAndPublicTheme(t *testing.T) {
 	if err := json.Unmarshal(create.Body.Bytes(), &org); err != nil {
 		t.Fatal(err)
 	}
-	if org.PrimaryColor != "#123456" || org.SecondaryColor != "#abcdef" || org.TertiaryColor != "#fedcba" {
+	if org.LogoURL != "https://example.com/logo.png" || org.PrimaryColor != "#123456" || org.SecondaryColor != "#abcdef" || org.TertiaryColor != "#fedcba" {
 		t.Fatalf("create API colors: %+v", org)
 	}
 	mux := chi.NewRouter()
 	mux.Put("/{id}", func(w http.ResponseWriter, r *http.Request) { router.updateMasterOrganization(w, r, ctx) })
 	update := httptest.NewRecorder()
-	mux.ServeHTTP(update, httptest.NewRequest(http.MethodPut, "/"+strconv.Itoa(org.ID), strings.NewReader(`{"name":"Theme club","slug":"theme-club","primary_color":"#654321","secondary_color":"#aaaaaa","tertiary_color":"#ffffff"}`)))
+	mux.ServeHTTP(update, httptest.NewRequest(http.MethodPut, "/"+strconv.Itoa(org.ID), strings.NewReader(`{"name":"Theme club","slug":"theme-club","logo_url":"data:image/png;base64,aGVsbG8=","primary_color":"#654321","secondary_color":"#aaaaaa","tertiary_color":"#ffffff"}`)))
 	if update.Code != http.StatusOK {
 		t.Fatalf("update status: %d", update.Code)
 	}
@@ -57,7 +57,7 @@ func TestMasterOrganizationColorsAndPublicTheme(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &theme); err != nil {
 		t.Fatal(err)
 	}
-	if len(theme) != 3 || theme["primary_color"] != "#654321" || theme["secondary_color"] != "#aaaaaa" || theme["tertiary_color"] != "#ffffff" {
+	if len(theme) != 4 || theme["logo_url"] != "data:image/png;base64,aGVsbG8=" || theme["primary_color"] != "#654321" || theme["secondary_color"] != "#aaaaaa" || theme["tertiary_color"] != "#ffffff" {
 		t.Fatalf("public theme: %+v", theme)
 	}
 	for _, query := range []string{"", "?organization_slug=unknown"} {
