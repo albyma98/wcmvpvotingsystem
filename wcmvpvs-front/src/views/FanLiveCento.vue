@@ -352,6 +352,7 @@
       v-model="isFeedbackModalOpen"
       :event-id="eventId"
       :feedback-survey="feedbackSurvey"
+      :theme-style="themeStyle"
       @submitted="handleFeedbackSubmitted"
     />
   </div>

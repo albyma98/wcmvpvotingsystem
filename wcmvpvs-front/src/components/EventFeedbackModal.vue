@@ -4,15 +4,17 @@
       <div
         v-if="modelValue"
         class="feedback-modal"
+        :style="themeStyle"
         role="dialog"
         aria-modal="true"
         aria-labelledby="feedback-modal-title"
         @click.self="close"
       >
         <div class="feedback-modal__panel">
+          <div class="feedback-modal__grabber" aria-hidden="true"></div>
           <header class="feedback-modal__header">
             <p class="feedback-modal__step">{{ stepLabel }}</p>
-            <button type="button" class="feedback-modal__close" aria-label="Chiudi feedback" @click="close">×</button>
+            <button type="button" class="feedback-modal__close" aria-label="Chiudi feedback" :disabled="isSubmitting" @click="close">✕</button>
           </header>
 
           <div class="feedback-modal__body">
@@ -25,6 +27,8 @@
                 maxlength="80"
                 rows="3"
                 :placeholder="activeQuestion?.title"
+                aria-labelledby="feedback-modal-title"
+                :disabled="isSubmitting"
               />
               <p class="feedback-modal__counter">{{ answers.suggestion.length }}/80</p>
             </div>
@@ -36,15 +40,17 @@
                 type="button"
                 class="feedback-modal__option"
                 :class="{ active: answers[activeQuestion.answerKey] === option.value }"
+                :aria-pressed="answers[activeQuestion.answerKey] === option.value"
+                :disabled="isSubmitting"
                 @click="onSelectOption(option.value)"
               >
-                <span class="feedback-modal__option-icon">{{ option.icon || '•' }}</span>
+                <span class="feedback-modal__option-icon" aria-hidden="true">{{ option.icon || '•' }}</span>
                 <span>{{ option.label }}</span>
               </button>
             </div>
 
-            <p v-if="errorMessage" class="feedback-modal__error">{{ errorMessage }}</p>
-            <p v-if="successMessage" class="feedback-modal__success">{{ successMessage }}</p>
+            <p v-if="errorMessage" class="feedback-modal__error" role="alert">{{ errorMessage }}</p>
+            <p v-if="successMessage" class="feedback-modal__success" role="status">{{ successMessage }}</p>
           </div>
 
           <footer class="feedback-modal__footer">
@@ -76,6 +82,10 @@ const props = defineProps({
     default: 0,
   },
   feedbackSurvey: {
+    type: Object,
+    default: () => ({}),
+  },
+  themeStyle: {
     type: Object,
     default: () => ({}),
   },
@@ -270,7 +280,7 @@ async function submit() {
       return;
     }
 
-    successMessage.value = 'Grazie! Feedback inviato con successo 💙';
+    successMessage.value = 'Grazie! Feedback inviato con successo.';
     emit('submitted');
     setTimeout(() => {
       emit('update:modelValue', false);
@@ -298,18 +308,34 @@ watch(
   position: fixed;
   inset: 0;
   z-index: 130;
-  display: grid;
-  place-items: center;
-  background: rgba(2, 6, 23, 0.75);
-  backdrop-filter: blur(5px);
-  padding: clamp(0.8rem, 2.4vh, 1.1rem);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(35, 22, 26, 0.42);
+  backdrop-filter: blur(3px);
+  color: var(--ink, #23161a);
+  font-family: 'Inter', system-ui, sans-serif;
 }
+.feedback-modal * { box-sizing: border-box; }
 .feedback-modal__panel {
-  width: min(100%, 34rem);
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: linear-gradient(170deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.96));
-  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.5);
+  width: 100%;
+  max-width: 430px;
+  max-height: 82dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 18px calc(18px + env(safe-area-inset-bottom));
+  border-radius: 26px 26px 0 0;
+  background: var(--bg, #fff7f2);
+  box-shadow: 0 -8px 30px rgba(35, 22, 26, 0.18);
+  overflow: hidden;
+}
+.feedback-modal__grabber {
+  width: 38px;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--red-line, #ffd2ce);
+  margin: 0 auto 12px;
+  flex: none;
 }
 .feedback-modal__header,
 .feedback-modal__footer {
@@ -317,61 +343,152 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.9rem;
+  flex: none;
 }
-.feedback-modal__step { font-size: 0.76rem; font-weight: 800; color: #fde68a; text-transform: uppercase; letter-spacing: 0.08em; }
+.feedback-modal__header { margin-bottom: 12px; }
+.feedback-modal__step {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--card, #ffffff);
+  border: 2px solid var(--red-line, #ffd2ce);
+  color: var(--red-text, #e4212e);
+  font-size: 11.5px;
+  font-weight: 800;
+}
 .feedback-modal__close {
-  height: 2rem;
-  width: 2rem;
-  border-radius: 9999px;
-  border: 1px solid rgba(255,255,255,0.25);
-  background: rgba(255,255,255,0.08);
-  color: #fff;
-}
-.feedback-modal__body { padding: 0 0.9rem 0.9rem; }
-.feedback-modal__title { font-size: clamp(1rem, 4.2vw, 1.28rem); font-weight: 900; color: #fff; }
-.feedback-modal__options { margin-top: 0.9rem; display: grid; gap: 0.55rem; }
-.feedback-modal__option {
-  display: flex; align-items: center; gap: 0.55rem;
-  border-radius: 0.8rem;
-  border: 1px solid rgba(255,255,255,0.2);
-  background: rgba(15, 23, 42, 0.65);
-  padding: 0.7rem;
-  color: #e2e8f0;
+  height: 32px;
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--line, #f1e4e0);
+  background: var(--card, #ffffff);
+  color: var(--muted, #8c7a80);
+  font: inherit;
   font-weight: 700;
+  cursor: pointer;
 }
-.feedback-modal__option.active { border-color: rgba(251,191,36,0.7); background: rgba(251,191,36,0.15); color: #fef3c7; }
-.feedback-modal__optional { margin-top: 0.8rem; }
+.feedback-modal__body { overflow-y: auto; min-height: 0; padding-bottom: 4px; }
+.feedback-modal__title {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 19px;
+  font-weight: 750;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--ink, #23161a);
+  overflow-wrap: anywhere;
+}
+.feedback-modal__options { margin-top: 16px; display: grid; gap: 9px; padding-bottom: 4px; }
+.feedback-modal__option {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  border-radius: 15px;
+  border: 2px solid var(--line, #f1e4e0);
+  background: var(--card, #ffffff);
+  padding: 11px 13px;
+  color: var(--ink, #23161a);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgba(35, 22, 26, 0.1);
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+.feedback-modal__option:hover { border-color: var(--red-line, #ffd2ce); }
+.feedback-modal__option:active { transform: translateY(2px); box-shadow: none; }
+.feedback-modal__option.active { border-color: var(--red, #e4212e); background: var(--red-soft, #ffe8e6); }
+.feedback-modal__option-icon {
+  width: 38px;
+  min-height: 38px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 2px solid var(--red-line, #ffd2ce);
+  background: var(--red-soft, #ffe8e6);
+  font-size: 20px;
+  transform: rotate(-3deg);
+}
+.feedback-modal__optional { margin-top: 16px; }
 .feedback-modal__input {
   width: 100%;
-  border-radius: 0.8rem;
-  border: 1px solid rgba(255,255,255,0.2);
-  background: rgba(15, 23, 42, 0.78);
-  color: #fff;
-  padding: 0.72rem;
+  min-height: 104px;
+  border-radius: 13px;
+  border: 2px solid var(--line, #f1e4e0);
+  background: var(--card, #ffffff);
+  color: var(--ink, #23161a);
+  padding: 11px 13px;
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  resize: vertical;
 }
-.feedback-modal__counter { margin-top: 0.4rem; text-align: right; font-size: 0.74rem; color: rgba(226,232,240,0.8); }
-.feedback-modal__error { margin-top: 0.7rem; color: #fca5a5; font-weight: 700; }
-.feedback-modal__success { margin-top: 0.7rem; color: #86efac; font-weight: 700; }
-.feedback-modal__actions { margin-left: auto; display: flex; gap: 0.5rem; }
+.feedback-modal__input::placeholder { color: var(--muted, #8c7a80); }
+.feedback-modal__input:focus { border-color: var(--red, #e4212e); }
+.feedback-modal__counter { margin: 6px 0 0; text-align: right; font-size: 11px; color: var(--muted, #8c7a80); }
+.feedback-modal__error,
+.feedback-modal__success {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 13px;
+  border: 2px solid var(--red-line, #ffd2ce);
+  background: var(--card, #ffffff);
+  color: var(--red-text, #e4212e);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.feedback-modal__success { border-color: var(--gold, #f5b321); color: var(--gold-deep, #986700); }
+.feedback-modal__footer { padding-top: 16px; flex-wrap: wrap; }
+.feedback-modal__actions { margin-left: auto; display: flex; gap: 8px; }
 .feedback-modal__back,
 .feedback-modal__skip,
 .feedback-modal__submit {
-  border-radius: 0.6rem;
-  border: 1px solid rgba(255,255,255,0.22);
-  padding: 0.55rem 0.8rem;
+  border-radius: 13px;
+  border: 2px solid var(--line, #f1e4e0);
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 13px;
   font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.1s ease;
 }
 .feedback-modal__submit {
-  background: linear-gradient(135deg, #f59e0b, #ef4444);
-  color: #fff;
-  border-color: rgba(251,191,36,0.65);
+  background: var(--red, #e4212e);
+  color: var(--on-primary, #ffffff);
+  border-color: var(--red, #e4212e);
+  box-shadow: 0 4px 0 var(--red-deep, #c0121f);
 }
 .feedback-modal__skip,
-.feedback-modal__back { background: rgba(148,163,184,0.12); color: #e2e8f0; }
+.feedback-modal__back { background: var(--card, #ffffff); color: var(--ink, #23161a); box-shadow: 0 3px 0 rgba(35, 22, 26, 0.1); }
+.feedback-modal__footer button:active { transform: translateY(2px); box-shadow: none; }
+.feedback-modal button:disabled,
+.feedback-modal textarea:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+.feedback-modal button:focus-visible,
+.feedback-modal textarea:focus-visible { outline: 2px solid var(--red-text, #e4212e); outline-offset: 3px; }
 
 .feedback-modal-fade-enter-active,
-.feedback-modal-fade-leave-active { transition: opacity 0.2s ease; }
+.feedback-modal-fade-leave-active { transition: opacity 0.22s ease; }
+.feedback-modal-fade-enter-active .feedback-modal__panel,
+.feedback-modal-fade-leave-active .feedback-modal__panel { transition: transform 0.28s cubic-bezier(0.32, 0.72, 0.28, 1); }
 .feedback-modal-fade-enter-from,
 .feedback-modal-fade-leave-to { opacity: 0; }
+.feedback-modal-fade-enter-from .feedback-modal__panel,
+.feedback-modal-fade-leave-to .feedback-modal__panel { transform: translateY(105%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .feedback-modal-fade-enter-active,
+  .feedback-modal-fade-leave-active,
+  .feedback-modal-fade-enter-active .feedback-modal__panel,
+  .feedback-modal-fade-leave-active .feedback-modal__panel,
+  .feedback-modal__option,
+  .feedback-modal__footer button { transition: none; }
+}
 </style>
