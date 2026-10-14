@@ -1015,7 +1015,7 @@ watch(
   height: 17px;
   border-radius: 50%;
   flex: none;
-  background: radial-gradient(circle at 34% 30%, var(--coin-light), var(--gold) 68%, var(--coin-deep));
+  background: radial-gradient(circle at 34% 30%, #ffe293, #f0a81c 68%, #c67f00);
   box-shadow: inset 0 -1.5px 2px rgba(0, 0, 0, 0.22), 0 0 0 2px #fff;
 }
 .top-right {

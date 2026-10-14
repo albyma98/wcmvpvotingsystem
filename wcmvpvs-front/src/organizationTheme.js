@@ -69,8 +69,6 @@ export function organizationThemeStyle(colors) {
     '--gold-deep': readableAccent(secondary, card),
     '--gold-soft': mix(card, secondary, 0.16),
     '--on-secondary': foreground(secondary),
-    '--coin-light': mix(secondary, '#ffffff', 0.4),
-    '--coin-deep': mix(secondary, '#000000', 0.2),
     '--hero-glow': mix(background, primary, 0.12),
   };
 }
