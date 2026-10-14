@@ -33,6 +33,7 @@
     </template>
     <template v-else-if="appView === 'newui-cento'">
       <FanLiveCento
+        :organization-slug="organizationSlug"
         :event-id="resolvedEventId"
         :team-name="newUiTeamName"
         :team-logo-url="newUiTeamLogoUrl"

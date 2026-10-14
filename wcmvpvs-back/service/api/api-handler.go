@@ -44,6 +44,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Delete("/players/{id}", rt.wrapAdmin(rt.deletePlayer))
 
 	rt.router.Get("/active-event", rt.wrap(rt.getActiveEvent))
+	rt.router.Get("/organization-theme", rt.wrap(rt.getOrganizationTheme))
 	rt.router.Get("/sponsors", rt.wrap(rt.listPublicSponsors))
 	rt.router.Get("/events/{eventId}/coupons", rt.wrap(rt.listEventCoupons))
 	rt.router.Post("/coupons/{couponId}/view", rt.wrap(rt.recordCouponView))

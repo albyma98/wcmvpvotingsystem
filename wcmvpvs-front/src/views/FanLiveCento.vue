@@ -1,5 +1,5 @@
 <template>
-  <div class="cento-root" :class="{ 'reduce-motion': false }">
+  <div class="cento-root" :class="{ 'reduce-motion': false }" :style="themeStyle">
     <div class="phone">
       <!-- Top bar -->
       <header class="topbar">
@@ -35,7 +35,7 @@
             <div class="mvp-photo">
               <span class="status">{{ hasVoted ? 'Voto registrato' : 'Votazioni aperte' }}</span>
               <img v-if="hasVoted && displayVotedImage" :src="displayVotedImage" :alt="displayVotedName" class="mvp-img" />
-              <svg v-else width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#E4212E" stroke-width="1.5">
+              <svg v-else width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--red-text)" stroke-width="1.5">
                 <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
               </svg>
             </div>
@@ -210,7 +210,7 @@
         <div class="sheet-body">
           <div class="profile-hero">
             <div class="profile-avatar">
-              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#E4212E" stroke-width="1.8" stroke-linecap="round">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--red-text)" stroke-width="1.8" stroke-linecap="round">
                 <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
               </svg>
             </div>
@@ -321,6 +321,7 @@
 <script setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
+import { normalizeOrganizationColors, organizationThemeStyle } from '../organizationTheme';
 
 // Giochi reali riusati da EarnCoinsModal (lazy-load: pesano).
 const ReactionTestGame = defineAsyncComponent(() => import('../components/ReactionTestGame.vue'));
@@ -345,6 +346,7 @@ const FAN_NICKNAME_MAX_LEN = 24;
 const FAN_NICKNAME_PATTERN = /^[A-Za-z0-9._ -]+$/;
 
 const props = defineProps({
+  organizationSlug: { type: String, default: '' },
   eventId: { type: Number, default: 0 },
   teamName: { type: String, default: 'TEAM' },
   teamLogoUrl: { type: String, default: '' },
@@ -359,6 +361,24 @@ const props = defineProps({
 });
 
 const WALLET_STORAGE_KEY = 'wallet:coins';
+
+const organizationColors = ref(normalizeOrganizationColors());
+const themeStyle = computed(() => organizationThemeStyle(organizationColors.value));
+watch(() => props.organizationSlug, async (slug, previous, onCleanup) => {
+  organizationColors.value = normalizeOrganizationColors();
+  if (!slug) return;
+  const controller = new AbortController();
+  onCleanup(() => controller.abort());
+  try {
+    const { data } = await apiClient.get('/organization-theme', {
+      params: { organization_slug: slug },
+      signal: controller.signal,
+    });
+    if (!controller.signal.aborted) organizationColors.value = normalizeOrganizationColors(data);
+  } catch (error) {
+    if (!controller.signal.aborted) console.error('Impossibile caricare i colori della società', error);
+  }
+}, { immediate: true });
 
 /* ---------- Stato ---------- */
 const totalCoins = ref(0);
@@ -891,7 +911,7 @@ watch(
   display: flex;
   justify-content: center;
   overflow: hidden;
-  background: #f3e9e4;
+  background: var(--outer-bg, #f3e9e4);
   --bg: #fff7f2;
   --card: #ffffff;
   --ink: #23161a;
@@ -918,7 +938,7 @@ watch(
   max-width: 430px;
   height: 100dvh;
   background:
-    radial-gradient(90% 40% at 50% -6%, #ffe3de, transparent 62%),
+    radial-gradient(90% 40% at 50% -6%, var(--hero-glow), transparent 62%),
     var(--bg);
   display: flex;
   flex-direction: column;
@@ -950,7 +970,7 @@ watch(
   font-family: 'Fraunces', serif;
   font-weight: 900;
   font-size: 14px;
-  color: #fff;
+  color: var(--on-primary);
   box-shadow: var(--shadow-red);
   transform: rotate(-4deg);
   overflow: hidden;
@@ -995,7 +1015,7 @@ watch(
   height: 17px;
   border-radius: 50%;
   flex: none;
-  background: radial-gradient(circle at 34% 30%, #ffe293, #f0a81c 68%, #c67f00);
+  background: radial-gradient(circle at 34% 30%, var(--coin-light), var(--gold) 68%, var(--coin-deep));
   box-shadow: inset 0 -1.5px 2px rgba(0, 0, 0, 0.22), 0 0 0 2px #fff;
 }
 .top-right {
@@ -1008,9 +1028,9 @@ watch(
   height: 36px;
   border-radius: 50%;
   flex: none;
-  background: #fff;
+  background: var(--card);
   border: 2px solid var(--red-line);
-  color: var(--red);
+  color: var(--red-text);
   cursor: pointer;
   font-family: inherit;
   display: flex;
@@ -1076,7 +1096,7 @@ main {
 .tile-mvp {
   grid-row: 1 / 3;
   border-color: var(--red-line);
-  background: linear-gradient(175deg, #fff 55%, var(--red-soft));
+  background: linear-gradient(175deg, var(--card) 55%, var(--red-soft));
   position: relative;
 }
 .tile-icon {
@@ -1088,7 +1108,7 @@ main {
   align-items: center;
   justify-content: center;
   background: var(--red-soft);
-  color: var(--red);
+  color: var(--red-text);
   margin-bottom: 9px;
   transform: rotate(-4deg);
 }
@@ -1114,7 +1134,7 @@ main {
   gap: 5px;
   font-size: 12px;
   font-weight: 800;
-  color: var(--red);
+  color: var(--red-text);
 }
 .mvp-photo {
   flex: 1;
@@ -1122,7 +1142,7 @@ main {
   margin: 9px 0;
   border-radius: 14px;
   background:
-    radial-gradient(80% 80% at 50% 20%, #ffdcd8, #ffc7c1),
+    radial-gradient(80% 80% at 50% 20%, var(--red-soft), var(--red-line)),
     var(--red-soft);
   border: 2px solid var(--red-line);
   display: flex;
@@ -1145,7 +1165,7 @@ main {
   left: 8px;
   font-size: 9.5px;
   font-weight: 800;
-  color: #fff;
+  color: var(--on-primary);
   background: var(--red);
   padding: 4px 9px;
   border-radius: 999px;
@@ -1158,7 +1178,7 @@ main {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--card);
   animation: pulse 1.5s ease-in-out infinite;
 }
 .btn-vote {
@@ -1168,7 +1188,7 @@ main {
   width: 100%;
   text-align: center;
   background: var(--red);
-  color: #fff;
+  color: var(--on-primary);
   font-family: inherit;
   font-size: 13.5px;
   font-weight: 800;
@@ -1229,7 +1249,7 @@ main {
 }
 .rank.r1 {
   background: var(--gold);
-  color: #5a3c00;
+  color: var(--on-secondary);
   border: none;
   transform: rotate(-5deg);
 }
@@ -1265,7 +1285,7 @@ main {
   display: flex;
   align-items: center;
   gap: 11px;
-  background: var(--ink);
+  background: var(--red);
   border: none;
   border-radius: 20px;
   padding: 12px 14px;
@@ -1273,7 +1293,7 @@ main {
   position: relative;
   overflow: hidden;
   font-family: inherit;
-  color: #fff;
+  color: var(--on-primary);
   text-align: left;
   transition: transform 0.12s ease;
   box-shadow: 0 4px 0 #0d0608;
@@ -1297,7 +1317,7 @@ main {
   height: 36px;
   border-radius: 11px;
   flex: none;
-  background: #fff;
+  background: var(--card);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1335,7 +1355,7 @@ main {
   border-radius: 999px;
   font-weight: 800;
   font-size: 12.5px;
-  color: #4a3000;
+  color: var(--on-secondary);
   font-variant-numeric: tabular-nums;
   animation: reward 2.4s ease-in-out infinite;
   position: relative;
@@ -1417,7 +1437,7 @@ main {
   font-weight: 600;
 }
 .powered b {
-  color: var(--red);
+  color: var(--red-text);
   font-weight: 800;
 }
 
@@ -1487,7 +1507,7 @@ main {
   height: 32px;
   border-radius: 50%;
   border: 2px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--muted);
   cursor: pointer;
   display: flex;
@@ -1513,13 +1533,13 @@ main {
   font-weight: 500;
 }
 .sheet-empty.error {
-  color: var(--red);
+  color: var(--red-text);
 }
 .row-item {
   display: flex;
   align-items: center;
   gap: 11px;
-  background: #fff;
+  background: var(--card);
   border: 2px solid var(--line);
   border-radius: 15px;
   padding: 11px 13px;
@@ -1556,7 +1576,7 @@ main {
   font-family: 'Fraunces', serif;
   font-weight: 750;
   font-size: 14px;
-  color: var(--red);
+  color: var(--red-text);
   transform: rotate(-3deg);
   overflow: hidden;
 }
@@ -1600,7 +1620,7 @@ main {
   flex: none;
   font-size: 11px;
   font-weight: 800;
-  color: #fff;
+  color: var(--on-primary);
   background: var(--red);
   padding: 6px 12px;
   border-radius: 999px;
@@ -1658,7 +1678,7 @@ main {
   min-width: 0;
   border-radius: 13px;
   border: 2px solid var(--line);
-  background: #fff;
+  background: var(--card);
   padding: 11px 13px;
   font-family: inherit;
   font-size: 13.5px;
@@ -1681,7 +1701,7 @@ main {
   padding: 0 2px;
 }
 .nick-msg.error {
-  color: var(--red);
+  color: var(--red-text);
 }
 .nick-msg.ok {
   color: var(--gold-deep);
@@ -1714,7 +1734,7 @@ main {
   font-variant-numeric: tabular-nums;
 }
 .lottery-box {
-  background: #fff;
+  background: var(--card);
   border: 2px solid var(--line);
   border-radius: 15px;
   padding: 14px 15px;
@@ -1735,16 +1755,16 @@ main {
   font-size: 18px;
   font-weight: 900;
   letter-spacing: 0.06em;
-  color: var(--red);
+  color: var(--red-text);
 }
 .lottery-qr {
   width: 168px;
   height: 168px;
   border-radius: 14px;
   border: 2px solid var(--line);
-  background: #fff;
   padding: 8px;
   align-self: center;
+  background: #fff;
 }
 .lottery-hint {
   font-size: 11px;

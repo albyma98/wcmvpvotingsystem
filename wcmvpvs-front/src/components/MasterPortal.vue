@@ -460,6 +460,25 @@
                 <input type="checkbox" v-model="organizationForm.is_active" />
                 <span>Società attiva</span>
               </label>
+              <fieldset class="organization-colors">
+                <legend>Colori della società</legend>
+                <p class="help-text">Personalizzano la home tifosi /slug/new.</p>
+                <div class="organization-color-grid">
+                  <label v-for="field in organizationColorFields" :key="field.key">
+                    {{ field.label }}
+                    <span class="organization-color-inputs">
+                      <input
+                        type="color"
+                        :aria-label="`Seleziona ${field.label.toLowerCase()}`"
+                        :value="isHexColor(organizationForm[field.key]) ? organizationForm[field.key] : DEFAULT_ORGANIZATION_COLORS[field.key]"
+                        @input="organizationForm[field.key] = $event.target.value"
+                      />
+                      <input v-model.trim="organizationForm[field.key]" type="text" pattern="#[0-9a-fA-F]{6}" maxlength="7" required :aria-label="`Codice HEX ${field.label.toLowerCase()}`" placeholder="#000000" />
+                    </span>
+                    <small class="help-text">{{ field.description }}</small>
+                  </label>
+                </div>
+              </fieldset>
               <label class="switch-field">
                 <input type="checkbox" v-model="organizationForm.bar_enabled" />
                 <span>Feature BAR attiva</span>
@@ -800,6 +819,7 @@
 <script setup>
 import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
+import { DEFAULT_ORGANIZATION_COLORS, isHexColor, normalizeOrganizationColors } from '../organizationTheme';
 import VoteTrendChart from './VoteTrendChart.vue';
 
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
@@ -862,7 +882,12 @@ const selectedOrganizationId = ref(0);
 const organizationDetail = ref(null);
 const isLoadingDetail = ref(false);
 
-const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', logo_url: '', is_active: true, sms_cost: 0.08, free_sms: 0, bar_enabled: true });
+const organizationColorFields = [
+  { key: 'primary_color', label: 'Colore primario', description: 'Pulsanti, icone e accenti principali.' },
+  { key: 'secondary_color', label: 'Colore secondario', description: 'Wallet, premi ed evidenze.' },
+  { key: 'tertiary_color', label: 'Colore terziario', description: 'Sfondo e superfici della home.' },
+];
+const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', logo_url: '', is_active: true, sms_cost: 0.08, free_sms: 0, bar_enabled: true, ...DEFAULT_ORGANIZATION_COLORS });
 const organizationFormVisible = ref(false);
 const organizationFormMode = ref('create');
 const isSavingOrganization = ref(false);
@@ -886,6 +911,7 @@ const qrRedirectError = ref('');
 const authHeaders = computed(() => ({ headers: {} }));
 
 function resetOrganizationForm() {
+  Object.assign(organizationForm, DEFAULT_ORGANIZATION_COLORS);
   organizationForm.id = 0;
   organizationForm.name = '';
   organizationForm.slug = '';
@@ -914,6 +940,7 @@ function openCreateOrganization() {
 }
 
 function openEditOrganization(org) {
+  Object.assign(organizationForm, normalizeOrganizationColors(org));
   organizationFormMode.value = 'edit';
   organizationForm.id = org.id;
   organizationForm.name = org.name;
@@ -1387,6 +1414,10 @@ async function fetchOrganizationDetail(id = selectedOrganizationId.value) {
 }
 
 async function submitOrganizationForm() {
+  if (organizationColorFields.some(({ key }) => !isHexColor(organizationForm[key]))) {
+    organizationFormError.value = 'Inserisci tre colori validi nel formato #RRGGBB.';
+    return;
+  }
   if (!organizationForm.name) {
     organizationFormError.value = 'Il nome è obbligatorio';
     return;
@@ -1395,6 +1426,7 @@ async function submitOrganizationForm() {
   isSavingOrganization.value = true;
   try {
     const payload = {
+      ...normalizeOrganizationColors(organizationForm),
       name: organizationForm.name,
       slug: organizationForm.slug,
       city: organizationForm.city,
@@ -2010,6 +2042,19 @@ onMounted(() => {
   font-size: 0.75rem;
   color: #64748b;
 }
+
+.organization-colors {
+  grid-column: 1 / -1;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  min-width: 0;
+}
+.organization-colors legend { font-weight: 700; padding: 0 0.4rem; }
+.organization-color-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 0.75rem; }
+.organization-color-inputs { display: flex; align-items: center; gap: 0.6rem; }
+.organization-color-inputs input[type='color'] { width: 48px; height: 42px; padding: 0.2rem; cursor: pointer; flex-shrink: 0; }
+.organization-color-inputs input[type='text'] { min-width: 0; width: 100%; font-family: monospace; }
 
 .switch-field {
   flex-direction: row;

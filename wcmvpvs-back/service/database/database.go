@@ -130,19 +130,22 @@ type EventFeedbackAnswerConfig struct {
 }
 
 type Organization struct {
-	ID           int     `json:"id"`
-	Name         string  `json:"name"`
-	Slug         string  `json:"slug"`
-	City         string  `json:"city,omitempty"`
-	LogoURL      string  `json:"logo_url,omitempty"`
-	IsActive     bool    `json:"is_active"`
-	RosterSchema int     `json:"roster_schema,omitempty"`
-	TeamID       int     `json:"team_id,omitempty"`
-	SMSCost      float64 `json:"sms_cost"`
-	FreeSMS      int     `json:"free_sms"`
-	BarEnabled   bool    `json:"bar_enabled"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
+	ID             int     `json:"id"`
+	Name           string  `json:"name"`
+	Slug           string  `json:"slug"`
+	City           string  `json:"city,omitempty"`
+	LogoURL        string  `json:"logo_url,omitempty"`
+	PrimaryColor   string  `json:"primary_color"`
+	SecondaryColor string  `json:"secondary_color"`
+	TertiaryColor  string  `json:"tertiary_color"`
+	IsActive       bool    `json:"is_active"`
+	RosterSchema   int     `json:"roster_schema,omitempty"`
+	TeamID         int     `json:"team_id,omitempty"`
+	SMSCost        float64 `json:"sms_cost"`
+	FreeSMS        int     `json:"free_sms"`
+	BarEnabled     bool    `json:"bar_enabled"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
 }
 
 type OrganizationStats struct {
@@ -1685,6 +1688,9 @@ name TEXT NOT NULL,
 slug TEXT NOT NULL DEFAULT '',
 city TEXT,
 logo_url TEXT,
+primary_color TEXT NOT NULL DEFAULT '#e4212e',
+secondary_color TEXT NOT NULL DEFAULT '#f5b321',
+tertiary_color TEXT NOT NULL DEFAULT '#fff7f2',
 is_active INTEGER NOT NULL DEFAULT 1,
 roster_schema INTEGER NOT NULL DEFAULT 13,
 team_id INTEGER,
@@ -1724,6 +1730,15 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if _, err = db.Exec(`ALTER TABLE organizations ADD COLUMN bar_enabled INTEGER NOT NULL DEFAULT 1`); err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring organizations bar enabled column: %w", err)
+		}
+	}
+	for _, statement := range []string{
+		`ALTER TABLE organizations ADD COLUMN primary_color TEXT NOT NULL DEFAULT '#e4212e'`,
+		`ALTER TABLE organizations ADD COLUMN secondary_color TEXT NOT NULL DEFAULT '#f5b321'`,
+		`ALTER TABLE organizations ADD COLUMN tertiary_color TEXT NOT NULL DEFAULT '#fff7f2'`,
+	} {
+		if _, err = db.Exec(statement); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring organization color columns: %w", err)
 		}
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_organizations_team ON organizations(team_id)`); err != nil {
@@ -4719,7 +4734,7 @@ func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) 
 	var rosterSchema int
 	var teamID sql.NullInt64
 	var city, logoURL sql.NullString
-	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &city, &logoURL, &isActive, &rosterSchema, &teamID, &org.SMSCost, &org.FreeSMS, &barEnabled, &org.CreatedAt, &org.UpdatedAt); err != nil {
+	if err := scanner.Scan(&org.ID, &org.Name, &org.Slug, &city, &logoURL, &isActive, &rosterSchema, &teamID, &org.SMSCost, &org.FreeSMS, &barEnabled, &org.PrimaryColor, &org.SecondaryColor, &org.TertiaryColor, &org.CreatedAt, &org.UpdatedAt); err != nil {
 		return Organization{}, err
 	}
 	org.City = city.String
@@ -4734,7 +4749,7 @@ func (db *appdbimpl) scanOrganization(scanner rowScanner) (Organization, error) 
 }
 
 func (db *appdbimpl) ListOrganizations() ([]Organization, error) {
-	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
+	rows, err := db.c.Query(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), primary_color, secondary_color, tertiary_color, created_at, updated_at FROM organizations ORDER BY name COLLATE NOCASE ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -4755,7 +4770,7 @@ func (db *appdbimpl) GetOrganization(id int) (Organization, error) {
 	if id <= 0 {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), created_at, updated_at FROM organizations WHERE id = ?`, id)
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), primary_color, secondary_color, tertiary_color, created_at, updated_at FROM organizations WHERE id = ?`, id)
 	return db.scanOrganization(row)
 }
 
@@ -4763,11 +4778,14 @@ func (db *appdbimpl) GetOrganizationBySlug(slug string) (Organization, error) {
 	if slug == "" {
 		return Organization{}, sql.ErrNoRows
 	}
-	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
+	row := db.c.QueryRow(`SELECT id, name, slug, city, logo_url, is_active, roster_schema, IFNULL(team_id, 0), IFNULL(sms_cost, 0.08), IFNULL(free_sms, 0), IFNULL(bar_enabled, 1), primary_color, secondary_color, tertiary_color, created_at, updated_at FROM organizations WHERE slug = ?`, normalizeSlug(slug))
 	return db.scanOrganization(row)
 }
 
 func (db *appdbimpl) CreateOrganization(org Organization) (Organization, error) {
+	if err := normalizeOrganizationColors(&org, Organization{PrimaryColor: DefaultOrganizationPrimaryColor, SecondaryColor: DefaultOrganizationSecondaryColor, TertiaryColor: DefaultOrganizationTertiaryColor}); err != nil {
+		return Organization{}, err
+	}
 	sanitizedName := strings.TrimSpace(org.Name)
 	if sanitizedName == "" {
 		return Organization{}, ErrInvalidOrganizationData
@@ -4799,7 +4817,7 @@ func (db *appdbimpl) CreateOrganization(org Organization) (Organization, error) 
 		teamID = int(newTeamID)
 	}
 
-	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, roster_schema, team_id, sms_cost, free_sms, bar_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), boolToInt(org.BarEnabled))
+	res, err := tx.Exec(`INSERT INTO organizations (name, slug, city, logo_url, is_active, roster_schema, team_id, sms_cost, free_sms, bar_enabled, primary_color, secondary_color, tertiary_color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(org.IsActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), boolToInt(org.BarEnabled), org.PrimaryColor, org.SecondaryColor, org.TertiaryColor)
 	if err != nil {
 		return Organization{}, err
 	}
@@ -4826,6 +4844,9 @@ func (db *appdbimpl) UpdateOrganization(org Organization) (Organization, error) 
 	}
 	existing, err := db.GetOrganization(org.ID)
 	if err != nil {
+		return Organization{}, err
+	}
+	if err := normalizeOrganizationColors(&org, existing); err != nil {
 		return Organization{}, err
 	}
 
@@ -4858,7 +4879,7 @@ func (db *appdbimpl) UpdateOrganization(org Organization) (Organization, error) 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, roster_schema=?, team_id=?, sms_cost=?, free_sms=?, bar_enabled=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), boolToInt(org.BarEnabled), org.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE organizations SET name=?, slug=?, city=?, logo_url=?, is_active=?, roster_schema=?, team_id=?, sms_cost=?, free_sms=?, bar_enabled=?, primary_color=?, secondary_color=?, tertiary_color=? WHERE id=?`, sanitizedName, sanitizedSlug, sanitizedCity, sanitizedLogo, boolToInt(isActive), rosterSchema, teamID, normalizeSMSCost(org.SMSCost), normalizeFreeSMS(org.FreeSMS), boolToInt(org.BarEnabled), org.PrimaryColor, org.SecondaryColor, org.TertiaryColor, org.ID); err != nil {
 		return Organization{}, err
 	}
 
