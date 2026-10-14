@@ -159,6 +159,22 @@ func (rt *_router) postAdminEventQuizQuestion(w http.ResponseWriter, r *http.Req
 	if !rt.ensureEventInOrganization(w, ctx, eventID) {
 		return
 	}
+	if _, err := rt.db.GetEventQuizConfig(eventID); err != nil {
+		if err == sql.ErrNoRows {
+			_, err = rt.db.UpsertEventQuizConfig(database.EventQuizConfig{
+				EventID:             eventID,
+				QuestionsPerSession: 5,
+				SecondsPerQuestion:  8,
+				BaseReward:          3,
+				CompletionBonus:     5,
+				StreakBonus:         1,
+			})
+		}
+		if err != nil {
+			_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore.")
+			return
+		}
+	}
 	var q database.EventQuizQuestion
 	if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Payload non valido.")
