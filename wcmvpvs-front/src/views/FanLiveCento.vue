@@ -109,7 +109,7 @@
         </section>
       </main>
 
-      <!-- Overlay + spend sheet (inline, stile cento) -->
+      <!-- Overlay condiviso dai pannelli della home -->
       <div class="overlay" :class="{ open: activeSheet }" @click="closeSheets"></div>
 
       <!-- MVP: lista giocatori reale -->
@@ -194,6 +194,43 @@
             <span class="row-copy"><b>{{ reward.title }}</b><span>{{ reward.subtitle }}</span></span>
             <span class="row-pts">{{ reward.cost }} <span class="coin"></span></span>
           </button>
+        </div>
+      </div>
+
+      <!-- Classifica tifosi: stesso pannello dal basso delle altre funzioni -->
+      <div
+        class="sheet"
+        :class="{ open: activeSheet === 'leaderboard' }"
+        role="dialog"
+        aria-label="Classifica tifosi"
+        :aria-modal="activeSheet === 'leaderboard' ? 'true' : undefined"
+        :aria-hidden="activeSheet !== 'leaderboard'"
+        :inert="activeSheet !== 'leaderboard'"
+      >
+        <div class="grabber"></div>
+        <div class="sheet-head">
+          <div>
+            <div class="sheet-title">Classifica tifosi</div>
+            <div class="sheet-sub">I tifosi con più monete</div>
+          </div>
+          <button class="close" type="button" aria-label="Chiudi classifica tifosi" @click="closeSheets">✕</button>
+        </div>
+        <div class="sheet-body">
+          <div v-if="isLoadingLeaderboard && !leaderboardTop3.length" class="sheet-empty">Caricamento classifica…</div>
+          <div v-else-if="leaderboardError" class="sheet-empty error" role="status">{{ leaderboardError }}</div>
+          <div v-else-if="!leaderboardTop3.length" class="sheet-empty">
+            {{ eventId ? 'Gioca e vota per popolare la classifica.' : 'La classifica sarà disponibile con un evento attivo.' }}
+          </div>
+          <div v-for="(row, index) in leaderboardTop3" :key="index" class="row-item leaderboard-row">
+            <span class="rank leaderboard-rank" :class="`r${index + 1}`">{{ index + 1 }}</span>
+            <span class="row-copy"><b>{{ row.name }}</b><span>{{ index + 1 }}° posto</span></span>
+            <span class="row-pts">{{ row.coins }} <span class="coin" aria-hidden="true"></span><span class="sr-only">monete</span></span>
+          </div>
+          <div v-if="leaderboardUser" class="row-item leaderboard-row leaderboard-self">
+            <span class="avatar">{{ leaderboardUser.rank }}</span>
+            <span class="row-copy"><b>La tua posizione</b><span>{{ profileNickname }}</span></span>
+            <span class="row-pts">{{ leaderboardUser.coins }} <span class="coin" aria-hidden="true"></span><span class="sr-only">monete</span></span>
+          </div>
         </div>
       </div>
 
@@ -309,18 +346,11 @@
 
     </div>
 
-    <!-- Classifica tifosi (componente reale) -->
-    <FansLeaderboardModal
-      v-model="isLeaderboardOpen"
-      :top-list="leaderboardTop3"
-      :user-rank="leaderboardUser"
-    />
   </div>
 </template>
 
 <script setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
 import { normalizeOrganizationColors, organizationThemeStyle } from '../organizationTheme';
 
 // Giochi reali riusati da EarnCoinsModal (lazy-load: pesano).
@@ -404,6 +434,8 @@ const votedPlayerId = ref(null);
 const localVoted = ref(null); // giocatore votato in questa sessione (feedback immediato)
 const leaderboardTop3 = ref([]);
 const leaderboardUser = ref(null);
+const isLoadingLeaderboard = ref(false);
+const leaderboardError = ref('');
 const sponsors = ref([]);
 
 const rawPlayers = ref([]);
@@ -415,7 +447,6 @@ const doneKeys = ref([]); // missioni completate (persistite per evento)
 
 const activeSheet = ref('');
 const activeGameId = ref(null);
-const isLeaderboardOpen = ref(false);
 
 // Registry giochi reali (titolo + reward indicativa mostrata nella lista).
 const games = {
@@ -697,7 +728,14 @@ async function castVote(player) {
 
 /* ---------- Leaderboard ---------- */
 async function refreshLeaderboard() {
-  if (!props.eventId) return;
+  if (!props.eventId) {
+    leaderboardTop3.value = [];
+    leaderboardUser.value = null;
+    leaderboardError.value = '';
+    return;
+  }
+  isLoadingLeaderboard.value = true;
+  leaderboardError.value = '';
   try {
     const { data } = await apiClient.get(`/events/${props.eventId}/coins-leaderboard`);
     const top = Array.isArray(data?.top3) ? data.top3 : Array.isArray(data?.top) ? data.top : [];
@@ -706,16 +744,16 @@ async function refreshLeaderboard() {
       coins: Number(row?.coins ?? row?.points ?? 0),
     }));
     const rank = data?.userRank || data?.user_rank;
-    if (rank) {
-      leaderboardUser.value = rank;
-    }
+    leaderboardUser.value = rank || null;
   } catch (error) {
-    /* placeholder mostrato in assenza di dati */
+    leaderboardError.value = 'Impossibile caricare la classifica. Riapri il pannello per riprovare.';
+  } finally {
+    isLoadingLeaderboard.value = false;
   }
 }
 function openLeaderboard() {
+  openSheet('leaderboard');
   refreshLeaderboard();
-  isLeaderboardOpen.value = true;
 }
 
 /* ---------- Profilo ---------- */
@@ -1278,6 +1316,12 @@ main {
   border: none;
   transform: rotate(-3deg);
 }
+.leaderboard-rank {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  font-size: 14px;
+}
 .lb-mini-name {
   flex: 1;
   min-width: 0;
@@ -1576,6 +1620,9 @@ main {
   cursor: not-allowed;
   box-shadow: none;
 }
+.leaderboard-row { cursor: default; }
+.leaderboard-row:active { transform: none; box-shadow: var(--shadow); }
+.leaderboard-self { background: var(--red-soft); }
 .avatar {
   width: 38px;
   height: 38px;
