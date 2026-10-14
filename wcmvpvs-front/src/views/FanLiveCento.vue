@@ -79,14 +79,16 @@
           </div>
         </button>
 
-        <!-- Sponsor rush → apre lo sheet Guadagna -->
-        <button v-if="rushSponsor" class="rush" type="button" @click="openSheet('earn')">
-          <span class="rush-icon">{{ rushSponsor.badge }}</span>
-          <span class="rush-copy">
-            <b>Sponsor Rush · {{ rushSponsor.name }}</b>
-            <span>15 secondi, monete subito</span>
+        <!-- Feedback dell'evento: domande e suggerimento aperto finale -->
+        <button class="feedback-cta" type="button" :disabled="!hasFeedbackSurvey || hasSubmittedFeedback" @click="openFeedbackModal">
+          <span class="feedback-cta-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H5l-4 3V11.5A8.5 8.5 0 0 1 9.5 3h3a8.5 8.5 0 0 1 8.5 8.5Z" /><path d="M7 9h8M7 13h5" /></svg>
           </span>
-          <span class="rush-reward">+50 <span class="coin"></span></span>
+          <span class="feedback-cta-copy">
+            <b>{{ hasSubmittedFeedback ? 'Feedback inviato' : 'Lascia un feedback' }}</b>
+            <span>{{ feedbackSubtitle }}</span>
+          </span>
+          <span class="feedback-cta-action">{{ hasSubmittedFeedback ? 'Fatto ✓' : 'Rispondi →' }}</span>
         </button>
 
         <!-- Sponsors (spazio ampliato al posto dello scoreboard) -->
@@ -346,12 +348,19 @@
 
     </div>
 
+    <EventFeedbackModal
+      v-model="isFeedbackModalOpen"
+      :event-id="eventId"
+      :feedback-survey="feedbackSurvey"
+      @submitted="handleFeedbackSubmitted"
+    />
   </div>
 </template>
 
 <script setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { normalizeOrganizationColors, organizationThemeStyle } from '../organizationTheme';
+import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 
 // Giochi reali riusati da EarnCoinsModal (lazy-load: pesano).
 const ReactionTestGame = defineAsyncComponent(() => import('../components/ReactionTestGame.vue'));
@@ -447,6 +456,8 @@ const doneKeys = ref([]); // missioni completate (persistite per evento)
 
 const activeSheet = ref('');
 const activeGameId = ref(null);
+const isFeedbackModalOpen = ref(false);
+const hasSubmittedFeedback = ref(false);
 
 // Registry giochi reali (titolo + reward indicativa mostrata nella lista).
 const games = {
@@ -473,6 +484,53 @@ const opponentLabel = computed(() => {
   const opponent = String(props.activeEvent?.team2_name || '').trim();
   return opponent ? `vs ${opponent}` : 'Esperienza ufficiale';
 });
+
+/* ---------- Feedback dell'evento ---------- */
+const feedbackSurvey = computed(() => {
+  const survey = props.activeEvent?.feedback_survey ?? props.activeEvent?.feedbackSurvey ?? {};
+  return {
+    ...survey,
+    suggestionPrompt: String(survey.suggestion_prompt ?? survey.suggestionPrompt ?? '').trim()
+      || 'Se potessi migliorare qualcosa, cosa ti piacerebbe aggiungere o cambiare?',
+  };
+});
+const hasFeedbackSurvey = computed(() =>
+  Boolean(props.eventId)
+  && props.activeEvent?.show_feedback_survey !== false
+  && props.activeEvent?.showFeedbackSurvey !== false
+  && Array.isArray(feedbackSurvey.value.questions)
+  && feedbackSurvey.value.questions.length > 0,
+);
+const feedbackSubtitle = computed(() => {
+  if (hasSubmittedFeedback.value) return 'Grazie per aver condiviso la tua esperienza!';
+  if (!props.eventId) return 'Disponibile con un evento attivo';
+  if (!hasFeedbackSurvey.value) return 'Sondaggio non disponibile per questa partita';
+  return 'Rispondi alle domande e lascia un suggerimento';
+});
+const feedbackStorageKey = (eventId) => `wcmvpvs-feedback:${eventId}`;
+watch(() => props.eventId, (eventId) => {
+  isFeedbackModalOpen.value = false;
+  hasSubmittedFeedback.value = false;
+  if (!eventId || typeof window === 'undefined') return;
+  try {
+    hasSubmittedFeedback.value = window.localStorage.getItem(feedbackStorageKey(eventId)) === '1';
+  } catch (error) {
+    /* il flusso resta utilizzabile quando localStorage non è disponibile */
+  }
+}, { immediate: true });
+function openFeedbackModal() {
+  if (!hasFeedbackSurvey.value || hasSubmittedFeedback.value) return;
+  closeSheets();
+  isFeedbackModalOpen.value = true;
+}
+function handleFeedbackSubmitted() {
+  hasSubmittedFeedback.value = true;
+  try {
+    window.localStorage.setItem(feedbackStorageKey(props.eventId), '1');
+  } catch (error) {
+    /* lo stato di conferma resta valido per la sessione corrente */
+  }
+}
 
 /* ---------- Giocatore votato (locale o da prop parent) ---------- */
 const displayVotedImage = computed(() => localVoted.value?.image || props.votedPlayerImageUrl);
@@ -1336,8 +1394,8 @@ main {
   font-size: 11px;
 }
 
-/* Sponsor rush */
-.rush {
+/* Box feedback */
+.feedback-cta {
   flex: none;
   display: flex;
   align-items: center;
@@ -1355,11 +1413,15 @@ main {
   transition: transform 0.12s ease;
   box-shadow: 0 4px 0 #0d0608;
 }
-.rush:active {
+.feedback-cta:active {
   transform: scale(0.98) translateY(2px);
   box-shadow: none;
 }
-.rush::before {
+.feedback-cta:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.feedback-cta::before {
   content: '';
   position: absolute;
   right: -18px;
@@ -1367,9 +1429,10 @@ main {
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: rgba(228, 33, 46, 0.35);
+  background: var(--on-primary);
+  opacity: 0.08;
 }
-.rush-icon {
+.feedback-cta-icon {
   width: 36px;
   height: 36px;
   border-radius: 11px;
@@ -1384,12 +1447,12 @@ main {
   color: var(--ink);
   transform: rotate(-4deg);
 }
-.rush-copy {
+.feedback-cta-copy {
   flex: 1;
   min-width: 0;
   position: relative;
 }
-.rush-copy b {
+.feedback-cta-copy b {
   font-size: 12.5px;
   font-weight: 800;
   display: block;
@@ -1397,34 +1460,25 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.rush-copy span {
+.feedback-cta-copy span {
   font-size: 10.5px;
-  color: rgba(255, 255, 255, 0.65);
+  color: inherit;
+  opacity: 0.85;
   font-weight: 500;
 }
-.rush-reward {
+.feedback-cta-action {
   display: flex;
   align-items: center;
   gap: 5px;
   flex: none;
-  background: var(--gold);
+  background: var(--card);
   padding: 6px 11px;
   border-radius: 999px;
   font-weight: 800;
   font-size: 12.5px;
-  color: var(--on-secondary);
+  color: var(--red-text);
   font-variant-numeric: tabular-nums;
-  animation: reward 2.4s ease-in-out infinite;
   position: relative;
-}
-.rush-reward .coin {
-  width: 13px;
-  height: 13px;
-  box-shadow: inset 0 -1.5px 2px rgba(0, 0, 0, 0.22);
-}
-@keyframes reward {
-  0%, 100% { transform: scale(1) rotate(0deg); }
-  50% { transform: scale(1.07) rotate(-2deg); }
 }
 
 /* Sponsors (blocco ampliato) */
@@ -1882,14 +1936,13 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .status::before,
-  .rush-reward {
+  .status::before {
     animation: none;
   }
   .sheet,
   .overlay,
   .tile,
-  .rush,
+  .feedback-cta,
   .row-item {
     transition: none;
   }

@@ -222,6 +222,11 @@ function onContinue() {
       return;
     }
 
+    if (step.value < normalizedSurvey.value.questions.length - 1) {
+      step.value += 1;
+      return;
+    }
+
     if (hasOptionalStep.value && step.value >= normalizedSurvey.value.questions.length - 1) {
       step.value = normalizedSurvey.value.questions.length;
       return;
