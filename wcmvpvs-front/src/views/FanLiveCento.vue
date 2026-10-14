@@ -9,8 +9,8 @@
             <template v-else>{{ homeBadge }}</template>
           </div>
           <div class="club-name">
-            <b>{{ homeName }} Live</b>
-            <span>{{ venueLabel }}</span>
+            <b>{{ homeName }}</b>
+            <span>{{ opponentLabel }}</span>
           </div>
         </div>
         <div class="top-right">
@@ -363,11 +363,13 @@ const props = defineProps({
 const WALLET_STORAGE_KEY = 'wallet:coins';
 
 const organizationColors = ref(normalizeOrganizationColors());
+const organizationName = ref('');
 const organizationLogoUrl = ref('');
 const homeLogoUrl = computed(() => props.organizationSlug ? organizationLogoUrl.value : props.teamLogoUrl);
 const themeStyle = computed(() => organizationThemeStyle(organizationColors.value));
 watch(() => props.organizationSlug, async (slug, previous, onCleanup) => {
   organizationColors.value = normalizeOrganizationColors();
+  organizationName.value = '';
   organizationLogoUrl.value = '';
   if (!slug) return;
   const controller = new AbortController();
@@ -379,10 +381,11 @@ watch(() => props.organizationSlug, async (slug, previous, onCleanup) => {
     });
     if (!controller.signal.aborted) {
       organizationColors.value = normalizeOrganizationColors(data);
+      organizationName.value = String(data?.name || '').trim();
       organizationLogoUrl.value = String(data?.logo_url || '').trim();
     }
   } catch (error) {
-    if (!controller.signal.aborted) console.error('Impossibile caricare logo e colori della società', error);
+    if (!controller.signal.aborted) console.error('Impossibile caricare i dati della società', error);
   }
 }, { immediate: true });
 
@@ -432,12 +435,13 @@ function initials(name) {
   return parts.slice(0, 3).map((p) => p[0]).join('').toUpperCase();
 }
 const homeName = computed(() =>
-  String(props.activeEvent?.team1_name || props.teamName || 'TEAM').trim(),
+  String(organizationName.value || props.activeEvent?.organization_name || '').trim() || 'Società',
 );
 const homeBadge = computed(() => initials(homeName.value));
-const venueLabel = computed(() =>
-  String(props.activeEvent?.venue || 'Esperienza ufficiale').trim() || 'Esperienza ufficiale',
-);
+const opponentLabel = computed(() => {
+  const opponent = String(props.activeEvent?.team2_name || '').trim();
+  return opponent ? `vs ${opponent}` : 'Esperienza ufficiale';
+});
 
 /* ---------- Giocatore votato (locale o da prop parent) ---------- */
 const displayVotedImage = computed(() => localVoted.value?.image || props.votedPlayerImageUrl);

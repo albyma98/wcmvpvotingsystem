@@ -57,7 +57,7 @@ func TestMasterOrganizationColorsAndPublicTheme(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &theme); err != nil {
 		t.Fatal(err)
 	}
-	if len(theme) != 4 || theme["logo_url"] != "data:image/png;base64,aGVsbG8=" || theme["primary_color"] != "#654321" || theme["secondary_color"] != "#aaaaaa" || theme["tertiary_color"] != "#ffffff" {
+	if len(theme) != 5 || theme["name"] != "Theme club" || theme["logo_url"] != "data:image/png;base64,aGVsbG8=" || theme["primary_color"] != "#654321" || theme["secondary_color"] != "#aaaaaa" || theme["tertiary_color"] != "#ffffff" {
 		t.Fatalf("public theme: %+v", theme)
 	}
 	for _, query := range []string{"", "?organization_slug=unknown"} {
