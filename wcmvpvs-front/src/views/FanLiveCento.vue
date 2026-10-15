@@ -1,6 +1,6 @@
 <template>
   <div class="cento-root" :class="{ 'reduce-motion': false }" :style="themeStyle">
-    <div class="phone">
+    <div class="phone" :inert="isHomeLoading" :aria-hidden="isHomeLoading || undefined" :aria-busy="isHomeLoading">
       <!-- Top bar -->
       <header class="topbar">
         <div class="club">
@@ -454,6 +454,7 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { normalizeOrganizationColors, organizationThemeStyle } from '../organizationTheme';
+import { preloadFanHomeImages } from '../fanHomeAssets';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
 import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorageKey, normalizeJourney, journeyProgress, recordJourneyReward } from '../fanJourney';
@@ -486,6 +487,7 @@ const FAN_NICKNAME_MAX_LEN = 24;
 const FAN_NICKNAME_PATTERN = /^[A-Za-z0-9._ -]+$/;
 
 const props = defineProps({
+  initialDataReady: { type: Boolean, default: true },
   organizationSlug: { type: String, default: '' },
   eventId: { type: Number, default: 0 },
   teamName: { type: String, default: 'TEAM' },
@@ -501,33 +503,50 @@ const props = defineProps({
 });
 
 const WALLET_STORAGE_KEY = 'wallet:coins';
+const emit = defineEmits(['loading-change', 'brand-change']);
+const isHomeLoading = ref(true);
+let bootstrapRevision = 0;
+let assetController;
+let organizationThemeRequest = Promise.resolve();
+watch(isHomeLoading, (loading) => emit('loading-change', loading), { immediate: true, flush: 'sync' });
 
 const organizationColors = ref(normalizeOrganizationColors());
 const organizationName = ref('');
 const organizationLogoUrl = ref('');
 const homeLogoUrl = computed(() => props.organizationSlug ? organizationLogoUrl.value : props.teamLogoUrl);
 const themeStyle = computed(() => organizationThemeStyle(organizationColors.value));
-watch(() => props.organizationSlug, async (slug, previous, onCleanup) => {
+watch(() => props.organizationSlug, (slug, previous, onCleanup) => {
   organizationColors.value = normalizeOrganizationColors();
   organizationName.value = '';
   organizationLogoUrl.value = '';
-  if (!slug) return;
+  if (!slug) {
+    organizationThemeRequest = Promise.resolve();
+    return;
+  }
   const controller = new AbortController();
   onCleanup(() => controller.abort());
+  organizationThemeRequest = loadOrganizationBrand(slug, controller.signal);
+}, { immediate: true });
+async function loadOrganizationBrand(slug, signal) {
   try {
     const { data } = await apiClient.get('/organization-theme', {
       params: { organization_slug: slug },
-      signal: controller.signal,
+      signal,
     });
-    if (!controller.signal.aborted) {
+    if (!signal.aborted) {
       organizationColors.value = normalizeOrganizationColors(data);
       organizationName.value = String(data?.name || '').trim();
       organizationLogoUrl.value = String(data?.logo_url || '').trim();
     }
   } catch (error) {
-    if (!controller.signal.aborted) console.error('Impossibile caricare i dati della società', error);
+    if (!signal.aborted) console.error('Impossibile caricare i dati della società', error);
   }
-}, { immediate: true });
+}
+watch([organizationColors, organizationName, homeLogoUrl], () => emit('brand-change', {
+  colors: organizationColors.value,
+  name: organizationName.value,
+  logoUrl: homeLogoUrl.value,
+}), { immediate: true });
 
 /* ---------- Stato ---------- */
 const totalCoins = ref(0);
@@ -1286,7 +1305,13 @@ function onKeydown(e) {
 }
 
 /* ---------- Lifecycle ---------- */
-function bootstrap() {
+async function bootstrap() {
+  const revision = ++bootstrapRevision;
+  assetController?.abort();
+  isHomeLoading.value = true;
+  if (!props.initialDataReady) return;
+  assetController = new AbortController();
+  const { signal } = assetController;
   if (loadedEventId !== props.eventId) {
     loadedEventId = props.eventId;
     liveEvent.value = null;
@@ -1302,37 +1327,61 @@ function bootstrap() {
   totalCoins.value = readStoredCoins();
   loadDoneKeys();
   loadJourney();
-  loadQuizAvailability();
-  refreshLiveStatus();
-  loadFanProfile();
-  loadVoteStatus();
-  loadPlayers();
-  refreshLeaderboard();
-  loadSponsors();
   stopCoinsStream();
+  await Promise.allSettled([
+    organizationThemeRequest,
+    loadQuizAvailability(),
+    refreshLiveStatus(),
+    // Restore saved rewards before recovering a pending vote bonus.
+    loadFanProfile().catch(() => {}).then(() => loadVoteStatus()),
+    loadPlayers(),
+    refreshLeaderboard(),
+    loadSponsors(),
+    ensureCentoFonts(),
+  ]);
+  if (revision !== bootstrapRevision || signal.aborted) return;
+  await nextTick();
+  await preloadFanHomeImages([
+    homeLogoUrl.value,
+    ...players.value.map((player) => player.image),
+    ...sponsors.value.map((sponsor) => sponsor.imageUrl),
+    displayVotedImage.value,
+    lotteryQrUrl.value,
+  ], { signal });
+  if (revision !== bootstrapRevision || signal.aborted) return;
+  isHomeLoading.value = false;
   startCoinsStream();
 }
 
 function ensureCentoFonts() {
   if (typeof document === 'undefined') return;
   const id = 'cento-fonts';
-  if (document.getElementById(id)) return;
-  const link = document.createElement('link');
-  link.id = id;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,750;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap';
-  document.head.appendChild(link);
+  let link = document.getElementById(id);
+  if (!link) {
+    link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href =
+      'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,750;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap';
+    const loaded = new Promise((resolve) => {
+      link.onload = resolve;
+      link.onerror = resolve;
+    });
+    document.head.appendChild(link);
+    link.centoFontsReady = loaded;
+  }
+  return Promise.resolve(link.centoFontsReady).then(() => document.fonts?.ready);
 }
 
 onMounted(() => {
-  ensureCentoFonts();
   window.addEventListener('keydown', onKeydown);
   bootstrap();
   liveStatusTimer = window.setInterval(refreshLiveStatus, 30000);
 });
 
 onBeforeUnmount(() => {
+  bootstrapRevision += 1;
+  assetController?.abort();
   window.removeEventListener('keydown', onKeydown);
   stopCoinsStream();
   window.clearTimeout(coinAnimationTimer);
@@ -1340,7 +1389,7 @@ onBeforeUnmount(() => {
 });
 
 watch(
-  () => props.eventId,
+  [() => props.eventId, () => props.initialDataReady, () => props.organizationSlug],
   () => bootstrap(),
 );
 

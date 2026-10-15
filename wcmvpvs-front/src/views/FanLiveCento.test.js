@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as journey from '../fanJourney.js';
 import * as brand from '../organizationTheme.js';
+import * as assets from '../fanHomeAssets.js';
 import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
 
-function fixture(overrides = {}) {
+function fixture(overrides = {}, options = {}) {
   const saves = [];
   let serverWallet = 0;
   const serverAwards = new Set();
@@ -31,10 +32,71 @@ function fixture(overrides = {}) {
   };
   const setup = setupSfc(new URL('./FanLiveCento.vue', import.meta.url), {
     vue: testVue, '../api': api, '../organizationTheme': brand, '../fanJourney': journey,
+    '../fanHomeAssets': options.assets || assets,
     '../components/EventFeedbackModal.vue': {},
-  }, { eventId: 42, organizationSlug: 'club', activeEvent: { is_active: true, votes_closed: false } }, { window });
+  }, { eventId: 42, organizationSlug: 'club', initialDataReady: true, activeEvent: { is_active: true, votes_closed: false }, ...options.props }, { window });
   return { ...setup, saves, window, api };
 }
+
+test('home splash waits for the session wallet, saved vote, and every home image', async (t) => {
+  let finishProfile;
+  let finishImages;
+  let imageUrls;
+  const { state, scope, events } = fixture({
+    fetchFanProfile: () => new Promise((resolve) => { finishProfile = resolve; }),
+    apiClient: { get: async (path) => ({ data:
+      path === '/organization-theme' ? { primary_color: '#123456', logo_url: '/club.png', name: 'Club' }
+        : path === '/public/players' ? [{ id: 7, image_url: '/player.png' }]
+          : path === '/sponsors' ? [{ id: 1, logo_data: '/sponsor.png' }] : {},
+    }) },
+  }, { assets: { preloadFanHomeImages: (urls) => {
+    imageUrls = urls;
+    return new Promise((resolve) => { finishImages = resolve; });
+  } } });
+  t.after(() => scope.stop());
+  const loading = state.bootstrap();
+  await new Promise(setImmediate);
+  assert.equal(state.isHomeLoading.value, true);
+  assert.equal(imageUrls, undefined);
+  finishProfile({ ok: true, data: { registered: true, wallet: 75 } });
+  while (!finishImages) await new Promise(setImmediate);
+  assert.equal(state.totalCoins.value, 75);
+  assert.equal(state.isHomeLoading.value, true);
+  for (const url of ['/club.png', '/player.png', '/sponsor.png']) assert.ok(imageUrls.includes(url));
+  assert.ok(events.some(([name, value]) => name === 'brand-change' && value.colors.primary_color === '#123456'));
+  finishImages();
+  await loading;
+  assert.equal(state.isHomeLoading.value, false);
+  assert.deepEqual(events.at(-1), ['loading-change', false]);
+});
+
+test('home stays covered until the parent has resolved the active event and saved player', async (t) => {
+  let playerRequests = 0;
+  const { state, scope } = fixture({ apiClient: { get: async (path) => {
+    if (path === '/public/players') playerRequests += 1;
+    return { data: {} };
+  } } }, { props: { initialDataReady: false } });
+  t.after(() => scope.stop());
+  await state.bootstrap();
+  assert.equal(state.isHomeLoading.value, true);
+  assert.equal(playerRequests, 0);
+});
+
+test('an earlier bootstrap cannot dismiss the splash while a newer one is loading', async (t) => {
+  const downloads = [];
+  const { state, scope } = fixture({}, { assets: { preloadFanHomeImages: () => new Promise((resolve) => downloads.push(resolve)) } });
+  t.after(() => scope.stop());
+  const first = state.bootstrap();
+  while (downloads.length < 1) await new Promise(setImmediate);
+  const second = state.bootstrap();
+  while (downloads.length < 2) await new Promise(setImmediate);
+  downloads[0]();
+  await first;
+  assert.equal(state.isHomeLoading.value, true);
+  downloads[1]();
+  await second;
+  assert.equal(state.isHomeLoading.value, false);
+});
 
 test('confirmed vote leads to quiz and an earned first badge without duplicate credits', async (t) => {
   const { state, scope, saves } = fixture();

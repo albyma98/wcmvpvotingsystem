@@ -32,7 +32,14 @@
       />
     </template>
     <template v-else-if="appView === 'newui-cento'">
+      <FanHomeSplash
+        v-if="isFanHomeLoading"
+        :colors="fanHomeBrand.colors"
+        :logo-url="fanHomeBrand.logoUrl"
+        :name="fanHomeBrand.name"
+      />
       <FanLiveCento
+        :initial-data-ready="hasCheckedActiveEvent && !isFetchingActiveEvent && !isHydratingNewUiVote"
         :organization-slug="organizationSlug"
         :event-id="resolvedEventId"
         :team-name="newUiTeamName"
@@ -44,6 +51,8 @@
         :voted-player-number="newUiSelectedPlayerNumber"
         :registration-prompt-signal="newUiRegistrationPromptSignal"
         :active-event="activeEvent"
+        @loading-change="isFanHomeLoading = $event"
+        @brand-change="fanHomeBrand = $event"
         @feature-select="handleNewUiFeatureSelect"
       />
       <NewUiVoteModal
@@ -103,6 +112,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import VoteScreen from './components/VoteScreen.vue';
 import LiveExperienceHome from './views/LiveExperienceHome.vue';
 import NewUiVoteModal from './components/NewUiVoteModal.vue';
+import FanHomeSplash from './components/FanHomeSplash.vue';
 
 // Dev playground components
 const DevStackItDemo = defineAsyncComponent(() => import('./views/DevStackItDemo.vue'));
@@ -144,6 +154,9 @@ const currentEventId = ref(typeof window !== 'undefined' ? readEventId(window.lo
 const activeEvent = ref(null);
 const isFetchingActiveEvent = ref(false);
 const hasCheckedActiveEvent = ref(false);
+const isFanHomeLoading = ref(true);
+const fanHomeBrand = ref({});
+const isHydratingNewUiVote = ref(false);
 
 const pathSegments = computed(() =>
   currentPath.value
@@ -465,6 +478,7 @@ async function hydrateNewUiVote() {
   }
 
   const voteStatus = await fetchVoteStatus(eventId);
+  if (eventId !== resolvedEventId.value || !isNewUiLikeView(appView.value)) return;
   if (!voteStatus?.ok || !voteStatus.hasVoted || !voteStatus.playerId) {
     if (!voteStatus?.hasVoted) {
       newUiSelectedPlayer.value = null;
@@ -478,6 +492,7 @@ async function hydrateNewUiVote() {
   }
 
   const playerFromApi = await fetchNewUiPlayerById(voteStatus.playerId);
+  if (eventId !== resolvedEventId.value || !isNewUiLikeView(appView.value)) return;
   if (playerFromApi) {
     newUiSelectedPlayer.value = playerFromApi;
     writeStoredVotedPlayer(eventId, playerFromApi);
@@ -558,6 +573,8 @@ onBeforeUnmount(() => {
 });
 
 watch(appView, (view) => {
+  isFanHomeLoading.value = true;
+  fanHomeBrand.value = {};
   if (view === 'public' || isNewUiLikeView(view)) {
     fetchActiveEvent();
   } else {
@@ -568,8 +585,15 @@ watch(appView, (view) => {
 
 watch(
   [appView, resolvedEventId],
-  async () => {
-    await hydrateNewUiVote();
+  async (value, previous, onCleanup) => {
+    let current = true;
+    onCleanup(() => { current = false; });
+    isHydratingNewUiVote.value = true;
+    try {
+      await hydrateNewUiVote();
+    } finally {
+      if (current) isHydratingNewUiVote.value = false;
+    }
   },
   { immediate: true },
 );
