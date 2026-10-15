@@ -77,7 +77,7 @@
             <span :style="{ width: `${progress.percent}%` }"></span>
           </div>
           <div class="journey-footer">
-            <small>Voto MVP + quiz · le monete restano nel wallet</small>
+            <small>Vota e gioca · le monete restano nel wallet</small>
             <button type="button" class="journey-next" @click="openJourneyNext">{{ journeyNextLabel }}</button>
           </div>
           <button v-if="journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare il bonus voto' }}</button>
@@ -244,7 +244,7 @@
         <div class="sheet-body">
           <div class="row-item leaderboard-row journey-badge">
             <span class="avatar" aria-hidden="true">🏅</span>
-            <span class="row-copy"><b>Badge {{ FAN_BADGE_NAME }}</b><span>{{ progress.unlocked ? 'Sbloccato! Lo trovi nel tuo profilo.' : 'Completa voto MVP (+10) e quiz (+15) per sbloccarlo.' }}</span></span>
+            <span class="row-copy"><b>Badge {{ FAN_BADGE_NAME }}</b><span>{{ progress.unlocked ? 'Sbloccato! Lo trovi nel tuo profilo.' : `Guadagna ${FIRST_FAN_GOAL} monete in questa partita, votando o giocando, per sbloccarlo.` }}</span></span>
           </div>
           <button
             v-for="reward in rewards"

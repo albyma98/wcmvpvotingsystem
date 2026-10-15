@@ -19,6 +19,18 @@ test('progress is capped and independent of spending wallet coins', () => {
   assert.equal(journeyProgress(state).percent, 100);
 });
 
+test('every game reward advances the badge, including rewards saved before the change', () => {
+  for (const game of ['reaction', 'tap', 'sponsor-rush', 'memory-flash']) {
+    const restored = normalizeJourney({ rewards: { vote: 10, [game]: 8 } });
+    assert.deepEqual(journeyProgress(restored), { earned: 18, current: 18, remaining: 7, percent: 72, unlocked: false });
+  }
+});
+
+test('games alone can unlock the badge without a vote or quiz', () => {
+  const state = normalizeJourney({ rewards: { reaction: 10, tap: 8, 'memory-flash': 8 } });
+  assert.deepEqual(journeyProgress(state), { earned: 26, current: 25, remaining: 0, percent: 100, unlocked: true });
+});
+
 test('invalid stored progress is ignored and data is scoped to club and match', () => {
   const state = normalizeJourney({ rewards: { vote: -10, quiz: '15', unknown: 1000 }, pendingVoteBonus: 'yes' });
   assert.equal(journeyProgress(state).earned, 0);

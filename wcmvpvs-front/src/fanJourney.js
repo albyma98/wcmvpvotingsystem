@@ -21,13 +21,12 @@ export function normalizeJourney(raw) {
 export function journeyProgress(journey) {
   const { rewards } = normalizeJourney(journey);
   const earned = Object.values(rewards).reduce((sum, amount) => sum + amount, 0);
-  const badgeCoins = (rewards.vote || 0) + (rewards.quiz || 0);
   return {
     earned,
-    current: Math.min(FIRST_FAN_GOAL, badgeCoins),
-    remaining: Math.max(0, FIRST_FAN_GOAL - badgeCoins),
-    percent: Math.min(100, badgeCoins / FIRST_FAN_GOAL * 100),
-    unlocked: badgeCoins >= FIRST_FAN_GOAL,
+    current: Math.min(FIRST_FAN_GOAL, earned),
+    remaining: Math.max(0, FIRST_FAN_GOAL - earned),
+    percent: Math.min(100, earned / FIRST_FAN_GOAL * 100),
+    unlocked: earned >= FIRST_FAN_GOAL,
   };
 }
 

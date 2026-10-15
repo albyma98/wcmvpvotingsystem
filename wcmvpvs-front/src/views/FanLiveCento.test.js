@@ -132,6 +132,55 @@ test('failed vote shows an error and grants nothing', async (t) => {
   assert.notEqual(state.activeSheet.value, 'vote-result');
 });
 
+test('playing after the MVP vote advances the home progress bar and unlocks the badge', async (t) => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  await state.castVote(player);
+  state.openGame('reaction');
+  await state.onGameClaim({ coins: 10 });
+  assert.equal(state.totalCoins.value, 20);
+  assert.equal(state.progress.value.current, 20);
+  assert.equal(state.progress.value.remaining, 5);
+  assert.equal(state.progress.value.percent, 80);
+  state.openGame('memory-flash');
+  await state.onGameClaim({ coins: 8 });
+  assert.equal(state.totalCoins.value, 28);
+  assert.equal(state.progress.value.current, 25);
+  assert.equal(state.progress.value.unlocked, true);
+});
+
+test('game earnings unlock the badge without voting and spending does not undo the achievement', async (t) => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  for (const [game, coins] of [['reaction', 10], ['sponsor-rush', 12], ['memory-flash', 8]]) {
+    state.openGame(game);
+    await state.onGameClaim({ coins });
+  }
+  assert.equal(state.hasVoted.value, false);
+  assert.equal(state.progress.value.earned, 30);
+  assert.equal(state.progress.value.unlocked, true);
+  await state.onGameSpend({ coins: 20 });
+  assert.equal(state.totalCoins.value, 10);
+  assert.equal(state.progress.value.current, 25);
+  assert.equal(state.progress.value.unlocked, true);
+});
+
+test('game earnings advance progress only after saving succeeds, including a retry', async (t) => {
+  let attempts = 0;
+  const { state, scope } = fixture({ syncGuestCoins: async (_, coins) => ++attempts === 1
+    ? { ok: false } : { ok: true, data: { wallet: coins } } });
+  t.after(() => scope.stop());
+  await state.castVote(player);
+  state.openGame('reaction');
+  await state.onGameClaim({ coins: 10 });
+  assert.equal(state.progress.value.current, 10);
+  assert.equal(state.totalCoins.value, 10);
+  assert.ok(state.coinError.value);
+  await state.onGameClaim(state.pendingGameClaim.value);
+  assert.equal(state.progress.value.current, 20);
+  assert.equal(state.totalCoins.value, 20);
+});
+
 test('wallet failure preserves the vote and retries the same bonus without inventing coins', async (t) => {
   const requested = [];
   const { state, scope } = fixture({ claimFanJourneyReward: async (_, key) => {
