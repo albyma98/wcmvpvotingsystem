@@ -829,6 +829,28 @@ export async function claimFanJourneyReward(eventId: number, key: 'vote' | 'quiz
   }
 }
 
+async function requestBasketballShot(eventId: number, shotId?: string, gesture?: { dx: number; dy: number }) {
+  if (!Number.isInteger(eventId) || eventId <= 0) return { ok: false, message: 'Partita non disponibile.', status: 400 };
+  try {
+    const path = `/events/${eventId}/basketball/shots${shotId ? `/${encodeURIComponent(shotId)}` : ''}`;
+    const { data } = await apiClient.post(path, gesture || {}, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() }, timeout: 12000,
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const response = axios.isAxiosError(error) ? error.response : undefined;
+    return { ok: false, error, status: response?.status, message: response?.data?.message };
+  }
+}
+
+export function prepareBasketballShot(eventId: number) {
+  return requestBasketballShot(eventId);
+}
+
+export function submitBasketballShot(eventId: number, shotId: string, gesture: { dx: number; dy: number }) {
+  return requestBasketballShot(eventId, shotId, gesture);
+}
+
 export async function redeemFanReward(eventId, rewardKey, costCoins) {
   try {
     const { data } = await apiClient.post(`/events/${eventId}/rewards/redeem`, { reward_key: rewardKey, cost_coins: costCoins }, {

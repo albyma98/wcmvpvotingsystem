@@ -1326,6 +1326,8 @@ type AppDatabase interface {
 	RecordFanJourneyQuizAnswer(eventID, organizationID int, deviceID string, questionID int) error
 	ClaimFanJourneyReward(eventID, organizationID, fanID int, deviceID, rewardKey string) (int, int, error)
 	ListFanJourneyRewards(eventID, organizationID, fanID int, deviceID string) (map[string]int, error)
+	CreateBasketballShot(eventID, organizationID, fanID int, deviceID string, now time.Time) (BasketballShot, error)
+	ResolveBasketballShot(eventID, organizationID, fanID int, deviceID, shotID string, dx, dy float64, now time.Time) (BasketballShotResult, error)
 	ListFanRewardRedemptions(eventID int, fanID int) ([]FanRewardRedemption, error)
 	DonateFanSupport(eventID int, organizationID int, fanID int, coins int) (FanSupportDonation, int, error)
 	GetFanSupportLeaderboard(eventID int, organizationID int, limit int) ([]FanSupportLeaderboardEntry, error)
@@ -3934,6 +3936,9 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM fan_journey_quiz_answers WHERE event_id=?`, eventID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM basketball_shots WHERE event_id=?`, eventID); err != nil {
 		return err
 	}
 
@@ -7448,6 +7453,14 @@ func ensureMarketingTables(db *sql.DB) error {
 
 func ensureFanProfileTables(db *sql.DB) error {
 	statements := []string{
+		`CREATE TABLE IF NOT EXISTS basketball_shots (
+			shot_id TEXT PRIMARY KEY, event_id INTEGER NOT NULL, organization_id INTEGER NOT NULL,
+			device_id TEXT NOT NULL, fan_id INTEGER NOT NULL DEFAULT 0, attempt INTEGER NOT NULL,
+			hoop_x REAL NOT NULL, hoop_y REAL NOT NULL, issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending', clean INTEGER NOT NULL DEFAULT 0,
+			UNIQUE(event_id, organization_id, device_id, attempt));`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_basketball_pending ON basketball_shots(event_id, organization_id, device_id) WHERE status='pending';`,
+		`CREATE INDEX IF NOT EXISTS idx_basketball_rewards ON basketball_shots(event_id, organization_id, fan_id, device_id, status);`,
 		`CREATE TABLE IF NOT EXISTS fan_journey_rewards (
 			event_id INTEGER NOT NULL, organization_id INTEGER NOT NULL, device_id TEXT NOT NULL,
 			fan_id INTEGER NOT NULL DEFAULT 0, reward_key TEXT NOT NULL, coins INTEGER NOT NULL,
@@ -7669,6 +7682,9 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 
 	if input.DeviceID != "" {
 		if _, err = tx.Exec(`UPDATE OR IGNORE fan_journey_rewards SET fan_id=? WHERE device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
+			return FanProfileSummary{}, err
+		}
+		if _, err = tx.Exec(`UPDATE basketball_shots SET fan_id=? WHERE fan_id=0 AND device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
 		if _, err = tx.Exec(`UPDATE votes SET user_id = ? WHERE device_id = ? AND (? = 0 OR event_id = ?)`, profile.ID, input.DeviceID, input.EventID, input.EventID); err != nil {

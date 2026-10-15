@@ -25,7 +25,20 @@ func (db *appdbimpl) ListFanJourneyRewards(eventID, organizationID, fanID int, d
 		}
 		rewards[key] = coins
 	}
-	return rewards, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	var basketball int
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM basketball_shots WHERE event_id=? AND organization_id=? AND status='made' AND (device_id=? OR (?>0 AND fan_id=?))`, eventID, organizationID, deviceID, fanID, fanID).Scan(&basketball); err != nil {
+		return nil, err
+	}
+	if basketball > 0 {
+		rewards["basketball"] = basketball
+	}
+	return rewards, nil
 }
 
 // Ledger insertion and wallet increment commit together. A retry returns the current balance.

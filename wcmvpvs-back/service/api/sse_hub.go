@@ -1,16 +1,73 @@
 package api
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 // sseHub manages SSE subscriber channels keyed by an integer ID (event ID).
 // Subscribers receive a signal on Broadcast and can use it to push updates to clients.
 type sseHub struct {
-	mu      sync.Mutex
-	clients map[int]map[chan string]struct{}
+	mu        sync.Mutex
+	clients   map[int]map[chan string]struct{}
+	throttled map[int]*sseThrottle
+}
+
+type sseThrottle struct {
+	last       time.Time
+	timer      *time.Timer
+	generation uint64
 }
 
 func newSSEHub() *sseHub {
-	return &sseHub{clients: make(map[int]map[chan string]struct{})}
+	return &sseHub{clients: make(map[int]map[chan string]struct{}), throttled: make(map[int]*sseThrottle)}
+}
+
+// BroadcastThrottled sends the first update immediately and coalesces a burst
+// into a trailing update. Each event has its own window; a final basket's
+// leaderboard update is delivered even when no further baskets follow it.
+func (h *sseHub) BroadcastThrottled(key int, interval time.Duration) {
+	if interval <= 0 {
+		h.Broadcast(key)
+		return
+	}
+	h.mu.Lock()
+	if h.throttled == nil {
+		h.throttled = make(map[int]*sseThrottle)
+	}
+	state := h.throttled[key]
+	if state == nil {
+		state = &sseThrottle{}
+		h.throttled[key] = state
+	}
+	remaining := interval - time.Since(state.last)
+	if state.last.IsZero() || remaining <= 0 {
+		if state.timer != nil {
+			state.timer.Stop()
+			state.timer = nil
+			state.generation++
+		}
+		state.last = time.Now()
+		h.mu.Unlock()
+		h.Broadcast(key)
+		return
+	}
+	if state.timer == nil {
+		state.generation++
+		generation := state.generation
+		state.timer = time.AfterFunc(remaining, func() {
+			h.mu.Lock()
+			if state.generation != generation || state.timer == nil {
+				h.mu.Unlock()
+				return
+			}
+			state.last = time.Now()
+			state.timer = nil
+			h.mu.Unlock()
+			h.Broadcast(key)
+		})
+	}
+	h.mu.Unlock()
 }
 
 // Subscribe registers a new subscriber for the given key.

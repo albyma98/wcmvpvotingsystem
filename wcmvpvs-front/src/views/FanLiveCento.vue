@@ -85,7 +85,7 @@
 
         <button v-if="featuredMission" class="moment-card" type="button" @click="onMission(featuredMission)">
           <span class="avatar" aria-hidden="true">{{ featuredMission.emoji }}</span>
-          <span class="row-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
+          <span class="row-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
           <span class="row-pts">+{{ featuredMission.pts }} <span class="coin" aria-hidden="true"></span></span>
         </button>
         <button v-if="showMatchSummary" class="moment-card" type="button" @click="openSheet('match-summary')">
@@ -222,9 +222,10 @@
             @click="onMission(mission)"
           >
             <span class="avatar">{{ mission.emoji }}</span>
-            <span class="row-copy"><b>{{ mission.title }}</b><span>{{ doneKeys.includes(mission.key) ? 'Bonus già ricevuto per questa partita' : mission.subtitle }}</span></span>
+            <span class="row-copy"><b>{{ mission.title }}</b><span>{{ !mission.repeatable && doneKeys.includes(mission.key) ? 'Bonus già ricevuto per questa partita' : mission.subtitle }}</span></span>
             <span class="row-pts">
-              <template v-if="doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)">✓</template>
+              <template v-if="mission.repeatable">+1 <span class="coin" aria-hidden="true"></span><small>/ canestro</small></template>
+              <template v-else-if="doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)">✓</template>
               <template v-else-if="mission.key === 'quiz' && !quizAvailable">Non disponibile</template>
               <template v-else>+{{ mission.pts }} <span class="coin"></span></template>
             </span>
@@ -397,9 +398,9 @@
       <!-- Overlay gioco a schermo pieno -->
       <div v-if="activeGameId" class="game-overlay">
         <header class="game-head">
-          <button class="close" type="button" aria-label="Indietro" @click="closeGame">←</button>
+          <button class="close" type="button" aria-label="Indietro" :disabled="isBasketballSaving" @click="closeGame">←</button>
           <div class="game-title">{{ games[activeGameId]?.title }}</div>
-          <button class="close" type="button" aria-label="Chiudi" @click="closeGame">✕</button>
+          <button class="close" type="button" aria-label="Chiudi" :disabled="isBasketballSaving" @click="closeGame">✕</button>
         </header>
         <div v-if="coinError" class="game-credit-error" role="alert"><p>{{ coinError }}</p><button v-if="pendingGameClaim" type="button" class="journey-next" :disabled="isSavingCoins" @click="onGameClaim(pendingGameClaim)">Riprova il salvataggio</button></div>
         <div class="game-stage">
@@ -418,6 +419,18 @@
             :already-rewarded="doneKeys.includes('quiz')"
             @claim="onGameClaim"
             @exit="closeGame"
+          />
+          <BasketballShootout
+            v-else-if="activeGameId === 'basketball'"
+            :key="eventId"
+            class="game-fill"
+            :event-id="eventId"
+            :wallet-coins="totalCoins"
+            :earned-coins="journey.rewards.basketball || 0"
+            :club-name="homeName"
+            :club-logo-url="homeLogoUrl"
+            @credited="onBasketballCredit"
+            @saving-change="isBasketballSaving = $event"
           />
           <TapChallenge
             v-else-if="activeGameId === 'tap'"
@@ -469,6 +482,7 @@ import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorag
 // Giochi reali riusati da EarnCoinsModal (lazy-load: pesano).
 const ReactionTestGame = defineAsyncComponent(() => import('../components/ReactionTestGame.vue'));
 const QuickQuizGame = defineAsyncComponent(() => import('../components/QuickQuizGame.vue'));
+const BasketballShootout = defineAsyncComponent(() => import('../components/minigames/BasketballShootout.vue'));
 const TapChallenge = defineAsyncComponent(() => import('../components/minigames/TapChallenge.vue'));
 const SponsorRushGame = defineAsyncComponent(() => import('../components/minigames/SponsorRushGame.vue'));
 const MemoryFlashGame = defineAsyncComponent(() => import('../components/minigames/MemoryFlashGame.vue'));
@@ -585,6 +599,7 @@ const isVoting = ref(false);
 const voteError = ref('');
 const coinError = ref('');
 const isSavingCoins = ref(false);
+const isBasketballSaving = ref(false);
 const pendingGameClaim = ref(null);
 const voteBonusCoins = ref(0);
 const celebrationKind = ref('vote');
@@ -614,6 +629,7 @@ const hasSubmittedFeedback = ref(false);
 const games = {
   reaction: { title: 'Reaction Test', reward: 10 },
   quiz: { title: 'Quiz Lampo', reward: 15 },
+  basketball: { title: 'Basket Rush', reward: 1 },
   tap: { title: 'Tap Challenge', reward: 8 },
   'sponsor-rush': { title: 'Sponsor Rush', reward: 12 },
   'memory-flash': { title: 'Memory Flash', reward: 8 },
@@ -627,7 +643,7 @@ const canVote = computed(() => Boolean(props.eventId) && Boolean(eventState.valu
 const completedGames = computed(() => Object.keys(journey.value.rewards).filter((key) => key !== 'vote').length);
 const featuredMission = computed(() => {
   if (!props.eventId || matchConcluded.value || eventState.value?.is_active === false) return null;
-  const missions = earnMissions.value.filter((mission) => mission.game && !doneKeys.value.includes(mission.key));
+  const missions = earnMissions.value.filter((mission) => mission.game && (mission.repeatable || !doneKeys.value.includes(mission.key)));
   return (quizAvailable.value && missions.find((mission) => mission.key === 'quiz')) || missions.find((mission) => mission.key !== 'quiz') || null;
 });
 const nextQuizLabel = computed(() => {
@@ -877,6 +893,7 @@ const earnMissions = computed(() => [
   { key: 'vote', emoji: '🏆', title: "Vota l'MVP", subtitle: 'Un voto per partita', pts: 10, opensMvp: true },
   { key: 'reaction', emoji: '⚡', title: 'Reaction Test', subtitle: 'Testa i riflessi', pts: 10, game: 'reaction' },
   { key: 'quiz', emoji: '🧠', title: 'Quiz Lampo', subtitle: 'Domande sul match', pts: 15, game: 'quiz' },
+  { key: 'basketball', emoji: '🏀', title: 'Basket Rush', subtitle: 'Trascina e tira · 1 moneta a canestro', pts: 1, game: 'basketball', repeatable: true },
   { key: 'tap', emoji: '👆', title: 'Tap Challenge', subtitle: '10 secondi a martello', pts: 8, game: 'tap' },
   {
     key: 'sponsor-rush',
@@ -943,7 +960,10 @@ async function loadFanProfile() {
   if (!ok || !data || eventId !== props.eventId) return;
   isWalletReady.value = true;
   if (data.journey_rewards && typeof data.journey_rewards === 'object') {
-    journey.value = normalizeJourney({ ...journey.value, rewards: { ...journey.value.rewards, ...data.journey_rewards } });
+    const rewards = { ...journey.value.rewards };
+    const restored = normalizeJourney({ rewards: data.journey_rewards });
+    for (const [key, amount] of Object.entries(restored.rewards)) rewards[key] = Math.max(rewards[key] || 0, amount);
+    journey.value = normalizeJourney({ ...journey.value, rewards });
     if (journey.value.rewards.vote) journey.value.pendingVoteBonus = false;
     for (const key of Object.keys(journey.value.rewards)) markDone(key);
     saveJourney();
@@ -1054,12 +1074,26 @@ function openGame(id) {
   activeGameId.value = id;
 }
 function closeGame() {
-  if (isSavingCoins.value) return;
+  if (isSavingCoins.value || isBasketballSaving.value) return;
   const wasGame = Boolean(activeGameId.value);
   activeGameId.value = null;
   if (wasGame) {
     openSheet('earn'); // torna alla lista giochi
   }
+}
+function onBasketballCredit(receipt) {
+  if (receipt?.event_id !== props.eventId) return;
+  const wallet = Number(receipt.wallet);
+  const earned = Number(receipt.basketball_earned);
+  if (!Number.isInteger(wallet) || wallet < 0 || !Number.isInteger(earned) || earned < 0) return;
+  setCoins(wallet);
+  isWalletReady.value = true;
+  journey.value = normalizeJourney({ ...journey.value, rewards: {
+    ...journey.value.rewards, basketball: Math.max(journey.value.rewards.basketball || 0, earned),
+  } });
+  saveJourney();
+  if (earned > 0) markDone('basketball');
+  if (Number(receipt.coins_earned) > 0) { animateEarnedCoins(); refreshLeaderboard(); }
 }
 // Ogni gioco emette @claim { coins, keepOpen } al termine.
 async function onGameClaim(payload) {
@@ -1359,6 +1393,7 @@ async function bootstrap() {
     localVoted.value = null;
     votedPlayerId.value = null;
     activeGameId.value = null;
+    isBasketballSaving.value = false;
     closeSheets();
     coinError.value = '';
     voteError.value = '';
@@ -2252,6 +2287,7 @@ main {
   width: 14px;
   height: 14px;
 }
+.row-pts small { font-size: 9px; font-weight: 600; }
 .chip-mint {
   flex: none;
   font-size: 11px;

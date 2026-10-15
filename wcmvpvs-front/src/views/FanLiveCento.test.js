@@ -181,6 +181,70 @@ test('game earnings advance progress only after saving succeeds, including a ret
   assert.equal(state.totalCoins.value, 20);
 });
 
+test('every confirmed basketball basket updates wallet and badge progress across repeated games', (t) => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  state.openGame('basketball');
+  state.onBasketballCredit({ event_id: 42, wallet: 1, basketball_earned: 1, coins_earned: 1 });
+  assert.equal(state.progress.value.current, 1);
+  assert.equal(state.activeGameId.value, 'basketball');
+  assert.ok(state.doneKeys.value.includes('basketball'));
+  state.closeGame();
+  state.openGame('basketball');
+  state.onBasketballCredit({ event_id: 42, wallet: 2, basketball_earned: 2, coins_earned: 1 });
+  assert.equal(state.totalCoins.value, 2);
+  assert.equal(state.progress.value.current, 2);
+  state.onBasketballCredit({ event_id: 42, wallet: 2, basketball_earned: 2, coins_earned: 0 });
+  assert.equal(state.progress.value.current, 2);
+  state.onBasketballCredit({ event_id: 42, wallet: 25, basketball_earned: 25, coins_earned: 1 });
+  assert.equal(state.progress.value.unlocked, true);
+  const mission = state.earnMissions.value.find((item) => item.key === 'basketball');
+  assert.equal(mission.repeatable, true);
+  state.doneKeys.value = state.earnMissions.value.map((item) => item.key);
+  assert.equal(state.featuredMission.value.key, 'basketball');
+});
+
+test('basketball receipts for another event or invalid balances do not change the home', (t) => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  state.onBasketballCredit({ event_id: 43, wallet: 100, basketball_earned: 100, coins_earned: 1 });
+  state.onBasketballCredit({ event_id: 42, wallet: -1, basketball_earned: 1, coins_earned: 1 });
+  state.onBasketballCredit({ event_id: 42, wallet: 1, basketball_earned: NaN, coins_earned: 1 });
+  assert.equal(state.totalCoins.value, 0);
+  assert.equal(state.progress.value.current, 0);
+});
+
+test('basketball progress is restored from the profile and saving finishes before closing the game', async (t) => {
+  const { state, scope } = fixture({ fetchFanProfile: async () => ({ ok: true, data: {
+    registered: true, wallet: 4, journey_rewards: { basketball: 28 },
+  } }) });
+  t.after(() => scope.stop());
+  await state.loadFanProfile();
+  assert.equal(state.totalCoins.value, 4);
+  assert.equal(state.progress.value.unlocked, true);
+  state.openGame('basketball');
+  state.isBasketballSaving.value = true;
+  state.closeGame();
+  assert.equal(state.activeGameId.value, 'basketball');
+  state.isBasketballSaving.value = false;
+  state.closeGame();
+  assert.equal(state.activeGameId.value, null);
+  assert.equal(state.activeSheet.value, 'earn');
+});
+
+test('a delayed profile response cannot roll back basketball progress or wallet after a made basket', async (t) => {
+  let finish;
+  const { state, scope } = fixture({ fetchFanProfile: () => new Promise((resolve) => { finish = resolve; }) });
+  t.after(() => scope.stop());
+  const loading = state.loadFanProfile();
+  state.onBasketballCredit({ event_id: 42, wallet: 25, basketball_earned: 25, coins_earned: 1 });
+  finish({ ok: true, data: { registered: false, guest_coins: 1, journey_rewards: { basketball: 1 } } });
+  await loading;
+  assert.equal(state.totalCoins.value, 25);
+  assert.equal(state.progress.value.current, 25);
+  assert.equal(state.progress.value.unlocked, true);
+});
+
 test('wallet failure preserves the vote and retries the same bonus without inventing coins', async (t) => {
   const requested = [];
   const { state, scope } = fixture({ claimFanJourneyReward: async (_, key) => {
