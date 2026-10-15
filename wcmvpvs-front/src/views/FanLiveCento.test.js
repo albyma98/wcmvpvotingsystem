@@ -34,6 +34,7 @@ function fixture(overrides = {}, options = {}) {
     vue: testVue, '../api': api, '../organizationTheme': brand, '../fanJourney': journey,
     '../fanHomeAssets': options.assets || assets,
     '../components/EventFeedbackModal.vue': {},
+    '../components/FanPlayerCard.vue': {},
   }, { eventId: 42, organizationSlug: 'club', initialDataReady: true, activeEvent: { is_active: true, votes_closed: false }, ...options.props }, { window });
   return { ...setup, saves, window, api };
 }
@@ -185,6 +186,55 @@ test('an old match vote status cannot mark the next match as already voted', asy
   finish({ ok: true, hasVoted: true, playerId: 7 });
   await action;
   assert.equal(state.hasVoted.value, false);
+});
+
+test('the saved MVP restores the complete player card from the roster after a reload', async (t) => {
+  const { state, scope } = fixture({
+    fetchVoteStatus: async () => ({ ok: true, hasVoted: true, playerId: 7 }),
+    apiClient: { get: async (path) => ({ data: path === '/public/players'
+      ? [{ id: 7, first_name: 'Mario', last_name: 'Rossi', jersey_number: 0, role: 'Guardia', image_url: '/rossi.png', is_called_up: true }]
+      : {} }) },
+  });
+  t.after(() => scope.stop());
+  await state.loadPlayers();
+  await state.loadVoteStatus();
+  assert.equal(state.votedPlayerCard.value.fullName, 'Mario Rossi');
+  assert.equal(state.votedPlayerCard.value.number, '0');
+  assert.equal(state.votedPlayerCard.value.subtitle, 'Guardia');
+  assert.equal(state.displayVotedImage.value, '/rossi.png');
+  assert.equal(state.displayVotedName.value, 'M. Rossi');
+  await state.castVote(state.players.value[0]);
+  assert.equal(state.votedPlayerCard.value.fullName, 'Mario Rossi');
+  assert.equal(state.votedPlayerCard.value.subtitle, 'Guardia');
+});
+
+test('the player card keeps the restored parent details when the roster is unavailable', (t) => {
+  const { state, scope } = fixture({}, { props: {
+    votedPlayerName: 'A. Bianchi', votedPlayerLastName: 'Bianchi',
+    votedPlayerNumber: 12, votedPlayerImageUrl: '/bianchi.png',
+  } });
+  t.after(() => scope.stop());
+  assert.equal(state.votedPlayerCard.value.name, 'A. Bianchi');
+  assert.equal(state.votedPlayerCard.value.number, 12);
+  assert.equal(state.votedPlayerCard.value.image, '/bianchi.png');
+  assert.equal(state.votedPlayerCard.value.badge, 'AB');
+});
+
+test('final MVP cards include every tied winner and stay hidden until the match is concluded', (t) => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  state.rawPlayers.value = [{ id: 7, first_name: 'Mario', last_name: 'Rossi', jersey_number: 7, image_url: '/roster.png' }];
+  state.liveEvent.value = { event_id: 42, is_concluded: false, mvp: [
+    { player_id: 7, first_name: 'Mario', last_name: 'Rossi', image_url: '/winner.png', votes: 18 },
+    { player_id: 8, first_name: 'Anna', last_name: 'Bianchi', image_url: '/bianchi.png', votes: 18 },
+  ] };
+  assert.equal(state.finalMvpPlayers.value.length, 0);
+  state.liveEvent.value.is_concluded = true;
+  assert.equal(state.finalMvpPlayers.value.length, 2);
+  assert.equal(state.finalMvpPlayers.value[0].image, '/winner.png');
+  assert.equal(state.finalMvpPlayers.value[0].number, '7');
+  assert.equal(state.finalMvpPlayers.value[1].name, 'A. Bianchi');
+  assert.equal(state.finalMvpPlayers.value[1].subtitle, '18 voti');
 });
 
 test('a saved vote with a lost response recovers its bonus from the server status', async (t) => {

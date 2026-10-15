@@ -32,12 +32,14 @@
           <button class="tile tile-mvp" type="button" :disabled="!eventId" @click="showMatchSummary ? openSheet('match-summary') : openSheet('mvp')">
             <b>{{ hasVoted ? 'Il tuo MVP' : "Vota l'MVP del pubblico" }}</b>
             <p>{{ hasVoted ? 'Grazie per il voto!' : canVote ? 'Il tuo voto vale +10 monete' : 'In attesa della prossima votazione' }}</p>
-            <div class="mvp-photo">
-              <span class="status">{{ hasVoted ? 'Voto registrato' : canVote ? 'Votazioni aperte' : 'Votazioni chiuse' }}</span>
-              <img v-if="hasVoted && displayVotedImage" :src="displayVotedImage" :alt="displayVotedName" class="mvp-img" />
-              <svg v-else width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--red-text)" stroke-width="1.5">
-                <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
-              </svg>
+            <div class="mvp-photo" :class="{ 'has-player': hasVoted }">
+              <FanPlayerCard v-if="hasVoted" class="mvp-home-card" :player="votedPlayerCard" :club-logo-url="homeLogoUrl" selected selected-label="Voto registrato" loading="eager" />
+              <template v-else>
+                <span class="status">{{ canVote ? 'Votazioni aperte' : 'Votazioni chiuse' }}</span>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--red-text)" stroke-width="1.5">
+                  <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
+                </svg>
+              </template>
             </div>
             <span class="btn-vote">{{ showMatchSummary ? 'Vedi il riepilogo' : hasVoted ? votedButtonLabel : canVote ? 'Vota ora' : 'Votazioni chiuse' }}</span>
           </button>
@@ -170,19 +172,7 @@
               :disabled="isVoting || !canVote"
               @click="castVote(player)"
             >
-              <span class="mvp-player-card">
-                <span v-if="player.number" class="mvp-player-number" aria-hidden="true"><small>MAGLIA</small>{{ player.number }}</span>
-                <img v-if="homeLogoUrl" class="mvp-player-club" :src="homeLogoUrl" alt="" loading="lazy" />
-                <span class="mvp-player-portrait">
-                  <img v-if="player.image" :src="player.image" alt="" loading="lazy" decoding="async" />
-                  <span v-else class="mvp-player-initials" aria-hidden="true">{{ player.badge }}</span>
-                </span>
-                <span class="mvp-player-caption">
-                  <strong>{{ player.name }}</strong>
-                  <span class="mvp-player-role">{{ player.subtitle }}</span>
-                  <span v-if="votedPlayerId === player.id" class="mvp-player-selected"><span aria-hidden="true">✓</span> Il tuo MVP</span>
-                </span>
-              </span>
+              <FanPlayerCard :player="player" :club-logo-url="homeLogoUrl" :selected="votedPlayerId === player.id" />
             </button>
           </div>
         </div>
@@ -195,7 +185,8 @@
           <button class="close" type="button" aria-label="Chiudi conferma voto" @click="closeSheets">✕</button>
         </div>
         <div ref="voteResultEl" class="sheet-body vote-result">
-          <span class="vote-result-avatar"><img v-if="celebrationKind === 'vote' && displayVotedImage" :src="displayVotedImage" :alt="displayVotedName" /><span v-else aria-hidden="true">{{ progress.unlocked ? '🏅' : celebrationKind === 'vote' ? '🏀' : '🎉' }}</span></span>
+          <FanPlayerCard v-if="celebrationKind === 'vote'" class="vote-result-player" :player="votedPlayerCard" :club-logo-url="homeLogoUrl" selected loading="eager" />
+          <span v-else class="vote-result-avatar" aria-hidden="true">{{ progress.unlocked ? '🏅' : '🎉' }}</span>
           <h2>{{ celebrationKind === 'vote' ? `Hai votato ${displayVotedName || 'il tuo MVP'}!` : `${celebrationName} completato!` }}</h2>
           <p v-if="voteBonusCoins" class="vote-result-bonus">+{{ voteBonusCoins }} <span class="coin" aria-hidden="true"></span> monete salvate</p>
           <p v-else-if="journey.pendingVoteBonus">Voto registrato. Il bonus di {{ VOTE_REWARD }} monete è ancora da salvare.</p>
@@ -323,6 +314,9 @@
         <div class="sheet-body">
           <div class="match-stats"><div><b>{{ hasVoted ? '✓' : '—' }}</b><span>Voto MVP</span></div><div><b>{{ completedGames }}</b><span>Sfide completate</span></div><div><b>{{ progress.earned }}</b><span>Monete guadagnate</span></div></div>
           <div class="row-item leaderboard-row"><span class="avatar" aria-hidden="true">🏆</span><span class="row-copy"><b>{{ finalMvpLabel }}</b><span>{{ matchConcluded ? finalMvpSubtitle : 'Il risultato finale sarà disponibile quando la partita sarà conclusa.' }}</span></span></div>
+          <div v-if="finalMvpPlayers.length" class="final-mvp-cards">
+            <FanPlayerCard v-for="player in finalMvpPlayers" :key="player.id" :player="player" :club-logo-url="homeLogoUrl" />
+          </div>
           <div v-if="progress.unlocked" class="row-item leaderboard-row journey-badge"><span class="avatar" aria-hidden="true">🏅</span><span class="row-copy"><b>{{ FAN_BADGE_NAME }}</b><span>Il tuo badge digitale della partita</span></span></div>
           <p class="sheet-sub">{{ leaderboardUser ? `La tua posizione nella società: #${leaderboardUser.rank}` : 'Grazie per aver partecipato alla serata.' }}</p>
           <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" class="btn-vote" type="button" @click="openFeedbackModal">Com’è andata? Lascia il tuo feedback</button>
@@ -468,6 +462,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import { normalizeOrganizationColors, organizationThemeStyle } from '../organizationTheme';
 import { preloadFanHomeImages } from '../fanHomeAssets';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
+import FanPlayerCard from '../components/FanPlayerCard.vue';
 const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
 import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorageKey, normalizeJourney, journeyProgress, recordJourneyReward } from '../fanJourney';
 
@@ -799,12 +794,27 @@ function handleFeedbackSubmitted() {
 }
 
 /* ---------- Giocatore votato (locale o da prop parent) ---------- */
-const displayVotedImage = computed(() => localVoted.value?.image || props.votedPlayerImageUrl);
-const displayVotedName = computed(() => localVoted.value?.name || props.votedPlayerName);
+const votedPlayerCard = computed(() => {
+  const roster = players.value.find((player) => player.id === votedPlayerId.value);
+  const local = localVoted.value;
+  const name = local?.name || roster?.name || props.votedPlayerName || props.votedPlayerLastName || 'Il tuo MVP';
+  const fullName = local?.fullName || roster?.fullName || props.votedPlayerName || name;
+  const number = local?.number ?? roster?.number ?? props.votedPlayerNumber;
+  return {
+    id: votedPlayerId.value,
+    name, fullName, number,
+    lastName: local?.lastName || roster?.lastName || props.votedPlayerLastName,
+    image: local?.image || roster?.image || props.votedPlayerImageUrl,
+    subtitle: local?.subtitle || roster?.subtitle || (number !== '' && number != null ? `Maglia #${number}` : 'In campo'),
+    badge: local?.badge || roster?.badge || initials(fullName),
+  };
+});
+const displayVotedImage = computed(() => votedPlayerCard.value.image);
+const displayVotedName = computed(() => votedPlayerCard.value.name);
 const votedButtonLabel = computed(() => {
-  const number = localVoted.value?.number ?? props.votedPlayerNumber;
+  const number = votedPlayerCard.value.number;
   const num = number === '' || number == null ? '' : `#${number} `;
-  const label = localVoted.value?.lastName || props.votedPlayerLastName || localVoted.value?.name || props.votedPlayerName;
+  const label = votedPlayerCard.value.lastName || (hasVoted.value ? votedPlayerCard.value.name : '');
   return label ? `${num}${label}`.trim() : 'Modifica voto';
 });
 
@@ -845,6 +855,22 @@ const players = computed(() => {
     };
   });
 });
+
+const finalMvpPlayers = computed(() => matchConcluded.value ? (liveEvent.value?.mvp || []).map((winner) => {
+  const roster = players.value.find((player) => player.id === Number(winner.player_id));
+  const first = String(winner.first_name || '').trim();
+  const last = String(winner.last_name || '').trim();
+  const fullName = [first, last].filter(Boolean).join(' ') || roster?.fullName || 'Giocatore';
+  return {
+    id: Number(winner.player_id),
+    name: roster?.name || (last ? `${first ? `${first[0]}. ` : ''}${last}` : fullName),
+    fullName,
+    number: roster?.number ?? '',
+    image: winner.image_url || roster?.image || '',
+    subtitle: `${Number(winner.votes) || 0} voti`,
+    badge: roster?.badge || initials(fullName),
+  };
+}) : []);
 
 /* ---------- Missioni "Guadagna" (aprono i giochi reali) ---------- */
 const earnMissions = computed(() => [
@@ -1122,7 +1148,7 @@ async function castVote(player) {
     }
     hasVoted.value = true;
     votedPlayerId.value = player.id;
-    localVoted.value = { name: player.name, lastName: player.lastName, number: player.number, image: player.image };
+    localVoted.value = { ...player };
     voteBonusCoins.value = 0;
     celebrationKind.value = 'vote';
     if (firstVote) {
@@ -1670,10 +1696,18 @@ main {
 .mvp-photo svg {
   opacity: 0.55;
 }
-.mvp-img {
-  width: 100%;
+.mvp-photo.has-player {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.mvp-home-card {
   height: 100%;
-  object-fit: cover;
+  width: auto;
+  max-width: 100%;
+  max-height: 190px;
+  flex: none;
 }
 .status {
   position: absolute;
@@ -1834,7 +1868,9 @@ main {
 .vote-result > p { margin: 0; font-size: 13px; }
 .vote-result .vote-result-bonus { display: flex; align-items: center; gap: 6px; color: var(--gold-deep); font-size: 17px; font-weight: 800; }
 .vote-result-avatar { width: 72px; height: 72px; border: 2px solid var(--red-line); border-radius: 20px; background: var(--red-soft); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 36px; flex: none; }
-.vote-result-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.vote-result-player { width: 112px; flex: none; }
+.final-mvp-cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 10px; width: 100%; padding: 6px 4px 12px; }
+.final-mvp-cards > .fan-player-card { width: min(112px, calc((100% - 20px) / 3)); flex: none; }
 .vote-result-goal { width: 100%; padding: 12px; border-radius: 14px; background: var(--card); border: 2px solid var(--line); font-size: 12px; }
 .game-credit-error { padding: 10px 14px; margin: 0; color: var(--red-text); background: var(--card); font-size: 13px; font-weight: 700; }
 .coin-flight-layer { position: fixed; inset: 0; z-index: 140; pointer-events: none; }
@@ -2120,135 +2156,7 @@ main {
   text-align: center;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  filter: drop-shadow(0 5px 4px rgba(78, 51, 12, 0.13));
   transition: transform 0.16s ease, filter 0.16s ease;
-}
-.mvp-player-card {
-  position: relative;
-  display: block;
-  aspect-ratio: 0.66;
-  overflow: hidden;
-  isolation: isolate;
-  clip-path: polygon(0 9%, 17% 4%, 50% 0, 83% 4%, 100% 9%, 100% 85%, 89% 93%, 50% 100%, 11% 93%, 0 85%);
-  background:
-    linear-gradient(135deg, transparent 18%, rgba(255, 255, 255, 0.5) 18.5%, transparent 19.5%, transparent 72%, rgba(255, 255, 255, 0.35) 72.5%, transparent 74%),
-    radial-gradient(ellipse at 72% 18%, #fff9dc 0, transparent 55%),
-    linear-gradient(145deg, #f9e7ad, #d4ad5c 48%, #f3da91 75%, #be9242);
-}
-.mvp-player-card::before {
-  content: '';
-  position: absolute;
-  inset: 10% 0 32%;
-  z-index: -1;
-  background: linear-gradient(125deg, transparent 30%, rgba(255, 255, 255, 0.25) 30%, rgba(255, 255, 255, 0.25) 53%, transparent 53%);
-}
-.mvp-player-number {
-  position: absolute;
-  top: 12%;
-  left: 9%;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  font-size: clamp(19px, 6vw, 28px);
-  line-height: 1;
-  font-weight: 900;
-  letter-spacing: -0.06em;
-  text-shadow: 0 1px 5px #f9e7ad;
-}
-.mvp-player-number small {
-  margin-bottom: 3px;
-  font-size: 6px;
-  letter-spacing: 0.08em;
-  font-weight: 800;
-}
-.mvp-player-club {
-  position: absolute;
-  z-index: 2;
-  top: 12%;
-  right: 8%;
-  width: 21%;
-  height: 15%;
-  object-fit: contain;
-}
-.mvp-player-portrait {
-  position: absolute;
-  inset: 15% 0 17%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
-}
-.mvp-player-portrait img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center top;
-}
-.mvp-player-initials {
-  display: grid;
-  place-items: center;
-  width: 60%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: rgba(255, 249, 220, 0.55);
-  color: #785923;
-  font-family: 'Fraunces', serif;
-  font-size: clamp(24px, 7vw, 34px);
-  font-weight: 750;
-}
-.mvp-player-caption {
-  position: absolute;
-  inset: auto 0 0;
-  min-height: 37%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 14% 7% 12%;
-  background: linear-gradient(to bottom, transparent, #f3da91 27%, #e2bf70 100%);
-}
-.mvp-player-caption strong {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  width: 100%;
-  color: #39270f;
-  font-size: clamp(10px, 2.9vw, 12px);
-  line-height: 1.15;
-  font-weight: 900;
-  text-transform: uppercase;
-  overflow-wrap: anywhere;
-}
-.mvp-player-role {
-  max-width: 100%;
-  margin-top: 3px;
-  overflow: hidden;
-  color: #66491f;
-  font-size: 8px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mvp-player-selected {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  margin-top: 4px;
-  color: var(--on-primary, #fff);
-  background: var(--red);
-  padding: 3px 6px;
-  border-radius: 20px;
-  font-size: 8px;
-  line-height: 1.1;
-  font-weight: 800;
-}
-.mvp-player.is-selected {
-  filter: drop-shadow(0 4px 8px var(--red-line));
 }
 .mvp-player:focus-visible {
   outline: 3px solid var(--red-text);
