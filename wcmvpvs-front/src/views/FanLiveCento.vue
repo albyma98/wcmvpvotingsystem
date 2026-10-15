@@ -149,7 +149,7 @@
         <div class="sheet-head">
           <div>
             <div class="sheet-title">Vota l'MVP del pubblico</div>
-            <div class="sheet-sub">Un voto per partita · +10 monete</div>
+            <div class="sheet-sub">Tocca la card del tuo MVP · +10 monete al primo voto</div>
           </div>
           <button class="close" type="button" @click="closeSheets">✕</button>
         </div>
@@ -158,21 +158,33 @@
           <div v-else-if="playersError" class="sheet-empty error">{{ playersError }}</div>
           <div v-else-if="!players.length" class="sheet-empty">Nessun giocatore disponibile.</div>
           <p v-if="voteError" class="sheet-empty error" role="alert">{{ voteError }}</p>
-          <button
-            v-for="player in players"
-            :key="player.id"
-            class="row-item"
-            type="button"
-            :disabled="isVoting || !canVote"
-            @click="castVote(player)"
-          >
-            <span class="avatar">
-              <img v-if="player.image" :src="player.image" :alt="player.name" />
-              <template v-else>{{ player.number || player.badge }}</template>
-            </span>
-            <span class="row-copy"><b>{{ player.name }}</b><span>{{ player.subtitle }}</span></span>
-            <span class="chip-mint">{{ votedPlayerId === player.id ? 'Votato' : 'Vota' }}</span>
-          </button>
+          <div v-if="players.length && !isLoadingPlayers && !playersError" class="mvp-player-grid" :aria-busy="isVoting">
+            <button
+              v-for="player in players"
+              :key="player.id"
+              class="mvp-player"
+              :class="{ 'is-selected': votedPlayerId === player.id }"
+              type="button"
+              :aria-label="`Vota ${player.fullName}${player.number ? `, maglia ${player.number}` : ''}`"
+              :aria-pressed="votedPlayerId === player.id"
+              :disabled="isVoting || !canVote"
+              @click="castVote(player)"
+            >
+              <span class="mvp-player-card">
+                <span v-if="player.number" class="mvp-player-number" aria-hidden="true"><small>MAGLIA</small>{{ player.number }}</span>
+                <img v-if="homeLogoUrl" class="mvp-player-club" :src="homeLogoUrl" alt="" loading="lazy" />
+                <span class="mvp-player-portrait">
+                  <img v-if="player.image" :src="player.image" alt="" loading="lazy" decoding="async" />
+                  <span v-else class="mvp-player-initials" aria-hidden="true">{{ player.badge }}</span>
+                </span>
+                <span class="mvp-player-caption">
+                  <strong>{{ player.name }}</strong>
+                  <span class="mvp-player-role">{{ player.subtitle }}</span>
+                  <span v-if="votedPlayerId === player.id" class="mvp-player-selected"><span aria-hidden="true">✓</span> Il tuo MVP</span>
+                </span>
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -824,6 +836,7 @@ const players = computed(() => {
     return {
       id: Number(p?.id),
       name,
+      fullName: [first, last].filter(Boolean).join(' ') || 'Giocatore',
       lastName: last,
       subtitle: role || (number ? `Maglia #${number}` : 'In campo'),
       number,
@@ -2086,6 +2099,167 @@ main {
 .sheet-empty.error {
   color: var(--red-text);
 }
+.mvp-player-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px 10px;
+  padding: 6px 4px 12px;
+  flex-shrink: 0;
+}
+.mvp-player {
+  position: relative;
+  flex: 0 0 calc((100% - 20px) / 3);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #39270f;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  filter: drop-shadow(0 5px 4px rgba(78, 51, 12, 0.13));
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+.mvp-player-card {
+  position: relative;
+  display: block;
+  aspect-ratio: 0.66;
+  overflow: hidden;
+  isolation: isolate;
+  clip-path: polygon(0 9%, 17% 4%, 50% 0, 83% 4%, 100% 9%, 100% 85%, 89% 93%, 50% 100%, 11% 93%, 0 85%);
+  background:
+    linear-gradient(135deg, transparent 18%, rgba(255, 255, 255, 0.5) 18.5%, transparent 19.5%, transparent 72%, rgba(255, 255, 255, 0.35) 72.5%, transparent 74%),
+    radial-gradient(ellipse at 72% 18%, #fff9dc 0, transparent 55%),
+    linear-gradient(145deg, #f9e7ad, #d4ad5c 48%, #f3da91 75%, #be9242);
+}
+.mvp-player-card::before {
+  content: '';
+  position: absolute;
+  inset: 10% 0 32%;
+  z-index: -1;
+  background: linear-gradient(125deg, transparent 30%, rgba(255, 255, 255, 0.25) 30%, rgba(255, 255, 255, 0.25) 53%, transparent 53%);
+}
+.mvp-player-number {
+  position: absolute;
+  top: 12%;
+  left: 9%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: clamp(19px, 6vw, 28px);
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.06em;
+  text-shadow: 0 1px 5px #f9e7ad;
+}
+.mvp-player-number small {
+  margin-bottom: 3px;
+  font-size: 6px;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+.mvp-player-club {
+  position: absolute;
+  z-index: 2;
+  top: 12%;
+  right: 8%;
+  width: 21%;
+  height: 15%;
+  object-fit: contain;
+}
+.mvp-player-portrait {
+  position: absolute;
+  inset: 15% 0 17%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
+}
+.mvp-player-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+.mvp-player-initials {
+  display: grid;
+  place-items: center;
+  width: 60%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(255, 249, 220, 0.55);
+  color: #785923;
+  font-family: 'Fraunces', serif;
+  font-size: clamp(24px, 7vw, 34px);
+  font-weight: 750;
+}
+.mvp-player-caption {
+  position: absolute;
+  inset: auto 0 0;
+  min-height: 37%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14% 7% 12%;
+  background: linear-gradient(to bottom, transparent, #f3da91 27%, #e2bf70 100%);
+}
+.mvp-player-caption strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  width: 100%;
+  color: #39270f;
+  font-size: clamp(10px, 2.9vw, 12px);
+  line-height: 1.15;
+  font-weight: 900;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.mvp-player-role {
+  max-width: 100%;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #66491f;
+  font-size: 8px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mvp-player-selected {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  margin-top: 4px;
+  color: var(--on-primary, #fff);
+  background: var(--red);
+  padding: 3px 6px;
+  border-radius: 20px;
+  font-size: 8px;
+  line-height: 1.1;
+  font-weight: 800;
+}
+.mvp-player.is-selected {
+  filter: drop-shadow(0 4px 8px var(--red-line));
+}
+.mvp-player:focus-visible {
+  outline: 3px solid var(--red-text);
+  outline-offset: 3px;
+}
+@media (hover: hover) {
+  .mvp-player:hover:not(:disabled) { transform: translateY(-3px); }
+}
+.mvp-player:active:not(:disabled) { transform: scale(0.97); }
+.mvp-player:disabled { cursor: default; }
+.mvp-player:disabled:not(.is-selected) { opacity: 0.65; }
 .row-item {
   display: flex;
   align-items: center;
@@ -2386,6 +2560,7 @@ main {
   .overlay,
   .tile,
   .feedback-cta,
+  .mvp-player,
   .row-item {
     transition: none;
   }
