@@ -498,6 +498,14 @@ async function fetchActiveEvent() {
   try {
     const { data } = await apiClient.get('/active-event');
     activeEvent.value = data ?? null;
+    // Keep this match addressable for the recap after the admin closes it.
+    if (appView.value === 'newui-cento' && data?.id && !currentEventId.value && typeof window !== 'undefined') {
+      const matchUrl = new URL(window.location.href);
+      matchUrl.searchParams.set('eventId', String(data.id));
+      window.history.replaceState(window.history.state, '', matchUrl);
+      currentSearch.value = matchUrl.search;
+      currentEventId.value = data.id;
+    }
   } catch (error) {
     if (error?.response?.status === 204 || error?.response?.status === 404) {
       activeEvent.value = null;

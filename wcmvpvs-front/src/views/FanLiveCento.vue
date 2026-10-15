@@ -14,7 +14,7 @@
           </div>
         </div>
         <div class="top-right">
-          <button class="wallet" type="button" aria-label="Saldo monete" @click="openSheet('earn')">
+          <button ref="walletEl" class="wallet" :class="{ 'wallet-pulse': walletPulse }" type="button" aria-label="Saldo monete" @click="openSheet('earn')">
             <span class="coin"></span> <span>{{ totalCoins }}</span>
           </button>
           <button class="profile-btn" type="button" aria-label="Profilo" @click="openProfile">
@@ -29,24 +29,24 @@
         <!-- Grid -->
         <div class="grid">
           <!-- MVP: sheet inline con giocatori reali + voto reale -->
-          <button class="tile tile-mvp" type="button" @click="openSheet('mvp')">
+          <button class="tile tile-mvp" type="button" :disabled="!eventId" @click="showMatchSummary ? openSheet('match-summary') : openSheet('mvp')">
             <b>{{ hasVoted ? 'Il tuo MVP' : "Vota l'MVP del pubblico" }}</b>
-            <p>{{ hasVoted ? 'Grazie per il voto!' : 'Il tuo voto vale +10 monete' }}</p>
+            <p>{{ hasVoted ? 'Grazie per il voto!' : canVote ? 'Il tuo voto vale +10 monete' : 'In attesa della prossima votazione' }}</p>
             <div class="mvp-photo">
-              <span class="status">{{ hasVoted ? 'Voto registrato' : 'Votazioni aperte' }}</span>
+              <span class="status">{{ hasVoted ? 'Voto registrato' : canVote ? 'Votazioni aperte' : 'Votazioni chiuse' }}</span>
               <img v-if="hasVoted && displayVotedImage" :src="displayVotedImage" :alt="displayVotedName" class="mvp-img" />
               <svg v-else width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--red-text)" stroke-width="1.5">
                 <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
               </svg>
             </div>
-            <span class="btn-vote">{{ hasVoted ? votedButtonLabel : 'Vota ora' }}</span>
+            <span class="btn-vote">{{ showMatchSummary ? 'Vedi il riepilogo' : hasVoted ? votedButtonLabel : canVote ? 'Vota ora' : 'Votazioni chiuse' }}</span>
           </button>
 
           <button class="tile" type="button" @click="openSheet('earn')">
             <div class="tile-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" /></svg>
             </div>
-            <b>Guadagna</b>
+            <b>Gioca e guadagna</b>
             <p>Quiz e sfide sponsor</p>
             <div class="spacer"></div>
             <span class="tile-cta">Gioca →</span>
@@ -56,12 +56,41 @@
             <div class="tile-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 7v13" /></svg>
             </div>
-            <b>Spendi</b>
+            <b>Scopri i premi</b>
             <p>Premi e merch del club</p>
             <div class="spacer"></div>
             <span class="tile-cta">Riscatta →</span>
           </button>
         </div>
+
+        <section v-if="eventId" class="journey-card" aria-label="Il tuo primo traguardo">
+          <div class="journey-head">
+            <div>
+              <b>{{ progress.unlocked ? `Badge ${FAN_BADGE_NAME} sbloccato!` : 'Il tuo primo traguardo' }}</b>
+              <span>{{ progress.unlocked ? 'Il badge è nel tuo profilo' : `Mancano ${progress.remaining} monete al badge ${FAN_BADGE_NAME}` }}</span>
+            </div>
+            <strong>{{ progress.current }}/{{ FIRST_FAN_GOAL }} <span class="coin" aria-hidden="true"></span></strong>
+          </div>
+          <div class="journey-bar" role="progressbar" aria-label="Monete guadagnate per il primo badge" :aria-valuenow="progress.current" :aria-valuemin="0" :aria-valuemax="FIRST_FAN_GOAL">
+            <span :style="{ width: `${progress.percent}%` }"></span>
+          </div>
+          <div class="journey-footer">
+            <small>Voto MVP + quiz · le monete restano nel wallet</small>
+            <button type="button" class="journey-next" @click="openJourneyNext">{{ journeyNextLabel }}</button>
+          </div>
+          <button v-if="journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare il bonus voto' }}</button>
+        </section>
+
+        <button v-if="featuredMission" class="moment-card" type="button" @click="onMission(featuredMission)">
+          <span class="avatar" aria-hidden="true">{{ featuredMission.emoji }}</span>
+          <span class="row-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
+          <span class="row-pts">+{{ featuredMission.pts }} <span class="coin" aria-hidden="true"></span></span>
+        </button>
+        <button v-if="showMatchSummary" class="moment-card" type="button" @click="openSheet('match-summary')">
+          <span class="avatar" aria-hidden="true">🏀</span>
+          <span class="row-copy"><b>La tua partita</b><span>{{ matchConcluded ? 'Risultato MVP e riepilogo della serata' : 'Votazioni chiuse · guarda il tuo riepilogo' }}</span></span>
+          <span class="tile-cta">Apri →</span>
+        </button>
 
         <!-- Leaderboard tile -->
         <button class="tile lb-tile" type="button" @click="openLeaderboard">
@@ -128,12 +157,13 @@
           <div v-if="isLoadingPlayers" class="sheet-empty">Caricamento giocatori…</div>
           <div v-else-if="playersError" class="sheet-empty error">{{ playersError }}</div>
           <div v-else-if="!players.length" class="sheet-empty">Nessun giocatore disponibile.</div>
+          <p v-if="voteError" class="sheet-empty error" role="alert">{{ voteError }}</p>
           <button
             v-for="player in players"
             :key="player.id"
             class="row-item"
             type="button"
-            :disabled="isVoting"
+            :disabled="isVoting || !canVote"
             @click="castVote(player)"
           >
             <span class="avatar">
@@ -143,6 +173,29 @@
             <span class="row-copy"><b>{{ player.name }}</b><span>{{ player.subtitle }}</span></span>
             <span class="chip-mint">{{ votedPlayerId === player.id ? 'Votato' : 'Vota' }}</span>
           </button>
+        </div>
+      </div>
+
+      <div class="sheet" :class="{ open: activeSheet === 'vote-result' }" role="dialog" :aria-label="celebrationKind === 'vote' ? 'Conferma del voto' : 'Monete guadagnate'" :aria-hidden="activeSheet !== 'vote-result'" :inert="activeSheet !== 'vote-result'">
+        <div class="grabber"></div>
+        <div class="sheet-head">
+          <div class="sheet-title">{{ celebrationKind === 'vote' ? 'Il tuo voto conta!' : 'Sfida completata!' }}</div>
+          <button class="close" type="button" aria-label="Chiudi conferma voto" @click="closeSheets">✕</button>
+        </div>
+        <div ref="voteResultEl" class="sheet-body vote-result">
+          <span class="vote-result-avatar"><img v-if="celebrationKind === 'vote' && displayVotedImage" :src="displayVotedImage" :alt="displayVotedName" /><span v-else aria-hidden="true">{{ progress.unlocked ? '🏅' : celebrationKind === 'vote' ? '🏀' : '🎉' }}</span></span>
+          <h2>{{ celebrationKind === 'vote' ? `Hai votato ${displayVotedName || 'il tuo MVP'}!` : `${celebrationName} completato!` }}</h2>
+          <p v-if="voteBonusCoins" class="vote-result-bonus">+{{ voteBonusCoins }} <span class="coin" aria-hidden="true"></span> monete salvate</p>
+          <p v-else-if="journey.pendingVoteBonus">Voto registrato. Il bonus di {{ VOTE_REWARD }} monete è ancora da salvare.</p>
+          <p v-else>Voto aggiornato. Il bonus del primo voto è già stato assegnato.</p>
+          <div class="vote-result-goal">
+            <b>{{ progress.unlocked ? `Hai sbloccato il badge ${FAN_BADGE_NAME}!` : `${progress.current}/${FIRST_FAN_GOAL} · Mancano ${progress.remaining} monete al primo badge` }}</b>
+            <div class="journey-bar"><span :style="{ width: `${progress.percent}%` }"></span></div>
+          </div>
+          <p v-if="coinError" class="sheet-empty error" role="alert">{{ coinError }}</p>
+          <button v-if="journey.pendingVoteBonus" class="btn-vote" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare le monete' }}</button>
+          <button v-else class="btn-vote" type="button" @click="openJourneyNext">{{ journeyNextLabel }}</button>
+          <button class="journey-next" type="button" @click="closeSheets">Torna alla partita</button>
         </div>
       </div>
 
@@ -162,12 +215,14 @@
             :key="mission.key"
             class="row-item"
             type="button"
+            :disabled="matchConcluded || (mission.key === 'quiz' && !quizAvailable)"
             @click="onMission(mission)"
           >
             <span class="avatar">{{ mission.emoji }}</span>
-            <span class="row-copy"><b>{{ mission.title }}</b><span>{{ mission.subtitle }}</span></span>
+            <span class="row-copy"><b>{{ mission.title }}</b><span>{{ doneKeys.includes(mission.key) ? 'Bonus già ricevuto per questa partita' : mission.subtitle }}</span></span>
             <span class="row-pts">
-              <template v-if="mission.key === 'vote' && hasVoted">✓</template>
+              <template v-if="doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)">✓</template>
+              <template v-else-if="mission.key === 'quiz' && !quizAvailable">Non disponibile</template>
               <template v-else>+{{ mission.pts }} <span class="coin"></span></template>
             </span>
           </button>
@@ -184,6 +239,10 @@
           <button class="close" type="button" @click="closeSheets">✕</button>
         </div>
         <div class="sheet-body">
+          <div class="row-item leaderboard-row journey-badge">
+            <span class="avatar" aria-hidden="true">🏅</span>
+            <span class="row-copy"><b>Badge {{ FAN_BADGE_NAME }}</b><span>{{ progress.unlocked ? 'Sbloccato! Lo trovi nel tuo profilo.' : 'Completa voto MVP (+10) e quiz (+15) per sbloccarlo.' }}</span></span>
+          </div>
           <button
             v-for="reward in rewards"
             :key="reward.key"
@@ -233,6 +292,29 @@
             <span class="row-copy"><b>La tua posizione</b><span>{{ profileNickname }}</span></span>
             <span class="row-pts">{{ leaderboardUser.coins }} <span class="coin" aria-hidden="true"></span><span class="sr-only">monete</span></span>
           </div>
+          <template v-if="leaderboardNearby.length">
+            <div class="sheet-sub">Vicino a te · classifica della società</div>
+            <p v-if="rankGapLabel" class="rank-gap">{{ rankGapLabel }}</p>
+            <div v-for="row in leaderboardNearby" :key="row.rank" class="row-item leaderboard-row" :class="{ 'leaderboard-self': row.is_me }">
+              <span class="rank leaderboard-rank">{{ row.rank }}</span>
+              <span class="row-copy"><b>{{ row.is_me ? 'Tu' : row.name }}</b></span>
+              <span class="row-pts">{{ row.coins }} <span class="coin" aria-hidden="true"></span></span>
+            </div>
+          </template>
+          <button v-else-if="!isRegistered" class="btn-vote" type="button" @click="openRegistration">Entra in classifica con il tuo nickname</button>
+        </div>
+      </div>
+
+      <div class="sheet" :class="{ open: activeSheet === 'match-summary' }" role="dialog" aria-label="La tua partita" :aria-hidden="activeSheet !== 'match-summary'" :inert="activeSheet !== 'match-summary'">
+        <div class="grabber"></div>
+        <div class="sheet-head"><div><div class="sheet-title">La tua partita</div><div class="sheet-sub">{{ homeName }} · {{ opponentLabel }}</div></div><button class="close" type="button" aria-label="Chiudi riepilogo" @click="closeSheets">✕</button></div>
+        <div class="sheet-body">
+          <div class="match-stats"><div><b>{{ hasVoted ? '✓' : '—' }}</b><span>Voto MVP</span></div><div><b>{{ completedGames }}</b><span>Sfide completate</span></div><div><b>{{ progress.earned }}</b><span>Monete guadagnate</span></div></div>
+          <div class="row-item leaderboard-row"><span class="avatar" aria-hidden="true">🏆</span><span class="row-copy"><b>{{ finalMvpLabel }}</b><span>{{ matchConcluded ? finalMvpSubtitle : 'Il risultato finale sarà disponibile quando la partita sarà conclusa.' }}</span></span></div>
+          <div v-if="progress.unlocked" class="row-item leaderboard-row journey-badge"><span class="avatar" aria-hidden="true">🏅</span><span class="row-copy"><b>{{ FAN_BADGE_NAME }}</b><span>Il tuo badge digitale della partita</span></span></div>
+          <p class="sheet-sub">{{ leaderboardUser ? `La tua posizione nella società: #${leaderboardUser.rank}` : 'Grazie per aver partecipato alla serata.' }}</p>
+          <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" class="btn-vote" type="button" @click="openFeedbackModal">Com’è andata? Lascia il tuo feedback</button>
+          <p v-else-if="hasSubmittedFeedback" class="sheet-sub">Feedback ricevuto, grazie!</p>
         </div>
       </div>
 
@@ -288,6 +370,11 @@
             <span class="coin-balance-label">Saldo monete</span>
             <span class="coin-balance-val">{{ totalCoins }} <span class="coin"></span></span>
           </div>
+          <button v-if="!isRegistered" class="btn-vote" type="button" @click="openRegistration">Accedi o crea il tuo profilo tifoso</button>
+          <div v-if="progress.unlocked" class="row-item leaderboard-row journey-badge">
+            <span class="avatar" aria-hidden="true">🏅</span>
+            <span class="row-copy"><b>{{ FAN_BADGE_NAME }}</b><span>Badge della partita · {{ FIRST_FAN_GOAL }} monete guadagnate</span></span>
+          </div>
 
           <div class="lottery-box">
             <div class="lottery-title">QR Lotteria MVP</div>
@@ -308,6 +395,7 @@
           <div class="game-title">{{ games[activeGameId]?.title }}</div>
           <button class="close" type="button" aria-label="Chiudi" @click="closeGame">✕</button>
         </header>
+        <div v-if="coinError" class="game-credit-error" role="alert"><p>{{ coinError }}</p><button v-if="pendingGameClaim" type="button" class="journey-next" :disabled="isSavingCoins" @click="onGameClaim(pendingGameClaim)">Riprova il salvataggio</button></div>
         <div class="game-stage">
           <ReactionTestGame
             v-if="activeGameId === 'reaction'"
@@ -319,6 +407,9 @@
             v-else-if="activeGameId === 'quiz'"
             class="game-fill"
             :event-id="eventId"
+            :completion-reward="QUIZ_REWARD"
+            :claiming="isSavingCoins"
+            :already-rewarded="doneKeys.includes('quiz')"
             @claim="onGameClaim"
             @exit="closeGame"
           />
@@ -348,6 +439,7 @@
 
     </div>
 
+    <div class="coin-flight-layer" aria-hidden="true"><span v-for="(flight, index) in coinFlights" :key="index" class="coin coin-flight" :style="flight"></span></div>
     <EventFeedbackModal
       v-model="isFeedbackModalOpen"
       :event-id="eventId"
@@ -355,13 +447,16 @@
       :theme-style="themeStyle"
       @submitted="handleFeedbackSubmitted"
     />
+    <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" trigger="profile_overlay" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" />
   </div>
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { normalizeOrganizationColors, organizationThemeStyle } from '../organizationTheme';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
+const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
+import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorageKey, normalizeJourney, journeyProgress, recordJourneyReward } from '../fanJourney';
 
 // Giochi reali riusati da EarnCoinsModal (lazy-load: pesano).
 const ReactionTestGame = defineAsyncComponent(() => import('../components/ReactionTestGame.vue'));
@@ -373,12 +468,17 @@ import {
   apiClient,
   fetchFanProfile,
   fetchVoteStatus,
+  fetchQuickQuiz,
   vote,
   syncGuestCoins,
   redeemFanReward,
   updateFanNickname,
   resolveApiUrl,
   getOrganizationSlug,
+  getDeviceHeaders,
+  getFanSessionHeaders,
+  registerFanProfile,
+  claimFanJourneyReward,
 } from '../api';
 
 const FAN_NICKNAME_MIN_LEN = 3;
@@ -444,6 +544,10 @@ const votedPlayerId = ref(null);
 const localVoted = ref(null); // giocatore votato in questa sessione (feedback immediato)
 const leaderboardTop3 = ref([]);
 const leaderboardUser = ref(null);
+const leaderboardNearby = ref([]);
+const leaderboardGap = ref(null);
+const liveEvent = ref(null);
+const isRegistrationOpen = ref(false);
 const isLoadingLeaderboard = ref(false);
 const leaderboardError = ref('');
 const sponsors = ref([]);
@@ -452,6 +556,26 @@ const rawPlayers = ref([]);
 const isLoadingPlayers = ref(false);
 const playersError = ref('');
 const isVoting = ref(false);
+const voteError = ref('');
+const coinError = ref('');
+const isSavingCoins = ref(false);
+const pendingGameClaim = ref(null);
+const voteBonusCoins = ref(0);
+const celebrationKind = ref('vote');
+const celebrationName = ref('');
+const isWalletReady = ref(false);
+const journey = ref(normalizeJourney());
+const progress = computed(() => journeyProgress(journey.value));
+const quizAvailable = ref(false);
+const walletEl = ref(null);
+const voteResultEl = ref(null);
+const walletPulse = ref(false);
+const coinFlights = ref([]);
+let coinAnimationTimer;
+let walletRevision = 0;
+let loadedEventId = null;
+let liveStatusTimer;
+let liveRequestEventId = null;
 
 const doneKeys = ref([]); // missioni completate (persistite per evento)
 
@@ -470,6 +594,116 @@ const games = {
 };
 const redeeming = ref('');
 let coinsStream = null;
+const eventState = computed(() => liveEvent.value || (!props.activeEvent?.id || props.activeEvent.id === props.eventId ? props.activeEvent : null));
+const matchConcluded = computed(() => eventState.value?.is_concluded === true);
+const showMatchSummary = computed(() => Boolean(props.eventId) && (matchConcluded.value || eventState.value?.votes_closed === true));
+const canVote = computed(() => Boolean(props.eventId) && Boolean(eventState.value) && eventState.value?.is_active !== false && !eventState.value?.votes_closed && !matchConcluded.value);
+const completedGames = computed(() => Object.keys(journey.value.rewards).filter((key) => key !== 'vote').length);
+const featuredMission = computed(() => {
+  if (!props.eventId || matchConcluded.value || eventState.value?.is_active === false) return null;
+  const missions = earnMissions.value.filter((mission) => mission.game && !doneKeys.value.includes(mission.key));
+  return (quizAvailable.value && missions.find((mission) => mission.key === 'quiz')) || missions.find((mission) => mission.key !== 'quiz') || null;
+});
+const nextQuizLabel = computed(() => {
+  const startsAt = Date.parse(liveEvent.value?.quiz?.starts_at || '');
+  if (!Number.isFinite(startsAt) || startsAt <= Date.now()) return '';
+  return `Prossimo quiz alle ${new Date(startsAt).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
+});
+const rankGapLabel = computed(() => {
+  const above = leaderboardNearby.value.find((row) => row.rank === Number(leaderboardUser.value?.rank) - 1);
+  if (!above || !leaderboardUser.value) return Number(leaderboardUser.value?.rank) === 1 ? 'Sei in testa alla classifica della società!' : '';
+  const gap = leaderboardGap.value ?? Math.max(1, above.coins - Number(leaderboardUser.value.coins) + 1);
+  return `${gap === 1 ? 'Manca 1 moneta' : `Mancano ${gap} monete`} per superare il ${above.rank}° posto`;
+});
+const finalMvpLabel = computed(() => {
+  const winners = liveEvent.value?.mvp || [];
+  return matchConcluded.value && winners.length ? winners.map((player) => `${player.first_name} ${player.last_name}`.trim()).join(' · ') : 'MVP del pubblico';
+});
+const finalMvpSubtitle = computed(() => {
+  const winners = liveEvent.value?.mvp || [];
+  return winners.length ? `${winners.length > 1 ? 'MVP a pari merito' : 'MVP della partita'} · ${winners[0].votes} voti` : 'Non sono stati espressi voti per questa partita.';
+});
+const journeyNextLabel = computed(() => {
+  if (showMatchSummary.value) return 'La tua partita →';
+  if (progress.value.unlocked) return 'Scopri i premi →';
+  if (!hasVoted.value && canVote.value) return `Vota l’MVP · +${VOTE_REWARD}`;
+  if (quizAvailable.value && !doneKeys.value.includes('quiz')) return `Completa il quiz · +${QUIZ_REWARD}`;
+  return 'Scegli una sfida →';
+});
+function openJourneyNext() {
+  if (showMatchSummary.value) openSheet('match-summary');
+  else if (progress.value.unlocked) openSheet('spend');
+  else if (!hasVoted.value && canVote.value) openSheet('mvp');
+  else if (quizAvailable.value && !doneKeys.value.includes('quiz')) openGame('quiz');
+  else openSheet('earn');
+}
+
+async function loadQuizAvailability() {
+  const eventId = props.eventId;
+  quizAvailable.value = false;
+  if (!eventId) return;
+  const { ok, data } = await fetchQuickQuiz(eventId);
+  if (eventId === props.eventId) quizAvailable.value = ok && Array.isArray(data?.questions) && data.questions.length > 0;
+}
+
+async function refreshLiveStatus() {
+  const eventId = props.eventId;
+  if (!eventId || liveRequestEventId === eventId || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return;
+  liveRequestEventId = eventId;
+  try {
+    const { data } = await apiClient.get(`/events/${eventId}/fan-live`);
+    if (eventId !== props.eventId || Number(data?.event_id) !== eventId) return;
+    liveEvent.value = data;
+    quizAvailable.value = data.quiz?.available === true;
+  } catch (error) { /* conserva le ultime informazioni ricevute se la rete non è disponibile */ }
+  finally { if (liveRequestEventId === eventId) liveRequestEventId = null; }
+}
+
+function openRegistration() { closeSheets(); isRegistrationOpen.value = true; }
+async function registerJourneyFan(form) {
+  const response = await registerFanProfile({ event_id: props.eventId, nickname: form.nickname, gender: form.gender, phone: form.phone, accepted_terms: form.acceptedTerms, guest_coins: totalCoins.value, enter_lottery: false });
+  if (!response.ok) return response;
+  isRegistered.value = true;
+  fanNickname.value = String(response.data?.user?.nickname || form.nickname || '').trim();
+  setCoins(Number(response.data?.wallet ?? totalCoins.value));
+  await loadFanProfile();
+  isRegistrationOpen.value = false;
+  await refreshLeaderboard();
+  openSheet('leaderboard');
+  return { ok: true, wallet: totalCoins.value };
+}
+async function loginJourneyFan() {
+  await loadFanProfile();
+  if (!isRegistered.value) return { ok: false, message: 'Impossibile caricare il profilo. Riprova.' };
+  isRegistrationOpen.value = false;
+  await refreshLeaderboard();
+  openSheet('leaderboard');
+  return { ok: true };
+}
+
+function saveJourney() {
+  try { window.localStorage.setItem(journeyStorageKey(props.organizationSlug, props.eventId), JSON.stringify(journey.value)); } catch (error) { /* storage non disponibile */ }
+}
+function loadJourney() {
+  try { journey.value = normalizeJourney(JSON.parse(window.localStorage.getItem(journeyStorageKey(props.organizationSlug, props.eventId)) || 'null')); }
+  catch (error) { journey.value = normalizeJourney(); }
+}
+async function animateEarnedCoins() {
+  walletPulse.value = true;
+  await nextTick();
+  if (activeSheet.value === 'vote-result' && walletEl.value && voteResultEl.value) {
+    const from = voteResultEl.value.getBoundingClientRect();
+    const to = walletEl.value.getBoundingClientRect();
+    coinFlights.value = Array.from({ length: 6 }, (_, index) => ({
+      left: `${from.left + from.width / 2}px`, top: `${from.top + 60}px`,
+      '--flight-x': `${to.left + to.width / 2 - from.left - from.width / 2}px`,
+      '--flight-y': `${to.top + to.height / 2 - from.top - 60}px`,
+      animationDelay: `${index * 50}ms`,
+    }));
+  }
+  window.clearTimeout(coinAnimationTimer);
+  coinAnimationTimer = window.setTimeout(() => { walletPulse.value = false; coinFlights.value = []; }, 1100);
+}
 
 /* ---------- Derivati header ---------- */
 function initials(name) {
@@ -482,13 +716,13 @@ const homeName = computed(() =>
 );
 const homeBadge = computed(() => initials(homeName.value));
 const opponentLabel = computed(() => {
-  const opponent = String(props.activeEvent?.team2_name || '').trim();
+  const opponent = String(eventState.value?.team2_name || '').trim();
   return opponent ? `vs ${opponent}` : 'Esperienza ufficiale';
 });
 
 /* ---------- Feedback dell'evento ---------- */
 const feedbackSurvey = computed(() => {
-  const survey = props.activeEvent?.feedback_survey ?? props.activeEvent?.feedbackSurvey ?? {};
+  const survey = eventState.value?.feedback_survey ?? eventState.value?.feedbackSurvey ?? {};
   return {
     ...survey,
     suggestionPrompt: String(survey.suggestion_prompt ?? survey.suggestionPrompt ?? '').trim()
@@ -497,8 +731,8 @@ const feedbackSurvey = computed(() => {
 });
 const hasFeedbackSurvey = computed(() =>
   Boolean(props.eventId)
-  && props.activeEvent?.show_feedback_survey !== false
-  && props.activeEvent?.showFeedbackSurvey !== false
+  && eventState.value?.show_feedback_survey !== false
+  && eventState.value?.showFeedbackSurvey !== false
   && Array.isArray(feedbackSurvey.value.questions)
   && feedbackSurvey.value.questions.length > 0,
 );
@@ -639,18 +873,28 @@ function writeStoredCoins(value) {
 function setCoins(value) {
   const next = Math.max(0, Math.round(Number(value) || 0));
   totalCoins.value = next;
+  walletRevision += 1;
   writeStoredCoins(next);
 }
 
 async function loadFanProfile() {
   if (!props.eventId) return;
-  const { ok, data } = await fetchFanProfile(props.eventId);
-  if (!ok || !data) return;
+  const eventId = props.eventId;
+  const revision = walletRevision;
+  const { ok, data } = await fetchFanProfile(eventId);
+  if (!ok || !data || eventId !== props.eventId) return;
+  isWalletReady.value = true;
+  if (data.journey_rewards && typeof data.journey_rewards === 'object') {
+    journey.value = normalizeJourney({ ...journey.value, rewards: { ...journey.value.rewards, ...data.journey_rewards } });
+    if (journey.value.rewards.vote) journey.value.pendingVoteBonus = false;
+    for (const key of Object.keys(journey.value.rewards)) markDone(key);
+    saveJourney();
+  }
   isRegistered.value = Boolean(data.registered);
-  if (data.registered) {
+  if (revision === walletRevision && data.registered) {
     setCoins(Number(data.wallet) || 0);
-  } else {
-    setCoins(Math.max(totalCoins.value, Number(data.guest_coins) || 0));
+  } else if (revision === walletRevision) {
+    setCoins(Number(data.guest_coins) || 0);
   }
   fanNickname.value = String(data.user?.nickname || '').trim();
   if (!isNicknameEditorOpen.value) {
@@ -662,15 +906,51 @@ async function loadFanProfile() {
   }
 }
 
-// Accredita monete sul wallet reale (localStorage + sync guest).
-async function grantCoins(delta) {
-  const amount = Number(delta) || 0;
-  if (!amount) return;
-  setCoins(totalCoins.value + amount);
-  if (props.eventId) {
-    await syncGuestCoins(props.eventId, totalCoins.value);
+// Mostra l'accredito soltanto dopo la conferma del salvataggio del wallet.
+async function grantCoins(delta, key) {
+  const amount = Math.max(0, Math.floor(Number(delta) || 0));
+  if (!props.eventId || !amount || isSavingCoins.value) return { ok: false, coins: 0 };
+  if (journey.value.rewards[key] || doneKeys.value.includes(key)) return { ok: true, coins: 0 };
+  isSavingCoins.value = true;
+  coinError.value = '';
+  const eventId = props.eventId;
+  try {
+    const serverReward = key === 'vote' || key === 'quiz';
+    if (!isWalletReady.value && !serverReward) await loadFanProfile();
+    if (eventId !== props.eventId) return { ok: false, coins: 0 };
+    if (!isWalletReady.value && !serverReward) {
+      coinError.value = 'Impossibile leggere il saldo. Controlla la connessione e riprova.';
+      return { ok: false, coins: 0 };
+    }
+    const nextBalance = totalCoins.value + amount;
+    const response = serverReward ? await claimFanJourneyReward(eventId, key) : await syncGuestCoins(eventId, nextBalance);
+    if (eventId !== props.eventId) return { ok: false, coins: 0 };
+    if (!response.ok) {
+      coinError.value = response.message || 'Le monete non sono ancora state salvate. Controlla la connessione e riprova.';
+      return { ok: false, coins: 0 };
+    }
+    setCoins(Number(response.data?.wallet ?? nextBalance));
+    isWalletReady.value = true;
+    journey.value = recordJourneyReward(journey.value, key, amount);
+    saveJourney();
+    markDone(key);
+    refreshLeaderboard();
+    return { ok: true, coins: serverReward ? Number(response.data?.coins_earned ?? amount) : amount };
+  } catch (error) {
+    coinError.value = 'Le monete non sono ancora state salvate. Controlla la connessione e riprova.';
+    return { ok: false, coins: 0 };
+  } finally { isSavingCoins.value = false; }
+}
+
+async function retryVoteBonus() {
+  if (!journey.value.pendingVoteBonus) return;
+  const result = await grantCoins(VOTE_REWARD, 'vote');
+  if (result.ok) {
+    journey.value.pendingVoteBonus = false;
+    saveJourney();
+    voteBonusCoins.value = result.coins;
+    if (result.coins) animateEarnedCoins();
   }
-  refreshLeaderboard();
 }
 
 /* ---------- Missioni completate (persistite per evento) ---------- */
@@ -709,11 +989,14 @@ function onMission(mission) {
 
 /* ---------- Giochi reali (overlay a schermo pieno) ---------- */
 function openGame(id) {
-  if (!games[id]) return;
+  if (!games[id] || !props.eventId || isSavingCoins.value || matchConcluded.value || (id === 'quiz' && !quizAvailable.value)) return;
+  coinError.value = '';
+  pendingGameClaim.value = null;
   activeSheet.value = '';
   activeGameId.value = id;
 }
 function closeGame() {
+  if (isSavingCoins.value) return;
   const wasGame = Boolean(activeGameId.value);
   activeGameId.value = null;
   if (wasGame) {
@@ -722,12 +1005,35 @@ function closeGame() {
 }
 // Ogni gioco emette @claim { coins, keepOpen } al termine.
 async function onGameClaim(payload) {
-  const coins = Math.max(0, Number(payload?.coins) || 0);
-  if (coins) {
-    await grantCoins(coins);
+  if (!activeGameId.value || isSavingCoins.value) return;
+  const key = activeGameId.value;
+  pendingGameClaim.value = payload;
+  const coins = key === 'quiz' ? QUIZ_REWARD : Math.max(0, Number(payload?.coins) || 0);
+  let earned = 0;
+  if (coins && String(payload?.source || '').startsWith('tap_challenge')) {
+    // Tap Challenge already credits its result server-side; only refresh the wallet here.
+    isWalletReady.value = false;
+    await loadFanProfile();
+    if (!isWalletReady.value) { coinError.value = 'Risultato salvato. Riprova a caricare il saldo.'; return; }
+    if (!journey.value.rewards[key]) {
+      journey.value = recordJourneyReward(journey.value, key, coins);
+      saveJourney(); markDone(key); earned = coins;
+    }
+  } else if (coins) {
+    const result = await grantCoins(coins, key);
+    if (!result.ok) return;
+    earned = result.coins;
   }
+  pendingGameClaim.value = null;
   if (!payload?.keepOpen) {
     closeGame();
+    if (earned) {
+      celebrationKind.value = key;
+      celebrationName.value = games[key].title;
+      voteBonusCoins.value = earned;
+      openSheet('vote-result');
+      animateEarnedCoins();
+    }
   }
 }
 // Memory Flash può spendere monete (@spend).
@@ -757,29 +1063,44 @@ async function loadPlayers() {
 }
 async function loadVoteStatus() {
   if (!props.eventId) return;
-  const status = await fetchVoteStatus(props.eventId);
+  const eventId = props.eventId;
+  const status = await fetchVoteStatus(eventId);
+  if (eventId !== props.eventId || !status.ok || isVoting.value || localVoted.value) return;
   hasVoted.value = Boolean(status?.hasVoted);
   votedPlayerId.value = status?.playerId ?? null;
+  if (hasVoted.value && !journey.value.rewards.vote) {
+    journey.value.pendingVoteBonus = true;
+    saveJourney();
+    await retryVoteBonus();
+  }
 }
 async function castVote(player) {
   if (isVoting.value || !player?.id || !props.eventId) return;
+  voteError.value = '';
+  if (!canVote.value) { voteError.value = 'Le votazioni per questa partita sono chiuse.'; return; }
   isVoting.value = true;
+  const firstVote = !hasVoted.value && !doneKeys.value.includes('vote');
+  const eventId = props.eventId;
   try {
-    const response = await vote({ eventId: props.eventId, playerId: player.id });
+    const response = await vote({ eventId, playerId: player.id });
+    if (eventId !== props.eventId) return;
     if (!response?.ok) {
+      voteError.value = response?.message || 'Il voto non è stato salvato. Controlla la connessione e riprova.';
       return;
     }
     hasVoted.value = true;
     votedPlayerId.value = player.id;
     localVoted.value = { name: player.name, lastName: player.lastName, number: player.number, image: player.image };
-    closeSheets();
-    // +10 monete solo al primo voto del match.
-    if (!doneKeys.value.includes('vote')) {
-      markDone('vote');
-      await grantCoins(10);
+    voteBonusCoins.value = 0;
+    celebrationKind.value = 'vote';
+    if (firstVote) {
+      journey.value.pendingVoteBonus = true;
+      saveJourney();
     }
+    openSheet('vote-result');
+    if (journey.value.pendingVoteBonus) await retryVoteBonus();
   } catch (error) {
-    // voto non riuscito: nessuna azione
+    voteError.value = 'Impossibile salvare il voto. Riprova tra poco.';
   } finally {
     isVoting.value = false;
   }
@@ -790,13 +1111,15 @@ async function refreshLeaderboard() {
   if (!props.eventId) {
     leaderboardTop3.value = [];
     leaderboardUser.value = null;
+    leaderboardNearby.value = [];
+    leaderboardGap.value = null;
     leaderboardError.value = '';
     return;
   }
   isLoadingLeaderboard.value = true;
   leaderboardError.value = '';
   try {
-    const { data } = await apiClient.get(`/events/${props.eventId}/coins-leaderboard`);
+    const { data } = await apiClient.get(`/events/${props.eventId}/coins-leaderboard`, { headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() } });
     const top = Array.isArray(data?.top3) ? data.top3 : Array.isArray(data?.top) ? data.top : [];
     leaderboardTop3.value = top.slice(0, 3).map((row) => ({
       name: String(row?.name || row?.nickname || 'Tifoso'),
@@ -804,6 +1127,8 @@ async function refreshLeaderboard() {
     }));
     const rank = data?.userRank || data?.user_rank;
     leaderboardUser.value = rank || null;
+    leaderboardNearby.value = Array.isArray(data?.nearby) ? data.nearby : [];
+    leaderboardGap.value = Number.isFinite(data?.next_rank_gap) && data.next_rank_gap > 0 ? data.next_rank_gap : null;
   } catch (error) {
     leaderboardError.value = 'Impossibile caricare la classifica. Riapri il pannello per riprovare.';
   } finally {
@@ -905,7 +1230,7 @@ function onSponsorClick(sponsor) {
 
 /* ---------- Riscatto premi ---------- */
 async function redeem(reward) {
-  if (redeeming.value) return;
+  if (redeeming.value || isSavingCoins.value) return;
   if (totalCoins.value < reward.cost) {
     return;
   }
@@ -962,8 +1287,23 @@ function onKeydown(e) {
 
 /* ---------- Lifecycle ---------- */
 function bootstrap() {
+  if (loadedEventId !== props.eventId) {
+    loadedEventId = props.eventId;
+    liveEvent.value = null;
+    isWalletReady.value = false;
+    hasVoted.value = false;
+    localVoted.value = null;
+    votedPlayerId.value = null;
+    activeGameId.value = null;
+    closeSheets();
+    coinError.value = '';
+    voteError.value = '';
+  }
   totalCoins.value = readStoredCoins();
   loadDoneKeys();
+  loadJourney();
+  loadQuizAvailability();
+  refreshLiveStatus();
   loadFanProfile();
   loadVoteStatus();
   loadPlayers();
@@ -989,11 +1329,14 @@ onMounted(() => {
   ensureCentoFonts();
   window.addEventListener('keydown', onKeydown);
   bootstrap();
+  liveStatusTimer = window.setInterval(refreshLiveStatus, 30000);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   stopCoinsStream();
+  window.clearTimeout(coinAnimationTimer);
+  window.clearInterval(liveStatusTimer);
 });
 
 watch(
@@ -1164,6 +1507,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow-y: auto;
 }
 
 @keyframes pulse {
@@ -1173,7 +1517,7 @@ main {
 
 /* Grid */
 .grid {
-  flex: 1;
+  flex: 1 0 280px;
   min-height: 0;
   display: grid;
   grid-template-columns: 1.15fr 1fr;
@@ -1396,6 +1740,52 @@ main {
 }
 
 /* Box feedback */
+.journey-card {
+  flex: none;
+  padding: 12px;
+  border: 2px solid var(--red-line);
+  background: var(--card);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+.journey-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.journey-head > div { min-width: 0; }
+.journey-head b { display: block; font-size: 13px; font-weight: 800; }
+.journey-head span:not(.coin) { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
+.journey-head strong { display: flex; align-items: center; gap: 5px; flex: none; font-size: 14px; }
+.journey-bar { width: 100%; height: 8px; border-radius: 99px; background: var(--red-soft); margin-top: 10px; overflow: hidden; }
+.journey-bar > span { display: block; height: 100%; background: var(--red); border-radius: inherit; transition: width 0.4s ease; }
+.journey-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
+.journey-footer small { color: var(--muted); font-size: 10px; }
+.journey-next { color: var(--red-text); background: transparent; border: 0; padding: 6px 0; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.journey-badge { border-color: var(--gold); }
+.journey-badge .row-copy span { white-space: normal; }
+.moment-card { display: flex; align-items: center; gap: 10px; flex: none; width: 100%; background: var(--card); border: 2px solid var(--line); border-radius: 18px; padding: 11px 12px; color: var(--ink); text-align: left; font-family: inherit; cursor: pointer; box-shadow: var(--shadow); }
+.moment-card .row-copy span { display: block; white-space: normal; }
+.rank-gap { margin: 0; padding: 10px 12px; font-size: 12.5px; font-weight: 800; background: var(--card); border: 2px solid var(--red-line); border-radius: 14px; }
+.match-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.match-stats > div { padding: 12px 7px; background: var(--card); border: 2px solid var(--line); border-radius: 14px; text-align: center; }
+.match-stats b { display: block; font-family: 'Fraunces', serif; font-size: 24px; }
+.match-stats span { display: block; font-size: 11px; color: var(--muted); }
+.vote-result { align-items: center; text-align: center; padding: 8px 0; gap: 13px; }
+.vote-result h2 { margin: 0; font: 750 23px/1.2 'Fraunces', serif; }
+.vote-result > p { margin: 0; font-size: 13px; }
+.vote-result .vote-result-bonus { display: flex; align-items: center; gap: 6px; color: var(--gold-deep); font-size: 17px; font-weight: 800; }
+.vote-result-avatar { width: 72px; height: 72px; border: 2px solid var(--red-line); border-radius: 20px; background: var(--red-soft); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 36px; flex: none; }
+.vote-result-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.vote-result-goal { width: 100%; padding: 12px; border-radius: 14px; background: var(--card); border: 2px solid var(--line); font-size: 12px; }
+.game-credit-error { padding: 10px 14px; margin: 0; color: var(--red-text); background: var(--card); font-size: 13px; font-weight: 700; }
+.coin-flight-layer { position: fixed; inset: 0; z-index: 140; pointer-events: none; }
+.coin-flight { position: absolute; animation: coin-fly 0.7s ease-in both; }
+.wallet-pulse { animation: wallet-pop 0.55s ease; }
+@keyframes coin-fly {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.5); }
+  20% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--flight-x), var(--flight-y)) scale(0.6); }
+}
+@keyframes wallet-pop { 50% { transform: scale(1.1); } }
+
 .feedback-cta {
   flex: none;
   display: flex;
@@ -1937,6 +2327,9 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .coin-flight { display: none; }
+  .wallet-pulse { animation: none; }
+  .journey-bar > span { transition: none; }
   .status::before {
     animation: none;
   }

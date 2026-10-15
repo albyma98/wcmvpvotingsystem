@@ -1,0 +1,202 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import * as journey from '../fanJourney.js';
+import * as brand from '../organizationTheme.js';
+import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
+
+const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
+
+function fixture(overrides = {}) {
+  const saves = [];
+  let serverWallet = 0;
+  const serverAwards = new Set();
+  const window = testWindow();
+  const api = {
+    apiClient: { get: async () => ({ data: { top3: [] } }) },
+    fetchFanProfile: async () => ({ ok: true, data: { registered: false, guest_coins: 0 } }),
+    fetchVoteStatus: async () => ({ ok: true, hasVoted: false }),
+    fetchQuickQuiz: async () => ({ ok: true, data: { questions: [{ id: 1 }] } }),
+    vote: async () => ({ ok: true }),
+    syncGuestCoins: async (eventId, coins) => { saves.push({ eventId, coins }); return { ok: true, data: { wallet: coins } }; },
+    claimFanJourneyReward: async (eventId, key) => {
+      const coins = serverAwards.has(key) ? 0 : key === 'vote' ? 10 : 15;
+      serverWallet += coins; serverAwards.add(key); saves.push({ eventId, coins: serverWallet });
+      return { ok: true, data: { wallet: serverWallet, coins_earned: coins } };
+    },
+    redeemFanReward: async () => ({ ok: false }), updateFanNickname: async () => ({ ok: false }),
+    resolveApiUrl: (path) => path, getOrganizationSlug: () => 'club',
+    getDeviceHeaders: () => ({ 'X-Device-ID': 'test-device' }), getFanSessionHeaders: () => ({ 'X-Fan-Session': 'test-session' }),
+    registerFanProfile: async () => ({ ok: false }),
+    ...overrides,
+  };
+  const setup = setupSfc(new URL('./FanLiveCento.vue', import.meta.url), {
+    vue: testVue, '../api': api, '../organizationTheme': brand, '../fanJourney': journey,
+    '../components/EventFeedbackModal.vue': {},
+  }, { eventId: 42, organizationSlug: 'club', activeEvent: { is_active: true, votes_closed: false } }, { window });
+  return { ...setup, saves, window, api };
+}
+
+test('confirmed vote leads to quiz and an earned first badge without duplicate credits', async (t) => {
+  const { state, scope, saves } = fixture();
+  t.after(() => scope.stop());
+  await state.castVote(player);
+  assert.equal(state.activeSheet.value, 'vote-result');
+  assert.equal(state.totalCoins.value, 10);
+  assert.equal(state.voteBonusCoins.value, 10);
+  assert.equal(state.progress.value.remaining, 15);
+  state.quizAvailable.value = true;
+  state.openJourneyNext();
+  assert.equal(state.activeGameId.value, 'quiz');
+  await state.onGameClaim({ coins: 15 });
+  assert.equal(state.totalCoins.value, 25);
+  assert.equal(state.progress.value.unlocked, true);
+  assert.equal(state.celebrationKind.value, 'quiz');
+  state.openGame('quiz');
+  await state.onGameClaim({ coins: 15 });
+  await state.castVote(player);
+  assert.equal(saves.length, 2);
+  assert.equal(state.totalCoins.value, 25);
+});
+
+test('failed vote shows an error and grants nothing', async (t) => {
+  const { state, scope, saves } = fixture({ vote: async () => ({ ok: false, message: 'Votazioni chiuse' }) });
+  t.after(() => scope.stop());
+  await state.castVote(player);
+  assert.equal(state.hasVoted.value, false);
+  assert.equal(state.voteError.value, 'Votazioni chiuse');
+  assert.equal(state.progress.value.earned, 0);
+  assert.equal(saves.length, 0);
+  assert.notEqual(state.activeSheet.value, 'vote-result');
+});
+
+test('wallet failure preserves the vote and retries the same bonus without inventing coins', async (t) => {
+  const requested = [];
+  const { state, scope } = fixture({ claimFanJourneyReward: async (_, key) => {
+    const coins = key === 'vote' ? 10 : 15;
+    requested.push(coins);
+    return requested.length === 1 ? { ok: false } : { ok: true, data: { wallet: coins } };
+  } });
+  t.after(() => scope.stop());
+  await state.castVote(player);
+  assert.equal(state.hasVoted.value, true);
+  assert.equal(state.totalCoins.value, 0);
+  assert.equal(state.voteBonusCoins.value, 0);
+  assert.equal(state.journey.value.pendingVoteBonus, true);
+  await state.retryVoteBonus();
+  await state.retryVoteBonus();
+  assert.deepEqual(requested, [10, 10]);
+  assert.equal(state.progress.value.earned, 10);
+  assert.equal(state.totalCoins.value, 10);
+  assert.equal(state.journey.value.pendingVoteBonus, false);
+});
+
+test('a wallet response for an old match cannot update the new match', async (t) => {
+  let finish;
+  const { state, scope, props } = fixture({ claimFanJourneyReward: () => new Promise((resolve) => { finish = resolve; }) });
+  t.after(() => scope.stop());
+  const action = state.castVote(player);
+  while (!finish) await new Promise(setImmediate);
+  props.eventId = 43;
+  finish({ ok: true, data: { wallet: 10 } });
+  await action;
+  assert.equal(state.totalCoins.value, 0);
+  assert.equal(state.progress.value.earned, 0);
+});
+
+test('completed badge survives reload and does not carry over to another match', (t) => {
+  const { state, scope, props, window } = fixture();
+  t.after(() => scope.stop());
+  window.localStorage.setItem(journey.journeyStorageKey('club', 42), JSON.stringify({ rewards: { vote: 10, quiz: 15 } }));
+  state.loadJourney();
+  assert.equal(state.progress.value.unlocked, true);
+  props.eventId = 43;
+  state.loadJourney();
+  assert.equal(state.progress.value.earned, 0);
+});
+
+test('an old match vote status cannot mark the next match as already voted', async (t) => {
+  let finish;
+  const { state, scope, props } = fixture({ fetchVoteStatus: () => new Promise((resolve) => { finish = resolve; }) });
+  t.after(() => scope.stop());
+  const action = state.loadVoteStatus();
+  props.eventId = 43;
+  finish({ ok: true, hasVoted: true, playerId: 7 });
+  await action;
+  assert.equal(state.hasVoted.value, false);
+});
+
+test('a saved vote with a lost response recovers its bonus from the server status', async (t) => {
+  const { state, scope, saves } = fixture({ fetchVoteStatus: async () => ({ ok: true, hasVoted: true, playerId: 7 }) });
+  t.after(() => scope.stop());
+  await state.loadVoteStatus();
+  assert.equal(state.hasVoted.value, true);
+  assert.equal(state.totalCoins.value, 10);
+  assert.equal(state.progress.value.current, 10);
+  await state.loadVoteStatus();
+  assert.equal(saves.length, 1);
+});
+
+test('featured mission follows quiz availability and completed activities', (t) => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  state.quizAvailable.value = true;
+  assert.equal(state.featuredMission.value.key, 'quiz');
+  state.doneKeys.value = ['quiz'];
+  assert.equal(state.featuredMission.value.key, 'reaction');
+  state.liveEvent.value = { event_id: 42, is_active: true, is_concluded: true };
+  assert.equal(state.featuredMission.value, null);
+  assert.equal(state.canVote.value, false);
+  assert.equal(state.showMatchSummary.value, true);
+});
+
+test('the leaderboard sends the fan session and shows an honest gap when coins are tied', async (t) => {
+  let headers;
+  const { state, scope } = fixture({ apiClient: { get: async (path, config) => {
+    if (!path.includes('coins-leaderboard')) return { data: {} };
+    headers = config.headers;
+    return { data: { top3: [], userRank: { rank: 3, coins: 40 }, nearby: [{ rank: 2, coins: 40, name: 'Rivale' }, { rank: 3, coins: 40, is_me: true }] } };
+  } } });
+  t.after(() => scope.stop());
+  await state.refreshLeaderboard();
+  assert.equal(headers['X-Fan-Session'], 'test-session');
+  assert.equal(state.leaderboardNearby.value.length, 2);
+  assert.match(state.rankGapLabel.value, /Manca 1 moneta/);
+});
+
+test('live status exposes only final MVPs in the end-of-match recap', async (t) => {
+  const { state, scope } = fixture({ apiClient: { get: async () => ({ data: { event_id: 42, is_active: false, votes_closed: true, is_concluded: true, quiz: { available: false }, mvp: [{ first_name: 'Mario', last_name: 'Rossi', votes: 18 }] } }) } });
+  t.after(() => scope.stop());
+  await state.refreshLiveStatus();
+  assert.equal(state.showMatchSummary.value, true);
+  assert.equal(state.canVote.value, false);
+  assert.equal(state.finalMvpLabel.value, 'Mario Rossi');
+  state.openJourneyNext();
+  assert.equal(state.activeSheet.value, 'match-summary');
+});
+
+test('server rewards restore the badge on a fresh browser profile', async (t) => {
+  const { state, scope } = fixture({ fetchFanProfile: async () => ({ ok: true, data: { registered: true, wallet: 5, journey_rewards: { vote: 10, quiz: 15 } } }) });
+  t.after(() => scope.stop());
+  await state.loadFanProfile();
+  assert.equal(state.progress.value.unlocked, true);
+  assert.equal(state.totalCoins.value, 5);
+  assert.ok(state.doneKeys.value.includes('quiz'));
+});
+
+test('the gap provided by the server respects tie breaking instead of overstating the target', async (t) => {
+  const { state, scope } = fixture({ apiClient: { get: async () => ({ data: { top3: [], userRank: { rank: 3, coins: 42 }, next_rank_gap: 8, nearby: [{ rank: 2, coins: 50, name: 'Rivale' }] } }) } });
+  t.after(() => scope.stop());
+  await state.refreshLeaderboard();
+  assert.match(state.rankGapLabel.value, /Mancano 8 monete/);
+});
+
+test('a retry after a lost response restores progress without re-awarding the vote bonus', async (t) => {
+  let attempts = 0;
+  const { state, scope } = fixture({ claimFanJourneyReward: async () => ++attempts === 1 ? { ok: false } : { ok: true, data: { wallet: 10, coins_earned: 0 } } });
+  t.after(() => scope.stop());
+  await state.castVote(player);
+  await state.retryVoteBonus();
+  assert.equal(state.totalCoins.value, 10);
+  assert.equal(state.progress.value.earned, 10);
+  assert.equal(state.voteBonusCoins.value, 0);
+});

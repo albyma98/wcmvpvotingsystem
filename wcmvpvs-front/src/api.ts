@@ -504,7 +504,7 @@ export async function fetchQuickQuiz(eventId: number) {
   }
 }
 
-export async function submitQuickQuizAnswer(eventId: number, payload: { questionId: number; selectedIndex: number; responseMs: number; deviceId: string; }) {
+export async function submitQuickQuizAnswer(eventId: number, payload: { questionId: number; selectedIndex: number; responseMs: number; deviceId: string; journey?: boolean; }) {
   if (!eventId) {
     return { ok: false, error: new Error('missing_event_id') };
   }
@@ -514,7 +514,8 @@ export async function submitQuickQuizAnswer(eventId: number, payload: { question
       selectedIndex: payload.selectedIndex,
       responseMs: payload.responseMs,
       deviceId: payload.deviceId,
-    });
+      journey: payload.journey === true,
+    }, { headers: getDeviceHeaders() });
     return { ok: true, data };
   } catch (error) {
     return { ok: false, error };
@@ -809,12 +810,22 @@ export async function resendPhoneAuth(phone: string) {
 
 export async function syncGuestCoins(eventId, coins) {
   try {
-    await apiClient.post(`/events/${eventId}/guest-coins`, { coins }, {
+    const { data } = await apiClient.post(`/events/${eventId}/guest-coins`, { coins }, {
       headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
     });
-    return { ok: true };
+    return { ok: true, data };
   } catch (error) {
     return { ok: false, error };
+  }
+}
+
+export async function claimFanJourneyReward(eventId: number, key: 'vote' | 'quiz') {
+  try {
+    const { data } = await apiClient.post(`/events/${eventId}/journey-rewards`, { key }, { headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() } });
+    return { ok: true, data };
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    return { ok: false, error, message };
   }
 }
 

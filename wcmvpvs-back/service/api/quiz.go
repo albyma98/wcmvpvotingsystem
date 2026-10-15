@@ -17,6 +17,7 @@ type quizAnswerRequest struct {
 	SelectedIndex int    `json:"selectedIndex"`
 	ResponseMs    int    `json:"responseMs"`
 	DeviceID      string `json:"deviceId"`
+	Journey       bool   `json:"journey"`
 }
 
 func quizInWindow(cfg database.EventQuizConfig) bool {
@@ -97,6 +98,20 @@ func (rt *_router) postPublicEventQuizAnswer(w http.ResponseWriter, r *http.Requ
 	}
 	isCorrect := req.SelectedIndex == q.CorrectIndex
 	cfg, _ := rt.db.GetEventQuizConfig(eventID)
+	if req.Journey {
+		if !rt.ensureEventInOrganization(w, ctx, eventID) {
+			return
+		}
+		if !cfg.Enabled || !quizInWindow(cfg) || req.DeviceID == "" || req.DeviceID != rt.deviceIDFromRequest(r) {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		if err := rt.db.RecordFanJourneyQuizAnswer(eventID, ctx.OrganizationID, req.DeviceID, req.QuestionID); err != nil {
+			ctx.Logger.WithError(err).Error("record journey quiz answer")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
 	coins := 0
 	if isCorrect {
 		coins = cfg.BaseReward

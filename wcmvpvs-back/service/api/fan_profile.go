@@ -117,6 +117,9 @@ func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqconte
 			resp["user"] = summary.Profile
 			resp["wallet"] = summary.Wallet
 			if eventID > 0 {
+				if rewards, err := rt.db.ListFanJourneyRewards(eventID, ctx.OrganizationID, summary.Profile.ID, deviceID); err == nil {
+					resp["journey_rewards"] = rewards
+				}
 				if redemptions, redemptionsErr := rt.db.ListFanRewardRedemptions(eventID, summary.Profile.ID); redemptionsErr == nil {
 					resp["reward_redemptions"] = redemptions
 				}
@@ -145,6 +148,9 @@ func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqconte
 	}
 
 	if eventID > 0 && deviceID != "" {
+		if rewards, err := rt.db.ListFanJourneyRewards(eventID, ctx.OrganizationID, 0, deviceID); err == nil {
+			resp["journey_rewards"] = rewards
+		}
 		coins, _ := rt.db.GetGuestCoins(eventID, ctx.OrganizationID, deviceID)
 		resp["guest_coins"] = coins
 	}
@@ -289,10 +295,31 @@ func (rt *_router) getCoinsLeaderboard(w http.ResponseWriter, r *http.Request, c
 		if me, e := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r)); e == nil {
 			if rank, rankErr := rt.db.GetFanRank(eventID, ctx.OrganizationID, me.Profile.ID); rankErr == nil {
 				resp["userRank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins}
+				if neighbors, neighborsErr := rt.db.GetFanNearbyRanks(ctx.OrganizationID, me.Profile.ID); neighborsErr == nil {
+					nearby := make([]map[string]interface{}, 0, len(neighbors))
+					for _, entry := range neighbors {
+						if entry.Rank == rank.Rank-1 {
+							resp["next_rank_gap"] = fanRankGap(rank, entry)
+						}
+						nearby = append(nearby, map[string]interface{}{"rank": entry.Rank, "name": entry.Nickname, "coins": entry.Coins, "is_me": entry.FanID == me.Profile.ID})
+					}
+					resp["nearby"] = nearby
+				}
 			}
 		}
 	}
 	_ = writeJSON(w, http.StatusOK, resp)
+}
+
+func fanRankGap(current, above database.FanLeaderboardEntry) int {
+	gap := above.Coins - current.Coins
+	if above.FanID < current.FanID {
+		gap++
+	}
+	if gap < 1 {
+		return 1
+	}
+	return gap
 }
 
 func (rt *_router) postFanRewardRedeem(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

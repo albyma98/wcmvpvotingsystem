@@ -1321,6 +1321,11 @@ type AppDatabase interface {
 	UpsertGuestCoins(eventID int, organizationID int, deviceID string, coins int) error
 	GetFanLeaderboard(eventID int, organizationID int, limit int) ([]FanLeaderboardEntry, error)
 	GetFanRank(eventID int, organizationID int, fanID int) (FanLeaderboardEntry, error)
+	GetFanNearbyRanks(organizationID int, fanID int) ([]FanLeaderboardEntry, error)
+	GetFanLiveEvent(eventID int, organizationID int) (Event, error)
+	RecordFanJourneyQuizAnswer(eventID, organizationID int, deviceID string, questionID int) error
+	ClaimFanJourneyReward(eventID, organizationID, fanID int, deviceID, rewardKey string) (int, int, error)
+	ListFanJourneyRewards(eventID, organizationID, fanID int, deviceID string) (map[string]int, error)
 	ListFanRewardRedemptions(eventID int, fanID int) ([]FanRewardRedemption, error)
 	DonateFanSupport(eventID int, organizationID int, fanID int, coins int) (FanSupportDonation, int, error)
 	GetFanSupportLeaderboard(eventID int, organizationID int, limit int) ([]FanSupportLeaderboardEntry, error)
@@ -3923,6 +3928,12 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(`UPDATE event_prizes SET winner_vote_id = NULL, winner_user_id = NULL, winner_lottery_code = NULL, winner_status = '', winner_notified_at = NULL, winner_sms_sid = NULL, winner_assigned_at = NULL WHERE event_id = ?`, eventID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM fan_journey_rewards WHERE event_id=?`, eventID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM fan_journey_quiz_answers WHERE event_id=?`, eventID); err != nil {
 		return err
 	}
 
@@ -7437,6 +7448,15 @@ func ensureMarketingTables(db *sql.DB) error {
 
 func ensureFanProfileTables(db *sql.DB) error {
 	statements := []string{
+		`CREATE TABLE IF NOT EXISTS fan_journey_rewards (
+			event_id INTEGER NOT NULL, organization_id INTEGER NOT NULL, device_id TEXT NOT NULL,
+			fan_id INTEGER NOT NULL DEFAULT 0, reward_key TEXT NOT NULL, coins INTEGER NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY(event_id, organization_id, device_id, reward_key));`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_fan_journey_registered ON fan_journey_rewards(event_id, organization_id, fan_id, reward_key) WHERE fan_id>0;`,
+		`CREATE TABLE IF NOT EXISTS fan_journey_quiz_answers (
+			event_id INTEGER NOT NULL, organization_id INTEGER NOT NULL, device_id TEXT NOT NULL, question_id INTEGER NOT NULL,
+			PRIMARY KEY(event_id, organization_id, device_id, question_id));`,
 		`CREATE TABLE IF NOT EXISTS fan_profiles (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			organization_id INTEGER NOT NULL DEFAULT 0,
@@ -7648,6 +7668,9 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 	}
 
 	if input.DeviceID != "" {
+		if _, err = tx.Exec(`UPDATE OR IGNORE fan_journey_rewards SET fan_id=? WHERE device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
+			return FanProfileSummary{}, err
+		}
 		if _, err = tx.Exec(`UPDATE votes SET user_id = ? WHERE device_id = ? AND (? = 0 OR event_id = ?)`, profile.ID, input.DeviceID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
