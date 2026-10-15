@@ -10,7 +10,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted } from 'vue';
 import { organizationThemeStyle } from '../organizationTheme';
 
 const props = defineProps({
@@ -18,6 +18,12 @@ const props = defineProps({
   logoUrl: { type: String, default: '' },
   name: { type: String, default: '' },
 });
+const emit = defineEmits(['minimum-duration-elapsed']);
+let minimumDurationTimer;
+onMounted(() => {
+  minimumDurationTimer = window.setTimeout(() => emit('minimum-duration-elapsed'), 2500);
+});
+onBeforeUnmount(() => window.clearTimeout(minimumDurationTimer));
 const themeStyle = computed(() => organizationThemeStyle(props.colors));
 const initials = computed(() => props.name.trim().split(/\s+/).filter(Boolean).slice(0, 3).map((part) => part[0]).join(''));
 </script>

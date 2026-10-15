@@ -33,12 +33,15 @@
     </template>
     <template v-else-if="appView === 'newui-cento'">
       <FanHomeSplash
-        v-if="isFanHomeLoading"
+        v-if="isFanHomeLoading || !hasSplashMinimumElapsed"
         :colors="fanHomeBrand.colors"
         :logo-url="fanHomeBrand.logoUrl"
         :name="fanHomeBrand.name"
+        @minimum-duration-elapsed="hasSplashMinimumElapsed = true"
       />
       <FanLiveCento
+        :inert="!hasSplashMinimumElapsed"
+        :aria-hidden="!hasSplashMinimumElapsed || undefined"
         :initial-data-ready="hasCheckedActiveEvent && !isFetchingActiveEvent && !isHydratingNewUiVote"
         :organization-slug="organizationSlug"
         :event-id="resolvedEventId"
@@ -155,6 +158,7 @@ const activeEvent = ref(null);
 const isFetchingActiveEvent = ref(false);
 const hasCheckedActiveEvent = ref(false);
 const isFanHomeLoading = ref(true);
+const hasSplashMinimumElapsed = ref(false);
 const fanHomeBrand = ref({});
 const isHydratingNewUiVote = ref(false);
 
@@ -574,6 +578,7 @@ onBeforeUnmount(() => {
 
 watch(appView, (view) => {
   isFanHomeLoading.value = true;
+  hasSplashMinimumElapsed.value = false;
   fanHomeBrand.value = {};
   if (view === 'public' || isNewUiLikeView(view)) {
     fetchActiveEvent();
