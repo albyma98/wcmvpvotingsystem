@@ -224,7 +224,7 @@
             <span class="avatar">{{ mission.emoji }}</span>
             <span class="row-copy"><b>{{ mission.title }}</b><span>{{ !mission.repeatable && doneKeys.includes(mission.key) ? 'Bonus già ricevuto per questa partita' : mission.subtitle }}</span></span>
             <span class="row-pts">
-              <template v-if="mission.repeatable">+1 <span class="coin" aria-hidden="true"></span><small>/ canestro</small></template>
+              <template v-if="mission.repeatable">+1 <span class="coin" aria-hidden="true"></span><small>/ {{ mission.rewardUnit || 'canestro' }}</small></template>
               <template v-else-if="doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)">✓</template>
               <template v-else-if="mission.key === 'quiz' && !quizAvailable">Non disponibile</template>
               <template v-else>+{{ mission.pts }} <span class="coin"></span></template>
@@ -398,9 +398,9 @@
       <!-- Overlay gioco a schermo pieno -->
       <div v-if="activeGameId" class="game-overlay">
         <header class="game-head">
-          <button class="close" type="button" aria-label="Indietro" :disabled="isBasketballSaving" @click="closeGame">←</button>
+          <button class="close" type="button" aria-label="Indietro" :disabled="isBasketballSaving || isPlaymakerSaving" @click="closeGame">←</button>
           <div class="game-title">{{ games[activeGameId]?.title }}</div>
-          <button class="close" type="button" aria-label="Chiudi" :disabled="isBasketballSaving" @click="closeGame">✕</button>
+          <button class="close" type="button" aria-label="Chiudi" :disabled="isBasketballSaving || isPlaymakerSaving" @click="closeGame">✕</button>
         </header>
         <div v-if="coinError" class="game-credit-error" role="alert"><p>{{ coinError }}</p><button v-if="pendingGameClaim" type="button" class="journey-next" :disabled="isSavingCoins" @click="onGameClaim(pendingGameClaim)">Riprova il salvataggio</button></div>
         <div class="game-stage">
@@ -431,6 +431,19 @@
             :club-logo-url="homeLogoUrl"
             @credited="onBasketballCredit"
             @saving-change="isBasketballSaving = $event"
+          />
+          <PlaymakerGame
+            v-else-if="activeGameId === 'playmaker'"
+            :key="eventId"
+            class="game-fill"
+            :event-id="eventId"
+            :wallet-coins="totalCoins"
+            :earned-coins="journey.rewards.playmaker || 0"
+            :club-name="homeName"
+            :club-logo-url="homeLogoUrl"
+            :organization-slug="organizationSlug"
+            @credited="onPlaymakerCredit"
+            @saving-change="isPlaymakerSaving = $event"
           />
           <TapChallenge
             v-else-if="activeGameId === 'tap'"
@@ -483,6 +496,7 @@ import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorag
 const ReactionTestGame = defineAsyncComponent(() => import('../components/ReactionTestGame.vue'));
 const QuickQuizGame = defineAsyncComponent(() => import('../components/QuickQuizGame.vue'));
 const BasketballShootout = defineAsyncComponent(() => import('../components/minigames/BasketballShootout.vue'));
+const PlaymakerGame = defineAsyncComponent(() => import('../components/minigames/PlaymakerGame.vue'));
 const TapChallenge = defineAsyncComponent(() => import('../components/minigames/TapChallenge.vue'));
 const SponsorRushGame = defineAsyncComponent(() => import('../components/minigames/SponsorRushGame.vue'));
 const MemoryFlashGame = defineAsyncComponent(() => import('../components/minigames/MemoryFlashGame.vue'));
@@ -600,6 +614,7 @@ const voteError = ref('');
 const coinError = ref('');
 const isSavingCoins = ref(false);
 const isBasketballSaving = ref(false);
+const isPlaymakerSaving = ref(false);
 const pendingGameClaim = ref(null);
 const voteBonusCoins = ref(0);
 const celebrationKind = ref('vote');
@@ -630,6 +645,7 @@ const games = {
   reaction: { title: 'Reaction Test', reward: 10 },
   quiz: { title: 'Quiz Lampo', reward: 15 },
   basketball: { title: 'Basket Rush', reward: 1 },
+  playmaker: { title: 'Playmaker', reward: 1 },
   tap: { title: 'Tap Challenge', reward: 8 },
   'sponsor-rush': { title: 'Sponsor Rush', reward: 12 },
   'memory-flash': { title: 'Memory Flash', reward: 8 },
@@ -894,6 +910,7 @@ const earnMissions = computed(() => [
   { key: 'reaction', emoji: '⚡', title: 'Reaction Test', subtitle: 'Testa i riflessi', pts: 10, game: 'reaction' },
   { key: 'quiz', emoji: '🧠', title: 'Quiz Lampo', subtitle: 'Domande sul match', pts: 15, game: 'quiz' },
   { key: 'basketball', emoji: '🏀', title: 'Basket Rush', subtitle: 'Trascina e tira · 1 moneta a canestro', pts: 1, game: 'basketball', repeatable: true },
+  { key: 'playmaker', emoji: '🤝', title: 'Playmaker', subtitle: 'L’assist perfetto · Sessioni da 30 secondi', pts: 1, game: 'playmaker', repeatable: true, rewardUnit: 'assist' },
   { key: 'tap', emoji: '👆', title: 'Tap Challenge', subtitle: '10 secondi a martello', pts: 8, game: 'tap' },
   {
     key: 'sponsor-rush',
@@ -1074,7 +1091,7 @@ function openGame(id) {
   activeGameId.value = id;
 }
 function closeGame() {
-  if (isSavingCoins.value || isBasketballSaving.value) return;
+  if (isSavingCoins.value || isBasketballSaving.value || isPlaymakerSaving.value) return;
   const wasGame = Boolean(activeGameId.value);
   activeGameId.value = null;
   if (wasGame) {
@@ -1082,17 +1099,23 @@ function closeGame() {
   }
 }
 function onBasketballCredit(receipt) {
+  applyLiveGameCredit('basketball', receipt, 'basketball_earned');
+}
+function onPlaymakerCredit(receipt) {
+  applyLiveGameCredit('playmaker', receipt, 'playmaker_earned');
+}
+function applyLiveGameCredit(key, receipt, totalField) {
   if (receipt?.event_id !== props.eventId) return;
   const wallet = Number(receipt.wallet);
-  const earned = Number(receipt.basketball_earned);
+  const earned = Number(receipt[totalField]);
   if (!Number.isInteger(wallet) || wallet < 0 || !Number.isInteger(earned) || earned < 0) return;
   setCoins(wallet);
   isWalletReady.value = true;
   journey.value = normalizeJourney({ ...journey.value, rewards: {
-    ...journey.value.rewards, basketball: Math.max(journey.value.rewards.basketball || 0, earned),
+    ...journey.value.rewards, [key]: Math.max(journey.value.rewards[key] || 0, earned),
   } });
   saveJourney();
-  if (earned > 0) markDone('basketball');
+  if (earned > 0) markDone(key);
   if (Number(receipt.coins_earned) > 0) { animateEarnedCoins(); refreshLeaderboard(); }
 }
 // Ogni gioco emette @claim { coins, keepOpen } al termine.
@@ -1394,6 +1417,7 @@ async function bootstrap() {
     votedPlayerId.value = null;
     activeGameId.value = null;
     isBasketballSaving.value = false;
+    isPlaymakerSaving.value = false;
     closeSheets();
     coinError.value = '';
     voteError.value = '';

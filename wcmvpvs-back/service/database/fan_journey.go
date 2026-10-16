@@ -38,6 +38,13 @@ func (db *appdbimpl) ListFanJourneyRewards(eventID, organizationID, fanID int, d
 	if basketball > 0 {
 		rewards["basketball"] = basketball
 	}
+	var playmaker int
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM playmaker_passes WHERE event_id=? AND organization_id=? AND assisted=1 AND (device_id=? OR (?>0 AND fan_id=?))`, eventID, organizationID, deviceID, fanID, fanID).Scan(&playmaker); err != nil {
+		return nil, err
+	}
+	if playmaker > 0 {
+		rewards["playmaker"] = playmaker
+	}
 	return rewards, nil
 }
 

@@ -214,6 +214,57 @@ test('basketball receipts for another event or invalid balances do not change th
   assert.equal(state.progress.value.current, 0);
 });
 
+test('Playmaker is repeatable and every server-confirmed assist advances wallet and the first goal', (t) => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  const mission = state.earnMissions.value.find((item) => item.key === 'playmaker');
+  assert.equal(mission.repeatable, true);
+  assert.equal(mission.rewardUnit, 'assist');
+  state.onMission(mission);
+  assert.equal(state.activeGameId.value, 'playmaker');
+  state.onPlaymakerCredit({ event_id: 42, wallet: 1, playmaker_earned: 1, coins_earned: 1 });
+  state.onPlaymakerCredit({ event_id: 42, wallet: 2, playmaker_earned: 2, coins_earned: 1 });
+  state.onPlaymakerCredit({ event_id: 42, wallet: 2, playmaker_earned: 2, coins_earned: 0 });
+  assert.equal(state.totalCoins.value, 2);
+  assert.equal(state.progress.value.earned, 2);
+  assert.ok(state.doneKeys.value.includes('playmaker'));
+  state.closeGame(); state.openGame('playmaker');
+  state.onPlaymakerCredit({ event_id: 42, wallet: 25, playmaker_earned: 25, coins_earned: 1 });
+  assert.equal(state.progress.value.unlocked, true);
+  assert.equal(state.activeGameId.value, 'playmaker');
+});
+
+test('Playmaker rejects stale receipts and preserves confirmed progress when an older profile arrives', async (t) => {
+  let finish;
+  const { state, scope } = fixture({ fetchFanProfile: () => new Promise((resolve) => { finish = resolve; }) });
+  t.after(() => scope.stop());
+  state.onPlaymakerCredit({ event_id: 43, wallet: 100, playmaker_earned: 100 });
+  state.onPlaymakerCredit({ event_id: 42, wallet: -1, playmaker_earned: 10 });
+  assert.equal(state.totalCoins.value, 0);
+  const loading = state.loadFanProfile();
+  state.onPlaymakerCredit({ event_id: 42, wallet: 25, playmaker_earned: 25, coins_earned: 1 });
+  finish({ ok: true, data: { registered: false, guest_coins: 1, journey_rewards: { playmaker: 1 } } });
+  await loading;
+  assert.equal(state.totalCoins.value, 25);
+  assert.equal(state.progress.value.current, 25);
+});
+
+test('Playmaker saved progress restores independently from wallet spending and closes after saving', async (t) => {
+  const { state, scope } = fixture({ fetchFanProfile: async () => ({ ok: true, data: {
+    registered: true, wallet: 3, journey_rewards: { basketball: 10, playmaker: 15 },
+  } }) });
+  t.after(() => scope.stop());
+  await state.loadFanProfile();
+  assert.equal(state.progress.value.unlocked, true);
+  assert.equal(state.totalCoins.value, 3);
+  state.openGame('playmaker');
+  state.isPlaymakerSaving.value = true; state.closeGame();
+  assert.equal(state.activeGameId.value, 'playmaker');
+  state.isPlaymakerSaving.value = false; state.closeGame();
+  assert.equal(state.activeGameId.value, null);
+  assert.equal(state.activeSheet.value, 'earn');
+});
+
 test('basketball progress is restored from the profile and saving finishes before closing the game', async (t) => {
   const { state, scope } = fixture({ fetchFanProfile: async () => ({ ok: true, data: {
     registered: true, wallet: 4, journey_rewards: { basketball: 28 },

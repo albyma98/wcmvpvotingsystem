@@ -851,6 +851,28 @@ export function submitBasketballShot(eventId: number, shotId: string, gesture: {
   return requestBasketballShot(eventId, shotId, gesture);
 }
 
+async function requestPlaymaker(eventId: number, sessionId?: string, pass?: { attempt: number; elapsed_ms: number; dx: number; dy: number }) {
+  if (!Number.isInteger(eventId) || eventId <= 0) return { ok: false, message: 'Partita non disponibile.', status: 400 };
+  try {
+    const path = `/events/${eventId}/playmaker/sessions${sessionId ? `/${encodeURIComponent(sessionId)}/passes` : ''}`;
+    const { data } = await apiClient.post(path, pass || {}, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() }, timeout: 12000,
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const response = axios.isAxiosError(error) ? error.response : undefined;
+    return { ok: false, error, status: response?.status, message: response?.data?.message };
+  }
+}
+
+export function startPlaymakerSession(eventId: number) {
+  return requestPlaymaker(eventId);
+}
+
+export function submitPlaymakerPass(eventId: number, sessionId: string, pass: { attempt: number; elapsed_ms: number; dx: number; dy: number }) {
+  return requestPlaymaker(eventId, sessionId, pass);
+}
+
 export async function redeemFanReward(eventId, rewardKey, costCoins) {
   try {
     const { data } = await apiClient.post(`/events/${eventId}/rewards/redeem`, { reward_key: rewardKey, cost_coins: costCoins }, {
