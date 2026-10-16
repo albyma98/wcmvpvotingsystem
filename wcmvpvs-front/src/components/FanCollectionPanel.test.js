@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { setupSfc, testVue } from '../../test/sfcSetup.js';
 
 function panel(t, collection = null, overrides = {}) {
-  const setup = setupSfc(new URL('./FanCollectionPanel.vue', import.meta.url), { vue: testVue }, {
+  const setup = setupSfc(new URL('./FanCollectionPanel.vue', import.meta.url), { vue: testVue, './FanAvatar.vue': {}, './FanMatchCard.vue': {} }, {
     nickname: 'Luca Bianchi', clubName: 'Basket Club', clubLogoUrl: '', registered: true,
     collection, loading: false, busy: false, error: '', ...overrides,
   });
@@ -28,6 +28,20 @@ test('collection and equipped frame come exclusively from server props', (t) => 
   setup.state.equipFrame('');
   assert.deepEqual(setup.events.at(-1), ['equip', '']);
   assert.equal(setup.state.equippedFrame.value, 'club_frame', 'removing also waits for the server');
+});
+
+test('opening a match card only emits the actual owned memory and respects pending changes', (t) => {
+  const memory = { key: 'match_card', kind: 'match_card', event_id: 42, opponent: 'Rivals' };
+  const setup = panel(t, { items: [memory] });
+  const owned = setup.state.memories.value[0];
+  setup.state.inspectMemory({ ...memory, event_id: 99 });
+  assert.deepEqual(setup.events, []);
+  setup.props.busy = true;
+  setup.state.inspectMemory(owned);
+  assert.deepEqual(setup.events, []);
+  setup.props.busy = false;
+  setup.state.inspectMemory(owned);
+  assert.deepEqual(setup.events, [['inspect', owned]]);
 });
 
 test('unowned frames, duplicate equip and busy interactions do not emit a mutation', (t) => {

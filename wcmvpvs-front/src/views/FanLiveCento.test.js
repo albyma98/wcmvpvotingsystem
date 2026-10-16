@@ -54,6 +54,8 @@ function fixture(overrides = {}, options = {}) {
     '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
     '../components/FanCollectionPanel.vue': {},
+    '../components/FanAvatar.vue': {},
+    '../components/FanMatchCard.vue': {},
   }, { eventId: 42, organizationSlug: 'club', initialDataReady: true, activeEvent: { is_active: true, votes_closed: false }, ...options.props }, { window });
   return { ...setup, saves, window, api };
 }
@@ -88,6 +90,73 @@ test('home splash waits for the session wallet, saved vote, and every home image
   await loading;
   assert.equal(state.isHomeLoading.value, false);
   assert.deepEqual(events.at(-1), ['loading-change', false]);
+});
+
+test('trying a frame shows the actual fan name without equipping or spending', (t) => {
+  const item = { key: 'club_frame', title: 'Cornice della società', cost: 20, kind: 'frame', owned: false };
+  const { state, scope, saves } = fixture();
+  t.after(() => scope.stop());
+  state.fanNickname.value = 'Luca';
+  state.applyWallet(walletData({ wallet: 30, points: 50, catalog: [item] }));
+  state.previewCollectible(item);
+  assert.equal(state.activeSheet.value, 'collectible');
+  assert.equal(state.isCollectiblePreview.value, true);
+  assert.equal(state.selectedCollectible.value.kind, 'frame');
+  assert.equal(state.profileNickname.value, 'Luca');
+  assert.equal(state.equippedFrame.value, '');
+  assert.equal(state.totalCoins.value, 30);
+  assert.deepEqual(state.collection.value.items, []);
+  assert.deepEqual(saves, []);
+});
+
+test('the collectible reveal waits for an owned item returned by the server', async (t) => {
+  const response = deferred();
+  const item = { key: 'match_card', title: 'Card ricordo', cost: 15, kind: 'match_card', owned: false };
+  const actual = { ...item, event_id: 42, club_name: 'Società salvata', opponent: 'Avversaria salvata', event_date: '2026-10-16' };
+  const { state, scope } = fixture({ purchaseFanItem: () => response.promise });
+  t.after(() => scope.stop());
+  state.applyWallet(walletData({ wallet: 30, points: 30, catalog: [item] }));
+  state.activeSheet.value = 'spend';
+  const buying = state.redeem(item);
+  assert.equal(state.selectedCollectible.value, null);
+  assert.equal(state.activeSheet.value, 'spend');
+  response.resolve({ ok: true, data: walletData({ wallet: 15, points: 30, catalog: [{ ...item, owned: true }], collection: { items: [actual], badges: [], equipped_frame: '' } }) });
+  await buying;
+  assert.equal(state.activeSheet.value, 'collectible');
+  assert.equal(state.isCollectiblePreview.value, false);
+  assert.equal(state.isCollectibleNew.value, true);
+  assert.equal(state.selectedCollectible.value.opponent, 'Avversaria salvata');
+  assert.equal(state.totalCoins.value, 15);
+  assert.equal(state.participationPoints.value, 30);
+});
+
+test('collection inspection only opens owned match metadata and resets on club changes', async (t) => {
+  const memory = { key: 'match_card', kind: 'match_card', event_id: 42, opponent: 'Storica' };
+  const { state, props, scope } = fixture();
+  t.after(() => scope.stop());
+  state.applyWallet(walletData({ collection: { items: [memory], badges: [], equipped_frame: '' } }));
+  state.inspectCollectible({ ...memory, event_id: 999 });
+  assert.equal(state.selectedCollectible.value, null);
+  state.inspectCollectible(memory);
+  assert.equal(state.selectedCollectible.value.opponent, 'Storica');
+  assert.equal(state.collectibleOrigin.value, 'profile');
+  props.organizationSlug = 'other';
+  await state.bootstrap();
+  assert.equal(state.selectedCollectible.value, null);
+  assert.equal(state.isCollectibleNew.value, false);
+  assert.equal(state.equippedFrame.value, '');
+});
+
+test('background collection restoration shows the equipped frame without replacing a confirmed game balance', async (t) => {
+  const { state, scope } = fixture({ fetchFanWallet: async () => ({ ok: true, data: walletData({ wallet: 2, points: 45, collection: { items: [{ key: 'club_frame', kind: 'frame' }], badges: [], equipped_frame: 'club_frame' } }) }) });
+  t.after(() => scope.stop());
+  state.setCoins(18);
+  await state.loadWallet({ collectionOnly: true });
+  assert.equal(state.totalCoins.value, 18);
+  assert.equal(state.equippedFrame.value, 'club_frame');
+  assert.equal(state.participationPoints.value, 45);
+  state.applyWallet(walletData({ collection: { equipped_frame: 'club_frame', items: [], badges: [] } }));
+  assert.equal(state.equippedFrame.value, '', 'header and profile both require actual frame ownership');
 });
 
 test('home stays covered until the parent has resolved the active event and saved player', async (t) => {

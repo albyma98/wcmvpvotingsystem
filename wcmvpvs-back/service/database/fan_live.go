@@ -19,10 +19,11 @@ func (db *appdbimpl) GetFanLiveEvent(eventID, organizationID int) (Event, error)
 // Use the same deterministic ordering as the existing club wallet leaderboard.
 func (db *appdbimpl) GetFanNearbyRanks(organizationID, fanID int) ([]FanLeaderboardEntry, error) {
 	rows, err := db.c.Query(`WITH ranked AS (
-		SELECT p.id, p.nickname, COALESCE(a.points,w.coins) AS coins, ROW_NUMBER() OVER (ORDER BY COALESCE(a.points,w.coins) DESC, p.id ASC) AS position
+		SELECT p.id, p.nickname, COALESCE(a.points,w.coins) AS coins, COALESCE(s.equipped_frame,'') AS equipped_frame, ROW_NUMBER() OVER (ORDER BY COALESCE(a.points,w.coins) DESC, p.id ASC) AS position
 		FROM fan_profiles p JOIN fan_wallets w ON w.fan_id=p.id
-		LEFT JOIN fan_economy_accounts a ON a.organization_id=p.organization_id AND a.owner_key='fan:'||p.id WHERE p.organization_id=?
-	) SELECT id, nickname, coins, position FROM ranked
+		LEFT JOIN fan_economy_accounts a ON a.organization_id=p.organization_id AND a.owner_key='fan:'||p.id
+		LEFT JOIN fan_shop_profiles s ON s.organization_id=p.organization_id AND s.holder_key='fan:'||p.id WHERE p.organization_id=?
+	) SELECT id, nickname, coins, position, equipped_frame FROM ranked
 	WHERE position BETWEEN (SELECT position-1 FROM ranked WHERE id=?) AND (SELECT position+1 FROM ranked WHERE id=?)
 	ORDER BY position`, organizationID, fanID, fanID)
 	if err != nil {
@@ -32,7 +33,7 @@ func (db *appdbimpl) GetFanNearbyRanks(organizationID, fanID int) ([]FanLeaderbo
 	entries := []FanLeaderboardEntry{}
 	for rows.Next() {
 		var entry FanLeaderboardEntry
-		if err := rows.Scan(&entry.FanID, &entry.Nickname, &entry.Coins, &entry.Rank); err != nil {
+		if err := rows.Scan(&entry.FanID, &entry.Nickname, &entry.Coins, &entry.Rank, &entry.EquippedFrame); err != nil {
 			return nil, err
 		}
 		entries = append(entries, entry)

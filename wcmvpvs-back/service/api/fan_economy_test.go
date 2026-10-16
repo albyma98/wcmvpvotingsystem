@@ -40,13 +40,13 @@ func (db *fanEconomyAPIDB) RegisterFan(database.FanRegisterInput) (database.FanP
 	return database.FanProfileSummary{}, db.registerErr
 }
 func (db *fanEconomyAPIDB) GetFanLeaderboard(int, int, int) ([]database.FanLeaderboardEntry, error) {
-	return []database.FanLeaderboardEntry{{FanID: 1, Nickname: "Leader", Coins: 100}}, nil
+	return []database.FanLeaderboardEntry{{FanID: 1, Nickname: "Leader", Coins: 100, EquippedFrame: "club_frame"}}, nil
 }
 func (db *fanEconomyAPIDB) GetFanRank(int, int, int) (database.FanLeaderboardEntry, error) {
-	return database.FanLeaderboardEntry{FanID: 9, Rank: 2, Coins: 40}, nil
+	return database.FanLeaderboardEntry{FanID: 9, Rank: 2, Coins: 40, EquippedFrame: "club_frame"}, nil
 }
 func (db *fanEconomyAPIDB) GetFanNearbyRanks(int, int) ([]database.FanLeaderboardEntry, error) {
-	return []database.FanLeaderboardEntry{{FanID: 1, Nickname: "Leader", Rank: 1, Coins: 100}, {FanID: 9, Nickname: "Me", Rank: 2, Coins: 40}}, nil
+	return []database.FanLeaderboardEntry{{FanID: 1, Nickname: "Leader", Rank: 1, Coins: 100, EquippedFrame: "club_frame"}, {FanID: 9, Nickname: "Me", Rank: 2, Coins: 40, EquippedFrame: "club_frame"}}, nil
 }
 
 func TestFanEconomyAPIContractAndServerOwnedPurchase(t *testing.T) {
@@ -150,5 +150,8 @@ func TestFanEconomyLeaderboardExposesPointsWithCompatibleCoins(t *testing.T) {
 	nearby := data["nearby"].([]interface{})[1].(map[string]interface{})
 	if top["points"] != top["coins"] || top["points"] != float64(100) || user["points"] != float64(40) || nearby["points"] != float64(40) {
 		t.Fatalf("score aliases %+v", data)
+	}
+	if top["equipped_frame"] != "club_frame" || user["equipped_frame"] != "club_frame" || nearby["equipped_frame"] != "club_frame" {
+		t.Fatalf("equipped frames %+v", data)
 	}
 }

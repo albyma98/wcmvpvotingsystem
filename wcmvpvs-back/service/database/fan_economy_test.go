@@ -145,11 +145,15 @@ func TestFanEconomySpendingPreservesRankAndPoints(t *testing.T) {
 		t.Fatalf("spendable vs points %+v: %v", state, err)
 	}
 	rank, err := db.GetFanRank(event, club.ID, first.Profile.ID)
-	if err != nil || rank.Rank != 1 || rank.Coins != 100 || rank.Points != 100 {
+	if err != nil || rank.Rank != 1 || rank.Coins != 100 || rank.Points != 100 || rank.EquippedFrame != "club_frame" {
 		t.Fatalf("rank survives spending %+v: %v", rank, err)
 	}
+	leaders, err := db.GetFanLeaderboard(event, club.ID, 3)
+	if err != nil || len(leaders) != 2 || leaders[0].EquippedFrame != "club_frame" || leaders[1].EquippedFrame != "" {
+		t.Fatalf("leaderboard equipped frames %+v: %v", leaders, err)
+	}
 	nearby, err := db.GetFanNearbyRanks(club.ID, first.Profile.ID)
-	if err != nil || len(nearby) != 2 || nearby[0].FanID != first.Profile.ID || nearby[0].Points != 100 {
+	if err != nil || len(nearby) != 2 || nearby[0].FanID != first.Profile.ID || nearby[0].Points != 100 || nearby[0].EquippedFrame != "club_frame" || nearby[1].EquippedFrame != "" {
 		t.Fatalf("nearby score %+v: %v", nearby, err)
 	}
 	if _, _, err := db.DonateFanSupport(event, club.ID, first.Profile.ID, 5); err != nil {

@@ -1012,12 +1012,13 @@ type TapLiveMatch struct {
 	Fan2Coins        int       `json:"fan2_coins"`
 }
 type FanLeaderboardEntry struct {
-	FanID     int    `json:"fan_id"`
-	Nickname  string `json:"nickname"`
-	Coins     int    `json:"coins"`
-	Points    int    `json:"points"`
-	Rank      int    `json:"rank"`
-	CreatedAt string `json:"created_at"`
+	FanID         int    `json:"fan_id"`
+	Nickname      string `json:"nickname"`
+	Coins         int    `json:"coins"`
+	Points        int    `json:"points"`
+	Rank          int    `json:"rank"`
+	CreatedAt     string `json:"created_at"`
+	EquippedFrame string `json:"equipped_frame"`
 }
 
 type ShopProduct struct {
@@ -8221,10 +8222,11 @@ func (db *appdbimpl) GetFanLeaderboard(eventID int, organizationID int, limit in
 	if limit <= 0 {
 		limit = 3
 	}
-	rows, err := db.c.Query(`SELECT p.id, p.nickname, COALESCE(a.points,w.coins), p.created_at
+	rows, err := db.c.Query(`SELECT p.id, p.nickname, COALESCE(a.points,w.coins), p.created_at, COALESCE(s.equipped_frame,'')
 	FROM fan_profiles p
 	JOIN fan_wallets w ON w.fan_id = p.id
 	LEFT JOIN fan_economy_accounts a ON a.organization_id=p.organization_id AND a.owner_key='fan:'||p.id
+	LEFT JOIN fan_shop_profiles s ON s.organization_id=p.organization_id AND s.holder_key='fan:'||p.id
 	WHERE p.organization_id = ?
 	ORDER BY COALESCE(a.points,w.coins) DESC, p.id ASC
 	LIMIT ?`, organizationID, limit)
@@ -8236,7 +8238,7 @@ func (db *appdbimpl) GetFanLeaderboard(eventID int, organizationID int, limit in
 	rank := 1
 	for rows.Next() {
 		var e FanLeaderboardEntry
-		if err := rows.Scan(&e.FanID, &e.Nickname, &e.Coins, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.FanID, &e.Nickname, &e.Coins, &e.CreatedAt, &e.EquippedFrame); err != nil {
 			return nil, err
 		}
 		e.Rank = rank
@@ -8248,10 +8250,11 @@ func (db *appdbimpl) GetFanLeaderboard(eventID int, organizationID int, limit in
 }
 
 func (db *appdbimpl) GetFanRank(eventID int, organizationID int, fanID int) (FanLeaderboardEntry, error) {
-	rows, err := db.c.Query(`SELECT p.id, p.nickname, COALESCE(a.points,w.coins)
+	rows, err := db.c.Query(`SELECT p.id, p.nickname, COALESCE(a.points,w.coins), COALESCE(s.equipped_frame,'')
 	FROM fan_profiles p
 	JOIN fan_wallets w ON w.fan_id = p.id
 	LEFT JOIN fan_economy_accounts a ON a.organization_id=p.organization_id AND a.owner_key='fan:'||p.id
+	LEFT JOIN fan_shop_profiles s ON s.organization_id=p.organization_id AND s.holder_key='fan:'||p.id
 	WHERE p.organization_id = ?
 	ORDER BY COALESCE(a.points,w.coins) DESC, p.id ASC`, organizationID)
 	if err != nil {
@@ -8261,7 +8264,7 @@ func (db *appdbimpl) GetFanRank(eventID int, organizationID int, fanID int) (Fan
 	rank := 1
 	for rows.Next() {
 		var e FanLeaderboardEntry
-		if err := rows.Scan(&e.FanID, &e.Nickname, &e.Coins); err != nil {
+		if err := rows.Scan(&e.FanID, &e.Nickname, &e.Coins, &e.EquippedFrame); err != nil {
 			return FanLeaderboardEntry{}, err
 		}
 		if e.FanID == fanID {

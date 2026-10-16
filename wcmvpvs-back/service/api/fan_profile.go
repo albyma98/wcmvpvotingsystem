@@ -147,7 +147,7 @@ func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqconte
 					}
 				}
 				if rank, rankErr := rt.db.GetFanRank(eventID, ctx.OrganizationID, summary.Profile.ID); rankErr == nil {
-					resp["user_rank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins, "points": rank.Coins}
+					resp["user_rank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins, "points": rank.Coins, "equipped_frame": rank.EquippedFrame}
 				}
 			}
 			_ = writeJSON(w, http.StatusOK, resp)
@@ -264,20 +264,20 @@ func (rt *_router) getCoinsLeaderboard(w http.ResponseWriter, r *http.Request, c
 	}
 	top := make([]map[string]interface{}, 0, len(rows))
 	for _, e := range rows {
-		top = append(top, map[string]interface{}{"name": e.Nickname, "coins": e.Coins, "points": e.Coins})
+		top = append(top, map[string]interface{}{"name": e.Nickname, "coins": e.Coins, "points": e.Coins, "equipped_frame": e.EquippedFrame})
 	}
 	resp := map[string]interface{}{"top3": top}
 	if token := rt.fanSessionTokenFromRequest(r); token != "" {
 		if me, e := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r)); e == nil {
 			if rank, rankErr := rt.db.GetFanRank(eventID, ctx.OrganizationID, me.Profile.ID); rankErr == nil {
-				resp["userRank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins, "points": rank.Coins}
+				resp["userRank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins, "points": rank.Coins, "equipped_frame": rank.EquippedFrame}
 				if neighbors, neighborsErr := rt.db.GetFanNearbyRanks(ctx.OrganizationID, me.Profile.ID); neighborsErr == nil {
 					nearby := make([]map[string]interface{}, 0, len(neighbors))
 					for _, entry := range neighbors {
 						if entry.Rank == rank.Rank-1 {
 							resp["next_rank_gap"] = fanRankGap(rank, entry)
 						}
-						nearby = append(nearby, map[string]interface{}{"rank": entry.Rank, "name": entry.Nickname, "coins": entry.Coins, "points": entry.Coins, "is_me": entry.FanID == me.Profile.ID})
+						nearby = append(nearby, map[string]interface{}{"rank": entry.Rank, "name": entry.Nickname, "coins": entry.Coins, "points": entry.Coins, "is_me": entry.FanID == me.Profile.ID, "equipped_frame": entry.EquippedFrame})
 					}
 					resp["nearby"] = nearby
 				}

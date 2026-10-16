@@ -18,9 +18,7 @@
             <span class="coin"></span> <span>{{ totalCoins }}</span>
           </button>
           <button class="profile-btn" type="button" aria-label="Profilo" @click="openProfile">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-              <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
-            </svg>
+            <FanAvatar :name="profileNickname" :framed="equippedFrame === 'club_frame'" :size="40" />
           </button>
         </div>
       </header>
@@ -249,12 +247,36 @@
           <p v-if="isLoadingWallet" class="sheet-empty" role="status">Caricamento catalogo…</p>
           <p v-if="walletError" class="sheet-empty error" role="alert">{{ walletError }} <button type="button" class="journey-next" @click="loadWallet">Riprova</button></p>
           <p v-if="shopMessage" class="shop-message" role="status">{{ shopMessage }}</p>
-          <div v-for="item in catalog" :key="item.key" class="shop-item">
-            <div class="shop-preview" :class="item.kind" aria-hidden="true"><span v-if="item.kind === 'frame'" class="shop-avatar">{{ homeBadge }}</span><template v-else><img v-if="homeLogoUrl" :src="homeLogoUrl" alt="" /><b>{{ homeName }}</b><small>{{ opponentLabel }}</small></template></div>
-            <div class="shop-item-copy"><b>{{ item.title }}</b><p>{{ item.description }}</p><button type="button" class="shop-buy" :disabled="shopBusy || isLoadingWallet || Boolean(walletError) || (!item.owned && totalCoins < item.cost)" @click="item.owned ? openProfile() : redeem(item)">{{ item.owned ? 'Nella tua collezione →' : redeeming === item.key ? 'Salvataggio…' : `Ottieni · ${item.cost}` }} <span v-if="!item.owned" class="coin" aria-hidden="true"></span></button><small v-if="!item.owned && totalCoins < item.cost">Ti mancano {{ item.cost - totalCoins }} monete</small></div>
+          <div v-if="activeSheet === 'spend'" class="shop-gallery">
+            <article v-for="item in catalog" :key="item.key" class="shop-item">
+              <button class="shop-artwork" :class="item.kind" type="button" :aria-label="`Guarda ${item.title}`" :disabled="shopBusy" @click="previewCollectible(item)">
+                <template v-if="item.kind === 'frame'"><FanAvatar :name="profileNickname" framed :size="146" /><span class="shop-wear-preview"><FanAvatar :name="profileNickname" framed :size="32" /><b>{{ profileNickname }}</b></span></template>
+                <FanMatchCard v-else :memory="shopMatchMemory" :club-name="homeName" :club-logo-url="homeLogoUrl" compact />
+                <span class="shop-artwork-hint">{{ item.kind === 'frame' ? 'Provala sul tuo profilo' : 'Guarda da vicino' }} <span aria-hidden="true">↗</span></span>
+              </button>
+              <div class="shop-item-copy"><b>{{ item.title }}</b><p>{{ item.description }}</p><button type="button" class="shop-buy" :disabled="shopBusy || isLoadingWallet || Boolean(walletError) || (!item.owned && totalCoins < item.cost)" @click="item.owned ? previewCollectible(item) : redeem(item)">{{ item.owned ? 'Apri il tuo oggetto' : redeeming === item.key ? 'Salvataggio…' : `Ottieni · ${item.cost}` }} <span v-if="!item.owned" class="coin" aria-hidden="true"></span></button><small v-if="!item.owned && totalCoins < item.cost">Ti mancano {{ item.cost - totalCoins }} monete</small></div>
+            </article>
           </div>
           <p v-if="!catalog.length && !isLoadingWallet && !walletError" class="sheet-empty">Il catalogo sarà disponibile con una partita del club.</p>
           <button type="button" class="journey-next" @click="openProfile">Apri la tua collezione →</button>
+        </div>
+      </div>
+
+      <div class="sheet collectible-sheet" :class="{ open: activeSheet === 'collectible' }" role="dialog" :aria-modal="activeSheet === 'collectible' ? 'true' : undefined" :aria-label="selectedCollectible?.title || 'Il tuo oggetto'" :aria-hidden="activeSheet !== 'collectible'" :inert="activeSheet !== 'collectible'">
+        <div class="grabber"></div>
+        <div class="sheet-head"><div><div class="sheet-title">{{ selectedCollectible?.title }}</div><div class="sheet-sub" role="status">{{ isCollectibleNew ? 'Aggiunta alla tua collezione!' : isCollectiblePreview ? 'Anteprima' : 'Nella tua collezione' }}</div></div><button type="button" class="close" aria-label="Chiudi oggetto" @click="closeCollectible">✕</button></div>
+        <div v-if="selectedCollectible && activeSheet === 'collectible'" class="sheet-body collectible-body">
+          <div :key="collectibleRevealRevision" class="collectible-stage" :class="{ 'is-new': isCollectibleNew, 'is-frame': selectedCollectible.kind === 'frame' }">
+            <template v-if="selectedCollectible.kind === 'frame'"><FanAvatar :name="profileNickname" framed :size="210" /><b class="collectible-fan-name">{{ profileNickname }}</b><span class="collectible-club-name">{{ homeName }}</span></template>
+            <FanMatchCard v-else :memory="selectedCollectible" :club-name="homeName" :club-logo-url="homeLogoUrl" />
+          </div>
+          <p v-if="selectedCollectible.kind === 'frame'" class="collectible-description">La tua cornice sull’avatar, nel profilo e in classifica.</p>
+          <p v-else class="collectible-description">Il ricordo della tua partita, da ritrovare nella collezione.</p>
+          <p v-if="walletError" class="sheet-empty error" role="alert">{{ walletError }}</p>
+          <button v-if="isCollectiblePreview" type="button" class="btn-vote" :disabled="shopBusy || isLoadingWallet || Boolean(walletError) || totalCoins < Number(selectedCollectible.cost)" @click="redeem(selectedCollectible)">{{ redeeming ? 'Salvataggio…' : `Ottieni · ${selectedCollectible.cost} monete` }}</button>
+          <button v-else-if="selectedCollectible.kind === 'frame'" type="button" class="btn-vote" :disabled="shopBusy" @click="equipCollectionItem(equippedFrame === 'club_frame' ? '' : 'club_frame')">{{ equipping ? 'Salvataggio…' : equippedFrame === 'club_frame' ? 'Togli la cornice' : 'Indossa la cornice' }}</button>
+          <p v-if="isCollectiblePreview && totalCoins < Number(selectedCollectible.cost)" class="sheet-sub">Ti mancano {{ Number(selectedCollectible.cost) - totalCoins }} monete.</p>
+          <button type="button" class="journey-next" @click="isCollectiblePreview ? closeCollectible() : openProfile()">{{ isCollectiblePreview ? 'Torna allo shop' : 'Apri il tuo profilo →' }}</button>
         </div>
       </div>
 
@@ -284,11 +306,12 @@
           </div>
           <div v-for="(row, index) in leaderboardTop3" :key="index" class="row-item leaderboard-row">
             <span class="rank leaderboard-rank" :class="`r${index + 1}`">{{ index + 1 }}</span>
+            <FanAvatar :name="row.name" :framed="row.equipped_frame === 'club_frame'" :size="36" />
             <span class="row-copy"><b>{{ row.name }}</b><span>{{ index + 1 }}° posto</span></span>
             <span class="row-pts">{{ row.points }} <small>pt</small></span>
           </div>
           <div v-if="leaderboardUser" class="row-item leaderboard-row leaderboard-self">
-            <span class="avatar">{{ leaderboardUser.rank }}</span>
+            <FanAvatar :name="profileNickname" :framed="equippedFrame === 'club_frame'" :size="40" />
             <span class="row-copy"><b>La tua posizione</b><span>{{ profileNickname }}</span></span>
             <span class="row-pts">{{ leaderboardUser.points }} <small>pt</small></span>
           </div>
@@ -297,6 +320,7 @@
             <p v-if="rankGapLabel" class="rank-gap">{{ rankGapLabel }}</p>
             <div v-for="row in leaderboardNearby" :key="row.rank" class="row-item leaderboard-row" :class="{ 'leaderboard-self': row.is_me }">
               <span class="rank leaderboard-rank">{{ row.rank }}</span>
+              <FanAvatar :name="row.is_me ? profileNickname : row.name" :framed="row.is_me ? equippedFrame === 'club_frame' : row.equipped_frame === 'club_frame'" :size="36" />
               <span class="row-copy"><b>{{ row.is_me ? 'Tu' : row.name }}</b></span>
               <span class="row-pts">{{ row.points }} <small>pt</small></span>
             </div>
@@ -332,7 +356,7 @@
           <button class="close" type="button" @click="closeSheets">✕</button>
         </div>
         <div class="sheet-body">
-          <FanCollectionPanel :nickname="profileNickname" :club-name="homeName" :club-logo-url="homeLogoUrl" :registered="isRegistered" :collection="collection" :loading="isLoadingWallet" :busy="shopBusy" :error="walletError" @equip="equipCollectionItem" @open-shop="openSheet('spend')" />
+          <FanCollectionPanel v-if="activeSheet === 'profile'" :nickname="profileNickname" :club-name="homeName" :club-logo-url="homeLogoUrl" :registered="isRegistered" :collection="collection" :loading="isLoadingWallet" :busy="shopBusy" :error="walletError" @equip="equipCollectionItem" @open-shop="openSheet('spend')" @inspect="inspectCollectible" />
           <button v-if="walletError" type="button" class="journey-next" :disabled="shopBusy" @click="loadWallet">Riprova a caricare la collezione</button>
 
           <button class="row-item profile-toggle" type="button" @click="toggleNicknameEditor">
@@ -493,6 +517,8 @@ import { preloadFanHomeImages } from '../fanHomeAssets';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
 import FanCollectionPanel from '../components/FanCollectionPanel.vue';
+import FanAvatar from '../components/FanAvatar.vue';
+import FanMatchCard from '../components/FanMatchCard.vue';
 const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
 import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorageKey, normalizeJourney, journeyProgress, recordJourneyReward } from '../fanJourney';
 
@@ -668,6 +694,21 @@ const walletMovements = ref([]);
 const participationPoints = ref(0);
 const emptyCollection = () => ({ equipped_frame: '', items: [], badges: [], matches_followed: 0 });
 const collection = ref(emptyCollection());
+const hasLoadedCollection = ref(false);
+const equippedFrame = computed(() => {
+  if (!hasLoadedCollection.value) return leaderboardUser.value?.equipped_frame === 'club_frame' ? 'club_frame' : '';
+  return collection.value.equipped_frame === 'club_frame' && collection.value.items.some((item) => item.key === 'club_frame' && item.kind === 'frame') ? 'club_frame' : '';
+});
+const selectedCollectible = ref(null);
+const isCollectiblePreview = ref(false);
+const isCollectibleNew = ref(false);
+const collectibleOrigin = ref('spend');
+const collectibleRevealRevision = ref(0);
+const shopMatchMemory = computed(() => ({
+  key: 'match_card', kind: 'match_card', event_id: props.eventId,
+  club_name: homeName.value, opponent: String(eventState.value?.team2_name || '').trim(),
+  event_date: eventState.value?.start_datetime || ((!props.activeEvent?.id || props.activeEvent.id === props.eventId) ? props.activeEvent?.start_datetime : '') || '',
+}));
 const shopBusy = computed(() => Boolean(redeeming.value) || equipping.value || isSavingCoins.value || isBasketballSaving.value || isPlaymakerSaving.value || isCrossoverSaving.value);
 let walletRequestRevision = 0;
 let leaderboardRequestRevision = 0;
@@ -960,6 +1001,25 @@ function openSheet(id) {
 function closeSheets() {
   activeSheet.value = '';
 }
+function showCollectible(item, { preview = false, reveal = false, origin = 'spend' } = {}) {
+  selectedCollectible.value = { ...item };
+  isCollectiblePreview.value = preview;
+  isCollectibleNew.value = reveal;
+  collectibleOrigin.value = origin;
+  collectibleRevealRevision.value += 1;
+  activeSheet.value = 'collectible';
+}
+function previewCollectible(item) {
+  if (shopBusy.value || !catalog.value.some((entry) => entry.key === item?.key)) return;
+  const owned = collection.value.items.find((entry) => entry.key === item.key && (entry.kind === 'frame' || Number(entry.event_id) === props.eventId));
+  showCollectible(owned || { ...(item.kind === 'match_card' ? shopMatchMemory.value : {}), ...item }, { preview: !owned });
+}
+function inspectCollectible(memory) {
+  if (shopBusy.value) return;
+  const owned = collection.value.items.find((entry) => entry.key === memory?.key && Number(entry.event_id) === Number(memory?.event_id));
+  if (owned) showCollectible(owned, { origin: 'profile' });
+}
+function closeCollectible() { openSheet(collectibleOrigin.value); }
 
 /* ---------- Wallet ---------- */
 function readStoredCoins() {
@@ -986,17 +1046,17 @@ function setCoins(value) {
 }
 
 function walletScope() { return `${props.organizationSlug}:${props.eventId}`; }
-function applyWallet(data) {
+function applyWallet(data, updateBalance = true) {
   if (!Number.isInteger(data?.wallet) || data.wallet < 0 || !Number.isInteger(data?.points) || data.points < 0 || !Array.isArray(data?.catalog) || !Array.isArray(data?.collection?.items)) return false;
-  setCoins(data.wallet);
-  isWalletReady.value = true;
+  if (updateBalance) { setCoins(data.wallet); isWalletReady.value = true; }
   participationPoints.value = data.points;
   catalog.value = data.catalog.filter((item) => item && typeof item.key === 'string' && Number.isInteger(item.cost) && item.cost >= 0);
   walletMovements.value = Array.isArray(data.movements) ? data.movements : [];
   collection.value = { ...emptyCollection(), ...data.collection, badges: Array.isArray(data.collection.badges) ? data.collection.badges : [] };
+  hasLoadedCollection.value = true;
   return true;
 }
-async function loadWallet() {
+async function loadWallet({ collectionOnly = false } = {}) {
   if (redeeming.value || equipping.value) return;
   const request = ++walletRequestRevision;
   if (!props.eventId) { walletError.value = 'Disponibile con una partita del club.'; return; }
@@ -1007,8 +1067,8 @@ async function loadWallet() {
   try {
     const response = await fetchFanWallet(props.eventId);
     if (isDisposed || request !== walletRequestRevision || scope !== walletScope()) return;
-    if (revision !== walletRevision) { loadWallet(); return; }
-    if (!response.ok || !applyWallet(response.data)) walletError.value = response.message || 'Impossibile caricare il wallet. Riprova.';
+    if (revision !== walletRevision) { loadWallet({ collectionOnly }); return; }
+    if (!response.ok || !applyWallet(response.data, !collectionOnly)) walletError.value = response.message || 'Impossibile caricare il wallet. Riprova.';
   } catch (error) {
     if (!isDisposed && request === walletRequestRevision && scope === walletScope()) walletError.value = 'Impossibile caricare il wallet. Riprova.';
   } finally {
@@ -1285,6 +1345,7 @@ async function refreshLeaderboard() {
     leaderboardTop3.value = top.slice(0, 3).map((row) => ({
       name: String(row?.name || row?.nickname || 'Tifoso'),
       points: Number(row?.points ?? row?.coins ?? 0),
+      equipped_frame: row?.equipped_frame === 'club_frame' ? 'club_frame' : '',
     }));
     const rank = data?.userRank || data?.user_rank;
     leaderboardUser.value = rank ? { ...rank, points: Number(rank.points ?? rank.coins ?? 0) } : null;
@@ -1402,6 +1463,8 @@ async function redeem(reward) {
     if (!response.ok || !applyWallet(response.data)) { walletError.value = response.message || 'Acquisto non confermato. Riprova: gli oggetti già ottenuti non vengono addebitati due volte.'; return; }
     walletError.value = '';
     shopMessage.value = response.data.purchased === false ? 'Questo oggetto è già nella tua collezione.' : `${reward.title} aggiunta alla tua collezione!`;
+    const obtained = collection.value.items.find((item) => item.key === reward.key && (item.kind === 'frame' || Number(item.event_id) === props.eventId));
+    if (obtained && ['spend', 'collectible'].includes(activeSheet.value)) showCollectible(obtained, { reveal: response.data.purchased !== false });
     refreshLeaderboard();
   } catch (error) {
     if (!isDisposed && scope === walletScope()) walletError.value = 'Acquisto non confermato. Controlla la connessione e riprova.';
@@ -1419,6 +1482,7 @@ async function equipCollectionItem(key) {
     const response = await equipFanItem(props.eventId, key);
     if (isDisposed || scope !== walletScope()) return;
     if (!response.ok || !applyWallet(response.data)) walletError.value = response.message || 'Impossibile aggiornare la cornice. Riprova.';
+    else refreshLeaderboard();
   } catch (error) {
     if (!isDisposed && scope === walletScope()) walletError.value = 'Impossibile aggiornare la cornice. Riprova.';
   } finally {
@@ -1478,6 +1542,10 @@ async function bootstrap() {
     shopMessage.value = '';
     catalog.value = [];
     collection.value = emptyCollection();
+    hasLoadedCollection.value = false;
+    selectedCollectible.value = null;
+    isCollectiblePreview.value = false;
+    isCollectibleNew.value = false;
     walletMovements.value = [];
     participationPoints.value = 0;
     isRegistered.value = false;
@@ -1527,18 +1595,19 @@ async function bootstrap() {
   if (revision !== bootstrapRevision || signal.aborted) return;
   isHomeLoading.value = false;
   startCoinsStream();
+  loadWallet({ collectionOnly: true });
 }
 
 function ensureCentoFonts() {
   if (typeof document === 'undefined') return;
-  const id = 'cento-fonts';
+  const id = 'cento-fonts-collectibles';
   let link = document.getElementById(id);
   if (!link) {
     link = document.createElement('link');
     link.id = id;
     link.rel = 'stylesheet';
     link.href =
-      'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,750;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap';
+      'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Fraunces:opsz,wght@9..144,600;9..144,750;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap';
     const loaded = new Promise((resolve) => {
       link.onload = resolve;
       link.onerror = resolve;
@@ -1705,19 +1774,20 @@ watch(
   gap: 8px;
 }
 .profile-btn {
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   flex: none;
-  background: var(--card);
-  border: 2px solid var(--red-line);
+  background: transparent;
+  border: 0;
+  padding: 0;
   color: var(--red-text);
   cursor: pointer;
   font-family: inherit;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow);
+  box-shadow: none;
   transition: transform 0.12s ease, border-color 0.15s ease;
 }
 .profile-btn:active {
@@ -2433,20 +2503,44 @@ main {
 .wallet-movement .is-credit { color: var(--gold-deep); }
 .shop-balance { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-radius: 14px; padding: 12px; background: var(--gold-soft); font-size: 12px; }
 .shop-balance b { display: flex; align-items: center; gap: 6px; }
-.shop-item { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 14px; padding: 15px 0; border-bottom: 1px solid var(--line); }
-.shop-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-height: 112px; border: 1px solid var(--red-line); border-radius: 13px 13px 22px 22px; padding: 9px; background: linear-gradient(145deg, var(--red-soft), var(--card)); text-align: center; }
-.shop-preview.frame { border: 3px solid #cfaa58; box-shadow: inset 0 0 0 2px #fff0bd; background: linear-gradient(145deg, #fff4d5, var(--card)); }
-.shop-avatar { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--card); color: var(--red-text); font-family: 'Fraunces', serif; font-size: 19px; font-weight: 800; }
-.shop-preview img { width: 30px; height: 30px; object-fit: contain; }
-.shop-preview b { font-size: 9px; overflow-wrap: anywhere; }
-.shop-preview small { font-size: 8px; color: var(--muted); overflow-wrap: anywhere; }
+.shop-gallery { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; align-items: stretch; margin-top: 3px; }
+.shop-item { display: flex; flex-direction: column; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: 0 3px 0 var(--line); }
+.shop-artwork { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; position: relative; width: 100%; padding: 0 0 25px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+.shop-artwork.frame { flex: 1; min-height: 218px; background: radial-gradient(ellipse at 50% 40%,var(--red-soft),transparent 70%); }
+.shop-artwork.frame > :deep(.fan-avatar) { --avatar-size: clamp(98px,31vw,146px) !important; }
+.shop-artwork.match_card > :deep(.fan-match-card) { transform: rotate(2deg); transition: transform .2s ease; }
+.shop-artwork.match_card:active > :deep(.fan-match-card) { transform: rotate(0deg) scale(.98); }
+.shop-artwork-hint { position: absolute; display: flex; justify-content: space-between; gap: 4px; right: 1px; left: 1px; bottom: 5px; font-size: 8px; font-weight: 700; }
+.shop-wear-preview { display: flex; align-items: center; gap: 5px; width: 100%; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.shop-wear-preview b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; color: var(--ink); }
+.shop-item-copy { display: flex; flex: 1; flex-direction: column; padding-top: 12px; }
 .shop-item-copy > b { font-size: 13px; }
-.shop-item-copy p { margin: 5px 0 10px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.shop-item-copy p { flex: 1; margin: 5px 0 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .shop-item-copy > small { display: block; margin-top: 6px; font-size: 10px; color: var(--muted); }
 .shop-buy { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; border: 0; border-radius: 10px; padding: 10px 12px; background: var(--red); color: var(--on-primary); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
 .shop-buy .coin { width: 13px; height: 13px; }
 .shop-buy:disabled { opacity: .5; cursor: default; }
 .shop-message { border-radius: 12px; padding: 11px; background: var(--gold-soft); color: var(--ink); font-size: 12px; line-height: 1.5; }
+.collectible-sheet { max-height: 94dvh; }
+.collectible-body { align-items: stretch; padding: 4px 4px 12px; }
+.collectible-stage { position: relative; display: flex; flex-direction: column; align-items: center; width: min(100%,290px); margin: 10px auto 8px; isolation: isolate; }
+.collectible-stage.is-frame { min-height: 270px; justify-content: center; border-radius: 28px; background: radial-gradient(ellipse at 50% 40%,var(--red-soft),transparent 65%); }
+.collectible-stage.is-new { animation: collectible-reveal .7s cubic-bezier(.18,.75,.22,1) both; }
+.collectible-stage.is-new::after { content: ''; position: absolute; z-index: 10; inset: 0; border-radius: 14px; background: linear-gradient(110deg,transparent 30%,#ffffffa6 48%,transparent 64%); pointer-events: none; animation: collectible-glint .7s ease-out both; }
+.collectible-fan-name { max-width: 100%; margin-top: 12px; font-size: 22px; font-weight: 900; overflow-wrap: anywhere; text-align: center; }
+.collectible-club-name { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.collectible-description { margin: 7px 0 12px; color: var(--muted); font-size: 11px; line-height: 1.5; text-align: center; }
+.shop-artwork:focus-visible { outline: 3px solid var(--red-text); outline-offset: 4px; }
+.leaderboard-row { gap: 8px; }
+.leaderboard-row .row-copy b { font-size: 12px; }
+.club { min-width: 0; margin-right: 8px; }
+.club-name { min-width: 0; }
+.club-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-right { flex: none; }
+@keyframes collectible-reveal { 0% { opacity: 0; transform: translateY(20px) scale(.88) rotate(-4deg); } 65% { opacity: 1; transform: translateY(-3px) scale(1.015) rotate(1deg); } 100% { opacity: 1; transform: none; } }
+@keyframes collectible-glint { 0% { opacity: 0; transform: translateX(-60%); } 25% { opacity: .5; } 100% { opacity: 0; transform: translateX(60%); } }
+@media (max-width: 350px) { .shop-gallery { gap: 8px; } .shop-item { padding: 7px; } .shop-item-copy > b { font-size: 12px; } .shop-artwork.frame { min-height: 190px; } .shop-wear-preview { padding: 2px; gap: 2px; } .shop-wear-preview b { font-size: 8px; } }
+@media (prefers-reduced-motion: reduce) { .collectible-stage.is-new, .collectible-stage.is-new::after { animation: none; } .collectible-stage.is-new::after { display: none; } .shop-artwork.match_card > :deep(.fan-match-card) { transition: none; transform: none; } }
 .coin-balance { width: 100%; font: inherit; color: var(--ink); cursor: pointer; }
 .rank-link:focus-visible, .feedback-link:focus-visible, .shop-buy:focus-visible, .coin-balance:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
 

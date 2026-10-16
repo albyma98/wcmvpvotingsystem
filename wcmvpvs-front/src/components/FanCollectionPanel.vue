@@ -1,9 +1,9 @@
 <template>
   <section class="fan-collection" aria-label="La tua collezione tifoso" :aria-busy="loading || busy">
-    <article class="fan-pass" :class="{ 'has-club-frame': equippedFrame === 'club_frame' }" :aria-label="`Tessera tifoso di ${displayNickname}`">
+    <article class="fan-pass" :aria-label="`Tessera tifoso di ${displayNickname}`">
       <span class="pass-eyebrow">LA TUA TESSERA TIFOSO</span>
       <img v-if="clubLogoUrl" class="pass-club-logo" :src="clubLogoUrl" :alt="clubName || 'Logo della società'" loading="lazy" />
-      <div class="pass-portrait" aria-hidden="true"><span>{{ initials }}</span><svg viewBox="0 0 100 100" fill="none"><path d="M14 78 35 31l15-9 15 9 21 47M26 79h48M34 47h32M37 60h26" stroke="currentColor" stroke-width="1.5"/><circle cx="50" cy="53" r="39" stroke="currentColor" stroke-dasharray="2 7"/></svg></div>
+      <FanAvatar class="pass-portrait" :name="displayNickname" :framed="equippedFrame === 'club_frame'" :size="116" />
       <strong class="pass-nickname">{{ displayNickname }}</strong>
       <span class="pass-club-name">{{ clubName || 'La tua squadra' }}</span>
       <span v-if="equippedFrame" class="pass-frame-label">Cornice della società</span>
@@ -28,9 +28,8 @@
         <div class="collection-section-head"><h3>Le tue partite, da conservare</h3><span>{{ memories.length }}</span></div>
         <ul class="memory-grid">
           <li v-for="memory in memories" :key="`${memory.key}:${memory.event_id}`" class="match-memory">
-            <span class="memory-eyebrow">RICORDO DELLA PARTITA</span>
-            <span class="memory-mark" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="1.5"/><path d="M6 24h36M24 6v36M12 11q22 13 0 26m24-26q-22 13 0 26" stroke="currentColor" stroke-width="1.5"/></svg></span>
-            <strong>{{ memory.title || 'Card della partita' }}</strong><span class="memory-match">{{ matchLabel(memory) }}</span><time v-if="formatDate(memory.event_date)">{{ formatDate(memory.event_date) }}</time>
+            <button type="button" class="memory-open" :disabled="busy" :aria-label="`Apri il ricordo ${matchLabel(memory)}`" @click="inspectMemory(memory)"><FanMatchCard :memory="memory" :club-name="clubName" :club-logo-url="clubLogoUrl" compact /></button>
+            <span class="memory-hint">Tocca per ingrandire <span aria-hidden="true">↗</span></span>
           </li>
         </ul>
       </div>
@@ -39,7 +38,7 @@
         <div class="collection-section-head"><h3>Il tuo stile</h3><button v-if="equippedFrame" class="reset-frame" type="button" :disabled="busy" @click="equipFrame('')">Togli cornice</button></div>
         <ul class="frame-list">
           <li v-for="frame in frames" :key="`${frame.key}:${frame.event_id}`" class="owned-frame">
-            <span class="frame-preview" aria-hidden="true"><span>{{ initials }}</span></span>
+            <FanAvatar :name="displayNickname" framed :size="56" />
             <span class="collection-copy"><strong>{{ frame.title || 'Cornice della società' }}</strong><span>{{ equippedFrame === frame.key ? 'Sulla tua tessera' : 'Nella tua collezione' }}</span></span>
             <button type="button" class="equip-frame" :aria-pressed="equippedFrame === frame.key" :disabled="busy || equippedFrame === frame.key" @click="equipFrame(frame.key)">{{ equippedFrame === frame.key ? 'Indossata' : 'Indossa' }}</button>
           </li>
@@ -54,6 +53,8 @@
 
 <script setup>
 import { computed } from 'vue';
+import FanAvatar from './FanAvatar.vue';
+import FanMatchCard from './FanMatchCard.vue';
 
 const props = defineProps({
   nickname: { type: String, default: '' },
@@ -65,7 +66,7 @@ const props = defineProps({
   busy: { type: Boolean, default: false },
   error: { type: String, default: '' },
 });
-const emit = defineEmits(['equip', 'open-shop']);
+const emit = defineEmits(['equip', 'open-shop', 'inspect']);
 const displayNickname = computed(() => String(props.nickname || '').trim() || 'Tifoso');
 const initials = computed(() => displayNickname.value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => Array.from(part)[0]).join('').toUpperCase());
 const items = computed(() => Array.isArray(props.collection?.items) ? props.collection.items.filter((item) => item && typeof item === 'object') : []);
@@ -75,6 +76,11 @@ const memories = computed(() => items.value.filter((item) => item.kind === 'matc
 const equippedFrame = computed(() => props.collection?.equipped_frame === 'club_frame' && frames.value.some((frame) => frame.key === 'club_frame') ? 'club_frame' : '');
 const matchesFollowed = computed(() => Number.isInteger(props.collection?.matches_followed) && props.collection.matches_followed >= 0 ? props.collection.matches_followed : 0);
 const hasCollection = computed(() => badges.value.length > 0 || items.value.length > 0);
+
+function inspectMemory(memory) {
+  if (props.loading || props.busy || !memories.value.includes(memory)) return;
+  emit('inspect', memory);
+}
 
 function equipFrame(key) {
   if (props.loading || props.busy || key === equippedFrame.value) return;
@@ -101,16 +107,12 @@ function formatDate(value) {
 .fan-pass { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; min-width: 0; overflow: hidden; padding: 21px 16px 0; border: 1px solid var(--red-line, #ffd2ce); border-radius: 22px; background: radial-gradient(ellipse at 50% 22%, var(--red-soft, #ffe8e6), transparent 58%), linear-gradient(145deg, var(--card, #fff), var(--bg, #fff7f2)); box-shadow: 0 4px 0 var(--line, #f1e4e0); text-align: center; }
 .fan-pass::before { content: ''; position: absolute; z-index: -1; inset: 8px; border: 1px solid var(--red-line, #ffd2ce); border-radius: 15px; opacity: .55; pointer-events: none; }
 .fan-pass::after { content: ''; position: absolute; z-index: -1; top: -40px; bottom: -40px; left: 14%; width: 27%; transform: rotate(32deg); background: var(--card, #fff); opacity: .45; pointer-events: none; }
-.fan-pass.has-club-frame { border: 3px solid #cfaa58; padding-top: 19px; background: radial-gradient(ellipse at 50% 22%, #ffe5a857, transparent 58%), linear-gradient(145deg, var(--card, #fff), var(--bg, #fff7f2)); box-shadow: 0 4px 0 #b58b3d, inset 0 0 0 2px #fff0bd; }
-.has-club-frame::before { border: 1px solid #d3ad5a; opacity: .85; }
 .pass-eyebrow { align-self: flex-start; max-width: calc(100% - 44px); color: var(--muted, #8c7a80); font-size: 8px; font-weight: 800; letter-spacing: .15em; text-align: left; }
 .pass-club-logo { position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; object-fit: contain; }
-.pass-portrait { position: relative; display: grid; place-items: center; width: 100px; height: 100px; margin: 15px 0 8px; color: var(--red-text, #bd1523); }
-.pass-portrait > span { display: grid; place-items: center; width: 67px; height: 67px; border: 1px solid var(--red-line, #ffd2ce); border-radius: 50%; background: var(--card, #fff); color: var(--red-text, #bd1523); font-family: 'Fraunces', serif; font-size: 28px; font-weight: 750; }
-.pass-portrait svg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .45; pointer-events: none; }
+.pass-portrait { margin: 18px 0 12px; }
 .pass-nickname { max-width: 100%; color: var(--ink, #23161a); font-family: 'Fraunces', serif; font-size: 25px; font-weight: 750; line-height: 1.1; overflow-wrap: anywhere; }
 .pass-club-name { max-width: 100%; margin-top: 6px; color: var(--muted, #8c7a80); font-size: 10px; font-weight: 700; overflow-wrap: anywhere; }
-.pass-frame-label { margin-top: 9px; border-radius: 99px; padding: 4px 8px; background: #f7e1aa; color: #66430e; font-size: 8px; font-weight: 800; }
+.pass-frame-label { margin-top: 9px; border: 1px solid #bdc7d3; border-radius: 99px; padding: 5px 9px; background: linear-gradient(140deg,#f5f7fa,#d8dfe6,#fff); color: #253143; font-size: 8px; font-weight: 800; }
 .pass-stats { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 16px; width: calc(100% + 32px); margin-top: 18px; padding: 12px 10px; background: var(--red-soft, #ffe8e6); color: var(--muted, #8c7a80); font-size: 9px; line-height: 1.5; }
 .pass-stats b { margin-right: 3px; color: var(--ink, #23161a); font-size: 13px; font-weight: 900; }
 .collection-message, .collection-empty, .collection-error { margin: 0; border-radius: 14px; padding: 13px; background: var(--bg, #fff7f2); color: var(--muted, #8c7a80); font-size: 11px; line-height: 1.6; }
@@ -128,7 +130,10 @@ function formatDate(value) {
 .collection-copy > span { color: var(--muted, #8c7a80); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
 .collection-copy small { color: var(--muted, #8c7a80); font-size: 9px; }
 .memory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
-.match-memory { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; border: 1px solid var(--red-line, #ffd2ce); border-radius: 17px 17px 26px 26px; padding: 15px 10px; background: linear-gradient(145deg, var(--red-soft, #ffe8e6), var(--card, #fff)); text-align: center; }
+.match-memory { min-width: 0; }
+.memory-open { display: block; width: 100%; border: 0; padding: 0; border-radius: 10px; background: transparent; color: inherit; cursor: pointer; transition: transform .2s ease; }
+.memory-open:active { transform: scale(.98); }
+.memory-hint { display: flex; justify-content: space-between; margin-top: 9px; padding: 0 3px; color: var(--muted); font-size: 9px; }
 .memory-eyebrow { color: var(--muted, #8c7a80); font-size: 6px; font-weight: 850; letter-spacing: .08em; }
 .memory-mark { display: grid; place-items: center; width: 48px; height: 48px; margin: 5px 0; color: var(--red-text, #bd1523); }
 .memory-mark svg { width: 100%; height: 100%; }
@@ -147,4 +152,5 @@ function formatDate(value) {
 .fan-collection button:disabled { cursor: default; opacity: .6; }
 .fan-collection button:focus-visible { outline: 2px solid var(--red-text, #bd1523); outline-offset: 3px; }
 @media (max-width: 340px) { .owned-frame { flex-wrap: wrap; } .equip-frame { margin-left: auto; } .pass-stats { gap: 6px 10px; } }
+@media (prefers-reduced-motion: reduce) { .memory-open { transition: none; } }
 </style>
