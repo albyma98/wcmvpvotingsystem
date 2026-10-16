@@ -134,44 +134,51 @@
             <div class="sheet-title">Vota l'MVP del pubblico</div>
             <div class="sheet-sub">Tocca la card del tuo MVP · +10 monete al primo voto</div>
           </div>
-          <button class="close" type="button" @click="closeSheets">✕</button>
+          <button class="close" type="button" aria-label="Chiudi scelta MVP" @click="closeSheets">✕</button>
         </div>
         <div class="sheet-body">
           <div v-if="isLoadingPlayers" class="sheet-empty">Caricamento giocatori…</div>
           <div v-else-if="playersError" class="sheet-empty error">{{ playersError }}</div>
           <div v-else-if="!players.length" class="sheet-empty">Nessun giocatore disponibile.</div>
           <p v-if="voteError" class="sheet-empty error" role="alert">{{ voteError }}</p>
-          <div v-if="players.length && !isLoadingPlayers && !playersError" class="mvp-player-grid" :aria-busy="isVoting">
-            <button
-              v-for="player in players"
-              :key="player.id"
-              class="mvp-player"
-              :class="{ 'is-selected': votedPlayerId === player.id }"
-              type="button"
-              :aria-label="`Vota ${player.fullName}${player.number ? `, maglia ${player.number}` : ''}`"
-              :aria-pressed="votedPlayerId === player.id"
-              :disabled="isVoting || !canVote"
-              @click="castVote(player)"
-            >
-              <FanPlayerCard :player="player" :club-logo-url="homeLogoUrl" :selected="votedPlayerId === player.id" />
-            </button>
-          </div>
+          <FanMvpRoster
+            v-if="players.length && !isLoadingPlayers && !playersError"
+            :players="players"
+            :active="activeSheet === 'mvp'"
+            :selected-player-id="votedPlayerId"
+            :pending-player-id="pendingVotePlayerId"
+            :busy="isVoting"
+            :can-vote="canVote && !shopBusy"
+            :club-logo-url="homeLogoUrl"
+            @select="castVote"
+          />
         </div>
       </div>
 
       <div class="sheet" :class="{ open: activeSheet === 'vote-result' }" role="dialog" :aria-label="celebrationKind === 'vote' ? 'Conferma del voto' : 'Monete guadagnate'" :aria-hidden="activeSheet !== 'vote-result'" :inert="activeSheet !== 'vote-result'">
         <div class="grabber"></div>
         <div class="sheet-head">
-          <div class="sheet-title">{{ celebrationKind === 'vote' ? 'Il tuo voto conta!' : 'Sfida completata!' }}</div>
+          <div class="sheet-title">{{ celebrationKind === 'vote' ? 'Voto registrato' : 'Sfida completata!' }}</div>
           <button class="close" type="button" aria-label="Chiudi conferma voto" @click="closeSheets">✕</button>
         </div>
-        <div ref="voteResultEl" class="sheet-body vote-result">
-          <FanPlayerCard v-if="celebrationKind === 'vote'" class="vote-result-player" :player="votedPlayerCard" :club-logo-url="homeLogoUrl" selected loading="eager" />
+        <div ref="voteResultEl" class="sheet-body vote-result" :class="{ 'is-mvp-result': celebrationKind === 'vote' && activeSheet === 'vote-result' }">
+          <div v-if="celebrationKind === 'vote' && activeSheet === 'vote-result'" :key="voteRevealRevision" class="mvp-reveal">
+            <span class="mvp-reveal-halo" aria-hidden="true"></span>
+            <span class="mvp-reveal-court" aria-hidden="true"></span>
+            <span v-for="spark in 8" :key="spark" class="mvp-reveal-spark" :style="{ '--spark-angle': `${spark * 45}deg` }" aria-hidden="true"></span>
+            <div class="mvp-reveal-card">
+              <FanPlayerCard class="vote-result-player" :player="votedPlayerCard" :club-logo-url="homeLogoUrl" selected loading="eager" />
+              <span class="mvp-reveal-seal" aria-hidden="true">✓</span>
+            </div>
+            <span class="mvp-reveal-label" aria-hidden="true">IL TUO MVP</span>
+          </div>
           <span v-else class="vote-result-avatar" aria-hidden="true">{{ progress.unlocked ? '🏅' : '🎉' }}</span>
           <h2>{{ celebrationKind === 'vote' ? `Hai votato ${displayVotedName || 'il tuo MVP'}!` : `${celebrationName} completato!` }}</h2>
-          <p v-if="voteBonusCoins" class="vote-result-bonus">+{{ voteBonusCoins }} <span class="coin" aria-hidden="true"></span> monete salvate</p>
-          <p v-else-if="journey.pendingVoteBonus">Voto registrato. Il bonus di {{ VOTE_REWARD }} monete è ancora da salvare.</p>
-          <p v-else>Voto aggiornato. Il bonus del primo voto è già stato assegnato.</p>
+          <div class="vote-result-status" role="status" aria-live="polite" aria-atomic="true">
+            <p v-if="voteBonusCoins" :key="`${celebrationKind}-${voteRevealRevision}-${voteBonusCoins}`" class="vote-result-bonus">+{{ voteBonusCoins }} <span ref="voteBonusEl" class="coin" aria-hidden="true"></span> monete salvate</p>
+            <p v-else-if="journey.pendingVoteBonus">{{ isSavingCoins ? 'Il tuo voto è al sicuro. Salvataggio delle monete…' : `Voto registrato. Il bonus di ${VOTE_REWARD} monete è ancora da salvare.` }}</p>
+            <p v-else>Voto aggiornato. Il bonus del primo voto è già stato assegnato.</p>
+          </div>
           <div class="vote-result-goal">
             <b>{{ progress.unlocked ? `Hai sbloccato il badge ${FAN_BADGE_NAME}!` : `${progress.current}/${FIRST_FAN_GOAL} · Mancano ${progress.remaining} monete al primo badge` }}</b>
             <div class="journey-bar"><span :style="{ width: `${progress.percent}%` }"></span></div>
@@ -516,6 +523,7 @@ import { normalizeOrganizationColors, organizationThemeStyle } from '../organiza
 import { preloadFanHomeImages } from '../fanHomeAssets';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
+import FanMvpRoster from '../components/FanMvpRoster.vue';
 import FanCollectionPanel from '../components/FanCollectionPanel.vue';
 import FanAvatar from '../components/FanAvatar.vue';
 import FanMatchCard from '../components/FanMatchCard.vue';
@@ -642,6 +650,13 @@ const rawPlayers = ref([]);
 const isLoadingPlayers = ref(false);
 const playersError = ref('');
 const isVoting = ref(false);
+const pendingVotePlayerId = ref(null);
+const voteRevealRevision = ref(0);
+const isVoteRevealRunning = ref(false);
+let voteRequestRevision = 0;
+let voteRevealTimer;
+let pendingVoteCoinAnimation = false;
+let sheetRevision = 0;
 const voteError = ref('');
 const coinError = ref('');
 const isSavingCoins = ref(false);
@@ -658,9 +673,12 @@ const progress = computed(() => journeyProgress(journey.value));
 const quizAvailable = ref(false);
 const walletEl = ref(null);
 const voteResultEl = ref(null);
+const voteBonusEl = ref(null);
 const walletPulse = ref(false);
 const coinFlights = ref([]);
 let coinAnimationTimer;
+let coinAnimationRevision = 0;
+let journeyRewardRevision = 0;
 let walletRevision = 0;
 let loadedEventId = null;
 let liveStatusTimer;
@@ -808,16 +826,52 @@ function loadJourney() {
   try { journey.value = normalizeJourney(JSON.parse(window.localStorage.getItem(journeyStorageKey(props.organizationSlug, props.eventId)) || 'null')); }
   catch (error) { journey.value = normalizeJourney(); }
 }
+function prefersReducedMotion() {
+  return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+}
+function clearEarnedCoinAnimation() {
+  coinAnimationRevision += 1;
+  window.clearTimeout(coinAnimationTimer);
+  walletPulse.value = false;
+  coinFlights.value = [];
+}
+function cancelVotePresentation() {
+  window.clearTimeout(voteRevealTimer);
+  isVoteRevealRunning.value = false;
+  pendingVoteCoinAnimation = false;
+  clearEarnedCoinAnimation();
+}
+function startVotePresentation() {
+  cancelVotePresentation();
+  voteRevealRevision.value += 1;
+  if (prefersReducedMotion()) return;
+  isVoteRevealRunning.value = true;
+  // Sequence the decorative flight after the card; never delay the confirmed balance.
+  voteRevealTimer = window.setTimeout(() => {
+    isVoteRevealRunning.value = false;
+    if (pendingVoteCoinAnimation && activeSheet.value === 'vote-result' && celebrationKind.value === 'vote') animateEarnedCoins();
+    pendingVoteCoinAnimation = false;
+  }, 760);
+}
+function animateVoteReward() {
+  if (activeSheet.value !== 'vote-result' || celebrationKind.value !== 'vote') return;
+  if (isVoteRevealRunning.value) pendingVoteCoinAnimation = true;
+  else animateEarnedCoins();
+}
 async function animateEarnedCoins() {
+  if (isDisposed || prefersReducedMotion() || activeSheet.value !== 'vote-result') return;
+  const revision = ++coinAnimationRevision;
   walletPulse.value = true;
   await nextTick();
+  if (isDisposed || revision !== coinAnimationRevision || activeSheet.value !== 'vote-result') return;
   if (activeSheet.value === 'vote-result' && walletEl.value && voteResultEl.value) {
-    const from = voteResultEl.value.getBoundingClientRect();
+    const from = (voteBonusEl.value || voteResultEl.value).getBoundingClientRect();
     const to = walletEl.value.getBoundingClientRect();
+    const startY = voteBonusEl.value ? from.top + from.height / 2 : from.top + 60;
     coinFlights.value = Array.from({ length: 6 }, (_, index) => ({
-      left: `${from.left + from.width / 2}px`, top: `${from.top + 60}px`,
+      left: `${from.left + from.width / 2}px`, top: `${startY}px`,
       '--flight-x': `${to.left + to.width / 2 - from.left - from.width / 2}px`,
-      '--flight-y': `${to.top + to.height / 2 - from.top - 60}px`,
+      '--flight-y': `${to.top + to.height / 2 - startY}px`,
       animationDelay: `${index * 50}ms`,
     }));
   }
@@ -995,10 +1049,14 @@ const rushSponsor = computed(() => {
 
 /* ---------- Sheets ---------- */
 function openSheet(id) {
+  sheetRevision += 1;
+  if (id !== 'vote-result') cancelVotePresentation();
   activeSheet.value = id;
   if (['wallet', 'spend', 'profile'].includes(id)) loadWallet();
 }
 function closeSheets() {
+  sheetRevision += 1;
+  cancelVotePresentation();
   activeSheet.value = '';
 }
 function showCollectible(item, { preview = false, reveal = false, origin = 'spend' } = {}) {
@@ -1007,7 +1065,7 @@ function showCollectible(item, { preview = false, reveal = false, origin = 'spen
   isCollectibleNew.value = reveal;
   collectibleOrigin.value = origin;
   collectibleRevealRevision.value += 1;
-  activeSheet.value = 'collectible';
+  openSheet('collectible');
 }
 function previewCollectible(item) {
   if (shopBusy.value || !catalog.value.some((entry) => entry.key === item?.key)) return;
@@ -1125,10 +1183,11 @@ async function grantCoins(delta, key) {
   isSavingCoins.value = true;
   coinError.value = '';
   const eventId = props.eventId;
+  const scope = walletScope();
+  const request = ++journeyRewardRevision;
   try {
-    if (eventId !== props.eventId) return { ok: false, coins: 0 };
     const response = await claimFanJourneyReward(eventId, key);
-    if (eventId !== props.eventId) return { ok: false, coins: 0 };
+    if (isDisposed || request !== journeyRewardRevision || scope !== walletScope()) return { ok: false, coins: 0 };
     const rewardAmount = response.data?.reward_amount;
     if (!response.ok || !Number.isInteger(response.data?.wallet) || response.data.wallet < 0 || !Number.isInteger(rewardAmount) || rewardAmount <= 0) {
       coinError.value = response.message || 'Le monete non sono ancora state salvate. Controlla la connessione e riprova.';
@@ -1142,19 +1201,22 @@ async function grantCoins(delta, key) {
     refreshLeaderboard();
     return { ok: true, coins: Number(response.data?.coins_earned ?? 0) };
   } catch (error) {
+    if (isDisposed || request !== journeyRewardRevision || scope !== walletScope()) return { ok: false, coins: 0 };
     coinError.value = 'Le monete non sono ancora state salvate. Controlla la connessione e riprova.';
     return { ok: false, coins: 0 };
-  } finally { isSavingCoins.value = false; }
+  } finally { if (!isDisposed && request === journeyRewardRevision && scope === walletScope()) isSavingCoins.value = false; }
 }
 
 async function retryVoteBonus() {
   if (!journey.value.pendingVoteBonus) return;
+  const scope = walletScope();
   const result = await grantCoins(VOTE_REWARD, 'vote');
+  if (isDisposed || scope !== walletScope()) return;
   if (result.ok) {
     journey.value.pendingVoteBonus = false;
     saveJourney();
     voteBonusCoins.value = result.coins;
-    if (result.coins) animateEarnedCoins();
+    if (result.coins) animateVoteReward();
   }
 }
 
@@ -1197,7 +1259,7 @@ function openGame(id) {
   if (!games[id] || !props.eventId || shopBusy.value || matchConcluded.value || (id === 'quiz' && !quizAvailable.value)) return;
   coinError.value = '';
   pendingGameClaim.value = null;
-  activeSheet.value = '';
+  closeSheets();
   activeGameId.value = id;
 }
 function closeGame() {
@@ -1282,8 +1344,9 @@ async function loadPlayers() {
 async function loadVoteStatus() {
   if (!props.eventId) return;
   const eventId = props.eventId;
+  const scope = walletScope();
   const status = await fetchVoteStatus(eventId);
-  if (eventId !== props.eventId || !status.ok || isVoting.value || localVoted.value) return;
+  if (isDisposed || scope !== walletScope() || !status.ok || isVoting.value || localVoted.value) return;
   hasVoted.value = Boolean(status?.hasVoted);
   votedPlayerId.value = status?.playerId ?? null;
   if (hasVoted.value && !journey.value.rewards.vote) {
@@ -1293,21 +1356,26 @@ async function loadVoteStatus() {
   }
 }
 async function castVote(player) {
-  if (isVoting.value || shopBusy.value || !player?.id || !props.eventId) return;
+  if (isDisposed || isVoting.value || shopBusy.value || !player?.id || !props.eventId) return;
   voteError.value = '';
   if (!canVote.value) { voteError.value = 'Le votazioni per questa partita sono chiuse.'; return; }
   isVoting.value = true;
+  pendingVotePlayerId.value = player.id;
+  const request = ++voteRequestRevision;
+  const scope = walletScope();
+  const presentationRevision = sheetRevision;
   const firstVote = !hasVoted.value && !doneKeys.value.includes('vote');
   const eventId = props.eventId;
   try {
     const response = await vote({ eventId, playerId: player.id });
-    if (eventId !== props.eventId) return;
+    if (isDisposed || request !== voteRequestRevision || scope !== walletScope()) return;
     if (!response?.ok) {
       voteError.value = response?.message || 'Il voto non è stato salvato. Controlla la connessione e riprova.';
       return;
     }
     hasVoted.value = true;
     votedPlayerId.value = player.id;
+    pendingVotePlayerId.value = null;
     localVoted.value = { ...player };
     voteBonusCoins.value = 0;
     celebrationKind.value = 'vote';
@@ -1315,12 +1383,19 @@ async function castVote(player) {
       journey.value.pendingVoteBonus = true;
       saveJourney();
     }
-    openSheet('vote-result');
+    if (presentationRevision === sheetRevision && (!activeSheet.value || activeSheet.value === 'mvp')) {
+      startVotePresentation();
+      openSheet('vote-result');
+    }
     if (journey.value.pendingVoteBonus) await retryVoteBonus();
   } catch (error) {
+    if (isDisposed || request !== voteRequestRevision || scope !== walletScope()) return;
     voteError.value = 'Impossibile salvare il voto. Riprova tra poco.';
   } finally {
-    isVoting.value = false;
+    if (!isDisposed && request === voteRequestRevision && scope === walletScope()) {
+      isVoting.value = false;
+      pendingVotePlayerId.value = null;
+    }
   }
 }
 
@@ -1533,6 +1608,12 @@ async function bootstrap() {
   const { signal } = assetController;
   if (loadedEventId !== walletScope()) {
     loadedEventId = walletScope();
+    voteRequestRevision += 1;
+    journeyRewardRevision += 1;
+    isVoting.value = false;
+    pendingVotePlayerId.value = null;
+    voteBonusCoins.value = 0;
+    isSavingCoins.value = false;
     walletRequestRevision += 1;
     leaderboardRequestRevision += 1;
     isLoadingWallet.value = false;
@@ -1626,6 +1707,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   isDisposed = true;
+  voteRequestRevision += 1;
+  journeyRewardRevision += 1;
+  cancelVotePresentation();
   walletRequestRevision += 1;
   leaderboardRequestRevision += 1;
   bootstrapRevision += 1;
@@ -2076,9 +2160,37 @@ main {
 .vote-result { align-items: center; text-align: center; padding: 8px 0; gap: 13px; }
 .vote-result h2 { margin: 0; font: 750 23px/1.2 'Fraunces', serif; }
 .vote-result > p { margin: 0; font-size: 13px; }
-.vote-result .vote-result-bonus { display: flex; align-items: center; gap: 6px; color: var(--gold-deep); font-size: 17px; font-weight: 800; }
+.vote-result-status { min-height: 34px; display: flex; align-items: center; justify-content: center; }
+.vote-result-status > p { margin: 0; font-size: 13px; color: var(--muted); }
+.vote-result .vote-result-bonus { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 15px; border: 1px solid #edce8e; border-radius: 99px; background: #fff3d6; color: #82500e; font-size: 16px; font-weight: 800; animation: mvp-reward-pop 400ms cubic-bezier(.16, 1, .3, 1) both; }
 .vote-result-avatar { width: 72px; height: 72px; border: 2px solid var(--red-line); border-radius: 20px; background: var(--red-soft); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 36px; flex: none; }
-.vote-result-player { width: 112px; flex: none; }
+.mvp-reveal { position: relative; isolation: isolate; display: flex; flex: none; align-items: center; flex-direction: column; width: 100%; padding: 12px 0 0; perspective: 800px; }
+.mvp-reveal-halo { position: absolute; z-index: -1; inset: -8px 0 12px; background: radial-gradient(ellipse, #f5d58c66 0, var(--red-soft) 38%, transparent 70%); animation: mvp-halo-in 700ms ease-out both; }
+.mvp-reveal-court { position: absolute; z-index: -1; bottom: 22px; width: 230px; max-width: 85%; height: 54px; border: 1px solid var(--red-line); border-radius: 50%; background: radial-gradient(ellipse, var(--red-line), transparent 68%); transform: rotateX(40deg); animation: mvp-court-in 620ms ease-out both; }
+.mvp-reveal-card { position: relative; width: clamp(112px, 36vw, 152px); transform-origin: 50% 88%; animation: mvp-hero-in 620ms cubic-bezier(.16, .85, .25, 1) 100ms both; }
+.mvp-reveal-card :deep(.mvp-player-card)::after { content: ''; position: absolute; z-index: 3; inset: -30% -65%; background: linear-gradient(110deg, transparent 40%, #ffffffa6 49%, #ffffff12 56%, transparent 62%); pointer-events: none; animation: mvp-hero-shine 650ms ease 380ms both; }
+.mvp-reveal-card :deep(.mvp-player-caption strong) { font-size: clamp(12px, 3.4vw, 15px); }
+.vote-result-player { width: 100%; }
+.mvp-reveal-seal { position: absolute; z-index: 4; right: -6px; top: 22%; display: grid; place-items: center; width: 31px; height: 31px; border: 3px solid var(--card); border-radius: 50%; background: var(--red); color: var(--on-primary, #fff); font-size: 18px; font-weight: 800; box-shadow: 0 4px 12px var(--red-line); animation: mvp-seal-in 360ms cubic-bezier(.16, 1, .3, 1) 480ms both; }
+.mvp-reveal-label { margin-top: 8px; color: var(--red-text); font-size: 10px; line-height: 1.4; letter-spacing: .2em; font-weight: 800; animation: mvp-copy-in 400ms ease 300ms both; }
+.mvp-reveal-spark { position: absolute; z-index: -1; left: calc(50% - 2px); top: 44%; width: 4px; height: 8px; border-radius: 2px; background: #c6953f; opacity: 0; animation: mvp-spark-out 650ms ease-out 340ms both; }
+.is-mvp-result > h2 { animation: mvp-copy-in 400ms ease 300ms both; }
+@keyframes mvp-hero-in {
+  0% { opacity: 0; transform: translateY(25px) rotateY(-22deg) rotateZ(-6deg) scale(.78); }
+  70% { opacity: 1; transform: translateY(-3px) rotateY(3deg) rotateZ(1deg) scale(1.025); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes mvp-hero-shine { from { transform: translateX(-65%); } to { transform: translateX(65%); } }
+@keyframes mvp-halo-in { from { opacity: 0; transform: scale(.65); } to { opacity: 1; transform: scale(1); } }
+@keyframes mvp-court-in { from { opacity: 0; transform: rotateX(40deg) scale(.7); } to { opacity: 1; transform: rotateX(40deg) scale(1); } }
+@keyframes mvp-seal-in { from { opacity: 0; transform: scale(.3) rotate(-30deg); } to { opacity: 1; transform: none; } }
+@keyframes mvp-copy-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes mvp-spark-out {
+  0% { opacity: 0; transform: rotate(var(--spark-angle)) translateY(-45px) scale(.4); }
+  25% { opacity: .7; }
+  100% { opacity: 0; transform: rotate(var(--spark-angle)) translateY(-125px) scale(.15); }
+}
+@keyframes mvp-reward-pop { from { opacity: 0; transform: translateY(5px) scale(.88); } to { opacity: 1; transform: none; } }
 .final-mvp-cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 10px; width: 100%; padding: 6px 4px 12px; }
 .final-mvp-cards > .fan-player-card { width: min(112px, calc((100% - 20px) / 3)); flex: none; }
 .vote-result-goal { width: 100%; padding: 12px; border-radius: 14px; background: var(--card); border: 2px solid var(--line); font-size: 12px; }
@@ -2345,39 +2457,6 @@ main {
 .sheet-empty.error {
   color: var(--red-text);
 }
-.mvp-player-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 14px 10px;
-  padding: 6px 4px 12px;
-  flex-shrink: 0;
-}
-.mvp-player {
-  position: relative;
-  flex: 0 0 calc((100% - 20px) / 3);
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: #39270f;
-  font: inherit;
-  text-align: center;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.16s ease, filter 0.16s ease;
-}
-.mvp-player:focus-visible {
-  outline: 3px solid var(--red-text);
-  outline-offset: 3px;
-}
-@media (hover: hover) {
-  .mvp-player:hover:not(:disabled) { transform: translateY(-3px); }
-}
-.mvp-player:active:not(:disabled) { transform: scale(0.97); }
-.mvp-player:disabled { cursor: default; }
-.mvp-player:disabled:not(.is-selected) { opacity: 0.65; }
 .row-item {
   display: flex;
   align-items: center;
@@ -2734,6 +2813,15 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mvp-reveal-card,
+  .mvp-reveal-halo,
+  .mvp-reveal-court,
+  .mvp-reveal-seal,
+  .mvp-reveal-label,
+  .is-mvp-result > h2,
+  .vote-result .vote-result-bonus { animation: none; }
+  .mvp-reveal-spark,
+  .mvp-reveal-card :deep(.mvp-player-card)::after { display: none; }
   .coin-flight { display: none; }
   .wallet-pulse { animation: none; }
   .journey-bar > span { transition: none; }

@@ -49,10 +49,11 @@ function fixture(overrides = {}, options = {}) {
     ...overrides,
   };
   const setup = setupSfc(new URL('./FanLiveCento.vue', import.meta.url), {
-    vue: testVue, '../api': api, '../organizationTheme': brand, '../fanJourney': journey,
+    vue: options.vue || testVue, '../api': api, '../organizationTheme': brand, '../fanJourney': journey,
     '../fanHomeAssets': options.assets || assets,
     '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
+    '../components/FanMvpRoster.vue': {},
     '../components/FanCollectionPanel.vue': {},
     '../components/FanAvatar.vue': {},
     '../components/FanMatchCard.vue': {},
@@ -218,6 +219,186 @@ test('failed vote shows an error and grants nothing', async (t) => {
   assert.equal(state.progress.value.earned, 0);
   assert.equal(saves.length, 0);
   assert.notEqual(state.activeSheet.value, 'vote-result');
+});
+
+test('a selected MVP stays pending until the vote is confirmed and blocks double taps', async (t) => {
+  const answer = deferred();
+  let requests = 0;
+  const { state, scope } = fixture({ vote: () => { requests += 1; return answer.promise; } });
+  t.after(() => scope.stop());
+  state.openSheet('mvp');
+  const voting = state.castVote(player);
+  assert.equal(state.pendingVotePlayerId.value, player.id);
+  assert.equal(state.isVoting.value, true);
+  assert.equal(state.hasVoted.value, false);
+  assert.equal(state.voteRevealRevision.value, 0);
+  assert.equal(state.totalCoins.value, 0);
+  await state.castVote({ ...player, id: 8 });
+  assert.equal(requests, 1);
+  answer.resolve({ ok: false, message: 'Connessione interrotta' });
+  await voting;
+  assert.equal(state.pendingVotePlayerId.value, null);
+  assert.equal(state.isVoting.value, false);
+  assert.equal(state.activeSheet.value, 'mvp');
+  assert.equal(state.voteRevealRevision.value, 0);
+  assert.equal(state.voteError.value, 'Connessione interrotta');
+});
+
+test('the reveal starts after vote confirmation and the gold flight waits for actual credit', async (t) => {
+  const receipt = deferred();
+  const { state, scope, window } = fixture({ claimFanJourneyReward: () => receipt.promise });
+  t.after(() => scope.stop());
+  state.openSheet('mvp');
+  state.voteBonusEl.value = { getBoundingClientRect: () => ({ left: 160, top: 400, width: 16, height: 16 }) };
+  state.voteResultEl.value = { getBoundingClientRect: () => ({ left: 20, top: 150, width: 300, height: 400 }) };
+  state.walletEl.value = { getBoundingClientRect: () => ({ left: 240, top: 20, width: 60, height: 30 }) };
+  const voting = state.castVote(player);
+  await flush();
+  assert.equal(state.hasVoted.value, true);
+  assert.equal(state.activeSheet.value, 'vote-result');
+  assert.equal(state.voteRevealRevision.value, 1);
+  assert.equal(state.isVoteRevealRunning.value, true);
+  assert.equal(state.isSavingCoins.value, true);
+  assert.equal(state.totalCoins.value, 0);
+  assert.equal(state.voteBonusCoins.value, 0);
+  assert.deepEqual(state.coinFlights.value, []);
+  receipt.resolve({ ok: true, data: { wallet: 10, coins_earned: 10, reward_amount: 10 } });
+  await voting;
+  assert.equal(state.totalCoins.value, 10, 'the real balance does not wait for decorative effects');
+  assert.equal(state.voteBonusCoins.value, 10);
+  assert.deepEqual(state.coinFlights.value, []);
+  for (const [id, callback] of [...window.timers]) { window.timers.delete(id); callback(); }
+  await flush();
+  assert.equal(state.isVoteRevealRunning.value, false);
+  assert.equal(state.coinFlights.value.length, 6);
+  assert.equal(state.coinFlights.value[0].top, '408px', 'coins start at the actual bonus, after the sheet has opened');
+  assert.equal(state.walletPulse.value, true);
+  state.closeSheets();
+  assert.deepEqual(state.coinFlights.value, []);
+  assert.equal(state.walletPulse.value, false);
+  assert.equal(window.timers.size, 0);
+});
+
+test('closing a pending vote keeps the result saved without reopening the panel', async (t) => {
+  const answer = deferred();
+  const { state, scope, window } = fixture({ vote: () => answer.promise });
+  t.after(() => scope.stop());
+  state.openSheet('mvp');
+  const voting = state.castVote(player);
+  state.closeSheets();
+  answer.resolve({ ok: true });
+  await voting;
+  assert.equal(state.hasVoted.value, true);
+  assert.equal(state.totalCoins.value, 10);
+  assert.equal(state.activeSheet.value, '');
+  assert.equal(state.voteRevealRevision.value, 0);
+  assert.equal(window.timers.size, 0);
+});
+
+test('changing MVP replays the confirmation without granting or animating another bonus', async (t) => {
+  const { state, scope, saves, window } = fixture();
+  t.after(() => scope.stop());
+  await state.castVote(player);
+  state.openSheet('mvp');
+  const anotherPlayer = { ...player, id: 8, name: 'Bianchi' };
+  await state.castVote(anotherPlayer);
+  assert.equal(state.votedPlayerId.value, 8);
+  assert.equal(state.voteRevealRevision.value, 2);
+  assert.equal(state.totalCoins.value, 10);
+  assert.equal(state.voteBonusCoins.value, 0);
+  assert.equal(saves.length, 1);
+  for (const [id, callback] of [...window.timers]) { window.timers.delete(id); callback(); }
+  await flush();
+  assert.deepEqual(state.coinFlights.value, []);
+  assert.equal(state.walletPulse.value, false);
+});
+
+test('reduced motion keeps the confirmation immediate without animated coins or timers', async (t) => {
+  const { state, scope, window } = fixture();
+  t.after(() => scope.stop());
+  window.matchMedia = () => ({ matches: true });
+  await state.castVote(player);
+  assert.equal(state.activeSheet.value, 'vote-result');
+  assert.equal(state.hasVoted.value, true);
+  assert.equal(state.voteBonusCoins.value, 10);
+  assert.equal(state.isVoteRevealRunning.value, false);
+  assert.equal(state.walletPulse.value, false);
+  assert.equal(window.timers.size, 0);
+});
+
+test('an old club vote cannot reveal a card or clear a newer pending selection', async (t) => {
+  const oldAnswer = deferred();
+  const newAnswer = deferred();
+  const { state, scope, props } = fixture({ vote: ({ playerId }) => playerId === 7 ? oldAnswer.promise : newAnswer.promise });
+  t.after(() => scope.stop());
+  await state.bootstrap();
+  state.openSheet('mvp');
+  const oldVoting = state.castVote(player);
+  props.organizationSlug = 'another-club';
+  await state.bootstrap();
+  state.openSheet('mvp');
+  const newVoting = state.castVote({ ...player, id: 8 });
+  oldAnswer.resolve({ ok: true });
+  await oldVoting;
+  assert.equal(state.isVoting.value, true);
+  assert.equal(state.pendingVotePlayerId.value, 8);
+  assert.equal(state.hasVoted.value, false);
+  assert.equal(state.voteRevealRevision.value, 0);
+  newAnswer.resolve({ ok: true });
+  await newVoting;
+  assert.equal(state.votedPlayerId.value, 8);
+  assert.equal(state.isVoting.value, false);
+  assert.equal(state.pendingVotePlayerId.value, null);
+});
+
+test('a delayed bonus cannot reenter the same club after navigating away and back', async (t) => {
+  const receipt = deferred();
+  const { state, scope, props } = fixture({ claimFanJourneyReward: () => receipt.promise });
+  t.after(() => scope.stop());
+  await state.bootstrap();
+  const voting = state.castVote(player);
+  await flush();
+  assert.equal(state.isSavingCoins.value, true);
+  props.organizationSlug = 'another-club';
+  await state.bootstrap();
+  props.organizationSlug = 'club';
+  await state.bootstrap();
+  receipt.resolve({ ok: true, data: { wallet: 10, coins_earned: 10, reward_amount: 10 } });
+  await voting;
+  assert.equal(state.totalCoins.value, 0);
+  assert.equal(state.voteBonusCoins.value, 0);
+  assert.equal(state.isSavingCoins.value, false);
+  assert.equal(state.activeSheet.value, '');
+});
+
+test('unmount cancels an active reveal and queued coin effects', async (t) => {
+  let dispose;
+  const { state, scope, window } = fixture({}, { vue: { ...testVue, onBeforeUnmount: (callback) => { dispose = callback; } } });
+  t.after(() => scope.stop());
+  await state.castVote(player);
+  assert.equal(state.isVoteRevealRunning.value, true);
+  assert.equal(window.timers.size, 1);
+  dispose();
+  await flush();
+  assert.equal(state.isVoteRevealRunning.value, false);
+  assert.deepEqual(state.coinFlights.value, []);
+  assert.equal(state.walletPulse.value, false);
+  assert.equal(window.timers.size, 0);
+});
+
+test('unmount ignores an unconfirmed vote response', async (t) => {
+  const answer = deferred();
+  let dispose;
+  const { state, scope, window } = fixture({ vote: () => answer.promise }, { vue: { ...testVue, onBeforeUnmount: (callback) => { dispose = callback; } } });
+  t.after(() => scope.stop());
+  state.openSheet('mvp');
+  const voting = state.castVote(player);
+  dispose();
+  answer.resolve({ ok: true });
+  await voting;
+  assert.equal(state.hasVoted.value, false);
+  assert.equal(state.voteRevealRevision.value, 0);
+  assert.equal(window.timers.size, 0);
 });
 
 test('playing after the MVP vote advances the home progress bar and unlocks the badge', async (t) => {
