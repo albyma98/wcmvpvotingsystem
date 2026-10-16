@@ -7,6 +7,7 @@
         <p class="eyebrow">SPONSOR RUSH</p>
         <h3 class="title">Raccogli i loghi al volo</h3>
         <p class="subtitle">Muoviti a sinistra/destra, prendi almeno {{ targetLogos }} loghi in {{ roundDurationSeconds }} secondi.</p>
+        <p v-if="hasFixedReward" class="subtitle">{{ fixedReward }} monete al primo completamento della partita.</p>
       </section>
 
       <section v-else-if="phase === 'countdown'" class="overlay-panel">
@@ -16,11 +17,12 @@
 
       <section v-else-if="phase === 'result'" class="overlay-panel">
         <p class="eyebrow">RISULTATO</p>
-        <h3 class="title">{{ won ? 'Missione completata! 🎉' : 'Quasi! Riprova subito 💪' }}</h3>
+        <h3 class="title">{{ hasFixedReward ? 'Sfida completata!' : won ? 'Missione completata! 🎉' : 'Quasi! Riprova subito 💪' }}</h3>
         <p class="subtitle">
           Loghi raccolti: <strong>{{ score }}</strong> / {{ targetLogos }}
         </p>
-        <p class="subtitle">Ricompensa: <strong>+{{ rewardCoins }} coin</strong></p>
+        <p v-if="hasFixedReward" class="subtitle">{{ fixedReward }} monete al primo completamento della partita.</p>
+        <p v-else class="subtitle">Ricompensa: <strong>+{{ rewardCoins }} coin</strong></p>
       </section>
 
       <div class="absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl border border-white/15 bg-slate-900/80 px-3 py-2 text-xs text-white">
@@ -62,7 +64,7 @@
     </div>
 
     <footer class="mt-2 grid grid-cols-1 gap-2">
-      <button type="button" class="cta-primary" :disabled="phase === 'countdown' || isClaiming" @click="onPrimaryAction">
+      <button type="button" class="cta-primary" :disabled="phase === 'countdown' || isClaiming || (hasFixedReward && claimRequested && !alreadyRewarded)" @click="onPrimaryAction">
         {{ primaryLabel }}
       </button>
       <button type="button" class="cta-secondary" :disabled="isClaiming" @click="emit('exit')">Esci</button>
@@ -75,6 +77,12 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { apiClient } from '../../api';
 
 const emit = defineEmits(['claim', 'exit']);
+const props = defineProps({
+  completionReward: { type: Number, default: null },
+  alreadyRewarded: { type: Boolean, default: false },
+});
+const hasFixedReward = computed(() => Number.isFinite(props.completionReward) && props.completionReward >= 0);
+const fixedReward = computed(() => hasFixedReward.value ? Math.floor(props.completionReward) : 0);
 
 const arenaRef = ref(null);
 const sponsorLogo = ref('');
@@ -84,6 +92,7 @@ const score = ref(0);
 const timeLeftMs = ref(0);
 const feedback = ref(null);
 const isClaiming = ref(false);
+const claimRequested = ref(false);
 
 const items = ref([]);
 const playerX = ref(130);
@@ -102,13 +111,17 @@ const playerSize = 52;
 const itemSize = 40;
 
 const won = computed(() => score.value >= targetLogos);
-const rewardCoins = computed(() => (won.value ? 12 : Math.min(3, score.value)));
+const rewardCoins = computed(() => hasFixedReward.value ? fixedReward.value : won.value ? 12 : Math.min(3, score.value));
 const timeLeftLabel = computed(() => `${(Math.max(0, timeLeftMs.value) / 1000).toFixed(1)}s`);
 const primaryLabel = computed(() => {
   if (phase.value === 'ready') return 'Avvia Sponsor Rush';
   if (phase.value === 'countdown') return 'Preparazione…';
   if (phase.value === 'playing') return 'Partita in corso…';
-  if (phase.value === 'result') return isClaiming.value ? 'Accredito…' : `Riscatta +${rewardCoins.value} coin`;
+  if (phase.value === 'result') {
+    if (props.alreadyRewarded) return 'Termina';
+    if (hasFixedReward.value) return claimRequested.value ? 'Bonus in salvataggio…' : 'Registra risultato e bonus';
+    return isClaiming.value ? 'Accredito…' : `Riscatta +${rewardCoins.value} coin`;
+  }
   return 'Avvia Sponsor Rush';
 });
 
@@ -165,6 +178,7 @@ function onPrimaryAction() {
     return;
   }
   if (phase.value === 'result') {
+    if (props.alreadyRewarded) { emit('exit'); return; }
     claimReward();
   }
 }
@@ -277,7 +291,8 @@ function finishRound() {
 }
 
 async function claimReward() {
-  if (isClaiming.value) return;
+  if (phase.value !== 'result' || isClaiming.value || props.alreadyRewarded || (hasFixedReward.value && claimRequested.value)) return;
+  if (hasFixedReward.value) claimRequested.value = true;
   isClaiming.value = true;
   try {
     emit('claim', {

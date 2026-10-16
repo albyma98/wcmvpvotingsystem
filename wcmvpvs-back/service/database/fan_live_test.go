@@ -13,6 +13,7 @@ func TestFanNearbyRanks(t *testing.T) {
 	defer conn.Close()
 	if _, err := conn.Exec(`CREATE TABLE fan_profiles(id INTEGER PRIMARY KEY, organization_id INTEGER, nickname TEXT);
 		CREATE TABLE fan_wallets(fan_id INTEGER PRIMARY KEY, coins INTEGER);
+		CREATE TABLE fan_economy_accounts(organization_id INTEGER,owner_key TEXT,points INTEGER);
 		INSERT INTO fan_profiles VALUES (1,1,'A'),(2,1,'B'),(3,1,'C'),(4,1,'D'),(5,2,'Other');
 		INSERT INTO fan_wallets VALUES (1,50),(2,40),(3,40),(4,10),(5,1000)`); err != nil {
 		t.Fatal(err)

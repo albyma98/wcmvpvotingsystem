@@ -1015,6 +1015,7 @@ type FanLeaderboardEntry struct {
 	FanID     int    `json:"fan_id"`
 	Nickname  string `json:"nickname"`
 	Coins     int    `json:"coins"`
+	Points    int    `json:"points"`
 	Rank      int    `json:"rank"`
 	CreatedAt string `json:"created_at"`
 }
@@ -1332,6 +1333,9 @@ type AppDatabase interface {
 	ResolvePlaymakerPass(eventID, organizationID, fanID int, deviceID, sessionID string, attempt, elapsedMS int, dx, dy float64, now time.Time) (PlaymakerPassResult, error)
 	CreateCrossoverSession(eventID, organizationID, fanID int, deviceID string, now time.Time) (CrossoverSession, error)
 	ResolveCrossoverDuel(eventID, organizationID, fanID int, deviceID, sessionID string, duel, duelStartMS int, samples []CrossoverSample, now time.Time) (CrossoverDuelResult, error)
+	GetFanWalletState(eventID, organizationID, fanID int, deviceID string) (FanWalletState, error)
+	PurchaseFanShopItem(eventID, organizationID, fanID int, deviceID, itemKey string) error
+	EquipFanShopItem(eventID, organizationID, fanID int, deviceID, itemKey string) error
 	ListFanRewardRedemptions(eventID int, fanID int) ([]FanRewardRedemption, error)
 	DonateFanSupport(eventID int, organizationID int, fanID int, coins int) (FanSupportDonation, int, error)
 	GetFanSupportLeaderboard(eventID int, organizationID int, limit int) ([]FanSupportLeaderboardEntry, error)
@@ -7655,7 +7659,7 @@ func ensureFanProfileTables(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE TRIGGER IF NOT EXISTS trg_fan_profiles_updated_at AFTER UPDATE ON fan_profiles BEGIN UPDATE fan_profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;`); err != nil {
 		return fmt.Errorf("error ensuring fan profile trigger: %w", err)
 	}
-	return nil
+	return ensureFanEconomyTables(db)
 }
 
 func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, error) {
@@ -7671,6 +7675,15 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 		return FanProfileSummary{}, err
 	}
 	defer tx.Rollback()
+	if input.EventID > 0 {
+		var eventOrg int
+		if err := tx.QueryRow(`SELECT organization_id FROM events WHERE id=?`, input.EventID).Scan(&eventOrg); err != nil {
+			return FanProfileSummary{}, err
+		}
+		if eventOrg != input.OrganizationID {
+			return FanProfileSummary{}, ErrInvalidSponsorData
+		}
+	}
 
 	profileID := 0
 	if input.SessionToken != "" {
@@ -7685,9 +7698,19 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return FanProfileSummary{}, err
 		}
+		if err == nil && profileID > 0 {
+			return FanProfileSummary{}, ErrFanLoginRequired
+		}
 	}
 
 	if profileID > 0 {
+		var existingOrganization int
+		if err := tx.QueryRow(`SELECT organization_id FROM fan_profiles WHERE id=? AND (phone=? OR phone_e164=?)`, profileID, input.Phone, input.Phone).Scan(&existingOrganization); err != nil {
+			return FanProfileSummary{}, err
+		}
+		if existingOrganization > 0 && existingOrganization != input.OrganizationID {
+			return FanProfileSummary{}, ErrInvalidSponsorData
+		}
 		if _, err = tx.Exec(`UPDATE fan_profiles
 			SET organization_id = ?, nickname = ?, gender = ?, phone = ?, phone_e164 = ?, accepted_terms = ?, updated_at = CURRENT_TIMESTAMP
 			WHERE id = ?`,
@@ -7718,12 +7741,15 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 	profile.AcceptedTerms = acceptedTerms == 1
 
 	if _, err = tx.Exec(`INSERT INTO fan_wallets (fan_id, coins) VALUES (?, ?)
-		ON CONFLICT(fan_id) DO UPDATE SET coins = fan_wallets.coins + excluded.coins, updated_at=CURRENT_TIMESTAMP`, profile.ID, nonNegativeInt(input.GuestCoins)); err != nil {
+		ON CONFLICT(fan_id) DO NOTHING`, profile.ID, 0); err != nil {
+		return FanProfileSummary{}, err
+	}
+	if err := adoptGuestEconomy(tx, profile.OrganizationID, profile.ID, input.DeviceID); err != nil {
 		return FanProfileSummary{}, err
 	}
 
 	if input.DeviceID != "" {
-		if _, err = tx.Exec(`UPDATE OR IGNORE fan_journey_rewards SET fan_id=? WHERE device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
+		if _, err = tx.Exec(`UPDATE OR IGNORE fan_journey_rewards SET fan_id=? WHERE fan_id=0 AND device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
 		if _, err = tx.Exec(`UPDATE basketball_shots SET fan_id=? WHERE fan_id=0 AND device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
@@ -7741,7 +7767,7 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 		if _, err = tx.Exec(`UPDATE crossover_duels SET fan_id=? WHERE fan_id=0 AND device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
-		if _, err = tx.Exec(`UPDATE votes SET user_id = ? WHERE device_id = ? AND (? = 0 OR event_id = ?)`, profile.ID, input.DeviceID, input.EventID, input.EventID); err != nil {
+		if _, err = tx.Exec(`UPDATE votes SET user_id = ? WHERE device_id = ? AND (user_id IS NULL OR user_id=0) AND (? = 0 OR event_id = ?) AND EXISTS(SELECT 1 FROM events e WHERE e.id=votes.event_id AND e.organization_id=?)`, profile.ID, input.DeviceID, input.EventID, input.EventID, profile.OrganizationID); err != nil {
 			return FanProfileSummary{}, err
 		}
 		if _, err = tx.Exec(`INSERT OR IGNORE INTO fan_lottery_entries (event_id, fan_id, ticket_code, source)
@@ -7751,7 +7777,7 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 			profile.ID, profile.ID, input.DeviceID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
-		if _, err = tx.Exec(`DELETE FROM guest_wallets WHERE device_id = ? AND (? = 0 OR event_id = ?)`, input.DeviceID, input.EventID, input.EventID); err != nil {
+		if _, err = tx.Exec(`DELETE FROM guest_wallets WHERE organization_id=? AND device_id = ? AND (? = 0 OR event_id = ?)`, profile.OrganizationID, input.DeviceID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
 	}
@@ -7885,7 +7911,47 @@ func (db *appdbimpl) GetFanBySessionToken(token string, deviceID string) (FanPro
 		WHERE token = ?`, deviceID, deviceID, token); err != nil {
 		return FanProfileSummary{}, err
 	}
-	return db.getFanSummaryByWhere(`JOIN fan_sessions s ON s.fan_id = p.id WHERE s.token = ?`, token)
+	summary, err := db.getFanSummaryByWhere(`JOIN fan_sessions s ON s.fan_id = p.id WHERE s.token = ?`, token)
+	if err != nil {
+		return summary, err
+	}
+	if deviceID != "" && summary.Profile.OrganizationID > 0 {
+		var guestCount int
+		if err := db.c.QueryRow(`SELECT (SELECT COUNT(*) FROM guest_wallets WHERE organization_id=? AND device_id=?)+(SELECT COUNT(*) FROM fan_shop_items WHERE organization_id=? AND holder_key=?)+(SELECT COUNT(*) FROM votes v JOIN events e ON e.id=v.event_id WHERE e.organization_id=? AND v.device_id=? AND (v.user_id IS NULL OR v.user_id=0))+(SELECT COUNT(*) FROM fan_journey_rewards WHERE organization_id=? AND device_id=? AND fan_id=0)`, summary.Profile.OrganizationID, deviceID, summary.Profile.OrganizationID, economyHolder(0, deviceID), summary.Profile.OrganizationID, deviceID, summary.Profile.OrganizationID, deviceID).Scan(&guestCount); err != nil {
+			return summary, err
+		}
+		if guestCount == 0 {
+			var brandedExists int
+			if err := db.c.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='branded_game_participations'`).Scan(&brandedExists); err != nil {
+				return summary, err
+			}
+			if brandedExists > 0 {
+				if err := db.c.QueryRow(`SELECT COUNT(*) FROM branded_game_participations b JOIN events e ON e.id=b.event_id WHERE e.organization_id=? AND b.device_id=? AND (b.user_id IS NULL OR b.user_id=0)`, summary.Profile.OrganizationID, deviceID).Scan(&guestCount); err != nil {
+					return summary, err
+				}
+			}
+		}
+		if guestCount > 0 {
+			// Adoption below also links anonymous participation without minting
+			// another credit; repeated logins find no remaining guest funds.
+			tx, err := db.c.Begin()
+			if err != nil {
+				return summary, err
+			}
+			defer tx.Rollback()
+			if err := adoptGuestEconomy(tx, summary.Profile.OrganizationID, summary.Profile.ID, deviceID); err != nil {
+				return summary, err
+			}
+			if err := tx.Commit(); err != nil {
+				return summary, err
+			}
+			summary.Wallet, err = db.getFanWallet(summary.Profile.ID)
+			if err != nil {
+				return summary, err
+			}
+		}
+	}
+	return summary, nil
 }
 
 func (db *appdbimpl) GetFanByDevice(eventID int, organizationID int, deviceID string) (FanProfileSummary, error) {
@@ -7965,8 +8031,8 @@ func (db *appdbimpl) AddFanWalletCoins(fanID int, delta int) error {
 	if fanID <= 0 {
 		return ErrInvalidSponsorData
 	}
-	_, err := db.c.Exec(`INSERT INTO fan_wallets (fan_id, coins) VALUES (?, ?)
-	ON CONFLICT(fan_id) DO UPDATE SET coins = MAX(0, fan_wallets.coins + excluded.coins), updated_at=CURRENT_TIMESTAMP`, fanID, delta)
+	_, err := db.c.Exec(`INSERT INTO fan_wallets (fan_id, coins) VALUES (?, MAX(?,0))
+	ON CONFLICT(fan_id) DO UPDATE SET coins = MAX(0, fan_wallets.coins + ?), updated_at=CURRENT_TIMESTAMP`, fanID, delta, delta)
 	return err
 }
 
@@ -8155,11 +8221,12 @@ func (db *appdbimpl) GetFanLeaderboard(eventID int, organizationID int, limit in
 	if limit <= 0 {
 		limit = 3
 	}
-	rows, err := db.c.Query(`SELECT p.id, p.nickname, w.coins, p.created_at
+	rows, err := db.c.Query(`SELECT p.id, p.nickname, COALESCE(a.points,w.coins), p.created_at
 	FROM fan_profiles p
 	JOIN fan_wallets w ON w.fan_id = p.id
+	LEFT JOIN fan_economy_accounts a ON a.organization_id=p.organization_id AND a.owner_key='fan:'||p.id
 	WHERE p.organization_id = ?
-	ORDER BY w.coins DESC, p.id ASC
+	ORDER BY COALESCE(a.points,w.coins) DESC, p.id ASC
 	LIMIT ?`, organizationID, limit)
 	if err != nil {
 		return nil, err
@@ -8173,6 +8240,7 @@ func (db *appdbimpl) GetFanLeaderboard(eventID int, organizationID int, limit in
 			return nil, err
 		}
 		e.Rank = rank
+		e.Points = e.Coins
 		rank++
 		out = append(out, e)
 	}
@@ -8180,11 +8248,12 @@ func (db *appdbimpl) GetFanLeaderboard(eventID int, organizationID int, limit in
 }
 
 func (db *appdbimpl) GetFanRank(eventID int, organizationID int, fanID int) (FanLeaderboardEntry, error) {
-	rows, err := db.c.Query(`SELECT p.id, p.nickname, w.coins
+	rows, err := db.c.Query(`SELECT p.id, p.nickname, COALESCE(a.points,w.coins)
 	FROM fan_profiles p
 	JOIN fan_wallets w ON w.fan_id = p.id
+	LEFT JOIN fan_economy_accounts a ON a.organization_id=p.organization_id AND a.owner_key='fan:'||p.id
 	WHERE p.organization_id = ?
-	ORDER BY w.coins DESC, p.id ASC`, organizationID)
+	ORDER BY COALESCE(a.points,w.coins) DESC, p.id ASC`, organizationID)
 	if err != nil {
 		return FanLeaderboardEntry{}, err
 	}
@@ -8197,6 +8266,7 @@ func (db *appdbimpl) GetFanRank(eventID int, organizationID int, fanID int) (Fan
 		}
 		if e.FanID == fanID {
 			e.Rank = rank
+			e.Points = e.Coins
 			return e, nil
 		}
 		rank++
@@ -8288,7 +8358,7 @@ func (db *appdbimpl) DonateFanSupport(eventID int, organizationID int, fanID int
 	}
 	defer tx.Rollback()
 
-	res, err := tx.Exec(`UPDATE fan_wallets SET coins = coins - ? WHERE fan_id = ? AND coins >= ?`, coins, fanID, coins)
+	res, err := economyExec(tx, organizationID, eventID, fanID, "", "Donazione alla società", "donation", `UPDATE fan_wallets SET coins = coins - ? WHERE fan_id = ? AND coins >= ?`, coins, fanID, coins)
 	if err != nil {
 		return FanSupportDonation{}, 0, err
 	}

@@ -130,7 +130,8 @@
         <p class="eyebrow">TAP CHALLENGE</p>
         <h3 class="mt-2 text-2xl font-black text-white sm:text-3xl">Sfida da 10 secondi</h3>
         <p class="mt-2.5 max-w-[280px] text-xs leading-5 text-slate-200 sm:text-sm sm:leading-6">Tappa la palla più velocemente possibile: in live 1vs1 partirai con countdown condiviso e schermata versus dedicata.</p>
-        <p v-if="status === 'finished'" class="mt-3 text-sm font-semibold text-amber-200">Hai guadagnato {{ earnedCoins }} monete nel singleplayer.</p>
+        <template v-if="isFixedSingleplayer"><p v-if="status === 'finished'" class="mt-3 text-sm font-semibold text-amber-200">Punteggio: {{ tapCount }} tap</p><p class="mt-3 text-xs text-amber-200">{{ fixedReward }} monete al primo completamento della partita.</p></template>
+        <p v-else-if="status === 'finished'" class="mt-3 text-sm font-semibold text-amber-200">Hai guadagnato {{ earnedCoins }} monete nel singleplayer.</p>
       </div>
     </main>
 
@@ -162,7 +163,10 @@ import {
   submitTapLiveScore,
 } from '../../api';
 
-const props = defineProps({ eventId: { type: Number, default: 0 }, cooldownSeconds: { type: Number, default: 60 } });
+const props = defineProps({
+  eventId: { type: Number, default: 0 }, cooldownSeconds: { type: Number, default: 60 },
+  completionReward: { type: Number, default: null }, alreadyRewarded: { type: Boolean, default: false }, claiming: { type: Boolean, default: false },
+});
 const emit = defineEmits(['claim', 'exit']);
 
 const ROUND_DURATION_MS = 10_000;
@@ -214,7 +218,10 @@ let matchmakingTimerId;
 let preMatchTimerId;
 let awaitingResult = false;
 
-const earnedCoins = computed(() => tapCount.value);
+const hasFixedReward = computed(() => Number.isFinite(props.completionReward) && props.completionReward >= 0);
+const fixedReward = computed(() => hasFixedReward.value ? Math.floor(props.completionReward) : 0);
+const isFixedSingleplayer = computed(() => hasFixedReward.value && liveStep.value === 'idle');
+const earnedCoins = computed(() => isFixedSingleplayer.value ? fixedReward.value : tapCount.value);
 const isCooldownActive = computed(() => cooldownUntil.value > nowTs.value);
 const cooldownRemainingMs = computed(() => Math.max(0, cooldownUntil.value - nowTs.value));
 const isLiveFlow = computed(() => liveStep.value !== 'idle');
@@ -235,7 +242,7 @@ const headline = computed(() => {
   if (liveStep.value === 'countdown') return 'Duello confermato';
   if (liveStep.value === 'playing') return 'Tapta più forte che puoi';
   if (liveStep.value === 'result') return 'Match concluso';
-  if (status.value === 'finished') return `Hai guadagnato ${earnedCoins.value} monete`;
+  if (status.value === 'finished') return isFixedSingleplayer.value ? `Hai totalizzato ${tapCount.value} tap` : `Hai guadagnato ${earnedCoins.value} monete`;
   return 'Tap Challenge';
 });
 const subline = computed(() => {
@@ -250,13 +257,15 @@ const primaryLabel = computed(() => {
   if (liveStep.value === 'countdown' || liveStep.value === 'playing') return 'Match in corso';
   if (liveStep.value === 'result') return 'Torna al menu';
   if (status.value === 'playing') return 'In corso';
+  if (isFixedSingleplayer.value && status.value === 'finished' && props.alreadyRewarded) return 'Termina';
+  if (isFixedSingleplayer.value && (props.claiming || claimRequested.value)) return 'Bonus in salvataggio…';
   if (isSubmitting.value || claimRequested.value) return 'Accredito…';
   if (status.value === 'finished' && errorMessage.value) return 'Riprova accredito';
-  if (status.value === 'finished') return 'Riscatta monete';
+  if (status.value === 'finished') return isFixedSingleplayer.value ? 'Registra risultato e bonus' : 'Riscatta monete';
   if (isCooldownActive.value) return `In cooldown ${formatCooldown(cooldownRemainingMs.value)}`;
   return 'Inizia';
 });
-const isPrimaryDisabled = computed(() => status.value === 'playing' || liveStep.value === 'countdown' || liveStep.value === 'playing' || isSubmitting.value || claimRequested.value || (status.value === 'ready' && isCooldownActive.value));
+const isPrimaryDisabled = computed(() => status.value === 'playing' || liveStep.value === 'countdown' || liveStep.value === 'playing' || isSubmitting.value || (claimRequested.value && !(isFixedSingleplayer.value && props.alreadyRewarded)) || (isFixedSingleplayer.value && props.claiming) || (status.value === 'ready' && isCooldownActive.value));
 const ballStyle = computed(() => ({ transform: `translate3d(${ballX.value}px, ${ballY.value}px, 0)` }));
 const matchmakingLabel = computed(() => matchmakingDeadline.value > nowTs.value ? formatSeconds(matchmakingDeadline.value - nowTs.value) : 'quasi pronto');
 const countdownDisplay = computed(() => countdownValue.value <= 0 ? 'GO' : countdownValue.value);
@@ -359,7 +368,8 @@ function onPrimaryAction() {
     leavePostMatchAndExit();
     return;
   }
-  if (status.value === 'playing' || isSubmitting.value || claimRequested.value) return;
+  if (isFixedSingleplayer.value && props.claiming) return;
+  if (status.value === 'playing' || isSubmitting.value || (claimRequested.value && !(isFixedSingleplayer.value && props.alreadyRewarded))) return;
   if (status.value === 'finished') {
     claimReward();
     return;
@@ -461,6 +471,14 @@ function applyLiveResult(data = {}) {
   emit('claim', { coins: liveCoins.value, source: 'tap_challenge_live', keepOpen: true, meta: { matchId: liveMatchId.value, taps: tapCount.value, outcome: liveOutcome.value } });
 }
 async function claimReward() {
+  if (isFixedSingleplayer.value) {
+    if (props.claiming || isSubmitting.value || status.value !== 'finished') return;
+    if (props.alreadyRewarded) { emit('exit'); return; }
+    if (claimRequested.value) return;
+    claimRequested.value = true;
+    emit('claim', { coins: fixedReward.value });
+    return;
+  }
   if (isSubmitting.value || claimRequested.value || status.value !== 'finished') return;
   claimRequested.value = true;
   if (earnedCoins.value <= 0) {

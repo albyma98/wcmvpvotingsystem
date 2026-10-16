@@ -19,8 +19,9 @@ func (db *appdbimpl) GetFanLiveEvent(eventID, organizationID int) (Event, error)
 // Use the same deterministic ordering as the existing club wallet leaderboard.
 func (db *appdbimpl) GetFanNearbyRanks(organizationID, fanID int) ([]FanLeaderboardEntry, error) {
 	rows, err := db.c.Query(`WITH ranked AS (
-		SELECT p.id, p.nickname, w.coins, ROW_NUMBER() OVER (ORDER BY w.coins DESC, p.id ASC) AS position
-		FROM fan_profiles p JOIN fan_wallets w ON w.fan_id=p.id WHERE p.organization_id=?
+		SELECT p.id, p.nickname, COALESCE(a.points,w.coins) AS coins, ROW_NUMBER() OVER (ORDER BY COALESCE(a.points,w.coins) DESC, p.id ASC) AS position
+		FROM fan_profiles p JOIN fan_wallets w ON w.fan_id=p.id
+		LEFT JOIN fan_economy_accounts a ON a.organization_id=p.organization_id AND a.owner_key='fan:'||p.id WHERE p.organization_id=?
 	) SELECT id, nickname, coins, position FROM ranked
 	WHERE position BETWEEN (SELECT position-1 FROM ranked WHERE id=?) AND (SELECT position+1 FROM ranked WHERE id=?)
 	ORDER BY position`, organizationID, fanID, fanID)
@@ -35,6 +36,7 @@ func (db *appdbimpl) GetFanNearbyRanks(organizationID, fanID int) ([]FanLeaderbo
 			return nil, err
 		}
 		entries = append(entries, entry)
+		entries[len(entries)-1].Points = entry.Coins
 	}
 	return entries, rows.Err()
 }

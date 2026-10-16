@@ -90,6 +90,10 @@ func (rt *_router) postRegisterFan(w http.ResponseWriter, r *http.Request, ctx r
 		EnterLottery:   payload.EnterLottery,
 	})
 	if err != nil {
+		if errors.Is(err, database.ErrFanLoginRequired) {
+			_ = writeJSONMessage(w, http.StatusConflict, "Questo numero ha già un profilo. Accedi con il codice ricevuto sul telefono.")
+			return
+		}
 		ctx.Logger.WithError(err).Error("register fan failed")
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Impossibile salvare il profilo tifoso")
 		return
@@ -113,6 +117,10 @@ func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqconte
 	if sessionToken != "" {
 		summary, err := rt.db.GetFanBySessionToken(sessionToken, deviceID)
 		if err == nil {
+			if summary.Profile.OrganizationID > 0 && summary.Profile.OrganizationID != ctx.OrganizationID {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
 			resp["registered"] = true
 			resp["user"] = summary.Profile
 			resp["wallet"] = summary.Wallet
@@ -139,7 +147,7 @@ func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqconte
 					}
 				}
 				if rank, rankErr := rt.db.GetFanRank(eventID, ctx.OrganizationID, summary.Profile.ID); rankErr == nil {
-					resp["user_rank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins}
+					resp["user_rank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins, "points": rank.Coins}
 				}
 			}
 			_ = writeJSON(w, http.StatusOK, resp)
@@ -212,50 +220,18 @@ func (rt *_router) putFanNickname(w http.ResponseWriter, r *http.Request, ctx re
 }
 
 func (rt *_router) postGuestCoins(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	eventID, err := parseNumericID(chi.URLParam(r, "eventId"))
+	// Compatibility endpoint: balances are now read from the server. Local
+	// game completions use fixed, idempotent journey claims instead.
+	eventID, fanID, device, ok := rt.basketballIdentity(w, r, ctx)
+	if !ok {
+		return
+	}
+	state, err := rt.db.GetFanWalletState(eventID, ctx.OrganizationID, fanID, device)
 	if err != nil {
-		_ = writeJSONMessage(w, http.StatusBadRequest, "Evento non valido")
+		fanShopError(w, ctx, err)
 		return
 	}
-	deviceID := rt.deviceIDFromRequest(r)
-	if deviceID == "" {
-		_ = writeJSONMessage(w, http.StatusBadRequest, "Dispositivo non valido")
-		return
-	}
-	var payload struct {
-		Coins int `json:"coins"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta non valida")
-		return
-	}
-
-	token := rt.fanSessionTokenFromRequest(r)
-	if token != "" {
-		me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
-		if err == nil {
-			if me.Profile.OrganizationID != 0 && me.Profile.OrganizationID != ctx.OrganizationID {
-				_ = writeJSONMessage(w, http.StatusForbidden, "Profilo non valido per questa organizzazione")
-				return
-			}
-			if err := rt.db.SetFanWalletCoins(me.Profile.ID, payload.Coins); err != nil {
-				ctx.Logger.WithError(err).Error("set fan wallet coins")
-				_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore salvataggio monete")
-				return
-			}
-			rt.coinsHub.Broadcast(eventID)
-			_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": payload.Coins, "registered": true})
-			return
-		}
-	}
-
-	if err := rt.db.UpsertGuestCoins(eventID, ctx.OrganizationID, deviceID, payload.Coins); err != nil {
-		ctx.Logger.WithError(err).Error("upsert guest coins")
-		_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore salvataggio monete")
-		return
-	}
-	rt.coinsHub.Broadcast(eventID)
-	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": payload.Coins, "registered": false})
+	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": state.Wallet, "registered": fanID > 0})
 }
 
 func (rt *_router) serializeLotteryTicket(eventID int, ticket database.EventTicket) map[string]interface{} {
@@ -288,20 +264,20 @@ func (rt *_router) getCoinsLeaderboard(w http.ResponseWriter, r *http.Request, c
 	}
 	top := make([]map[string]interface{}, 0, len(rows))
 	for _, e := range rows {
-		top = append(top, map[string]interface{}{"name": e.Nickname, "coins": e.Coins})
+		top = append(top, map[string]interface{}{"name": e.Nickname, "coins": e.Coins, "points": e.Coins})
 	}
 	resp := map[string]interface{}{"top3": top}
 	if token := rt.fanSessionTokenFromRequest(r); token != "" {
 		if me, e := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r)); e == nil {
 			if rank, rankErr := rt.db.GetFanRank(eventID, ctx.OrganizationID, me.Profile.ID); rankErr == nil {
-				resp["userRank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins}
+				resp["userRank"] = map[string]interface{}{"rank": rank.Rank, "coins": rank.Coins, "points": rank.Coins}
 				if neighbors, neighborsErr := rt.db.GetFanNearbyRanks(ctx.OrganizationID, me.Profile.ID); neighborsErr == nil {
 					nearby := make([]map[string]interface{}, 0, len(neighbors))
 					for _, entry := range neighbors {
 						if entry.Rank == rank.Rank-1 {
 							resp["next_rank_gap"] = fanRankGap(rank, entry)
 						}
-						nearby = append(nearby, map[string]interface{}{"rank": entry.Rank, "name": entry.Nickname, "coins": entry.Coins, "is_me": entry.FanID == me.Profile.ID})
+						nearby = append(nearby, map[string]interface{}{"rank": entry.Rank, "name": entry.Nickname, "coins": entry.Coins, "points": entry.Coins, "is_me": entry.FanID == me.Profile.ID})
 					}
 					resp["nearby"] = nearby
 				}
@@ -323,39 +299,29 @@ func fanRankGap(current, above database.FanLeaderboardEntry) int {
 }
 
 func (rt *_router) postFanRewardRedeem(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	eventID, err := parseNumericID(chi.URLParam(r, "eventId"))
-	if err != nil {
-		_ = writeJSONMessage(w, http.StatusBadRequest, "Evento non valido")
-		return
-	}
-	token := rt.fanSessionTokenFromRequest(r)
-	if token == "" {
-		_ = writeJSONMessage(w, http.StatusUnauthorized, "Profilo tifoso richiesto")
-		return
-	}
-	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
-	if err != nil {
-		_ = writeJSONMessage(w, http.StatusUnauthorized, "Profilo tifoso richiesto")
+	eventID, fanID, device, ok := rt.basketballIdentity(w, r, ctx)
+	if !ok {
 		return
 	}
 	var payload struct {
 		RewardKey string `json:"reward_key"`
 		CostCoins int    `json:"cost_coins"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&payload); err != nil {
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta non valida")
 		return
 	}
-	if err := rt.db.RecordFanRewardRedemption(eventID, me.Profile.ID, payload.RewardKey, payload.CostCoins); err != nil {
-		if err == sql.ErrNoRows {
-			_ = writeJSONMessage(w, http.StatusConflict, "Monete insufficienti")
-			return
-		}
-		_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore riscatto")
+	// Ignore historical client prices and accept only the actual server catalog.
+	if err := rt.db.PurchaseFanShopItem(eventID, ctx.OrganizationID, fanID, device, payload.RewardKey); err != nil {
+		fanShopError(w, ctx, err)
 		return
 	}
-	updated, _ := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
-	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "wallet": updated.Wallet})
+	state, err := rt.db.GetFanWalletState(eventID, ctx.OrganizationID, fanID, device)
+	if err != nil {
+		fanShopError(w, ctx, err)
+		return
+	}
+	_ = writeJSON(w, http.StatusOK, state)
 }
 
 func (rt *_router) postFanSupportDonation(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

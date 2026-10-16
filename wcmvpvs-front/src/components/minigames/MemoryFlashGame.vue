@@ -2,8 +2,8 @@
   <div class="memory-flash relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70 p-3 text-white md:p-4">
     <header class="rounded-2xl border border-white/15 bg-slate-900/70 p-3 backdrop-blur">
       <div class="flex items-center justify-between gap-3">
-        <div ref="walletRef" class="rounded-full border border-amber-300/45 bg-amber-300/15 px-3 py-1 text-sm font-black text-amber-200">
-          🪙 {{ liveCoins }}
+        <div class="rounded-full border border-amber-300/45 bg-amber-300/15 px-3 py-1 text-sm font-black text-amber-200">
+          🪙 {{ displayedCoins }}
         </div>
         <div class="flex-1">
           <div class="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
@@ -16,6 +16,7 @@
         </div>
         <button type="button" class="close-btn" aria-label="Chiudi gioco" @click="emit('exit')">×</button>
       </div>
+      <p class="mt-2 text-center text-xs text-slate-300">8 monete al primo completamento della partita</p>
     </header>
 
     <main class="mt-3 grid flex-1 grid-cols-2 gap-2 overflow-hidden">
@@ -48,49 +49,34 @@
           <h3 class="mt-2 text-2xl font-black text-white">
             {{ state === 'win' ? 'Memory completato!' : 'Ci sei quasi!' }}
           </h3>
-          <p v-if="state === 'win'" class="mt-2 text-xl font-black text-emerald-300">+8 MONETE</p>
+          <p v-if="state === 'win'" class="mt-2 text-sm font-semibold text-emerald-300">{{ alreadyRewarded ? 'Bonus della partita già ottenuto. Puoi continuare a giocare.' : '8 monete al primo completamento della partita.' }}</p>
           <p v-else class="mt-2 text-sm text-slate-200">Mostriamo le coppie mancanti per aiutarti al prossimo tentativo.</p>
 
           <div v-if="state === 'win'" class="mt-4 grid grid-cols-1 gap-2">
-            <button type="button" class="cta-primary" @click="startRound(false)">Gioca ancora</button>
+            <button type="button" class="cta-primary" @click="startRound">Gioca ancora gratis</button>
           </div>
 
           <div v-else class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button type="button" class="cta-primary" :disabled="!canRetry" @click="retryNow">
-              {{ retryLabel }}
-            </button>
+            <button type="button" class="cta-primary" @click="retryNow">Riprova gratis</button>
             <button type="button" class="cta-secondary" @click="emit('exit')">Esci</button>
           </div>
         </div>
       </div>
     </Transition>
 
-    <div class="pointer-events-none absolute inset-0 z-30 overflow-hidden">
-      <span
-        v-for="coin in flyingCoins"
-        :key="coin.id"
-        class="flying-coin"
-        :style="{
-          '--start-x': `${coin.startX}px`,
-          '--start-y': `${coin.startY}px`,
-          '--end-x': `${coin.endX}px`,
-          '--end-y': `${coin.endY}px`,
-          animationDelay: `${coin.delay}ms`,
-        }"
-      >🪙</span>
-    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
-const emit = defineEmits(['claim', 'exit', 'spend']);
+const emit = defineEmits(['claim', 'exit']);
 const props = defineProps({
   walletCoins: {
     type: Number,
     default: 0,
   },
+  alreadyRewarded: { type: Boolean, default: false },
 });
 
 const EMOJIS = ['🏐', '⚡', '🔥', '💎', '👑'];
@@ -98,7 +84,6 @@ const TOTAL_TIME_MS = 20_000;
 const PREVIEW_MS = 2_000;
 const MISMATCH_FLIP_BACK_MS = 600;
 const WIN_REWARD = 8;
-const RETRY_COST = 4;
 
 const state = ref('preview');
 const cards = ref([]);
@@ -106,20 +91,16 @@ const selectedIds = ref([]);
 const boardLocked = ref(true);
 const shakeCardIds = ref([]);
 const timeLeftMs = ref(TOTAL_TIME_MS);
-const liveCoins = ref(0);
-const walletRef = ref(null);
-const flyingCoins = ref([]);
+const displayedCoins = computed(() => Number.isFinite(props.walletCoins) ? Math.max(0, Math.floor(props.walletCoins)) : 0);
 
 let countdownId;
 let previewTimeoutId;
 let mismatchTimeoutId;
 let hapticCooldown = false;
-let rewarded = false;
+let rewardRequested = false;
 
 const timeLabel = computed(() => `${Math.ceil(Math.max(0, timeLeftMs.value) / 1000)}s`);
 const timerProgress = computed(() => (Math.max(0, timeLeftMs.value) / TOTAL_TIME_MS) * 100);
-const canRetry = computed(() => liveCoins.value >= RETRY_COST);
-const retryLabel = computed(() => `Riprova subito – ${RETRY_COST} monete`);
 const statusLabel = computed(() => {
   if (state.value === 'preview') return 'Preview';
   if (state.value === 'playing') return 'Playing';
@@ -127,16 +108,8 @@ const statusLabel = computed(() => {
   return 'Lose';
 });
 
-watch(
-  () => props.walletCoins,
-  (nextCoins) => {
-    liveCoins.value = Math.max(0, Number(nextCoins) || 0);
-  },
-  { immediate: true },
-);
-
 onMounted(() => {
-  startRound(false);
+  startRound();
 });
 
 onBeforeUnmount(() => {
@@ -164,20 +137,14 @@ function buildDeck() {
     }));
 }
 
-function startRound(withRetryCost) {
+function startRound() {
   clearAllTimers();
-  rewarded = false;
   state.value = 'preview';
   boardLocked.value = true;
   selectedIds.value = [];
   shakeCardIds.value = [];
   cards.value = buildDeck();
   timeLeftMs.value = TOTAL_TIME_MS;
-
-  if (withRetryCost) {
-    liveCoins.value = Math.max(0, liveCoins.value - RETRY_COST);
-    emit('spend', { coins: RETRY_COST, reason: 'memory-flash-retry' });
-  }
 
   if (typeof window === 'undefined') {
     return;
@@ -261,14 +228,13 @@ function resetTurn() {
 }
 
 function onWin() {
+  if (state.value !== 'playing') return;
   state.value = 'win';
   boardLocked.value = true;
   window.clearInterval(countdownId);
-  if (!rewarded) {
-    rewarded = true;
-    liveCoins.value += WIN_REWARD;
+  if (!rewardRequested && !props.alreadyRewarded) {
+    rewardRequested = true;
     emit('claim', { coins: WIN_REWARD, gameId: 'memory-flash' });
-    triggerCoinFlight();
   }
 }
 
@@ -283,34 +249,7 @@ function onLose() {
 }
 
 function retryNow() {
-  if (!canRetry.value) {
-    return;
-  }
-  startRound(true);
-}
-
-function triggerCoinFlight() {
-  if (typeof window === 'undefined' || !walletRef.value) {
-    return;
-  }
-  const rect = walletRef.value.getBoundingClientRect();
-  const startX = window.innerWidth * 0.5;
-  const startY = window.innerHeight * 0.62;
-  const endX = rect.left + rect.width / 2;
-  const endY = rect.top + rect.height / 2;
-
-  flyingCoins.value = Array.from({ length: 8 }, (_, index) => ({
-    id: `${Date.now()}-${index}`,
-    startX: startX + (Math.random() * 56 - 28),
-    startY: startY + (Math.random() * 36 - 18),
-    endX,
-    endY,
-    delay: index * 35,
-  }));
-
-  window.setTimeout(() => {
-    flyingCoins.value = [];
-  }, 1200);
+  startRound();
 }
 
 function vibrate(duration) {
@@ -414,15 +353,6 @@ function vibrate(duration) {
   color: white;
 }
 
-.flying-coin {
-  position: fixed;
-  left: 0;
-  top: 0;
-  transform: translate3d(var(--start-x), var(--start-y), 0) scale(0.8);
-  animation: coinFly 0.9s ease-out forwards;
-  font-size: 1.35rem;
-}
-
 .overlay-fade-enter-active,
 .overlay-fade-leave-active {
   transition: opacity 0.2s ease;
@@ -446,10 +376,4 @@ function vibrate(duration) {
   100% { box-shadow: 0 0 6px rgba(52, 211, 153, 0.35); }
 }
 
-@keyframes coinFly {
-  to {
-    transform: translate3d(var(--end-x), var(--end-y), 0) scale(0.4);
-    opacity: 0;
-  }
-}
 </style>

@@ -14,7 +14,7 @@
           </div>
         </div>
         <div class="top-right">
-          <button ref="walletEl" class="wallet" :class="{ 'wallet-pulse': walletPulse }" type="button" aria-label="Saldo monete" @click="openSheet('earn')">
+          <button ref="walletEl" class="wallet" :class="{ 'wallet-pulse': walletPulse }" type="button" aria-label="Apri wallet e movimenti" @click="openSheet('wallet')">
             <span class="coin"></span> <span>{{ totalCoins }}</span>
           </button>
           <button class="profile-btn" type="button" aria-label="Profilo" @click="openProfile">
@@ -48,8 +48,8 @@
             <div class="tile-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" /></svg>
             </div>
-            <b>Gioca e guadagna</b>
-            <p>Quiz e sfide sponsor</p>
+            <b>Gioca nelle pause</b>
+            <p>Basket, quiz e nuove sfide</p>
             <div class="spacer"></div>
             <span class="tile-cta">Gioca →</span>
           </button>
@@ -58,14 +58,14 @@
             <div class="tile-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 7v13" /></svg>
             </div>
-            <b>Scopri i premi</b>
-            <p>Premi e merch del club</p>
+            <b>Premi e shop</b>
+            <p>La tua collezione da tifoso</p>
             <div class="spacer"></div>
             <span class="tile-cta">Riscatta →</span>
           </button>
         </div>
 
-        <section v-if="eventId" class="journey-card" aria-label="Il tuo primo traguardo">
+        <section v-if="eventId && !showMatchSummary && (!progress.unlocked || journey.pendingVoteBonus)" class="journey-card" aria-label="Il tuo primo traguardo">
           <div class="journey-head">
             <div>
               <b>{{ progress.unlocked ? `Badge ${FAN_BADGE_NAME} sbloccato!` : 'Il tuo primo traguardo' }}</b>
@@ -83,43 +83,26 @@
           <button v-if="journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare il bonus voto' }}</button>
         </section>
 
-        <button v-if="featuredMission" class="moment-card" type="button" @click="onMission(featuredMission)">
+        <button v-else-if="featuredMission && !showMatchSummary" class="moment-card" type="button" @click="onMission(featuredMission)">
           <span class="avatar" aria-hidden="true">{{ featuredMission.emoji }}</span>
           <span class="row-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
           <span class="row-pts">+{{ featuredMission.pts }} <span class="coin" aria-hidden="true"></span></span>
         </button>
-        <button v-if="showMatchSummary" class="moment-card" type="button" @click="openSheet('match-summary')">
+        <button v-else-if="showMatchSummary" class="moment-card" type="button" @click="openSheet('match-summary')">
           <span class="avatar" aria-hidden="true">🏀</span>
           <span class="row-copy"><b>La tua partita</b><span>{{ matchConcluded ? 'Risultato MVP e riepilogo della serata' : 'Votazioni chiuse · guarda il tuo riepilogo' }}</span></span>
           <span class="tile-cta">Apri →</span>
         </button>
 
-        <!-- Leaderboard tile -->
-        <button class="tile lb-tile" type="button" @click="openLeaderboard">
-          <div class="lb-head">
-            <b>Classifica tifosi</b>
-            <span class="tile-cta">Vedi tutti →</span>
-          </div>
-          <div class="lb-mini">
-            <div v-for="(row, i) in leaderboardTop3" :key="i" class="lb-mini-row">
-              <span class="rank" :class="`r${i + 1}`">{{ i + 1 }}</span>
-              <span class="lb-mini-name">{{ row.name }}</span>
-              <span class="lb-mini-pts">{{ row.coins }}</span>
-            </div>
-            <div v-if="!leaderboardTop3.length" class="lb-empty">Gioca e vota per popolare la classifica</div>
-          </div>
+        <button class="rank-link" type="button" @click="openLeaderboard">
+          <span class="rank-link-icon" aria-hidden="true">🏆</span>
+          <span><b>Classifica tifosi</b><small>{{ leaderboardUser ? `Sei al ${leaderboardUser.rank}° posto · ${leaderboardUser.points} punti` : 'Scopri i tifosi più attivi del club' }}</small></span>
+          <span class="tile-cta" aria-hidden="true">→</span>
         </button>
 
         <!-- Feedback dell'evento: domande e suggerimento aperto finale -->
-        <button class="feedback-cta" type="button" :disabled="!hasFeedbackSurvey || hasSubmittedFeedback" @click="openFeedbackModal">
-          <span class="feedback-cta-icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H5l-4 3V11.5A8.5 8.5 0 0 1 9.5 3h3a8.5 8.5 0 0 1 8.5 8.5Z" /><path d="M7 9h8M7 13h5" /></svg>
-          </span>
-          <span class="feedback-cta-copy">
-            <b>{{ hasSubmittedFeedback ? 'Feedback inviato' : 'Lascia un feedback' }}</b>
-            <span>{{ feedbackSubtitle }}</span>
-          </span>
-          <span class="feedback-cta-action">{{ hasSubmittedFeedback ? 'Fatto ✓' : 'Rispondi →' }}</span>
+        <button v-if="hasFeedbackSurvey" class="feedback-link" type="button" :disabled="hasSubmittedFeedback" @click="openFeedbackModal">
+          {{ hasSubmittedFeedback ? '✓ Feedback ricevuto, grazie!' : 'Come sta andando? Lascia un feedback →' }}
         </button>
 
         <!-- Sponsors (spazio ampliato al posto dello scoreboard) -->
@@ -146,7 +129,7 @@
       <div class="overlay" :class="{ open: activeSheet }" @click="closeSheets"></div>
 
       <!-- MVP: lista giocatori reale -->
-      <div class="sheet" :class="{ open: activeSheet === 'mvp' }" role="dialog" aria-label="Vota MVP">
+      <div class="sheet" :class="{ open: activeSheet === 'mvp' }" role="dialog" aria-label="Vota MVP" :aria-hidden="activeSheet !== 'mvp'" :inert="activeSheet !== 'mvp'">
         <div class="grabber"></div>
         <div class="sheet-head">
           <div>
@@ -203,7 +186,7 @@
       </div>
 
       <!-- Guadagna: missioni del match -->
-      <div class="sheet" :class="{ open: activeSheet === 'earn' }" role="dialog" aria-label="Guadagna monete">
+      <div class="sheet" :class="{ open: activeSheet === 'earn' }" role="dialog" aria-label="Guadagna monete" :aria-hidden="activeSheet !== 'earn'" :inert="activeSheet !== 'earn'">
         <div class="grabber"></div>
         <div class="sheet-head">
           <div>
@@ -233,32 +216,45 @@
         </div>
       </div>
 
-      <div class="sheet" :class="{ open: activeSheet === 'spend' }" role="dialog" aria-label="Spendi monete">
+      <div class="sheet" :class="{ open: activeSheet === 'wallet' }" role="dialog" aria-label="Il tuo wallet" :aria-hidden="activeSheet !== 'wallet'" :inert="activeSheet !== 'wallet'">
+        <div class="grabber"></div>
+        <div class="sheet-head"><div><div class="sheet-title">Il tuo wallet</div><div class="sheet-sub">Le monete che guadagni votando e giocando</div></div><button class="close" type="button" aria-label="Chiudi wallet" @click="closeSheets">✕</button></div>
+        <div class="sheet-body">
+          <div class="wallet-total"><span class="coin" aria-hidden="true"></span><strong>{{ totalCoins }}</strong><span>monete disponibili</span></div>
+          <div class="wallet-actions"><button type="button" class="btn-vote" @click="openSheet('earn')">Guadagna</button><button type="button" class="btn-vote" @click="openSheet('spend')">Usa le monete</button></div>
+          <p class="sheet-sub">{{ participationPoints }} punti partecipazione · spendere monete non cambia la classifica.</p>
+          <h3 class="section-label">Ultimi movimenti</h3>
+          <p v-if="isLoadingWallet" class="sheet-empty" role="status">Caricamento wallet…</p>
+          <p v-else-if="walletError" class="sheet-empty error" role="alert">{{ walletError }} <button type="button" class="journey-next" @click="loadWallet">Riprova</button></p>
+          <p v-else-if="!walletMovements.length" class="sheet-empty">I prossimi guadagni e acquisti compariranno qui.</p>
+          <div v-for="movement in walletMovements" :key="movement.id" class="wallet-movement">
+            <span><b>{{ movement.label }}</b><small>{{ formatWalletDate(movement.created_at) }}</small></span>
+            <strong :class="{ 'is-credit': movement.delta > 0 }">{{ movement.delta > 0 ? '+' : '' }}{{ movement.delta }} <span class="coin" aria-hidden="true"></span></strong>
+          </div>
+          <p v-if="walletMovements.length" class="sheet-sub">Lo storico mostra i movimenti registrati dall’attivazione del wallet.</p>
+        </div>
+      </div>
+
+      <div class="sheet" :class="{ open: activeSheet === 'spend' }" role="dialog" aria-label="Premi e shop" :aria-hidden="activeSheet !== 'spend'" :inert="activeSheet !== 'spend'">
         <div class="grabber"></div>
         <div class="sheet-head">
           <div>
-            <div class="sheet-title">Spendi le tue monete</div>
-            <div class="sheet-sub">Premi offerti dal club e dagli sponsor</div>
+            <div class="sheet-title">Premi e shop</div>
+            <div class="sheet-sub">Oggetti digitali per vivere e ricordare la partita</div>
           </div>
           <button class="close" type="button" @click="closeSheets">✕</button>
         </div>
         <div class="sheet-body">
-          <div class="row-item leaderboard-row journey-badge">
-            <span class="avatar" aria-hidden="true">🏅</span>
-            <span class="row-copy"><b>Badge {{ FAN_BADGE_NAME }}</b><span>{{ progress.unlocked ? 'Sbloccato! Lo trovi nel tuo profilo.' : `Guadagna ${FIRST_FAN_GOAL} monete in questa partita, votando o giocando, per sbloccarlo.` }}</span></span>
+          <div class="shop-balance"><span>Saldo disponibile</span><b>{{ totalCoins }} <span class="coin" aria-hidden="true"></span></b></div>
+          <p v-if="isLoadingWallet" class="sheet-empty" role="status">Caricamento catalogo…</p>
+          <p v-if="walletError" class="sheet-empty error" role="alert">{{ walletError }} <button type="button" class="journey-next" @click="loadWallet">Riprova</button></p>
+          <p v-if="shopMessage" class="shop-message" role="status">{{ shopMessage }}</p>
+          <div v-for="item in catalog" :key="item.key" class="shop-item">
+            <div class="shop-preview" :class="item.kind" aria-hidden="true"><span v-if="item.kind === 'frame'" class="shop-avatar">{{ homeBadge }}</span><template v-else><img v-if="homeLogoUrl" :src="homeLogoUrl" alt="" /><b>{{ homeName }}</b><small>{{ opponentLabel }}</small></template></div>
+            <div class="shop-item-copy"><b>{{ item.title }}</b><p>{{ item.description }}</p><button type="button" class="shop-buy" :disabled="shopBusy || isLoadingWallet || Boolean(walletError) || (!item.owned && totalCoins < item.cost)" @click="item.owned ? openProfile() : redeem(item)">{{ item.owned ? 'Nella tua collezione →' : redeeming === item.key ? 'Salvataggio…' : `Ottieni · ${item.cost}` }} <span v-if="!item.owned" class="coin" aria-hidden="true"></span></button><small v-if="!item.owned && totalCoins < item.cost">Ti mancano {{ item.cost - totalCoins }} monete</small></div>
           </div>
-          <button
-            v-for="reward in rewards"
-            :key="reward.key"
-            class="row-item"
-            type="button"
-            :disabled="redeeming === reward.key || totalCoins < reward.cost"
-            @click="redeem(reward)"
-          >
-            <span class="avatar">{{ reward.emoji }}</span>
-            <span class="row-copy"><b>{{ reward.title }}</b><span>{{ reward.subtitle }}</span></span>
-            <span class="row-pts">{{ reward.cost }} <span class="coin"></span></span>
-          </button>
+          <p v-if="!catalog.length && !isLoadingWallet && !walletError" class="sheet-empty">Il catalogo sarà disponibile con una partita del club.</p>
+          <button type="button" class="journey-next" @click="openProfile">Apri la tua collezione →</button>
         </div>
       </div>
 
@@ -276,7 +272,7 @@
         <div class="sheet-head">
           <div>
             <div class="sheet-title">Classifica tifosi</div>
-            <div class="sheet-sub">I tifosi con più monete</div>
+            <div class="sheet-sub">Punti guadagnati partecipando · spendere monete non cambia la posizione</div>
           </div>
           <button class="close" type="button" aria-label="Chiudi classifica tifosi" @click="closeSheets">✕</button>
         </div>
@@ -289,12 +285,12 @@
           <div v-for="(row, index) in leaderboardTop3" :key="index" class="row-item leaderboard-row">
             <span class="rank leaderboard-rank" :class="`r${index + 1}`">{{ index + 1 }}</span>
             <span class="row-copy"><b>{{ row.name }}</b><span>{{ index + 1 }}° posto</span></span>
-            <span class="row-pts">{{ row.coins }} <span class="coin" aria-hidden="true"></span><span class="sr-only">monete</span></span>
+            <span class="row-pts">{{ row.points }} <small>pt</small></span>
           </div>
           <div v-if="leaderboardUser" class="row-item leaderboard-row leaderboard-self">
             <span class="avatar">{{ leaderboardUser.rank }}</span>
             <span class="row-copy"><b>La tua posizione</b><span>{{ profileNickname }}</span></span>
-            <span class="row-pts">{{ leaderboardUser.coins }} <span class="coin" aria-hidden="true"></span><span class="sr-only">monete</span></span>
+            <span class="row-pts">{{ leaderboardUser.points }} <small>pt</small></span>
           </div>
           <template v-if="leaderboardNearby.length">
             <div class="sheet-sub">Vicino a te · classifica della società</div>
@@ -302,7 +298,7 @@
             <div v-for="row in leaderboardNearby" :key="row.rank" class="row-item leaderboard-row" :class="{ 'leaderboard-self': row.is_me }">
               <span class="rank leaderboard-rank">{{ row.rank }}</span>
               <span class="row-copy"><b>{{ row.is_me ? 'Tu' : row.name }}</b></span>
-              <span class="row-pts">{{ row.coins }} <span class="coin" aria-hidden="true"></span></span>
+              <span class="row-pts">{{ row.points }} <small>pt</small></span>
             </div>
           </template>
           <button v-else-if="!isRegistered" class="btn-vote" type="button" @click="openRegistration">Entra in classifica con il tuo nickname</button>
@@ -326,7 +322,7 @@
       </div>
 
       <!-- Profilo (come LiveExperienceHome: nickname + saldo + QR lotteria) -->
-      <div class="sheet" :class="{ open: activeSheet === 'profile' }" role="dialog" aria-label="Profilo">
+      <div class="sheet" :class="{ open: activeSheet === 'profile' }" role="dialog" aria-label="Profilo" :aria-hidden="activeSheet !== 'profile'" :inert="activeSheet !== 'profile'">
         <div class="grabber"></div>
         <div class="sheet-head">
           <div>
@@ -336,17 +332,8 @@
           <button class="close" type="button" @click="closeSheets">✕</button>
         </div>
         <div class="sheet-body">
-          <div class="profile-hero">
-            <div class="profile-avatar">
-              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--red-text)" stroke-width="1.8" stroke-linecap="round">
-                <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
-              </svg>
-            </div>
-            <div>
-              <div class="profile-label">Nickname</div>
-              <div class="profile-nick">{{ profileNickname }}</div>
-            </div>
-          </div>
+          <FanCollectionPanel :nickname="profileNickname" :club-name="homeName" :club-logo-url="homeLogoUrl" :registered="isRegistered" :collection="collection" :loading="isLoadingWallet" :busy="shopBusy" :error="walletError" @equip="equipCollectionItem" @open-shop="openSheet('spend')" />
+          <button v-if="walletError" type="button" class="journey-next" :disabled="shopBusy" @click="loadWallet">Riprova a caricare la collezione</button>
 
           <button class="row-item profile-toggle" type="button" @click="toggleNicknameEditor">
             <b>Modifica nickname</b>
@@ -373,15 +360,11 @@
           <p v-if="nicknameError" class="nick-msg error">{{ nicknameError }}</p>
           <p v-else-if="nicknameSuccess" class="nick-msg ok">{{ nicknameSuccess }}</p>
 
-          <div class="coin-balance">
+          <button type="button" class="coin-balance" @click="openSheet('wallet')">
             <span class="coin-balance-label">Saldo monete</span>
             <span class="coin-balance-val">{{ totalCoins }} <span class="coin"></span></span>
-          </div>
+          </button>
           <button v-if="!isRegistered" class="btn-vote" type="button" @click="openRegistration">Accedi o crea il tuo profilo tifoso</button>
-          <div v-if="progress.unlocked" class="row-item leaderboard-row journey-badge">
-            <span class="avatar" aria-hidden="true">🏅</span>
-            <span class="row-copy"><b>{{ FAN_BADGE_NAME }}</b><span>Badge della partita · {{ FIRST_FAN_GOAL }} monete guadagnate</span></span>
-          </div>
 
           <div class="lottery-box">
             <div class="lottery-title">QR Lotteria MVP</div>
@@ -407,6 +390,8 @@
           <ReactionTestGame
             v-if="activeGameId === 'reaction'"
             class="game-fill"
+            :completion-reward="10"
+            :already-rewarded="doneKeys.includes('reaction')"
             @claim="onGameClaim"
             @exit="closeGame"
           />
@@ -462,12 +447,17 @@
             v-else-if="activeGameId === 'tap'"
             class="game-fill"
             :event-id="eventId"
+            :completion-reward="8"
+            :already-rewarded="doneKeys.includes('tap')"
+            :claiming="isSavingCoins"
             @claim="onGameClaim"
             @exit="closeGame"
           />
           <SponsorRushGame
             v-else-if="activeGameId === 'sponsor-rush'"
             class="game-fill"
+            :completion-reward="12"
+            :already-rewarded="doneKeys.includes('sponsor-rush')"
             @claim="onGameClaim"
             @exit="closeGame"
           />
@@ -476,7 +466,7 @@
             class="game-fill"
             :wallet-coins="totalCoins"
             @claim="onGameClaim"
-            @spend="onGameSpend"
+            :already-rewarded="doneKeys.includes('memory-flash')"
             @exit="closeGame"
           />
         </div>
@@ -502,6 +492,7 @@ import { normalizeOrganizationColors, organizationThemeStyle } from '../organiza
 import { preloadFanHomeImages } from '../fanHomeAssets';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
+import FanCollectionPanel from '../components/FanCollectionPanel.vue';
 const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
 import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorageKey, normalizeJourney, journeyProgress, recordJourneyReward } from '../fanJourney';
 
@@ -520,8 +511,9 @@ import {
   fetchVoteStatus,
   fetchQuickQuiz,
   vote,
-  syncGuestCoins,
-  redeemFanReward,
+  fetchFanWallet,
+  purchaseFanItem,
+  equipFanItem,
   updateFanNickname,
   resolveApiUrl,
   getOrganizationSlug,
@@ -667,6 +659,19 @@ const games = {
   'memory-flash': { title: 'Memory Flash', reward: 8 },
 };
 const redeeming = ref('');
+const equipping = ref(false);
+const isLoadingWallet = ref(false);
+const walletError = ref('');
+const shopMessage = ref('');
+const catalog = ref([]);
+const walletMovements = ref([]);
+const participationPoints = ref(0);
+const emptyCollection = () => ({ equipped_frame: '', items: [], badges: [], matches_followed: 0 });
+const collection = ref(emptyCollection());
+const shopBusy = computed(() => Boolean(redeeming.value) || equipping.value || isSavingCoins.value || isBasketballSaving.value || isPlaymakerSaving.value || isCrossoverSaving.value);
+let walletRequestRevision = 0;
+let leaderboardRequestRevision = 0;
+let isDisposed = false;
 let coinsStream = null;
 const eventState = computed(() => liveEvent.value || (!props.activeEvent?.id || props.activeEvent.id === props.eventId ? props.activeEvent : null));
 const matchConcluded = computed(() => eventState.value?.is_concluded === true);
@@ -686,8 +691,8 @@ const nextQuizLabel = computed(() => {
 const rankGapLabel = computed(() => {
   const above = leaderboardNearby.value.find((row) => row.rank === Number(leaderboardUser.value?.rank) - 1);
   if (!above || !leaderboardUser.value) return Number(leaderboardUser.value?.rank) === 1 ? 'Sei in testa alla classifica della società!' : '';
-  const gap = leaderboardGap.value ?? Math.max(1, above.coins - Number(leaderboardUser.value.coins) + 1);
-  return `${gap === 1 ? 'Manca 1 moneta' : `Mancano ${gap} monete`} per superare il ${above.rank}° posto`;
+  const gap = leaderboardGap.value ?? Math.max(1, above.points - Number(leaderboardUser.value.points) + 1);
+  return `${gap === 1 ? 'Manca 1 punto' : `Mancano ${gap} punti`} per superare il ${above.rank}° posto`;
 });
 const finalMvpLabel = computed(() => {
   const winners = liveEvent.value?.mvp || [];
@@ -733,7 +738,7 @@ async function refreshLiveStatus() {
   finally { if (liveRequestEventId === eventId) liveRequestEventId = null; }
 }
 
-function openRegistration() { closeSheets(); isRegistrationOpen.value = true; }
+function openRegistration() { if (shopBusy.value) return; closeSheets(); isRegistrationOpen.value = true; }
 async function registerJourneyFan(form) {
   const response = await registerFanProfile({ event_id: props.eventId, nickname: form.nickname, gender: form.gender, phone: form.phone, accepted_terms: form.acceptedTerms, guest_coins: totalCoins.value, enter_lottery: false });
   if (!response.ok) return response;
@@ -947,16 +952,10 @@ const rushSponsor = computed(() => {
   return { name: first.name, badge: initials(first.name).slice(0, 1) };
 });
 
-/* ---------- Premi (riscatto reale via /rewards/redeem) ---------- */
-const rewards = ref([
-  { key: 'sponsor_discount', emoji: '🎁', title: 'Sconto 10% · Partner', subtitle: 'Codice valido 7 giorni', cost: 80 },
-  { key: 'signed_ball', emoji: '🏀', title: 'Pallone autografato', subtitle: 'Estrazione a fine partita', cost: 150 },
-  { key: 'next_ticket', emoji: '🎟️', title: 'Biglietto prossimo match', subtitle: 'Settore tifosi', cost: 300 },
-]);
-
 /* ---------- Sheets ---------- */
 function openSheet(id) {
   activeSheet.value = id;
+  if (['wallet', 'spend', 'profile'].includes(id)) loadWallet();
 }
 function closeSheets() {
   activeSheet.value = '';
@@ -965,7 +964,7 @@ function closeSheets() {
 /* ---------- Wallet ---------- */
 function readStoredCoins() {
   try {
-    const raw = window.localStorage.getItem(WALLET_STORAGE_KEY);
+    const raw = window.localStorage.getItem(`${WALLET_STORAGE_KEY}:${walletScope()}`);
     const parsed = Number.parseInt(raw ?? '', 10);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   } catch (error) {
@@ -974,7 +973,7 @@ function readStoredCoins() {
 }
 function writeStoredCoins(value) {
   try {
-    window.localStorage.setItem(WALLET_STORAGE_KEY, String(value));
+    window.localStorage.setItem(`${WALLET_STORAGE_KEY}:${walletScope()}`, String(value));
   } catch (error) {
     /* localStorage non disponibile */
   }
@@ -986,19 +985,59 @@ function setCoins(value) {
   writeStoredCoins(next);
 }
 
+function walletScope() { return `${props.organizationSlug}:${props.eventId}`; }
+function applyWallet(data) {
+  if (!Number.isInteger(data?.wallet) || data.wallet < 0 || !Number.isInteger(data?.points) || data.points < 0 || !Array.isArray(data?.catalog) || !Array.isArray(data?.collection?.items)) return false;
+  setCoins(data.wallet);
+  isWalletReady.value = true;
+  participationPoints.value = data.points;
+  catalog.value = data.catalog.filter((item) => item && typeof item.key === 'string' && Number.isInteger(item.cost) && item.cost >= 0);
+  walletMovements.value = Array.isArray(data.movements) ? data.movements : [];
+  collection.value = { ...emptyCollection(), ...data.collection, badges: Array.isArray(data.collection.badges) ? data.collection.badges : [] };
+  return true;
+}
+async function loadWallet() {
+  if (redeeming.value || equipping.value) return;
+  const request = ++walletRequestRevision;
+  if (!props.eventId) { walletError.value = 'Disponibile con una partita del club.'; return; }
+  const scope = walletScope();
+  const revision = walletRevision;
+  isLoadingWallet.value = true;
+  walletError.value = '';
+  try {
+    const response = await fetchFanWallet(props.eventId);
+    if (isDisposed || request !== walletRequestRevision || scope !== walletScope()) return;
+    if (revision !== walletRevision) { loadWallet(); return; }
+    if (!response.ok || !applyWallet(response.data)) walletError.value = response.message || 'Impossibile caricare il wallet. Riprova.';
+  } catch (error) {
+    if (!isDisposed && request === walletRequestRevision && scope === walletScope()) walletError.value = 'Impossibile caricare il wallet. Riprova.';
+  } finally {
+    if (request === walletRequestRevision) isLoadingWallet.value = false;
+  }
+}
+function formatWalletDate(value) {
+  const parsed = new Date(String(value || '').replace(' ', 'T') + (/Z$|[+-]\d\d:\d\d$/.test(String(value || '')) ? '' : 'Z'));
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 async function loadFanProfile() {
   if (!props.eventId) return;
   const eventId = props.eventId;
+  const scope = walletScope();
   const revision = walletRevision;
   const { ok, data } = await fetchFanProfile(eventId);
-  if (!ok || !data || eventId !== props.eventId) return;
+  if (!ok || !data || isDisposed || scope !== walletScope()) return;
   isWalletReady.value = true;
   if (data.journey_rewards && typeof data.journey_rewards === 'object') {
-    const rewards = { ...journey.value.rewards };
+    const rewards = revision === walletRevision ? {} : { ...journey.value.rewards };
     const restored = normalizeJourney({ rewards: data.journey_rewards });
     for (const [key, amount] of Object.entries(restored.rewards)) rewards[key] = Math.max(rewards[key] || 0, amount);
     journey.value = normalizeJourney({ ...journey.value, rewards });
     if (journey.value.rewards.vote) journey.value.pendingVoteBonus = false;
+    if (revision === walletRevision) {
+      doneKeys.value = Object.keys(journey.value.rewards);
+      try { window.localStorage.setItem(doneStorageKey(), JSON.stringify(doneKeys.value)); } catch (error) { /* storage non disponibile */ }
+    }
     for (const key of Object.keys(journey.value.rewards)) markDone(key);
     saveJourney();
   }
@@ -1014,40 +1053,34 @@ async function loadFanProfile() {
   }
   fanLotteryTicket.value = data.lottery_ticket || null;
   if (data.user_rank) {
-    leaderboardUser.value = data.user_rank;
+    leaderboardUser.value = { ...data.user_rank, points: Number(data.user_rank.points ?? data.user_rank.coins ?? 0) };
   }
 }
 
 // Mostra l'accredito soltanto dopo la conferma del salvataggio del wallet.
 async function grantCoins(delta, key) {
   const amount = Math.max(0, Math.floor(Number(delta) || 0));
-  if (!props.eventId || !amount || isSavingCoins.value) return { ok: false, coins: 0 };
+  if (!props.eventId || !amount || shopBusy.value) return { ok: false, coins: 0 };
   if (journey.value.rewards[key] || doneKeys.value.includes(key)) return { ok: true, coins: 0 };
   isSavingCoins.value = true;
   coinError.value = '';
   const eventId = props.eventId;
   try {
-    const serverReward = key === 'vote' || key === 'quiz';
-    if (!isWalletReady.value && !serverReward) await loadFanProfile();
     if (eventId !== props.eventId) return { ok: false, coins: 0 };
-    if (!isWalletReady.value && !serverReward) {
-      coinError.value = 'Impossibile leggere il saldo. Controlla la connessione e riprova.';
-      return { ok: false, coins: 0 };
-    }
-    const nextBalance = totalCoins.value + amount;
-    const response = serverReward ? await claimFanJourneyReward(eventId, key) : await syncGuestCoins(eventId, nextBalance);
+    const response = await claimFanJourneyReward(eventId, key);
     if (eventId !== props.eventId) return { ok: false, coins: 0 };
-    if (!response.ok) {
+    const rewardAmount = response.data?.reward_amount;
+    if (!response.ok || !Number.isInteger(response.data?.wallet) || response.data.wallet < 0 || !Number.isInteger(rewardAmount) || rewardAmount <= 0) {
       coinError.value = response.message || 'Le monete non sono ancora state salvate. Controlla la connessione e riprova.';
       return { ok: false, coins: 0 };
     }
-    setCoins(Number(response.data?.wallet ?? nextBalance));
+    setCoins(response.data.wallet);
     isWalletReady.value = true;
-    journey.value = recordJourneyReward(journey.value, key, amount);
+    journey.value = recordJourneyReward(journey.value, key, rewardAmount);
     saveJourney();
     markDone(key);
     refreshLeaderboard();
-    return { ok: true, coins: serverReward ? Number(response.data?.coins_earned ?? amount) : amount };
+    return { ok: true, coins: Number(response.data?.coins_earned ?? 0) };
   } catch (error) {
     coinError.value = 'Le monete non sono ancora state salvate. Controlla la connessione e riprova.';
     return { ok: false, coins: 0 };
@@ -1101,7 +1134,7 @@ function onMission(mission) {
 
 /* ---------- Giochi reali (overlay a schermo pieno) ---------- */
 function openGame(id) {
-  if (!games[id] || !props.eventId || isSavingCoins.value || matchConcluded.value || (id === 'quiz' && !quizAvailable.value)) return;
+  if (!games[id] || !props.eventId || shopBusy.value || matchConcluded.value || (id === 'quiz' && !quizAvailable.value)) return;
   coinError.value = '';
   pendingGameClaim.value = null;
   activeSheet.value = '';
@@ -1147,13 +1180,11 @@ async function onGameClaim(payload) {
   let earned = 0;
   if (coins && String(payload?.source || '').startsWith('tap_challenge')) {
     // Tap Challenge already credits its result server-side; only refresh the wallet here.
+    const previousEarned = journey.value.rewards[key] || 0;
     isWalletReady.value = false;
     await loadFanProfile();
     if (!isWalletReady.value) { coinError.value = 'Risultato salvato. Riprova a caricare il saldo.'; return; }
-    if (!journey.value.rewards[key]) {
-      journey.value = recordJourneyReward(journey.value, key, coins);
-      saveJourney(); markDone(key); earned = coins;
-    }
+    earned = Math.max(0, (journey.value.rewards[key] || 0) - previousEarned);
   } else if (coins) {
     const result = await grantCoins(coins, key);
     if (!result.ok) return;
@@ -1171,15 +1202,7 @@ async function onGameClaim(payload) {
     }
   }
 }
-// Memory Flash può spendere monete (@spend).
-async function onGameSpend(payload) {
-  const coins = Math.max(0, Number(payload?.coins) || 0);
-  if (!coins) return;
-  setCoins(totalCoins.value - coins);
-  if (props.eventId) {
-    await syncGuestCoins(props.eventId, totalCoins.value);
-  }
-}
+// I tentativi Memory Flash sono gratuiti: il saldo cambia solo sul server.
 
 /* ---------- Voto MVP (lista reale + voto reale) ---------- */
 async function loadPlayers() {
@@ -1210,7 +1233,7 @@ async function loadVoteStatus() {
   }
 }
 async function castVote(player) {
-  if (isVoting.value || !player?.id || !props.eventId) return;
+  if (isVoting.value || shopBusy.value || !player?.id || !props.eventId) return;
   voteError.value = '';
   if (!canVote.value) { voteError.value = 'Le votazioni per questa partita sono chiuse.'; return; }
   isVoting.value = true;
@@ -1243,6 +1266,8 @@ async function castVote(player) {
 
 /* ---------- Leaderboard ---------- */
 async function refreshLeaderboard() {
+  const request = ++leaderboardRequestRevision;
+  const scope = walletScope();
   if (!props.eventId) {
     leaderboardTop3.value = [];
     leaderboardUser.value = null;
@@ -1255,19 +1280,20 @@ async function refreshLeaderboard() {
   leaderboardError.value = '';
   try {
     const { data } = await apiClient.get(`/events/${props.eventId}/coins-leaderboard`, { headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() } });
+    if (isDisposed || request !== leaderboardRequestRevision || scope !== walletScope()) return;
     const top = Array.isArray(data?.top3) ? data.top3 : Array.isArray(data?.top) ? data.top : [];
     leaderboardTop3.value = top.slice(0, 3).map((row) => ({
       name: String(row?.name || row?.nickname || 'Tifoso'),
-      coins: Number(row?.coins ?? row?.points ?? 0),
+      points: Number(row?.points ?? row?.coins ?? 0),
     }));
     const rank = data?.userRank || data?.user_rank;
-    leaderboardUser.value = rank || null;
-    leaderboardNearby.value = Array.isArray(data?.nearby) ? data.nearby : [];
+    leaderboardUser.value = rank ? { ...rank, points: Number(rank.points ?? rank.coins ?? 0) } : null;
+    leaderboardNearby.value = Array.isArray(data?.nearby) ? data.nearby.map((row) => ({ ...row, points: Number(row.points ?? row.coins ?? 0) })) : [];
     leaderboardGap.value = Number.isFinite(data?.next_rank_gap) && data.next_rank_gap > 0 ? data.next_rank_gap : null;
   } catch (error) {
-    leaderboardError.value = 'Impossibile caricare la classifica. Riapri il pannello per riprovare.';
+    if (!isDisposed && request === leaderboardRequestRevision && scope === walletScope()) leaderboardError.value = 'Impossibile caricare la classifica. Riapri il pannello per riprovare.';
   } finally {
-    isLoadingLeaderboard.value = false;
+    if (request === leaderboardRequestRevision) isLoadingLeaderboard.value = false;
   }
 }
 function openLeaderboard() {
@@ -1365,25 +1391,38 @@ function onSponsorClick(sponsor) {
 
 /* ---------- Riscatto premi ---------- */
 async function redeem(reward) {
-  if (redeeming.value || isSavingCoins.value) return;
-  if (totalCoins.value < reward.cost) {
-    return;
-  }
+  if (shopBusy.value || isLoadingWallet.value || walletError.value || !props.eventId || reward.owned || totalCoins.value < reward.cost) return;
+  const scope = walletScope();
+  walletRequestRevision += 1;
   redeeming.value = reward.key;
+  shopMessage.value = '';
   try {
-    const { ok, data } = await redeemFanReward(props.eventId, reward.key, reward.cost);
-    if (ok && data && data.wallet != null) {
-      setCoins(Number(data.wallet));
-    } else if (ok) {
-      setCoins(totalCoins.value - reward.cost);
-    } else {
-      return;
-    }
-    closeSheets();
+    const response = await purchaseFanItem(props.eventId, reward.key);
+    if (isDisposed || scope !== walletScope()) return;
+    if (!response.ok || !applyWallet(response.data)) { walletError.value = response.message || 'Acquisto non confermato. Riprova: gli oggetti già ottenuti non vengono addebitati due volte.'; return; }
+    walletError.value = '';
+    shopMessage.value = response.data.purchased === false ? 'Questo oggetto è già nella tua collezione.' : `${reward.title} aggiunta alla tua collezione!`;
+    refreshLeaderboard();
   } catch (error) {
-    // riscatto non riuscito: nessuna azione
+    if (!isDisposed && scope === walletScope()) walletError.value = 'Acquisto non confermato. Controlla la connessione e riprova.';
   } finally {
-    redeeming.value = '';
+    if (scope === walletScope()) redeeming.value = '';
+  }
+}
+async function equipCollectionItem(key) {
+  if (shopBusy.value || isLoadingWallet.value || !props.eventId) return;
+  const scope = walletScope();
+  walletRequestRevision += 1;
+  equipping.value = true;
+  walletError.value = '';
+  try {
+    const response = await equipFanItem(props.eventId, key);
+    if (isDisposed || scope !== walletScope()) return;
+    if (!response.ok || !applyWallet(response.data)) walletError.value = response.message || 'Impossibile aggiornare la cornice. Riprova.';
+  } catch (error) {
+    if (!isDisposed && scope === walletScope()) walletError.value = 'Impossibile aggiornare la cornice. Riprova.';
+  } finally {
+    if (scope === walletScope()) equipping.value = false;
   }
 }
 
@@ -1428,8 +1467,26 @@ async function bootstrap() {
   if (!props.initialDataReady) return;
   assetController = new AbortController();
   const { signal } = assetController;
-  if (loadedEventId !== props.eventId) {
-    loadedEventId = props.eventId;
+  if (loadedEventId !== walletScope()) {
+    loadedEventId = walletScope();
+    walletRequestRevision += 1;
+    leaderboardRequestRevision += 1;
+    isLoadingWallet.value = false;
+    redeeming.value = '';
+    equipping.value = false;
+    walletError.value = '';
+    shopMessage.value = '';
+    catalog.value = [];
+    collection.value = emptyCollection();
+    walletMovements.value = [];
+    participationPoints.value = 0;
+    isRegistered.value = false;
+    fanNickname.value = '';
+    fanLotteryTicket.value = null;
+    nicknameDraft.value = '';
+    leaderboardTop3.value = [];
+    leaderboardUser.value = null;
+    leaderboardNearby.value = [];
     liveEvent.value = null;
     isWalletReady.value = false;
     hasVoted.value = false;
@@ -1443,7 +1500,7 @@ async function bootstrap() {
     coinError.value = '';
     voteError.value = '';
   }
-  totalCoins.value = readStoredCoins();
+  totalCoins.value = props.eventId ? readStoredCoins() : 0;
   loadDoneKeys();
   loadJourney();
   stopCoinsStream();
@@ -1499,6 +1556,9 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  isDisposed = true;
+  walletRequestRevision += 1;
+  leaderboardRequestRevision += 1;
   bootstrapRevision += 1;
   assetController?.abort();
   window.removeEventListener('keydown', onKeydown);
@@ -2348,6 +2408,47 @@ main {
   cursor: not-allowed;
   box-shadow: none;
 }
+
+.rank-link { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-radius: 14px; padding: 11px 12px; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.rank-link-icon { font-size: 20px; }
+.rank-link > span:nth-child(2) { flex: 1; min-width: 0; }
+.rank-link b, .rank-link small { display: block; }
+.rank-link b { font-size: 12px; font-weight: 800; }
+.rank-link small { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.feedback-link { border: 0; padding: 6px 10px; background: transparent; color: var(--muted); font: inherit; font-size: 10px; text-align: center; cursor: pointer; }
+.feedback-link:disabled { opacity: .7; cursor: default; }
+.wallet-total { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 22px 14px; border: 1px solid var(--gold); border-radius: 18px; background: var(--gold-soft); }
+.wallet-total strong { font-family: 'Fraunces', serif; font-size: 42px; line-height: 1; color: var(--gold-deep); }
+.wallet-total > span:last-child { flex-basis: 100%; text-align: center; font-size: 11px; color: var(--ink); }
+.wallet-total .coin { width: 25px; height: 25px; }
+.wallet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.wallet-actions .btn-vote { margin: 0; }
+.section-label { margin: 8px 0 0; font-size: 12px; font-weight: 800; }
+.wallet-movement { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding: 10px 0; }
+.wallet-movement > span { flex: 1; min-width: 0; }
+.wallet-movement b, .wallet-movement small { display: block; }
+.wallet-movement b { font-size: 12px; overflow-wrap: anywhere; }
+.wallet-movement small { margin-top: 4px; color: var(--muted); font-size: 10px; }
+.wallet-movement strong { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.wallet-movement .is-credit { color: var(--gold-deep); }
+.shop-balance { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-radius: 14px; padding: 12px; background: var(--gold-soft); font-size: 12px; }
+.shop-balance b { display: flex; align-items: center; gap: 6px; }
+.shop-item { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 14px; padding: 15px 0; border-bottom: 1px solid var(--line); }
+.shop-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-height: 112px; border: 1px solid var(--red-line); border-radius: 13px 13px 22px 22px; padding: 9px; background: linear-gradient(145deg, var(--red-soft), var(--card)); text-align: center; }
+.shop-preview.frame { border: 3px solid #cfaa58; box-shadow: inset 0 0 0 2px #fff0bd; background: linear-gradient(145deg, #fff4d5, var(--card)); }
+.shop-avatar { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--card); color: var(--red-text); font-family: 'Fraunces', serif; font-size: 19px; font-weight: 800; }
+.shop-preview img { width: 30px; height: 30px; object-fit: contain; }
+.shop-preview b { font-size: 9px; overflow-wrap: anywhere; }
+.shop-preview small { font-size: 8px; color: var(--muted); overflow-wrap: anywhere; }
+.shop-item-copy > b { font-size: 13px; }
+.shop-item-copy p { margin: 5px 0 10px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.shop-item-copy > small { display: block; margin-top: 6px; font-size: 10px; color: var(--muted); }
+.shop-buy { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; border: 0; border-radius: 10px; padding: 10px 12px; background: var(--red); color: var(--on-primary); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.shop-buy .coin { width: 13px; height: 13px; }
+.shop-buy:disabled { opacity: .5; cursor: default; }
+.shop-message { border-radius: 12px; padding: 11px; background: var(--gold-soft); color: var(--ink); font-size: 12px; line-height: 1.5; }
+.coin-balance { width: 100%; font: inherit; color: var(--ink); cursor: pointer; }
+.rank-link:focus-visible, .feedback-link:focus-visible, .shop-buy:focus-visible, .coin-balance:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
 
 /* Profilo */
 .profile-hero {

@@ -5,7 +5,7 @@
         <div class="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-200">
           <p class="font-semibold">Round {{ currentRound }}/{{ TOTAL_ROUNDS }}</p>
           <p class="font-semibold">Best: {{ bestDisplay }}</p>
-          <p class="font-semibold text-amber-200">Reward: +{{ previewCoins }} 🪙</p>
+          <p class="font-semibold text-amber-200">{{ hasFixedReward ? `${fixedReward} monete al primo completamento della partita` : `Reward: +${previewCoins} 🪙` }}</p>
         </div>
       </header>
 
@@ -60,6 +60,12 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 
 const emit = defineEmits(['claim', 'exit']);
+const props = defineProps({
+  completionReward: { type: Number, default: null },
+  alreadyRewarded: { type: Boolean, default: false },
+});
+const hasFixedReward = computed(() => Number.isFinite(props.completionReward) && props.completionReward >= 0);
+const fixedReward = computed(() => hasFixedReward.value ? Math.floor(props.completionReward) : 0);
 
 const TOTAL_ROUNDS = 3;
 const FALSTART_PENALTY_MS = 300;
@@ -100,6 +106,7 @@ const coins = computed(() => {
   if (roundResults.value.length < TOTAL_ROUNDS || avgMs.value == null) {
     return 0;
   }
+  if (hasFixedReward.value) return fixedReward.value;
 
   let amount = 5;
 
@@ -119,6 +126,7 @@ const coins = computed(() => {
 });
 
 const previewCoins = computed(() => {
+  if (hasFixedReward.value) return fixedReward.value;
   if (phase.value === 'summary') {
     return coins.value;
   }
@@ -206,13 +214,14 @@ const primaryLabel = computed(() => {
   }
 
   if (phase.value === 'summary') {
-    return claimRequested.value ? 'Riscatto in corso…' : 'Riscatta monete';
+    if (props.alreadyRewarded) return 'Termina';
+    return claimRequested.value ? 'Bonus in salvataggio…' : hasFixedReward.value ? 'Registra risultato e bonus' : 'Riscatta monete';
   }
 
   return 'Attendi…';
 });
 
-const isPrimaryDisabled = computed(() => phase.value === 'summary' && claimRequested.value);
+const isPrimaryDisabled = computed(() => phase.value === 'summary' && claimRequested.value && !props.alreadyRewarded);
 
 function clearTimers() {
   if (typeof window === 'undefined') {
@@ -316,6 +325,7 @@ function onPlayTap() {
 }
 
 function showRoundCoins() {
+  if (hasFixedReward.value) return;
   roundCoins.value = Math.max(1, Math.round(coins.value / TOTAL_ROUNDS) || 2);
   showCoinBurst.value = true;
 
@@ -343,6 +353,7 @@ function onPrimaryAction() {
   }
 
   if (phase.value === 'summary') {
+    if (props.alreadyRewarded) { emit('exit'); return; }
     if (claimRequested.value) {
       return;
     }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -31,13 +32,8 @@ func (rt *_router) claimFanJourneyReward(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	amount := 0
-	switch payload.Key {
-	case "vote":
-		amount = 10
-	case "quiz":
-		amount = 15
-	default:
+	amount := database.FanJourneyRewardAmount(payload.Key)
+	if amount == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -56,6 +52,10 @@ func (rt *_router) claimFanJourneyReward(w http.ResponseWriter, r *http.Request,
 	}
 	wallet, credited, err := rt.db.ClaimFanJourneyReward(eventID, ctx.OrganizationID, fanID, deviceID, payload.Key)
 	if err != nil {
+		if errors.Is(err, database.ErrFanRewardDeviceUsed) {
+			_ = writeJSONMessage(w, http.StatusConflict, "Il bonus è già stato assegnato su questo dispositivo.")
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			_ = writeJSONMessage(w, http.StatusConflict, "Completa l’attività prima di ritirare il bonus.")
 		} else {

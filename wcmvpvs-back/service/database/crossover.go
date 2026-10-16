@@ -344,9 +344,9 @@ func (db *appdbimpl) ResolveCrossoverDuel(eventID, organizationID, fanID int, de
 		result.NextDuel = duel + 1
 		if evaluation.won {
 			if fanID > 0 {
-				_, err = tx.Exec(`INSERT INTO fan_wallets(fan_id,coins) VALUES(?,1) ON CONFLICT(fan_id) DO UPDATE SET coins=fan_wallets.coins+1,updated_at=CURRENT_TIMESTAMP`, fanID)
+				_, err = economyExec(tx, organizationID, eventID, fanID, deviceID, "Duello vinto Crossover Rush", "crossover", `INSERT INTO fan_wallets(fan_id,coins) VALUES(?,1) ON CONFLICT(fan_id) DO UPDATE SET coins=fan_wallets.coins+1,updated_at=CURRENT_TIMESTAMP`, fanID)
 			} else {
-				_, err = tx.Exec(`INSERT INTO guest_wallets(event_id,organization_id,device_id,coins) VALUES(?,?,?,1) ON CONFLICT(event_id,organization_id,device_id) DO UPDATE SET coins=guest_wallets.coins+1,updated_at=CURRENT_TIMESTAMP`, eventID, organizationID, deviceID)
+				_, err = economyExec(tx, organizationID, eventID, 0, deviceID, "Duello vinto Crossover Rush", "crossover", `INSERT INTO guest_wallets(event_id,organization_id,device_id,coins) VALUES(?,?,?,1) ON CONFLICT(event_id,organization_id,device_id) DO UPDATE SET coins=guest_wallets.coins+1,updated_at=CURRENT_TIMESTAMP`, eventID, organizationID, deviceID)
 			}
 			if err != nil {
 				return result, err
@@ -364,7 +364,7 @@ func (db *appdbimpl) ResolveCrossoverDuel(eventID, organizationID, fanID int, de
 	if err != nil && err != sql.ErrNoRows {
 		return result, err
 	}
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM crossover_duels WHERE event_id=? AND organization_id=? AND won=1 AND (device_id=? OR (?>0 AND fan_id=?))`, eventID, organizationID, deviceID, fanID, fanID).Scan(&result.CrossoverEarned); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM crossover_duels WHERE event_id=? AND organization_id=? AND won=1 AND ((device_id=? AND fan_id=0) OR (?>0 AND fan_id=?))`, eventID, organizationID, deviceID, fanID, fanID).Scan(&result.CrossoverEarned); err != nil {
 		return result, err
 	}
 	if result.CrossoverStats, err = crossoverSessionStats(tx, sessionID); err != nil {

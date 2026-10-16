@@ -819,7 +819,7 @@ export async function syncGuestCoins(eventId, coins) {
   }
 }
 
-export async function claimFanJourneyReward(eventId: number, key: 'vote' | 'quiz') {
+export async function claimFanJourneyReward(eventId: number, key: 'vote' | 'quiz' | 'reaction' | 'tap' | 'sponsor-rush' | 'memory-flash') {
   try {
     const { data } = await apiClient.post(`/events/${eventId}/journey-rewards`, { key }, { headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() } });
     return { ok: true, data };
@@ -828,6 +828,24 @@ export async function claimFanJourneyReward(eventId: number, key: 'vote' | 'quiz
     return { ok: false, error, message };
   }
 }
+
+async function requestFanWallet(eventId: number, action?: 'purchase' | 'equip', itemKey?: string) {
+  if (!Number.isInteger(eventId) || eventId <= 0) return { ok: false, message: 'Disponibile con una partita del club.' };
+  try {
+    const config = { headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() }, timeout: 12000 };
+    const { data } = action
+      ? await apiClient.post(`/events/${eventId}/fan-shop/${action}`, { item_key: itemKey || '' }, config)
+      : await apiClient.get(`/events/${eventId}/fan-wallet`, config);
+    return { ok: true, data };
+  } catch (error) {
+    const response = axios.isAxiosError(error) ? error.response : undefined;
+    return { ok: false, status: response?.status, message: response?.data?.message || 'Connessione non disponibile. Riprova.', error };
+  }
+}
+
+export const fetchFanWallet = (eventId: number) => requestFanWallet(eventId);
+export const purchaseFanItem = (eventId: number, itemKey: string) => requestFanWallet(eventId, 'purchase', itemKey);
+export const equipFanItem = (eventId: number, itemKey: string) => requestFanWallet(eventId, 'equip', itemKey);
 
 async function requestBasketballShot(eventId: number, shotId?: string, gesture?: { dx: number; dy: number }) {
   if (!Number.isInteger(eventId) || eventId <= 0) return { ok: false, message: 'Partita non disponibile.', status: 400 };
