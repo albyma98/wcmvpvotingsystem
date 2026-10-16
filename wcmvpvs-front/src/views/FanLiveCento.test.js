@@ -265,6 +265,40 @@ test('Playmaker saved progress restores independently from wallet spending and c
   assert.equal(state.activeSheet.value, 'earn');
 });
 
+test('Crossover Rush is repeatable and confirmed duels update wallet and badge once', (t) => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  const mission = state.earnMissions.value.find((item) => item.key === 'crossover');
+  assert.equal(mission.repeatable, true);
+  assert.equal(mission.rewardUnit, 'duello vinto');
+  state.onMission(mission);
+  assert.equal(state.activeGameId.value, 'crossover');
+  state.onCrossoverCredit({ event_id: 42, wallet: 1, crossover_earned: 1, coins_earned: 1 });
+  state.onCrossoverCredit({ event_id: 42, wallet: 1, crossover_earned: 1, coins_earned: 0 });
+  assert.equal(state.progress.value.earned, 1);
+  assert.equal(state.totalCoins.value, 1);
+  state.closeGame(); state.openGame('crossover');
+  state.onCrossoverCredit({ event_id: 42, wallet: 25, crossover_earned: 25, coins_earned: 1 });
+  assert.equal(state.progress.value.unlocked, true);
+  assert.ok(state.doneKeys.value.includes('crossover'));
+});
+
+test('Crossover ignores stale receipts and restores combined progress while saving blocks closing', async (t) => {
+  const { state, scope } = fixture({ fetchFanProfile: async () => ({ ok: true, data: {
+    registered: true, wallet: 2, journey_rewards: { basketball: 10, playmaker: 10, crossover: 5 },
+  } }) });
+  t.after(() => scope.stop());
+  await state.loadFanProfile();
+  state.onCrossoverCredit({ event_id: 43, wallet: 900, crossover_earned: 900 });
+  state.onCrossoverCredit({ event_id: 42, wallet: -1, crossover_earned: 2 });
+  assert.equal(state.totalCoins.value, 2);
+  assert.equal(state.progress.value.earned, 25);
+  state.openGame('crossover'); state.isCrossoverSaving.value = true; state.closeGame();
+  assert.equal(state.activeGameId.value, 'crossover');
+  state.isCrossoverSaving.value = false; state.closeGame();
+  assert.equal(state.activeSheet.value, 'earn');
+});
+
 test('basketball progress is restored from the profile and saving finishes before closing the game', async (t) => {
   const { state, scope } = fixture({ fetchFanProfile: async () => ({ ok: true, data: {
     registered: true, wallet: 4, journey_rewards: { basketball: 28 },

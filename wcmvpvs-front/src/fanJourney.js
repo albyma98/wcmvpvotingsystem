@@ -3,7 +3,7 @@ export const VOTE_REWARD = 10;
 export const QUIZ_REWARD = 15;
 export const FAN_BADGE_NAME = 'Tifoso Attivo';
 
-const rewardKeys = ['vote', 'quiz', 'reaction', 'tap', 'sponsor-rush', 'memory-flash', 'basketball', 'playmaker'];
+const rewardKeys = ['vote', 'quiz', 'reaction', 'tap', 'sponsor-rush', 'memory-flash', 'basketball', 'playmaker', 'crossover'];
 
 export function journeyStorageKey(slug, eventId) {
   return `cento:journey:${encodeURIComponent(slug || '')}:${eventId}`;

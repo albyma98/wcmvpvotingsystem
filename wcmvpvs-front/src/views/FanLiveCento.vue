@@ -398,9 +398,9 @@
       <!-- Overlay gioco a schermo pieno -->
       <div v-if="activeGameId" class="game-overlay">
         <header class="game-head">
-          <button class="close" type="button" aria-label="Indietro" :disabled="isBasketballSaving || isPlaymakerSaving" @click="closeGame">←</button>
+          <button class="close" type="button" aria-label="Indietro" :disabled="isBasketballSaving || isPlaymakerSaving || isCrossoverSaving" @click="closeGame">←</button>
           <div class="game-title">{{ games[activeGameId]?.title }}</div>
-          <button class="close" type="button" aria-label="Chiudi" :disabled="isBasketballSaving || isPlaymakerSaving" @click="closeGame">✕</button>
+          <button class="close" type="button" aria-label="Chiudi" :disabled="isBasketballSaving || isPlaymakerSaving || isCrossoverSaving" @click="closeGame">✕</button>
         </header>
         <div v-if="coinError" class="game-credit-error" role="alert"><p>{{ coinError }}</p><button v-if="pendingGameClaim" type="button" class="journey-next" :disabled="isSavingCoins" @click="onGameClaim(pendingGameClaim)">Riprova il salvataggio</button></div>
         <div class="game-stage">
@@ -444,6 +444,19 @@
             :organization-slug="organizationSlug"
             @credited="onPlaymakerCredit"
             @saving-change="isPlaymakerSaving = $event"
+          />
+          <CrossoverRushGame
+            v-else-if="activeGameId === 'crossover'"
+            :key="eventId"
+            class="game-fill"
+            :event-id="eventId"
+            :wallet-coins="totalCoins"
+            :earned-coins="journey.rewards.crossover || 0"
+            :club-name="homeName"
+            :club-logo-url="homeLogoUrl"
+            :organization-slug="organizationSlug"
+            @credited="onCrossoverCredit"
+            @saving-change="isCrossoverSaving = $event"
           />
           <TapChallenge
             v-else-if="activeGameId === 'tap'"
@@ -497,6 +510,7 @@ const ReactionTestGame = defineAsyncComponent(() => import('../components/Reacti
 const QuickQuizGame = defineAsyncComponent(() => import('../components/QuickQuizGame.vue'));
 const BasketballShootout = defineAsyncComponent(() => import('../components/minigames/BasketballShootout.vue'));
 const PlaymakerGame = defineAsyncComponent(() => import('../components/minigames/PlaymakerGame.vue'));
+const CrossoverRushGame = defineAsyncComponent(() => import('../components/minigames/CrossoverRushGame.vue'));
 const TapChallenge = defineAsyncComponent(() => import('../components/minigames/TapChallenge.vue'));
 const SponsorRushGame = defineAsyncComponent(() => import('../components/minigames/SponsorRushGame.vue'));
 const MemoryFlashGame = defineAsyncComponent(() => import('../components/minigames/MemoryFlashGame.vue'));
@@ -615,6 +629,7 @@ const coinError = ref('');
 const isSavingCoins = ref(false);
 const isBasketballSaving = ref(false);
 const isPlaymakerSaving = ref(false);
+const isCrossoverSaving = ref(false);
 const pendingGameClaim = ref(null);
 const voteBonusCoins = ref(0);
 const celebrationKind = ref('vote');
@@ -646,6 +661,7 @@ const games = {
   quiz: { title: 'Quiz Lampo', reward: 15 },
   basketball: { title: 'Basket Rush', reward: 1 },
   playmaker: { title: 'Playmaker', reward: 1 },
+  crossover: { title: 'Crossover Rush', reward: 1 },
   tap: { title: 'Tap Challenge', reward: 8 },
   'sponsor-rush': { title: 'Sponsor Rush', reward: 12 },
   'memory-flash': { title: 'Memory Flash', reward: 8 },
@@ -911,6 +927,7 @@ const earnMissions = computed(() => [
   { key: 'quiz', emoji: '🧠', title: 'Quiz Lampo', subtitle: 'Domande sul match', pts: 15, game: 'quiz' },
   { key: 'basketball', emoji: '🏀', title: 'Basket Rush', subtitle: 'Trascina e tira · 1 moneta a canestro', pts: 1, game: 'basketball', repeatable: true },
   { key: 'playmaker', emoji: '🤝', title: 'Playmaker', subtitle: 'L’assist perfetto · Sessioni da 30 secondi', pts: 1, game: 'playmaker', repeatable: true, rewardUnit: 'assist' },
+  { key: 'crossover', emoji: '💨', title: 'Crossover Rush', subtitle: 'Finta, cambia mano e schiaccia · 3 duelli', pts: 1, game: 'crossover', repeatable: true, rewardUnit: 'duello vinto' },
   { key: 'tap', emoji: '👆', title: 'Tap Challenge', subtitle: '10 secondi a martello', pts: 8, game: 'tap' },
   {
     key: 'sponsor-rush',
@@ -1091,7 +1108,7 @@ function openGame(id) {
   activeGameId.value = id;
 }
 function closeGame() {
-  if (isSavingCoins.value || isBasketballSaving.value || isPlaymakerSaving.value) return;
+  if (isSavingCoins.value || isBasketballSaving.value || isPlaymakerSaving.value || isCrossoverSaving.value) return;
   const wasGame = Boolean(activeGameId.value);
   activeGameId.value = null;
   if (wasGame) {
@@ -1103,6 +1120,9 @@ function onBasketballCredit(receipt) {
 }
 function onPlaymakerCredit(receipt) {
   applyLiveGameCredit('playmaker', receipt, 'playmaker_earned');
+}
+function onCrossoverCredit(receipt) {
+  applyLiveGameCredit('crossover', receipt, 'crossover_earned');
 }
 function applyLiveGameCredit(key, receipt, totalField) {
   if (receipt?.event_id !== props.eventId) return;
@@ -1418,6 +1438,7 @@ async function bootstrap() {
     activeGameId.value = null;
     isBasketballSaving.value = false;
     isPlaymakerSaving.value = false;
+    isCrossoverSaving.value = false;
     closeSheets();
     coinError.value = '';
     voteError.value = '';

@@ -45,6 +45,13 @@ func (db *appdbimpl) ListFanJourneyRewards(eventID, organizationID, fanID int, d
 	if playmaker > 0 {
 		rewards["playmaker"] = playmaker
 	}
+	var crossover int
+	if err := db.c.QueryRow(`SELECT COUNT(*) FROM crossover_duels WHERE event_id=? AND organization_id=? AND won=1 AND (device_id=? OR (?>0 AND fan_id=?))`, eventID, organizationID, deviceID, fanID, fanID).Scan(&crossover); err != nil {
+		return nil, err
+	}
+	if crossover > 0 {
+		rewards["crossover"] = crossover
+	}
 	return rewards, nil
 }
 

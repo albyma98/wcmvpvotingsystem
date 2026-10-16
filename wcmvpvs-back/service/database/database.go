@@ -1330,6 +1330,8 @@ type AppDatabase interface {
 	ResolveBasketballShot(eventID, organizationID, fanID int, deviceID, shotID string, dx, dy float64, now time.Time) (BasketballShotResult, error)
 	CreatePlaymakerSession(eventID, organizationID, fanID int, deviceID string, now time.Time) (PlaymakerSession, error)
 	ResolvePlaymakerPass(eventID, organizationID, fanID int, deviceID, sessionID string, attempt, elapsedMS int, dx, dy float64, now time.Time) (PlaymakerPassResult, error)
+	CreateCrossoverSession(eventID, organizationID, fanID int, deviceID string, now time.Time) (CrossoverSession, error)
+	ResolveCrossoverDuel(eventID, organizationID, fanID int, deviceID, sessionID string, duel, duelStartMS int, samples []CrossoverSample, now time.Time) (CrossoverDuelResult, error)
 	ListFanRewardRedemptions(eventID int, fanID int) ([]FanRewardRedemption, error)
 	DonateFanSupport(eventID int, organizationID int, fanID int, coins int) (FanSupportDonation, int, error)
 	GetFanSupportLeaderboard(eventID int, organizationID int, limit int) ([]FanSupportLeaderboardEntry, error)
@@ -3947,6 +3949,12 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM playmaker_sessions WHERE event_id=?`, eventID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM crossover_duels WHERE event_id=?`, eventID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM crossover_sessions WHERE event_id=?`, eventID); err != nil {
 		return err
 	}
 
@@ -7461,6 +7469,19 @@ func ensureMarketingTables(db *sql.DB) error {
 
 func ensureFanProfileTables(db *sql.DB) error {
 	statements := []string{
+		`CREATE TABLE IF NOT EXISTS crossover_sessions (
+			session_id TEXT PRIMARY KEY, event_id INTEGER NOT NULL, organization_id INTEGER NOT NULL,
+			device_id TEXT NOT NULL, fan_id INTEGER NOT NULL DEFAULT 0, next_duel INTEGER NOT NULL DEFAULT 0,
+			started_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, last_resolved_at INTEGER NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'active');`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_crossover_active ON crossover_sessions(event_id,organization_id,device_id) WHERE status='active';`,
+		`CREATE TABLE IF NOT EXISTS crossover_duels (
+			session_id TEXT NOT NULL, duel INTEGER NOT NULL, event_id INTEGER NOT NULL, organization_id INTEGER NOT NULL,
+			device_id TEXT NOT NULL, fan_id INTEGER NOT NULL DEFAULT 0, duel_start_ms INTEGER NOT NULL,
+			won INTEGER NOT NULL DEFAULT 0, clean INTEGER NOT NULL DEFAULT 0, quality INTEGER NOT NULL DEFAULT 0,
+			reason TEXT NOT NULL, resolved_at INTEGER NOT NULL, PRIMARY KEY(session_id,duel));`,
+		`CREATE INDEX IF NOT EXISTS idx_crossover_device_rewards ON crossover_duels(event_id,organization_id,device_id,won);`,
+		`CREATE INDEX IF NOT EXISTS idx_crossover_fan_rewards ON crossover_duels(event_id,organization_id,fan_id,won);`,
 		`CREATE TABLE IF NOT EXISTS playmaker_sessions (
 			session_id TEXT PRIMARY KEY, event_id INTEGER NOT NULL, organization_id INTEGER NOT NULL,
 			device_id TEXT NOT NULL, fan_id INTEGER NOT NULL DEFAULT 0, next_attempt INTEGER NOT NULL DEFAULT 0,
@@ -7712,6 +7733,12 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 			return FanProfileSummary{}, err
 		}
 		if _, err = tx.Exec(`UPDATE playmaker_passes SET fan_id=? WHERE fan_id=0 AND device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
+			return FanProfileSummary{}, err
+		}
+		if _, err = tx.Exec(`UPDATE crossover_sessions SET fan_id=? WHERE fan_id=0 AND device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
+			return FanProfileSummary{}, err
+		}
+		if _, err = tx.Exec(`UPDATE crossover_duels SET fan_id=? WHERE fan_id=0 AND device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
 		if _, err = tx.Exec(`UPDATE votes SET user_id = ? WHERE device_id = ? AND (? = 0 OR event_id = ?)`, profile.ID, input.DeviceID, input.EventID, input.EventID); err != nil {

@@ -873,6 +873,28 @@ export function submitPlaymakerPass(eventId: number, sessionId: string, pass: { 
   return requestPlaymaker(eventId, sessionId, pass);
 }
 
+async function requestCrossover(eventId: number, sessionId?: string, duel?: { duel: number; duel_start_ms: number; samples: Array<{ t_ms: number; x: number }> }) {
+  if (!Number.isInteger(eventId) || eventId <= 0) return { ok: false, message: 'Partita non disponibile.', status: 400 };
+  try {
+    const path = `/events/${eventId}/crossover/sessions${sessionId ? `/${encodeURIComponent(sessionId)}/duels` : ''}`;
+    const { data } = await apiClient.post(path, duel || {}, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() }, timeout: 12000,
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const response = axios.isAxiosError(error) ? error.response : undefined;
+    return { ok: false, error, status: response?.status, message: response?.data?.message };
+  }
+}
+
+export function startCrossoverSession(eventId: number) {
+  return requestCrossover(eventId);
+}
+
+export function submitCrossoverDuel(eventId: number, sessionId: string, duel: { duel: number; duel_start_ms: number; samples: Array<{ t_ms: number; x: number }> }) {
+  return requestCrossover(eventId, sessionId, duel);
+}
+
 export async function redeemFanReward(eventId, rewardKey, costCoins) {
   try {
     const { data } = await apiClient.post(`/events/${eventId}/rewards/redeem`, { reward_key: rewardKey, cost_coins: costCoins }, {
