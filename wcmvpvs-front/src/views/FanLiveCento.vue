@@ -513,7 +513,7 @@
       :theme-style="themeStyle"
       @submitted="handleFeedbackSubmitted"
     />
-    <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" trigger="profile_overlay" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" />
+    <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" trigger="profile_overlay" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" @completed="openSheet('leaderboard')" />
   </div>
 </template>
 
@@ -799,24 +799,28 @@ async function refreshLiveStatus() {
 
 function openRegistration() { if (shopBusy.value) return; closeSheets(); isRegistrationOpen.value = true; }
 async function registerJourneyFan(form) {
-  const response = await registerFanProfile({ event_id: props.eventId, nickname: form.nickname, gender: form.gender, phone: form.phone, accepted_terms: form.acceptedTerms, guest_coins: totalCoins.value, enter_lottery: false });
+  const scope = walletScope();
+  const response = await registerFanProfile({ event_id: props.eventId, nickname: form.nickname, phone: form.phone, accepted_terms: form.acceptedTerms, guest_coins: totalCoins.value, enter_lottery: false });
+  if (isDisposed || scope !== walletScope()) return { ok: false };
   if (!response.ok) return response;
   isRegistered.value = true;
   fanNickname.value = String(response.data?.user?.nickname || form.nickname || '').trim();
   setCoins(Number(response.data?.wallet ?? totalCoins.value));
   await loadFanProfile();
-  isRegistrationOpen.value = false;
   await refreshLeaderboard();
-  openSheet('leaderboard');
   return { ok: true, wallet: totalCoins.value };
 }
 async function loginJourneyFan() {
-  await loadFanProfile();
+  const scope = walletScope();
+  const profile = await loadFanProfile();
+  if (isDisposed || scope !== walletScope()) return { ok: false };
+  if (profile?.user?.organization_id === 0 && !profile?.user?.accepted_terms) {
+    isRegistered.value = false;
+    return { ok: false, code: 'REGISTRATION_INCOMPLETE' };
+  }
   if (!isRegistered.value) return { ok: false, message: 'Impossibile caricare il profilo. Riprova.' };
-  isRegistrationOpen.value = false;
   await refreshLeaderboard();
-  openSheet('leaderboard');
-  return { ok: true };
+  return { ok: true, wallet: totalCoins.value };
 }
 
 function saveJourney() {
@@ -1173,6 +1177,7 @@ async function loadFanProfile() {
   if (data.user_rank) {
     leaderboardUser.value = { ...data.user_rank, points: Number(data.user_rank.points ?? data.user_rank.coins ?? 0) };
   }
+  return data;
 }
 
 // Mostra l'accredito soltanto dopo la conferma del salvataggio del wallet.

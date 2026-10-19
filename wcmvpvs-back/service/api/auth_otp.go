@@ -63,14 +63,16 @@ func (rt *_router) postAuthStart(w http.ResponseWriter, r *http.Request, ctx req
 
 	switch mode {
 	case "register":
-		if exists {
+		if exists && (found.OrganizationID > 0 || found.AcceptedTerms) {
 			_ = writeJSON(w, http.StatusConflict, authErrorResponse{Error: "PHONE_ALREADY_EXISTS"})
 			return
 		}
-		if _, err := rt.db.CreateFanWithPhoneE164(phone); err != nil {
-			ctx.Logger.WithError(err).WithField("phone", maskPhone(phone)).Error("cannot create pending user")
-			_ = writeJSON(w, http.StatusInternalServerError, authErrorResponse{Error: "INTERNAL_ERROR"})
-			return
+		if !exists {
+			if _, err := rt.db.CreateFanWithPhoneE164(phone); err != nil {
+				ctx.Logger.WithError(err).WithField("phone", maskPhone(phone)).Error("cannot create pending user")
+				_ = writeJSON(w, http.StatusInternalServerError, authErrorResponse{Error: "INTERNAL_ERROR"})
+				return
+			}
 		}
 	case "login":
 		if !exists {

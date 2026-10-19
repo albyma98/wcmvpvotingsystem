@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math/rand"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -72,6 +73,11 @@ func (rt *_router) postRegisterFan(w http.ResponseWriter, r *http.Request, ctx r
 		return
 	}
 	deviceID := rt.deviceIDFromRequest(r)
+	nickname, validationMessage := validateFanNickname(payload.Nickname)
+	if validationMessage != "" {
+		_ = writeJSONMessage(w, http.StatusBadRequest, validationMessage)
+		return
+	}
 	sessionToken := rt.fanSessionTokenFromRequest(r)
 	if sessionToken == "" {
 		sessionToken = uuid.Must(uuid.NewV4()).String()
@@ -82,7 +88,7 @@ func (rt *_router) postRegisterFan(w http.ResponseWriter, r *http.Request, ctx r
 		EventID:        payload.EventID,
 		DeviceID:       deviceID,
 		SessionToken:   sessionToken,
-		Nickname:       payload.Nickname,
+		Nickname:       nickname,
 		Gender:         payload.Gender,
 		Phone:          payload.Phone,
 		AcceptedTerms:  payload.AcceptedTerms,
@@ -90,6 +96,10 @@ func (rt *_router) postRegisterFan(w http.ResponseWriter, r *http.Request, ctx r
 		EnterLottery:   payload.EnterLottery,
 	})
 	if err != nil {
+		if errors.Is(err, database.ErrFanNicknameTaken) {
+			_ = writeJSON(w, http.StatusConflict, map[string]interface{}{"code": "NICKNAME_TAKEN", "message": "Nickname già in uso in questa società. Scegli un altro nome."})
+			return
+		}
 		if errors.Is(err, database.ErrFanLoginRequired) {
 			_ = writeJSONMessage(w, http.StatusConflict, "Questo numero ha già un profilo. Accedi con il codice ricevuto sul telefono.")
 			return
@@ -106,6 +116,53 @@ func (rt *_router) postRegisterFan(w http.ResponseWriter, r *http.Request, ctx r
 	}); err != nil {
 		ctx.Logger.WithError(err).Error("write register fan response")
 	}
+}
+
+// Public checks expose only availability, scoped to the resolved organization.
+func (rt *_router) getFanNicknameAvailability(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if ctx.OrganizationID <= 0 {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Organizzazione non valida")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	nickname := strings.TrimSpace(r.URL.Query().Get("nickname"))
+	available := false
+	if nickname != "" {
+		var message string
+		nickname, message = validateFanNickname(nickname)
+		if message != "" {
+			_ = writeJSONMessage(w, http.StatusBadRequest, message)
+			return
+		}
+		var err error
+		available, err = rt.db.IsFanNicknameAvailable(ctx.OrganizationID, nickname, 0)
+		if err != nil {
+			_ = writeJSONMessage(w, http.StatusInternalServerError, "Impossibile verificare il nickname. Riprova.")
+			return
+		}
+	}
+	bases := []string{"CurvaNord", "CuoreDiTifoso", "MuroTotale", "SempreInCampo", "TribunaVIP", "ForzaSquadra", "TifoLegend", "FanNumeroUno"}
+	suggestions := make([]string, 0, 4)
+	seen := map[string]bool{strings.ToLower(nickname): true}
+	for attempt := 0; attempt < 80 && len(suggestions) < 4; attempt++ {
+		candidate := bases[rand.Intn(len(bases))]
+		if attempt >= len(bases) {
+			candidate += strconv.Itoa(rand.Intn(900) + 100)
+		}
+		if seen[strings.ToLower(candidate)] {
+			continue
+		}
+		seen[strings.ToLower(candidate)] = true
+		free, err := rt.db.IsFanNicknameAvailable(ctx.OrganizationID, candidate, 0)
+		if err != nil {
+			_ = writeJSONMessage(w, http.StatusInternalServerError, "Impossibile caricare i suggerimenti. Riprova.")
+			return
+		}
+		if free {
+			suggestions = append(suggestions, candidate)
+		}
+	}
+	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"nickname": nickname, "available": available, "suggestions": suggestions})
 }
 
 func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -207,6 +264,10 @@ func (rt *_router) putFanNickname(w http.ResponseWriter, r *http.Request, ctx re
 
 	profile, err := rt.db.UpdateFanNickname(me.Profile.ID, nickname)
 	if err != nil {
+		if errors.Is(err, database.ErrFanNicknameTaken) {
+			_ = writeJSONMessage(w, http.StatusConflict, "Nickname già in uso, scegli un altro nome.")
+			return
+		}
 		ctx.Logger.WithError(err).Error("update fan nickname failed")
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Impossibile aggiornare il nickname")
 		return

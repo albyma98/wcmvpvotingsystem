@@ -757,6 +757,17 @@ export async function registerFanProfile(payload) {
     return { ok: true, data };
   } catch (error) {
     const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
+    const code = axios.isAxiosError(error) ? error.response?.data?.code : undefined;
+    return { ok: false, error, message, code };
+  }
+}
+
+export async function checkFanNickname(nickname = '') {
+  try {
+    const { data } = await apiClient.get('/fan/nickname', { params: { nickname }, timeout: 10000 });
+    return { ok: true, data };
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : undefined;
     return { ok: false, error, message };
   }
 }

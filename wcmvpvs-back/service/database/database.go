@@ -7660,6 +7660,22 @@ func ensureFanProfileTables(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE TRIGGER IF NOT EXISTS trg_fan_profiles_updated_at AFTER UPDATE ON fan_profiles BEGIN UPDATE fan_profiles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id; END;`); err != nil {
 		return fmt.Errorf("error ensuring fan profile trigger: %w", err)
 	}
+	// Triggers also protect concurrent writes, while allowing existing databases
+	// with historical duplicate nicknames to open without rewriting fan profiles.
+	for _, statement := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_fan_nickname_lookup ON fan_profiles(organization_id, LOWER(TRIM(nickname)))`,
+		`CREATE TRIGGER IF NOT EXISTS trg_fan_nickname_insert BEFORE INSERT ON fan_profiles
+		WHEN NEW.organization_id > 0 AND EXISTS (SELECT 1 FROM fan_profiles WHERE organization_id=NEW.organization_id AND LOWER(TRIM(nickname))=LOWER(TRIM(NEW.nickname)))
+		BEGIN SELECT RAISE(ABORT, 'fan_nickname_taken'); END`,
+		`CREATE TRIGGER IF NOT EXISTS trg_fan_nickname_update BEFORE UPDATE OF nickname,organization_id ON fan_profiles
+		WHEN NEW.organization_id > 0 AND (NEW.organization_id<>OLD.organization_id OR LOWER(TRIM(NEW.nickname))<>LOWER(TRIM(OLD.nickname)))
+		AND EXISTS (SELECT 1 FROM fan_profiles WHERE organization_id=NEW.organization_id AND id<>NEW.id AND LOWER(TRIM(nickname))=LOWER(TRIM(NEW.nickname)))
+		BEGIN SELECT RAISE(ABORT, 'fan_nickname_taken'); END`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			return fmt.Errorf("error ensuring fan nickname uniqueness: %w", err)
+		}
+	}
 	return ensureFanEconomyTables(db)
 }
 
@@ -7716,14 +7732,14 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 			SET organization_id = ?, nickname = ?, gender = ?, phone = ?, phone_e164 = ?, accepted_terms = ?, updated_at = CURRENT_TIMESTAMP
 			WHERE id = ?`,
 			input.OrganizationID, input.Nickname, input.Gender, input.Phone, input.Phone, boolToInt(input.AcceptedTerms), profileID); err != nil {
-			return FanProfileSummary{}, err
+			return FanProfileSummary{}, fanNicknameWriteError(err)
 		}
 	} else {
 		res, execErr := tx.Exec(`INSERT INTO fan_profiles (organization_id, nickname, gender, phone, phone_e164, accepted_terms)
 			VALUES (?, ?, ?, ?, ?, ?)`,
 			input.OrganizationID, input.Nickname, input.Gender, input.Phone, input.Phone, boolToInt(input.AcceptedTerms))
 		if execErr != nil {
-			return FanProfileSummary{}, execErr
+			return FanProfileSummary{}, fanNicknameWriteError(execErr)
 		}
 		id, idErr := res.LastInsertId()
 		if idErr != nil || id <= 0 {
@@ -7996,7 +8012,7 @@ func (db *appdbimpl) UpdateFanNickname(fanID int, nickname string) (FanProfile, 
 	if _, err := db.c.Exec(`UPDATE fan_profiles
 		SET nickname = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`, nickname, fanID); err != nil {
-		return FanProfile{}, err
+		return FanProfile{}, fanNicknameWriteError(err)
 	}
 	var profile FanProfile
 	var accepted int

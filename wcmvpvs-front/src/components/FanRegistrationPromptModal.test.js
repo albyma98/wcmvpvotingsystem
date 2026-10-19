@@ -1,0 +1,172 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
+import * as theme from '../organizationTheme.js';
+
+const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+function fixture(t, overrides = {}) {
+  const calls = { checks: [], starts: [], resends: [], verifies: [], saves: [] };
+  const clock = testWindow();
+  const api = {
+    checkFanNickname: async (nickname) => { calls.checks.push(nickname); return { ok: true, data: { available: nickname !== 'Taken', suggestions: ['FreeFan', 'CurvaVIP'] } }; },
+    startPhoneAuth: async (...args) => { calls.starts.push(args); return { ok: true }; },
+    resendPhoneAuth: async (...args) => { calls.resends.push(args); return { ok: true }; },
+    verifyPhoneAuth: async (...args) => { calls.verifies.push(args); return { ok: true }; },
+    ...overrides,
+  };
+  const setup = setupSfc(new URL('./FanRegistrationPromptModal.vue', import.meta.url), {
+    vue: testVue, '../api': api, '../organizationTheme': theme,
+  }, {
+    modelValue: true, organizationSlug: 'club', trigger: 'profile_overlay', walletCoins: 12,
+    onSubmit: async (form) => { calls.saves.push(form); return { ok: true, wallet: 12 }; },
+    onLogin: async () => ({ ok: true, wallet: 42 }),
+  }, { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout, setInterval: clock.setInterval, clearInterval: clock.clearInterval });
+  t.after(() => { setup.state.reset(); setup.scope.stop(); });
+  return { ...setup, calls };
+}
+
+test('registration checks availability and rejects occupied or invalid nicknames before the phone', async (t) => {
+  const { state, calls } = fixture(t);
+  state.startForm();
+  await flush();
+  assert.deepEqual(state.nicknameSuggestions.value, ['FreeFan', 'CurvaVIP']);
+  state.form.nickname = 'Taken';
+  await state.goStep2();
+  assert.equal(state.stage.value, 'step1');
+  assert.equal(state.nicknameStatus.value, 'taken');
+  assert.equal(state.canContinueNickname.value, false);
+  state.form.nickname = 'ab';
+  const checks = calls.checks.length;
+  await state.goStep2();
+  assert.equal(calls.checks.length, checks);
+  state.form.nickname = ' FreeFan ';
+  await state.goStep2();
+  assert.equal(state.stage.value, 'step2');
+  assert.equal(state.checkedNickname.value, 'FreeFan');
+});
+
+test('late nickname responses cannot validate a changed name or another organization', async (t) => {
+  const pending = [];
+  const { state, props } = fixture(t, { checkFanNickname: () => new Promise((resolve) => pending.push(resolve)) });
+  state.form.nickname = 'FirstFan';
+  const first = state.checkNickname();
+  state.form.nickname = 'SecondFan';
+  pending[0]({ ok: true, data: { available: true } });
+  await first;
+  assert.equal(state.canContinueNickname.value, false);
+  const second = state.checkNickname();
+  props.organizationSlug = 'other';
+  await flush();
+  pending[1]({ ok: true, data: { available: true, suggestions: ['OldClub'] } });
+  await second;
+  assert.equal(state.form.nickname, '');
+  assert.equal(state.canContinueNickname.value, false);
+  assert.deepEqual(state.nicknameSuggestions.value, []);
+});
+
+test('registration requires consent and recovers a nickname conflict without repeating OTP', async (t) => {
+  const { state, props, calls, events } = fixture(t);
+  state.form.nickname = 'FreeFan';
+  await state.goStep2();
+  state.form.phone = '333 123 4567';
+  await flush();
+  await state.submit();
+  assert.equal(calls.starts.length, 0);
+  state.form.acceptedTerms = true;
+  await state.submit();
+  assert.deepEqual(calls.starts, [['+393331234567', 'register']]);
+  assert.equal(state.stage.value, 'otp');
+  state.otpCode.value = '123456';
+  props.onSubmit = async () => ({ ok: false, code: 'NICKNAME_TAKEN', message: 'Nickname occupato' });
+  await state.verifyOtpAndSubmit();
+  assert.equal(state.stage.value, 'step1');
+  assert.equal(state.phoneVerified.value, true);
+  state.form.nickname = 'AnotherFan';
+  await state.goStep2();
+  props.onSubmit = async (form) => { calls.saves.push(form); return { ok: true, wallet: 19 }; };
+  await state.submit();
+  assert.equal(calls.verifies.length, 1);
+  assert.equal(calls.starts.length, 1);
+  assert.equal(state.stage.value, 'success');
+  assert.equal(state.savedCoins.value, 19);
+  assert.equal(calls.saves[0].nickname, 'AnotherFan');
+  assert.equal('gender' in calls.saves[0], false);
+  state.closeSuccess();
+  assert.deepEqual(events.slice(-2), [['update:modelValue', false], ['completed', 'register']]);
+});
+
+test('login edits return to login and retries do not verify an already consumed code', async (t) => {
+  const { state, props, calls } = fixture(t);
+  state.startLogin();
+  state.form.phone = '3331234567';
+  await flush();
+  await state.submit();
+  state.editPhone();
+  assert.equal(state.stage.value, 'login');
+  assert.equal(state.authMode.value, 'login');
+  await state.submit();
+  state.otpCode.value = '123456';
+  props.onLogin = async () => ({ ok: false, message: 'Connessione interrotta' });
+  await state.verifyOtpAndSubmit();
+  assert.equal(state.stage.value, 'otp');
+  props.onLogin = async () => ({ ok: true, wallet: 42 });
+  await state.verifyOtpAndSubmit();
+  assert.equal(calls.verifies.length, 1);
+  assert.equal(state.stage.value, 'success');
+  assert.equal(state.savedCoins.value, 42);
+});
+
+test('unavailable nickname service fails closed and can be retried', async (t) => {
+  let available = false;
+  const { state } = fixture(t, { checkFanNickname: async () => {
+    if (!available) throw new Error('Rete assente');
+    return { ok: true, data: { available: true } };
+  } });
+  state.form.nickname = 'CurvaFan';
+  await state.goStep2();
+  assert.equal(state.nicknameStatus.value, 'error');
+  assert.equal(state.canContinueNickname.value, false);
+  assert.equal(state.loading.value, false);
+  available = true;
+  await state.goStep2();
+  assert.equal(state.stage.value, 'step2');
+});
+
+test('registration resends through the resend endpoint without creating the profile again', async (t) => {
+  const { state, calls } = fixture(t);
+  state.form.nickname = 'CurvaFan';
+  await state.goStep2();
+  state.form.phone = '3331234567';
+  state.form.acceptedTerms = true;
+  await flush();
+  await state.submit();
+  await state.sendOtp(true);
+  assert.equal(calls.resends.length, 0);
+  state.resendSeconds.value = 0;
+  await state.sendOtp(true);
+  assert.deepEqual(calls.resends, [['+393331234567']]);
+  assert.equal(calls.starts.length, 1);
+  assert.equal(state.stage.value, 'otp');
+  assert.ok(state.otpNotice.value);
+});
+
+test('login to a pending profile completes registration using the verified phone', async (t) => {
+  const { state, props, calls } = fixture(t);
+  props.onLogin = async () => ({ ok: false, code: 'REGISTRATION_INCOMPLETE' });
+  state.startLogin();
+  state.form.phone = '3331234567';
+  await flush();
+  await state.submit();
+  state.otpCode.value = '123456';
+  await state.verifyOtpAndSubmit();
+  assert.equal(state.stage.value, 'step1');
+  assert.equal(state.authMode.value, 'register');
+  state.form.nickname = 'CurvaFan';
+  await state.goStep2();
+  state.form.acceptedTerms = true;
+  await state.submit();
+  assert.equal(state.stage.value, 'success');
+  assert.equal(calls.starts.length, 1);
+  assert.equal(calls.verifies.length, 1);
+  assert.equal(calls.saves[0].nickname, 'CurvaFan');
+});

@@ -1862,7 +1862,6 @@ async function handleRegistrationSubmit(form) {
   const response = await registerFanProfile({
     event_id: props.eventId,
     nickname: form.nickname,
-    gender: form.gender,
     phone: form.phone,
     accepted_terms: form.acceptedTerms,
     guest_coins: totalCoins.value,
@@ -1870,7 +1869,7 @@ async function handleRegistrationSubmit(form) {
   });
   if (!response?.ok) {
     trackAppEvent('fan.registration_failed', { trigger: form.trigger, message: response.message || 'registration_failed' }, 'fan');
-    return { ok: false, message: response.message };
+    return { ok: false, message: response.message, code: response.code };
   }
   trackAppEvent('fan.registration_completed', { trigger: form.trigger, nickname: form.nickname, accepted_terms: form.acceptedTerms }, 'fan');
   isRegisteredFan.value = true;

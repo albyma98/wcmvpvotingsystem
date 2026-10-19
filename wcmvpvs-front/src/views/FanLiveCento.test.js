@@ -61,6 +61,35 @@ function fixture(overrides = {}, options = {}) {
   return { ...setup, saves, window, api };
 }
 
+test('registration saves no gender and leaves the success screen open until completion', async (t) => {
+  let submitted;
+  const { state, scope } = fixture({
+    registerFanProfile: async (form) => { submitted = form; return { ok: true, data: { user: { nickname: form.nickname }, wallet: 24 } }; },
+    fetchFanProfile: async () => ({ ok: true, data: { registered: true, user: { nickname: 'CurvaFan', organization_id: 7 }, wallet: 24 } }),
+  });
+  t.after(() => scope.stop());
+  state.openRegistration();
+  const result = await state.registerJourneyFan({ nickname: 'CurvaFan', phone: '+393331234567', acceptedTerms: true });
+  assert.equal('gender' in submitted, false);
+  assert.equal(submitted.accepted_terms, true);
+  assert.equal(state.isRegistered.value, true);
+  assert.equal(state.isRegistrationOpen.value, true);
+  assert.equal(state.activeSheet.value, '');
+  assert.deepEqual(result, { ok: true, wallet: 24 });
+});
+
+test('login detects a pending account and requests completion of registration', async (t) => {
+  const { state, scope } = fixture({
+    fetchFanProfile: async () => ({ ok: true, data: { registered: true, user: { nickname: 'user_393331234567', organization_id: 0, accepted_terms: false }, wallet: 0 } }),
+  });
+  t.after(() => scope.stop());
+  state.openRegistration();
+  const result = await state.loginJourneyFan();
+  assert.equal(result.code, 'REGISTRATION_INCOMPLETE');
+  assert.equal(state.isRegistered.value, false);
+  assert.equal(state.isRegistrationOpen.value, true);
+});
+
 test('home splash waits for the session wallet, saved vote, and every home image', async (t) => {
   let finishProfile;
   let finishImages;
