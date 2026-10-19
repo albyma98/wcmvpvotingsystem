@@ -814,7 +814,7 @@ async function loginJourneyFan() {
   const scope = walletScope();
   const profile = await loadFanProfile();
   if (isDisposed || scope !== walletScope()) return { ok: false };
-  if (profile?.user?.organization_id === 0 && !profile?.user?.accepted_terms) {
+  if (profile?.registration_pending || profile?.user?.registration_pending) {
     isRegistered.value = false;
     return { ok: false, code: 'REGISTRATION_INCOMPLETE' };
   }

@@ -172,11 +172,29 @@ func (rt *_router) getFanMe(w http.ResponseWriter, r *http.Request, ctx reqconte
 	eventID := parseIDFromQuery(r, "event_id")
 
 	if sessionToken != "" {
-		summary, err := rt.db.GetFanBySessionToken(sessionToken, deviceID)
+		// Validate the organization before linking this device's guest activity.
+		summary, err := rt.db.GetFanBySessionToken(sessionToken, "")
 		if err == nil {
-			if summary.Profile.OrganizationID > 0 && summary.Profile.OrganizationID != ctx.OrganizationID {
+			if summary.Profile.OrganizationID != ctx.OrganizationID {
 				w.WriteHeader(http.StatusForbidden)
 				return
+			}
+			if summary.Profile.RegistrationPending {
+				resp["registration_pending"] = true
+				resp["user"] = summary.Profile
+				if eventID > 0 && deviceID != "" {
+					coins, _ := rt.db.GetGuestCoins(eventID, ctx.OrganizationID, deviceID)
+					resp["guest_coins"] = coins
+				}
+				_ = writeJSON(w, http.StatusOK, resp)
+				return
+			}
+			if deviceID != "" {
+				summary, err = rt.db.GetFanBySessionToken(sessionToken, deviceID)
+				if err != nil {
+					_ = writeJSONMessage(w, http.StatusInternalServerError, "Impossibile caricare il profilo tifoso")
+					return
+				}
 			}
 			resp["registered"] = true
 			resp["user"] = summary.Profile

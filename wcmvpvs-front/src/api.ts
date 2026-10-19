@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getOrCreateDeviceId } from './deviceId';
+import { readFanSessionToken, saveFanSessionToken, readLegacyFanSessionToken } from './fanSession';
 
 const ensureApiPath = (baseUrl: string) => {
   const sanitized = baseUrl.replace(/\/+$/, '');
@@ -107,7 +108,7 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use((config) => {
   const orgSlug = getOrganizationSlugFromLocation();
-  if (orgSlug) {
+  if (orgSlug && !config.headers?.['X-Organization-Slug']) {
     config.headers = config.headers || {};
     config.headers['X-Organization-Slug'] = orgSlug;
   }
@@ -722,37 +723,50 @@ export async function fetchEventEngagement(eventId: number) {
 }
 
 
-export function getFanSessionToken() {
+export function getFanSessionToken(organizationSlug = getOrganizationSlug()) {
   if (typeof window === 'undefined') {
     return '';
   }
-  return String(window.localStorage.getItem('fan:session_token') || '').trim();
+  return readFanSessionToken(window.localStorage, organizationSlug);
 }
 
-export function getFanSessionHeaders() {
-  const token = getFanSessionToken();
+export function getFanSessionHeaders(organizationSlug = getOrganizationSlug()) {
+  const token = getFanSessionToken(organizationSlug);
   return token ? { 'X-Fan-Session': token } : {};
 }
 
 export async function fetchFanProfile(eventId) {
+  const organizationSlug = getOrganizationSlug();
+  const storage = typeof window !== 'undefined' ? window.localStorage : null;
+  const token = getFanSessionToken(organizationSlug);
+  const legacyToken = token ? '' : readLegacyFanSessionToken(storage);
+  const headers = { ...getDeviceHeaders(), 'X-Organization-Slug': organizationSlug, ...(token || legacyToken ? { 'X-Fan-Session': token || legacyToken } : {}) };
   try {
     const { data } = await apiClient.get('/fan/me', {
       params: { event_id: eventId },
-      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+      headers,
     });
+    if (legacyToken && (data?.registered || data?.registration_pending)) saveFanSessionToken(storage, organizationSlug, legacyToken);
     return { ok: true, data };
   } catch (error) {
+    if (legacyToken && axios.isAxiosError(error) && error.response?.status === 403) {
+      try {
+        const { data } = await apiClient.get('/fan/me', { params: { event_id: eventId }, headers: { ...getDeviceHeaders(), 'X-Organization-Slug': organizationSlug } });
+        return { ok: true, data };
+      } catch (guestError) { return { ok: false, error: guestError }; }
+    }
     return { ok: false, error };
   }
 }
 
 export async function registerFanProfile(payload) {
+  const organizationSlug = getOrganizationSlug();
   try {
     const { data } = await apiClient.post('/fan/register', payload, {
-      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders(organizationSlug), 'X-Organization-Slug': organizationSlug },
     });
     if (data?.session_token && typeof window !== 'undefined') {
-      window.localStorage.setItem('fan:session_token', data.session_token);
+      saveFanSessionToken(window.localStorage, organizationSlug, data.session_token);
     }
     return { ok: true, data };
   } catch (error) {
@@ -786,8 +800,9 @@ export async function updateFanNickname(nickname: string) {
 }
 
 export async function startPhoneAuth(phone: string, mode: 'register' | 'login' = 'register') {
+  const organizationSlug = getOrganizationSlug();
   try {
-    await apiClient.post('/auth/start', { phone, mode }, { headers: getDeviceHeaders() });
+    await apiClient.post('/auth/start', { phone, mode }, { headers: { ...getDeviceHeaders(), 'X-Organization-Slug': organizationSlug } });
     return { ok: true };
   } catch (error) {
     const code = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
@@ -796,11 +811,12 @@ export async function startPhoneAuth(phone: string, mode: 'register' | 'login' =
 }
 
 export async function verifyPhoneAuth(phone: string, code: string) {
+  const organizationSlug = getOrganizationSlug();
   try {
-    const { data } = await apiClient.post('/auth/verify', { phone, code }, { headers: getDeviceHeaders() });
+    const { data } = await apiClient.post('/auth/verify', { phone, code }, { headers: { ...getDeviceHeaders(), 'X-Organization-Slug': organizationSlug } });
     const sessionToken = String(data?.token || data?.session_token || '').trim();
     if (sessionToken && typeof window !== 'undefined') {
-      window.localStorage.setItem('fan:session_token', sessionToken);
+      saveFanSessionToken(window.localStorage, organizationSlug, sessionToken);
     }
     return { ok: true, data };
   } catch (error) {
@@ -810,8 +826,9 @@ export async function verifyPhoneAuth(phone: string, code: string) {
 }
 
 export async function resendPhoneAuth(phone: string) {
+  const organizationSlug = getOrganizationSlug();
   try {
-    await apiClient.post('/auth/resend', { phone }, { headers: getDeviceHeaders() });
+    await apiClient.post('/auth/resend', { phone }, { headers: { ...getDeviceHeaders(), 'X-Organization-Slug': organizationSlug } });
     return { ok: true };
   } catch (error) {
     const code = axios.isAxiosError(error) ? error.response?.data?.error : undefined;

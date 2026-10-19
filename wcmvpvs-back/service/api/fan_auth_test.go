@@ -21,15 +21,15 @@ type pendingFanAuthDB struct {
 	created int
 }
 
-func (db *pendingFanAuthDB) GetFanByPhoneE164(string) (database.FanProfile, error) {
-	if db.profile.ID == 0 {
+func (db *pendingFanAuthDB) GetFanByPhoneE164(org int, _ string) (database.FanProfile, error) {
+	if db.profile.ID == 0 || db.profile.OrganizationID != org {
 		return database.FanProfile{}, sql.ErrNoRows
 	}
 	return db.profile, nil
 }
-func (db *pendingFanAuthDB) CreateFanWithPhoneE164(string) (database.FanProfile, error) {
+func (db *pendingFanAuthDB) CreateFanWithPhoneE164(org int, _ string) (database.FanProfile, error) {
 	db.created++
-	db.profile = database.FanProfile{ID: 1}
+	db.profile = database.FanProfile{ID: 1, OrganizationID: org, RegistrationPending: true}
 	return db.profile, nil
 }
 
@@ -64,7 +64,7 @@ func TestFanAuthRegistrationCanRetryPendingPhone(t *testing.T) {
 	if db.created != 1 || transport.sends != 2 {
 		t.Fatalf("retry recreated profile or skipped sending: %d/%d", db.created, transport.sends)
 	}
-	db.profile.OrganizationID = 7
+	db.profile.RegistrationPending = false
 	if w := start(); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "PHONE_ALREADY_EXISTS") {
 		t.Fatalf("completed profile requires login: %d %s", w.Code, w.Body.String())
 	}

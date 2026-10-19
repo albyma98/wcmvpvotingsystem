@@ -80,7 +80,7 @@ test('registration saves no gender and leaves the success screen open until comp
 
 test('login detects a pending account and requests completion of registration', async (t) => {
   const { state, scope } = fixture({
-    fetchFanProfile: async () => ({ ok: true, data: { registered: true, user: { nickname: 'user_393331234567', organization_id: 0, accepted_terms: false }, wallet: 0 } }),
+    fetchFanProfile: async () => ({ ok: true, data: { registered: false, registration_pending: true, user: { nickname: 'user_393331234567', organization_id: 7, accepted_terms: false, registration_pending: true }, guest_coins: 0 } }),
   });
   t.after(() => scope.stop());
   state.openRegistration();

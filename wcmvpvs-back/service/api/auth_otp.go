@@ -34,6 +34,10 @@ type authErrorResponse struct {
 }
 
 func (rt *_router) postAuthStart(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if ctx.OrganizationID <= 0 {
+		_ = writeJSON(w, http.StatusBadRequest, authErrorResponse{Error: "INVALID_ORGANIZATION"})
+		return
+	}
 	var payload authStartPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		_ = writeJSON(w, http.StatusBadRequest, authErrorResponse{Error: "INVALID_REQUEST"})
@@ -53,7 +57,7 @@ func (rt *_router) postAuthStart(w http.ResponseWriter, r *http.Request, ctx req
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(payload.Mode))
-	found, err := rt.db.GetFanByPhoneE164(phone)
+	found, err := rt.db.GetFanByPhoneE164(ctx.OrganizationID, phone)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		ctx.Logger.WithError(err).Error("cannot lookup user by phone")
 		_ = writeJSON(w, http.StatusInternalServerError, authErrorResponse{Error: "INTERNAL_ERROR"})
@@ -63,12 +67,12 @@ func (rt *_router) postAuthStart(w http.ResponseWriter, r *http.Request, ctx req
 
 	switch mode {
 	case "register":
-		if exists && (found.OrganizationID > 0 || found.AcceptedTerms) {
+		if exists && !found.RegistrationPending {
 			_ = writeJSON(w, http.StatusConflict, authErrorResponse{Error: "PHONE_ALREADY_EXISTS"})
 			return
 		}
 		if !exists {
-			if _, err := rt.db.CreateFanWithPhoneE164(phone); err != nil {
+			if _, err := rt.db.CreateFanWithPhoneE164(ctx.OrganizationID, phone); err != nil {
 				ctx.Logger.WithError(err).WithField("phone", maskPhone(phone)).Error("cannot create pending user")
 				_ = writeJSON(w, http.StatusInternalServerError, authErrorResponse{Error: "INTERNAL_ERROR"})
 				return
@@ -96,6 +100,10 @@ func (rt *_router) postAuthStart(w http.ResponseWriter, r *http.Request, ctx req
 }
 
 func (rt *_router) postAuthVerify(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if ctx.OrganizationID <= 0 {
+		_ = writeJSON(w, http.StatusBadRequest, authErrorResponse{Error: "INVALID_ORGANIZATION"})
+		return
+	}
 	var payload authVerifyPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		_ = writeJSON(w, http.StatusBadRequest, authErrorResponse{Error: "INVALID_REQUEST"})
@@ -112,7 +120,7 @@ func (rt *_router) postAuthVerify(w http.ResponseWriter, r *http.Request, ctx re
 		return
 	}
 
-	fan, err := rt.db.GetFanByPhoneE164(phone)
+	fan, err := rt.db.GetFanByPhoneE164(ctx.OrganizationID, phone)
 	if errors.Is(err, sql.ErrNoRows) {
 		_ = writeJSON(w, http.StatusNotFound, authErrorResponse{Error: "USER_NOT_FOUND"})
 		return
@@ -134,7 +142,7 @@ func (rt *_router) postAuthVerify(w http.ResponseWriter, r *http.Request, ctx re
 		return
 	}
 
-	if err := rt.db.MarkFanPhoneVerified(phone, time.Now().UTC()); err != nil {
+	if err := rt.db.MarkFanPhoneVerified(ctx.OrganizationID, phone, time.Now().UTC()); err != nil {
 		ctx.Logger.WithError(err).Error("cannot mark phone verified")
 		_ = writeJSON(w, http.StatusInternalServerError, authErrorResponse{Error: "INTERNAL_ERROR"})
 		return
@@ -152,6 +160,10 @@ func (rt *_router) postAuthVerify(w http.ResponseWriter, r *http.Request, ctx re
 }
 
 func (rt *_router) postAuthResend(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if ctx.OrganizationID <= 0 {
+		_ = writeJSON(w, http.StatusBadRequest, authErrorResponse{Error: "INVALID_ORGANIZATION"})
+		return
+	}
 	var payload struct {
 		Phone string `json:"phone"`
 	}
@@ -168,7 +180,7 @@ func (rt *_router) postAuthResend(w http.ResponseWriter, r *http.Request, ctx re
 		_ = writeJSON(w, http.StatusTooManyRequests, authErrorResponse{Error: "RATE_LIMITED"})
 		return
 	}
-	if _, err := rt.db.GetFanByPhoneE164(phone); errors.Is(err, sql.ErrNoRows) {
+	if _, err := rt.db.GetFanByPhoneE164(ctx.OrganizationID, phone); errors.Is(err, sql.ErrNoRows) {
 		_ = writeJSON(w, http.StatusNotFound, authErrorResponse{Error: "USER_NOT_FOUND"})
 		return
 	} else if err != nil {

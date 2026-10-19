@@ -1842,11 +1842,13 @@ async function loadFanProfile() {
     fanRewardRedemptions.value = [];
     fanLotteryTicket.value = null;
   }
+  return data;
 }
 
 
 async function handleExistingFanLogin() {
-  await loadFanProfile();
+  const profile = await loadFanProfile();
+  if (profile?.registration_pending || profile?.user?.registration_pending) return { ok: false, code: 'REGISTRATION_INCOMPLETE' };
   if (!isRegisteredFan.value) {
     trackAppEvent('fan.login_failed', { reason: 'fan_profile_not_found' }, 'fan');
     return { ok: false, message: 'Impossibile trovare un profilo associato a questo numero.' };
