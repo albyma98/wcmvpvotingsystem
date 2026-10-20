@@ -132,11 +132,16 @@
         <div class="sheet-head">
           <div>
             <div class="sheet-title">Vota l'MVP del pubblico</div>
-            <div class="sheet-sub">Tocca la card del tuo MVP · +10 monete al primo voto</div>
+            <div class="sheet-sub">{{ hasVoted ? 'Tocca un’altra card per cambiare il tuo voto.' : 'Scegli il tuo campione. Fai sentire il tuo tifo.' }}</div>
           </div>
           <button class="close" type="button" aria-label="Chiudi scelta MVP" @click="closeSheets">✕</button>
         </div>
         <div class="sheet-body">
+          <div v-if="canVote && !hasVoted && !doneKeys.includes('vote')" class="mvp-vote-invite" :class="{ 'is-active': activeSheet === 'mvp' }">
+            <span class="mvp-invite-star" aria-hidden="true">★</span>
+            <span><b>Il tuo primo voto vale</b><small>Scegli una card e porta il tuo tifo in classifica</small></span>
+            <strong>+{{ VOTE_REWARD }} <span class="coin" aria-hidden="true"></span><small>monete</small></strong>
+          </div>
           <div v-if="isLoadingPlayers" class="sheet-empty">Caricamento giocatori…</div>
           <div v-else-if="playersError" class="sheet-empty error">{{ playersError }}</div>
           <div v-else-if="!players.length" class="sheet-empty">Nessun giocatore disponibile.</div>
@@ -162,26 +167,20 @@
           <button class="close" type="button" aria-label="Chiudi conferma voto" @click="closeSheets">✕</button>
         </div>
         <div ref="voteResultEl" class="sheet-body vote-result" :class="{ 'is-mvp-result': celebrationKind === 'vote' && activeSheet === 'vote-result' }">
-          <div v-if="celebrationKind === 'vote' && activeSheet === 'vote-result'" :key="voteRevealRevision" class="mvp-reveal">
-            <span class="mvp-reveal-halo" aria-hidden="true"></span>
-            <span class="mvp-reveal-court" aria-hidden="true"></span>
-            <span v-for="spark in 8" :key="spark" class="mvp-reveal-spark" :style="{ '--spark-angle': `${spark * 45}deg` }" aria-hidden="true"></span>
-            <div class="mvp-reveal-card">
-              <FanPlayerCard class="vote-result-player" :player="votedPlayerCard" :club-logo-url="homeLogoUrl" selected loading="eager" />
-              <span class="mvp-reveal-seal" aria-hidden="true">✓</span>
-            </div>
-            <span class="mvp-reveal-label" aria-hidden="true">IL TUO MVP</span>
-          </div>
+          <FanMvpCelebration v-if="celebrationKind === 'vote' && activeSheet === 'vote-result'" :key="voteRevealRevision" :player="votedPlayerCard" :club-logo-url="homeLogoUrl" />
           <span v-else class="vote-result-avatar" aria-hidden="true">{{ progress.unlocked ? '🏅' : '🎉' }}</span>
           <h2>{{ celebrationKind === 'vote' ? `Hai votato ${displayVotedName || 'il tuo MVP'}!` : `${celebrationName} completato!` }}</h2>
           <div class="vote-result-status" role="status" aria-live="polite" aria-atomic="true">
-            <p v-if="voteBonusCoins" :key="`${celebrationKind}-${voteRevealRevision}-${voteBonusCoins}`" class="vote-result-bonus">+{{ voteBonusCoins }} <span ref="voteBonusEl" class="coin" aria-hidden="true"></span> monete salvate</p>
+            <div v-if="voteBonusCoins" :key="`${celebrationKind}-${voteRevealRevision}-${voteBonusCoins}`" class="vote-result-bonus">
+              <span class="vote-reward-amount">+{{ voteBonusCoins }} <span ref="voteBonusEl" class="coin" aria-hidden="true"></span></span>
+              <span class="vote-reward-copy"><b>{{ celebrationKind === 'vote' ? 'Il tuo tifo vale!' : 'Bonus conquistato!' }}</b><small>Monete salvate · +{{ voteBonusCoins }} punti partecipazione</small></span>
+            </div>
             <p v-else-if="journey.pendingVoteBonus">{{ isSavingCoins ? 'Il tuo voto è al sicuro. Salvataggio delle monete…' : `Voto registrato. Il bonus di ${VOTE_REWARD} monete è ancora da salvare.` }}</p>
             <p v-else>Voto aggiornato. Il bonus del primo voto è già stato assegnato.</p>
           </div>
-          <div class="vote-result-goal">
-            <b>{{ progress.unlocked ? `Hai sbloccato il badge ${FAN_BADGE_NAME}!` : `${progress.current}/${FIRST_FAN_GOAL} · Mancano ${progress.remaining} monete al primo badge` }}</b>
-            <div class="journey-bar"><span :style="{ width: `${progress.percent}%` }"></span></div>
+          <div class="vote-result-goal" :class="{ 'is-unlocked': progress.unlocked }">
+            <div class="vote-goal-heading"><span class="vote-goal-medal" aria-hidden="true">{{ progress.unlocked ? '🏅' : '★' }}</span><span><small>{{ progress.unlocked ? 'TRAGUARDO RAGGIUNTO' : 'IL TUO PROSSIMO TRAGUARDO' }}</small><b>{{ progress.unlocked ? `Badge ${FAN_BADGE_NAME} sbloccato!` : `Mancano ${progress.remaining} monete al primo badge` }}</b></span><strong>{{ progress.current }}<small>/{{ FIRST_FAN_GOAL }}</small></strong></div>
+            <div class="journey-bar"><span :key="`${celebrationKind}-${voteRevealRevision}-${progress.current}`" :class="{ 'is-rewarded': voteBonusCoins > 0 }" :style="{ width: `${progress.percent}%`, '--goal-from': `${Math.min(100, Math.max(0, progress.earned - voteBonusCoins) / FIRST_FAN_GOAL * 100)}%` }"></span></div>
           </div>
           <p v-if="coinError" class="sheet-empty error" role="alert">{{ coinError }}</p>
           <button v-if="journey.pendingVoteBonus" class="btn-vote" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare le monete' }}</button>
@@ -541,6 +540,7 @@ import { preloadFanHomeImages } from '../fanHomeAssets';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
 import FanMvpRoster from '../components/FanMvpRoster.vue';
+import FanMvpCelebration from '../components/FanMvpCelebration.vue';
 import FanCollectionPanel from '../components/FanCollectionPanel.vue';
 import FanAvatar from '../components/FanAvatar.vue';
 import FanMatchCard from '../components/FanMatchCard.vue';
@@ -893,6 +893,9 @@ async function animateEarnedCoins() {
       left: `${from.left + from.width / 2}px`, top: `${startY}px`,
       '--flight-x': `${to.left + to.width / 2 - from.left - from.width / 2}px`,
       '--flight-y': `${to.top + to.height / 2 - startY}px`,
+      '--flight-bend': `${(index % 2 ? 1 : -1) * (25 + index * 8)}px`,
+      '--flight-lift': `${-38 - index * 9}px`,
+      '--flight-spin': `${(index % 2 ? 1 : -1) * (160 + index * 35)}deg`,
       animationDelay: `${index * 50}ms`,
     }));
   }
@@ -2179,54 +2182,65 @@ main {
 .match-stats > div { padding: 12px 7px; background: var(--card); border: 2px solid var(--line); border-radius: 14px; text-align: center; }
 .match-stats b { display: block; font-family: 'Fraunces', serif; font-size: 24px; }
 .match-stats span { display: block; font-size: 11px; color: var(--muted); }
-.vote-result { align-items: center; text-align: center; padding: 8px 0; gap: 13px; }
+.mvp-vote-invite { position: relative; isolation: isolate; display: flex; align-items: center; gap: 10px; flex: none; overflow: hidden; margin: 0 0 5px; border: 1px solid #ebce87; border-radius: 14px; padding: 11px 12px; background: linear-gradient(115deg, #fff7e2, #ffedbd); color: #74501b; }
+.mvp-vote-invite::after { content: ''; position: absolute; z-index: -1; inset: -60%; background: linear-gradient(110deg, transparent 44%, #ffffffa6 49%, transparent 54%); pointer-events: none; opacity: 0; }
+.mvp-vote-invite.is-active::after { opacity: 1; animation: mvp-invite-shine 1100ms ease 250ms both; }
+.mvp-invite-star { font-size: 24px; line-height: 1; color: #c69430; transform: rotate(-12deg); }
+.mvp-vote-invite > span:nth-child(2) { flex: 1; min-width: 0; }
+.mvp-vote-invite b, .mvp-vote-invite small { display: block; }
+.mvp-vote-invite b { font-size: 12px; font-weight: 800; }
+.mvp-vote-invite small { margin-top: 3px; font-size: 9px; line-height: 1.4; }
+.mvp-vote-invite strong { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; flex: 0 0 54px; font-size: 20px; font-weight: 900; }
+.mvp-vote-invite strong small { flex-basis: 100%; margin: 0; font-size: 9px; font-weight: 600; text-align: center; }
+.mvp-vote-invite .coin { width: 15px; height: 15px; }
+@keyframes mvp-invite-shine { from { transform: translateX(-70%); } to { transform: translateX(70%); } }
+.vote-result { align-items: center; text-align: center; padding: 2px 0 8px; gap: 11px; }
+.vote-result > * { flex-shrink: 0; }
 .vote-result h2 { margin: 0; font: 750 23px/1.2 'Fraunces', serif; }
 .vote-result > p { margin: 0; font-size: 13px; }
-.vote-result-status { min-height: 34px; display: flex; align-items: center; justify-content: center; }
+.vote-result-status { min-height: 34px; display: flex; align-items: center; justify-content: center; width: 100%; }
 .vote-result-status > p { margin: 0; font-size: 13px; color: var(--muted); }
-.vote-result .vote-result-bonus { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 15px; border: 1px solid #edce8e; border-radius: 99px; background: #fff3d6; color: #82500e; font-size: 16px; font-weight: 800; animation: mvp-reward-pop 400ms cubic-bezier(.16, 1, .3, 1) both; }
+.vote-result-bonus { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; gap: 13px; overflow: hidden; width: 100%; padding: 11px 14px; border: 1px solid #eac56f; border-radius: 15px; background: linear-gradient(110deg, #fff8e4, #ffe8ac); color: #74440c; box-shadow: 0 3px 0 #d5a84026; animation: mvp-reward-pop 550ms cubic-bezier(.16, 1, .3, 1) both; }
+.vote-result-bonus::after { content: ''; position: absolute; z-index: -1; inset: -50%; background: linear-gradient(110deg, transparent 42%, #ffffffb3 50%, transparent 58%); pointer-events: none; animation: mvp-invite-shine 850ms ease 150ms both; }
+.vote-reward-amount { display: flex; align-items: center; justify-content: center; gap: 7px; flex: none; font-family: 'Fraunces', serif; font-size: 34px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.vote-reward-amount .coin { width: 23px; height: 23px; box-shadow: inset 0 -2px 3px #0003, 0 0 0 2px #ffffff80; }
+.vote-reward-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; text-align: left; }
+.vote-reward-copy b { font-size: 13px; font-weight: 850; line-height: 1.3; }
+.vote-reward-copy small { font-size: 10px; line-height: 1.4; }
 .vote-result-avatar { width: 72px; height: 72px; border: 2px solid var(--red-line); border-radius: 20px; background: var(--red-soft); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 36px; flex: none; }
-.mvp-reveal { position: relative; isolation: isolate; display: flex; flex: none; align-items: center; flex-direction: column; width: 100%; padding: 12px 0 0; perspective: 800px; }
-.mvp-reveal-halo { position: absolute; z-index: -1; inset: -8px 0 12px; background: radial-gradient(ellipse, #f5d58c66 0, var(--red-soft) 38%, transparent 70%); animation: mvp-halo-in 700ms ease-out both; }
-.mvp-reveal-court { position: absolute; z-index: -1; bottom: 22px; width: 230px; max-width: 85%; height: 54px; border: 1px solid var(--red-line); border-radius: 50%; background: radial-gradient(ellipse, var(--red-line), transparent 68%); transform: rotateX(40deg); animation: mvp-court-in 620ms ease-out both; }
-.mvp-reveal-card { position: relative; width: clamp(112px, 36vw, 152px); transform-origin: 50% 88%; animation: mvp-hero-in 620ms cubic-bezier(.16, .85, .25, 1) 100ms both; }
-.mvp-reveal-card :deep(.mvp-player-card)::after { content: ''; position: absolute; z-index: 3; inset: -30% -65%; background: linear-gradient(110deg, transparent 40%, #ffffffa6 49%, #ffffff12 56%, transparent 62%); pointer-events: none; animation: mvp-hero-shine 650ms ease 380ms both; }
-.mvp-reveal-card :deep(.mvp-player-caption strong) { font-size: clamp(12px, 3.4vw, 15px); }
-.vote-result-player { width: 100%; }
-.mvp-reveal-seal { position: absolute; z-index: 4; right: -6px; top: 22%; display: grid; place-items: center; width: 31px; height: 31px; border: 3px solid var(--card); border-radius: 50%; background: var(--red); color: var(--on-primary, #fff); font-size: 18px; font-weight: 800; box-shadow: 0 4px 12px var(--red-line); animation: mvp-seal-in 360ms cubic-bezier(.16, 1, .3, 1) 480ms both; }
-.mvp-reveal-label { margin-top: 8px; color: var(--red-text); font-size: 10px; line-height: 1.4; letter-spacing: .2em; font-weight: 800; animation: mvp-copy-in 400ms ease 300ms both; }
-.mvp-reveal-spark { position: absolute; z-index: -1; left: calc(50% - 2px); top: 44%; width: 4px; height: 8px; border-radius: 2px; background: #c6953f; opacity: 0; animation: mvp-spark-out 650ms ease-out 340ms both; }
 .is-mvp-result > h2 { animation: mvp-copy-in 400ms ease 300ms both; }
-@keyframes mvp-hero-in {
-  0% { opacity: 0; transform: translateY(25px) rotateY(-22deg) rotateZ(-6deg) scale(.78); }
-  70% { opacity: 1; transform: translateY(-3px) rotateY(3deg) rotateZ(1deg) scale(1.025); }
-  100% { opacity: 1; transform: none; }
-}
-@keyframes mvp-hero-shine { from { transform: translateX(-65%); } to { transform: translateX(65%); } }
-@keyframes mvp-halo-in { from { opacity: 0; transform: scale(.65); } to { opacity: 1; transform: scale(1); } }
-@keyframes mvp-court-in { from { opacity: 0; transform: rotateX(40deg) scale(.7); } to { opacity: 1; transform: rotateX(40deg) scale(1); } }
-@keyframes mvp-seal-in { from { opacity: 0; transform: scale(.3) rotate(-30deg); } to { opacity: 1; transform: none; } }
 @keyframes mvp-copy-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes mvp-spark-out {
-  0% { opacity: 0; transform: rotate(var(--spark-angle)) translateY(-45px) scale(.4); }
-  25% { opacity: .7; }
-  100% { opacity: 0; transform: rotate(var(--spark-angle)) translateY(-125px) scale(.15); }
-}
-@keyframes mvp-reward-pop { from { opacity: 0; transform: translateY(5px) scale(.88); } to { opacity: 1; transform: none; } }
+@keyframes mvp-reward-pop { 0% { opacity: 0; transform: translateY(9px) scale(.78); } 65% { opacity: 1; transform: translateY(-2px) scale(1.035); } 100% { opacity: 1; transform: none; } }
 .final-mvp-cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 10px; width: 100%; padding: 6px 4px 12px; }
 .final-mvp-cards > .fan-player-card { width: min(112px, calc((100% - 20px) / 3)); flex: none; }
-.vote-result-goal { width: 100%; padding: 12px; border-radius: 14px; background: var(--card); border: 2px solid var(--line); font-size: 12px; }
+.vote-result-goal { width: 100%; padding: 11px 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); font-size: 12px; text-align: left; }
+.vote-goal-heading { display: flex; align-items: center; gap: 9px; }
+.vote-goal-medal { display: grid; place-items: center; flex: none; width: 31px; height: 35px; border-radius: 10px; background: var(--gold-soft); color: var(--gold-deep); font-size: 20px; }
+.vote-goal-heading > span:nth-child(2) { flex: 1; min-width: 0; }
+.vote-goal-heading b, .vote-goal-heading small { display: block; }
+.vote-goal-heading > span small { margin-bottom: 3px; color: var(--muted); font-size: 8px; font-weight: 750; letter-spacing: .08em; }
+.vote-goal-heading b { font-size: 11px; line-height: 1.4; }
+.vote-goal-heading > strong { flex: none; color: var(--red-text); font-size: 21px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.vote-goal-heading > strong small { display: inline; margin-left: 1px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.vote-result-goal .journey-bar { height: 9px; }
+.vote-result-goal .journey-bar > span { background: linear-gradient(90deg, var(--red), var(--gold)); }
+.vote-result-goal .journey-bar > span.is-rewarded { animation: mvp-goal-fill 800ms cubic-bezier(.16, 1, .3, 1) both; }
+.vote-result-goal.is-unlocked { border-color: var(--gold); background: linear-gradient(115deg, var(--card), var(--gold-soft)); }
+.vote-result-goal.is-unlocked .vote-goal-medal { animation: mvp-medal-pop 600ms cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes mvp-goal-fill { from { width: var(--goal-from, 0%); } }
+@keyframes mvp-medal-pop { 0% { transform: scale(.6) rotate(-20deg); } 65% { transform: scale(1.18) rotate(8deg); } 100% { transform: none; } }
 .game-credit-error { padding: 10px 14px; margin: 0; color: var(--red-text); background: var(--card); font-size: 13px; font-weight: 700; }
 .coin-flight-layer { position: fixed; inset: 0; z-index: 140; pointer-events: none; }
-.coin-flight { position: absolute; animation: coin-fly 0.7s ease-in both; }
-.wallet-pulse { animation: wallet-pop 0.55s ease; }
+.coin-flight { position: absolute; animation: coin-fly 0.8s cubic-bezier(.35, .05, .65, 1) both; }
+.wallet-pulse { animation: wallet-pop 0.45s cubic-bezier(.16, 1, .3, 1) 0.55s both; }
 @keyframes coin-fly {
-  0% { opacity: 0; transform: translate(0, 0) scale(0.5); }
-  20% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { opacity: 0; transform: translate(var(--flight-x), var(--flight-y)) scale(0.6); }
+  0% { opacity: 0; transform: translate(0, 0) scale(.45) rotateY(0); }
+  18% { opacity: 1; }
+  35% { opacity: 1; transform: translate(var(--flight-bend, 0px), var(--flight-lift, -45px)) scale(1.16) rotateY(90deg); }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--flight-x), var(--flight-y)) scale(.5) rotateY(var(--flight-spin, 360deg)); }
 }
-@keyframes wallet-pop { 50% { transform: scale(1.1); } }
+@keyframes wallet-pop { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.17) rotate(-3deg); box-shadow: 0 0 0 7px #f5b32126, 0 3px 0 #d18e0040; } 65% { transform: scale(.97) rotate(1deg); } }
 
 .feedback-cta {
   flex: none;
@@ -2804,15 +2818,12 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mvp-reveal-card,
-  .mvp-reveal-halo,
-  .mvp-reveal-court,
-  .mvp-reveal-seal,
-  .mvp-reveal-label,
   .is-mvp-result > h2,
-  .vote-result .vote-result-bonus { animation: none; }
-  .mvp-reveal-spark,
-  .mvp-reveal-card :deep(.mvp-player-card)::after { display: none; }
+  .vote-result-bonus,
+  .vote-result-goal .journey-bar > span.is-rewarded,
+  .vote-result-goal.is-unlocked .vote-goal-medal { animation: none; }
+  .mvp-vote-invite::after,
+  .vote-result-bonus::after { display: none; }
   .coin-flight { display: none; }
   .wallet-pulse { animation: none; }
   .journey-bar > span { transition: none; }

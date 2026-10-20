@@ -54,6 +54,7 @@ function fixture(overrides = {}, options = {}) {
     '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
     '../components/FanMvpRoster.vue': {},
+    '../components/FanMvpCelebration.vue': {},
     '../components/FanCollectionPanel.vue': {},
     '../components/FanAvatar.vue': {},
     '../components/FanMatchCard.vue': {},
