@@ -227,7 +227,7 @@
         <div class="sheet-body">
           <div class="wallet-total"><span class="coin" aria-hidden="true"></span><strong>{{ totalCoins }}</strong><span>monete disponibili</span></div>
           <div class="wallet-actions"><button type="button" class="btn-vote" @click="openSheet('earn')">Guadagna</button><button type="button" class="btn-vote" @click="openSheet('spend')">Usa le monete</button></div>
-          <p class="sheet-sub">{{ participationPoints }} punti partecipazione · spendere monete non cambia la classifica.</p>
+          <p class="sheet-sub">{{ hasLoadedCollection ? participationPoints : '—' }} punti partecipazione. Ogni moneta guadagnata vale 1 punto: i punti restano anche quando spendi.</p>
           <h3 class="section-label">Ultimi movimenti</h3>
           <p v-if="isLoadingWallet" class="sheet-empty" role="status">Caricamento wallet…</p>
           <p v-else-if="walletError" class="sheet-empty error" role="alert">{{ walletError }} <button type="button" class="journey-next" @click="loadWallet">Riprova</button></p>
@@ -352,60 +352,77 @@
         </div>
       </div>
 
-      <!-- Profilo (come LiveExperienceHome: nickname + saldo + QR lotteria) -->
-      <div class="sheet" :class="{ open: activeSheet === 'profile' }" role="dialog" aria-label="Profilo" :aria-hidden="activeSheet !== 'profile'" :inert="activeSheet !== 'profile'">
+      <!-- Saldo e punti restano visibili mentre il contenuto del profilo scorre. -->
+      <div class="sheet profile-sheet" :class="{ open: activeSheet === 'profile' }" role="dialog" aria-label="Profilo" :aria-hidden="activeSheet !== 'profile'" :inert="activeSheet !== 'profile'">
         <div class="grabber"></div>
         <div class="sheet-head">
           <div>
             <div class="sheet-title">Il tuo profilo</div>
             <div class="sheet-sub">{{ isRegistered ? 'Account tifoso' : 'Ospite · non registrato' }}</div>
           </div>
-          <button class="close" type="button" @click="closeSheets">✕</button>
+          <button class="close" type="button" aria-label="Chiudi profilo" @click="closeSheets">✕</button>
         </div>
-        <div class="sheet-body">
-          <FanCollectionPanel v-if="activeSheet === 'profile'" :nickname="profileNickname" :club-name="homeName" :club-logo-url="homeLogoUrl" :registered="isRegistered" :collection="collection" :loading="isLoadingWallet" :busy="shopBusy" :error="walletError" @equip="equipCollectionItem" @open-shop="openSheet('spend')" @inspect="inspectCollectible" />
-          <button v-if="walletError" type="button" class="journey-next" :disabled="shopBusy" @click="loadWallet">Riprova a caricare la collezione</button>
-
-          <button class="row-item profile-toggle" type="button" @click="toggleNicknameEditor">
-            <b>Modifica nickname</b>
-          </button>
-          <div v-if="isNicknameEditorOpen" class="nick-editor">
-            <input
-              v-model.trim="nicknameDraft"
-              type="text"
-              minlength="3"
-              maxlength="24"
-              placeholder="Inserisci nickname"
-              class="nick-input"
-              @keyup.enter="submitNickname"
-            />
-            <button
-              class="chip-mint nick-save"
-              type="button"
-              :disabled="isSavingNickname || !canSubmitNickname"
-              @click="submitNickname"
-            >
-              {{ isSavingNickname ? 'Salvataggio…' : 'Aggiorna' }}
+        <div class="profile-economy">
+          <div class="profile-balances" aria-label="Monete e punti partecipazione">
+            <button type="button" class="profile-balance profile-balance-coins" :aria-label="`${totalCoins} monete disponibili: apri saldo e movimenti`" @click="openSheet('wallet')">
+              <span class="profile-balance-label"><span class="coin" aria-hidden="true"></span>Monete<span class="balance-arrow" aria-hidden="true">↗</span></span>
+              <strong>{{ totalCoins }}</strong>
+              <small>Da spendere</small>
+            </button>
+            <button type="button" class="profile-balance profile-balance-points" :aria-label="`${hasLoadedCollection ? participationPoints : 'Caricamento'} punti partecipazione: apri la classifica`" @click="openLeaderboard">
+              <span class="profile-balance-label"><span class="points-mark" aria-hidden="true">★</span>Punti<span class="balance-arrow" aria-hidden="true">↗</span></span>
+              <strong>{{ hasLoadedCollection ? participationPoints : '—' }}</strong>
+              <small>Partecipazione totale</small>
             </button>
           </div>
-          <p v-if="nicknameError" class="nick-msg error">{{ nicknameError }}</p>
-          <p v-else-if="nicknameSuccess" class="nick-msg ok">{{ nicknameSuccess }}</p>
+          <p class="profile-economy-hint">1 moneta guadagnata = 1 punto. I punti restano anche se spendi.</p>
+        </div>
+        <div class="sheet-body profile-body">
+          <FanCollectionPanel v-if="activeSheet === 'profile'" :nickname="profileNickname" :club-name="homeName" :club-logo-url="homeLogoUrl" :registered="isRegistered" :collection="hasLoadedCollection ? collection : null" :loading="isLoadingWallet" :busy="shopBusy" :error="walletError" @equip="equipCollectionItem" @open-shop="openSheet('spend')" @inspect="inspectCollectible">
+            <template #identity-action>
+              <button class="profile-edit" type="button" :aria-expanded="isNicknameEditorOpen" aria-controls="profile-nickname-editor" @click="toggleNicknameEditor">{{ isNicknameEditorOpen ? 'Annulla' : 'Modifica nickname' }}</button>
+            </template>
+            <template #profile-actions>
+              <div v-if="isNicknameEditorOpen" id="profile-nickname-editor" class="nick-editor">
+                <label class="nick-field">Nickname
+                  <input
+                    v-model.trim="nicknameDraft"
+                    type="text"
+                    minlength="3"
+                    maxlength="24"
+                    placeholder="Inserisci nickname"
+                    class="nick-input"
+                    @keyup.enter="submitNickname"
+                  />
+                </label>
+                <button
+                  class="chip-mint nick-save"
+                  type="button"
+                  :disabled="isSavingNickname || !canSubmitNickname"
+                  @click="submitNickname"
+                >
+                  {{ isSavingNickname ? 'Salvataggio…' : 'Aggiorna' }}
+                </button>
+              </div>
+              <p v-if="nicknameError" class="nick-msg error" role="alert">{{ nicknameError }}</p>
+              <p v-else-if="nicknameSuccess" class="nick-msg ok" role="status">{{ nicknameSuccess }}</p>
+              <button v-if="!isRegistered" class="profile-signin" type="button" @click="openRegistration">
+                <span><strong>Accedi o crea il tuo profilo</strong><small>Conserva monete, punti e collezione</small></span>
+                <span aria-hidden="true">→</span>
+              </button>
+            </template>
+          </FanCollectionPanel>
+          <button v-if="walletError" type="button" class="journey-next" :disabled="shopBusy" @click="loadWallet">Riprova a caricare la collezione</button>
 
-          <button type="button" class="coin-balance" @click="openSheet('wallet')">
-            <span class="coin-balance-label">Saldo monete</span>
-            <span class="coin-balance-val">{{ totalCoins }} <span class="coin"></span></span>
-          </button>
-          <button v-if="!isRegistered" class="btn-vote" type="button" @click="openRegistration">Accedi o crea il tuo profilo tifoso</button>
-
-          <div class="lottery-box">
-            <div class="lottery-title">QR Lotteria MVP</div>
+          <details class="lottery-box">
+            <summary class="lottery-title">QR Lotteria MVP<span aria-hidden="true">⌄</span></summary>
             <template v-if="lotteryCode">
               <div class="lottery-code">{{ lotteryCode }}</div>
               <img v-if="lotteryQrUrl" :src="lotteryQrUrl" alt="QR lotteria" class="lottery-qr" />
               <p class="lottery-hint">Resta fino a fine partita per ritirare il premio.</p>
             </template>
             <p v-else class="lottery-empty">Vota l'MVP per ottenere il tuo QR lotteria personale.</p>
-          </div>
+          </details>
         </div>
       </div>
 
@@ -2625,50 +2642,37 @@ main {
 @keyframes collectible-glint { 0% { opacity: 0; transform: translateX(-60%); } 25% { opacity: .5; } 100% { opacity: 0; transform: translateX(60%); } }
 @media (max-width: 350px) { .shop-gallery { gap: 8px; } .shop-item { padding: 7px; } .shop-item-copy > b { font-size: 12px; } .shop-artwork.frame { min-height: 190px; } .shop-wear-preview { padding: 2px; gap: 2px; } .shop-wear-preview b { font-size: 8px; } }
 @media (prefers-reduced-motion: reduce) { .collectible-stage.is-new, .collectible-stage.is-new::after { animation: none; } .collectible-stage.is-new::after { display: none; } .shop-artwork.match_card > :deep(.fan-match-card) { transition: none; transform: none; } }
-.coin-balance { width: 100%; font: inherit; color: var(--ink); cursor: pointer; }
-.rank-link:focus-visible, .feedback-link:focus-visible, .shop-buy:focus-visible, .coin-balance:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
+.rank-link:focus-visible, .feedback-link:focus-visible, .shop-buy:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
 
 /* Profilo */
-.profile-hero {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 0 6px;
-}
-.profile-avatar {
-  width: 66px;
-  height: 66px;
-  border-radius: 50%;
-  flex: none;
-  background: var(--red-soft);
-  border: 2px solid var(--red-line);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform: rotate(-3deg);
-}
-.profile-label {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.profile-nick {
-  font-family: 'Fraunces', serif;
-  font-size: 22px;
-  font-weight: 750;
-  color: var(--ink);
-  line-height: 1.1;
-}
-.profile-toggle {
-  justify-content: center;
-}
+.profile-economy { flex: none; padding-bottom: 12px; }
+.profile-balances { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.profile-balance { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; border: 1px solid var(--line); border-radius: 15px; padding: 12px; background: var(--card); color: var(--ink); font-family: inherit; text-align: left; cursor: pointer; }
+.profile-balance-coins { border-color: var(--gold); background: var(--gold-soft); color: var(--gold-deep); }
+.profile-balance-points { border-color: var(--red-line); background: var(--red-soft); }
+.profile-balance-label { display: flex; align-items: center; gap: 6px; width: 100%; font-size: 11px; font-weight: 800; }
+.profile-balance-label .coin { width: 13px; height: 13px; box-shadow: inset 0 -1px 2px #0003; }
+.balance-arrow { margin-left: auto; font-size: 14px; opacity: .65; }
+.points-mark { color: var(--red-text); font-size: 16px; line-height: 1; }
+.profile-balance strong { max-width: 100%; font-family: 'Fraunces', serif; font-size: 30px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.profile-balance small { font-size: 10px; font-weight: 500; line-height: 1.4; }
+.profile-economy-hint { margin: 8px 2px 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.profile-body { gap: 10px; overscroll-behavior-y: contain; }
+.profile-body > * { flex-shrink: 0; }
+.profile-edit { margin-left: auto; min-height: 32px; padding: 4px 0 4px 8px; border: 0; background: transparent; color: var(--red-text); font: inherit; font-size: 10px; font-weight: 750; cursor: pointer; }
+.profile-signin { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; width: 100%; min-height: 62px; padding: 12px 14px; border: 0; border-radius: 13px; background: var(--red); color: var(--on-primary, #fff); font-family: inherit; text-align: left; cursor: pointer; }
+.profile-signin > span:first-child { min-width: 0; }
+.profile-signin strong, .profile-signin small { display: block; overflow-wrap: anywhere; }
+.profile-signin strong { font-size: 13px; font-weight: 800; line-height: 1.4; }
+.profile-signin small { margin-top: 3px; font-size: 10px; font-weight: 500; line-height: 1.4; }
+.profile-signin > span:last-child { flex: none; font-size: 20px; }
+.profile-balance:focus-visible, .profile-edit:focus-visible, .profile-signin:focus-visible, .lottery-title:focus-visible { outline: 2px solid var(--red-text); outline-offset: 3px; }
 .nick-editor {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-end;
 }
+.nick-field { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; color: var(--muted); font-size: 11px; font-weight: 600; }
 .nick-input {
   flex: 1;
   min-width: 0;
@@ -2692,6 +2696,7 @@ main {
   font-family: inherit;
 }
 .nick-msg {
+  margin: 0;
   font-size: 11.5px;
   font-weight: 700;
   padding: 0 2px;
@@ -2702,51 +2707,30 @@ main {
 .nick-msg.ok {
   color: var(--gold-deep);
 }
-.coin-balance {
+.lottery-box {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 0 12px;
+}
+.lottery-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--gold-soft);
-  border: 2px solid var(--gold);
-  border-radius: 15px;
-  padding: 12px 15px;
-  box-shadow: 0 3px 0 rgba(209, 142, 0, 0.2);
-}
-.coin-balance-label {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--gold-deep);
-}
-.coin-balance-val {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: 'Fraunces', serif;
-  font-size: 24px;
-  font-weight: 900;
-  color: var(--gold-deep);
-  font-variant-numeric: tabular-nums;
-}
-.lottery-box {
-  background: var(--card);
-  border: 2px solid var(--line);
-  border-radius: 15px;
-  padding: 14px 15px;
-  box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-.lottery-title {
-  font-family: 'Fraunces', serif;
-  font-size: 15px;
+  gap: 10px;
+  min-height: 48px;
+  font-size: 12px;
   font-weight: 750;
   color: var(--ink);
+  cursor: pointer;
+  list-style: none;
 }
+.lottery-title::-webkit-details-marker { display: none; }
+.lottery-title > span { color: var(--muted); font-size: 17px; }
+.lottery-box[open] .lottery-title > span { transform: rotate(180deg); }
+.lottery-box[open] { padding-bottom: 12px; }
 .lottery-code {
+  margin-bottom: 8px;
   font-family: 'Fraunces', serif;
   font-size: 18px;
   font-weight: 900;
@@ -2754,6 +2738,8 @@ main {
   color: var(--red-text);
 }
 .lottery-qr {
+  display: block;
+  margin: 0 auto;
   width: 168px;
   height: 168px;
   border-radius: 14px;
