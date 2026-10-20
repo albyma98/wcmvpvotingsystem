@@ -29,7 +29,7 @@ test('registration checks availability and rejects occupied or invalid nicknames
   const { state, calls } = fixture(t);
   state.startForm();
   await flush();
-  assert.deepEqual(state.nicknameSuggestions.value, ['FreeFan', 'CurvaVIP']);
+  assert.deepEqual(calls.checks, [], 'opening registration does not request nickname suggestions');
   state.form.nickname = 'Taken';
   await state.goStep2();
   assert.equal(state.stage.value, 'step1');
@@ -61,7 +61,6 @@ test('late nickname responses cannot validate a changed name or another organiza
   await second;
   assert.equal(state.form.nickname, '');
   assert.equal(state.canContinueNickname.value, false);
-  assert.deepEqual(state.nicknameSuggestions.value, []);
 });
 
 test('registration requires consent and recovers a nickname conflict without repeating OTP', async (t) => {

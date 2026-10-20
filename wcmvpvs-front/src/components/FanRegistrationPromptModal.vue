@@ -31,11 +31,8 @@
                 <p class="auth-copy">Scegli il nickname con cui comparirai nella classifica di {{ clubName || 'questa società' }}.</p>
                 <form @submit.prevent="goStep2">
                   <label for="fan-auth-nickname">Il tuo nickname</label>
-                  <input id="fan-auth-nickname" ref="nicknameInputRef" v-model="form.nickname" required minlength="3" maxlength="24" autocomplete="nickname" placeholder="Es. CuoreDiTifoso" :aria-invalid="nicknameStatus === 'taken' || nicknameStatus === 'invalid'" aria-describedby="fan-nickname-status" :disabled="loading" />
+                  <input id="fan-auth-nickname" ref="nicknameInputRef" v-model="form.nickname" required minlength="3" maxlength="24" autocomplete="nickname" placeholder="Inserisci il tuo nickname" :aria-invalid="nicknameStatus === 'taken' || nicknameStatus === 'invalid'" aria-describedby="fan-nickname-status" :disabled="loading" />
                   <p id="fan-nickname-status" class="auth-field-status" :class="{ ok: nicknameStatus === 'available', error: ['taken', 'invalid', 'error'].includes(nicknameStatus) }" aria-live="polite">{{ nicknameMessage }}</p>
-                  <div class="auth-suggestion-head"><span>Lasciati ispirare</span><button type="button" :disabled="suggestionsLoading || loading" @click="loadSuggestions">{{ suggestionsLoading ? 'Caricamento…' : 'Altri nomi ↻' }}</button></div>
-                  <div class="auth-suggestions"><button v-for="suggestion in nicknameSuggestions" :key="suggestion" type="button" :disabled="loading" @click="form.nickname = suggestion">{{ suggestion }}</button></div>
-                  <p v-if="suggestionsError" class="auth-note" role="status">{{ suggestionsError }}</p>
                   <p v-if="errorMessage" class="auth-error" role="alert">{{ errorMessage }}</p>
                   <button class="auth-primary" :disabled="loading || (!canContinueNickname && nicknameStatus !== 'error')">{{ loading ? 'Verifica…' : nicknameStatus === 'error' ? 'Riprova verifica' : 'Continua' }} <span aria-hidden="true">→</span></button>
                   <button type="button" class="auth-link" :disabled="loading" @click="goPrompt">Indietro</button>
@@ -121,17 +118,13 @@ const phoneInputRef = ref(null);
 const otpInputRef = ref(null);
 const otpCode = ref('');
 const otpNotice = ref('');
-const nicknameSuggestions = ref([]);
 const nicknameStatus = ref('idle');
 const nicknameMessage = ref('Da 3 a 24 caratteri. Scegli il tuo nome da tifoso.');
 const checkedNickname = ref('');
-const suggestionsLoading = ref(false);
-const suggestionsError = ref('');
 const resendSeconds = ref(0);
 let nicknameTimer;
 let resendTimer;
 let nicknameRevision = 0;
-let suggestionRevision = 0;
 let sessionRevision = 0;
 let returnFocus;
 const nationalPhone = computed(() => String(form.phone || '').replace(/[\s()-]/g, ''));
@@ -171,7 +164,6 @@ async function checkNickname() {
     checkedNickname.value = nickname;
     nicknameStatus.value = response.data?.available ? 'available' : 'taken';
     nicknameMessage.value = response.data?.available ? 'È libero. Questo posto è tuo!' : 'Già usato in questa società. Prova un altro nome.';
-    if (!response.data?.available) nicknameSuggestions.value = response.data?.suggestions || [];
     return Boolean(response.data?.available);
   } catch (error) {
     if (revision !== nicknameRevision) return false;
@@ -179,23 +171,9 @@ async function checkNickname() {
     return false;
   }
 }
-async function loadSuggestions() {
-  const revision = ++suggestionRevision;
-  suggestionsLoading.value = true; suggestionsError.value = '';
-  nicknameSuggestions.value = [];
-  try {
-    const response = await checkFanNickname();
-    if (revision !== suggestionRevision || !props.modelValue) return;
-    if (!response.ok) throw new Error('Suggerimenti non disponibili. Puoi scrivere il tuo nickname o riprovare.');
-    nicknameSuggestions.value = response.data?.suggestions || [];
-  } catch (error) {
-    if (revision === suggestionRevision) suggestionsError.value = error.message;
-  } finally { if (revision === suggestionRevision) suggestionsLoading.value = false; }
-}
 watch(() => form.nickname, () => {
   clearTimeout(nicknameTimer); ++nicknameRevision;
   checkedNickname.value = ''; nicknameStatus.value = 'idle'; errorMessage.value = '';
-  nicknameSuggestions.value = nicknameSuggestions.value.filter((name) => name.toLowerCase() !== form.nickname.trim().toLowerCase());
   const invalid = validationMessage(form.nickname.trim());
   nicknameMessage.value = invalid || 'Controllo disponibilità nella società…';
   if (invalid) { nicknameStatus.value = 'invalid'; return; }
@@ -222,16 +200,15 @@ function trapFocus(event) {
   else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panelRef.value)) { event.preventDefault(); first.focus(); }
 }
 function reset() {
-  ++sessionRevision; ++nicknameRevision; ++suggestionRevision;
+  ++sessionRevision; ++nicknameRevision;
   clearTimeout(nicknameTimer); clearInterval(resendTimer);
   stage.value = 'prompt'; authMode.value = 'register'; loading.value = false;
   Object.assign(form, { nickname: '', phone: '', acceptedTerms: false });
   errorMessage.value = ''; phoneVerified.value = false; phoneAlreadyExists.value = false;
   savedCoins.value = 0; otpCode.value = ''; otpNotice.value = ''; resendSeconds.value = 0;
-  nicknameSuggestions.value = []; suggestionsLoading.value = false; suggestionsError.value = '';
 }
-onBeforeUnmount(() => { ++sessionRevision; ++nicknameRevision; ++suggestionRevision; clearTimeout(nicknameTimer); clearInterval(resendTimer); returnFocus?.focus?.(); });
-function startForm() { authMode.value = 'register'; stage.value = 'step1'; loadSuggestions(); if (form.nickname) checkNickname(); }
+onBeforeUnmount(() => { ++sessionRevision; ++nicknameRevision; clearTimeout(nicknameTimer); clearInterval(resendTimer); returnFocus?.focus?.(); });
+function startForm() { authMode.value = 'register'; stage.value = 'step1'; if (form.nickname) checkNickname(); }
 function startLogin() { authMode.value = 'login'; phoneVerified.value = false; errorMessage.value = ''; stage.value = 'login'; }
 function goPrompt() { stage.value = 'prompt'; }
 async function goStep2() {
@@ -281,7 +258,7 @@ async function finishAuth() {
   if (revision !== sessionRevision) return;
   if (!result || result.ok === false) {
     if (result?.code === 'REGISTRATION_INCOMPLETE') {
-      authMode.value = 'register'; stage.value = 'step1'; loadSuggestions();
+      authMode.value = 'register'; stage.value = 'step1';
       if (form.nickname) await checkNickname();
       return;
     }
@@ -353,11 +330,6 @@ input[aria-invalid=true] { border-color: var(--red-text); }
 .auth-field-status.ok { color: var(--ink); font-weight: 750; }
 .auth-field-status.ok::before { content: '✓ '; color: var(--gold-deep); }
 .auth-field-status.error, .auth-error { color: var(--red-text); }
-.auth-suggestion-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; color: var(--muted); font-size: 10px; font-weight: 700; }
-.auth-suggestion-head button { padding: 7px 0 7px 7px; background: transparent; border: 0; color: var(--red-text); font-size: 11px; font-weight: 750; }
-.auth-suggestions { display: flex; flex-wrap: wrap; gap: 8px; min-height: 38px; }
-.auth-suggestions button { border: 1.5px solid var(--red-line); border-radius: 99px; background: var(--red-soft); color: var(--red-text); padding: 9px 12px; font-size: 11px; font-weight: 700; transition: transform .16s; }
-.auth-suggestions button:active { transform: scale(.95); }
 .auth-phone { display: flex; align-items: center; gap: 10px; }
 .auth-phone > span { padding: 16px 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--card); font-size: 14px; font-weight: 750; }
 form > .auth-consent { display: flex; align-items: flex-start; gap: 10px; padding: 13px; margin: 17px 0 0; border: 2px solid var(--line); border-radius: 14px; background: var(--card); font-size: 11px; font-weight: 500; line-height: 1.6; cursor: pointer; }
