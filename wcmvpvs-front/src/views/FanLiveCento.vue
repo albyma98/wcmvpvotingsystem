@@ -206,33 +206,39 @@
       </div>
 
       <!-- Guadagna: missioni del match -->
-      <div class="sheet" :class="{ open: activeSheet === 'earn' }" role="dialog" aria-label="Guadagna monete" :aria-hidden="activeSheet !== 'earn'" :inert="activeSheet !== 'earn'">
+      <div class="sheet earn-sheet" :class="{ open: activeSheet === 'earn' }" role="dialog" aria-label="Guadagna monete" :aria-hidden="activeSheet !== 'earn'" :inert="activeSheet !== 'earn'">
         <div class="grabber"></div>
         <div class="sheet-head">
           <div>
             <div class="sheet-title">Guadagna monete</div>
-            <div class="sheet-sub">Completa le missioni del match</div>
+            <div class="sheet-sub">Scegli una sfida e guadagna monete</div>
           </div>
-          <button class="close" type="button" @click="closeSheets">✕</button>
+          <button class="close" type="button" aria-label="Chiudi minigiochi" @click="closeSheets">✕</button>
         </div>
         <div class="sheet-body">
-          <button
-            v-for="mission in earnMissions"
-            :key="mission.key"
-            class="row-item"
-            type="button"
-            :disabled="matchConcluded || (mission.key === 'quiz' && !quizAvailable)"
-            @click="onMission(mission)"
-          >
-            <span class="avatar">{{ mission.emoji }}</span>
-            <span class="row-copy"><b>{{ mission.title }}</b><span>{{ !mission.repeatable && doneKeys.includes(mission.key) ? 'Bonus già ricevuto per questa partita' : mission.subtitle }}</span></span>
-            <span class="row-pts">
-              <template v-if="mission.repeatable">+1 <span class="coin" aria-hidden="true"></span><small>/ {{ mission.rewardUnit || 'canestro' }}</small></template>
-              <template v-else-if="doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)">✓</template>
-              <template v-else-if="mission.key === 'quiz' && !quizAvailable">Non disponibile</template>
-              <template v-else>+{{ mission.pts }} <span class="coin"></span></template>
-            </span>
-          </button>
+          <div class="mission-grid" :class="{ 'is-active': activeSheet === 'earn' }">
+            <button
+              v-for="(mission, index) in earnMissions"
+              :key="mission.key"
+              class="mission-card"
+              :class="{ 'is-completed': !mission.repeatable && (doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)) }"
+              :style="{ '--mission-delay': `${index * 25}ms` }"
+              type="button"
+              :title="mission.title"
+              :disabled="matchConcluded || (mission.key === 'quiz' && !quizAvailable)"
+              @click="onMission(mission)"
+            >
+              <span class="mission-card-icon" aria-hidden="true">{{ mission.emoji }}</span>
+              <b class="mission-card-title">{{ mission.title }}</b>
+              <span class="mission-card-description">{{ !mission.repeatable && (doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)) ? 'Bonus già ricevuto' : mission.subtitle }}</span>
+              <span class="mission-card-reward">
+                <template v-if="mission.repeatable">+1 <span class="coin" aria-hidden="true"></span><small>/ {{ mission.rewardUnit || 'canestro' }}</small></template>
+                <template v-else-if="doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)"><span aria-hidden="true">✓</span> Ricevuto</template>
+                <template v-else-if="mission.key === 'quiz' && !quizAvailable">Non disponibile</template>
+                <template v-else>+{{ mission.pts }} <span class="coin" aria-hidden="true"></span></template>
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2589,6 +2595,37 @@ main {
   gap: 9px;
   padding-bottom: 4px;
 }
+.sheet.earn-sheet { max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); }
+.mission-grid { display: grid; flex: none; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 8px; padding: 3px 3px 6px; }
+.mission-card { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; border: 1px solid var(--line); border-radius: 16px; padding: 10px 7px 9px; background: var(--card); color: var(--ink); font-family: inherit; text-align: center; cursor: pointer; box-shadow: 0 3px 0 #23161a0a; transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.mission-card-icon { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border: 1px solid var(--red-line); border-radius: 12px; background: var(--red-soft); font-size: 24px; line-height: 1; }
+.mission-card:nth-child(3n + 2) .mission-card-icon { border-color: #efdcab; background: var(--gold-soft); }
+.mission-card:nth-child(3n) .mission-card-icon { border-color: #cce4d3; background: #ecf7f0; }
+.mission-card-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; min-height: 2.4em; margin-top: 2px; font-size: 12px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+.mission-card-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; min-height: 2.6em; color: var(--muted); font-size: 10px; line-height: 1.3; overflow-wrap: anywhere; }
+.mission-card-reward { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px; width: 100%; min-height: 22px; margin-top: auto; border-radius: 8px; padding: 3px 2px; background: var(--gold-soft); color: var(--gold-deep); font-size: 11px; font-weight: 850; line-height: 1.2; }
+.mission-card-reward .coin { width: 11px; height: 11px; box-shadow: inset 0 -1px 2px #0003; }
+.mission-card-reward small { min-width: 0; font-size: 8px; font-weight: 600; }
+.mission-card.is-completed { border-color: var(--red-line); background: var(--bg); box-shadow: none; }
+.mission-card.is-completed .mission-card-reward { background: #eaf5ee; color: #2c714b; }
+.mission-card:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+.mission-card:focus-visible { outline: 2px solid var(--red-text); outline-offset: 2px; }
+.mission-card:active:not(:disabled) { transform: translateY(2px) scale(.97); box-shadow: none; }
+.mission-grid.is-active .mission-card { animation: mission-card-in 280ms ease-out var(--mission-delay, 0ms) backwards; }
+@media (hover: hover) { .mission-card:hover:not(:disabled) { border-color: var(--red-line); box-shadow: 0 5px 12px #23161a0d; } }
+@keyframes mission-card-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+@media (max-width: 350px) { .mission-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-height: 650px) {
+  .earn-sheet .grabber { margin-bottom: 8px; }
+  .earn-sheet .sheet-head { margin-bottom: 8px; }
+  .mission-grid { gap: 6px; }
+  .mission-card { gap: 4px; padding: 8px 6px; border-radius: 13px; }
+  .mission-card-icon { width: 28px; height: 28px; border-radius: 9px; font-size: 20px; }
+  .mission-card-title { margin-top: 0; font-size: 11px; }
+  .mission-card-description { font-size: 9px; }
+  .mission-card-reward { min-height: 20px; padding: 2px; }
+}
+@media (prefers-reduced-motion: reduce) { .mission-card { transition: none; } .mission-grid.is-active .mission-card { animation: none; } .mission-card:active:not(:disabled) { transform: none; } }
 .sheet-empty {
   padding: 18px 4px;
   text-align: center;
