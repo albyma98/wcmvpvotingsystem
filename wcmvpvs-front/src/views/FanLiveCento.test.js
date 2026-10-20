@@ -91,6 +91,112 @@ test('login detects a pending account and requests completion of registration', 
   assert.equal(state.isRegistrationOpen.value, true);
 });
 
+test('guest wallet and avatar entries always open the profile invitation', (t) => {
+  let walletReads = 0;
+  let profileReads = 0;
+  const { state, scope } = fixture({
+    fetchFanWallet: async () => { walletReads += 1; return { ok: false }; },
+    fetchFanProfile: async () => { profileReads += 1; return { ok: false }; },
+  });
+  t.after(() => scope.stop());
+  state.setCoins(12);
+  for (const [open, trigger] of [[() => state.openSheet('wallet'), 'wallet'], [() => state.openProfile(), 'profile_overlay'], [() => state.openSheet('profile'), 'profile_overlay']]) {
+    state.isRegistrationOpen.value = false;
+    open();
+    assert.equal(state.isRegistrationOpen.value, true);
+    assert.equal(state.registrationTrigger.value, trigger);
+    assert.equal(state.activeSheet.value, '');
+    assert.equal(state.totalCoins.value, 12);
+  }
+  assert.equal(walletReads, 0);
+  assert.equal(profileReads, 0);
+});
+
+test('guest MVP confirmation invites a profile while registered fans keep their next goal', async (t) => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  await state.castVote(player);
+  assert.equal(state.hasVoted.value, true);
+  assert.equal(state.totalCoins.value, 10);
+  assert.equal(state.showVoteProfilePrompt.value, true);
+  state.openRegistration('after_vote');
+  assert.equal(state.registrationTrigger.value, 'after_vote');
+  state.dismissRegistration();
+  assert.equal(state.activeSheet.value, 'vote-result');
+  assert.equal(state.isRegistrationOpen.value, false);
+  state.isRegistered.value = true;
+  assert.equal(state.showVoteProfilePrompt.value, false);
+  state.isRegistered.value = false;
+  state.celebrationKind.value = 'quiz';
+  assert.equal(state.showVoteProfilePrompt.value, false);
+});
+
+test('guests can browse and preview the shop but every purchase requires a profile, even without enough coins', async (t) => {
+  let purchases = 0;
+  const item = { key: 'club_frame', title: 'Cornice club', kind: 'frame', cost: 20, owned: false };
+  const { state, scope } = fixture({
+    fetchFanWallet: async () => ({ ok: true, data: walletData({ catalog: [item] }) }),
+    purchaseFanItem: async () => { purchases += 1; return { ok: false }; },
+  });
+  t.after(() => scope.stop());
+  state.openSheet('spend');
+  await flush();
+  assert.equal(state.activeSheet.value, 'spend');
+  assert.equal(state.isRegistrationOpen.value, false);
+  state.previewCollectible(item);
+  assert.equal(state.activeSheet.value, 'collectible');
+  assert.equal(state.isCollectiblePreview.value, true);
+  for (const balance of [0, 40]) {
+    state.setCoins(balance);
+    await state.redeem(item);
+    assert.equal(state.isRegistrationOpen.value, true);
+    assert.equal(state.registrationTrigger.value, 'spend_redeem');
+    assert.equal(state.registrationRewardLabel.value, 'Cornice club');
+    assert.equal(state.totalCoins.value, balance);
+    assert.deepEqual(state.collection.value.items, []);
+    state.dismissRegistration();
+    assert.equal(state.activeSheet.value, 'collectible');
+  }
+  assert.equal(purchases, 0);
+  state.openRegistration('spend_redeem', item.title);
+  state.isRegistered.value = true;
+  state.completeRegistration();
+  assert.equal(state.activeSheet.value, 'spend');
+  assert.equal(state.isRegistrationOpen.value, false);
+  assert.equal(purchases, 0, 'authentication does not submit an automatic purchase');
+});
+
+test('after authentication wallet and avatar requests return to the requested panel', async (t) => {
+  const { state, scope } = fixture({ fetchFanProfile: async () => ({ ok: true, data: { registered: true, wallet: 12, user: { nickname: 'CurvaFan' } } }) });
+  t.after(() => scope.stop());
+  for (const [trigger, destination] of [['wallet', 'wallet'], ['profile_overlay', 'profile'], ['after_vote', 'leaderboard'], ['leaderboard', 'leaderboard']]) {
+    state.isRegistered.value = false;
+    state.openRegistration(trigger);
+    state.isRegistered.value = true;
+    state.completeRegistration();
+    await flush();
+    assert.equal(state.activeSheet.value, destination);
+    assert.equal(state.isRegistrationOpen.value, false);
+  }
+});
+
+test('an expired shop session returns to registration without spending or losing the confirmed balance', async (t) => {
+  const item = { key: 'club_frame', title: 'Cornice club', kind: 'frame', cost: 20, owned: false };
+  const { state, scope } = fixture({ purchaseFanItem: async () => ({ ok: false, status: 401, code: 'PROFILE_REQUIRED' }) });
+  t.after(() => scope.stop());
+  state.isRegistered.value = true;
+  state.applyWallet(walletData({ wallet: 40, points: 70, catalog: [item] }));
+  state.activeSheet.value = 'spend';
+  await state.redeem(item);
+  assert.equal(state.isRegistered.value, false);
+  assert.equal(state.isRegistrationOpen.value, true);
+  assert.equal(state.registrationTrigger.value, 'spend_redeem');
+  assert.equal(state.shopBusy.value, false);
+  assert.equal(state.totalCoins.value, 40);
+  assert.equal(state.participationPoints.value, 70);
+  assert.deepEqual(state.collection.value.items, []);
+});
+
 test('home splash waits for the session wallet, saved vote, and every home image', async (t) => {
   let finishProfile;
   let finishImages;
@@ -146,6 +252,7 @@ test('the collectible reveal waits for an owned item returned by the server', as
   const actual = { ...item, event_id: 42, club_name: 'Società salvata', opponent: 'Avversaria salvata', event_date: '2026-10-16' };
   const { state, scope } = fixture({ purchaseFanItem: () => response.promise });
   t.after(() => scope.stop());
+  state.isRegistered.value = true;
   state.applyWallet(walletData({ wallet: 30, points: 30, catalog: [item] }));
   state.activeSheet.value = 'spend';
   const buying = state.redeem(item);
@@ -455,6 +562,7 @@ test('game earnings unlock the badge and buying a frame preserves points and the
     collection: { equipped_frame: '', items: [{ ...item, owned: true }], badges: [], matches_followed: 1 },
   }) }) });
   t.after(() => scope.stop());
+  state.isRegistered.value = true;
   for (const [game, coins] of [['reaction', 10], ['sponsor-rush', 12], ['memory-flash', 8]]) {
     state.openGame(game);
     await state.onGameClaim({ coins });
@@ -826,6 +934,7 @@ test('the wallet sheet loads confirmed balance, points, movements, catalog and c
     collection: { equipped_frame: 'club_frame', items: [item], badges: [{ title: 'Tifoso Attivo' }], matches_followed: 2 },
   }) }) });
   t.after(() => scope.stop());
+  state.isRegistered.value = true;
   state.openSheet('wallet');
   await flush();
   assert.equal(state.activeSheet.value, 'wallet');
@@ -910,6 +1019,7 @@ test('shop purchases wait for acknowledgement, prevent duplicate clicks and bloc
   const item = { key: 'club_frame', title: 'Cornice club', kind: 'frame', cost: 25, owned: false };
   const { state, scope } = fixture({ purchaseFanItem: (...args) => { calls.push(args); return purchase.promise; } });
   t.after(() => scope.stop());
+  state.isRegistered.value = true;
   state.applyWallet(walletData({ wallet: 60, points: 90, catalog: [item] }));
   const buying = state.redeem(item);
   void state.redeem(item);
@@ -942,6 +1052,7 @@ test('a lost purchase response never subtracts locally and a wallet refresh reco
     }) }),
   });
   t.after(() => scope.stop());
+  state.isRegistered.value = true;
   state.applyWallet(walletData({ wallet: 50, points: 50, catalog: [item] }));
   await state.redeem(item);
   assert.equal(state.totalCoins.value, 50);
@@ -961,6 +1072,7 @@ test('a purchase completed for an earlier match cannot change the new match wall
   const item = { key: 'match_memory', title: 'Ricordo partita', kind: 'memory', cost: 25, owned: false };
   const { state, props, scope } = fixture({ purchaseFanItem: () => purchase.promise });
   t.after(() => scope.stop());
+  state.isRegistered.value = true;
   state.applyWallet(walletData({ wallet: 50, points: 50, catalog: [item] }));
   const buying = state.redeem(item);
   props.eventId = 43;

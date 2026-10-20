@@ -17,8 +17,9 @@
           <button ref="walletEl" class="wallet" :class="{ 'wallet-pulse': walletPulse }" type="button" aria-label="Apri wallet e movimenti" @click="openSheet('wallet')">
             <span class="coin"></span> <span>{{ totalCoins }}</span>
           </button>
-          <button class="profile-btn" type="button" aria-label="Profilo" @click="openProfile">
-            <FanAvatar :name="profileNickname" :framed="equippedFrame === 'club_frame'" :size="40" />
+          <button class="profile-btn" type="button" :aria-label="isRegistered ? 'Profilo tifoso' : 'Accedi o crea il profilo tifoso'" @click="openProfile">
+            <FanAvatar v-if="isRegistered" :name="profileNickname" :framed="equippedFrame === 'club_frame'" :size="40" />
+            <span v-else class="guest-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg></span>
           </button>
         </div>
       </header>
@@ -178,13 +179,19 @@
             <p v-else-if="journey.pendingVoteBonus">{{ isSavingCoins ? 'Il tuo voto è al sicuro. Salvataggio delle monete…' : `Voto registrato. Il bonus di ${VOTE_REWARD} monete è ancora da salvare.` }}</p>
             <p v-else>Voto aggiornato. Il bonus del primo voto è già stato assegnato.</p>
           </div>
-          <div class="vote-result-goal" :class="{ 'is-unlocked': progress.unlocked }">
+          <div v-if="showVoteProfilePrompt" class="vote-profile-prompt">
+            <span class="vote-profile-eyebrow">IL TUO TIFO MERITA UN PROFILO</span>
+            <h3>Crea il tuo profilo tifoso</h3>
+            <ul><li><span aria-hidden="true">🪙</span>Salva le monete che hai guadagnato</li><li><span aria-hidden="true">🏆</span>Compari in classifica con il tuo nickname</li><li><span aria-hidden="true">🎁</span><strong>Potrai essere selezionato per i gadget del club</strong></li></ul>
+          </div>
+          <div v-else class="vote-result-goal" :class="{ 'is-unlocked': progress.unlocked }">
             <div class="vote-goal-heading"><span class="vote-goal-medal" aria-hidden="true">{{ progress.unlocked ? '🏅' : '★' }}</span><span><small>{{ progress.unlocked ? 'TRAGUARDO RAGGIUNTO' : 'IL TUO PROSSIMO TRAGUARDO' }}</small><b>{{ progress.unlocked ? `Badge ${FAN_BADGE_NAME} sbloccato!` : `Mancano ${progress.remaining} monete al primo badge` }}</b></span><strong>{{ progress.current }}<small>/{{ FIRST_FAN_GOAL }}</small></strong></div>
             <div class="journey-bar"><span :key="`${celebrationKind}-${voteRevealRevision}-${progress.current}`" :class="{ 'is-rewarded': voteBonusCoins > 0 }" :style="{ width: `${progress.percent}%`, '--goal-from': `${Math.min(100, Math.max(0, progress.earned - voteBonusCoins) / FIRST_FAN_GOAL * 100)}%` }"></span></div>
           </div>
           <p v-if="coinError" class="sheet-empty error" role="alert">{{ coinError }}</p>
           <button v-if="journey.pendingVoteBonus" class="btn-vote" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare le monete' }}</button>
-          <button v-else class="btn-vote" type="button" @click="openJourneyNext">{{ journeyNextLabel }}</button>
+          <button v-if="showVoteProfilePrompt" class="btn-vote" type="button" :disabled="shopBusy" @click="openRegistration('after_vote')">Crea il profilo tifoso <span aria-hidden="true">→</span></button>
+          <button v-else-if="!journey.pendingVoteBonus" class="btn-vote" type="button" @click="openJourneyNext">{{ journeyNextLabel }}</button>
           <button class="journey-next" type="button" @click="closeSheets">Torna alla partita</button>
         </div>
       </div>
@@ -260,7 +267,7 @@
                 <FanMatchCard v-else :memory="shopMatchMemory" :club-name="homeName" :club-logo-url="homeLogoUrl" compact />
                 <span class="shop-artwork-hint">{{ item.kind === 'frame' ? 'Provala sul tuo profilo' : 'Guarda da vicino' }} <span aria-hidden="true">↗</span></span>
               </button>
-              <div class="shop-item-copy"><b>{{ item.title }}</b><p>{{ item.description }}</p><button type="button" class="shop-buy" :disabled="shopBusy || isLoadingWallet || Boolean(walletError) || (!item.owned && totalCoins < item.cost)" @click="item.owned ? previewCollectible(item) : redeem(item)">{{ item.owned ? 'Apri il tuo oggetto' : redeeming === item.key ? 'Salvataggio…' : `Ottieni · ${item.cost}` }} <span v-if="!item.owned" class="coin" aria-hidden="true"></span></button><small v-if="!item.owned && totalCoins < item.cost">Ti mancano {{ item.cost - totalCoins }} monete</small></div>
+              <div class="shop-item-copy"><b>{{ item.title }}</b><p>{{ item.description }}</p><button type="button" class="shop-buy" :disabled="shopBusy || isLoadingWallet || Boolean(walletError) || (isRegistered && !item.owned && totalCoins < item.cost)" @click="item.owned ? previewCollectible(item) : redeem(item)">{{ item.owned ? 'Apri il tuo oggetto' : redeeming === item.key ? 'Salvataggio…' : `Ottieni · ${item.cost}` }} <span v-if="!item.owned" class="coin" aria-hidden="true"></span></button><small v-if="!item.owned && totalCoins < item.cost">Ti mancano {{ item.cost - totalCoins }} monete</small></div>
             </article>
           </div>
           <p v-if="!catalog.length && !isLoadingWallet && !walletError" class="sheet-empty">Il catalogo sarà disponibile con una partita del club.</p>
@@ -279,7 +286,7 @@
           <p v-if="selectedCollectible.kind === 'frame'" class="collectible-description">La tua cornice sull’avatar, nel profilo e in classifica.</p>
           <p v-else class="collectible-description">Il ricordo della tua partita, da ritrovare nella collezione.</p>
           <p v-if="walletError" class="sheet-empty error" role="alert">{{ walletError }}</p>
-          <button v-if="isCollectiblePreview" type="button" class="btn-vote" :disabled="shopBusy || isLoadingWallet || Boolean(walletError) || totalCoins < Number(selectedCollectible.cost)" @click="redeem(selectedCollectible)">{{ redeeming ? 'Salvataggio…' : `Ottieni · ${selectedCollectible.cost} monete` }}</button>
+          <button v-if="isCollectiblePreview" type="button" class="btn-vote" :disabled="shopBusy || isLoadingWallet || Boolean(walletError) || (isRegistered && totalCoins < Number(selectedCollectible.cost))" @click="redeem(selectedCollectible)">{{ redeeming ? 'Salvataggio…' : `Ottieni · ${selectedCollectible.cost} monete` }}</button>
           <button v-else-if="selectedCollectible.kind === 'frame'" type="button" class="btn-vote" :disabled="shopBusy" @click="equipCollectionItem(equippedFrame === 'club_frame' ? '' : 'club_frame')">{{ equipping ? 'Salvataggio…' : equippedFrame === 'club_frame' ? 'Togli la cornice' : 'Indossa la cornice' }}</button>
           <p v-if="isCollectiblePreview && totalCoins < Number(selectedCollectible.cost)" class="sheet-sub">Ti mancano {{ Number(selectedCollectible.cost) - totalCoins }} monete.</p>
           <button type="button" class="journey-next" @click="isCollectiblePreview ? closeCollectible() : openProfile()">{{ isCollectiblePreview ? 'Torna allo shop' : 'Apri il tuo profilo →' }}</button>
@@ -331,7 +338,7 @@
               <span class="row-pts">{{ row.points }} <small>pt</small></span>
             </div>
           </template>
-          <button v-else-if="!isRegistered" class="btn-vote" type="button" @click="openRegistration">Entra in classifica con il tuo nickname</button>
+          <button v-else-if="!isRegistered" class="btn-vote" type="button" @click="openRegistration('leaderboard')">Entra in classifica con il tuo nickname</button>
         </div>
       </div>
 
@@ -405,7 +412,7 @@
               </div>
               <p v-if="nicknameError" class="nick-msg error" role="alert">{{ nicknameError }}</p>
               <p v-else-if="nicknameSuccess" class="nick-msg ok" role="status">{{ nicknameSuccess }}</p>
-              <button v-if="!isRegistered" class="profile-signin" type="button" @click="openRegistration">
+              <button v-if="!isRegistered" class="profile-signin" type="button" @click="openRegistration()">
                 <span><strong>Accedi o crea il tuo profilo</strong><small>Conserva monete, punti e collezione</small></span>
                 <span aria-hidden="true">→</span>
               </button>
@@ -529,7 +536,7 @@
       :theme-style="themeStyle"
       @submitted="handleFeedbackSubmitted"
     />
-    <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" trigger="profile_overlay" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" @completed="openSheet('leaderboard')" />
+    <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" :trigger="registrationTrigger" :reward-label="registrationRewardLabel" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" @completed="completeRegistration" @dismissed="dismissRegistration" />
   </div>
 </template>
 
@@ -659,6 +666,10 @@ const leaderboardNearby = ref([]);
 const leaderboardGap = ref(null);
 const liveEvent = ref(null);
 const isRegistrationOpen = ref(false);
+const registrationTrigger = ref('profile_overlay');
+const registrationRewardLabel = ref('');
+const registrationDestination = ref('profile');
+const registrationOriginSheet = ref('');
 const isLoadingLeaderboard = ref(false);
 const leaderboardError = ref('');
 const sponsors = ref([]);
@@ -683,6 +694,7 @@ const isCrossoverSaving = ref(false);
 const pendingGameClaim = ref(null);
 const voteBonusCoins = ref(0);
 const celebrationKind = ref('vote');
+const showVoteProfilePrompt = computed(() => celebrationKind.value === 'vote' && !isRegistered.value);
 const celebrationName = ref('');
 const isWalletReady = ref(false);
 const journey = ref(normalizeJourney());
@@ -814,7 +826,26 @@ async function refreshLiveStatus() {
   finally { if (liveRequestEventId === eventId) liveRequestEventId = null; }
 }
 
-function openRegistration() { if (shopBusy.value) return; closeSheets(); isRegistrationOpen.value = true; }
+function openRegistration(trigger = 'profile_overlay', rewardLabel = '') {
+  if (shopBusy.value) return;
+  registrationTrigger.value = trigger;
+  registrationRewardLabel.value = rewardLabel;
+  registrationOriginSheet.value = activeSheet.value;
+  registrationDestination.value = ({ wallet: 'wallet', spend_redeem: 'spend', after_vote: 'leaderboard', leaderboard: 'leaderboard' })[trigger] || 'profile';
+  closeSheets();
+  isRegistrationOpen.value = true;
+}
+function completeRegistration() {
+  if (!isRegistered.value) return;
+  isRegistrationOpen.value = false;
+  if (registrationDestination.value === 'profile') openProfile();
+  else if (registrationDestination.value === 'leaderboard') openLeaderboard();
+  else openSheet(registrationDestination.value);
+}
+function dismissRegistration() {
+  isRegistrationOpen.value = false;
+  if (['spend', 'collectible', 'vote-result', 'leaderboard'].includes(registrationOriginSheet.value)) openSheet(registrationOriginSheet.value);
+}
 async function registerJourneyFan(form) {
   const scope = walletScope();
   const response = await registerFanProfile({ event_id: props.eventId, nickname: form.nickname, phone: form.phone, accepted_terms: form.acceptedTerms, guest_coins: totalCoins.value, enter_lottery: false });
@@ -1073,6 +1104,10 @@ const rushSponsor = computed(() => {
 
 /* ---------- Sheets ---------- */
 function openSheet(id) {
+  if (!isRegistered.value && ['wallet', 'profile'].includes(id)) {
+    openRegistration(id === 'wallet' ? 'wallet' : 'profile_overlay');
+    return;
+  }
   sheetRevision += 1;
   if (id !== 'vote-result') cancelVotePresentation();
   activeSheet.value = id;
@@ -1464,6 +1499,7 @@ function openLeaderboard() {
 
 /* ---------- Profilo ---------- */
 function openProfile() {
+  if (!isRegistered.value) { openRegistration(); return; }
   nicknameDraft.value = fanNickname.value.trim();
   isNicknameEditorOpen.value = false;
   nicknameError.value = '';
@@ -1552,14 +1588,22 @@ function onSponsorClick(sponsor) {
 
 /* ---------- Riscatto premi ---------- */
 async function redeem(reward) {
-  if (shopBusy.value || isLoadingWallet.value || walletError.value || !props.eventId || reward.owned || totalCoins.value < reward.cost) return;
+  if (shopBusy.value || !props.eventId || !reward || reward.owned) return;
+  if (!isRegistered.value) { openRegistration('spend_redeem', reward.title); return; }
+  if (isLoadingWallet.value || walletError.value || totalCoins.value < reward.cost) return;
   const scope = walletScope();
+  let profileRequired = false;
   walletRequestRevision += 1;
   redeeming.value = reward.key;
   shopMessage.value = '';
   try {
     const response = await purchaseFanItem(props.eventId, reward.key);
     if (isDisposed || scope !== walletScope()) return;
+    if (!response.ok && (response.status === 401 || response.code === 'PROFILE_REQUIRED')) {
+      isRegistered.value = false;
+      profileRequired = true;
+      return;
+    }
     if (!response.ok || !applyWallet(response.data)) { walletError.value = response.message || 'Acquisto non confermato. Riprova: gli oggetti già ottenuti non vengono addebitati due volte.'; return; }
     walletError.value = '';
     shopMessage.value = response.data.purchased === false ? 'Questo oggetto è già nella tua collezione.' : `${reward.title} aggiunta alla tua collezione!`;
@@ -1569,7 +1613,10 @@ async function redeem(reward) {
   } catch (error) {
     if (!isDisposed && scope === walletScope()) walletError.value = 'Acquisto non confermato. Controlla la connessione e riprova.';
   } finally {
-    if (scope === walletScope()) redeeming.value = '';
+    if (!isDisposed && scope === walletScope()) {
+      redeeming.value = '';
+      if (profileRequired) openRegistration('spend_redeem', reward.title);
+    }
   }
 }
 async function equipCollectionItem(key) {
@@ -1655,6 +1702,11 @@ async function bootstrap() {
     walletMovements.value = [];
     participationPoints.value = 0;
     isRegistered.value = false;
+    isRegistrationOpen.value = false;
+    registrationOriginSheet.value = '';
+    registrationTrigger.value = 'profile_overlay';
+    registrationRewardLabel.value = '';
+    registrationDestination.value = 'profile';
     fanNickname.value = '';
     fanLotteryTicket.value = null;
     nicknameDraft.value = '';
@@ -1906,6 +1958,8 @@ watch(
 .profile-btn:hover {
   border-color: var(--red);
 }
+.guest-avatar { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--red-line); border-radius: 50%; background: var(--red-soft); color: var(--red-text); }
+.guest-avatar svg { width: 24px; height: 24px; }
 
 main {
   flex: 1;
@@ -2214,6 +2268,13 @@ main {
 .final-mvp-cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 10px; width: 100%; padding: 6px 4px 12px; }
 .final-mvp-cards > .fan-player-card { width: min(112px, calc((100% - 20px) / 3)); flex: none; }
 .vote-result-goal { width: 100%; padding: 11px 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); font-size: 12px; text-align: left; }
+.vote-profile-prompt { width: 100%; border: 1px solid var(--red-line); border-radius: 15px; padding: 13px 14px; background: linear-gradient(120deg, var(--card), var(--red-soft)); text-align: left; }
+.vote-profile-eyebrow { color: var(--red-text); font-size: 8px; font-weight: 850; letter-spacing: .1em; }
+.vote-profile-prompt h3 { margin: 5px 0 11px; color: var(--ink); font: 750 17px/1.25 'Fraunces', serif; }
+.vote-profile-prompt ul { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.vote-profile-prompt li { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-size: 11px; line-height: 1.45; }
+.vote-profile-prompt li > span { flex: none; font-size: 14px; line-height: 1.2; }
+.vote-profile-prompt li strong { font-weight: 800; }
 .vote-goal-heading { display: flex; align-items: center; gap: 9px; }
 .vote-goal-medal { display: grid; place-items: center; flex: none; width: 31px; height: 35px; border-radius: 10px; background: var(--gold-soft); color: var(--gold-deep); font-size: 20px; }
 .vote-goal-heading > span:nth-child(2) { flex: 1; min-width: 0; }

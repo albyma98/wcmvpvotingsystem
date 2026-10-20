@@ -18,6 +18,13 @@ type fanEconomyAPIDB struct {
 	purchased, equipped string
 	mutations           int
 	registerErr         error
+	registrationPending bool
+}
+
+func (db *fanEconomyAPIDB) GetFanBySessionToken(token, device string) (database.FanProfileSummary, error) {
+	summary, err := db.basketballAPIDB.GetFanBySessionToken(token, device)
+	summary.Profile.RegistrationPending = db.registrationPending
+	return summary, err
 }
 
 func (db *fanEconomyAPIDB) GetFanWalletState(event, org, fan int, device string) (database.FanWalletState, error) {
@@ -81,10 +88,31 @@ func TestFanEconomyAPIContractAndServerOwnedPurchase(t *testing.T) {
 	}
 	for _, body := range []string{`{}`, `{"item_key":null}`, `{"item_key":"club_frame","cost":0}`, `{"item_key":"club_frame","wallet":999}`, `{"item_key":"club_frame"} {}`} {
 		before := db.mutations
-		if response := request(http.MethodPost, "/42/purchase", body, ""); response.Code != 400 || db.mutations != before {
+		if response := request(http.MethodPost, "/42/purchase", body, "valid"); response.Code != 400 || db.mutations != before {
 			t.Fatalf("client controlled price/balance %s: %d", body, response.Code)
 		}
 	}
+	for _, token := range []string{"", "invalid"} {
+		for _, path := range []string{"/42/purchase", "/42/redeem"} {
+			before := db.mutations
+			response := request(http.MethodPost, path, `{"item_key":"club_frame","reward_key":"club_frame"}`, token)
+			if response.Code != http.StatusUnauthorized || db.mutations != before {
+				t.Fatalf("unauthenticated purchase %s token %q: %d mutations %d", path, token, response.Code, db.mutations-before)
+			}
+			if token == "" && !strings.Contains(response.Body.String(), "PROFILE_REQUIRED") {
+				t.Fatalf("missing profile code: %s", response.Body.String())
+			}
+		}
+	}
+	db.registrationPending = true
+	for _, path := range []string{"/42/purchase", "/42/redeem"} {
+		before := db.mutations
+		response := request(http.MethodPost, path, `{"item_key":"club_frame","reward_key":"club_frame"}`, "valid")
+		if response.Code != http.StatusUnauthorized || db.mutations != before || !strings.Contains(response.Body.String(), "PROFILE_REQUIRED") {
+			t.Fatalf("pending profile purchase %s: %d %s", path, response.Code, response.Body.String())
+		}
+	}
+	db.registrationPending = false
 	response = request(http.MethodPost, "/42/purchase", `{"item_key":"club_frame"}`, "valid")
 	if response.Code != 200 || db.purchased != "club_frame" || db.fanID != 9 {
 		t.Fatalf("purchase %d %s", response.Code, response.Body.String())
@@ -112,7 +140,7 @@ func TestFanEconomyAPIContractAndServerOwnedPurchase(t *testing.T) {
 		status int
 	}{{database.ErrFanShopFunds, 409}, {database.ErrFanShopNotOwned, 409}, {database.ErrFanShopItem, 400}} {
 		db.err = tc.err
-		if response := request(http.MethodPost, "/42/purchase", `{"item_key":"club_frame"}`, ""); response.Code != tc.status {
+		if response := request(http.MethodPost, "/42/purchase", `{"item_key":"club_frame"}`, "valid"); response.Code != tc.status {
 			t.Fatalf("error %v: %d", tc.err, response.Code)
 		}
 	}

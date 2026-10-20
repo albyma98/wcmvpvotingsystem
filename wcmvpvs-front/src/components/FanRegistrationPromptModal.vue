@@ -18,8 +18,8 @@
                 <div class="auth-ticket" aria-hidden="true"><span>IL TUO POSTO IN CURVA</span><b>Fan Club</b><i>★ ★ ★</i><small>Una squadra. La tua passione.</small></div>
                 <h2 id="fan-auth-title">{{ content.title }}</h2>
                 <p class="auth-copy">{{ content.subtitle }}</p>
-                <div class="auth-benefits"><span>🪙 Monete salvate</span><span>🏆 Classifica tifosi</span><span>🎁 Premi del club</span></div>
-                <p v-if="trigger === 'spend_redeem'" class="auth-note">Il tuo premio: <strong>{{ rewardLabel }}</strong></p>
+                <div class="auth-benefits"><span>🪙 Monete salvate</span><span>🏆 Visibile in classifica</span><span>🎁 Selezione per i gadget</span></div>
+                <p v-if="trigger === 'spend_redeem' && rewardLabel" class="auth-note">Vuoi ottenere: <strong>{{ rewardLabel }}</strong></p>
                 <button type="button" class="auth-primary" @click="startForm">{{ content.primaryCta }} <span aria-hidden="true">→</span></button>
                 <button type="button" class="auth-secondary" @click="startLogin">Ho già un profilo · Accedi</button>
                 <button type="button" class="auth-link" @click="closeAsLater">Continua come ospite</button>
@@ -136,11 +136,12 @@ const canContinueNickname = computed(() => nicknameStatus.value === 'available' 
 const isFormStage = computed(() => ['step1', 'step2', 'login', 'otp'].includes(stage.value));
 const stepNumber = computed(() => stage.value === 'otp' ? (authMode.value === 'login' ? 2 : 3) : stage.value === 'step2' ? 2 : 1);
 const content = computed(() => ({
-  after_vote: { title: 'Il tuo voto conta. E tu?', subtitle: 'Attiva il profilo per salvare le monete, entrare in classifica e partecipare ai premi.', primaryCta: 'Crea il tuo profilo' },
+  after_vote: { title: 'Hai votato. Ora fatti riconoscere!', subtitle: 'Crea il profilo tifoso per salvare le monete, comparire in classifica e poter essere selezionato per i gadget del club.', primaryCta: 'Crea il profilo tifoso' },
   leaderboard: { title: 'La curva ti aspetta.', subtitle: 'Scegli il tuo nome, scala la classifica e sfida gli altri tifosi.', primaryCta: 'Entra in classifica' },
-  spend_redeem: { title: 'Quel premio ti aspetta.', subtitle: 'Attiva il profilo e usa le monete che hai guadagnato con il tuo tifo.', primaryCta: 'Attiva il profilo' },
+  spend_redeem: { title: 'Prima, il tuo profilo tifoso.', subtitle: 'Per acquistare nello shop, crea il profilo o accedi. Salverai le monete, comparirai in classifica e potrai essere selezionato per i gadget del club.', primaryCta: 'Crea il profilo tifoso' },
   after_earn: { title: 'Tifo che vale.', subtitle: `Hai guadagnato ${props.earnedCoins} monete. Crea il profilo per tenerle sempre con te.`, primaryCta: 'Salva le tue monete' },
-  profile_overlay: { title: 'Il tuo posto in curva.', subtitle: 'Una passione, un nickname. Salva i tuoi progressi e vivi ogni partita con il tuo club.', primaryCta: 'Crea il tuo profilo' },
+  wallet: { title: 'Dai un profilo alle tue monete.', subtitle: 'Crea il profilo tifoso per salvare le monete, comparire in classifica e poter essere selezionato per i gadget del club.', primaryCta: 'Crea il profilo tifoso' },
+  profile_overlay: { title: 'Il tuo posto in curva.', subtitle: 'Crea il profilo tifoso per salvare le monete, comparire in classifica e poter essere selezionato per i gadget del club.', primaryCta: 'Crea il profilo tifoso' },
 }[props.trigger] || { title: 'Il tuo posto in curva.', subtitle: 'Salva le monete, scala la classifica e scopri i premi del tuo club.', primaryCta: 'Crea il tuo profilo' }));
 
 function validationMessage(nickname) {

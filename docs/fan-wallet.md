@@ -2,6 +2,8 @@
 
 The fan home at `/:slug/new` uses a spendable coin balance and separate cumulative participation points. Spending coins does not reduce points or match badges. The home has one contextual panel (first goal, suggested game, or match recap), a compact leaderboard entry, a wallet sheet, and a digital collection in the profile.
 
+Guests can vote, earn coins and browse the shop and item previews. Opening the wallet or profile prompts them to create a fan profile or sign in. After an MVP vote, guests see the profile invitation in place of the next badge goal. Shop purchases require a signed-in, completed profile; guest, invalid and incomplete sessions cannot spend through either purchase API. The client returns to the shop after authentication and waits for a new purchase click.
+
 ## Catalog
 
 | Key | Cost | Ownership | Use |
@@ -20,6 +22,8 @@ All three routes require the organization scope and device headers; authenticate
 - `POST /events/{eventId}/fan-shop/equip`, body `{ "item_key": "club_frame" }` or an empty string to remove it.
 
 Mutation responses have the same state shape as the GET. The client never changes ownership or subtracts a purchase price before acknowledgement. Reads and mutations from a previous event or club are discarded by the home.
+
+The purchase route and legacy `rewards/redeem` require a fan session for a completed profile. Missing or incomplete profiles receive `401` with code `PROFILE_REQUIRED`; invalid sessions receive `401`. Wallet/catalog reads remain available to guests.
 
 ## Persistence and migration
 

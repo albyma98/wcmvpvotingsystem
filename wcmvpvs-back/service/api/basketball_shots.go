@@ -15,6 +15,10 @@ import (
 )
 
 func (rt *_router) basketballIdentity(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) (int, int, string, bool) {
+	return rt.fanIdentity(w, r, ctx, false)
+}
+
+func (rt *_router) fanIdentity(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext, requireRegistered bool) (int, int, string, bool) {
 	eventID, err := parseNumericID(chi.URLParam(r, "eventId"))
 	deviceID := rt.deviceIDFromRequest(r)
 	if err != nil || ctx.OrganizationID <= 0 || deviceID == "" || len(deviceID) > 200 {
@@ -22,6 +26,7 @@ func (rt *_router) basketballIdentity(w http.ResponseWriter, r *http.Request, ct
 		return 0, 0, "", false
 	}
 	fanID := 0
+	registrationPending := false
 	if token := rt.fanSessionTokenFromRequest(r); token != "" {
 		fan, err := rt.db.GetFanBySessionToken(token, deviceID)
 		if err != nil {
@@ -33,6 +38,11 @@ func (rt *_router) basketballIdentity(w http.ResponseWriter, r *http.Request, ct
 			return 0, 0, "", false
 		}
 		fanID = fan.Profile.ID
+		registrationPending = fan.Profile.RegistrationPending
+	}
+	if requireRegistered && (fanID <= 0 || registrationPending) {
+		_ = writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"code": "PROFILE_REQUIRED", "message": "Crea il profilo tifoso o accedi per acquistare nello shop."})
+		return 0, 0, "", false
 	}
 	return eventID, fanID, deviceID, true
 }

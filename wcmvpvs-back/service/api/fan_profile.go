@@ -378,7 +378,7 @@ func fanRankGap(current, above database.FanLeaderboardEntry) int {
 }
 
 func (rt *_router) postFanRewardRedeem(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
-	eventID, fanID, device, ok := rt.basketballIdentity(w, r, ctx)
+	eventID, fanID, device, ok := rt.fanIdentity(w, r, ctx, true)
 	if !ok {
 		return
 	}

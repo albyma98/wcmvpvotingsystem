@@ -42,7 +42,7 @@ func (rt *_router) getFanWallet(w http.ResponseWriter, r *http.Request, ctx reqc
 }
 
 func (rt *_router) mutateFanShop(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext, equip bool) {
-	eventID, fanID, device, ok := rt.basketballIdentity(w, r, ctx)
+	eventID, fanID, device, ok := rt.fanIdentity(w, r, ctx, !equip)
 	if !ok {
 		return
 	}

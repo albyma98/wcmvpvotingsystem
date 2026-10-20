@@ -867,7 +867,7 @@ async function requestFanWallet(eventId: number, action?: 'purchase' | 'equip', 
     return { ok: true, data };
   } catch (error) {
     const response = axios.isAxiosError(error) ? error.response : undefined;
-    return { ok: false, status: response?.status, message: response?.data?.message || 'Connessione non disponibile. Riprova.', error };
+    return { ok: false, status: response?.status, code: response?.data?.code, message: response?.data?.message || 'Connessione non disponibile. Riprova.', error };
   }
 }
 
