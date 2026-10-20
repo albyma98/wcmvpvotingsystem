@@ -161,38 +161,47 @@
         </div>
       </div>
 
-      <div class="sheet" :class="{ open: activeSheet === 'vote-result' }" role="dialog" :aria-label="celebrationKind === 'vote' ? 'Conferma del voto' : 'Monete guadagnate'" :aria-hidden="activeSheet !== 'vote-result'" :inert="activeSheet !== 'vote-result'">
+      <div class="sheet vote-result-sheet" :class="{ open: activeSheet === 'vote-result' }" role="dialog" :aria-label="celebrationKind === 'vote' ? 'Conferma del voto' : 'Monete guadagnate'" :aria-hidden="activeSheet !== 'vote-result'" :inert="activeSheet !== 'vote-result'">
         <div class="grabber"></div>
         <div class="sheet-head">
           <div class="sheet-title">{{ celebrationKind === 'vote' ? 'Voto registrato' : 'Sfida completata!' }}</div>
           <button class="close" type="button" aria-label="Chiudi conferma voto" @click="closeSheets">✕</button>
         </div>
         <div ref="voteResultEl" class="sheet-body vote-result" :class="{ 'is-mvp-result': celebrationKind === 'vote' && activeSheet === 'vote-result' }">
-          <FanMvpCelebration v-if="celebrationKind === 'vote' && activeSheet === 'vote-result'" :key="voteRevealRevision" :player="votedPlayerCard" :club-logo-url="homeLogoUrl" />
-          <span v-else class="vote-result-avatar" aria-hidden="true">{{ progress.unlocked ? '🏅' : '🎉' }}</span>
-          <h2>{{ celebrationKind === 'vote' ? `Hai votato ${displayVotedName || 'il tuo MVP'}!` : `${celebrationName} completato!` }}</h2>
-          <div class="vote-result-status" role="status" aria-live="polite" aria-atomic="true">
-            <div v-if="voteBonusCoins" :key="`${celebrationKind}-${voteRevealRevision}-${voteBonusCoins}`" class="vote-result-bonus">
-              <span class="vote-reward-amount">+{{ voteBonusCoins }} <span ref="voteBonusEl" class="coin" aria-hidden="true"></span></span>
-              <span class="vote-reward-copy"><b>{{ celebrationKind === 'vote' ? 'Il tuo tifo vale!' : 'Bonus conquistato!' }}</b><small>Monete salvate · +{{ voteBonusCoins }} punti partecipazione</small></span>
+          <div class="vote-result-summary">
+            <FanMvpCelebration v-if="celebrationKind === 'vote' && activeSheet === 'vote-result'" :key="voteRevealRevision" :player="votedPlayerCard" :club-logo-url="homeLogoUrl" compact />
+            <span v-else class="vote-result-avatar" aria-hidden="true">{{ progress.unlocked ? '🏅' : '🎉' }}</span>
+            <div class="vote-result-copy">
+              <h2>{{ celebrationKind === 'vote' ? `Hai votato ${displayVotedName || 'il tuo MVP'}!` : `${celebrationName} completato!` }}</h2>
+              <div class="vote-result-status" role="status" aria-live="polite" aria-atomic="true">
+                <div v-if="voteBonusCoins" :key="`${celebrationKind}-${voteRevealRevision}-${voteBonusCoins}`" class="vote-result-bonus">
+                  <span class="vote-reward-amount">+{{ voteBonusCoins }} <span ref="voteBonusEl" class="coin" aria-hidden="true"></span></span>
+                  <span class="vote-reward-copy"><b>{{ celebrationKind === 'vote' ? 'Il tuo tifo vale!' : 'Bonus conquistato!' }}</b><small>Monete salvate · +{{ voteBonusCoins }} punti partecipazione</small></span>
+                </div>
+                <p v-else-if="journey.pendingVoteBonus">{{ isSavingCoins ? 'Il tuo voto è al sicuro. Salvataggio delle monete…' : `Voto registrato. Il bonus di ${VOTE_REWARD} monete è ancora da salvare.` }}</p>
+                <p v-else>Voto aggiornato. Il bonus del primo voto è già stato assegnato.</p>
+              </div>
             </div>
-            <p v-else-if="journey.pendingVoteBonus">{{ isSavingCoins ? 'Il tuo voto è al sicuro. Salvataggio delle monete…' : `Voto registrato. Il bonus di ${VOTE_REWARD} monete è ancora da salvare.` }}</p>
-            <p v-else>Voto aggiornato. Il bonus del primo voto è già stato assegnato.</p>
           </div>
           <div v-if="showVoteProfilePrompt" class="vote-profile-prompt">
             <span class="vote-profile-eyebrow">IL TUO TIFO MERITA UN PROFILO</span>
             <h3>Crea il tuo profilo tifoso</h3>
-            <ul><li><span aria-hidden="true">🪙</span>Salva le monete che hai guadagnato</li><li><span aria-hidden="true">🏆</span>Compari in classifica con il tuo nickname</li><li><span aria-hidden="true">🎁</span><strong>Potrai essere selezionato per i gadget del club</strong></li></ul>
+            <ul><li><span aria-hidden="true">🪙</span>Salva le tue monete</li><li><span aria-hidden="true">🏆</span>Entra nella classifica tifosi</li><li><span aria-hidden="true">🎁</span><strong>Potrai essere selezionato per i gadget</strong></li></ul>
           </div>
           <div v-else class="vote-result-goal" :class="{ 'is-unlocked': progress.unlocked }">
             <div class="vote-goal-heading"><span class="vote-goal-medal" aria-hidden="true">{{ progress.unlocked ? '🏅' : '★' }}</span><span><small>{{ progress.unlocked ? 'TRAGUARDO RAGGIUNTO' : 'IL TUO PROSSIMO TRAGUARDO' }}</small><b>{{ progress.unlocked ? `Badge ${FAN_BADGE_NAME} sbloccato!` : `Mancano ${progress.remaining} monete al primo badge` }}</b></span><strong>{{ progress.current }}<small>/{{ FIRST_FAN_GOAL }}</small></strong></div>
             <div class="journey-bar"><span :key="`${celebrationKind}-${voteRevealRevision}-${progress.current}`" :class="{ 'is-rewarded': voteBonusCoins > 0 }" :style="{ width: `${progress.percent}%`, '--goal-from': `${Math.min(100, Math.max(0, progress.earned - voteBonusCoins) / FIRST_FAN_GOAL * 100)}%` }"></span></div>
           </div>
           <p v-if="coinError" class="sheet-empty error" role="alert">{{ coinError }}</p>
-          <button v-if="journey.pendingVoteBonus" class="btn-vote" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare le monete' }}</button>
+        </div>
+        <div class="vote-result-actions">
           <button v-if="showVoteProfilePrompt" class="btn-vote" type="button" :disabled="shopBusy" @click="openRegistration('after_vote')">Crea il profilo tifoso <span aria-hidden="true">→</span></button>
-          <button v-else-if="!journey.pendingVoteBonus" class="btn-vote" type="button" @click="openJourneyNext">{{ journeyNextLabel }}</button>
-          <button class="journey-next" type="button" @click="closeSheets">Torna alla partita</button>
+          <button v-else-if="journey.pendingVoteBonus" class="btn-vote" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare le monete' }}</button>
+          <button v-else class="btn-vote" type="button" @click="openJourneyNext">{{ journeyNextLabel }}</button>
+          <div class="vote-result-secondary">
+            <button v-if="showVoteProfilePrompt && journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova le monete' }}</button>
+            <button class="journey-next" type="button" @click="closeSheets">Torna alla partita</button>
+          </div>
         </div>
       </div>
 
@@ -2248,33 +2257,69 @@ main {
 .mvp-vote-invite strong small { flex-basis: 100%; margin: 0; font-size: 9px; font-weight: 600; text-align: center; }
 .mvp-vote-invite .coin { width: 15px; height: 15px; }
 @keyframes mvp-invite-shine { from { transform: translateX(-70%); } to { transform: translateX(70%); } }
-.vote-result { align-items: center; text-align: center; padding: 2px 0 8px; gap: 11px; }
+.sheet.vote-result-sheet { max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); padding-top: 8px; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+.vote-result-sheet .grabber { margin-bottom: 6px; height: 4px; }
+.vote-result-sheet .sheet-head { margin-bottom: 4px; }
+.vote-result { align-items: center; text-align: center; padding: 0 0 6px; gap: 8px; overscroll-behavior-y: contain; }
 .vote-result > * { flex-shrink: 0; }
-.vote-result h2 { margin: 0; font: 750 23px/1.2 'Fraunces', serif; }
+.vote-result-summary { display: grid; grid-template-columns: minmax(96px, .85fr) minmax(0, 1.15fr); align-items: center; gap: 10px; width: 100%; }
+.vote-result-copy { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.vote-result h2 { margin: 0; font: 750 clamp(18px, 5vw, 22px)/1.15 'Fraunces', serif; overflow-wrap: anywhere; }
 .vote-result > p { margin: 0; font-size: 13px; }
 .vote-result-status { min-height: 34px; display: flex; align-items: center; justify-content: center; width: 100%; }
-.vote-result-status > p { margin: 0; font-size: 13px; color: var(--muted); }
-.vote-result-bonus { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; gap: 13px; overflow: hidden; width: 100%; padding: 11px 14px; border: 1px solid #eac56f; border-radius: 15px; background: linear-gradient(110deg, #fff8e4, #ffe8ac); color: #74440c; box-shadow: 0 3px 0 #d5a84026; animation: mvp-reward-pop 550ms cubic-bezier(.16, 1, .3, 1) both; }
+.vote-result-status > p { margin: 0; font-size: 11px; line-height: 1.4; color: var(--muted); }
+.vote-result-bonus { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; overflow: hidden; width: 100%; padding: 8px; border: 1px solid #eac56f; border-radius: 13px; background: linear-gradient(110deg, #fff8e4, #ffe8ac); color: #74440c; box-shadow: 0 3px 0 #d5a84026; animation: mvp-reward-pop 550ms cubic-bezier(.16, 1, .3, 1) both; }
 .vote-result-bonus::after { content: ''; position: absolute; z-index: -1; inset: -50%; background: linear-gradient(110deg, transparent 42%, #ffffffb3 50%, transparent 58%); pointer-events: none; animation: mvp-invite-shine 850ms ease 150ms both; }
-.vote-reward-amount { display: flex; align-items: center; justify-content: center; gap: 7px; flex: none; font-family: 'Fraunces', serif; font-size: 34px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
-.vote-reward-amount .coin { width: 23px; height: 23px; box-shadow: inset 0 -2px 3px #0003, 0 0 0 2px #ffffff80; }
-.vote-reward-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; text-align: left; }
-.vote-reward-copy b { font-size: 13px; font-weight: 850; line-height: 1.3; }
-.vote-reward-copy small { font-size: 10px; line-height: 1.4; }
-.vote-result-avatar { width: 72px; height: 72px; border: 2px solid var(--red-line); border-radius: 20px; background: var(--red-soft); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 36px; flex: none; }
-.is-mvp-result > h2 { animation: mvp-copy-in 400ms ease 300ms both; }
+.vote-reward-amount { display: flex; align-items: center; justify-content: center; gap: 6px; flex: none; font-family: 'Fraunces', serif; font-size: 30px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.vote-reward-amount .coin { width: 20px; height: 20px; box-shadow: inset 0 -2px 3px #0003, 0 0 0 2px #ffffff80; }
+.vote-reward-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; text-align: center; }
+.vote-reward-copy b { font-size: 11px; font-weight: 850; line-height: 1.3; }
+.vote-reward-copy small { font-size: 9px; line-height: 1.35; }
+.vote-result-avatar { width: 72px; height: 72px; border: 2px solid var(--red-line); border-radius: 20px; background: var(--red-soft); overflow: hidden; display: flex; align-items: center; justify-content: center; justify-self: center; font-size: 36px; flex: none; }
+.is-mvp-result .vote-result-copy > h2 { animation: mvp-copy-in 400ms ease 300ms both; }
+.vote-result-actions { display: flex; flex: none; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); background: var(--bg); }
+.vote-result-actions > .btn-vote { flex: none; min-height: 44px; margin: 0; }
+.vote-result-secondary { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.vote-result-secondary > .journey-next { flex: 1; min-width: 0; min-height: 32px; padding: 4px 2px; font-size: 11px; line-height: 1.3; }
+.vote-result .sheet-empty.error { padding: 6px 8px; font-size: 11px; line-height: 1.35; }
 @keyframes mvp-copy-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes mvp-reward-pop { 0% { opacity: 0; transform: translateY(9px) scale(.78); } 65% { opacity: 1; transform: translateY(-2px) scale(1.035); } 100% { opacity: 1; transform: none; } }
 .final-mvp-cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 10px; width: 100%; padding: 6px 4px 12px; }
 .final-mvp-cards > .fan-player-card { width: min(112px, calc((100% - 20px) / 3)); flex: none; }
 .vote-result-goal { width: 100%; padding: 11px 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); font-size: 12px; text-align: left; }
-.vote-profile-prompt { width: 100%; border: 1px solid var(--red-line); border-radius: 15px; padding: 13px 14px; background: linear-gradient(120deg, var(--card), var(--red-soft)); text-align: left; }
-.vote-profile-eyebrow { color: var(--red-text); font-size: 8px; font-weight: 850; letter-spacing: .1em; }
-.vote-profile-prompt h3 { margin: 5px 0 11px; color: var(--ink); font: 750 17px/1.25 'Fraunces', serif; }
-.vote-profile-prompt ul { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.vote-profile-prompt { width: 100%; border: 1px solid var(--red-line); border-radius: 15px; padding: 10px 12px; background: linear-gradient(120deg, var(--card), var(--red-soft)); text-align: left; }
+.vote-profile-eyebrow { display: block; color: var(--red-text); font-size: 8px; font-weight: 850; letter-spacing: .1em; }
+.vote-profile-prompt h3 { margin: 4px 0 8px; color: var(--ink); font: 750 16px/1.25 'Fraunces', serif; }
+.vote-profile-prompt ul { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .vote-profile-prompt li { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-size: 11px; line-height: 1.45; }
 .vote-profile-prompt li > span { flex: none; font-size: 14px; line-height: 1.2; }
 .vote-profile-prompt li strong { font-weight: 800; }
+@media (max-height: 600px) {
+  .vote-result-sheet .sheet-title { font-size: 17px; }
+  .vote-result { gap: 6px; }
+  .vote-result-copy { gap: 6px; }
+  .vote-result h2 { font-size: 18px; }
+  .vote-reward-amount { font-size: 26px; }
+  .vote-profile-prompt { padding: 8px 10px; }
+  .vote-profile-prompt h3 { margin-bottom: 6px; font-size: 15px; }
+  .vote-profile-prompt ul { gap: 4px; }
+  .vote-profile-prompt li { font-size: 10px; line-height: 1.35; }
+  .vote-result-actions { padding-top: 6px; }
+}
+@media (max-height: 450px) {
+  .sheet.vote-result-sheet { padding-top: 6px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .vote-result-sheet .grabber, .vote-profile-eyebrow { display: none; }
+  .vote-result h2 { font-size: 16px; }
+  .vote-result-bonus { padding: 5px 7px; gap: 2px; }
+  .vote-reward-amount { font-size: 23px; }
+  .vote-reward-copy b { display: none; }
+  .vote-reward-copy small { font-size: 8px; }
+  .vote-profile-prompt { padding: 6px 8px; }
+  .vote-profile-prompt h3 { margin: 0 0 4px; font-size: 14px; }
+  .vote-profile-prompt ul { gap: 3px; }
+  .vote-profile-prompt li > span { font-size: 12px; line-height: 1.1; }
+  .vote-result-secondary > .journey-next { min-height: 28px; font-size: 10px; }
+}
 .vote-goal-heading { display: flex; align-items: center; gap: 9px; }
 .vote-goal-medal { display: grid; place-items: center; flex: none; width: 31px; height: 35px; border-radius: 10px; background: var(--gold-soft); color: var(--gold-deep); font-size: 20px; }
 .vote-goal-heading > span:nth-child(2) { flex: 1; min-width: 0; }
@@ -2879,7 +2924,7 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .is-mvp-result > h2,
+  .is-mvp-result .vote-result-copy > h2,
   .vote-result-bonus,
   .vote-result-goal .journey-bar > span.is-rewarded,
   .vote-result-goal.is-unlocked .vote-goal-medal { animation: none; }

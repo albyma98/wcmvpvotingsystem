@@ -1,5 +1,5 @@
 <template>
-  <div class="mvp-celebration">
+  <div class="mvp-celebration" :class="{ 'is-compact': compact }">
     <div class="mvp-celebration-stage">
       <div class="mvp-effects" aria-hidden="true">
         <span class="mvp-spotlight"></span>
@@ -23,6 +23,7 @@ import FanPlayerCard from './FanPlayerCard.vue';
 defineProps({
   player: { type: Object, required: true },
   clubLogoUrl: { type: String, default: '' },
+  compact: { type: Boolean, default: false },
 });
 
 // Fixed trajectories keep the burst consistent and within the mobile sheet.
@@ -81,6 +82,19 @@ const confetti = Array.from({ length: 28 }, (_, id) => {
 @keyframes mvp-seal-stamp { 0% { opacity: 0; transform: scale(2.1) rotate(25deg); } 65% { opacity: 1; transform: scale(.88) rotate(-8deg); } 100% { opacity: 1; transform: none; } }
 @keyframes mvp-banner-land { 0% { opacity: 0; transform: translateY(12px) rotate(-7deg) scale(.7); } 65% { opacity: 1; transform: translateY(-2px) rotate(-2deg) scale(1.04); } 100% { opacity: 1; transform: rotate(-3deg); } }
 @media (max-height: 700px) { .mvp-celebration-stage { height: 202px; } .mvp-champion-card { width: 124px; } }
+.is-compact.mvp-celebration { min-width: 0; padding-bottom: 3px; }
+.is-compact .mvp-celebration-stage { height: clamp(112px, 22dvh, 170px); }
+.is-compact .mvp-champion-card { width: clamp(70px, 13dvh, 102px); max-width: 76%; }
+.is-compact .mvp-champion-card :deep(.mvp-player-caption strong) { font-size: 10px; }
+.is-compact .mvp-champion-card :deep(.mvp-player-number) { font-size: 17px; }
+.is-compact .mvp-champion-card :deep(.mvp-player-number small) { font-size: 5px; }
+.is-compact .mvp-champion-card :deep(.mvp-player-role), .is-compact .mvp-champion-card :deep(.mvp-player-selected) { font-size: 7px; }
+.is-compact .mvp-card-shadow { width: 96px; height: 15px; }
+.is-compact .mvp-confirm-seal { right: -4px; width: 24px; height: 24px; border-width: 2px; font-size: 14px; }
+.is-compact .mvp-champion-banner { gap: 4px; margin-top: 0; padding: 5px 7px; font-size: 8px; letter-spacing: .08em; white-space: nowrap; }
+.is-compact .mvp-champion-banner > span { font-size: 8px; }
+.is-compact .mvp-shockwave { width: 80px; height: 80px; }
+@media (max-height: 450px) { .is-compact .mvp-celebration-stage { height: 80px; } .is-compact .mvp-champion-card { width: 50px; } .is-compact .mvp-champion-banner { padding-block: 3px; font-size: 7px; } .is-compact .mvp-champion-card :deep(.mvp-player-caption strong) { font-size: 8px; } .is-compact .mvp-champion-card :deep(.mvp-player-number) { font-size: 13px; } .is-compact .mvp-champion-card :deep(.mvp-player-role) { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   .mvp-effects, .mvp-champion-card :deep(.mvp-player-card)::after { display: none; }
   .mvp-champion-card, .mvp-confirm-seal, .mvp-card-shadow, .mvp-champion-banner { animation: none; }
