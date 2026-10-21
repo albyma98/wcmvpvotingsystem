@@ -1,13 +1,13 @@
 <template>
   <div class="tap-challenge" :class="{ 'is-playing': status === 'playing', 'is-urgent': status === 'playing' && timeLeftMs <= 3000 }">
     <header class="tap-header">
-      <div class="tap-brand"><span class="tap-mark" aria-hidden="true">TC</span><div><span class="eyebrow">INSEGUI IL TUO RITMO</span><h2>Tap <em>Challenge</em></h2></div></div>
-      <span class="mode-pill"><i aria-hidden="true"></i>{{ isLiveFlow ? 'LIVE 1 VS 1' : '10 SECONDI' }}</span>
+      <div class="tap-brand"><span class="tap-mark" aria-hidden="true">TC</span><div><span class="eyebrow">RITMO DA PLAYGROUND</span><h2>Tap <em>Challenge</em></h2></div></div>
+      <span class="mode-pill"><i aria-hidden="true"></i>{{ isLiveFlow ? 'BASKET · 1 VS 1' : 'BASKET · 10s' }}</span>
     </header>
 
     <div v-if="showGameHud" class="hud">
       <div class="hud-card"><span class="hud-card__label">{{ liveStep === 'countdown' ? 'Si parte tra' : 'Tempo rimasto' }}</span><strong class="hud-card__value">{{ liveStep === 'countdown' ? countdownDisplay : timeLabel }}</strong></div>
-      <div class="hud-card hud-card--accent"><span class="hud-card__label">Colpi a segno</span><strong :key="tapCount" class="hud-card__value score-pop">{{ tapCount.toString().padStart(2, '0') }}</strong></div>
+      <div class="hud-card hud-card--accent"><span class="hud-card__label">Tocchi a segno</span><strong :key="tapCount" class="hud-card__value score-pop">{{ tapCount.toString().padStart(2, '0') }}</strong></div>
     </div>
     <div v-if="showGameHud" class="time-rail" role="progressbar" aria-label="Secondi rimanenti" :aria-valuenow="Math.ceil(timeLeftMs / 1000)" :aria-valuemin="0" :aria-valuemax="10"><span :style="{ transform: `scaleX(${Math.max(0, Math.min(1, timeLeftMs / ROUND_DURATION_MS))})` }"></span></div>
 
@@ -17,12 +17,18 @@
       @touchmove="status === 'playing' && $event.preventDefault()"
     >
       <svg class="tap-court" viewBox="0 0 360 500" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M22 22h316v456H22Z" fill="#213c3d" fill-opacity=".5" stroke="#d4e4d1" stroke-opacity=".3" stroke-width="1.3"/>
-        <path d="M22 174h316v152H22Z" fill="#e9bd68" fill-opacity=".04"/>
-        <g stroke="#d4e4d1" stroke-opacity=".2" stroke-width="1.3" fill="none"><path d="M22 174h316M22 326h316M22 250h316"/><path d="M34 34h292v432H34Z" stroke-opacity=".06"/></g>
-        <path d="M10 246h340M10 254h340" stroke="#081d22" stroke-width="2"/><path d="M10 250h340" stroke="#a4c3b5" stroke-opacity=".35" stroke-width="5" stroke-dasharray="1 5"/>
-        <g fill="#d5dfca" fill-opacity=".4"><circle cx="10" cy="250" r="4"/><circle cx="350" cy="250" r="4"/></g>
-        <text x="180" y="410" text-anchor="middle" fill="#c7d7c4" fill-opacity=".07" font-family="system-ui, sans-serif" font-size="26" font-weight="900" letter-spacing="5">TAP CLUB</text>
+        <path d="M22 22h316v456H22Z" fill="#e9b46c" fill-opacity=".08" stroke="#ffe4b7" stroke-opacity=".5" stroke-width="1.5"/>
+        <path d="M126 22h108v93H126ZM126 385h108v93H126Z" fill="#17383c" fill-opacity=".4"/>
+        <g fill="none" stroke="#ffe4b7" stroke-opacity=".4" stroke-width="1.5">
+          <path d="M22 250h316M126 22v93h108V22M126 478v-93h108v93"/>
+          <circle cx="180" cy="250" r="42"/>
+          <path d="M146 115a34 34 0 0 0 68 0M146 385a34 34 0 0 1 68 0"/>
+          <path d="M146 115a34 34 0 0 1 68 0M146 385a34 34 0 0 0 68 0" stroke-dasharray="4 5" stroke-opacity=".2"/>
+          <path d="M54 22v48c0 65 54 118 126 118S306 135 306 70V22M54 478v-48c0-65 54-118 126-118s126 53 126 118v48"/>
+        </g>
+        <path d="M157 44h46M157 456h46" stroke="#ffe9c6" stroke-opacity=".75" stroke-width="3" stroke-linecap="round"/>
+        <g fill="#211a12" fill-opacity=".5" stroke="#ffae65" stroke-width="2"><circle cx="180" cy="56" r="8"/><circle cx="180" cy="444" r="8"/></g>
+        <text x="180" y="275" text-anchor="middle" fill="#ffe4b7" fill-opacity=".13" font-family="system-ui, sans-serif" font-size="16" font-weight="900" letter-spacing="3">TAP BASKET</text>
       </svg>
 
       <div v-if="status === 'playing' && hitEffect" :key="hitEffect.id" class="tap-impact" :style="{ left: `${hitEffect.x}px`, top: `${hitEffect.y}px` }" aria-hidden="true"><i></i><b>+1</b></div>
@@ -33,13 +39,13 @@
         type="button"
         class="ball"
         :style="ballStyle"
-        aria-label="Tocca la palla"
+        aria-label="Tocca il pallone da basket"
         @click="onTap"
       >
-        <ArcadeVolleyball class="ball-art" />
+        <ArcadeBasketball class="ball-art" />
       </button>
 
-      <span v-if="status === 'playing'" class="tap-play-hint" aria-hidden="true">{{ timeLeftMs <= 3000 ? 'ULTIMI SECONDI. DAI TUTTO!' : 'COLPISCI. INSEGUI. RIPETI.' }}</span>
+      <span v-if="status === 'playing'" class="tap-play-hint" aria-hidden="true">{{ timeLeftMs <= 3000 ? 'ULTIMI SECONDI. DAI TUTTO!' : 'TOCCA. INSEGUI. RIPETI.' }}</span>
 
       <section v-else-if="liveStep === 'searching'" class="overlay overlay--single px-2 text-center">
         <div class="search-pulse mb-5"></div>
@@ -135,11 +141,11 @@
       </section>
 
       <div v-else-if="status !== 'playing'" class="overlay tap-cover" :class="{ 'tap-cover--finished': status === 'finished' }">
-        <div class="tap-hero" aria-hidden="true"><span class="hero-orbit"></span><ArcadeVolleyball /><span class="hero-label">{{ status === 'finished' ? 'TIME OUT' : 'INSEGUI LA PALLA' }}</span></div>
+        <div class="tap-hero" aria-hidden="true"><span class="hero-orbit"></span><ArcadeBasketball /><span class="hero-label">{{ status === 'finished' ? 'TIME OUT' : 'DOMINA IL PARQUET' }}</span></div>
         <p class="eyebrow">{{ status === 'finished' ? 'SESSIONE COMPLETATA' : 'VELOCITÀ. PRECISIONE. ISTINTO.' }}</p>
         <template v-if="status === 'finished'"><strong class="final-taps">{{ tapCount }}<small>tap</small></strong><h3>Ogni colpo conta.</h3></template>
-        <h3 v-else>Dieci secondi.<br />Lascia il segno.</h3>
-        <p class="cover-copy">{{ status === 'finished' ? 'Il tempo si ferma. Il tuo risultato resta.' : 'Tocca la palla e inseguila sul campo. A ogni colpo il ritmo aumenta.' }}</p>
+        <h3 v-else>Dieci secondi.<br />Domina il parquet.</h3>
+        <p class="cover-copy">{{ status === 'finished' ? 'Il tempo si ferma. Il tuo risultato resta.' : 'Tocca il pallone da basket e inseguilo sul parquet. A ogni tocco il ritmo aumenta.' }}</p>
         <div class="tap-rules" v-if="status !== 'finished'"><span><b>10</b> secondi</span><i></i><span><b>1</b> palla</span><i></i><span><b>∞</b> energia</span></div>
         <p v-if="isFixedSingleplayer" class="cover-reward"><span class="tap-coin" aria-hidden="true"></span>{{ props.alreadyRewarded ? 'Bonus già ottenuto in questa partita' : `+${fixedReward} monete al primo completamento` }}</p>
         <p v-else-if="status === 'finished'" class="cover-reward"><span class="tap-coin" aria-hidden="true"></span>{{ earnedCoins }} monete da riscattare</p>
@@ -160,7 +166,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
-import ArcadeVolleyball from './ArcadeVolleyball.vue';
+import ArcadeBasketball from './ArcadeBasketball.vue';
 import { awardTapChallengeCoins } from '../../services/coins';
 import {
   abortTapLiveMatch,
@@ -730,10 +736,10 @@ h2 em { color: var(--tap-accent); font-style: normal; }
 .time-rail > span { display: block; height: 100%; width: 100%; transform-origin: left; background: #b9dda2; transition: transform .1s linear; }
 .is-urgent .time-rail > span { background: #ffad83; }
 .is-urgent .hud-card:first-child .hud-card__value { color: #ffad83; }
-.game-area { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 170px; width: 100%; isolation: isolate; border: 1px solid #ffffff20; border-radius: 20px; overflow: hidden; background: radial-gradient(ellipse at 50% 30%, #2e5150, #17383c 55%, #122c32); touch-action: manipulation; }
+.game-area { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 170px; width: 100%; isolation: isolate; border: 1px solid #e8bc7950; border-radius: 20px; overflow: hidden; background: radial-gradient(ellipse at 50% 30%, #967044, #765233 55%, #483323); touch-action: manipulation; }
 .is-urgent .game-area { border-color: #ffad8370; }
 .tap-court { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.game-area::before { position: absolute; content: ''; inset: 0; background: repeating-linear-gradient(0deg, transparent 0 34px, #e7e0bd04 35px 36px); pointer-events: none; }
+.game-area::before { position: absolute; content: ''; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 28px, #ffd7a70c 29px, #3c2b1a40 30px), repeating-linear-gradient(0deg, transparent 0 90px, #ffdfa108 91px, #3c2b1a20 92px); pointer-events: none; }
 .overlay { position: relative; z-index: 3; display: flex; flex: 1; min-height: 0; flex-direction: column; align-items: center; justify-content: center; width: 100%; padding: 22px 18px; }
 .overlay--single { align-items: stretch; justify-content: flex-start; overflow-y: auto; background: #0e252bea; backdrop-filter: blur(8px); }
 .overlay--single.text-center { align-items: center; justify-content: center; }
