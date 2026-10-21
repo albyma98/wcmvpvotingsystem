@@ -1330,6 +1330,8 @@ type AppDatabase interface {
 	GetFanLiveEvent(eventID int, organizationID int) (Event, error)
 	RecordFanJourneyQuizAnswer(eventID, organizationID int, deviceID string, questionID int) error
 	ClaimFanJourneyReward(eventID, organizationID, fanID int, deviceID, rewardKey string) (int, int, error)
+	ClaimFanMinigameReward(eventID, organizationID, fanID int, deviceID, rewardKey, requestID string) (FanMinigameReward, error)
+	RecordFanMinigameQuizAnswer(eventID, organizationID int, deviceID, requestID string, questionID int) error
 	ListFanJourneyRewards(eventID, organizationID, fanID int, deviceID string) (map[string]int, error)
 	CreateBasketballShot(eventID, organizationID, fanID int, deviceID string, now time.Time) (BasketballShot, error)
 	ResolveBasketballShot(eventID, organizationID, fanID int, deviceID, shotID string, dx, dy float64, now time.Time) (BasketballShotResult, error)
@@ -3948,6 +3950,12 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM fan_journey_quiz_answers WHERE event_id=?`, eventID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM fan_minigame_rewards WHERE event_id=?`, eventID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM fan_minigame_quiz_answers WHERE event_id=?`, eventID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM basketball_shots WHERE event_id=?`, eventID); err != nil {
@@ -7520,6 +7528,17 @@ func ensureFanProfileTables(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS fan_journey_quiz_answers (
 			event_id INTEGER NOT NULL, organization_id INTEGER NOT NULL, device_id TEXT NOT NULL, question_id INTEGER NOT NULL,
 			PRIMARY KEY(event_id, organization_id, device_id, question_id));`,
+		`CREATE TABLE IF NOT EXISTS fan_minigame_rewards (
+			event_id INTEGER NOT NULL, organization_id INTEGER NOT NULL, request_id TEXT NOT NULL,
+			device_id TEXT NOT NULL, fan_id INTEGER NOT NULL DEFAULT 0, reward_key TEXT NOT NULL, coins INTEGER NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY(event_id, organization_id, request_id));`,
+		`CREATE INDEX IF NOT EXISTS idx_minigame_fan_rewards ON fan_minigame_rewards(event_id, organization_id, fan_id, reward_key);`,
+		`CREATE INDEX IF NOT EXISTS idx_minigame_guest_rewards ON fan_minigame_rewards(event_id, organization_id, device_id, fan_id);`,
+		`CREATE TABLE IF NOT EXISTS fan_minigame_quiz_answers (
+			event_id INTEGER NOT NULL, organization_id INTEGER NOT NULL, device_id TEXT NOT NULL,
+			request_id TEXT NOT NULL, question_id INTEGER NOT NULL,
+			PRIMARY KEY(event_id, organization_id, device_id, request_id, question_id));`,
 		`CREATE TABLE IF NOT EXISTS fan_profiles (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			organization_id INTEGER NOT NULL DEFAULT 0,

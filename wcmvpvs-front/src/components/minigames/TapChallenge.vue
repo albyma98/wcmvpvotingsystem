@@ -147,7 +147,7 @@
         <h3 v-else>Dieci secondi.<br />Domina il parquet.</h3>
         <p class="cover-copy">{{ status === 'finished' ? 'Il tempo si ferma. Il tuo risultato resta.' : 'Tocca il pallone da basket e inseguilo sul parquet. A ogni tocco il ritmo aumenta.' }}</p>
         <div class="tap-rules" v-if="status !== 'finished'"><span><b>10</b> secondi</span><i></i><span><b>1</b> palla</span><i></i><span><b>∞</b> energia</span></div>
-        <p v-if="isFixedSingleplayer" class="cover-reward"><span class="tap-coin" aria-hidden="true"></span>{{ props.alreadyRewarded ? 'Bonus già ottenuto in questa partita' : `+${fixedReward} monete al primo completamento` }}</p>
+        <p v-if="isFixedSingleplayer" class="cover-reward"><span class="tap-coin" aria-hidden="true"></span>+{{ fixedReward }} monete a ogni partita completata</p>
         <p v-else-if="status === 'finished'" class="cover-reward"><span class="tap-coin" aria-hidden="true"></span>{{ earnedCoins }} monete da riscattare</p>
       </div>
     </main>
@@ -167,6 +167,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
 import ArcadeBasketball from './ArcadeBasketball.vue';
+import { newMinigameRoundId } from '../../fanJourney';
 import { awardTapChallengeCoins } from '../../services/coins';
 import {
   abortTapLiveMatch,
@@ -182,8 +183,8 @@ import {
 } from '../../api';
 
 const props = defineProps({
-  eventId: { type: Number, default: 0 }, cooldownSeconds: { type: Number, default: 60 },
-  completionReward: { type: Number, default: null }, alreadyRewarded: { type: Boolean, default: false }, claiming: { type: Boolean, default: false },
+  eventId: { type: Number, default: 0 }, cooldownSeconds: { type: Number, default: 0 },
+  completionReward: { type: Number, default: null }, claiming: { type: Boolean, default: false },
 });
 const emit = defineEmits(['claim', 'exit']);
 
@@ -202,6 +203,7 @@ const cooldownUntil = ref(0);
 const errorMessage = ref('');
 const isSubmitting = ref(false);
 const claimRequested = ref(false);
+let roundId = newMinigameRoundId();
 const nowTs = ref(Date.now());
 const serverOffsetMs = ref(0);
 
@@ -241,7 +243,7 @@ const hasFixedReward = computed(() => Number.isFinite(props.completionReward) &&
 const fixedReward = computed(() => hasFixedReward.value ? Math.floor(props.completionReward) : 0);
 const isFixedSingleplayer = computed(() => hasFixedReward.value && liveStep.value === 'idle');
 const earnedCoins = computed(() => isFixedSingleplayer.value ? fixedReward.value : tapCount.value);
-const isCooldownActive = computed(() => cooldownUntil.value > nowTs.value);
+const isCooldownActive = computed(() => props.cooldownSeconds > 0 && cooldownUntil.value > nowTs.value);
 const cooldownRemainingMs = computed(() => Math.max(0, cooldownUntil.value - nowTs.value));
 const isLiveFlow = computed(() => liveStep.value !== 'idle');
 const statusLabel = computed(() => {
@@ -276,7 +278,6 @@ const primaryLabel = computed(() => {
   if (liveStep.value === 'countdown' || liveStep.value === 'playing') return 'Match in corso';
   if (liveStep.value === 'result') return 'Torna al menu';
   if (status.value === 'playing') return 'In corso';
-  if (isFixedSingleplayer.value && status.value === 'finished' && props.alreadyRewarded) return 'Termina';
   if (isFixedSingleplayer.value && (props.claiming || claimRequested.value)) return 'Bonus in salvataggio…';
   if (isSubmitting.value || claimRequested.value) return 'Accredito…';
   if (status.value === 'finished' && errorMessage.value) return 'Riprova accredito';
@@ -284,7 +285,7 @@ const primaryLabel = computed(() => {
   if (isCooldownActive.value) return `In cooldown ${formatCooldown(cooldownRemainingMs.value)}`;
   return 'Inizia';
 });
-const isPrimaryDisabled = computed(() => status.value === 'playing' || liveStep.value === 'countdown' || liveStep.value === 'playing' || isSubmitting.value || (claimRequested.value && !(isFixedSingleplayer.value && props.alreadyRewarded)) || (isFixedSingleplayer.value && props.claiming) || (status.value === 'ready' && isCooldownActive.value));
+const isPrimaryDisabled = computed(() => status.value === 'playing' || liveStep.value === 'countdown' || liveStep.value === 'playing' || isSubmitting.value || claimRequested.value || (isFixedSingleplayer.value && props.claiming) || (status.value === 'ready' && isCooldownActive.value));
 const ballStyle = computed(() => ({ transform: `translate3d(${ballX.value}px, ${ballY.value}px, 0)` }));
 const matchmakingLabel = computed(() => matchmakingDeadline.value > nowTs.value ? formatSeconds(matchmakingDeadline.value - nowTs.value) : 'quasi pronto');
 const countdownDisplay = computed(() => countdownValue.value <= 0 ? 'GO' : countdownValue.value);
@@ -388,7 +389,7 @@ function onPrimaryAction() {
     return;
   }
   if (isFixedSingleplayer.value && props.claiming) return;
-  if (status.value === 'playing' || isSubmitting.value || (claimRequested.value && !(isFixedSingleplayer.value && props.alreadyRewarded))) return;
+  if (status.value === 'playing' || isSubmitting.value || claimRequested.value) return;
   if (status.value === 'finished') {
     claimReward();
     return;
@@ -397,6 +398,7 @@ function onPrimaryAction() {
   startGame();
 }
 async function startGame() {
+  roundId = newMinigameRoundId();
   stopTimer();
   stopBallMovement();
   errorMessage.value = '';
@@ -494,10 +496,9 @@ function applyLiveResult(data = {}) {
 async function claimReward() {
   if (isFixedSingleplayer.value) {
     if (props.claiming || isSubmitting.value || status.value !== 'finished') return;
-    if (props.alreadyRewarded) { emit('exit'); return; }
     if (claimRequested.value) return;
     claimRequested.value = true;
-    emit('claim', { coins: fixedReward.value });
+    emit('claim', { coins: fixedReward.value, roundId });
     return;
   }
   if (isSubmitting.value || claimRequested.value || status.value !== 'finished') return;
@@ -509,7 +510,7 @@ async function claimReward() {
   }
   isSubmitting.value = true;
   errorMessage.value = '';
-  const requestId = crypto?.randomUUID ? crypto.randomUUID() : `tap_${Date.now()}`;
+  const requestId = roundId;
   const result = await awardTapChallengeCoins({ amount: earnedCoins.value, requestId, eventContextId: props.eventId, meta: { taps: tapCount.value, durationMs: ROUND_DURATION_MS } });
   isSubmitting.value = false;
   if (!result.ok) {

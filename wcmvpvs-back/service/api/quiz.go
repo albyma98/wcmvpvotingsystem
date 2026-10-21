@@ -18,6 +18,7 @@ type quizAnswerRequest struct {
 	ResponseMs    int    `json:"responseMs"`
 	DeviceID      string `json:"deviceId"`
 	Journey       bool   `json:"journey"`
+	RequestID     string `json:"request_id"`
 }
 
 func quizInWindow(cfg database.EventQuizConfig) bool {
@@ -106,7 +107,17 @@ func (rt *_router) postPublicEventQuizAnswer(w http.ResponseWriter, r *http.Requ
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
-		if err := rt.db.RecordFanJourneyQuizAnswer(eventID, ctx.OrganizationID, req.DeviceID, req.QuestionID); err != nil {
+		if req.RequestID != "" && !database.ValidFanMinigameRoundID(req.RequestID) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var recordErr error
+		if req.RequestID != "" {
+			recordErr = rt.db.RecordFanMinigameQuizAnswer(eventID, ctx.OrganizationID, req.DeviceID, req.RequestID, req.QuestionID)
+		} else {
+			recordErr = rt.db.RecordFanJourneyQuizAnswer(eventID, ctx.OrganizationID, req.DeviceID, req.QuestionID)
+		}
+		if err := recordErr; err != nil {
 			ctx.Logger.WithError(err).Error("record journey quiz answer")
 			w.WriteHeader(http.StatusInternalServerError)
 			return

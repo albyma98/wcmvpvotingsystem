@@ -5,6 +5,10 @@ export const FAN_BADGE_NAME = 'Tifoso Attivo';
 
 const rewardKeys = ['vote', 'quiz', 'reaction', 'tap', 'sponsor-rush', 'memory-flash', 'basketball', 'playmaker', 'crossover'];
 
+export function newMinigameRoundId() {
+  return globalThis.crypto?.randomUUID?.() || `round_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
 export function journeyStorageKey(slug, eventId) {
   return `cento:journey:${encodeURIComponent(slug || '')}:${eventId}`;
 }
@@ -30,11 +34,12 @@ export function journeyProgress(journey) {
   };
 }
 
-// The caller records a reward only after the wallet save has succeeded.
+// Add only newly credited coins after the server confirms a unique round.
+// The vote bonus stays once per match; cumulative server totals handle retries.
 export function recordJourneyReward(journey, key, amount) {
   const next = normalizeJourney(journey);
-  if (!rewardKeys.includes(key) || next.rewards[key] || !Number.isFinite(amount) || amount <= 0) return next;
-  next.rewards[key] = Math.floor(amount);
+  if (!rewardKeys.includes(key) || (key === 'vote' && next.rewards[key]) || !Number.isFinite(amount) || amount <= 0) return next;
+  next.rewards[key] = (next.rewards[key] || 0) + Math.floor(amount);
   if (key === 'vote') next.pendingVoteBonus = false;
   return next;
 }

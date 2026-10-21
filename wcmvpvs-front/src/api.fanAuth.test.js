@@ -19,7 +19,7 @@ function fixture(handler) {
   const source = stripTypeScriptTypes(readFileSync(new URL('./api.ts', import.meta.url), 'utf8').replaceAll('import.meta.env', '({})'))
     .replace(/^import .*;\r?\n/gm, '')
     .replace(/^export /gm, '');
-  const api = new Function('axios', 'getOrCreateDeviceId', 'readFanSessionToken', 'saveFanSessionToken', 'readLegacyFanSessionToken', 'window', `${source}\nreturn { getFanSessionToken, getFanSessionHeaders, startPhoneAuth, verifyPhoneAuth, registerFanProfile, fetchFanProfile };`)(axios, () => 'device', sessions.readFanSessionToken, sessions.saveFanSessionToken, sessions.readLegacyFanSessionToken, window);
+  const api = new Function('axios', 'getOrCreateDeviceId', 'readFanSessionToken', 'saveFanSessionToken', 'readLegacyFanSessionToken', 'window', `${source}\nreturn { getFanSessionToken, getFanSessionHeaders, startPhoneAuth, verifyPhoneAuth, registerFanProfile, fetchFanProfile, claimFanJourneyReward, submitQuickQuizAnswer };`)(axios, () => 'device', sessions.readFanSessionToken, sessions.saveFanSessionToken, sessions.readLegacyFanSessionToken, window);
   return { api, window, requests };
 }
 
@@ -34,6 +34,16 @@ test('OTP tokens stay with the requesting club even if navigation changes during
   assert.deepEqual(api.getFanSessionHeaders(), {});
   window.location.pathname = '/club-a/new';
   assert.deepEqual(api.getFanSessionHeaders(), { 'X-Fan-Session': 'session-a' });
+});
+
+test('minigame claims and quiz answers carry the same round receipt without changing vote claims', async () => {
+  const { api, requests } = fixture(async () => ({ data: {} }));
+  await api.submitQuickQuizAnswer(42, { questionId: 1, selectedIndex: 0, responseMs: 500, deviceId: 'device', journey: true, request_id: 'quiz-round-1' });
+  await api.claimFanJourneyReward(42, 'quiz', 'quiz-round-1');
+  await api.claimFanJourneyReward(42, 'vote');
+  assert.equal(requests[0].body.request_id, 'quiz-round-1');
+  assert.deepEqual(requests[1].body, { key: 'quiz', request_id: 'quiz-round-1' });
+  assert.deepEqual(requests[2].body, { key: 'vote' });
 });
 
 test('only registration sends declarations with the OTP request; login remains unchanged', async () => {

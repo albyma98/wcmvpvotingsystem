@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
+import * as journey from '../fanJourney.js';
 
 function fixture(overrides = {}, completionReward = 15) {
   const window = testWindow();
   const setup = setupSfc(new URL('./QuickQuizGame.vue', import.meta.url), {
     vue: testVue,
+    '../fanJourney': journey,
     '../api': {
       fetchQuickQuiz: async () => ({ ok: true, data: { questions: [{ id: 1, text: 'Domanda', answers: ['A', 'B'] }], config: { completion_bonus: 5 } } }),
       submitQuickQuizAnswer: async () => ({ ok: true, data: { isCorrect: false, coinsEarned: 0 } }),
@@ -33,7 +35,16 @@ test('completing the quiz gives the advertised fixed bonus even with an incorrec
   assert.equal(state.state.value, 'summary');
   assert.equal(state.totalCoins.value, 15);
   state.claimCoins();
-  assert.deepEqual(events, [['claim', { coins: 15 }]]);
+  state.claimCoins();
+  assert.equal(events.length, 1);
+  assert.equal(events[0][1].coins, 15);
+  const firstRound = events[0][1].roundId;
+  await state.loadQuiz();
+  await state.submitAnswer(1);
+  finishFeedback(window);
+  state.claimCoins();
+  assert.equal(events.length, 2);
+  assert.notEqual(events[1][1].roundId, firstRound);
 });
 
 test('network errors do not count as answers or produce a completion reward', async (t) => {

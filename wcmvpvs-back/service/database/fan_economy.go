@@ -246,7 +246,7 @@ func adoptGuestEconomy(tx *sql.Tx, organizationID, fanID int, device string) err
 	if _, err := tx.Exec(`DELETE FROM guest_wallets WHERE organization_id=? AND device_id=?`, organizationID, device); err != nil {
 		return err
 	}
-	for _, table := range []string{"fan_journey_rewards", "basketball_shots", "playmaker_sessions", "playmaker_passes", "crossover_sessions", "crossover_duels"} {
+	for _, table := range []string{"fan_journey_rewards", "fan_minigame_rewards", "basketball_shots", "playmaker_sessions", "playmaker_passes", "crossover_sessions", "crossover_duels"} {
 		if _, err := tx.Exec(`UPDATE OR IGNORE `+table+` SET fan_id=? WHERE organization_id=? AND device_id=? AND fan_id=0`, fanID, organizationID, device); err != nil {
 			return err
 		}

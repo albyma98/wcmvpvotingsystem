@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setupSfc, testVue, testWindow } from '../../../test/sfcSetup.js';
+import * as journey from '../../fanJourney.js';
 
 function game(t, props = {}) {
   const window = testWindow();
-  const setup = setupSfc(new URL('./MemoryFlashGame.vue', import.meta.url), { vue: testVue }, {
-    walletCoins: 0, alreadyRewarded: false, ...props,
+  const setup = setupSfc(new URL('./MemoryFlashGame.vue', import.meta.url), { vue: testVue, '../../fanJourney': journey }, {
+    walletCoins: 0, claiming: false, ...props,
   }, { window, navigator: {} });
   t.after(() => setup.scope.stop());
   function revealBoard() {
@@ -30,23 +31,29 @@ test('a first completion requests eight coins once and wallet changes only throu
   const setup = game(t, { walletCoins: 3 });
   setup.completeRound();
   assert.equal(setup.state.state.value, 'win');
-  assert.deepEqual(setup.events, [['claim', { coins: 8, gameId: 'memory-flash' }]]);
+  assert.equal(setup.events.length, 1);
+  assert.equal(setup.events[0][1].coins, 8);
+  const firstRound = setup.events[0][1].roundId;
+  setup.state.onWin();
+  assert.equal(setup.events.length, 1);
   assert.equal(setup.state.displayedCoins.value, 3);
   setup.props.walletCoins = 11;
   assert.equal(setup.state.displayedCoins.value, 11);
   setup.completeRound();
-  assert.equal(setup.events.length, 1, 'replaying does not request a second bonus');
+  assert.equal(setup.events.length, 2, 'a second victory requests a second reward');
+  assert.notEqual(setup.events[1][1].roundId, firstRound);
   assert.equal(setup.state.displayedCoins.value, 11);
 });
 
-test('retry is free even with a zero balance and previously rewarded fans can keep playing without a new claim', (t) => {
-  const setup = game(t, { alreadyRewarded: true });
+test('retry is free even with a zero balance and another victory can earn coins', (t) => {
+  const setup = game(t);
   setup.state.onLose();
   setup.state.retryNow();
   assert.equal(setup.state.state.value, 'preview');
   assert.equal(setup.state.displayedCoins.value, 0);
   setup.completeRound();
   assert.equal(setup.state.state.value, 'win');
-  assert.deepEqual(setup.events, []);
+  assert.equal(setup.events.length, 1);
+  assert.equal(setup.events[0][1].coins, 8);
   assert.equal(setup.state.displayedCoins.value, 0);
 });

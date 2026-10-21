@@ -8,7 +8,7 @@ test('vote and quiz unlock the first badge at 25 earned coins', () => {
   state = recordJourneyReward(state, 'quiz', 15);
   assert.deepEqual(journeyProgress(state), { earned: 25, current: 25, remaining: 0, percent: 100, unlocked: true });
   assert.deepEqual(recordJourneyReward(state, 'vote', 10), state);
-  assert.deepEqual(recordJourneyReward(state, 'quiz', 15), state);
+  assert.equal(recordJourneyReward(state, 'quiz', 15).rewards.quiz, 30);
 });
 
 test('progress is capped and independent of spending wallet coins', () => {

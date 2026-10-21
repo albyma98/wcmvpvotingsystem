@@ -3,7 +3,7 @@
     <section class="reaction-shell">
       <header class="reaction-header">
         <div class="reaction-brand"><span class="reaction-mark" aria-hidden="true">↯</span><div><span class="eyebrow">IL TUO ALLENAMENTO</span><h2>Reaction <em>Test</em></h2></div></div>
-        <div class="reward-pill"><span class="coin-icon" aria-hidden="true"></span><b>{{ props.alreadyRewarded ? 'Bonus ottenuto' : hasFixedReward ? `+${fixedReward}` : `+${previewCoins}` }}</b><small v-if="!props.alreadyRewarded">{{ hasFixedReward ? 'al primo completamento' : 'monete in palio' }}</small></div>
+        <div class="reward-pill"><span class="coin-icon" aria-hidden="true"></span><b>{{ hasFixedReward ? `+${fixedReward}` : `+${previewCoins}` }}</b><small>{{ hasFixedReward ? 'a ogni partita completata' : 'monete in palio' }}</small></div>
       </header>
 
       <div class="reaction-dashboard">
@@ -63,11 +63,11 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
+import { newMinigameRoundId } from '../fanJourney';
 
 const emit = defineEmits(['claim', 'exit']);
 const props = defineProps({
   completionReward: { type: Number, default: null },
-  alreadyRewarded: { type: Boolean, default: false },
 });
 const hasFixedReward = computed(() => Number.isFinite(props.completionReward) && props.completionReward >= 0);
 const fixedReward = computed(() => hasFixedReward.value ? Math.floor(props.completionReward) : 0);
@@ -85,6 +85,7 @@ const roundCoins = ref(0);
 const showCoinBurst = ref(false);
 const tapLocked = ref(false);
 const claimRequested = ref(false);
+let roundId = newMinigameRoundId();
 
 let countdownInterval;
 let waitTimeout;
@@ -227,14 +228,13 @@ const primaryLabel = computed(() => {
   }
 
   if (phase.value === 'summary') {
-    if (props.alreadyRewarded) return 'Termina';
     return claimRequested.value ? 'Bonus in salvataggio…' : hasFixedReward.value ? 'Registra risultato e bonus' : 'Riscatta monete';
   }
 
   return 'Attendi…';
 });
 
-const isPrimaryDisabled = computed(() => ['countdown', 'wait', 'go'].includes(phase.value) || (phase.value === 'summary' && claimRequested.value && !props.alreadyRewarded));
+const isPrimaryDisabled = computed(() => ['countdown', 'wait', 'go'].includes(phase.value) || (phase.value === 'summary' && claimRequested.value));
 
 function clearTimers() {
   if (typeof window === 'undefined') {
@@ -258,6 +258,7 @@ function clearTimers() {
 }
 
 function resetGame() {
+  roundId = newMinigameRoundId();
   clearTimers();
   phase.value = 'intro';
   currentRound.value = 1;
@@ -366,7 +367,6 @@ function onPrimaryAction() {
   }
 
   if (phase.value === 'summary') {
-    if (props.alreadyRewarded) { emit('exit'); return; }
     if (claimRequested.value) {
       return;
     }
@@ -374,6 +374,7 @@ function onPrimaryAction() {
     claimRequested.value = true;
     emit('claim', {
       gameId: 'reaction',
+      roundId,
       coins: coins.value,
       avgMs: avgMs.value,
       bestMs: bestMs.value,

@@ -36,10 +36,11 @@ function fixture(overrides = {}, options = {}) {
     fetchQuickQuiz: async () => ({ ok: true, data: { questions: [{ id: 1 }] } }),
     vote: async () => ({ ok: true }),
     syncGuestCoins: async (eventId, coins) => { saves.push({ eventId, coins }); return { ok: true, data: { wallet: coins } }; },
-    claimFanJourneyReward: async (eventId, key) => {
+    claimFanJourneyReward: async (eventId, key, roundId) => {
       const amounts = { vote: 10, quiz: 15, reaction: 10, tap: 8, 'sponsor-rush': 12, 'memory-flash': 8 };
-      const coins = serverAwards.has(key) ? 0 : amounts[key] || 0;
-      serverWallet += coins; serverAwards.add(key); saves.push({ eventId, coins: serverWallet });
+      const receipt = key === 'vote' ? key : `${key}:${roundId}`;
+      const coins = serverAwards.has(receipt) ? 0 : amounts[key] || 0;
+      serverWallet += coins; serverAwards.add(receipt); saves.push({ eventId, coins: serverWallet });
       return { ok: true, data: { wallet: serverWallet, points: serverWallet, coins_earned: coins, reward_amount: amounts[key] || 0 } };
     },
     fetchFanWallet: async () => ({ ok: true, data: walletData({ wallet: serverWallet, points: serverWallet }) }),
@@ -350,8 +351,8 @@ test('confirmed vote leads to quiz and an earned first badge without duplicate c
   state.openGame('quiz');
   await state.onGameClaim({ coins: 15 });
   await state.castVote(player);
-  assert.equal(saves.length, 2);
-  assert.equal(state.totalCoins.value, 25);
+  assert.equal(saves.length, 3);
+  assert.equal(state.totalCoins.value, 40);
 });
 
 test('failed vote shows an error and grants nothing', async (t) => {
@@ -623,7 +624,7 @@ test('every confirmed basketball basket updates wallet and badge progress across
   const mission = state.earnMissions.value.find((item) => item.key === 'basketball');
   assert.equal(mission.repeatable, true);
   state.doneKeys.value = state.earnMissions.value.map((item) => item.key);
-  assert.equal(state.featuredMission.value.key, 'basketball');
+  assert.equal(state.featuredMission.value.key, 'reaction');
 });
 
 test('basketball receipts for another event or invalid balances do not change the home', (t) => {
@@ -1228,12 +1229,12 @@ test('an authoritative empty server reward list clears a stale local badge and c
   assert.deepEqual(stored.rewards, {});
 });
 
-test('Tap Challenge single-player claims its fixed eight coins through the journey API once', async (t) => {
+test('Tap Challenge single-player claims eight coins for each distinct game', async (t) => {
   const claims = [];
   const { state, scope } = fixture({
     claimFanJourneyReward: async (...args) => {
       claims.push(args);
-      return { ok: true, data: { wallet: 8, points: 8, coins_earned: 8, reward_amount: 8 } };
+      return { ok: true, data: { wallet: claims.length * 8, coins_earned: 8, reward_amount: 8, reward_total: claims.length * 8 } };
     },
     syncGuestCoins: async () => { throw new Error('Tap single-player must use the journey reward endpoint'); },
   });
@@ -1246,9 +1247,11 @@ test('Tap Challenge single-player claims its fixed eight coins through the journ
   assert.equal(state.activeSheet.value, 'vote-result');
   state.openGame('tap');
   await state.onGameClaim({ coins: 8 });
-  assert.deepEqual(claims, [[42, 'tap']]);
-  assert.equal(state.totalCoins.value, 8);
-  assert.equal(state.progress.value.earned, 8);
+  assert.equal(claims.length, 2);
+  assert.deepEqual(claims.map((args) => args.slice(0, 2)), [[42, 'tap'], [42, 'tap']]);
+  assert.notEqual(claims[0][2], claims[1][2]);
+  assert.equal(state.totalCoins.value, 16);
+  assert.equal(state.progress.value.earned, 16);
 });
 
 test('Tap live refreshes cumulative server rewards and never trusts or recredits the emitted amount', async (t) => {
@@ -1273,4 +1276,27 @@ test('Tap live refreshes cumulative server rewards and never trusts or recredits
   assert.equal(state.activeGameId.value, 'tap');
   assert.equal(profiles, 2);
   assert.equal(saves.length, 0);
+});
+
+test('a lost minigame response retries the same round and restores cumulative progress only once', async (t) => {
+  const ids = [];
+  const { state, scope } = fixture({ claimFanJourneyReward: async (_, key, roundId) => {
+    ids.push(roundId);
+    if (ids.length === 1) return { ok: false };
+    return { ok: true, data: { wallet: ids.length === 2 ? 10 : 20, reward_amount: 10, reward_total: ids.length === 2 ? 10 : 20, coins_earned: ids.length === 2 ? 0 : 10 } };
+  } });
+  t.after(() => scope.stop());
+  state.openGame('reaction');
+  await state.onGameClaim({ coins: 10 });
+  assert.ok(state.coinError.value);
+  assert.equal(state.totalCoins.value, 0);
+  await state.onGameClaim(state.pendingGameClaim.value);
+  assert.equal(ids[0], ids[1]);
+  assert.equal(state.totalCoins.value, 10);
+  assert.equal(state.journey.value.rewards.reaction, 10);
+  state.openGame('reaction');
+  await state.onGameClaim({ coins: 10 });
+  assert.notEqual(ids[1], ids[2]);
+  assert.equal(state.totalCoins.value, 20);
+  assert.equal(state.journey.value.rewards.reaction, 20);
 });

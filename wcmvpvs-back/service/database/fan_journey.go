@@ -11,7 +11,11 @@ func (db *appdbimpl) RecordFanJourneyQuizAnswer(eventID, organizationID int, dev
 }
 
 func (db *appdbimpl) ListFanJourneyRewards(eventID, organizationID, fanID int, deviceID string) (map[string]int, error) {
-	rows, err := db.c.Query(`SELECT reward_key,MAX(coins) FROM fan_journey_rewards WHERE event_id=? AND organization_id=? AND ((device_id=? AND fan_id=0) OR (?>0 AND fan_id=?)) GROUP BY reward_key`, eventID, organizationID, deviceID, fanID, fanID)
+	rows, err := db.c.Query(`SELECT reward_key,SUM(coins) FROM (
+	 SELECT reward_key,MAX(coins) AS coins FROM fan_journey_rewards WHERE event_id=? AND organization_id=? AND ((device_id=? AND fan_id=0) OR (?>0 AND fan_id=?)) GROUP BY reward_key
+	 UNION ALL
+	 SELECT reward_key,SUM(coins) AS coins FROM fan_minigame_rewards WHERE event_id=? AND organization_id=? AND ((device_id=? AND fan_id=0) OR (?>0 AND fan_id=?)) GROUP BY reward_key
+	) GROUP BY reward_key`, eventID, organizationID, deviceID, fanID, fanID, eventID, organizationID, deviceID, fanID, fanID)
 	if err != nil {
 		return nil, err
 	}

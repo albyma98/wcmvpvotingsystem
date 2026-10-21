@@ -26,7 +26,8 @@ func (rt *_router) claimFanJourneyReward(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	var payload struct {
-		Key string `json:"key"`
+		Key       string `json:"key"`
+		RequestID string `json:"request_id"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&payload); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -34,6 +35,10 @@ func (rt *_router) claimFanJourneyReward(w http.ResponseWriter, r *http.Request,
 	}
 	amount := database.FanJourneyRewardAmount(payload.Key)
 	if amount == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if payload.RequestID != "" && (!database.ValidFanMinigameRoundID(payload.RequestID) || payload.Key == "vote") {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -50,13 +55,20 @@ func (rt *_router) claimFanJourneyReward(w http.ResponseWriter, r *http.Request,
 		}
 		fanID = fan.Profile.ID
 	}
-	wallet, credited, err := rt.db.ClaimFanJourneyReward(eventID, ctx.OrganizationID, fanID, deviceID, payload.Key)
+	var response interface{}
+	if payload.RequestID != "" {
+		response, err = rt.db.ClaimFanMinigameReward(eventID, ctx.OrganizationID, fanID, deviceID, payload.Key, payload.RequestID)
+	} else {
+		var wallet, credited int
+		wallet, credited, err = rt.db.ClaimFanJourneyReward(eventID, ctx.OrganizationID, fanID, deviceID, payload.Key)
+		response = map[string]interface{}{"wallet": wallet, "coins_earned": credited, "reward_amount": amount}
+	}
 	if err != nil {
 		if errors.Is(err, database.ErrFanRewardDeviceUsed) {
-			_ = writeJSONMessage(w, http.StatusConflict, "Il bonus è già stato assegnato su questo dispositivo.")
+			_ = writeJSONMessage(w, http.StatusConflict, "Questo risultato è già stato assegnato ad un altro profilo.")
 			return
 		}
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, database.ErrBasketballClosed) || errors.Is(err, database.ErrFanMinigameRound) {
 			_ = writeJSONMessage(w, http.StatusConflict, "Completa l’attività prima di ritirare il bonus.")
 		} else {
 			ctx.Logger.WithError(err).Error("claim fan journey reward")
@@ -65,5 +77,5 @@ func (rt *_router) claimFanJourneyReward(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	rt.coinsHub.Broadcast(eventID)
-	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"wallet": wallet, "coins_earned": credited, "reward_amount": amount})
+	_ = writeJSON(w, http.StatusOK, response)
 }

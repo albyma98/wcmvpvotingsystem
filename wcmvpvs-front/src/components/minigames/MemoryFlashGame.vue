@@ -16,7 +16,7 @@
         </div>
         <button type="button" class="close-btn" aria-label="Chiudi gioco" @click="emit('exit')">×</button>
       </div>
-      <p class="mt-2 text-center text-xs text-slate-300">8 monete al primo completamento della partita</p>
+      <p class="mt-2 text-center text-xs text-slate-300">8 monete a ogni partita vinta</p>
     </header>
 
     <main class="mt-3 grid flex-1 grid-cols-2 gap-2 overflow-hidden">
@@ -49,11 +49,11 @@
           <h3 class="mt-2 text-2xl font-black text-white">
             {{ state === 'win' ? 'Memory completato!' : 'Ci sei quasi!' }}
           </h3>
-          <p v-if="state === 'win'" class="mt-2 text-sm font-semibold text-emerald-300">{{ alreadyRewarded ? 'Bonus della partita già ottenuto. Puoi continuare a giocare.' : '8 monete al primo completamento della partita.' }}</p>
+          <p v-if="state === 'win'" class="mt-2 text-sm font-semibold text-emerald-300">8 monete a ogni partita vinta.</p>
           <p v-else class="mt-2 text-sm text-slate-200">Mostriamo le coppie mancanti per aiutarti al prossimo tentativo.</p>
 
           <div v-if="state === 'win'" class="mt-4 grid grid-cols-1 gap-2">
-            <button type="button" class="cta-primary" @click="startRound">Gioca ancora gratis</button>
+            <button type="button" class="cta-primary" :disabled="claiming" @click="startRound">{{ claiming ? 'Salvataggio…' : 'Gioca ancora gratis' }}</button>
           </div>
 
           <div v-else class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -69,6 +69,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { newMinigameRoundId } from '../../fanJourney';
 
 const emit = defineEmits(['claim', 'exit']);
 const props = defineProps({
@@ -76,7 +77,7 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
-  alreadyRewarded: { type: Boolean, default: false },
+  claiming: { type: Boolean, default: false },
 });
 
 const EMOJIS = ['🏐', '⚡', '🔥', '💎', '👑'];
@@ -98,6 +99,7 @@ let previewTimeoutId;
 let mismatchTimeoutId;
 let hapticCooldown = false;
 let rewardRequested = false;
+let roundId = newMinigameRoundId();
 
 const timeLabel = computed(() => `${Math.ceil(Math.max(0, timeLeftMs.value) / 1000)}s`);
 const timerProgress = computed(() => (Math.max(0, timeLeftMs.value) / TOTAL_TIME_MS) * 100);
@@ -138,6 +140,9 @@ function buildDeck() {
 }
 
 function startRound() {
+  if (props.claiming) return;
+  roundId = newMinigameRoundId();
+  rewardRequested = false;
   clearAllTimers();
   state.value = 'preview';
   boardLocked.value = true;
@@ -232,9 +237,9 @@ function onWin() {
   state.value = 'win';
   boardLocked.value = true;
   window.clearInterval(countdownId);
-  if (!rewardRequested && !props.alreadyRewarded) {
+  if (!rewardRequested) {
     rewardRequested = true;
-    emit('claim', { coins: WIN_REWARD, gameId: 'memory-flash' });
+    emit('claim', { coins: WIN_REWARD, gameId: 'memory-flash', roundId });
   }
 }
 

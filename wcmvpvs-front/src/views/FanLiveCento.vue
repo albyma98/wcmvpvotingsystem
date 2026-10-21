@@ -234,9 +234,9 @@
               <b class="mission-card-title">{{ mission.title }}</b>
               <span class="mission-card-description">{{ !mission.repeatable && (doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)) ? 'Bonus già ricevuto' : mission.subtitle }}</span>
               <span class="mission-card-reward">
-                <template v-if="mission.repeatable">+1 <span class="coin" aria-hidden="true"></span><small>/ {{ mission.rewardUnit || 'canestro' }}</small></template>
+                <template v-if="mission.key === 'quiz' && !quizAvailable">Non disponibile</template>
+                <template v-else-if="mission.repeatable">+{{ mission.pts }} <span class="coin" aria-hidden="true"></span><small>/ {{ mission.rewardUnit || 'partita' }}</small></template>
                 <template v-else-if="doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)"><span aria-hidden="true">✓</span> Ricevuto</template>
-                <template v-else-if="mission.key === 'quiz' && !quizAvailable">Non disponibile</template>
                 <template v-else>+{{ mission.pts }} <span class="coin" aria-hidden="true"></span></template>
               </span>
             </button>
@@ -462,7 +462,6 @@
             v-if="activeGameId === 'reaction'"
             class="game-fill"
             :completion-reward="10"
-            :already-rewarded="doneKeys.includes('reaction')"
             @claim="onGameClaim"
             @exit="closeGame"
           />
@@ -472,7 +471,6 @@
             :event-id="eventId"
             :completion-reward="QUIZ_REWARD"
             :claiming="isSavingCoins"
-            :already-rewarded="doneKeys.includes('quiz')"
             @claim="onGameClaim"
             @exit="closeGame"
           />
@@ -519,7 +517,6 @@
             class="game-fill"
             :event-id="eventId"
             :completion-reward="8"
-            :already-rewarded="doneKeys.includes('tap')"
             :claiming="isSavingCoins"
             @claim="onGameClaim"
             @exit="closeGame"
@@ -528,7 +525,6 @@
             v-else-if="activeGameId === 'sponsor-rush'"
             class="game-fill"
             :completion-reward="12"
-            :already-rewarded="doneKeys.includes('sponsor-rush')"
             @claim="onGameClaim"
             @exit="closeGame"
           />
@@ -536,8 +532,8 @@
             v-else-if="activeGameId === 'memory-flash'"
             class="game-fill"
             :wallet-coins="totalCoins"
+            :claiming="isSavingCoins || Boolean(pendingGameClaim)"
             @claim="onGameClaim"
-            :already-rewarded="doneKeys.includes('memory-flash')"
             @exit="closeGame"
           />
         </div>
@@ -571,7 +567,7 @@ import FanAvatar from '../components/FanAvatar.vue';
 import FanMatchCard from '../components/FanMatchCard.vue';
 const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
 import { fanRegistrationAcceptance } from '../fanRegistration';
-import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorageKey, normalizeJourney, journeyProgress, recordJourneyReward } from '../fanJourney';
+import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorageKey, normalizeJourney, journeyProgress, recordJourneyReward, newMinigameRoundId } from '../fanJourney';
 
 // Giochi reali riusati da EarnCoinsModal (lazy-load: pesano).
 const ReactionTestGame = defineAsyncComponent(() => import('../components/ReactionTestGame.vue'));
@@ -711,6 +707,7 @@ const isBasketballSaving = ref(false);
 const isPlaymakerSaving = ref(false);
 const isCrossoverSaving = ref(false);
 const pendingGameClaim = ref(null);
+const activeGameRoundId = ref('');
 const voteBonusCoins = ref(0);
 const celebrationKind = ref('vote');
 const showVoteProfilePrompt = computed(() => celebrationKind.value === 'vote' && !isRegistered.value);
@@ -787,8 +784,9 @@ const canVote = computed(() => Boolean(props.eventId) && Boolean(eventState.valu
 const completedGames = computed(() => Object.keys(journey.value.rewards).filter((key) => key !== 'vote').length);
 const featuredMission = computed(() => {
   if (!props.eventId || matchConcluded.value || eventState.value?.is_active === false) return null;
-  const missions = earnMissions.value.filter((mission) => mission.game && (mission.repeatable || !doneKeys.value.includes(mission.key)));
-  return (quizAvailable.value && missions.find((mission) => mission.key === 'quiz')) || missions.find((mission) => mission.key !== 'quiz') || null;
+  const missions = earnMissions.value.filter((mission) => mission.game && (mission.key !== 'quiz' || quizAvailable.value));
+  const unplayed = missions.filter((mission) => !doneKeys.value.includes(mission.key));
+  return unplayed.find((mission) => mission.key === 'quiz') || unplayed[0] || missions[0] || null;
 });
 const nextQuizLabel = computed(() => {
   const startsAt = Date.parse(liveEvent.value?.quiz?.starts_at || '');
@@ -1097,12 +1095,12 @@ const finalMvpPlayers = computed(() => matchConcluded.value ? (liveEvent.value?.
 /* ---------- Missioni "Guadagna" (aprono i giochi reali) ---------- */
 const earnMissions = computed(() => [
   { key: 'vote', emoji: '🏆', title: "Vota l'MVP", subtitle: 'Un voto per partita', pts: 10, opensMvp: true },
-  { key: 'reaction', emoji: '⚡', title: 'Reaction Test', subtitle: 'Testa i riflessi', pts: 10, game: 'reaction' },
-  { key: 'quiz', emoji: '🧠', title: 'Quiz Lampo', subtitle: 'Domande sul match', pts: 15, game: 'quiz' },
-  { key: 'basketball', emoji: '🏀', title: 'Basket Rush', subtitle: 'Trascina e tira · 1 moneta a canestro', pts: 1, game: 'basketball', repeatable: true },
+  { key: 'reaction', emoji: '⚡', title: 'Reaction Test', subtitle: 'Testa i riflessi', pts: 10, game: 'reaction', repeatable: true },
+  { key: 'quiz', emoji: '🧠', title: 'Quiz Lampo', subtitle: 'Domande sul match', pts: 15, game: 'quiz', repeatable: true },
+  { key: 'basketball', emoji: '🏀', title: 'Basket Rush', subtitle: 'Trascina e tira · 1 moneta a canestro', pts: 1, game: 'basketball', repeatable: true, rewardUnit: 'canestro' },
   { key: 'playmaker', emoji: '🤝', title: 'Playmaker', subtitle: 'L’assist perfetto · Sessioni da 30 secondi', pts: 1, game: 'playmaker', repeatable: true, rewardUnit: 'assist' },
   { key: 'crossover', emoji: '💨', title: 'Crossover Rush', subtitle: 'Finta, cambia mano e schiaccia · 3 duelli', pts: 1, game: 'crossover', repeatable: true, rewardUnit: 'duello vinto' },
-  { key: 'tap', emoji: '👆', title: 'Tap Challenge', subtitle: '10 secondi a martello', pts: 8, game: 'tap' },
+  { key: 'tap', emoji: '👆', title: 'Tap Challenge', subtitle: '10 secondi a martello', pts: 8, game: 'tap', repeatable: true },
   {
     key: 'sponsor-rush',
     emoji: '🏷️',
@@ -1110,8 +1108,9 @@ const earnMissions = computed(() => [
     subtitle: 'Prendi i loghi al volo',
     pts: 12,
     game: 'sponsor-rush',
+    repeatable: true,
   },
-  { key: 'memory-flash', emoji: '🧩', title: 'Memory Flash', subtitle: 'Memorizza le coppie', pts: 8, game: 'memory-flash' },
+  { key: 'memory-flash', emoji: '🧩', title: 'Memory Flash', subtitle: 'Memorizza le coppie', pts: 8, game: 'memory-flash', repeatable: true, rewardUnit: 'vittoria' },
 ]);
 
 /* ---------- Sponsor rush / partner ---------- */
@@ -1255,17 +1254,17 @@ async function loadFanProfile() {
 }
 
 // Mostra l'accredito soltanto dopo la conferma del salvataggio del wallet.
-async function grantCoins(delta, key) {
+async function grantCoins(delta, key, roundId = '') {
   const amount = Math.max(0, Math.floor(Number(delta) || 0));
   if (!props.eventId || !amount || shopBusy.value) return { ok: false, coins: 0 };
-  if (journey.value.rewards[key] || doneKeys.value.includes(key)) return { ok: true, coins: 0 };
+  if (key === 'vote' && (journey.value.rewards[key] || doneKeys.value.includes(key))) return { ok: true, coins: 0 };
   isSavingCoins.value = true;
   coinError.value = '';
   const eventId = props.eventId;
   const scope = walletScope();
   const request = ++journeyRewardRevision;
   try {
-    const response = await claimFanJourneyReward(eventId, key);
+    const response = await claimFanJourneyReward(eventId, key, roundId);
     if (isDisposed || request !== journeyRewardRevision || scope !== walletScope()) return { ok: false, coins: 0 };
     const rewardAmount = response.data?.reward_amount;
     if (!response.ok || !Number.isInteger(response.data?.wallet) || response.data.wallet < 0 || !Number.isInteger(rewardAmount) || rewardAmount <= 0) {
@@ -1274,7 +1273,12 @@ async function grantCoins(delta, key) {
     }
     setCoins(response.data.wallet);
     isWalletReady.value = true;
-    journey.value = recordJourneyReward(journey.value, key, rewardAmount);
+    const total = response.data?.reward_total;
+    if (key !== 'vote' && Number.isInteger(total) && total >= 0) {
+      journey.value = normalizeJourney({ ...journey.value, rewards: { ...journey.value.rewards, [key]: Math.max(journey.value.rewards[key] || 0, total) } });
+    } else {
+      journey.value = recordJourneyReward(journey.value, key, key === 'vote' ? rewardAmount : Number(response.data?.coins_earned || 0));
+    }
     saveJourney();
     markDone(key);
     refreshLeaderboard();
@@ -1338,6 +1342,7 @@ function openGame(id) {
   if (!games[id] || !props.eventId || shopBusy.value || matchConcluded.value || (id === 'quiz' && !quizAvailable.value)) return;
   coinError.value = '';
   pendingGameClaim.value = null;
+  activeGameRoundId.value = newMinigameRoundId();
   closeSheets();
   activeGameId.value = id;
 }
@@ -1376,7 +1381,8 @@ function applyLiveGameCredit(key, receipt, totalField) {
 async function onGameClaim(payload) {
   if (!activeGameId.value || isSavingCoins.value) return;
   const key = activeGameId.value;
-  pendingGameClaim.value = payload;
+  const roundId = payload?.roundId || activeGameRoundId.value;
+  pendingGameClaim.value = { ...payload, roundId };
   const coins = key === 'quiz' ? QUIZ_REWARD : Math.max(0, Number(payload?.coins) || 0);
   let earned = 0;
   if (coins && String(payload?.source || '').startsWith('tap_challenge')) {
@@ -1387,7 +1393,7 @@ async function onGameClaim(payload) {
     if (!isWalletReady.value) { coinError.value = 'Risultato salvato. Riprova a caricare il saldo.'; return; }
     earned = Math.max(0, (journey.value.rewards[key] || 0) - previousEarned);
   } else if (coins) {
-    const result = await grantCoins(coins, key);
+    const result = await grantCoins(coins, key, roundId);
     if (!result.ok) return;
     earned = result.coins;
   }

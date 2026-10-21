@@ -47,9 +47,9 @@
 
       <div v-else key="summary" class="flex flex-1 flex-col items-center justify-center text-center text-white">
         <p class="text-sm uppercase tracking-widest text-slate-300">Quiz terminato</p>
-        <h3 class="mt-2 text-4xl font-black">{{ alreadyRewarded ? 'Ben giocato!' : `+${totalCoins} monete` }}</h3>
-        <p v-if="completionReward > 0" class="mt-2 text-sm text-slate-200">{{ alreadyRewarded ? 'Hai già ricevuto il bonus per questa partita.' : 'Bonus per aver completato il quiz' }}</p>
-        <button type="button" :disabled="claiming" class="mt-6 rounded-full bg-amber-400 px-7 py-3 text-base font-black text-slate-900 disabled:opacity-50" @click="claimCoins">{{ claiming ? 'Salvataggio…' : alreadyRewarded ? 'Torna alle attività' : 'Ritira le monete' }}</button>
+        <h3 class="mt-2 text-4xl font-black">+{{ totalCoins }} monete</h3>
+        <p v-if="completionReward > 0" class="mt-2 text-sm text-slate-200">Bonus a ogni quiz completato</p>
+        <button type="button" :disabled="claiming || claimRequested" class="mt-6 rounded-full bg-amber-400 px-7 py-3 text-base font-black text-slate-900 disabled:opacity-50" @click="claimCoins">{{ claiming || claimRequested ? 'Salvataggio…' : 'Ritira le monete' }}</button>
       </div>
     </transition>
   </div>
@@ -59,12 +59,12 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { fetchQuickQuiz, submitQuickQuizAnswer } from '../api';
 import { getOrCreateDeviceId } from '../deviceId';
+import { newMinigameRoundId } from '../fanJourney';
 
 const props = defineProps({
   eventId: { type: Number, required: true },
   completionReward: { type: Number, default: 0 },
   claiming: { type: Boolean, default: false },
-  alreadyRewarded: { type: Boolean, default: false },
 });
 const emit = defineEmits(['claim', 'exit']);
 
@@ -80,6 +80,8 @@ const startedAt = ref(0);
 const lastFeedback = ref(null);
 const errorMessage = ref('');
 const pendingAnswer = ref(-1);
+const claimRequested = ref(false);
+let roundId = newMinigameRoundId();
 let timerId;
 let feedbackTimerId;
 let disposed = false;
@@ -97,6 +99,8 @@ onBeforeUnmount(() => {
 });
 
 async function loadQuiz() {
+  roundId = newMinigameRoundId();
+  claimRequested.value = false;
   state.value = 'loading';
   const { ok, data } = await fetchQuickQuiz(props.eventId);
   if (disposed) return;
@@ -147,6 +151,7 @@ async function submitAnswer(selectedIndex) {
     responseMs,
     deviceId: getOrCreateDeviceId(),
     journey: props.completionReward > 0,
+    ...(props.completionReward > 0 ? { request_id: roundId } : {}),
   });
   if (disposed) return;
   if (!ok) {
@@ -177,9 +182,9 @@ async function submitAnswer(selectedIndex) {
 }
 
 function claimCoins() {
-  if (props.claiming || state.value !== 'summary') return;
-  if (props.alreadyRewarded) { emit('exit'); return; }
-  emit('claim', { coins: totalCoins.value });
+  if (props.claiming || claimRequested.value || state.value !== 'summary') return;
+  claimRequested.value = true;
+  emit('claim', { coins: totalCoins.value, roundId });
 }
 </script>
 
