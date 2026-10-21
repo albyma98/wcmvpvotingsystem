@@ -58,10 +58,9 @@
                   <template v-if="authMode === 'register'">
                     <label class="auth-consent"><input v-model="form.ageEligibilityDeclared" type="checkbox" required :disabled="loading" /><span>Dichiaro di avere almeno {{ FAN_MINIMUM_AGE }} anni.</span></label>
                     <label class="auth-consent"><input v-model="form.acceptedTerms" type="checkbox" required :disabled="loading" /><span>Accetto i <button type="button" class="auth-inline-link" data-legal-document="terms" @click.stop.prevent="openLegalDocument('terms')">Termini del servizio</button>.</span></label>
-                    <nav class="auth-legal-links" aria-label="Documenti del profilo tifoso">
-                      <button type="button" data-legal-document="privacy" @click="openLegalDocument('privacy')">Informativa privacy — SMS e contatto del club per i gadget</button>
-                      <button type="button" data-legal-document="terms" @click="openLegalDocument('terms')">Termini del servizio</button>
-                    </nav>
+                    <p class="auth-legal-links">
+                      <button type="button" data-legal-document="privacy" @click="openLegalDocument('privacy')">Informativa privacy</button>
+                    </p>
                   </template>
                   <p v-if="errorMessage" class="auth-error" role="alert">{{ errorMessage }}</p>
                   <button v-if="phoneAlreadyExists" type="button" class="auth-secondary" :disabled="loading" @click="startLogin">Accedi con questo numero</button>
@@ -396,8 +395,8 @@ input[aria-invalid=true] { border-color: var(--red-text); }
 form > .auth-consent { display: flex; align-items: flex-start; gap: 10px; padding: 13px; margin: 17px 0 0; border: 2px solid var(--line); border-radius: 14px; background: var(--card); font-size: 11px; font-weight: 500; line-height: 1.6; cursor: pointer; }
 form > .auth-consent:first-child { margin: 0 0 16px; }
 .auth-inline-link, .auth-legal-links button { border: 0; background: transparent; padding: 0; color: var(--red-text); font: inherit; text-decoration: underline; text-underline-offset: 3px; text-align: left; }
-.auth-legal-links { display: flex; flex-wrap: wrap; gap: 12px; margin: 22px 0 4px; font-size: 12px; line-height: 1.6; }
-.auth-legal-links button { min-height: 32px; }
+.auth-legal-links { margin: 12px 0 4px; padding: 0; border: 0; background: transparent; box-shadow: none; font-size: 12px; line-height: 1.6; }
+.auth-legal-links button { min-height: 32px; background: transparent; box-shadow: none; }
 .auth-legal-document h3 { margin: 24px 0 8px; color: var(--ink); font-size: 15px; }
 .auth-legal-document p { color: var(--muted); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
 .auth-consent input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--red); }
