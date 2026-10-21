@@ -459,7 +459,7 @@
           </FanCollectionPanel>
           <button v-if="walletError" type="button" class="journey-next" :disabled="shopBusy" @click="loadWallet">Riprova a caricare la collezione</button>
 
-          <details class="lottery-box">
+          <details v-if="SHOW_MVP_LOTTERY_QR" class="lottery-box">
             <summary class="lottery-title">QR Lotteria MVP<span aria-hidden="true">⌄</span></summary>
             <template v-if="lotteryCode">
               <div class="lottery-code">{{ lotteryCode }}</div>
@@ -621,6 +621,8 @@ import {
 const FAN_NICKNAME_MIN_LEN = 3;
 const FAN_NICKNAME_MAX_LEN = 24;
 const FAN_NICKNAME_PATTERN = /^[A-Za-z0-9._ -]+$/;
+// QR temporaneamente nascosto nel profilo; la logica della lotteria resta attiva.
+const SHOW_MVP_LOTTERY_QR = false;
 
 const props = defineProps({
   initialDataReady: { type: Boolean, default: true },
