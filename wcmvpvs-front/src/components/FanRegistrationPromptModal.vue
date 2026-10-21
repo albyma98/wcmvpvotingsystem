@@ -58,6 +58,10 @@
                   <template v-if="authMode === 'register'">
                     <label class="auth-consent"><input v-model="form.ageEligibilityDeclared" type="checkbox" required :disabled="loading" /><span>Dichiaro di avere almeno {{ FAN_MINIMUM_AGE }} anni.</span></label>
                     <label class="auth-consent"><input v-model="form.acceptedTerms" type="checkbox" required :disabled="loading" /><span>Accetto i <button type="button" class="auth-inline-link" data-legal-document="terms" @click.stop.prevent="openLegalDocument('terms')">Termini del servizio</button>.</span></label>
+                    <nav class="auth-legal-links" aria-label="Documenti del profilo tifoso">
+                      <button type="button" data-legal-document="privacy" @click="openLegalDocument('privacy')">Informativa privacy — SMS e contatto del club per i gadget</button>
+                      <button type="button" data-legal-document="terms" @click="openLegalDocument('terms')">Termini del servizio</button>
+                    </nav>
                   </template>
                   <p v-if="errorMessage" class="auth-error" role="alert">{{ errorMessage }}</p>
                   <button v-if="phoneAlreadyExists" type="button" class="auth-secondary" :disabled="loading" @click="startLogin">Accedi con questo numero</button>
@@ -92,10 +96,6 @@
               </template>
             </div>
           </Transition>
-          <nav v-if="!activeLegalDocument" class="auth-legal-links" aria-label="Documenti del profilo tifoso">
-            <button type="button" data-legal-document="privacy" @click="openLegalDocument('privacy')">Informativa privacy — SMS e contatto del club per i gadget</button>
-            <button type="button" data-legal-document="terms" @click="openLegalDocument('terms')">Termini del servizio</button>
-          </nav>
         </section>
       </div>
     </Transition>
