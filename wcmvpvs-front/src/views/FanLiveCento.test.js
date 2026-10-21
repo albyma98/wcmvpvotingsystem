@@ -933,8 +933,9 @@ test('the leaderboard sends the fan session and normalizes legacy coin rows into
   t.after(() => scope.stop());
   await state.refreshLeaderboard();
   assert.equal(headers['X-Fan-Session'], 'test-session');
-  assert.equal(state.leaderboardNearby.value.length, 2);
-  assert.match(state.rankGapLabel.value, /Manca 1 punto/);
+  assert.deepEqual(state.leaderboardRows.value.map((row) => row.rank), [2, 3]);
+  assert.equal(state.leaderboardRows.value[1].points, 40);
+  assert.equal(state.leaderboardRows.value.filter((row) => row.is_me).length, 1);
 });
 
 test('live status exposes only final MVPs in the end-of-match recap', async (t) => {
@@ -957,11 +958,49 @@ test('server rewards restore the badge on a fresh browser profile', async (t) =>
   assert.ok(state.doneKeys.value.includes('quiz'));
 });
 
-test('the gap provided by the server respects tie breaking instead of overstating the target', async (t) => {
-  const { state, scope } = fixture({ apiClient: { get: async () => ({ data: { top3: [], userRank: { rank: 3, coins: 42 }, next_rank_gap: 8, nearby: [{ rank: 2, coins: 50, name: 'Rivale' }] } }) } });
+test('legacy podium, current fan and nearby rows form one ordered list without repeating the fan', async (t) => {
+  for (const position of [1, 2, 3, 8]) {
+    const top3 = [1, 2, 3].map((rank) => ({ name: `Fan ${rank}`, coins: 100 - rank }));
+    const nearby = [position - 1, position, position + 1].filter((rank) => rank > 0).map((rank) => ({ rank, name: `Fan ${rank}`, coins: 100 - rank, is_me: rank === position }));
+    const { state, scope } = fixture({ apiClient: { get: async () => ({ data: { top3, userRank: { rank: position, coins: 100 - position }, nearby } }) } });
+    t.after(() => scope.stop());
+    state.fanNickname.value = 'Il mio nickname';
+    await state.refreshLeaderboard();
+    const rows = state.leaderboardRows.value;
+    const ranks = rows.map((row) => row.rank);
+    assert.equal(ranks.length, new Set(ranks).size);
+    assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b));
+    assert.deepEqual(rows.filter((row) => row.is_me).map((row) => [row.rank, row.name]), [[position, 'Il mio nickname']]);
+  }
+});
+
+test('the open leaderboard requests the complete list and highlights the fan once beyond the podium', async (t) => {
+  const requests = [];
+  const ranking = Array.from({ length: 8 }, (_, index) => ({ rank: index + 1, name: index === 6 ? 'Io' : 'Omonimo', points: 100 - index, is_me: index === 6, equipped_frame: index === 6 ? 'club_frame' : '' }));
+  const { state, scope } = fixture({ apiClient: { get: async (path, config) => {
+    if (!path.includes('coins-leaderboard')) return { data: {} };
+    requests.push(config);
+    return { data: { ranking, top3: ranking.slice(0, 3), userRank: { rank: 7, points: 94 }, nearby: ranking.slice(5) } };
+  } } });
   t.after(() => scope.stop());
+  state.openLeaderboard();
+  await flush();
+  assert.deepEqual(requests[0].params, { view: 'list' });
+  assert.equal(state.leaderboardRows.value.length, 8);
+  assert.deepEqual(state.leaderboardRows.value.filter((row) => row.is_me).map((row) => row.rank), [7]);
+  assert.equal(state.leaderboardRows.value[6].equipped_frame, 'club_frame');
+  state.closeSheets();
   await state.refreshLeaderboard();
-  assert.match(state.rankGapLabel.value, /Mancano 8 punti/);
+  assert.deepEqual(requests.at(-1).params, {});
+});
+
+test('an empty complete ranking does not reuse an old podium or invent a current fan row', async (t) => {
+  const { state, scope } = fixture({ apiClient: { get: async () => ({ data: { ranking: [], top3: [{ name: 'Old fan', points: 1 }] } }) } });
+  t.after(() => scope.stop());
+  state.leaderboardRows.value = [{ rank: 1, name: 'Old fan', points: 1, is_me: true }];
+  await state.refreshLeaderboard();
+  assert.deepEqual(state.leaderboardRows.value, []);
+  assert.equal(state.leaderboardUser.value, null);
 });
 
 test('a retry after a lost response restores progress without re-awarding the vote bonus', async (t) => {
@@ -1188,10 +1227,10 @@ test('points rankings prefer permanent points over a smaller spendable wallet ba
   } }) } });
   t.after(() => scope.stop());
   await state.refreshLeaderboard();
-  assert.equal(state.leaderboardTop3.value[0].points, 90);
+  assert.equal(state.leaderboardRows.value[0].points, 90);
   assert.equal(state.leaderboardUser.value.points, 80);
-  assert.equal(state.leaderboardNearby.value[0].points, 90);
-  assert.match(state.rankGapLabel.value, /Mancano 11 punti/);
+  assert.equal(state.leaderboardRows.value[1].points, 80);
+  assert.equal(state.leaderboardRows.value.filter((row) => row.is_me).length, 1);
   state.applyWallet(walletData({ wallet: 0, points: 80 }));
   assert.equal(state.leaderboardUser.value.rank, 2);
   assert.equal(state.leaderboardUser.value.points, 80);

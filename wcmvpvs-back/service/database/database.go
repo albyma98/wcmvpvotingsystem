@@ -8297,7 +8297,8 @@ func (db *appdbimpl) UpsertGuestCoins(eventID int, organizationID int, deviceID 
 }
 
 func (db *appdbimpl) GetFanLeaderboard(eventID int, organizationID int, limit int) ([]FanLeaderboardEntry, error) {
-	if limit <= 0 {
+	// SQLite's negative LIMIT returns the complete club ranking for the list view.
+	if limit == 0 {
 		limit = 3
 	}
 	rows, err := db.c.Query(`SELECT p.id, p.nickname, COALESCE(a.points,w.coins), p.created_at, COALESCE(s.equipped_frame,'')

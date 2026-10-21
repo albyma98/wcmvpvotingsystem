@@ -351,17 +351,52 @@ func (rt *_router) getCoinsLeaderboard(w http.ResponseWriter, r *http.Request, c
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Evento non valido")
 		return
 	}
-	rows, err := rt.db.GetFanLeaderboard(eventID, ctx.OrganizationID, 3)
+	listView := r.URL.Query().Get("view") == "list"
+	limit := 3
+	if listView {
+		limit = -1
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	rows, err := rt.db.GetFanLeaderboard(eventID, ctx.OrganizationID, limit)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("fan leaderboard")
+		if listView {
+			_ = writeJSONMessage(w, http.StatusInternalServerError, "Impossibile caricare la classifica")
+			return
+		}
 		_ = writeJSON(w, http.StatusOK, map[string]interface{}{"top3": []interface{}{}})
 		return
 	}
-	top := make([]map[string]interface{}, 0, len(rows))
-	for _, e := range rows {
+	top := make([]map[string]interface{}, 0, 3)
+	for index, e := range rows {
+		if index == 3 {
+			break
+		}
 		top = append(top, map[string]interface{}{"name": e.Nickname, "coins": e.Coins, "points": e.Coins, "equipped_frame": e.EquippedFrame})
 	}
 	resp := map[string]interface{}{"top3": top}
+	if listView {
+		fanID := 0
+		if token := rt.fanSessionTokenFromRequest(r); token != "" {
+			if me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r)); err == nil && me.Profile.OrganizationID == ctx.OrganizationID && !me.Profile.RegistrationPending {
+				fanID = me.Profile.ID
+			}
+		}
+		ranking := make([]map[string]interface{}, 0, len(rows))
+		for _, entry := range rows {
+			isMe := fanID > 0 && entry.FanID == fanID
+			ranking = append(ranking, map[string]interface{}{
+				"rank": entry.Rank, "name": entry.Nickname, "points": entry.Coins,
+				"equipped_frame": entry.EquippedFrame, "is_me": isMe,
+			})
+			if isMe {
+				resp["userRank"] = map[string]interface{}{"rank": entry.Rank, "points": entry.Coins, "coins": entry.Coins, "equipped_frame": entry.EquippedFrame}
+			}
+		}
+		resp["ranking"] = ranking
+		_ = writeJSON(w, http.StatusOK, resp)
+		return
+	}
 	if token := rt.fanSessionTokenFromRequest(r); token != "" {
 		if me, e := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r)); e == nil {
 			if rank, rankErr := rt.db.GetFanRank(eventID, ctx.OrganizationID, me.Profile.ID); rankErr == nil {

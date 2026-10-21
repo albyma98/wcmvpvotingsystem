@@ -351,33 +351,20 @@
           <button class="close" type="button" aria-label="Chiudi classifica tifosi" @click="closeSheets">✕</button>
         </div>
         <div class="sheet-body">
-          <div v-if="isLoadingLeaderboard && !leaderboardTop3.length" class="sheet-empty">Caricamento classifica…</div>
+          <div v-if="isLoadingLeaderboard && !leaderboardRows.length" class="sheet-empty">Caricamento classifica…</div>
           <div v-else-if="leaderboardError" class="sheet-empty error" role="status">{{ leaderboardError }}</div>
-          <div v-else-if="!leaderboardTop3.length" class="sheet-empty">
+          <div v-else-if="!leaderboardRows.length" class="sheet-empty">
             {{ eventId ? 'Gioca e vota per popolare la classifica.' : 'La classifica sarà disponibile con un evento attivo.' }}
           </div>
-          <div v-for="(row, index) in leaderboardTop3" :key="index" class="row-item leaderboard-row">
-            <span class="rank leaderboard-rank" :class="`r${index + 1}`">{{ index + 1 }}</span>
-            <FanAvatar :name="row.name" :framed="row.equipped_frame === 'club_frame'" :size="36" />
-            <span class="row-copy"><b>{{ row.name }}</b><span>{{ index + 1 }}° posto</span></span>
-            <span class="row-pts">{{ row.points }} <small>pt</small></span>
-          </div>
-          <div v-if="leaderboardUser" class="row-item leaderboard-row leaderboard-self">
-            <FanAvatar :name="profileNickname" :framed="equippedFrame === 'club_frame'" :size="40" />
-            <span class="row-copy"><b>La tua posizione</b><span>{{ profileNickname }}</span></span>
-            <span class="row-pts">{{ leaderboardUser.points }} <small>pt</small></span>
-          </div>
-          <template v-if="leaderboardNearby.length">
-            <div class="sheet-sub">Vicino a te · classifica della società</div>
-            <p v-if="rankGapLabel" class="rank-gap">{{ rankGapLabel }}</p>
-            <div v-for="row in leaderboardNearby" :key="row.rank" class="row-item leaderboard-row" :class="{ 'leaderboard-self': row.is_me }">
-              <span class="rank leaderboard-rank">{{ row.rank }}</span>
-              <FanAvatar :name="row.is_me ? profileNickname : row.name" :framed="row.is_me ? equippedFrame === 'club_frame' : row.equipped_frame === 'club_frame'" :size="36" />
-              <span class="row-copy"><b>{{ row.is_me ? 'Tu' : row.name }}</b></span>
+          <ol v-if="leaderboardRows.length && !leaderboardError" class="leaderboard-list" aria-label="Classifica tifosi della società">
+            <li v-for="row in leaderboardRows" :key="row.rank" class="row-item leaderboard-row" :class="{ 'leaderboard-self': row.is_me }" :aria-current="row.is_me ? 'true' : undefined">
+              <span class="rank leaderboard-rank" :class="row.rank <= 3 ? `r${row.rank}` : ''">{{ row.rank }}</span>
+              <FanAvatar :name="row.name" :framed="row.equipped_frame === 'club_frame'" :size="36" />
+              <span class="row-copy"><b>{{ row.name }}</b><span v-if="row.is_me">Tu</span></span>
               <span class="row-pts">{{ row.points }} <small>pt</small></span>
-            </div>
-          </template>
-          <button v-else-if="!isRegistered" class="btn-vote" type="button" @click="openRegistration('leaderboard')">Entra in classifica con il tuo nickname</button>
+            </li>
+          </ol>
+          <button v-if="!isRegistered" class="btn-vote" type="button" @click="openRegistration('leaderboard')">Entra in classifica con il tuo nickname</button>
         </div>
       </div>
 
@@ -699,10 +686,8 @@ const nicknameSuccess = ref('');
 const hasVoted = ref(false);
 const votedPlayerId = ref(null);
 const localVoted = ref(null); // giocatore votato in questa sessione (feedback immediato)
-const leaderboardTop3 = ref([]);
+const leaderboardRows = ref([]);
 const leaderboardUser = ref(null);
-const leaderboardNearby = ref([]);
-const leaderboardGap = ref(null);
 const liveEvent = ref(null);
 const isRegistrationOpen = ref(false);
 const registrationTrigger = ref('profile_overlay');
@@ -818,12 +803,6 @@ const nextQuizLabel = computed(() => {
   const startsAt = Date.parse(liveEvent.value?.quiz?.starts_at || '');
   if (!Number.isFinite(startsAt) || startsAt <= Date.now()) return '';
   return `Prossimo quiz alle ${new Date(startsAt).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
-});
-const rankGapLabel = computed(() => {
-  const above = leaderboardNearby.value.find((row) => row.rank === Number(leaderboardUser.value?.rank) - 1);
-  if (!above || !leaderboardUser.value) return Number(leaderboardUser.value?.rank) === 1 ? 'Sei in testa alla classifica della società!' : '';
-  const gap = leaderboardGap.value ?? Math.max(1, above.points - Number(leaderboardUser.value.points) + 1);
-  return `${gap === 1 ? 'Manca 1 punto' : `Mancano ${gap} punti`} per superare il ${above.rank}° posto`;
 });
 const finalMvpLabel = computed(() => {
   const winners = liveEvent.value?.mvp || [];
@@ -1533,28 +1512,42 @@ async function refreshLeaderboard() {
   const request = ++leaderboardRequestRevision;
   const scope = walletScope();
   if (!props.eventId) {
-    leaderboardTop3.value = [];
+    leaderboardRows.value = [];
     leaderboardUser.value = null;
-    leaderboardNearby.value = [];
-    leaderboardGap.value = null;
     leaderboardError.value = '';
     return;
   }
   isLoadingLeaderboard.value = true;
   leaderboardError.value = '';
   try {
-    const { data } = await apiClient.get(`/events/${props.eventId}/coins-leaderboard`, { headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() } });
+    const { data } = await apiClient.get(`/events/${props.eventId}/coins-leaderboard`, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+      // Fetch all rows only while the list is open, including live updates.
+      params: activeSheet.value === 'leaderboard' ? { view: 'list' } : {},
+    });
     if (isDisposed || request !== leaderboardRequestRevision || scope !== walletScope()) return;
-    const top = Array.isArray(data?.top3) ? data.top3 : Array.isArray(data?.top) ? data.top : [];
-    leaderboardTop3.value = top.slice(0, 3).map((row) => ({
-      name: String(row?.name || row?.nickname || 'Tifoso'),
-      points: Number(row?.points ?? row?.coins ?? 0),
-      equipped_frame: row?.equipped_frame === 'club_frame' ? 'club_frame' : '',
-    }));
     const rank = data?.userRank || data?.user_rank;
     leaderboardUser.value = rank ? { ...rank, points: Number(rank.points ?? rank.coins ?? 0) } : null;
-    leaderboardNearby.value = Array.isArray(data?.nearby) ? data.nearby.map((row) => ({ ...row, points: Number(row.points ?? row.coins ?? 0) })) : [];
-    leaderboardGap.value = Number.isFinite(data?.next_rank_gap) && data.next_rank_gap > 0 ? data.next_rank_gap : null;
+    const top = Array.isArray(data?.top3) ? data.top3 : Array.isArray(data?.top) ? data.top : [];
+    // Older backend responses remain a single list with no repeated positions.
+    const ranking = Array.isArray(data?.ranking) ? data.ranking : [
+      ...top.map((row, index) => ({ ...row, rank: row.rank ?? index + 1 })),
+      ...(Array.isArray(data?.nearby) ? data.nearby : []),
+      ...(rank ? [{ ...rank, name: profileNickname.value, is_me: true }] : []),
+    ];
+    const positions = new Map();
+    for (const row of ranking) {
+      const position = Number(row.rank);
+      if (!Number.isInteger(position) || position < 1) continue;
+      positions.set(position, {
+        rank: position,
+        name: String(row.name || row.nickname || 'Tifoso'),
+        points: Number(row.points ?? row.coins ?? 0),
+        equipped_frame: row.equipped_frame === 'club_frame' ? 'club_frame' : '',
+        is_me: row.is_me === true || position === Number(rank?.rank),
+      });
+    }
+    leaderboardRows.value = [...positions.values()].sort((a, b) => a.rank - b.rank);
   } catch (error) {
     if (!isDisposed && request === leaderboardRequestRevision && scope === walletScope()) leaderboardError.value = 'Impossibile caricare la classifica. Riapri il pannello per riprovare.';
   } finally {
@@ -1779,9 +1772,8 @@ async function bootstrap() {
     fanNickname.value = '';
     fanLotteryTicket.value = null;
     nicknameDraft.value = '';
-    leaderboardTop3.value = [];
+    leaderboardRows.value = [];
     leaderboardUser.value = null;
-    leaderboardNearby.value = [];
     liveEvent.value = null;
     isWalletReady.value = false;
     hasVoted.value = false;
@@ -2310,7 +2302,6 @@ main {
 .journey-badge .row-copy span { white-space: normal; }
 .moment-card { display: flex; align-items: center; gap: 10px; flex: none; width: 100%; background: var(--card); border: 2px solid var(--line); border-radius: 18px; padding: 11px 12px; color: var(--ink); text-align: left; font-family: inherit; cursor: pointer; box-shadow: var(--shadow); }
 .moment-card .row-copy span { display: block; white-space: normal; }
-.rank-gap { margin: 0; padding: 10px 12px; font-size: 12.5px; font-weight: 800; background: var(--card); border: 2px solid var(--red-line); border-radius: 14px; }
 .match-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .match-stats > div { padding: 12px 7px; background: var(--card); border: 2px solid var(--line); border-radius: 14px; text-align: center; }
 .match-stats b { display: block; font-family: 'Fraunces', serif; font-size: 24px; }
@@ -2747,6 +2738,7 @@ main {
   cursor: not-allowed;
   box-shadow: none;
 }
+.leaderboard-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .leaderboard-row { cursor: default; }
 .leaderboard-row:active { transform: none; box-shadow: var(--shadow); }
 .leaderboard-self { background: var(--red-soft); }
