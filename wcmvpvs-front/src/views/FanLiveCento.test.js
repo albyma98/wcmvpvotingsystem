@@ -4,6 +4,7 @@ import * as journey from '../fanJourney.js';
 import * as brand from '../organizationTheme.js';
 import * as assets from '../fanHomeAssets.js';
 import * as gameArtwork from '../fanGameArtwork.js';
+import * as registration from '../fanRegistration.js';
 import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
@@ -53,6 +54,7 @@ function fixture(overrides = {}, options = {}) {
     vue: options.vue || testVue, '../api': api, '../organizationTheme': brand, '../fanJourney': journey,
     '../fanHomeAssets': options.assets || assets,
     '../fanGameArtwork': gameArtwork,
+    '../fanRegistration': registration,
     '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
     '../components/FanMvpRoster.vue': {},
@@ -72,9 +74,12 @@ test('registration saves no gender and leaves the success screen open until comp
   });
   t.after(() => scope.stop());
   state.openRegistration();
-  const result = await state.registerJourneyFan({ nickname: 'CurvaFan', phone: '+393331234567', acceptedTerms: true });
+  const result = await state.registerJourneyFan({ nickname: 'CurvaFan', phone: '+393331234567', acceptedTerms: true, ageEligibilityDeclared: true });
   assert.equal('gender' in submitted, false);
   assert.equal(submitted.accepted_terms, true);
+  assert.equal(submitted.age_eligibility_declared, true);
+  assert.equal(submitted.legal_version, registration.FAN_LEGAL_VERSION);
+  assert.equal('enter_lottery' in submitted, false, 'gadget inclusion is decided by the server');
   assert.equal(state.isRegistered.value, true);
   assert.equal(state.isRegistrationOpen.value, true);
   assert.equal(state.activeSheet.value, '');

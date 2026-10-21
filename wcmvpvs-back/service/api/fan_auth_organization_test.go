@@ -94,7 +94,7 @@ func TestFanAuthSamePhoneInDifferentOrganizations(t *testing.T) {
 		return payload
 	}
 	loginBody := `{"phone":"` + phone + `","mode":"login"}`
-	registerBody := `{"phone":"` + phone + `","mode":"register"}`
+	registerBody := withFanRegistrationAcceptance(`{"phone":"` + phone + `","mode":"register"}`)
 	verifyBody := `{"phone":"` + phone + `","code":"123456"}`
 	phoneBody := `{"phone":"` + phone + `"}`
 	for _, tc := range []struct{ handler, body string }{{"start", loginBody}, {"verify", verifyBody}, {"resend", phoneBody}} {
@@ -115,7 +115,7 @@ func TestFanAuthSamePhoneInDifferentOrganizations(t *testing.T) {
 	if data["registered"] != false || data["registration_pending"] != true {
 		t.Fatalf("pending profile treated as complete: %+v", data)
 	}
-	data = decode(request(secondClub.ID, "register", `{"phone":"`+phone+`","nickname":"SecondFan","accepted_terms":true}`, secondToken), 200)
+	data = decode(request(secondClub.ID, "register", withFanRegistrationAcceptance(`{"phone":"`+phone+`","nickname":"SecondFan","accepted_terms":true}`), secondToken), 200)
 	if int(data["user"].(map[string]interface{})["id"].(float64)) != pending.ID || data["wallet"] != float64(0) {
 		t.Fatalf("registration merged profiles or wallets: %+v", data)
 	}

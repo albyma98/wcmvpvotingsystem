@@ -122,6 +122,10 @@
             </button>
           </div>
         </section>
+        <nav class="fan-legal-footer" aria-label="Documenti ArenaBoostX">
+          <button type="button" @click="openFanLegalDocument('privacy')">Privacy</button>
+          <button type="button" @click="openFanLegalDocument('terms')">Termini del servizio</button>
+        </nav>
       </main>
 
       <!-- Overlay condiviso dai pannelli della home -->
@@ -554,6 +558,7 @@
       @submitted="handleFeedbackSubmitted"
     />
     <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" :trigger="registrationTrigger" :reward-label="registrationRewardLabel" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" @completed="completeRegistration" @dismissed="dismissRegistration" />
+    <FanRegistrationPromptModal v-if="isLegalDocumentOpen" v-model="isLegalDocumentOpen" :document-only="legalDocumentKey" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" />
   </div>
 </template>
 
@@ -570,6 +575,10 @@ import FanCollectionPanel from '../components/FanCollectionPanel.vue';
 import FanAvatar from '../components/FanAvatar.vue';
 import FanMatchCard from '../components/FanMatchCard.vue';
 const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
+import { fanRegistrationAcceptance } from '../fanRegistration';
+const isLegalDocumentOpen = ref(false);
+const legalDocumentKey = ref('privacy');
+function openFanLegalDocument(key) { legalDocumentKey.value = key; isLegalDocumentOpen.value = true; }
 import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorageKey, normalizeJourney, journeyProgress, recordJourneyReward } from '../fanJourney';
 
 // Giochi reali riusati da EarnCoinsModal (lazy-load: pesano).
@@ -866,7 +875,7 @@ function dismissRegistration() {
 }
 async function registerJourneyFan(form) {
   const scope = walletScope();
-  const response = await registerFanProfile({ event_id: props.eventId, nickname: form.nickname, phone: form.phone, accepted_terms: form.acceptedTerms, guest_coins: totalCoins.value, enter_lottery: false });
+  const response = await registerFanProfile({ event_id: props.eventId, nickname: form.nickname, phone: form.phone, ...fanRegistrationAcceptance(form), guest_coins: totalCoins.value });
   if (isDisposed || scope !== walletScope()) return { ok: false };
   if (!response.ok) return response;
   isRegistered.value = true;
@@ -2807,6 +2816,8 @@ main {
 @media (prefers-reduced-motion: reduce) { .collectible-stage.is-new, .collectible-stage.is-new::after { animation: none; } .collectible-stage.is-new::after { display: none; } .shop-artwork.match_card > :deep(.fan-match-card) { transition: none; transform: none; } }
 .rank-link:focus-visible, .feedback-link:focus-visible, .shop-buy:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
 
+.fan-legal-footer { display: flex; justify-content: center; flex-wrap: wrap; gap: 18px; margin: 22px 0 8px; }
+.fan-legal-footer button { padding: 8px 2px; border: 0; background: transparent; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; font: inherit; font-size: 12px; }
 /* Profilo */
 .profile-economy { flex: none; padding-bottom: 12px; }
 .profile-balances { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }

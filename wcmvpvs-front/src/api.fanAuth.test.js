@@ -19,7 +19,7 @@ function fixture(handler) {
   const source = stripTypeScriptTypes(readFileSync(new URL('./api.ts', import.meta.url), 'utf8').replaceAll('import.meta.env', '({})'))
     .replace(/^import .*;\r?\n/gm, '')
     .replace(/^export /gm, '');
-  const api = new Function('axios', 'getOrCreateDeviceId', 'readFanSessionToken', 'saveFanSessionToken', 'readLegacyFanSessionToken', 'window', `${source}\nreturn { getFanSessionToken, getFanSessionHeaders, verifyPhoneAuth, registerFanProfile, fetchFanProfile };`)(axios, () => 'device', sessions.readFanSessionToken, sessions.saveFanSessionToken, sessions.readLegacyFanSessionToken, window);
+  const api = new Function('axios', 'getOrCreateDeviceId', 'readFanSessionToken', 'saveFanSessionToken', 'readLegacyFanSessionToken', 'window', `${source}\nreturn { getFanSessionToken, getFanSessionHeaders, startPhoneAuth, verifyPhoneAuth, registerFanProfile, fetchFanProfile };`)(axios, () => 'device', sessions.readFanSessionToken, sessions.saveFanSessionToken, sessions.readLegacyFanSessionToken, window);
   return { api, window, requests };
 }
 
@@ -34,6 +34,15 @@ test('OTP tokens stay with the requesting club even if navigation changes during
   assert.deepEqual(api.getFanSessionHeaders(), {});
   window.location.pathname = '/club-a/new';
   assert.deepEqual(api.getFanSessionHeaders(), { 'X-Fan-Session': 'session-a' });
+});
+
+test('only registration sends declarations with the OTP request; login remains unchanged', async () => {
+  const { api, requests } = fixture(async () => ({ data: {} }));
+  const acceptance = { accepted_terms: true, age_eligibility_declared: true, minimum_age_declared: 14, legal_version: '2026-10-21.1' };
+  await api.startPhoneAuth('+393331234567', 'register', acceptance);
+  assert.deepEqual(requests[0].body, { ...acceptance, phone: '+393331234567', mode: 'register' });
+  await api.startPhoneAuth('+393331234567', 'login', acceptance);
+  assert.deepEqual(requests[1].body, { phone: '+393331234567', mode: 'login' });
 });
 
 test('registration uses and updates only the current organization session', async () => {

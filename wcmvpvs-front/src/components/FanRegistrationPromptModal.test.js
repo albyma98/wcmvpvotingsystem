@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 import * as theme from '../organizationTheme.js';
+import * as registration from '../fanRegistration.js';
+import { readFileSync } from 'node:fs';
 
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 function fixture(t, overrides = {}) {
@@ -16,12 +18,16 @@ function fixture(t, overrides = {}) {
   };
   const setup = setupSfc(new URL('./FanRegistrationPromptModal.vue', import.meta.url), {
     vue: testVue, '../api': api, '../organizationTheme': theme,
+    '../fanRegistration': registration,
+    '../legal/fan-privacy.md?raw': readFileSync(new URL('../legal/fan-privacy.md', import.meta.url), 'utf8'),
+    '../legal/fan-terms.md?raw': readFileSync(new URL('../legal/fan-terms.md', import.meta.url), 'utf8'),
   }, {
     modelValue: true, organizationSlug: 'club', trigger: 'profile_overlay', walletCoins: 12,
     onSubmit: async (form) => { calls.saves.push(form); return { ok: true, wallet: 12 }; },
     onLogin: async () => ({ ok: true, wallet: 42 }),
   }, { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout, setInterval: clock.setInterval, clearInterval: clock.clearInterval });
   t.after(() => { setup.state.reset(); setup.scope.stop(); });
+  setup.state.form.ageEligibilityDeclared = true;
   return { ...setup, calls };
 }
 
@@ -63,7 +69,7 @@ test('late nickname responses cannot validate a changed name or another organiza
   assert.equal(state.canContinueNickname.value, false);
 });
 
-test('registration requires consent and recovers a nickname conflict without repeating OTP', async (t) => {
+test('registration requires terms and recovers a nickname conflict without repeating OTP', async (t) => {
   const { state, props, calls, events } = fixture(t);
   state.form.nickname = 'FreeFan';
   await state.goStep2();
@@ -73,7 +79,7 @@ test('registration requires consent and recovers a nickname conflict without rep
   assert.equal(calls.starts.length, 0);
   state.form.acceptedTerms = true;
   await state.submit();
-  assert.deepEqual(calls.starts, [['+393331234567', 'register']]);
+  assert.deepEqual(calls.starts, [['+393331234567', 'register', registration.fanRegistrationAcceptance(state.form)]]);
   assert.equal(state.stage.value, 'otp');
   state.otpCode.value = '123456';
   props.onSubmit = async () => ({ ok: false, code: 'NICKNAME_TAKEN', message: 'Nickname occupato' });
@@ -89,6 +95,7 @@ test('registration requires consent and recovers a nickname conflict without rep
   assert.equal(state.stage.value, 'success');
   assert.equal(state.savedCoins.value, 19);
   assert.equal(calls.saves[0].nickname, 'AnotherFan');
+  assert.equal(calls.saves[0].ageEligibilityDeclared, true);
   assert.equal('gender' in calls.saves[0], false);
   state.closeSuccess();
   assert.deepEqual(events.slice(-2), [['update:modelValue', false], ['completed', 'register']]);
@@ -168,4 +175,62 @@ test('login to a pending profile completes registration using the verified phone
   assert.equal(calls.starts.length, 1);
   assert.equal(calls.verifies.length, 1);
   assert.equal(calls.saves[0].nickname, 'CurvaFan');
+});
+
+test('no nickname checks or OTP are sent before the age declaration; missing terms also blocks OTP', async (t) => {
+  const { state, calls } = fixture(t);
+  state.form.ageEligibilityDeclared = false;
+  state.form.nickname = 'YoungFan';
+  await state.checkNickname();
+  await state.goStep2();
+  assert.equal(calls.checks.length, 0);
+  state.form.phone = '3331234567';
+  state.form.acceptedTerms = true;
+  await state.submit();
+  await state.sendOtp();
+  assert.equal(calls.starts.length, 0);
+  state.form.ageEligibilityDeclared = true;
+  state.form.acceptedTerms = false;
+  await state.submit();
+  assert.equal(calls.starts.length, 0);
+});
+
+test('documents use the selected club, keep declarations and return to the current form', async (t) => {
+  const { state, props, calls } = fixture(t);
+  props.clubName = 'Club Basket';
+  state.stage.value = 'step2';
+  state.form.nickname = 'CurvaFan';
+  state.form.phone = '3331234567';
+  state.form.acceptedTerms = true;
+  await state.openLegalDocument('privacy');
+  assert.ok(state.legalDocumentBlocks.value.some((block) => block.text.includes('Club Basket')));
+  assert.equal(state.stage.value, 'step2');
+  await state.closeLegalDocument();
+  assert.equal(state.form.acceptedTerms, true);
+  assert.equal(state.form.ageEligibilityDeclared, true);
+  assert.equal(state.form.phone, '3331234567');
+  assert.equal(calls.starts.length, 0);
+  props.organizationSlug = 'another-club';
+  await flush();
+  assert.equal(state.form.acceptedTerms, false);
+  assert.equal(state.form.ageEligibilityDeclared, false);
+  assert.equal(state.activeLegalDocument.value, '');
+});
+
+test('an expired verification returns to the SMS step while retaining accepted terms', async (t) => {
+  const { state, props, calls } = fixture(t);
+  state.form.nickname = 'CurvaFan';
+  await state.goStep2();
+  state.form.phone = '3331234567';
+  state.form.acceptedTerms = true;
+  await flush();
+  await state.submit();
+  state.otpCode.value = '123456';
+  props.onSubmit = async () => ({ ok: false, code: 'PHONE_VERIFICATION_REQUIRED' });
+  await state.verifyOtpAndSubmit();
+  assert.equal(state.stage.value, 'step2');
+  assert.equal(state.phoneVerified.value, false);
+  assert.equal(state.form.acceptedTerms, true);
+  await state.submit();
+  assert.equal(calls.starts.length, 2);
 });

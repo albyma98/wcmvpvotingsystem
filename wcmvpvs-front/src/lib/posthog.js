@@ -6,7 +6,13 @@ const POSTHOG_HOST = 'https://eu.i.posthog.com';
 let initialized = false;
 let initFailed = false;
 
+function isNewFanExperience() {
+  return typeof window !== 'undefined' && /^\/[^/]+\/new(?:\/|$)/.test(window.location.pathname);
+}
+
 export function initPostHog() {
+  // The new fan flow does not send per-device analytics or session replay.
+  if (isNewFanExperience()) return null;
   if (initialized || initFailed) {
     return initialized ? posthog : null;
   }
@@ -48,9 +54,9 @@ export function initPostHog() {
 }
 
 export function getPostHog() {
-  return initialized ? posthog : null;
+  return initialized && !isNewFanExperience() ? posthog : null;
 }
 
 export function isPostHogReady() {
-  return initialized;
+  return initialized && !isNewFanExperience();
 }

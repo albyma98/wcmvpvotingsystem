@@ -88,7 +88,8 @@ func TestFanNicknameRegistrationConflict(t *testing.T) {
 	db := &fanEconomyAPIDB{registerErr: database.ErrFanNicknameTaken}
 	router := &_router{db: db}
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/fan/register", strings.NewReader(`{"phone":"+393331234567","nickname":"CurvaNord","accepted_terms":true}`))
+	r := httptest.NewRequest(http.MethodPost, "/fan/register", strings.NewReader(withFanRegistrationAcceptance(`{"phone":"+393331234567","nickname":"CurvaNord","accepted_terms":true}`)))
+	r.Header.Set("X-Fan-Session", "valid")
 	router.postRegisterFan(w, r, reqcontext.RequestContext{OrganizationID: 7, Logger: logrus.New()})
 	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "NICKNAME_TAKEN") {
 		t.Fatalf("conflict must allow frontend recovery: %d %s", w.Code, w.Body.String())

@@ -799,10 +799,10 @@ export async function updateFanNickname(nickname: string) {
   }
 }
 
-export async function startPhoneAuth(phone: string, mode: 'register' | 'login' = 'register') {
+export async function startPhoneAuth(phone: string, mode: 'register' | 'login' = 'register', acceptance: Record<string, unknown> = {}) {
   const organizationSlug = getOrganizationSlug();
   try {
-    await apiClient.post('/auth/start', { phone, mode }, { headers: { ...getDeviceHeaders(), 'X-Organization-Slug': organizationSlug } });
+    await apiClient.post('/auth/start', { ...(mode === 'register' ? acceptance : {}), phone, mode }, { headers: { ...getDeviceHeaders(), 'X-Organization-Slug': organizationSlug } });
     return { ok: true };
   } catch (error) {
     const code = axios.isAxiosError(error) ? error.response?.data?.error : undefined;

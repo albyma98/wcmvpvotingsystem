@@ -149,7 +149,8 @@ func TestFanEconomyAPIContractAndServerOwnedPurchase(t *testing.T) {
 func TestFanEconomyExistingPhoneRequiresOTPLogin(t *testing.T) {
 	db := &fanEconomyAPIDB{registerErr: database.ErrFanLoginRequired}
 	router := &_router{db: db}
-	r := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(`{"phone":"+390004","nickname":"Other"}`))
+	r := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(withFanRegistrationAcceptance(`{"phone":"+393331234567","nickname":"Other"}`)))
+	r.Header.Set("X-Fan-Session", "valid")
 	w := httptest.NewRecorder()
 	router.postRegisterFan(w, r, reqcontext.RequestContext{OrganizationID: 7, Logger: logrus.New()})
 	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "codice") {

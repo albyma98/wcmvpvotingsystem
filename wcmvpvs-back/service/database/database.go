@@ -882,16 +882,17 @@ type FanProfile struct {
 }
 
 type MarketingAudienceEntry struct {
-	FanID           int    `json:"fan_id"`
-	Nickname        string `json:"nickname"`
-	Gender          string `json:"gender"`
-	Phone           string `json:"phone"`
-	CreatedAt       string `json:"created_at"`
-	LastSeenAt      string `json:"last_seen_at"`
-	Coins           int    `json:"coins"`
-	AcceptedTerms   bool   `json:"accepted_terms"`
-	PhoneVerified   bool   `json:"phone_verified"`
-	PhoneVerifiedAt string `json:"phone_verified_at"`
+	MarketingConsent bool   `json:"marketing_consent"`
+	FanID            int    `json:"fan_id"`
+	Nickname         string `json:"nickname"`
+	Gender           string `json:"gender"`
+	Phone            string `json:"phone"`
+	CreatedAt        string `json:"created_at"`
+	LastSeenAt       string `json:"last_seen_at"`
+	Coins            int    `json:"coins"`
+	AcceptedTerms    bool   `json:"accepted_terms"`
+	PhoneVerified    bool   `json:"phone_verified"`
+	PhoneVerifiedAt  string `json:"phone_verified_at"`
 }
 
 type SMSCampaign struct {
@@ -947,6 +948,7 @@ type FanSession struct {
 }
 
 type FanRegisterInput struct {
+	Acceptance     *FanRegistrationAcceptance
 	OrganizationID int
 	EventID        int
 	DeviceID       string
@@ -7539,6 +7541,17 @@ func ensureFanProfileTables(db *sql.DB) error {
 			last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (fan_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
 		);`,
+		`CREATE TABLE IF NOT EXISTS fan_registration_acceptances (
+			fan_id INTEGER NOT NULL,
+			organization_id INTEGER NOT NULL,
+			minimum_age_declared INTEGER NOT NULL,
+			legal_version TEXT NOT NULL,
+			accepted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			phone_verified_at TEXT NOT NULL,
+			gadget_enrolment_source TEXT NOT NULL DEFAULT 'registration',
+			PRIMARY KEY (fan_id, legal_version),
+			FOREIGN KEY (fan_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
+		);`,
 		`CREATE TABLE IF NOT EXISTS fan_wallets (
 			fan_id INTEGER PRIMARY KEY,
 			coins INTEGER NOT NULL DEFAULT 0,
@@ -7627,6 +7640,7 @@ func ensureFanProfileTables(db *sql.DB) error {
 		`ALTER TABLE fan_profiles ADD COLUMN phone_e164 TEXT;`,
 		`ALTER TABLE fan_profiles ADD COLUMN phone_verified_at TEXT;`,
 		`ALTER TABLE fan_profiles ADD COLUMN registration_pending INTEGER NOT NULL DEFAULT 0;`,
+		`ALTER TABLE fan_profiles ADD COLUMN marketing_consent INTEGER NOT NULL DEFAULT 0;`,
 		`UPDATE fan_profiles SET registration_pending=1 WHERE organization_id=0 AND accepted_terms=0;`,
 		`ALTER TABLE fan_sessions ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP;`,
 		`UPDATE fan_sessions SET last_seen_at = IFNULL(created_at, CURRENT_TIMESTAMP) WHERE TRIM(IFNULL(last_seen_at, '')) = '';`,
@@ -7684,6 +7698,11 @@ func ensureFanProfileTables(db *sql.DB) error {
 }
 
 func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, error) {
+	if input.Acceptance != nil {
+		if err := input.Acceptance.Validate(input.AcceptedTerms); err != nil {
+			return FanProfileSummary{}, err
+		}
+	}
 	input.Phone = strings.TrimSpace(input.Phone)
 	input.Nickname = strings.TrimSpace(input.Nickname)
 	input.Gender = strings.TrimSpace(input.Gender)
@@ -7714,6 +7733,9 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 		}
 	}
 
+	if input.Acceptance != nil && profileID == 0 {
+		return FanProfileSummary{}, ErrFanVerificationRequired
+	}
 	if profileID == 0 {
 		err = tx.QueryRow(`SELECT id FROM fan_profiles WHERE organization_id=? AND (phone_e164 = ? OR phone = ?) LIMIT 1`, input.OrganizationID, input.Phone, input.Phone).Scan(&profileID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -7726,8 +7748,15 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 
 	if profileID > 0 {
 		var existingOrganization int
-		if err := tx.QueryRow(`SELECT organization_id FROM fan_profiles WHERE id=? AND (phone=? OR phone_e164=?)`, profileID, input.Phone, input.Phone).Scan(&existingOrganization); err != nil {
+		var verifiedAt string
+		if err := tx.QueryRow(`SELECT organization_id, IFNULL(phone_verified_at,'') FROM fan_profiles WHERE id=? AND (phone=? OR phone_e164=?)`, profileID, input.Phone, input.Phone).Scan(&existingOrganization, &verifiedAt); err != nil {
+			if input.Acceptance != nil && errors.Is(err, sql.ErrNoRows) {
+				return FanProfileSummary{}, ErrFanVerificationRequired
+			}
 			return FanProfileSummary{}, err
+		}
+		if input.Acceptance != nil && (verifiedAt == "" || existingOrganization != input.OrganizationID) {
+			return FanProfileSummary{}, ErrFanVerificationRequired
 		}
 		if existingOrganization != input.OrganizationID {
 			return FanProfileSummary{}, ErrInvalidSponsorData
@@ -7810,7 +7839,18 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 		}
 	}
 
-	if input.EnterLottery && input.EventID > 0 {
+	if input.Acceptance != nil {
+		if _, err = tx.Exec(`INSERT INTO fan_registration_acceptances (fan_id,organization_id,minimum_age_declared,legal_version,phone_verified_at)
+			SELECT id,organization_id,?,?,phone_verified_at FROM fan_profiles WHERE id=?
+			ON CONFLICT(fan_id,legal_version) DO NOTHING`, input.Acceptance.MinimumAgeDeclared, input.Acceptance.LegalVersion, profile.ID); err != nil {
+			return FanProfileSummary{}, err
+		}
+	}
+	if (input.EnterLottery || input.Acceptance != nil) && input.EventID > 0 {
+		source := "after_vote"
+		if input.Acceptance != nil {
+			source = "registration"
+		}
 		if _, err = tx.Exec(`INSERT OR IGNORE INTO fan_lottery_entries (event_id, fan_id, ticket_code, source)
 			VALUES (?, ?, IFNULL((
 				SELECT v.ticket_code
@@ -7819,7 +7859,7 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 				  AND v.user_id = ?
 				ORDER BY v.id DESC
 				LIMIT 1
-			), ''), 'after_vote')`, input.EventID, profile.ID, input.EventID, profile.ID); err != nil {
+			), ''), ?)`, input.EventID, profile.ID, input.EventID, profile.ID, source); err != nil {
 			return FanProfileSummary{}, err
 		}
 	}
@@ -8513,18 +8553,18 @@ func nonNegativeInt(value int) int {
 	return value
 }
 
-func (db *appdbimpl) ListMarketingAudience(organizationID int, query string, acceptedTermsOnly bool) ([]MarketingAudienceEntry, error) {
+func (db *appdbimpl) ListMarketingAudience(organizationID int, query string, marketingConsentOnly bool) ([]MarketingAudienceEntry, error) {
 	where := `WHERE p.organization_id = ? AND TRIM(IFNULL(p.phone_e164,'')) <> '' AND TRIM(IFNULL(p.phone_verified_at,'')) <> ''`
 	args := []interface{}{organizationID}
-	if acceptedTermsOnly {
-		where += ` AND p.accepted_terms = 1`
+	if marketingConsentOnly {
+		where += ` AND p.marketing_consent = 1`
 	}
 	if q := strings.TrimSpace(query); q != "" {
 		where += ` AND (LOWER(p.nickname) LIKE ? OR REPLACE(p.phone,' ','') LIKE ?)`
 		like := "%" + strings.ToLower(q) + "%"
 		args = append(args, like, "%"+strings.ReplaceAll(q, " ", "")+"%")
 	}
-	rows, err := db.c.Query(`SELECT p.id, p.nickname, IFNULL(p.gender,''), p.phone_e164, p.created_at, IFNULL(s.last_seen_at,''), IFNULL(w.coins,0), p.accepted_terms, p.phone_verified_at
+	rows, err := db.c.Query(`SELECT p.id, p.nickname, IFNULL(p.gender,''), p.phone_e164, p.created_at, IFNULL(s.last_seen_at,''), IFNULL(w.coins,0), p.accepted_terms, p.phone_verified_at, p.marketing_consent
 		FROM fan_profiles p
 		LEFT JOIN fan_sessions s ON s.fan_id = p.id
 		LEFT JOIN fan_wallets w ON w.fan_id = p.id `+where+`
@@ -8537,7 +8577,7 @@ func (db *appdbimpl) ListMarketingAudience(organizationID int, query string, acc
 	items := []MarketingAudienceEntry{}
 	for rows.Next() {
 		var it MarketingAudienceEntry
-		if err := rows.Scan(&it.FanID, &it.Nickname, &it.Gender, &it.Phone, &it.CreatedAt, &it.LastSeenAt, &it.Coins, &it.AcceptedTerms, &it.PhoneVerifiedAt); err != nil {
+		if err := rows.Scan(&it.FanID, &it.Nickname, &it.Gender, &it.Phone, &it.CreatedAt, &it.LastSeenAt, &it.Coins, &it.AcceptedTerms, &it.PhoneVerifiedAt, &it.MarketingConsent); err != nil {
 			return nil, err
 		}
 		it.PhoneVerified = strings.TrimSpace(it.PhoneVerifiedAt) != ""

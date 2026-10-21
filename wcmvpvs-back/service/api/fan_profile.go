@@ -13,7 +13,6 @@ import (
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 	"github.com/go-chi/chi/v5"
-	"github.com/gofrs/uuid"
 )
 
 const (
@@ -24,6 +23,7 @@ const (
 var fanNicknamePattern = regexp.MustCompile(`^[A-Za-z0-9._ -]+$`)
 
 type fanRegisterPayload struct {
+	database.FanRegistrationAcceptance
 	EventID       int    `json:"event_id"`
 	Nickname      string `json:"nickname"`
 	Gender        string `json:"gender"`
@@ -68,8 +68,18 @@ func (rt *_router) postRegisterFan(w http.ResponseWriter, r *http.Request, ctx r
 		return
 	}
 	var payload fanRegisterPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&payload); err != nil {
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta non valida")
+		return
+	}
+	if err := payload.FanRegistrationAcceptance.Validate(payload.AcceptedTerms); err != nil {
+		status, code, message := fanRegistrationError(err)
+		_ = writeJSON(w, status, map[string]string{"code": code, "message": message})
+		return
+	}
+	phone, validPhone := normalizeE164(payload.Phone)
+	if !validPhone {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Numero di telefono non valido")
 		return
 	}
 	deviceID := rt.deviceIDFromRequest(r)
@@ -80,22 +90,28 @@ func (rt *_router) postRegisterFan(w http.ResponseWriter, r *http.Request, ctx r
 	}
 	sessionToken := rt.fanSessionTokenFromRequest(r)
 	if sessionToken == "" {
-		sessionToken = uuid.Must(uuid.NewV4()).String()
+		status, code, message := fanRegistrationError(database.ErrFanVerificationRequired)
+		_ = writeJSON(w, status, map[string]string{"code": code, "message": message})
+		return
 	}
 
 	summary, err := rt.db.RegisterFan(database.FanRegisterInput{
+		Acceptance:     &payload.FanRegistrationAcceptance,
 		OrganizationID: ctx.OrganizationID,
 		EventID:        payload.EventID,
 		DeviceID:       deviceID,
 		SessionToken:   sessionToken,
 		Nickname:       nickname,
-		Gender:         payload.Gender,
-		Phone:          payload.Phone,
+		Phone:          phone,
 		AcceptedTerms:  payload.AcceptedTerms,
 		GuestCoins:     payload.GuestCoins,
-		EnterLottery:   payload.EnterLottery,
+		EnterLottery:   true,
 	})
 	if err != nil {
+		if status, code, message := fanRegistrationError(err); status != 0 {
+			_ = writeJSON(w, status, map[string]string{"code": code, "message": message})
+			return
+		}
 		if errors.Is(err, database.ErrFanNicknameTaken) {
 			_ = writeJSON(w, http.StatusConflict, map[string]interface{}{"code": "NICKNAME_TAKEN", "message": "Nickname già in uso in questa società. Scegli un altro nome."})
 			return

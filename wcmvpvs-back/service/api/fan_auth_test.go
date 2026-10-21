@@ -51,7 +51,7 @@ func TestFanAuthRegistrationCanRetryPendingPhone(t *testing.T) {
 	router := &_router{db: db, twilioVerify: verify, authRateByPhone: map[string][]time.Time{}, authRateByIP: map[string][]time.Time{}}
 	start := func() *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, "/auth/start", strings.NewReader(`{"phone":"+393331234567","mode":"register"}`))
+		r := httptest.NewRequest(http.MethodPost, "/auth/start", strings.NewReader(withFanRegistrationAcceptance(`{"phone":"+393331234567","mode":"register"}`)))
 		router.postAuthStart(w, r, reqcontext.RequestContext{OrganizationID: 7, Logger: logrus.New()})
 		return w
 	}

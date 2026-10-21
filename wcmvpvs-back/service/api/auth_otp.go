@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 	"github.com/gofrs/uuid"
 )
 
@@ -20,8 +21,10 @@ const (
 )
 
 type authStartPayload struct {
-	Phone string `json:"phone"`
-	Mode  string `json:"mode"`
+	database.FanRegistrationAcceptance
+	AcceptedTerms bool   `json:"accepted_terms"`
+	Phone         string `json:"phone"`
+	Mode          string `json:"mode"`
 }
 
 type authVerifyPayload struct {
@@ -43,6 +46,14 @@ func (rt *_router) postAuthStart(w http.ResponseWriter, r *http.Request, ctx req
 		_ = writeJSON(w, http.StatusBadRequest, authErrorResponse{Error: "INVALID_REQUEST"})
 		return
 	}
+	mode := strings.ToLower(strings.TrimSpace(payload.Mode))
+	if mode == "register" {
+		if err := payload.FanRegistrationAcceptance.Validate(payload.AcceptedTerms); err != nil {
+			status, code, _ := fanRegistrationError(err)
+			_ = writeJSON(w, status, authErrorResponse{Error: code})
+			return
+		}
+	}
 
 	phone, ok := normalizeE164(payload.Phone)
 	if !ok {
@@ -56,7 +67,6 @@ func (rt *_router) postAuthStart(w http.ResponseWriter, r *http.Request, ctx req
 		return
 	}
 
-	mode := strings.ToLower(strings.TrimSpace(payload.Mode))
 	found, err := rt.db.GetFanByPhoneE164(ctx.OrganizationID, phone)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		ctx.Logger.WithError(err).Error("cannot lookup user by phone")

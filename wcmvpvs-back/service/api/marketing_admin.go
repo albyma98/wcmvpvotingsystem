@@ -51,6 +51,10 @@ func (rt *_router) getSMSBillingSummary(w http.ResponseWriter, r *http.Request, 
 }
 
 func (rt *_router) listMarketingAudience(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if !strings.EqualFold(ctx.AdminRole, "master") {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
 	items, err := rt.db.ListMarketingAudience(ctx.OrganizationID, r.URL.Query().Get("q"), false)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -59,6 +63,10 @@ func (rt *_router) listMarketingAudience(w http.ResponseWriter, r *http.Request,
 	_ = writeJSON(w, http.StatusOK, items)
 }
 func (rt *_router) getMarketingAudienceFan(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if !strings.EqualFold(ctx.AdminRole, "master") {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
 	id, _ := strconv.Atoi(chi.URLParam(r, "fanId"))
 	item, err := rt.db.GetMarketingAudienceFan(ctx.OrganizationID, id)
 	if err != nil {
@@ -81,7 +89,7 @@ func (rt *_router) sendSingleMarketingSMS(w http.ResponseWriter, r *http.Request
 		return
 	}
 	fan, err := rt.db.GetMarketingAudienceFan(ctx.OrganizationID, p.FanID)
-	if err != nil || !fan.AcceptedTerms {
+	if err != nil || !fan.MarketingConsent {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -120,7 +128,7 @@ func (rt *_router) createSMSCampaign(w http.ResponseWriter, r *http.Request, ctx
 	}
 	targets := []database.MarketingAudienceEntry{}
 	for _, f := range aud {
-		if (len(selected) == 0 || selected[f.FanID]) && f.AcceptedTerms {
+		if (len(selected) == 0 || selected[f.FanID]) && f.MarketingConsent {
 			targets = append(targets, f)
 		}
 	}
@@ -196,6 +204,11 @@ func (rt *_router) sendSMSCampaignNow(w http.ResponseWriter, r *http.Request, ct
 	sent := 0
 	for _, item := range logs {
 		if item.Status != "queued" {
+			continue
+		}
+		fan, lookupErr := rt.db.GetMarketingAudienceFan(ctx.OrganizationID, item.FanID)
+		if lookupErr != nil || !fan.MarketingConsent || fan.Phone != item.Phone {
+			_ = rt.db.UpdateSMSMessageDelivery(item.ID, "", "blocked", "MARKETING_CONSENT_REQUIRED")
 			continue
 		}
 		res, sErr := rt.twilioMessaging.SendSMS(item.Phone, item.Body)

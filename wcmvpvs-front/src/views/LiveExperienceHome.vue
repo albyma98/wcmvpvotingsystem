@@ -361,6 +361,8 @@
       :earned-coins="lastEarnedCoins"
       :wallet-coins="totalCoins"
       :reward-label="selectedRewardLabel"
+      :club-name="teamName"
+      :organization-slug="getOrganizationSlug()"
       :on-submit="handleRegistrationSubmit"
       :on-login="handleExistingFanLogin"
       @dismissed="markPromptDismissed"
@@ -750,6 +752,7 @@ import InAppAiPopup from '../components/InAppAiPopup.vue';
 import FansLeaderboardModal from '../components/FansLeaderboardModal.vue';
 import FeatureCard from '../components/FeatureCard.vue';
 import FanRegistrationPromptModal from '../components/FanRegistrationPromptModal.vue';
+import { fanRegistrationAcceptance } from '../fanRegistration';
 import LiveHeader from '../components/LiveHeader.vue';
 import SponsorsMarquee from '../components/SponsorsMarquee.vue';
 import StoriesBar from '../components/StoriesBar.vue';
@@ -1865,9 +1868,8 @@ async function handleRegistrationSubmit(form) {
     event_id: props.eventId,
     nickname: form.nickname,
     phone: form.phone,
-    accepted_terms: form.acceptedTerms,
+    ...fanRegistrationAcceptance(form),
     guest_coins: totalCoins.value,
-    enter_lottery: form.trigger === 'after_vote',
   });
   if (!response?.ok) {
     trackAppEvent('fan.registration_failed', { trigger: form.trigger, message: response.message || 'registration_failed' }, 'fan');

@@ -1,18 +1,26 @@
 <template>
   <Teleport to="body">
     <Transition name="fan-auth">
-      <div v-if="modelValue" class="fan-auth" :style="themeStyle" @click.self="closeAsLater" @keydown.esc.prevent="closeAsLater">
-        <section ref="panelRef" class="auth-panel" role="dialog" aria-modal="true" aria-labelledby="fan-auth-title" tabindex="-1" @keydown.tab="trapFocus">
+      <div v-if="modelValue" class="fan-auth" :style="themeStyle" @click.self="handleEscape" @keydown.esc.stop.prevent="handleEscape">
+        <section ref="panelRef" class="auth-panel" role="dialog" aria-modal="true" :aria-labelledby="activeLegalDocument ? 'fan-legal-title' : 'fan-auth-title'" tabindex="-1" @keydown.tab="trapFocus">
           <div class="auth-grabber" aria-hidden="true"></div>
           <header class="auth-header">
             <span class="auth-eyebrow">{{ clubName || 'Il tuo profilo tifoso' }}</span>
-            <button type="button" class="auth-close" aria-label="Chiudi registrazione o accesso" :disabled="loading" @click="closeAsLater">×</button>
+            <button type="button" class="auth-close" :aria-label="activeLegalDocument ? 'Chiudi documento' : 'Chiudi registrazione o accesso'" :disabled="loading" @click="handleEscape">×</button>
           </header>
           <div v-if="isFormStage" class="auth-progress" :aria-label="`Passaggio ${stepNumber} di ${authMode === 'login' ? 2 : 3}`">
             <span v-for="n in (authMode === 'login' ? 2 : 3)" :key="n" :class="{ filled: n <= stepNumber }"></span>
           </div>
 
-          <Transition name="auth-step" mode="out-in" @after-enter="focusStage">
+          <article v-if="activeLegalDocument" class="auth-legal-document" aria-labelledby="fan-legal-title">
+            <h2 id="fan-legal-title">{{ legalDocumentBlocks.find((block) => block.type === 'title')?.text }}</h2>
+            <template v-for="(block, index) in legalDocumentBlocks" :key="index">
+              <h3 v-if="block.type === 'heading'">{{ block.text }}</h3>
+              <p v-else-if="block.type === 'paragraph'">{{ block.text }}</p>
+            </template>
+            <button type="button" class="auth-secondary" @click="closeLegalDocument">Torna {{ stage === 'prompt' ? 'al profilo tifoso' : 'alla registrazione' }}</button>
+          </article>
+          <Transition v-else name="auth-step" mode="out-in" @after-enter="focusStage">
             <div :key="stage" class="auth-body">
               <template v-if="stage === 'prompt'">
                 <div class="auth-ticket" aria-hidden="true"><span>IL TUO POSTO IN CURVA</span><b>Fan Club</b><i>★ ★ ★</i><small>Una squadra. La tua passione.</small></div>
@@ -30,11 +38,12 @@
                 <h2 id="fan-auth-title">Come ti chiami in curva?</h2>
                 <p class="auth-copy">Scegli il nickname con cui comparirai nella classifica di {{ clubName || 'questa società' }}.</p>
                 <form @submit.prevent="goStep2">
+                  <label class="auth-consent"><input id="fan-auth-age-first" ref="ageInputRef" v-model="form.ageEligibilityDeclared" type="checkbox" required :disabled="loading" /><span>Dichiaro di avere almeno {{ FAN_MINIMUM_AGE }} anni.</span></label>
                   <label for="fan-auth-nickname">Il tuo nickname</label>
-                  <input id="fan-auth-nickname" ref="nicknameInputRef" v-model="form.nickname" required minlength="3" maxlength="24" autocomplete="nickname" placeholder="Inserisci il tuo nickname" :aria-invalid="nicknameStatus === 'taken' || nicknameStatus === 'invalid'" aria-describedby="fan-nickname-status" :disabled="loading" />
+                  <input id="fan-auth-nickname" ref="nicknameInputRef" v-model="form.nickname" required minlength="3" maxlength="24" autocomplete="nickname" placeholder="Inserisci il tuo nickname" :aria-invalid="nicknameStatus === 'taken' || nicknameStatus === 'invalid'" aria-describedby="fan-nickname-status" :disabled="loading || !form.ageEligibilityDeclared" />
                   <p id="fan-nickname-status" class="auth-field-status" :class="{ ok: nicknameStatus === 'available', error: ['taken', 'invalid', 'error'].includes(nicknameStatus) }" aria-live="polite">{{ nicknameMessage }}</p>
                   <p v-if="errorMessage" class="auth-error" role="alert">{{ errorMessage }}</p>
-                  <button class="auth-primary" :disabled="loading || (!canContinueNickname && nicknameStatus !== 'error')">{{ loading ? 'Verifica…' : nicknameStatus === 'error' ? 'Riprova verifica' : 'Continua' }} <span aria-hidden="true">→</span></button>
+                  <button class="auth-primary" :disabled="loading || !form.ageEligibilityDeclared || (!canContinueNickname && nicknameStatus !== 'error')">{{ loading ? 'Verifica…' : nicknameStatus === 'error' ? 'Riprova verifica' : 'Continua' }} <span aria-hidden="true">→</span></button>
                   <button type="button" class="auth-link" :disabled="loading" @click="goPrompt">Indietro</button>
                 </form>
               </template>
@@ -42,14 +51,17 @@
               <template v-else-if="stage === 'step2' || stage === 'login'">
                 <span class="auth-step-label">{{ authMode === 'login' ? 'BENTORNATO IN CURVA' : '02 · RESTIAMO IN CONTATTO' }}</span>
                 <h2 id="fan-auth-title">{{ authMode === 'login' ? 'Riprendi il tuo posto.' : `Ci siamo, ${form.nickname.trim()}!` }}</h2>
-                <p class="auth-copy">{{ authMode === 'login' ? 'Usa il numero con cui hai creato il profilo. Ti inviamo un codice per accedere.' : 'Verifica il tuo numero per attivare il profilo. Lo usiamo anche per contattarti se vinci un premio.' }}</p>
+                <p class="auth-copy">{{ authMode === 'login' ? 'Usa il numero con cui hai creato il profilo. Ti inviamo un codice per accedere.' : 'Monete e progressi salvati, classifica tifosi e selezioni dei gadget del club.' }}</p>
                 <form @submit.prevent="submit">
                   <label for="fan-auth-phone">Numero di telefono</label>
                   <div class="auth-phone"><span>+39</span><input id="fan-auth-phone" ref="phoneInputRef" v-model="form.phone" required type="tel" inputmode="tel" autocomplete="tel-national" placeholder="333 123 4567" :disabled="loading" /></div>
-                  <label v-if="authMode === 'register'" class="auth-consent"><input v-model="form.acceptedTerms" type="checkbox" required :disabled="loading" /><span>Acconsento alla gestione del profilo tifoso e alla consegna dei premi.</span></label>
+                  <template v-if="authMode === 'register'">
+                    <label class="auth-consent"><input v-model="form.ageEligibilityDeclared" type="checkbox" required :disabled="loading" /><span>Dichiaro di avere almeno {{ FAN_MINIMUM_AGE }} anni.</span></label>
+                    <label class="auth-consent"><input v-model="form.acceptedTerms" type="checkbox" required :disabled="loading" /><span>Accetto i <button type="button" class="auth-inline-link" data-legal-document="terms" @click.stop.prevent="openLegalDocument('terms')">Termini del servizio</button>.</span></label>
+                  </template>
                   <p v-if="errorMessage" class="auth-error" role="alert">{{ errorMessage }}</p>
                   <button v-if="phoneAlreadyExists" type="button" class="auth-secondary" :disabled="loading" @click="startLogin">Accedi con questo numero</button>
-                  <button class="auth-primary" :disabled="loading || !isPhoneValid || (authMode === 'register' && !form.acceptedTerms)">{{ loading ? 'Un momento…' : phoneVerified && authMode === 'register' ? 'Attiva profilo' : 'Ricevi il codice' }} <span aria-hidden="true">→</span></button>
+                  <button class="auth-primary" :disabled="loading || !isPhoneValid || (authMode === 'register' && !hasRegistrationAcceptance)">{{ loading ? 'Un momento…' : phoneVerified && authMode === 'register' ? 'Attiva profilo' : 'Ricevi il codice SMS' }} <span aria-hidden="true">→</span></button>
                   <p class="auth-note">{{ authMode === 'login' ? 'Le tue monete e i tuoi progressi ti aspettano.' : 'Bastano un numero e un codice. La tua passione è già qui.' }}</p>
                   <button type="button" class="auth-link" :disabled="loading" @click="authMode === 'login' ? goPrompt() : stage = 'step1'">Indietro</button>
                 </form>
@@ -80,6 +92,10 @@
               </template>
             </div>
           </Transition>
+          <nav v-if="!activeLegalDocument" class="auth-legal-links" aria-label="Documenti del profilo tifoso">
+            <button type="button" data-legal-document="privacy" @click="openLegalDocument('privacy')">Informativa privacy — SMS e contatto del club per i gadget</button>
+            <button type="button" data-legal-document="terms" @click="openLegalDocument('terms')">Termini del servizio</button>
+          </nav>
         </section>
       </div>
     </Transition>
@@ -90,6 +106,9 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { checkFanNickname, resendPhoneAuth, startPhoneAuth, verifyPhoneAuth } from '../api';
 import { organizationThemeStyle } from '../organizationTheme';
+import { FAN_MINIMUM_AGE, fanRegistrationAcceptance, legalTextBlocks } from '../fanRegistration';
+import privacyText from '../legal/fan-privacy.md?raw';
+import termsText from '../legal/fan-terms.md?raw';
 
 const props = defineProps({
   modelValue: Boolean,
@@ -99,6 +118,7 @@ const props = defineProps({
   rewardLabel: { type: String, default: 'Coupon Match Day' },
   clubName: { type: String, default: '' },
   organizationSlug: { type: String, default: '' },
+  documentOnly: { type: String, default: '' },
   themeStyle: { type: Object, default: () => organizationThemeStyle() },
   onSubmit: { type: Function, default: null },
   onLogin: { type: Function, default: null },
@@ -110,7 +130,11 @@ const loading = ref(false);
 const errorMessage = ref('');
 const phoneAlreadyExists = ref(false);
 const phoneVerified = ref(false);
-const form = reactive({ nickname: '', phone: '', acceptedTerms: false });
+const form = reactive({ nickname: '', phone: '', acceptedTerms: false, ageEligibilityDeclared: false });
+const activeLegalDocument = ref('');
+const legalDocumentBlocks = computed(() => legalTextBlocks(activeLegalDocument.value === 'terms' ? termsText : privacyText, props.clubName));
+const hasRegistrationAcceptance = computed(() => form.acceptedTerms && form.ageEligibilityDeclared);
+const ageInputRef = ref(null);
 const savedCoins = ref(0);
 const panelRef = ref(null);
 const nicknameInputRef = ref(null);
@@ -133,7 +157,7 @@ const e164Phone = computed(() => `+39${nationalPhone.value}`);
 const prettyPhone = computed(() => `+39 ${nationalPhone.value}`);
 const isOtpValid = computed(() => /^\d{6}$/.test(otpCode.value));
 const canContinueNickname = computed(() => nicknameStatus.value === 'available' && checkedNickname.value === form.nickname.trim());
-const isFormStage = computed(() => ['step1', 'step2', 'login', 'otp'].includes(stage.value));
+const isFormStage = computed(() => !activeLegalDocument.value && ['step1', 'step2', 'login', 'otp'].includes(stage.value));
 const stepNumber = computed(() => stage.value === 'otp' ? (authMode.value === 'login' ? 2 : 3) : stage.value === 'step2' ? 2 : 1);
 const content = computed(() => ({
   after_vote: { title: 'Hai votato. Ora fatti riconoscere!', subtitle: 'Crea il profilo tifoso per salvare le monete, comparire in classifica e poter essere selezionato per i gadget del club.', primaryCta: 'Crea il profilo tifoso' },
@@ -150,6 +174,7 @@ function validationMessage(nickname) {
   return '';
 }
 async function checkNickname() {
+  if (!form.ageEligibilityDeclared) return false;
   clearTimeout(nicknameTimer);
   const nickname = form.nickname.trim();
   const revision = ++nicknameRevision;
@@ -175,26 +200,49 @@ async function checkNickname() {
 watch(() => form.nickname, () => {
   clearTimeout(nicknameTimer); ++nicknameRevision;
   checkedNickname.value = ''; nicknameStatus.value = 'idle'; errorMessage.value = '';
+  if (!form.ageEligibilityDeclared) return;
   const invalid = validationMessage(form.nickname.trim());
   nicknameMessage.value = invalid || 'Controllo disponibilità nella società…';
   if (invalid) { nicknameStatus.value = 'invalid'; return; }
   nicknameStatus.value = 'checking';
   nicknameTimer = setTimeout(checkNickname, 350);
 }, { flush: 'sync' });
+watch(() => form.ageEligibilityDeclared, (eligible) => {
+  clearTimeout(nicknameTimer); ++nicknameRevision;
+  checkedNickname.value = ''; nicknameStatus.value = 'idle';
+  if (eligible && form.nickname.trim()) void checkNickname();
+}, { flush: 'sync' });
 watch(() => form.phone, () => { phoneVerified.value = false; phoneAlreadyExists.value = false; errorMessage.value = ''; });
 watch(() => props.modelValue, async (open) => {
-  if (open) { returnFocus = typeof document !== 'undefined' ? document.activeElement : null; await focusStage(); }
+  if (open) { returnFocus = typeof document !== 'undefined' ? document.activeElement : null; if (['privacy', 'terms'].includes(props.documentOnly)) activeLegalDocument.value = props.documentOnly; await focusStage(); }
   else { reset(); returnFocus?.focus?.(); }
 }, { immediate: true });
-watch(() => props.organizationSlug, reset);
+watch(() => props.organizationSlug, () => {
+  reset();
+  if (props.modelValue && ['privacy', 'terms'].includes(props.documentOnly)) activeLegalDocument.value = props.documentOnly;
+});
 watch(stage, async () => { errorMessage.value = ''; await focusStage(); });
 async function focusStage() {
   await nextTick();
-  const target = stage.value === 'step1' ? nicknameInputRef.value : ['step2', 'login'].includes(stage.value) ? phoneInputRef.value : stage.value === 'otp' ? otpInputRef.value : panelRef.value;
+  const target = activeLegalDocument.value ? panelRef.value : stage.value === 'step1' ? (form.ageEligibilityDeclared ? nicknameInputRef.value : ageInputRef.value) : ['step2', 'login'].includes(stage.value) ? phoneInputRef.value : stage.value === 'otp' ? otpInputRef.value : panelRef.value;
   target?.focus();
 }
+async function openLegalDocument(document) {
+  if (!['privacy', 'terms'].includes(document)) return;
+  activeLegalDocument.value = document;
+  await focusStage();
+  if (panelRef.value) panelRef.value.scrollTop = 0;
+}
+async function closeLegalDocument() {
+  if (props.documentOnly) { emit('update:modelValue', false); return; }
+  const document = activeLegalDocument.value;
+  activeLegalDocument.value = '';
+  await nextTick();
+  panelRef.value?.querySelector(`[data-legal-document="${document}"]`)?.focus();
+}
+function handleEscape() { if (activeLegalDocument.value) void closeLegalDocument(); else closeAsLater(); }
 function trapFocus(event) {
-  const nodes = panelRef.value?.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex="0"]');
+  const nodes = panelRef.value?.querySelectorAll('button:not(:disabled), input:not(:disabled), a[href], [tabindex="0"]');
   if (!nodes?.length) { event.preventDefault(); return; }
   const first = nodes[0], last = nodes[nodes.length - 1];
   if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.value)) { event.preventDefault(); last.focus(); }
@@ -204,7 +252,8 @@ function reset() {
   ++sessionRevision; ++nicknameRevision;
   clearTimeout(nicknameTimer); clearInterval(resendTimer);
   stage.value = 'prompt'; authMode.value = 'register'; loading.value = false;
-  Object.assign(form, { nickname: '', phone: '', acceptedTerms: false });
+  Object.assign(form, { nickname: '', phone: '', acceptedTerms: false, ageEligibilityDeclared: false });
+  activeLegalDocument.value = '';
   errorMessage.value = ''; phoneVerified.value = false; phoneAlreadyExists.value = false;
   savedCoins.value = 0; otpCode.value = ''; otpNotice.value = ''; resendSeconds.value = 0;
 }
@@ -214,6 +263,7 @@ function startLogin() { authMode.value = 'login'; phoneVerified.value = false; e
 function goPrompt() { stage.value = 'prompt'; }
 async function goStep2() {
   if (loading.value) return;
+  if (!form.ageEligibilityDeclared) { errorMessage.value = 'Per registrarti devi dichiarare di avere almeno 14 anni.'; return; }
   const revision = sessionRevision;
   loading.value = true;
   const available = await checkNickname();
@@ -225,6 +275,8 @@ function closeAsLater() { if (loading.value) return; if (stage.value === 'succes
 function closeSuccess() { emit('update:modelValue', false); emit('completed', authMode.value); }
 function editPhone() { phoneVerified.value = false; otpCode.value = ''; stage.value = authMode.value === 'login' ? 'login' : 'step2'; }
 function mapOtpError(code) {
+  const registrationErrors = { AGE_ELIGIBILITY_REQUIRED: 'Per registrarti devi dichiarare di avere almeno 14 anni.', TERMS_REQUIRED: 'Accetta i Termini del servizio per creare il profilo.', LEGAL_VERSION_CHANGED: 'I documenti sono stati aggiornati. Ricarica la pagina e consulta i nuovi testi.', PHONE_VERIFICATION_REQUIRED: 'Verifica il numero con il codice SMS.' };
+  if (registrationErrors[code]) return registrationErrors[code];
   return ({ INVALID_PHONE: 'Numero non valido. Controlla e riprova.', RATE_LIMITED: 'Troppi tentativi. Riprova tra qualche minuto.', PHONE_ALREADY_EXISTS: 'Questo numero ha già un profilo. Accedi per ritrovarlo.', USER_NOT_FOUND: 'Profilo non trovato. Verifica il numero o crea un profilo.', OTP_SEND_FAILED: 'Invio del codice non riuscito. Riprova tra poco.', INVALID_OTP: 'Codice non valido o scaduto. Controlla e riprova.', OTP_CHECK_FAILED: 'Verifica non riuscita. Riprova.' })[code] || 'Verifica del telefono non riuscita. Riprova.';
 }
 function startResendCountdown() {
@@ -232,7 +284,7 @@ function startResendCountdown() {
   resendTimer = setInterval(() => { resendSeconds.value = Math.max(0, resendSeconds.value - 1); if (!resendSeconds.value) clearInterval(resendTimer); }, 1000);
 }
 async function submit() {
-  if (loading.value || !isPhoneValid.value || (authMode.value === 'register' && !form.acceptedTerms)) return;
+  if (loading.value || !isPhoneValid.value || (authMode.value === 'register' && !hasRegistrationAcceptance.value)) return;
   if (phoneVerified.value && authMode.value === 'register') {
     loading.value = true;
     try { await finishAuth(); } catch { errorMessage.value = 'Salvataggio non riuscito. Riprova.'; } finally { loading.value = false; }
@@ -240,10 +292,11 @@ async function submit() {
 }
 async function sendOtp(isResend = false) {
   if (loading.value || !isPhoneValid.value || (isResend && resendSeconds.value > 0)) return;
+  if (authMode.value === 'register' && !hasRegistrationAcceptance.value) return;
   const revision = sessionRevision;
   loading.value = true; errorMessage.value = ''; otpNotice.value = ''; phoneAlreadyExists.value = false;
   try {
-    const response = isResend ? await resendPhoneAuth(e164Phone.value) : await startPhoneAuth(e164Phone.value, authMode.value);
+    const response = isResend ? await resendPhoneAuth(e164Phone.value) : authMode.value === 'register' ? await startPhoneAuth(e164Phone.value, authMode.value, fanRegistrationAcceptance(form)) : await startPhoneAuth(e164Phone.value, authMode.value);
     if (revision !== sessionRevision) return;
     if (!response.ok) { errorMessage.value = mapOtpError(response.code); phoneAlreadyExists.value = response.code === 'PHONE_ALREADY_EXISTS'; return; }
     if (!isResend) { otpCode.value = ''; stage.value = 'otp'; } else otpNotice.value = 'Un nuovo codice è stato inviato.';
@@ -252,12 +305,18 @@ async function sendOtp(isResend = false) {
   finally { if (revision === sessionRevision) loading.value = false; }
 }
 async function finishAuth() {
+  if (authMode.value === 'register' && !hasRegistrationAcceptance.value) { errorMessage.value = 'Conferma età e termini prima di creare il profilo.'; stage.value = 'step2'; return; }
   const revision = sessionRevision;
   const result = authMode.value === 'login'
     ? await props.onLogin?.({ phone: e164Phone.value, trigger: props.trigger })
-    : await props.onSubmit?.({ nickname: form.nickname.trim(), phone: e164Phone.value, acceptedTerms: form.acceptedTerms, trigger: props.trigger });
+    : await props.onSubmit?.({ nickname: form.nickname.trim(), phone: e164Phone.value, acceptedTerms: form.acceptedTerms, ageEligibilityDeclared: form.ageEligibilityDeclared, trigger: props.trigger });
   if (revision !== sessionRevision) return;
   if (!result || result.ok === false) {
+    if (result?.code === 'PHONE_VERIFICATION_REQUIRED') {
+      phoneVerified.value = false; stage.value = 'step2';
+      errorMessage.value = mapOtpError(result.code);
+      return;
+    }
     if (result?.code === 'REGISTRATION_INCOMPLETE') {
       authMode.value = 'register'; stage.value = 'step1';
       if (form.nickname) await checkNickname();
@@ -272,6 +331,7 @@ async function finishAuth() {
 }
 async function verifyOtpAndSubmit() {
   if (loading.value || !isOtpValid.value) return;
+  if (authMode.value === 'register' && !hasRegistrationAcceptance.value) { stage.value = 'step2'; return; }
   const revision = sessionRevision;
   loading.value = true; errorMessage.value = '';
   try {
@@ -334,6 +394,12 @@ input[aria-invalid=true] { border-color: var(--red-text); }
 .auth-phone { display: flex; align-items: center; gap: 10px; }
 .auth-phone > span { padding: 16px 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--card); font-size: 14px; font-weight: 750; }
 form > .auth-consent { display: flex; align-items: flex-start; gap: 10px; padding: 13px; margin: 17px 0 0; border: 2px solid var(--line); border-radius: 14px; background: var(--card); font-size: 11px; font-weight: 500; line-height: 1.6; cursor: pointer; }
+form > .auth-consent:first-child { margin: 0 0 16px; }
+.auth-inline-link, .auth-legal-links button { border: 0; background: transparent; padding: 0; color: var(--red-text); font: inherit; text-decoration: underline; text-underline-offset: 3px; text-align: left; }
+.auth-legal-links { display: flex; flex-wrap: wrap; gap: 12px; margin: 22px 0 4px; font-size: 12px; line-height: 1.6; }
+.auth-legal-links button { min-height: 32px; }
+.auth-legal-document h3 { margin: 24px 0 8px; color: var(--ink); font-size: 15px; }
+.auth-legal-document p { color: var(--muted); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
 .auth-consent input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--red); }
 .auth-note { margin: 14px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; text-align: center; }
 .auth-error { margin: 12px 0; font-size: 12px; line-height: 1.5; }

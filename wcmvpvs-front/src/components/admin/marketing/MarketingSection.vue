@@ -11,7 +11,7 @@
       <BaseTable>
         <table class="marketing-table">
           <thead>
-            <tr><th>Nickname</th><th>Telefono</th><th>Creato</th><th>Last seen</th><th>Coins</th><th>Terms</th></tr>
+            <tr><th>Nickname</th><th>Telefono</th><th>Creato</th><th>Last seen</th><th>Coins</th><th>Consenso marketing</th></tr>
           </thead>
           <tbody>
             <tr v-for="a in audience" :key="a.fan_id" @click="selectedFan = a">
@@ -20,7 +20,7 @@
               <td>{{ a.created_at }}</td>
               <td>{{ a.last_seen_at || '-' }}</td>
               <td>{{ a.coins }}</td>
-              <td><span :class="['badge', a.accepted_terms ? 'ok' : 'no']">{{ a.accepted_terms ? 'accepted' : 'missing' }}</span></td>
+              <td><span :class="['badge', a.marketing_consent ? 'ok' : 'no']">{{ a.marketing_consent ? 'Presente' : 'Assente' }}</span></td>
             </tr>
           </tbody>
         </table>
@@ -29,7 +29,7 @@
         <h4>{{ selectedFan.nickname }}</h4>
         <p>{{ selectedFan.phone }}</p>
         <BaseTextarea><textarea v-model="singleMessage" rows="4" /></BaseTextarea>
-        <BaseButton @click="sendSingle">Invia SMS</BaseButton>
+        <BaseButton :disabled="!selectedFan.marketing_consent" @click="sendSingle">Invia SMS</BaseButton>
       </aside>
     </section>
 
@@ -107,7 +107,7 @@ const maxCoinsInAudience = computed(() => audience.value.reduce((max, fan) => Ma
 const selectedCampaignAudience = computed(() => {
   const enabledFilters = Object.values(campaignFilters.value).some(Boolean);
   return audience.value.filter((fan) => {
-    if (!fan.accepted_terms) return false;
+    if (!fan.marketing_consent) return false;
     if (!enabledFilters) return true;
     const gender = String(fan.gender || '').toUpperCase();
     if (campaignFilters.value.male || campaignFilters.value.female) {

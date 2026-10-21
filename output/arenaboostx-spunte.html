@@ -1,0 +1,129 @@
+<div id="abx-privacy-preview" class="viz-dotted-background">
+  <section class="abx-window" aria-label="Proposta di registrazione ArenaBoostX">
+    <div class="abx-grabber" aria-hidden="true"></div>
+    <header class="abx-header"><span>ArenaBoostX</span><span class="abx-step">Profilo tifoso</span></header>
+    <div class="abx-progress" aria-hidden="true"><span></span><span></span><span class="abx-inactive"></span></div>
+    <div class="abx-content" data-panel="choices">
+      <p class="abx-eyebrow">IL TUO POSTO IN CURVA</p>
+      <h2>Ci siamo, CurvaNord!</h2>
+      <p class="abx-copy">Monete e progressi salvati, classifica tifosi e selezioni dei gadget del club.</p>
+      <div class="abx-phone-label">Numero di telefono <span class="abx-sample">Esempio</span></div>
+      <div class="abx-phone" aria-label="Numero di esempio mascherato"><span>+39</span><span>••• ••• 1234</span></div>
+      <button type="button" class="abx-link abx-privacy-link cursor-interaction" data-document="privacy">Informativa privacy — SMS e contatto del club per i gadget</button>
+      <div class="abx-required">
+        <div class="abx-choice"><input class="cursor-interaction" type="checkbox" id="abx-age" data-choice="age" aria-describedby="abx-age-note"><div><label class="cursor-interaction" for="abx-age">Dichiaro di avere almeno 14 anni.</label><span id="abx-age-note" class="abx-small">Obbligatorio</span></div></div>
+        <div class="abx-choice"><input class="cursor-interaction" type="checkbox" id="abx-terms" data-choice="terms"><div><label class="cursor-interaction" for="abx-terms">Accetto i Termini del servizio.</label><div class="abx-choice-links"><span class="abx-small">Obbligatorio</span><button type="button" class="abx-link cursor-interaction" data-document="terms">Leggi i termini</button></div></div></div>
+      </div>
+      <p class="abx-guidance" data-guidance aria-live="polite">Per continuare, dichiara l’età minima e accetta i termini.</p>
+      <button type="button" class="abx-primary cursor-interaction" data-continue disabled>Ricevi il codice SMS <span aria-hidden="true">→</span></button>
+      <button type="button" class="abx-secondary cursor-interaction" data-guest>Continua come ospite</button>
+    </div>
+    <div class="abx-content" data-panel="otp" hidden>
+      <p class="abx-eyebrow">VERIFICA IL NUMERO</p><h2>Il tuo ingresso in curva.</h2>
+      <p class="abx-copy">Il passaggio successivo richiede il codice SMS inviato al numero del tifoso.</p>
+      <div class="abx-code" aria-label="Esempio del campo codice SMS">• • • • • •</div>
+      <p class="abx-result" data-result aria-live="polite"></p>
+      <button type="button" class="abx-secondary cursor-interaction" data-back>Torna alle scelte</button>
+    </div>
+    <div class="abx-content" data-panel="guest" hidden>
+      <p class="abx-eyebrow">CONTINUA LA PARTITA</p><h2>Ci sei anche da ospite.</h2>
+      <p class="abx-copy">Voto MVP, minigiochi e feedback restano disponibili. Le scelte di registrazione non sono necessarie per continuare come ospite.</p>
+      <button type="button" class="abx-secondary cursor-interaction" data-back>Torna alla registrazione</button>
+    </div>
+    <section class="abx-content abx-document" data-panel="document" aria-labelledby="abx-document-title" hidden>
+      <p class="abx-eyebrow">SINTESI DELLA PROPOSTA</p><h2 id="abx-document-title" data-document-title></h2><div data-document-body></div>
+      <button type="button" class="abx-secondary cursor-interaction" data-back>Torna alle scelte</button>
+    </section>
+    <footer class="abx-footer">Titolare: Alberto Marra · alberto@arenaboostx.com</footer>
+  </section>
+</div>
+<style>
+#abx-privacy-preview { padding: 22px 12px; color-scheme: light dark; }
+#abx-privacy-preview .abx-window { --abx-paper: light-dark(#fffaf4, #231f21); --abx-card: light-dark(#ffffff, #2d282a); --abx-ink: light-dark(#302126, #f7eee9); --abx-muted: light-dark(#715b64, #d1bfc5); --abx-line: light-dark(#e8d9dc, #5d4c53); --abx-red: light-dark(#a92342, #ed8da2); --abx-on-red: light-dark(#ffffff, #34121d); --abx-soft: light-dark(#faedf0, #38282f); width: 100%; max-width: 430px; box-sizing: border-box; margin: 0 auto; border: 1px solid var(--abx-line); border-radius: 26px; background: var(--abx-paper); color: var(--abx-ink); font: 400 14px/1.5 system-ui, sans-serif; overflow: hidden; box-shadow: 0 12px 38px light-dark(#30212612, #00000025); }
+#abx-privacy-preview .abx-window * { box-sizing: border-box; }
+#abx-privacy-preview .abx-window [hidden] { display: none !important; }
+#abx-privacy-preview .abx-grabber { width: 38px; height: 4px; margin: 12px auto 18px; background: var(--abx-line); border-radius: 4px; }
+#abx-privacy-preview .abx-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 24px 18px; font-weight: 650; }
+#abx-privacy-preview .abx-step { color: var(--abx-muted); font-size: 12px; font-weight: 400; }
+#abx-privacy-preview .abx-progress { display: flex; gap: 5px; padding: 0 24px; }
+#abx-privacy-preview .abx-progress span { flex: 1; height: 4px; border-radius: 3px; background: var(--abx-red); }
+#abx-privacy-preview .abx-progress span.abx-inactive { background: var(--abx-line); }
+#abx-privacy-preview .abx-content { padding: 22px 24px 0; }
+#abx-privacy-preview .abx-eyebrow { color: var(--abx-red); font-size: 11px; font-weight: 650; letter-spacing: .11em; margin: 0 0 10px; }
+#abx-privacy-preview h2 { font: 650 29px/1.12 Georgia, serif; letter-spacing: -.035em; margin: 0 0 12px; color: var(--abx-ink); }
+#abx-privacy-preview .abx-copy { color: var(--abx-muted); margin: 0 0 20px; }
+#abx-privacy-preview .abx-phone-label { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 8px; }
+#abx-privacy-preview .abx-sample { font-weight: 400; font-size: 12px; color: var(--abx-muted); }
+#abx-privacy-preview .abx-phone { display: flex; gap: 10px; }
+#abx-privacy-preview .abx-phone span { border: 1px solid var(--abx-line); background: var(--abx-card); border-radius: 12px; padding: 13px 14px; font-size: 16px; }
+#abx-privacy-preview .abx-phone span:last-child { flex: 1; }
+#abx-privacy-preview .abx-caption { margin: 10px 0; font-size: 12px; color: var(--abx-muted); line-height: 1.65; }
+#abx-privacy-preview .abx-link { appearance: none; border: 0; background: transparent; padding: 3px 0; color: var(--abx-red); text-decoration: underline; text-underline-offset: 3px; text-align: left; font: inherit; font-size: 12px; }
+#abx-privacy-preview .abx-privacy-link { display: block; margin-top: 12px; }
+#abx-privacy-preview .abx-required { margin-top: 20px; }
+#abx-privacy-preview .abx-choice { display: flex; gap: 11px; align-items: flex-start; }
+#abx-privacy-preview .abx-choice + .abx-choice { margin-top: 16px; }
+#abx-privacy-preview .abx-choice input { margin: 3px 0 0; width: 19px; height: 19px; flex: 0 0 19px; accent-color: var(--abx-red); }
+#abx-privacy-preview .abx-choice > div { min-width: 0; }
+#abx-privacy-preview .abx-choice label { display: block; font-weight: 500; }
+#abx-privacy-preview .abx-small { display: block; font-size: 11px; color: var(--abx-muted); margin-top: 3px; }
+#abx-privacy-preview .abx-choice-links { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+#abx-privacy-preview .abx-guidance { min-height: 36px; color: var(--abx-muted); font-size: 12px; margin: 17px 0 8px; }
+#abx-privacy-preview .abx-primary, #abx-privacy-preview .abx-secondary { width: 100%; min-height: 48px; padding: 12px 14px; border-radius: 13px; font: 600 14px/1.5 system-ui, sans-serif; }
+#abx-privacy-preview .abx-primary { display: flex; align-items: center; justify-content: center; gap: 16px; background: var(--abx-red); color: var(--abx-on-red); border: 0; }
+#abx-privacy-preview .abx-primary:disabled { opacity: .45; cursor: default; }
+#abx-privacy-preview .abx-secondary { margin-top: 10px; background: transparent; border: 1px solid var(--abx-line); color: var(--abx-ink); }
+#abx-privacy-preview .abx-footer { margin: 20px 24px; text-align: center; color: var(--abx-muted); font-size: 11px; overflow-wrap: anywhere; }
+#abx-privacy-preview .abx-code { padding: 20px 12px; background: var(--abx-card); border: 1px solid var(--abx-line); border-radius: 13px; text-align: center; font-size: 24px; letter-spacing: 5px; }
+#abx-privacy-preview .abx-result { color: var(--abx-ink); padding: 15px; background: var(--abx-soft); border-radius: 12px; }
+#abx-privacy-preview .abx-document p { color: var(--abx-muted); line-height: 1.65; }
+@media (pointer: coarse) { #abx-privacy-preview .abx-link { min-height: 44px; } #abx-privacy-preview .abx-choice label { min-height: 44px; } }
+@media (max-width: 380px) { #abx-privacy-preview { padding: 12px 4px; } #abx-privacy-preview .abx-content { padding: 20px 18px 0; } #abx-privacy-preview .abx-header { padding-inline: 18px; } }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('abx-privacy-preview');
+  const inputs = Object.fromEntries(Array.from(root.querySelectorAll('[data-choice]')).map(input => [input.dataset.choice, input]));
+  const continueButton = root.querySelector('[data-continue]');
+  const guidance = root.querySelector('[data-guidance]');
+  const result = root.querySelector('[data-result]');
+  const state = { age: false, terms: false, panel: 'choices' };
+  const documents = {
+    privacy: { title: 'Informativa privacy', paragraphs: ['Sintesi della proposta. Titolare: Alberto Marra, ArenaBoostX. Contatto: alberto@arenaboostx.com.', 'Uso del numero e partecipazione ai gadget. Il profilo include automaticamente la partecipazione alle selezioni dei gadget di [nome del club], secondo il regolamento. Usiamo il numero per l’accesso via SMS e, solo se vieni selezionato, lo comunichiamo al referente del club per organizzare la consegna del gadget.', 'Il numero non è pubblico e non viene utilizzato per comunicazioni promozionali. Monete, progressi e dati di gioco necessari vengono associati al profilo del club. Il nickname compare in classifica.', 'Il profilo viene cancellato su richiesta o dopo 24 mesi dall’ultimo accesso autenticato. Puoi chiedere accesso, rettifica e cancellazione dei tuoi dati a alberto@arenaboostx.com e presentare reclamo al Garante. Il documento completo deve precisare anche basi giuridiche, fornitori, tutti i diritti applicabili e tempi di log e backup.'] },
+    terms: { title: 'Termini del servizio', paragraphs: ['Sintesi della proposta. Il profilo è separato per ciascun club e permette di conservare monete e progressi. Il nickname è visibile nelle classifiche.', 'La registrazione proposta è riservata a chi ha almeno 14 anni. La dichiarazione di età non è una verifica anagrafica. Le condizioni per minorenni vanno completate nei termini definitivi.', 'Gadget del club. Con la registrazione completata il profilo partecipa automaticamente alle selezioni previste dal regolamento. Non è garantita l’assegnazione di un premio e non occorre una spunta aggiuntiva.', 'Consegna. Solo in caso di selezione, il numero è comunicato al referente del club indicato nel modulo per organizzare la consegna. Non viene fornito l’elenco completo dei tifosi e non è autorizzato un riutilizzo promozionale.', 'Minorenni e rifiuto del premio. Per la consegna ai minorenni è proposto il coinvolgimento di un genitore o tutore. Il selezionato può rifiutare il singolo gadget senza perdere account o progressi.', 'Regolamento dell’iniziativa. Nei termini o nel relativo allegato consultabile prima della registrazione devono essere precisati organizzatore, club, premi, modalità di selezione, durata, requisiti e consegna. L’accettazione dei termini non abilita messaggi promozionali.'] }
+  };
+  function restore(snapshot) {
+    const saved = snapshot?.privateContent?.registrationPreview;
+    if (!saved || typeof saved !== 'object') return;
+    for (const key of ['age', 'terms']) state[key] = saved[key] === true;
+    state.panel = ['choices', 'otp', 'guest'].includes(saved.panel) ? saved.panel : 'choices';
+    if (state.panel === 'otp' && (!state.age || !state.terms)) state.panel = 'choices';
+  }
+  function render() {
+    for (const key of ['age', 'terms']) inputs[key].checked = state[key];
+    continueButton.disabled = !(state.age && state.terms);
+    guidance.textContent = !state.age && !state.terms ? 'Per continuare, dichiara l’età minima e accetta i termini.' : !state.age ? 'Per continuare, dichiara di avere almeno 14 anni.' : !state.terms ? 'Per continuare, accetta i Termini del servizio.' : 'Puoi proseguire con la verifica del numero.';
+    for (const panel of root.querySelectorAll('[data-panel]')) panel.hidden = panel.dataset.panel !== state.panel;
+    result.textContent = 'Dopo la verifica del numero e il completamento della registrazione, il profilo parteciperà automaticamente alle selezioni dei gadget previste dal regolamento del club.';
+  }
+  function save() {
+    const snapshot = { modelContent: { tipo: 'anteprima_delle_spunte', eta_minima_proposta: 14, partecipazione_gadget: 'automatica_con_profilo' }, privateContent: { registrationPreview: { ...state, panel: state.panel === 'document' ? 'choices' : state.panel } } };
+    if (window.openai?.setWidgetState) {
+      try { Promise.resolve(window.openai.setWidgetState(snapshot)).catch(() => {}); } catch {}
+    }
+  }
+  for (const [key, input] of Object.entries(inputs)) input.addEventListener('change', () => { state[key] = input.checked; render(); save(); });
+  continueButton.addEventListener('click', () => { if (!state.age || !state.terms) return; state.panel = 'otp'; render(); save(); });
+  root.querySelector('[data-guest]').addEventListener('click', () => { state.panel = 'guest'; render(); save(); });
+  for (const button of root.querySelectorAll('[data-back]')) button.addEventListener('click', () => { state.panel = 'choices'; render(); save(); });
+  for (const button of root.querySelectorAll('[data-document]')) button.addEventListener('click', () => {
+    const documentData = documents[button.dataset.document];
+    root.querySelector('[data-document-title]').textContent = documentData.title;
+    const body = root.querySelector('[data-document-body]');
+    body.replaceChildren(...documentData.paragraphs.map(text => { const paragraph = document.createElement('p'); paragraph.textContent = text; return paragraph; }));
+    state.panel = 'document'; render();
+  });
+  restore(window.openai?.widgetState); render();
+  window.addEventListener('openai:set_globals', event => { const snapshot = event.detail?.globals?.widgetState; if (snapshot) { restore(snapshot); render(); } });
+})();
+</script>
