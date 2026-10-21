@@ -1,25 +1,31 @@
 <template>
-  <div class="tap-challenge flex h-full min-h-0 w-full flex-col">
+  <div class="tap-challenge" :class="{ 'is-playing': status === 'playing', 'is-urgent': status === 'playing' && timeLeftMs <= 3000 }">
+    <header class="tap-header">
+      <div class="tap-brand"><span class="tap-mark" aria-hidden="true">TC</span><div><span class="eyebrow">INSEGUI IL TUO RITMO</span><h2>Tap <em>Challenge</em></h2></div></div>
+      <span class="mode-pill"><i aria-hidden="true"></i>{{ isLiveFlow ? 'LIVE 1 VS 1' : '10 SECONDI' }}</span>
+    </header>
+
+    <div v-if="showGameHud" class="hud">
+      <div class="hud-card"><span class="hud-card__label">{{ liveStep === 'countdown' ? 'Si parte tra' : 'Tempo rimasto' }}</span><strong class="hud-card__value">{{ liveStep === 'countdown' ? countdownDisplay : timeLabel }}</strong></div>
+      <div class="hud-card hud-card--accent"><span class="hud-card__label">Colpi a segno</span><strong :key="tapCount" class="hud-card__value score-pop">{{ tapCount.toString().padStart(2, '0') }}</strong></div>
+    </div>
+    <div v-if="showGameHud" class="time-rail" role="progressbar" aria-label="Secondi rimanenti" :aria-valuenow="Math.ceil(timeLeftMs / 1000)" :aria-valuemin="0" :aria-valuemax="10"><span :style="{ transform: `scaleX(${Math.max(0, Math.min(1, timeLeftMs / ROUND_DURATION_MS))})` }"></span></div>
+
     <main
       ref="gameAreaRef"
-      class="game-area relative flex-1 overflow-hidden rounded-[26px] border border-white/14 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.18),_rgba(15,23,42,0.9)_42%,_rgba(2,6,23,0.98)_100%)] px-4 py-4 sm:px-5 sm:py-5"
-      @touchmove.prevent
+      class="game-area"
+      @touchmove="status === 'playing' && $event.preventDefault()"
     >
-      <div class="pointer-events-none absolute inset-0 opacity-80">
-        <div class="absolute inset-x-[-20%] top-[-18%] h-40 rounded-full bg-cyan-400/18 blur-3xl"></div>
-        <div class="absolute bottom-[-18%] right-[-8%] h-44 w-44 rounded-full bg-fuchsia-500/18 blur-3xl"></div>
-      </div>
+      <svg class="tap-court" viewBox="0 0 360 500" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M22 22h316v456H22Z" fill="#213c3d" fill-opacity=".5" stroke="#d4e4d1" stroke-opacity=".3" stroke-width="1.3"/>
+        <path d="M22 174h316v152H22Z" fill="#e9bd68" fill-opacity=".04"/>
+        <g stroke="#d4e4d1" stroke-opacity=".2" stroke-width="1.3" fill="none"><path d="M22 174h316M22 326h316M22 250h316"/><path d="M34 34h292v432H34Z" stroke-opacity=".06"/></g>
+        <path d="M10 246h340M10 254h340" stroke="#081d22" stroke-width="2"/><path d="M10 250h340" stroke="#a4c3b5" stroke-opacity=".35" stroke-width="5" stroke-dasharray="1 5"/>
+        <g fill="#d5dfca" fill-opacity=".4"><circle cx="10" cy="250" r="4"/><circle cx="350" cy="250" r="4"/></g>
+        <text x="180" y="410" text-anchor="middle" fill="#c7d7c4" fill-opacity=".07" font-family="system-ui, sans-serif" font-size="26" font-weight="900" letter-spacing="5">TAP CLUB</text>
+      </svg>
 
-      <div v-if="showGameHud" class="hud">
-        <div class="hud-card">
-          <span class="hud-card__label">Tempo</span>
-          <strong class="hud-card__value">{{ liveStep === 'countdown' ? countdownDisplay : timeLabel }}</strong>
-        </div>
-        <div class="hud-card hud-card--accent">
-          <span class="hud-card__label">Tap</span>
-          <strong class="hud-card__value">{{ tapCount }}</strong>
-        </div>
-      </div>
+      <div v-if="status === 'playing' && hitEffect" :key="hitEffect.id" class="tap-impact" :style="{ left: `${hitEffect.x}px`, top: `${hitEffect.y}px` }" aria-hidden="true"><i></i><b>+1</b></div>
 
       <button
         v-if="status === 'playing'"
@@ -27,11 +33,13 @@
         type="button"
         class="ball"
         :style="ballStyle"
-        aria-label="Tappa la palla"
+        aria-label="Tocca la palla"
         @click="onTap"
       >
-        <span>🏐</span>
+        <ArcadeVolleyball class="ball-art" />
       </button>
+
+      <span v-if="status === 'playing'" class="tap-play-hint" aria-hidden="true">{{ timeLeftMs <= 3000 ? 'ULTIMI SECONDI. DAI TUTTO!' : 'COLPISCI. INSEGUI. RIPETI.' }}</span>
 
       <section v-else-if="liveStep === 'searching'" class="overlay overlay--single px-2 text-center">
         <div class="search-pulse mb-5"></div>
@@ -126,19 +134,22 @@
           </div>
       </section>
 
-      <div v-else class="overlay overlay--single px-2 text-center">
-        <p class="eyebrow">TAP CHALLENGE</p>
-        <h3 class="mt-2 text-2xl font-black text-white sm:text-3xl">Sfida da 10 secondi</h3>
-        <p class="mt-2.5 max-w-[280px] text-xs leading-5 text-slate-200 sm:text-sm sm:leading-6">Tappa la palla più velocemente possibile: in live 1vs1 partirai con countdown condiviso e schermata versus dedicata.</p>
-        <template v-if="isFixedSingleplayer"><p v-if="status === 'finished'" class="mt-3 text-sm font-semibold text-amber-200">Punteggio: {{ tapCount }} tap</p><p class="mt-3 text-xs text-amber-200">{{ fixedReward }} monete al primo completamento della partita.</p></template>
-        <p v-else-if="status === 'finished'" class="mt-3 text-sm font-semibold text-amber-200">Hai guadagnato {{ earnedCoins }} monete nel singleplayer.</p>
+      <div v-else-if="status !== 'playing'" class="overlay tap-cover" :class="{ 'tap-cover--finished': status === 'finished' }">
+        <div class="tap-hero" aria-hidden="true"><span class="hero-orbit"></span><ArcadeVolleyball /><span class="hero-label">{{ status === 'finished' ? 'TIME OUT' : 'INSEGUI LA PALLA' }}</span></div>
+        <p class="eyebrow">{{ status === 'finished' ? 'SESSIONE COMPLETATA' : 'VELOCITÀ. PRECISIONE. ISTINTO.' }}</p>
+        <template v-if="status === 'finished'"><strong class="final-taps">{{ tapCount }}<small>tap</small></strong><h3>Ogni colpo conta.</h3></template>
+        <h3 v-else>Dieci secondi.<br />Lascia il segno.</h3>
+        <p class="cover-copy">{{ status === 'finished' ? 'Il tempo si ferma. Il tuo risultato resta.' : 'Tocca la palla e inseguila sul campo. A ogni colpo il ritmo aumenta.' }}</p>
+        <div class="tap-rules" v-if="status !== 'finished'"><span><b>10</b> secondi</span><i></i><span><b>1</b> palla</span><i></i><span><b>∞</b> energia</span></div>
+        <p v-if="isFixedSingleplayer" class="cover-reward"><span class="tap-coin" aria-hidden="true"></span>{{ props.alreadyRewarded ? 'Bonus già ottenuto in questa partita' : `+${fixedReward} monete al primo completamento` }}</p>
+        <p v-else-if="status === 'finished'" class="cover-reward"><span class="tap-coin" aria-hidden="true"></span>{{ earnedCoins }} monete da riscattare</p>
       </div>
     </main>
 
     <p v-if="errorMessage" class="mt-2.5 rounded-[18px] border border-red-300/40 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-100 sm:text-sm">{{ errorMessage }}</p>
 
-    <footer class="mt-3">
-      <button type="button" class="cta-primary w-full" :disabled="isPrimaryDisabled" @click="onPrimaryAction">{{ primaryLabel }}</button>
+    <footer class="tap-controls" v-if="liveStep !== 'result'">
+      <button type="button" class="cta-primary w-full" :disabled="isPrimaryDisabled" @click="onPrimaryAction">{{ primaryLabel }}<span v-if="!isPrimaryDisabled" aria-hidden="true">↗</span></button>
     </footer>
 
     <div v-if="showLiveButton" class="mt-1.5">
@@ -149,6 +160,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
+import ArcadeVolleyball from './ArcadeVolleyball.vue';
 import { awardTapChallengeCoins } from '../../services/coins';
 import {
   abortTapLiveMatch,
@@ -194,6 +206,7 @@ const ballY = ref(0);
 const lastBallX = ref(0);
 const lastBallY = ref(0);
 const moveIntervalMs = ref(BASE_MOVE_INTERVAL_MS);
+const hitEffect = ref(null);
 
 const liveStep = ref('idle');
 const liveBusy = ref(false);
@@ -384,6 +397,7 @@ async function startGame() {
   claimRequested.value = false;
   status.value = 'playing';
   tapCount.value = 0;
+  hitEffect.value = null;
   timeLeftMs.value = ROUND_DURATION_MS;
   moveIntervalMs.value = BASE_MOVE_INTERVAL_MS;
   gameEndsAt = Date.now() + ROUND_DURATION_MS;
@@ -420,6 +434,7 @@ function repositionBall(force = false) {
 }
 function onTap() {
   if (status.value !== 'playing') return;
+  hitEffect.value = { id: tapCount.value + 1, x: ballX.value + 26, y: ballY.value + 26 };
   tapCount.value += 1;
   moveIntervalMs.value = Math.max(MIN_MOVE_INTERVAL_MS, moveIntervalMs.value * SPEED_GAIN_PER_TAP);
   navigator?.vibrate?.(10);
@@ -692,252 +707,102 @@ if (typeof window !== 'undefined') {
 </script>
 
 <style scoped>
-.tap-challenge { user-select: none; }
-.game-area {
-  min-height: min(62vh, 640px);
-  max-height: none;
-  display: flex;
-  flex-direction: column;
-  touch-action: manipulation;
-}
-.overlay {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-.overlay--single {
-  width: 100%;
-  border-radius: 28px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: linear-gradient(180deg, rgba(15,23,42,0.42), rgba(2,6,23,0.62));
-  padding: 1.25rem;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-}
-.tap-challenge :deep(.cta-primary), .tap-challenge :deep(.cta-secondary) { min-height: 44px; }
-.hud {
-  position: relative;
-  z-index: 3;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-.hud-card {
-  border-radius: 22px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(15,23,42,0.68);
-  padding: 0.8rem 0.95rem;
-  box-shadow: 0 12px 24px rgba(2,6,23,0.24);
-  backdrop-filter: blur(10px);
-}
-.hud-card--accent { border-color: rgba(34,211,238,0.24); }
-.hud-card__label {
-  display: block;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: rgba(186,230,253,0.76);
-}
-.hud-card__value {
-  display: block;
-  margin-top: 0.3rem;
-  font-size: 1.45rem;
-  font-weight: 900;
-  color: #fff;
-}
-.eyebrow { font-size: 10px; font-weight: 800; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(165, 243, 252, 0.8); }
-.info-panel { flex-shrink: 0; }
-.status-chip {
-  min-width: 92px;
-  border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.05);
-  padding: 0.65rem 0.75rem;
-  text-align: right;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-}
-.status-chip__label {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: rgba(148, 163, 184, 0.9);
-}
-.status-chip__value {
-  margin-top: 0.3rem;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.35;
-  color: #fff;
-}
-.stat-card, .result-stat {
-  border-radius: 22px;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.06);
-  padding: 0.75rem 0.85rem;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-}
-.stat-card__label, .result-stat__label, .score-card__label {
-  display: block;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: rgba(203, 213, 225, 0.75);
-}
-.stat-card__value, .result-stat__value, .score-card__value {
-  display: block;
-  margin-top: 0.25rem;
-  font-size: 1.05rem;
-  font-weight: 900;
-  color: #fff;
-}
-.ball {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 2;
-  width: 52px;
-  height: 52px;
-  border-radius: 9999px;
-  border: 2px solid rgba(255,255,255,.72);
-  background: radial-gradient(circle at 30% 25%, #fef3c7, #f59e0b 60%, #b45309);
-  color: #111827;
-  font-size: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 14px 24px rgba(2,6,23,.42), 0 0 0 6px rgba(251,191,36,0.12);
-}
-.search-pulse {
-  width: 92px;
-  height: 92px;
-  border-radius: 9999px;
-  border: 1px solid rgba(34, 211, 238, 0.38);
-  background: radial-gradient(circle, rgba(34,211,238,0.38), rgba(34,211,238,0.04));
-  box-shadow: 0 0 0 0 rgba(34,211,238,0.4);
-  animation: pulse-ring 1.8s ease-out infinite;
-}
-.search-dots { display: inline-flex; gap: 6px; }
-.search-dots span {
-  width: 8px; height: 8px; border-radius: 9999px; background: #67e8f9; animation: search-bounce 1.1s infinite ease-in-out;
-}
-.search-dots span:nth-child(2) { animation-delay: 0.12s; }
-.search-dots span:nth-child(3) { animation-delay: 0.24s; }
-.versus-card, .result-card {
-  border-radius: 32px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: linear-gradient(180deg, rgba(15,23,42,0.82), rgba(2,6,23,0.96));
-  padding: 1rem;
-  box-shadow: 0 24px 70px rgba(2,6,23,0.55);
-  animation: card-rise 380ms cubic-bezier(.21,1,.21,1);
-}
-.versus-player {
-  position: relative;
-  border-radius: 26px;
-  border: 1px solid rgba(255,255,255,0.1);
-  padding: 0.85rem 0.7rem;
-  text-align: center;
-  background: rgba(255,255,255,0.04);
-  overflow: hidden;
-}
-.versus-player::after {
-  content: '';
-  position: absolute;
-  inset: -30% auto auto -20%;
-  width: 100px;
-  height: 100px;
-  background: radial-gradient(circle, rgba(34,211,238,0.32), transparent 68%);
-  filter: blur(10px);
-}
-.versus-player--opponent::after { background: radial-gradient(circle, rgba(244,114,182,0.28), transparent 68%); }
-.versus-player__avatar {
-  margin: 0 auto;
-  width: 46px;
-  height: 46px;
-  border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.09);
-  display: grid;
-  place-items: center;
-  font-size: 1.2rem;
-}
-.versus-player__label { margin-top: 0.55rem; font-size: 9px; letter-spacing: 0.24em; text-transform: uppercase; color: rgba(186, 230, 253, 0.72); }
-.versus-player h4 { margin-top: 0.3rem; font-size: 0.92rem; font-weight: 900; color: #fff; word-break: break-word; }
-.versus-center span {
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 9999px;
-  font-size: 1rem;
-  font-weight: 900;
-  color: #fff;
-  background: linear-gradient(135deg, rgba(34,211,238,0.4), rgba(168,85,247,0.35));
-  box-shadow: 0 0 28px rgba(34,211,238,0.28);
-}
-.countdown-ring {
-  width: 72px;
-  height: 72px;
-  border-radius: 9999px;
-  border: 1px solid rgba(52,211,153,0.5);
-  display: grid;
-  place-items: center;
-  font-size: 1.7rem;
-  font-weight: 900;
-  color: #fff;
-  background: radial-gradient(circle, rgba(16,185,129,0.26), rgba(15,23,42,0.35));
-  box-shadow: 0 0 35px rgba(16,185,129,0.18);
-}
-.result-badge {
-  border-radius: 9999px;
-  padding: 0.45rem 0.7rem;
-  font-size: 0.75rem;
-  font-weight: 900;
-  letter-spacing: 0.18em;
-}
-.result-badge--win { background: rgba(16,185,129,0.18); color: #6ee7b7; }
-.result-badge--draw { background: rgba(250,204,21,0.16); color: #fde68a; }
-.result-badge--lose { background: rgba(248,113,113,0.16); color: #fca5a5; }
-.score-divider {
-  font-size: 0.75rem;
-  font-weight: 900;
-  letter-spacing: 0.28em;
-  color: rgba(186, 230, 253, 0.75);
-}
-.cta-primary, .cta-secondary {
-  border-radius: 9999px;
-  padding: 0.75rem 0.85rem;
-  font-weight: 900;
-  transition: transform 160ms ease, opacity 160ms ease, border-color 160ms ease;
-}
-.cta-primary {
-  background: linear-gradient(135deg, #fbbf24, #fb7185);
-  color: #0f172a;
-  box-shadow: 0 12px 24px rgba(251, 191, 36, 0.24);
-}
-.cta-primary:disabled { opacity: .6; }
-.cta-secondary {
-  border: 1px solid rgba(255,255,255,.18);
-  color: #fff;
-  background: rgba(255,255,255,.07);
-}
-@keyframes pulse-ring {
-  0% { transform: scale(.92); box-shadow: 0 0 0 0 rgba(34,211,238,0.35); }
-  70% { transform: scale(1); box-shadow: 0 0 0 22px rgba(34,211,238,0); }
-  100% { transform: scale(.92); }
-}
-@keyframes search-bounce {
-  0%, 80%, 100% { transform: translateY(0); opacity: .45; }
-  40% { transform: translateY(-5px); opacity: 1; }
-}
-@keyframes card-rise {
-  from { opacity: 0; transform: translateY(18px) scale(.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
+.tap-challenge { --tap-accent: #f5cf81; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 760px; height: 100%; min-height: 0; margin-inline: auto; padding: 14px; overflow-y: auto; scrollbar-width: thin; border-radius: 24px; background: #102226; color: #f5f1df; user-select: none; font-family: 'Inter', system-ui, sans-serif; }
+.tap-challenge *, .tap-challenge *::before, .tap-challenge *::after { box-sizing: border-box; }
+button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button:focus-visible { outline: 3px solid #8ce0e2; outline-offset: 3px; }
+.tap-header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0 4px; }
+.tap-brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.tap-mark { display: grid; place-items: center; width: 37px; height: 43px; border: 1px solid #f5cf8150; border-radius: 12px; background: #f5cf8112; color: #f5cf81; font-size: 13px; font-weight: 900; letter-spacing: -.08em; transform: rotate(-7deg); }
+.eyebrow { color: #b7c6bc; font-size: 8px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+h2 { margin: 4px 0 0; color: #f5f1df; font-size: clamp(16px, 4.6vw, 23px); font-weight: 850; letter-spacing: -.06em; line-height: 1.1; }
+h2 em { color: var(--tap-accent); font-style: normal; }
+.mode-pill { display: flex; flex: none; align-items: center; gap: 5px; border: 1px solid #ffffff1a; border-radius: 30px; padding: 7px 8px; color: #d4ded5; font-size: 7px; font-weight: 800; letter-spacing: .09em; }
+.mode-pill i { width: 4px; height: 4px; border-radius: 50%; background: #bde4a3; box-shadow: 0 0 8px #bde4a340; }
+.hud { display: grid; flex: none; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hud-card { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 10px 13px; border: 1px solid #ffffff14; border-radius: 13px; background: #172e32; }
+.hud-card--accent { border-color: #f5cf8130; }
+.hud-card__label { color: #a5bcb9; font-size: 8px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.hud-card__value { color: #f6f2de; font-size: 24px; font-weight: 850; font-variant-numeric: tabular-nums; letter-spacing: -.06em; line-height: 1; }
+.hud-card--accent .hud-card__value { color: var(--tap-accent); }
+.score-pop { animation: score-pop .16s ease-out; }
+.time-rail { flex: none; height: 3px; margin: -4px 2px 0; border-radius: 3px; background: #ffffff12; overflow: hidden; }
+.time-rail > span { display: block; height: 100%; width: 100%; transform-origin: left; background: #b9dda2; transition: transform .1s linear; }
+.is-urgent .time-rail > span { background: #ffad83; }
+.is-urgent .hud-card:first-child .hud-card__value { color: #ffad83; }
+.game-area { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 170px; width: 100%; isolation: isolate; border: 1px solid #ffffff20; border-radius: 20px; overflow: hidden; background: radial-gradient(ellipse at 50% 30%, #2e5150, #17383c 55%, #122c32); touch-action: manipulation; }
+.is-urgent .game-area { border-color: #ffad8370; }
+.tap-court { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.game-area::before { position: absolute; content: ''; inset: 0; background: repeating-linear-gradient(0deg, transparent 0 34px, #e7e0bd04 35px 36px); pointer-events: none; }
+.overlay { position: relative; z-index: 3; display: flex; flex: 1; min-height: 0; flex-direction: column; align-items: center; justify-content: center; width: 100%; padding: 22px 18px; }
+.overlay--single { align-items: stretch; justify-content: flex-start; overflow-y: auto; background: #0e252bea; backdrop-filter: blur(8px); }
+.overlay--single.text-center { align-items: center; justify-content: center; }
+.overlay--single > * { flex-shrink: 0; }
+.overlay--single h3 { letter-spacing: -.04em; line-height: 1.1; }
+.tap-cover { text-align: center; justify-content: safe center; background: linear-gradient(#10292c10, #10292c90); overflow-y: auto; }
+.tap-cover > * { flex-shrink: 0; }
+.tap-hero { position: relative; width: clamp(100px, 23vh, 180px); aspect-ratio: 1; display: grid; place-items: center; margin: 0 0 28px; }
+.tap-hero > svg { width: 82%; height: 82%; filter: drop-shadow(0 18px 16px #061c2580); transform: rotate(-18deg); animation: ball-float 4s ease-in-out infinite; }
+.hero-orbit { position: absolute; inset: -1%; border: 1px dashed #f5cf8140; border-radius: 50%; transform: rotate(-20deg) scaleY(.8); }
+.hero-orbit::after { content: ''; position: absolute; top: 13%; left: 14%; width: 5px; height: 5px; border-radius: 50%; background: #f5cf81; box-shadow: 0 0 12px #f5cf8170; }
+.hero-label { position: absolute; right: -8px; bottom: 6px; padding: 6px 10px; border: 1px solid #f5cf8160; border-radius: 5px; background: #f5cf81; color: #203632; font-size: 7px; font-weight: 900; letter-spacing: .14em; transform: rotate(-8deg); }
+.tap-cover > h3 { margin: 10px 0 0; color: #fbf4df; font-size: clamp(30px, 8.3vw, 43px); font-weight: 850; line-height: 1.02; letter-spacing: -.065em; }
+.cover-copy { max-width: 265px; margin: 14px 0 0; color: #c1d1c5; font-size: 12px; line-height: 1.65; }
+.tap-rules { display: flex; align-items: center; justify-content: center; gap: 13px; margin-top: 22px; color: #a9c0b5; font-size: 9px; }
+.tap-rules b { display: block; margin-bottom: 4px; color: #f7e6bc; font-size: 21px; line-height: 1; letter-spacing: -.05em; }
+.tap-rules i { width: 1px; height: 23px; background: #dbe2c523; }
+.cover-reward { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 22px 0 0; color: #f3d69a; font-size: 9px; line-height: 1.5; }
+.tap-coin { flex: none; width: 13px; height: 13px; border: 2px solid #ffe7ae; border-radius: 50%; background: #dba94e; box-shadow: inset 0 0 0 2px #b88336; }
+.tap-cover--finished .tap-hero { width: 75px; margin-bottom: 18px; }
+.tap-cover--finished .hero-label { right: -20px; bottom: 0; }
+.final-taps { margin-top: 8px; color: #f5cf81; font-size: clamp(66px, 16vw, 100px); line-height: 1; font-weight: 850; letter-spacing: -.09em; font-variant-numeric: tabular-nums; }
+.final-taps small { margin-left: 8px; color: #bacdbb; font-size: 22px; letter-spacing: -.04em; font-weight: 500; }
+.tap-cover--finished > h3 { font-size: 25px; }
+.ball { position: absolute; left: 0; top: 0; z-index: 2; display: grid; place-items: center; width: 52px; height: 52px; padding: 0; border: 0; border-radius: 50%; background: transparent; touch-action: manipulation; cursor: crosshair; }
+.ball::before { content: ''; position: absolute; inset: -5px; border: 1px solid #f5cf8160; border-radius: 50%; background: #f5cf8106; box-shadow: 0 0 20px #f5cf8110; pointer-events: none; }
+.ball-art { width: 100%; height: 100%; filter: drop-shadow(0 8px 5px #001c2080); }
+.ball:active .ball-art { transform: scale(.91); }
+.tap-impact { position: absolute; z-index: 1; width: 52px; height: 52px; transform: translate(-50%, -50%); pointer-events: none; }
+.tap-impact i { position: absolute; inset: 0; border: 2px solid #f5cf81; border-radius: 50%; animation: tap-ripple .4s ease-out both; }
+.tap-impact b { position: absolute; top: -8px; left: 50%; color: #fff0c7; font-size: 19px; font-weight: 850; text-shadow: 0 2px 8px #072128; animation: tap-points .5s ease-out both; }
+.tap-play-hint { position: absolute; z-index: 1; bottom: 10px; left: 10px; right: 10px; color: #d3dbc18a; font-size: 7px; font-weight: 800; letter-spacing: .17em; text-align: center; pointer-events: none; }
+.is-urgent .tap-play-hint { color: #ffcc99; }
+.search-pulse { width: 76px; height: 76px; margin-inline: auto; border-radius: 50%; border: 1px solid #f5cf8170; background: radial-gradient(circle, #f5cf8130, #f5cf8100 70%); animation: pulse-ring 1.8s ease-out infinite; }
+.search-dots { display: inline-flex; gap: 5px; }
+.search-dots span { width: 6px; height: 6px; border-radius: 50%; background: #f5cf81; animation: search-bounce 1.1s infinite ease-in-out; }
+.search-dots span:nth-child(2) { animation-delay: .12s; }
+.search-dots span:nth-child(3) { animation-delay: .24s; }
+.versus-player { position: relative; min-width: 0; padding: 14px 8px; border: 1px solid #ffffff18; border-radius: 16px; background: #f5cf8108; text-align: center; }
+.versus-player--opponent { background: #a7d4d108; }
+.versus-player__avatar { width: 42px; height: 42px; margin: 0 auto; display: grid; place-items: center; border: 1px solid #f5cf8130; border-radius: 50%; background: #f5cf8115; font-size: 20px; }
+.versus-player__label { margin-top: 8px; color: #b9cfc3; font-size: 8px; letter-spacing: .12em; text-transform: uppercase; }
+.versus-player h4 { margin: 5px 0 0; font-size: 12px; font-weight: 800; color: #fff1d2; overflow-wrap: anywhere; }
+.versus-center span { display: grid; place-items: center; width: 35px; height: 35px; color: #f5cf81; font-style: italic; font-size: 18px; font-weight: 900; letter-spacing: -.08em; }
+.countdown-ring { display: grid; place-items: center; width: 66px; height: 66px; border: 1px solid #f5cf8180; border-radius: 50%; background: #f5cf8110; color: #f5cf81; font-size: 35px; font-weight: 850; }
+.result-badge { flex: none; border-radius: 7px; padding: 8px 10px; font-size: 10px; font-weight: 900; letter-spacing: .12em; transform: rotate(6deg); }
+.result-badge--win { background: #c5f87b; color: #1e3b24; }
+.result-badge--draw { background: #f5cf81; color: #3b331e; }
+.result-badge--lose { background: #f4b4a0; color: #422c22; }
+.result-stat { padding: 11px 13px; border: 1px solid #ffffff15; border-radius: 13px; background: #ffffff05; }
+.result-stat__label, .score-card__label { display: block; color: #a8c0b7; font-size: 8px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; overflow-wrap: anywhere; }
+.result-stat__value, .score-card__value { display: block; margin-top: 4px; color: #f6e4bd; font-size: 22px; font-weight: 850; font-variant-numeric: tabular-nums; }
+.score-card__value { font-size: 42px; letter-spacing: -.07em; }
+.score-divider { color: #a5bdb7; font-size: 10px; font-weight: 800; font-style: italic; }
+.tap-controls { flex: none; }
+.cta-primary, .cta-secondary { min-height: 46px; border-radius: 13px; padding: 12px 15px; font-size: 12px; font-weight: 800; line-height: 1.3; transition: transform .15s; }
+.cta-primary { display: flex; align-items: center; justify-content: center; gap: 12px; border: 1px solid #f5cf81; background: #f5cf81; color: #24322a; box-shadow: 0 3px 0 #aa8d50; }
+.cta-primary > span { margin-left: auto; font-size: 20px; line-height: 1; }
+.cta-primary:not(:disabled):active { transform: translateY(2px); box-shadow: none; }
+.cta-primary:disabled { opacity: .5; box-shadow: none; cursor: default; }
+.cta-secondary { border: 1px solid #ffffff20; background: #ffffff06; color: #d8e2d5; }
+.cta-secondary:disabled { opacity: .5; cursor: default; }
+@keyframes ball-float { 50% { transform: translateY(-7px) rotate(-12deg); } }
+@keyframes tap-ripple { from { transform: scale(.7); opacity: .9; } to { transform: scale(2); opacity: 0; } }
+@keyframes tap-points { from { transform: translate(-50%, 0); opacity: 1; } to { transform: translate(-50%, -35px); opacity: 0; } }
+@keyframes score-pop { from { transform: scale(1.15); } to { transform: scale(1); } }
+@keyframes pulse-ring { 70% { box-shadow: 0 0 0 20px #f5cf8100; } from { box-shadow: 0 0 0 0 #f5cf8120; } }
+@keyframes search-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: .45; } 40% { transform: translateY(-5px); opacity: 1; } }
+@media (max-height: 650px) { .tap-challenge { gap: 8px; padding: 10px; } .tap-mark { height: 31px; width: 30px; } .tap-hero { width: clamp(70px, 18vh, 115px); margin-bottom: 18px; } .tap-cover { padding: 16px 12px; } .tap-cover > h3 { font-size: 30px; } .cover-copy { margin-top: 10px; font-size: 11px; } .tap-rules { margin-top: 14px; } .cover-reward { margin-top: 14px; font-size: 8px; } .tap-rules b { font-size: 18px; } .hud-card { padding: 9px 10px; } .hud-card__value { font-size: 22px; } .tap-cover--finished .tap-hero { width: 52px; margin-bottom: 12px; } .final-taps { font-size: 64px; } .tap-cover--finished > h3 { font-size: 23px; } .cta-primary, .cta-secondary { min-height: 42px; padding: 10px 12px; } }
+@media (max-width: 350px) { .tap-mark { display: none; } .mode-pill { font-size: 6px; padding: 6px; } .hud-card__label { font-size: 7px; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .tap-impact { display: none; } }
 </style>
