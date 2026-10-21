@@ -50,7 +50,7 @@
             <div class="tile-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" /></svg>
             </div>
-            <b>Gioca nelle pause</b>
+            <b>Gioca e guadagna</b>
             <p>Basket, quiz e nuove sfide</p>
             <div class="spacer"></div>
             <span class="tile-cta">Gioca →</span>
@@ -60,7 +60,7 @@
             <div class="tile-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 7v13" /></svg>
             </div>
-            <b>Premi e shop</b>
+            <b>Shop Tifoso</b>
             <p>La tua collezione da tifoso</p>
             <div class="spacer"></div>
             <span class="tile-cta">Riscatta →</span>
@@ -285,11 +285,11 @@
         </div>
       </div>
 
-      <div class="sheet" :class="{ open: activeSheet === 'spend' }" role="dialog" aria-label="Premi e shop" :aria-hidden="activeSheet !== 'spend'" :inert="activeSheet !== 'spend'">
+      <div class="sheet" :class="{ open: activeSheet === 'spend' }" role="dialog" aria-label="Shop Tifoso" :aria-hidden="activeSheet !== 'spend'" :inert="activeSheet !== 'spend'">
         <div class="grabber"></div>
         <div class="sheet-head">
           <div>
-            <div class="sheet-title">Premi e shop</div>
+            <div class="sheet-title">Shop Tifoso</div>
             <div class="sheet-sub">Oggetti digitali per vivere e ricordare la partita</div>
           </div>
           <button class="close" type="button" @click="closeSheets">✕</button>
@@ -2818,7 +2818,7 @@ main {
 .rank-link b, .rank-link small { display: block; }
 .rank-link b { font-size: 12px; font-weight: 800; }
 .rank-link small { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.4; }
-.feedback-link { border: 0; padding: 6px 10px; background: transparent; color: var(--muted); font: inherit; font-size: 10px; text-align: center; cursor: pointer; }
+.feedback-link { border: 0; padding: 6px 10px; background: transparent; color: var(--red-text); font: inherit; font-size: 10px; text-align: center; cursor: pointer; }
 .feedback-link:disabled { opacity: .7; cursor: default; }
 .wallet-total { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 22px 14px; border: 1px solid var(--gold); border-radius: 18px; background: var(--gold-soft); }
 .wallet-total strong { font-family: 'Fraunces', serif; font-size: 42px; line-height: 1; color: var(--gold-deep); }
