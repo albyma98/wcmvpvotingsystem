@@ -228,7 +228,9 @@
               :disabled="matchConcluded || (mission.key === 'quiz' && !quizAvailable)"
               @click="onMission(mission)"
             >
-              <span class="mission-card-icon" aria-hidden="true">{{ mission.emoji }}</span>
+              <span class="mission-card-cover" aria-hidden="true">
+                <img class="mission-card-artwork" :src="FAN_GAME_ARTWORK[mission.key]" alt="" width="320" height="320" decoding="async" />
+              </span>
               <b class="mission-card-title">{{ mission.title }}</b>
               <span class="mission-card-description">{{ !mission.repeatable && (doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)) ? 'Bonus già ricevuto' : mission.subtitle }}</span>
               <span class="mission-card-reward">
@@ -559,6 +561,7 @@
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { normalizeOrganizationColors, organizationThemeStyle } from '../organizationTheme';
 import { preloadFanHomeImages } from '../fanHomeAssets';
+import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
 import FanMvpRoster from '../components/FanMvpRoster.vue';
@@ -1764,6 +1767,7 @@ async function bootstrap() {
     ...sponsors.value.map((sponsor) => sponsor.imageUrl),
     displayVotedImage.value,
     lotteryQrUrl.value,
+    ...Object.values(FAN_GAME_ARTWORK),
   ], { signal });
   if (revision !== bootstrapRevision || signal.aborted) return;
   isHomeLoading.value = false;
@@ -2597,22 +2601,24 @@ main {
 }
 .sheet.earn-sheet { max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); }
 .mission-grid { display: grid; flex: none; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 8px; padding: 3px 3px 6px; }
-.mission-card { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; border: 1px solid var(--line); border-radius: 16px; padding: 10px 7px 9px; background: var(--card); color: var(--ink); font-family: inherit; text-align: center; cursor: pointer; box-shadow: 0 3px 0 #23161a0a; transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-.mission-card-icon { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border: 1px solid var(--red-line); border-radius: 12px; background: var(--red-soft); font-size: 24px; line-height: 1; }
-.mission-card:nth-child(3n + 2) .mission-card-icon { border-color: #efdcab; background: var(--gold-soft); }
-.mission-card:nth-child(3n) .mission-card-icon { border-color: #cce4d3; background: #ecf7f0; }
-.mission-card-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; min-height: 2.4em; margin-top: 2px; font-size: 12px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
-.mission-card-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; min-height: 2.6em; color: var(--muted); font-size: 10px; line-height: 1.3; overflow-wrap: anywhere; }
+.mission-card { position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; border: 1px solid #28314d; border-radius: 16px; padding: 10px 7px 9px; background: #090c1e; color: #fff; font-family: inherit; text-align: center; cursor: pointer; box-shadow: 0 3px 0 #090c1e1a; transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.mission-card::after { content: ''; position: absolute; z-index: -1; inset: 0; background: linear-gradient(180deg, #090c1e00 0%, #090c1e33 25%, #090c1ef5 43%, #090c1e 100%); pointer-events: none; }
+.mission-card-cover { flex: none; width: 100%; height: 38px; }
+.mission-card-artwork { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; pointer-events: none; transition: transform 220ms ease; }
+.mission-card-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; min-height: 2.4em; margin-top: 2px; font-size: 12px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; text-shadow: 0 1px 3px #090c1e; }
+.mission-card-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 100%; min-height: 2.6em; color: #d8dceb; font-size: 10px; line-height: 1.3; overflow-wrap: anywhere; }
 .mission-card-reward { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px; width: 100%; min-height: 22px; margin-top: auto; border-radius: 8px; padding: 3px 2px; background: var(--gold-soft); color: var(--gold-deep); font-size: 11px; font-weight: 850; line-height: 1.2; }
 .mission-card-reward .coin { width: 11px; height: 11px; box-shadow: inset 0 -1px 2px #0003; }
 .mission-card-reward small { min-width: 0; font-size: 8px; font-weight: 600; }
-.mission-card.is-completed { border-color: var(--red-line); background: var(--bg); box-shadow: none; }
+.mission-card.is-completed { border-color: #659d80; box-shadow: none; }
 .mission-card.is-completed .mission-card-reward { background: #eaf5ee; color: #2c714b; }
-.mission-card:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+.mission-card:disabled { cursor: not-allowed; box-shadow: none; }
+.mission-card:disabled .mission-card-artwork { filter: grayscale(.9) brightness(.65); }
+.mission-card:disabled .mission-card-reward { background: #e1e4ec; color: #485062; }
 .mission-card:focus-visible { outline: 2px solid var(--red-text); outline-offset: 2px; }
 .mission-card:active:not(:disabled) { transform: translateY(2px) scale(.97); box-shadow: none; }
 .mission-grid.is-active .mission-card { animation: mission-card-in 280ms ease-out var(--mission-delay, 0ms) backwards; }
-@media (hover: hover) { .mission-card:hover:not(:disabled) { border-color: var(--red-line); box-shadow: 0 5px 12px #23161a0d; } }
+@media (hover: hover) { .mission-card:hover:not(:disabled) { border-color: #c0a06a; box-shadow: 0 5px 12px #090c1e26; } .mission-card:hover:not(:disabled) .mission-card-artwork { transform: scale(1.05); } }
 @keyframes mission-card-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
 @media (max-width: 350px) { .mission-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-height: 650px) {
@@ -2620,12 +2626,12 @@ main {
   .earn-sheet .sheet-head { margin-bottom: 8px; }
   .mission-grid { gap: 6px; }
   .mission-card { gap: 4px; padding: 8px 6px; border-radius: 13px; }
-  .mission-card-icon { width: 28px; height: 28px; border-radius: 9px; font-size: 20px; }
+  .mission-card-cover { height: 28px; }
   .mission-card-title { margin-top: 0; font-size: 11px; }
   .mission-card-description { font-size: 9px; }
   .mission-card-reward { min-height: 20px; padding: 2px; }
 }
-@media (prefers-reduced-motion: reduce) { .mission-card { transition: none; } .mission-grid.is-active .mission-card { animation: none; } .mission-card:active:not(:disabled) { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .mission-card, .mission-card-artwork { transition: none; } .mission-grid.is-active .mission-card { animation: none; } .mission-card:active:not(:disabled), .mission-card:hover:not(:disabled) .mission-card-artwork { transform: none; } }
 .sheet-empty {
   padding: 18px 4px;
   text-align: center;

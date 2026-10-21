@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as journey from '../fanJourney.js';
 import * as brand from '../organizationTheme.js';
 import * as assets from '../fanHomeAssets.js';
+import * as gameArtwork from '../fanGameArtwork.js';
 import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
@@ -51,6 +52,7 @@ function fixture(overrides = {}, options = {}) {
   const setup = setupSfc(new URL('./FanLiveCento.vue', import.meta.url), {
     vue: options.vue || testVue, '../api': api, '../organizationTheme': brand, '../fanJourney': journey,
     '../fanHomeAssets': options.assets || assets,
+    '../fanGameArtwork': gameArtwork,
     '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
     '../components/FanMvpRoster.vue': {},
