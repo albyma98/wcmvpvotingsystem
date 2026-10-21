@@ -1160,12 +1160,12 @@ function closeSheets() {
   sheetRevision += 1;
   cancelVotePresentation();
   activeSheet.value = '';
-  if (wasPlatformInfo) platformInfoTriggerRef.value?.focus();
+  if (wasPlatformInfo) platformInfoTriggerRef.value?.focus({ preventScroll: true });
 }
 async function openPlatformInfo() {
   openSheet('info');
   await nextTick();
-  if (activeSheet.value === 'info') platformInfoRef.value?.focus();
+  if (activeSheet.value === 'info') platformInfoRef.value?.focus({ preventScroll: true });
 }
 function trapPlatformInfoFocus(event) {
   const panel = platformInfoRef.value;
@@ -1173,9 +1173,9 @@ function trapPlatformInfoFocus(event) {
   if (!buttons?.length) return;
   const first = buttons[0], last = buttons[buttons.length - 1];
   if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
-    event.preventDefault(); last.focus();
+    event.preventDefault(); last.focus({ preventScroll: true });
   } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel)) {
-    event.preventDefault(); first.focus();
+    event.preventDefault(); first.focus({ preventScroll: true });
   }
 }
 function showCollectible(item, { preview = false, reveal = false, origin = 'spend' } = {}) {
@@ -2589,6 +2589,8 @@ main {
   pointer-events: auto;
 }
 .sheet {
+  visibility: hidden;
+  pointer-events: none;
   position: absolute;
   left: 0;
   right: 0;
@@ -2605,6 +2607,8 @@ main {
   box-shadow: 0 -8px 30px rgba(35, 22, 26, 0.18);
 }
 .sheet.open {
+  visibility: visible;
+  pointer-events: auto;
   transform: translateY(0);
 }
 .grabber {

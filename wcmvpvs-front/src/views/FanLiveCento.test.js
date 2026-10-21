@@ -9,6 +9,47 @@ import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
 
+test('information opens only its own panel without scrolling or loading wallet and profile', async (t) => {
+  for (const registered of [false, true]) {
+    let walletLoads = 0;
+    const { state, scope } = fixture({ fetchFanWallet: async () => { walletLoads += 1; return { ok: true, data: walletData() }; } });
+    t.after(() => scope.stop());
+    state.isRegistered.value = registered;
+    const focusOptions = [];
+    state.platformInfoRef.value = { focus: (options) => focusOptions.push(options) };
+    state.activeSheet.value = 'profile';
+    await state.openPlatformInfo();
+    assert.equal(state.activeSheet.value, 'info');
+    assert.equal(state.isRegistrationOpen.value, false);
+    assert.equal(walletLoads, 0);
+    assert.deepEqual(focusOptions, [{ preventScroll: true }]);
+    const restoredFocus = [];
+    state.platformInfoTriggerRef.value = { focus: (options) => restoredFocus.push(options) };
+    state.closeSheets();
+    assert.equal(state.activeSheet.value, '');
+    assert.deepEqual(restoredFocus, [{ preventScroll: true }]);
+    if (registered) {
+      state.openSheet('wallet');
+      assert.equal(state.activeSheet.value, 'wallet');
+      state.openProfile();
+      assert.equal(state.activeSheet.value, 'profile');
+    }
+  }
+});
+
+test('an information focus scheduled for the next frame cannot affect a different panel', async (t) => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  let focused = false;
+  state.platformInfoRef.value = { focus: () => { focused = true; } };
+  const opening = state.openPlatformInfo();
+  state.closeSheets();
+  state.openSheet('earn');
+  await opening;
+  assert.equal(focused, false);
+  assert.equal(state.activeSheet.value, 'earn');
+});
+
 function walletData(overrides = {}) {
   return {
     wallet: 0, points: 0, movements: [], catalog: [],
