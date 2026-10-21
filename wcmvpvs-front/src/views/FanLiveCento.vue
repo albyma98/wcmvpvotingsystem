@@ -14,6 +14,9 @@
           </div>
         </div>
         <div class="top-right">
+          <button ref="platformInfoTriggerRef" class="platform-info-button" type="button" aria-label="Informazioni e istruzioni" title="Come funziona ArenaBoostX" aria-haspopup="dialog" aria-controls="fan-platform-info" :aria-expanded="activeSheet === 'info'" @click="openPlatformInfo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
+          </button>
           <button ref="walletEl" class="wallet" :class="{ 'wallet-pulse': walletPulse }" type="button" aria-label="Apri wallet e movimenti" @click="openSheet('wallet')">
             <span class="coin"></span> <span>{{ totalCoins }}</span>
           </button>
@@ -126,6 +129,25 @@
 
       <!-- Overlay condiviso dai pannelli della home -->
       <div class="overlay" :class="{ open: activeSheet }" @click="closeSheets"></div>
+
+      <section id="fan-platform-info" ref="platformInfoRef" class="sheet platform-info-sheet" :class="{ open: activeSheet === 'info' }" role="dialog" :aria-modal="activeSheet === 'info' ? 'true' : undefined" aria-labelledby="fan-platform-info-title" aria-describedby="fan-platform-info-intro" :aria-hidden="activeSheet !== 'info'" :inert="activeSheet !== 'info'" tabindex="-1" @keydown.esc.stop.prevent="closeSheets" @keydown.tab="trapPlatformInfoFocus">
+        <div class="grabber" aria-hidden="true"></div>
+        <div class="sheet-head">
+          <div><span class="platform-info-kicker">COME FUNZIONA ARENABOOSTX</span><h2 id="fan-platform-info-title" class="sheet-title">La tua passione entra in gioco.</h2></div>
+          <button class="close" type="button" aria-label="Chiudi informazioni e istruzioni" @click="closeSheets">✕</button>
+        </div>
+        <div class="sheet-body platform-info-body">
+          <p id="fan-platform-info-intro" class="platform-info-intro">Vota, gioca e vivi la partita insieme al tuo club.</p>
+          <ul class="platform-info-features">
+            <li><span class="platform-info-icon" aria-hidden="true">🏆</span><div><h3>Scegli il tuo MVP</h3><p>Vota il protagonista della partita quando le votazioni sono aperte.</p></div></li>
+            <li><span class="platform-info-icon" aria-hidden="true">🎮</span><div><h3>Gioca e guadagna monete</h3><p>Puoi rigiocare ai minigiochi quante volte vuoi. Ogni nuova giocata può darti altre monete, secondo le regole del gioco.</p></div></li>
+            <li><span class="platform-info-icon" aria-hidden="true">🪙</span><div><h3>Crea la tua collezione</h3><p>Usa le monete per ottenere cornici e card ricordo disponibili nella piattaforma.</p></div></li>
+            <li><span class="platform-info-icon" aria-hidden="true">📈</span><div><h3>Sali in classifica</h3><p>Guadagnando monete accumuli anche punti partecipazione. Spendere le monete non riduce i punti in classifica.</p></div></li>
+            <li><span class="platform-info-icon" aria-hidden="true">👤</span><div><h3>Porta con te i tuoi progressi</h3><p>Crea il profilo tifoso per ritrovare saldo, collezione e progressi quando accedi. Il profilo include la partecipazione alle iniziative gadget del club.</p></div></li>
+          </ul>
+        </div>
+        <div class="platform-info-actions"><button class="btn-vote" type="button" @click="closeSheets">Ho capito</button></div>
+      </section>
 
       <!-- MVP: lista giocatori reale -->
       <div class="sheet" :class="{ open: activeSheet === 'mvp' }" role="dialog" aria-label="Vota MVP" :aria-hidden="activeSheet !== 'mvp'" :inert="activeSheet !== 'mvp'">
@@ -732,6 +754,8 @@ let liveRequestEventId = null;
 const doneKeys = ref([]); // missioni completate (persistite per evento)
 
 const activeSheet = ref('');
+const platformInfoTriggerRef = ref(null);
+const platformInfoRef = ref(null);
 const activeGameId = ref(null);
 const isFeedbackModalOpen = ref(false);
 const hasSubmittedFeedback = ref(false);
@@ -1132,9 +1156,27 @@ function openSheet(id) {
   if (['wallet', 'spend', 'profile'].includes(id)) loadWallet();
 }
 function closeSheets() {
+  const wasPlatformInfo = activeSheet.value === 'info';
   sheetRevision += 1;
   cancelVotePresentation();
   activeSheet.value = '';
+  if (wasPlatformInfo) platformInfoTriggerRef.value?.focus();
+}
+async function openPlatformInfo() {
+  openSheet('info');
+  await nextTick();
+  if (activeSheet.value === 'info') platformInfoRef.value?.focus();
+}
+function trapPlatformInfoFocus(event) {
+  const panel = platformInfoRef.value;
+  const buttons = panel?.querySelectorAll('button:not(:disabled)');
+  if (!buttons?.length) return;
+  const first = buttons[0], last = buttons[buttons.length - 1];
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
+    event.preventDefault(); last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel)) {
+    event.preventDefault(); first.focus();
+  }
 }
 function showCollectible(item, { preview = false, reveal = false, origin = 'spend' } = {}) {
   selectedCollectible.value = { ...item };
@@ -1894,6 +1936,7 @@ watch(
   gap: 9px;
 }
 .club-logo {
+  flex-shrink: 0;
   width: 36px;
   height: 36px;
   border-radius: 12px;
@@ -1927,6 +1970,10 @@ watch(
   letter-spacing: -0.01em;
 }
 .club-name span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10px;
   color: var(--muted);
   font-weight: 600;
@@ -1960,6 +2007,10 @@ watch(
   align-items: center;
   gap: 8px;
 }
+.platform-info-button { display: grid; place-items: center; flex: none; width: 30px; height: 38px; padding: 3px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.platform-info-button svg { width: 22px; height: 22px; }
+.platform-info-button:hover, .platform-info-button[aria-expanded=true] { color: var(--red-text); background: var(--red-soft); }
+.platform-info-button:focus-visible, .platform-info-actions button:focus-visible, .platform-info-sheet .close:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
 .profile-btn {
   width: 42px;
   height: 42px;
@@ -2607,6 +2658,19 @@ main {
   padding-bottom: 4px;
 }
 .sheet.earn-sheet { max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); }
+.platform-info-sheet { max-height: calc(100% - 12px); outline: none; }
+.platform-info-sheet .sheet-head { align-items: flex-start; gap: 12px; }
+.platform-info-sheet .sheet-title { margin: 6px 0 0; line-height: 1.2; color: var(--ink); }
+.platform-info-kicker { font-size: 9px; font-weight: 800; letter-spacing: .12em; color: var(--red-text); }
+.platform-info-body { gap: 0; overscroll-behavior: contain; }
+.platform-info-intro { margin: 0 0 14px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.platform-info-features { list-style: none; margin: 0; padding: 0; }
+.platform-info-features li { display: flex; align-items: flex-start; gap: 11px; padding: 13px 0; border-top: 1px solid var(--line); }
+.platform-info-icon { display: grid; place-items: center; flex: none; width: 35px; height: 35px; border: 1px solid var(--red-line); border-radius: 12px; background: var(--red-soft); font-size: 18px; }
+.platform-info-features h3 { margin: 0 0 5px; color: var(--ink); font-size: 13px; font-weight: 800; line-height: 1.35; }
+.platform-info-features p { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.65; }
+.platform-info-actions { flex: none; padding-top: 13px; }
+.platform-info-actions .btn-vote { width: 100%; margin: 0; }
 .mission-grid { display: grid; flex: none; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 8px; padding: 3px 3px 6px; }
 .mission-card { position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; border: 1px solid #28314d; border-radius: 16px; padding: 10px 7px 9px; background: #090c1e; color: #fff; font-family: inherit; text-align: center; cursor: pointer; box-shadow: 0 3px 0 #090c1e1a; transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .mission-card::after { content: ''; position: absolute; z-index: -1; inset: 0; background: linear-gradient(180deg, #090c1e00 0%, #090c1e33 25%, #090c1ef5 43%, #090c1e 100%); pointer-events: none; }
