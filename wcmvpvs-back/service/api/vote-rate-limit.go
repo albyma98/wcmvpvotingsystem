@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	voteDeviceLimit       = 5
-	voteDeviceWindow      = 30 * time.Second
-	voteIPLimit           = 40
+	voteDeviceLimit  = 5
+	voteDeviceWindow = 30 * time.Second
+	// Allow an arena crowd to vote together behind a shared Wi-Fi IP.
+	voteIPLimit           = 2000
 	voteIPWindow          = 10 * time.Second
 	voteThrottleMessage   = "Stai tentando di votare troppo frequentemente. Attendi qualche secondo e riprova."
 	voteThrottleIPMessage = "Troppi tentativi ravvicinati da questo indirizzo. Attendi qualche istante e riprova."

@@ -16,8 +16,9 @@ import (
 
 const (
 	authPhoneLimit = 3
-	authIPLimit    = 20
-	authWindow     = 10 * time.Minute
+	// Shared Wi-Fi: allow up to 2,000 phones with three sends each per window.
+	authIPLimit = 6000
+	authWindow  = 10 * time.Minute
 )
 
 type authStartPayload struct {

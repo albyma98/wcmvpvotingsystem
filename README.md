@@ -105,6 +105,17 @@ La repository include tutto il necessario per eseguire l'applicazione (backend G
 
    Assicurati che l'admin di bootstrap sia stato creato controllando i log del backend (messaggio `admin ... creato`). È possibile disabilitare la creazione automatica impostando `BOOTSTRAP_ADMIN_ENABLED=false` o lasciando vuoto `BOOTSTRAP_ADMIN_PASSWORD_HASH`.【F:wcmvpvs-back/cmd/webapi/main.go†L42-L70】
 
+## Limiti per reti condivise
+
+Le soglie per IP consentono l'uso del Wi-Fi condiviso del palazzetto; i limiti individuali restano attivi.
+
+| Operazione | Per IP | Limite individuale |
+| --- | --- | --- |
+| Voto (`POST /vote`, comprese le modifiche) | 2.000 richieste ogni 10 secondi | 5 richieste ogni 30 secondi per dispositivo |
+| Invio/reinvio OTP (`POST /auth/start` e `/auth/resend`) | 6.000 richieste ogni 10 minuti | 3 richieste ogni 10 minuti per numero |
+
+I contatori sono in memoria nel singolo processo backend e condivisi tra club ed eventi. Il superamento restituisce HTTP 429; le richieste tornano disponibili alla scadenza della rispettiva finestra. Le nuove soglie richiedono la distribuzione e il riavvio del backend.
+
 ## OTP SMS (Twilio Verify) - API examples
 
 Il backend espone gli endpoint OTP sotto `/api/auth/*` (proxy frontend) / `/auth/*` (backend diretto).
