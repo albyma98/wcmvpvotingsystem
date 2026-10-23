@@ -361,7 +361,9 @@ Oltre alle 20 KPI, `details.operational` espone i conteggi effettivamente ricost
 
 ## Revisione e versione approvata
 
-L'apertura della modale prepara un nuovo calcolo. Le modifiche manuali vengono separate dai fatti originari e richiedono la nota prevista dal flusso di conferma. Il salvataggio approvato conserva dati, note, provenienza e formato; scaricare nuovamente quella versione non rilegge i dati live.
+L'apertura della modale prepara un nuovo calcolo. Le modifiche manuali vengono separate dai fatti originari; non è richiesto un motivo della correzione. Il salvataggio approvato conserva dati, provenienza, descrizioni e formato; scaricare nuovamente quella versione non rilegge i dati live.
+
+Ogni KPI dispone inoltre di una mini descrizione facoltativa e modificabile (`display_description`). Il testo può essere svuotato per ometterlo dal PDF e può contenere al massimo 120 caratteri. La descrizione sintetica di stampa è separata dalla descrizione tecnica della formula (`description`): modificarla non cambia i fatti o il calcolo. Le descrizioni approvate vengono conservate nella versione del report e partecipano all'identificazione della revisione, come i valori modificati. Nel PDF le correzioni non vengono segnalate con asterischi e non vengono stampati i riquadri esplicativi verdi a fondo pagina.
 
 La query che recupera l'ultima versione approvata è:
 

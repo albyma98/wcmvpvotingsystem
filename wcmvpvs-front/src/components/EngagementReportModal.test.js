@@ -11,14 +11,14 @@ const source = compileScript(descriptor, { id: 'report-modal-test' }).content
   .replace("await import('../engagementReportPdf.js')", 'await Promise.resolve({ createEngagementReportPdf: createPdf })')
   .replace('export default', 'return');
 const componentFactory = new Function('imports', 'document', 'createPdf', source);
-const measured = { calculation_id: 'calc-42', event: { id: 42, title: 'Finale' }, branding: { company_name: 'ArenaBoostX' }, calculated_at: '2026-10-23T10:00:00Z', facts: { visitors: 100, engagement_eligible_visitors: 100, active_visitors: 40 }, kpis: [{ id: 'visitors', value: 100 }, { id: 'active_participation', value: 40 }] };
+const measured = { calculation_id: 'calc-42', event: { id: 42, title: 'Finale' }, branding: { company_name: 'ArenaBoostX' }, calculated_at: '2026-10-23T10:00:00Z', facts: { visitors: 100, engagement_eligible_visitors: 100, active_visitors: 40 }, kpis: [{ id: 'visitors', value: 100, display_description: 'Pubblico digitale dell’evento' }, { id: 'active_participation', value: 40, display_description: 'Tifosi che interagiscono' }] };
 const flush = () => new Promise(setImmediate);
 
 async function fixture({ get, post, downloadError = false } = {}) {
   const requests = [], events = [], saved = [], rendered = [], handlers = new Map();
   const http = {
     get: async (...args) => { requests.push(['get', ...args]); return get ? get(...args) : { data: structuredClone(measured) }; },
-    post: async (...args) => { requests.push(['post', ...args]); return post ? post(...args) : { data: { ...structuredClone(measured), id: 73, approved_at: '2026-10-23T11:00:00Z', format: args[1].format, facts: args[1].facts, overrides: args[1].overrides, kpis: Report.calculateReportKpis(args[1].facts, measured.kpis, args[1].overrides) } }; },
+    post: async (...args) => { requests.push(['post', ...args]); return post ? post(...args) : { data: { ...structuredClone(measured), id: 73, approved_at: '2026-10-23T11:00:00Z', format: args[1].format, facts: args[1].facts, overrides: args[1].overrides, kpis: Report.calculateReportKpis(args[1].facts, measured.kpis, args[1].overrides, measured.facts, args[1].descriptions) } }; },
   };
   const focus = { calls: 0, focus() { this.calls++; } };
   const document = { body: { style: { overflow: 'auto' } }, activeElement: focus, addEventListener: (key, handler) => handlers.set(key, handler), removeEventListener: key => handlers.delete(key) };
@@ -31,7 +31,7 @@ async function fixture({ get, post, downloadError = false } = {}) {
   return { state, props, scope, requests, events, saved, rendered, document, handlers, focus };
 }
 
-test('opening fetches independent measurements; base edits require a note before immutable approval and download', async t => {
+test('opening fetches measurements and base edits approve without requiring a correction reason', async t => {
   const f = await fixture(); t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
   assert.equal(f.requests[0][1], '/admin/events/42/engagement-report');
   assert.equal(f.state.kpis.value.length, 20);
@@ -40,16 +40,14 @@ test('opening fetches independent measurements; base edits require a note before
   assert.equal(f.state.kpis.value.find(kpi => kpi.id === 'active_participation').value, 40);
   f.state.facts.engagement_eligible_visitors = 200;
   assert.equal(f.state.kpis.value.find(kpi => kpi.id === 'active_participation').value, 20);
-  await f.state.approveAndDownload();
-  assert.equal(f.requests.length, 1);
-  assert.ok(f.state.validationErrors.value.length);
-  f.state.notes.value = 'Presenze riconciliate dalla società';
   f.state.format.value = 'extended';
   await f.state.approveAndDownload();
   assert.equal(f.requests[1][2].calculation_id, 'calc-42');
   assert.equal(f.requests[1][2].facts.visitors, 200);
   assert.equal(f.requests[1][2].facts.engagement_eligible_visitors, 200);
   assert.equal(f.requests[1][2].format, 'extended');
+  assert.equal(f.requests[1][2].notes, '');
+  assert.deepEqual(f.state.validationErrors.value, []);
   assert.equal(f.rendered[0].id, 73);
   assert.equal(f.rendered[0].kpis.find(kpi => kpi.id === 'active_participation').value, 20);
   assert.equal(f.saved.length, 1);
@@ -61,14 +59,41 @@ test('opening fetches independent measurements; base edits require a note before
 
 test('failed PDF keeps the approved snapshot for download retry', async t => {
   const f = await fixture({ downloadError: true }); t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
+  f.state.descriptions.visitors = 'Descrizione approvata';
   await f.state.approveAndDownload();
   assert.equal(f.state.approved.value.id, 73);
+  assert.equal(f.state.approved.value.kpis[0].display_description, 'Descrizione approvata');
   assert.match(f.state.error.value, /approvato e salvato/);
   await f.state.approveAndDownload();
   assert.equal(f.requests.filter(([verb]) => verb === 'post').length, 1);
+  assert.equal(f.rendered[1].kpis[0].display_description, 'Descrizione approvata');
   assert.equal(f.state.saving.value, false);
-  f.state.notes.value = 'Nuova revisione';
+  f.state.descriptions.visitors = 'Nuova descrizione';
   assert.equal(f.state.approved.value, null);
+});
+
+test('all KPI descriptions are editable, clearable, resettable and included in approval', async t => {
+  const f = await fixture(); t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
+  assert.equal(Object.keys(f.state.descriptions).length, 20);
+  assert.equal(f.state.descriptions.visitors, measured.kpis[0].display_description);
+  f.state.descriptions.visitors = 'Descrizione temporanea';
+  f.state.descriptions.active_participation = '';
+  f.state.resetReview();
+  assert.equal(f.state.descriptions.visitors, measured.kpis[0].display_description);
+  assert.equal(f.state.descriptions.active_participation, measured.kpis[1].display_description);
+  f.state.descriptions.visitors = '  Pubblico personalizzato  ';
+  f.state.descriptions.active_participation = '';
+  f.state.toggleOverride(f.state.kpis.value[0]);
+  f.state.overrides.visitors.value = 110;
+  await f.state.approveAndDownload();
+  const body = f.requests.find(([verb]) => verb === 'post')[2];
+  assert.equal(Object.keys(body.descriptions).length, 20);
+  assert.equal(body.descriptions.visitors, 'Pubblico personalizzato');
+  assert.equal(body.descriptions.active_participation, '');
+  assert.deepEqual(body.overrides.visitors, { value: 110 });
+  assert.equal(body.notes, '');
+  assert.equal(f.rendered[0].kpis[0].display_description, 'Pubblico personalizzato');
+  assert.equal(f.rendered[0].kpis[1].display_description, '');
 });
 
 test('mixed-source review exposes coverage and operational provenance without renaming observed participants as visits', async t => {
@@ -103,7 +128,6 @@ test('failed approval preserves corrections and does not generate an unapproved 
   const visitors = f.state.kpis.value.find(kpi => kpi.id === 'visitors');
   f.state.toggleOverride(visitors);
   f.state.overrides.visitors.value = 110;
-  f.state.overrides.visitors.note = 'Controllo manuale';
   await f.state.approveAndDownload();
   assert.equal(f.state.error.value, 'Dati non coerenti');
   assert.equal(f.state.overrides.visitors.value, 110);

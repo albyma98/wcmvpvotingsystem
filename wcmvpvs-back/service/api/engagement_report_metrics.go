@@ -10,20 +10,21 @@ import (
 )
 
 type reportKPI struct {
-	ID             string   `json:"id"`
-	Label          string   `json:"label"`
-	Group          string   `json:"group"`
-	Unit           string   `json:"unit"`
-	Value          *float64 `json:"value"`
-	Source         string   `json:"source"`
-	Note           string   `json:"note"`
-	Description    string   `json:"description"`
-	FactKey        string   `json:"fact_key,omitempty"`
-	NumeratorKey   string   `json:"numerator_key,omitempty"`
-	DenominatorKey string   `json:"denominator_key,omitempty"`
-	Numerator      *float64 `json:"numerator,omitempty"`
-	Denominator    *float64 `json:"denominator,omitempty"`
-	Corrected      bool     `json:"corrected,omitempty"`
+	ID                 string   `json:"id"`
+	Label              string   `json:"label"`
+	Group              string   `json:"group"`
+	Unit               string   `json:"unit"`
+	Value              *float64 `json:"value"`
+	Source             string   `json:"source"`
+	Note               string   `json:"note"`
+	Description        string   `json:"description"`
+	DisplayDescription string   `json:"display_description,omitempty"`
+	FactKey            string   `json:"fact_key,omitempty"`
+	NumeratorKey       string   `json:"numerator_key,omitempty"`
+	DenominatorKey     string   `json:"denominator_key,omitempty"`
+	Numerator          *float64 `json:"numerator,omitempty"`
+	Denominator        *float64 `json:"denominator,omitempty"`
+	Corrected          bool     `json:"corrected,omitempty"`
 }
 
 type reportGame struct {
@@ -555,6 +556,7 @@ func buildReportKPIs(facts map[string]*float64) []reportKPI {
 	}
 	for index := range definitions {
 		kpi := &definitions[index]
+		kpi.DisplayDescription = reportKPIDisplayDescriptions[kpi.ID]
 		kpi.Source = "new_tracking"
 		kpi.Note = "Segnali attribuiti a /new; gli ospiti sono identificati per dispositivo."
 		if kpi.FactKey != "" {
@@ -573,4 +575,29 @@ func buildReportKPIs(facts map[string]*float64) []reportKPI {
 		}
 	}
 	return definitions
+}
+
+// Brief report captions are editable presentation text, separate from the
+// calculation definitions and provenance retained in Description and Note.
+var reportKPIDisplayDescriptions = map[string]string{
+	"visitors":                "Identità uniche osservabili dai segnali e dalle attività salvate.",
+	"venue_adoption":          "Accessi dichiarati da arena rispetto alle presenze confermate dalla società.",
+	"active_participation":    "Visitatori osservabili con almeno una partecipazione attiva.",
+	"active_time":             "Tempo medio in primo piano tra le identità con intervalli validi misurati.",
+	"mvp_participation":       "Votanti unici rispetto al pubblico osservato con votazione disponibile.",
+	"game_participation":      "Giocatori unici rispetto al pubblico osservato con giochi disponibili.",
+	"completed_rounds":        "Giocate completate confermate dai segnali o dalle prove operative disponibili.",
+	"replay_rate":             "Quota di giocatori con almeno due round distinti osservabili.",
+	"multi_experience":        "Partecipanti attivi che utilizzano almeno due funzionalità diverse.",
+	"new_profiles":            "Prime registrazioni verificate attribuite all'evento dai segnali.",
+	"registration_conversion": "Prime registrazioni verificate rispetto ai percorsi di registrazione avviati.",
+	"event_retention":         "Profili attivi nell'evento precedente tornati attivi in questo evento.",
+	"redemption_conversion":   "Profili con riscatti rispetto al pubblico registrato osservato nello shop o home.",
+	"sponsor_reach":           "Identità uniche con almeno una visualizzazione sponsor qualificata.",
+	"sponsor_impressions":     "Visualizzazioni sponsor qualificate, distinte per sessione e posizionamento.",
+	"sponsor_ctr":             "Utenti con clic sullo stesso sponsor visto rispetto alla copertura unica.",
+	"sponsored_participation": "Giocatori dello sponsor rispetto al pubblico esposto al suo gioco.",
+	"feedback_response":       "Rispondenti unici nei segnali rispetto al pubblico con sondaggio disponibile.",
+	"satisfaction":            "Risposte positive alla domanda dedicata sull'esperienza nel campione rispondente.",
+	"perks_interest":          "Risposte positive su premi e vantaggi tra le risposte valide raccolte.",
 }

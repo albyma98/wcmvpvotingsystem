@@ -41,7 +41,7 @@ export const REPORT_FACT_LABELS = {
 export function reportSourceLabel(value, compact = false) {
   const labels = compact ? {
     new_tracking: 'Telemetria /new', operational: 'Dati operativi', mixed: 'Telemetria + operativi',
-    manual: 'Verificato / corretto *', unavailable: 'N/D',
+    manual: 'Verificato / corretto', unavailable: 'N/D',
   } : {
     new_tracking: 'Misurazione dedicata home /new', operational: 'Dati operativi dell’evento', mixed: 'Misurazione /new e dati operativi riconciliati',
     manual: 'Inserimento manuale verificato', unavailable: 'Misura non disponibile',
@@ -76,7 +76,7 @@ function reportKpiDefinition(schema, original = {}) {
   };
 }
 
-export function calculateReportKpis(facts = {}, originalKpis = [], overrides = {}, originalFacts = {}) {
+export function calculateReportKpis(facts = {}, originalKpis = [], overrides = {}, originalFacts = {}, descriptions = {}) {
   return REPORT_KPIS.map((schema) => {
     const original = originalKpis.find((item) => item.id === schema.id) || {};
     const definition = reportKpiDefinition(schema, original);
@@ -100,6 +100,7 @@ export function calculateReportKpis(facts = {}, originalKpis = [], overrides = {
       numerator: override ? null : numerator, denominator: override ? null : denominator,
       calculated_numerator: numerator, calculated_denominator: denominator,
       measured_value: original.value ?? null,
+      display_description: Object.hasOwn(descriptions, definition.id) ? descriptions[definition.id] : original.display_description || '',
       calculated_value: calculated,
       value: override ? numericReportValue(override.value) : calculated,
       correction_note: override?.note || '',
@@ -109,7 +110,7 @@ export function calculateReportKpis(facts = {}, originalKpis = [], overrides = {
   });
 }
 
-export function validateReportReview(facts, overrides, notes = '', originalKpis = []) {
+export function validateReportReview(facts, overrides, notes = '', originalKpis = [], descriptions = {}) {
   const errors = [];
   for (const [key, value] of Object.entries(facts || {})) {
     if (value === null || value === '') continue;
@@ -130,7 +131,10 @@ export function validateReportReview(facts, overrides, notes = '', originalKpis 
     if (!override) continue;
     const value = numericReportValue(override.value);
     if (override.value !== null && override.value !== '' && (value === null || value < 0 || (kpi.unit === 'percent' && value > 100) || (kpi.unit === 'count' && !Number.isInteger(value)))) errors.push(`${kpi.label}: valore non valido.`);
-    if (!String(override.note || '').trim()) errors.push(`${kpi.label}: indica il motivo della correzione.`);
+  }
+  for (const schema of REPORT_KPIS) {
+    const description = descriptions[schema.id];
+    if (description !== undefined && (typeof description !== 'string' || Array.from(description).length > 120)) errors.push(`${schema.label}: la breve descrizione non può superare 120 caratteri.`);
   }
   if (String(notes).length > 4000) errors.push('Le note del report non possono superare 4.000 caratteri.');
   return errors;

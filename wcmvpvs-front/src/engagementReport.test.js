@@ -48,15 +48,34 @@ test('previous calculations retain their server-frozen denominator definitions',
   assert.deepEqual(validateReportReview({ ...facts, engagement_eligible_visitors: 1 }, {}, '', original), []);
 });
 
-test('manual overrides preserve their justification and leave source facts intact', () => {
+test('manual overrides work without a justification and leave source facts intact', () => {
   const facts = { visitors: 100, engagement_eligible_visitors: 100, active_visitors: 40 };
-  const reviewed = calculateReportKpis(facts, [{ id: 'active_participation', value: 40 }], { active_participation: { value: 42, note: 'Riconciliazione ingressi' } });
+  const reviewed = calculateReportKpis(facts, [{ id: 'active_participation', value: 40 }], { active_participation: { value: 42 } });
   const kpi = reviewed.find(k => k.id === 'active_participation');
   assert.equal(kpi.value, 42);
   assert.equal(kpi.calculated_value, 40);
-  assert.equal(kpi.correction_note, 'Riconciliazione ingressi');
+  assert.equal(kpi.correction_note, '');
   assert.equal(facts.active_visitors, 40);
   assert.equal(kpi.corrected, true);
+  assert.deepEqual(validateReportReview(facts, { active_participation: { value: 42 } }), []);
+  assert.equal(reportSourceLabel('manual', true), 'Verificato / corretto');
+});
+
+test('short descriptions are optional and editable independently of values or provenance', () => {
+  const facts = { visitors: 100 };
+  const original = [{ id: 'visitors', value: 100, source: 'mixed', description: 'Definizione tecnica', display_description: 'Pubblico digitale dell’evento' }];
+  const initial = calculateReportKpis(facts, original, {}, facts)[0];
+  assert.equal(initial.display_description, original[0].display_description);
+  const edited = calculateReportKpis(facts, original, {}, facts, { visitors: 'Descrizione personalizzata' })[0];
+  assert.equal(edited.display_description, 'Descrizione personalizzata');
+  assert.equal(edited.description, 'Definizione tecnica');
+  assert.equal(edited.corrected, false);
+  assert.equal(edited.source, 'mixed');
+  assert.equal(original[0].display_description, 'Pubblico digitale dell’evento');
+  assert.equal(calculateReportKpis(facts, original, {}, facts, { visitors: '' })[0].display_description, '');
+  assert.deepEqual(validateReportReview(facts, {}, '', original, { visitors: '' }), []);
+  assert.deepEqual(validateReportReview(facts, {}, '', original, { visitors: 'a'.repeat(120) }), []);
+  assert.ok(validateReportReview(facts, {}, '', original, { visitors: 'a'.repeat(121) }).some(error => error.includes('120 caratteri')));
 });
 
 test('review retains backend coverage labels and provenance for reconciled operational data', () => {
@@ -108,12 +127,12 @@ test('a direct rate override never displays a contradictory measured fraction', 
   assert.equal(kpi.calculated_denominator, 2);
 });
 
-test('review rejects impossible rates, negative counts and unmotivated overrides', () => {
+test('review rejects impossible rates and negative counts without requiring correction reasons', () => {
   assert.ok(validateReportReview({ visitors: 1, active_visitors: 2, engagement_eligible_visitors: null }, {}).includes('I partecipanti attivi non possono superare i partecipanti digitali osservabili.'));
   assert.ok(validateReportReview({ visitors: 10, engagement_eligible_visitors: 10, active_visitors: 11 }, {}).some(item => item.includes('numeratore')));
   assert.ok(validateReportReview({ visitors: -1 }, {}).length);
   assert.ok(validateReportReview({ visitors: 1.5 }, {}).length);
-  assert.ok(validateReportReview({}, { visitors: { value: 5, note: '' } }).length);
+  assert.deepEqual(validateReportReview({}, { visitors: { value: 5 } }), []);
   assert.ok(validateReportReview({}, { satisfaction: { value: 101, note: 'Corretto' } }).length);
   assert.deepEqual(validateReportReview({ visitors: 100, active_visitors: 40 }, { satisfaction: { value: null, note: 'Questionario non comparabile' } }), []);
   assert.equal(new Set(REPORT_KPIS.map(item => item.id)).size, 20);

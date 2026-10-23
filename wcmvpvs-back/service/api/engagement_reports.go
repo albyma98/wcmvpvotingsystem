@@ -473,6 +473,7 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		Format        string                    `json:"format"`
 		Facts         map[string]*float64       `json:"facts"`
 		Overrides     map[string]reportOverride `json:"overrides"`
+		Descriptions  map[string]string         `json:"descriptions"`
 		Notes         string                    `json:"notes"`
 	}
 	if !decodeReportBody(w, r, 128*1024, &input) {
@@ -502,7 +503,6 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 	for k, v := range original {
 		reviewed[k] = v
 	}
-	changed := false
 	for k, v := range input.Facts {
 		if _, known := original[k]; !known {
 			reportError(w, 400, "Dato di base sconosciuto.")
@@ -512,20 +512,16 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 			reportError(w, 400, "I dati di base devono essere interi non negativi.")
 			return
 		}
-		changed = changed || !sameReportNumber(v, original[k])
 		reviewed[k] = v
 	}
 	input.Notes = strings.TrimSpace(input.Notes)
-	if changed && input.Notes == "" {
-		reportError(w, 400, "Motiva nelle note le modifiche ai dati di base.")
-		return
-	}
 	if active, visitors := reviewed["active_visitors"], reviewed["visitors"]; active != nil && visitors != nil && *active > *visitors {
 		reportError(w, 400, "I partecipanti attivi non possono superare i partecipanti digitali osservabili.")
 		return
 	}
 	kpis := buildReportKPIs(reviewed)
 	knownKPIs := map[string]bool{}
+	reviewedDescriptions := map[string]string{}
 	for i := range kpis {
 		k := &kpis[i]
 		// Keep the frozen calculation's provenance and coverage wording when
@@ -533,6 +529,7 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		for _, measured := range snapshot.KPIs {
 			if measured.ID == k.ID {
 				k.Label, k.Description, k.Source, k.Note = measured.Label, measured.Description, measured.Source, measured.Note
+				k.DisplayDescription = measured.DisplayDescription
 				k.FactKey, k.NumeratorKey, k.DenominatorKey = measured.FactKey, measured.NumeratorKey, measured.DenominatorKey
 				if k.FactKey != "" {
 					k.Value = reviewed[k.FactKey]
@@ -544,6 +541,15 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 			}
 		}
 		knownKPIs[k.ID] = true
+		if description, exists := input.Descriptions[k.ID]; exists {
+			description = strings.Join(strings.Fields(description), " ")
+			if utf8.RuneCountInString(description) > 120 || strings.ContainsRune(description, '\x00') {
+				reportError(w, 400, "La breve descrizione deve contenere al massimo 120 caratteri validi.")
+				return
+			}
+			k.DisplayDescription = description
+		}
+		reviewedDescriptions[k.ID] = k.DisplayDescription
 		if k.Unit == "percent" && k.Numerator != nil && k.Denominator != nil && *k.Numerator > *k.Denominator {
 			reportError(w, 400, "Il numeratore supera il pubblico di riferimento: "+k.Label)
 			return
@@ -555,8 +561,8 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		}
 		if override, exists := input.Overrides[k.ID]; exists {
 			override.Note = strings.TrimSpace(override.Note)
-			if override.Note == "" || utf8.RuneCountInString(override.Note) > 500 {
-				reportError(w, 400, "Motiva ogni rettifica con una nota di massimo 500 caratteri.")
+			if utf8.RuneCountInString(override.Note) > 500 {
+				reportError(w, 400, "La nota facoltativa non può superare 500 caratteri.")
 				return
 			}
 			v := override.Value
@@ -580,6 +586,12 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
+	for id := range input.Descriptions {
+		if !knownKPIs[id] {
+			reportError(w, 400, "Indicatore sconosciuto nella descrizione.")
+			return
+		}
+	}
 	snapshot.ID = newReportID()
 	snapshot.ApprovedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	snapshot.ApprovedBy = ctx.AdminUsername
@@ -599,8 +611,9 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		Format        string
 		Facts         map[string]*float64
 		Overrides     map[string]reportOverride
+		Descriptions  map[string]string
 		Notes         string
-	}{input.CalculationID, input.Format, reviewed, input.Overrides, input.Notes})
+	}{input.CalculationID, input.Format, reviewed, input.Overrides, reviewedDescriptions, input.Notes})
 	approvalHash := sha256.Sum256(approvalInput)
 	approvalKey := hex.EncodeToString(approvalHash[:])
 	_, err = rt.db.SQLConn().Exec(`INSERT INTO engagement_report_snapshots(id,calculation_id,approval_key,event_id,admin_id,payload,approved_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(approval_key) DO NOTHING`, snapshot.ID, snapshot.CalculationID, approvalKey, eventID, ctx.AdminID, string(rawBytes), snapshot.ApprovedAt)

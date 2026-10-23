@@ -28,7 +28,7 @@ test('extended report stays at three pages with measured game and sponsor detail
   assert.ok(rendered.includes('Basketball Shootout'));
   assert.ok(rendered.includes('Reaction Test'));
   assert.ok(rendered.includes('Partner principale'));
-  assert.ok(rendered.includes('REVISIONI:'));
+  assert.ok(!rendered.includes('REVISIONI:'));
   assert.ok(rendered.includes('3/3'));
 });
 
@@ -41,7 +41,7 @@ test('combined-source PDFs preserve coverage-specific labels and distinguish ope
     report.details.coverage_notes = ['Partecipazione minima verificabile. Visite passive non ricostruibili.'];
     report.details.operational = { votes: 14, shop_redemptions: 3, coins_earned: 1200, coins_spent: 150, feedback_responses: 8, sponsor_clicks: 5, sponsor_clicks_without_identity: 2 };
     report.details.sources = [{ table: 'votes', rows: 14 }, { table: 'engagement_report_signals', rows: 3 }];
-    report.notes = 'Revisione della società.';
+    report.notes = '';
     const doc = createEngagementReportPdf(report);
     assert.equal(doc.getNumberOfPages(), format === 'one_page' ? 1 : 3);
     const rendered = pageText(doc);
@@ -78,22 +78,64 @@ test('sponsor detail leaves exposure metrics unavailable for a partner observed 
   assert.ok(previous.includes('(0%)'));
 });
 
-test('direct overrides hide measured fractions and base-fact corrections retain their reason', () => {
+test('corrections hide measured fractions without exporting markers or reasons from older snapshots', () => {
   const report = engagementReportFixture('extended');
   report.overrides = { active_participation: { value: 70, note: 'Valore finale riconciliato' } };
   const participation = report.kpis.find(kpi => kpi.id === 'active_participation');
   Object.assign(participation, { value: 70, numerator: 1, denominator: 2 });
   const satisfaction = report.kpis.find(kpi => kpi.id === 'satisfaction');
   Object.assign(satisfaction, { corrected: true, source: 'manual', note: 'Rettifica documentata questionario' });
+  report.notes = 'Contesto generale facoltativo dell’evento';
   const rendered = pageText(createEngagementReportPdf(report));
   assert.ok(!rendered.includes('(1/2)'));
   assert.ok(!rendered.includes('(1 / 2)'));
-  assert.ok(rendered.includes('Rettifica documentata questionario'));
+  assert.ok(!rendered.includes('Rettifica documentata questionario'));
+  assert.ok(!rendered.includes('Valore finale riconciliato'));
+  assert.ok(rendered.includes(pdfText('Contesto generale facoltativo dell’evento')));
+  assert.ok(!rendered.includes('REVISIONI:'));
+  assert.ok(!rendered.includes('*'));
+});
+
+test('optional general notes remain plain text in both formats', () => {
+  for (const format of ['one_page', 'extended']) {
+    const report = engagementReportFixture(format);
+    report.notes = 'Contesto generale condiviso con la società.';
+    const rendered = pageText(createEngagementReportPdf(report));
+    assert.ok(rendered.includes(pdfText(`Note: ${report.notes}`)));
+    assert.ok(!rendered.includes('REVISIONI:'));
+    assert.ok(!rendered.includes('LETTURA DEI DATI'));
+    report.notes = '';
+    assert.ok(!pageText(createEngagementReportPdf(report)).includes(pdfText('Contesto generale condiviso con la società.')));
+  }
+});
+
+test('both formats print all optional KPI descriptions and omit removed explanatory cards', () => {
+  for (const format of ['one_page', 'extended']) {
+    const report = engagementReportFixture(format);
+    report.kpis.forEach((kpi, index) => { kpi.display_description = `Descrizione strategica KPI ${String(index + 1).padStart(2, '0')}.`; });
+    const doc = createEngagementReportPdf(report);
+    const rendered = pageText(doc);
+    assert.equal(doc.getNumberOfPages(), format === 'one_page' ? 1 : 3);
+    for (const kpi of report.kpis) assert.ok(rendered.includes(kpi.display_description), kpi.id);
+    assert.ok(!rendered.includes('LETTURA DEI DATI'));
+    assert.ok(!rendered.includes('COME UTILIZZARE QUESTI RISULTATI'));
+    assert.ok(!rendered.includes('0.91 0.96 0.94 rg'), 'the removed pale-green card fill must not be emitted');
+    report.kpis[0].display_description = '';
+    report.kpis[0].description = 'Definizione tecnica che non deve apparire come mini descrizione';
+    delete report.kpis[1].display_description;
+    const without = pageText(createEngagementReportPdf(report));
+    assert.ok(!without.includes('Descrizione strategica KPI 01.'));
+    assert.ok(!without.includes('Descrizione strategica KPI 02.'));
+    assert.ok(without.includes('Descrizione strategica KPI 03.'));
+    assert.ok(!without.includes(report.kpis[0].description), 'older snapshots do not receive a description fallback');
+  }
 });
 
 test('missing data, extreme names and long notes remain bounded with explicit abbreviations', () => {
   for (const format of ['one_page', 'extended']) {
-    const doc = createEngagementReportPdf(engagementReportFixture(format, true));
+    const report = engagementReportFixture(format, true);
+    report.kpis.forEach(kpi => { kpi.display_description = 'Descrizione strategica modificabile con testo lungo da verificare nella pagina e nel contesto dell’evento. '.repeat(2).slice(0, 120); });
+    const doc = createEngagementReportPdf(report);
     assert.equal(doc.getNumberOfPages(), format === 'one_page' ? 1 : 3);
     const rendered = pageText(doc);
     assert.ok(rendered.includes('N/D'));

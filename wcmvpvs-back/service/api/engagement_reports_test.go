@@ -366,13 +366,11 @@ func TestEngagementReportApprovalRejectsInvalidCorrectionsAndOtherReviewers(t *t
 		overrides map[string]reportOverride
 		notes     string
 	}{
-		{"missing fact correction note", map[string]*float64{"visitors": engagementReportFloat(5)}, nil, ""},
 		{"unknown fact", map[string]*float64{"invented": engagementReportFloat(1)}, nil, "Review"},
 		{"negative fact", map[string]*float64{"visitors": engagementReportFloat(-1)}, nil, "Review"},
 		{"fractional fact", map[string]*float64{"visitors": engagementReportFloat(1.5)}, nil, "Review"},
 		{"ratio audience mismatch", map[string]*float64{"visitors": engagementReportFloat(1), "active_visitors": engagementReportFloat(2)}, nil, "Review"},
 		{"unknown KPI", nil, map[string]reportOverride{"invented": {Value: engagementReportFloat(1), Note: "Review"}}, ""},
-		{"missing override note", nil, map[string]reportOverride{"visitors": {Value: engagementReportFloat(1)}}, ""},
 		{"fractional count override", nil, map[string]reportOverride{"visitors": {Value: engagementReportFloat(1.5), Note: "Review"}}, ""},
 		{"over 100 percent", nil, map[string]reportOverride{"active_participation": {Value: engagementReportFloat(101), Note: "Review"}}, ""},
 	} {

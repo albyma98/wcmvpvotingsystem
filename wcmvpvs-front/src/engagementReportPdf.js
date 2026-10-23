@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { REPORT_KPIS, formatReportValue, reportOperationalItems, reportSourceLabel } from './engagementReport.js';
 
-const C = { navy: [14, 33, 57], teal: [12, 120, 101], ink: [28, 45, 65], muted: [99, 115, 133], pale: [242, 246, 249], line: [218, 227, 235], mint: [231, 246, 240] };
+const C = { navy: [14, 33, 57], teal: [12, 120, 101], ink: [28, 45, 65], muted: [99, 115, 133], pale: [242, 246, 249], line: [218, 227, 235] };
 const WIDTH = 210, HEIGHT = 297, M = 16;
 
 // Helvetica provides crisp selectable text and supports Italian WinAnsi glyphs.
@@ -50,7 +50,7 @@ function normalizedKpis(report) {
     const item = report.kpis?.find(kpi => kpi.id === definition.id) || {};
     const override = report.overrides?.[definition.id];
     const corrected = item.corrected || item.source === 'manual' || Boolean(override);
-    return { ...definition, ...item, numerator: override ? null : item.numerator, denominator: override ? null : item.denominator, corrected, correction_note: item.correction_note || override?.note || (corrected ? item.note : '') || '' };
+    return { ...definition, ...item, numerator: override ? null : item.numerator, denominator: override ? null : item.denominator, corrected, display_description: item.display_description || '' };
   });
 }
 
@@ -120,29 +120,23 @@ function summary(p, kpis, y) {
 function overview(doc, p, report, kpis, total) {
   header(doc, p, report, 'Il valore dell’engagement', 'Sintesi direzionale | 20 indicatori strategici dell’esperienza /new');
   summary(p, kpis, 70);
+  const operational = compactOperationalSummary(report);
+  if (operational) p.fit(operational, M, 99, 178, 7, C.muted);
   p.text('PERFORMANCE DELL’EVENTO', M, 104, 8, C.teal, true);
   p.text('Rilevato e verificato dalla società', WIDTH - M, 104, 7, C.muted, false, { align: 'right' });
-  const colW = 86, gap = 6, rowH = 13.8;
+  const colW = 86, gap = 6, rowH = 16.2;
   kpis.forEach((kpi, index) => {
     const col = Math.floor(index / 10), row = index % 10;
     const x = M + col * (colW + gap), y = 109 + row * rowH;
     if (row % 2 === 0) p.box(x, y, colW, rowH - .5, C.pale, 1);
-    p.text(`${String(index + 1).padStart(2, '0')}`, x + 2, y + 5, 6.3, C.muted);
-    p.lines(kpi.label, x + 8, y + 5, 47, 2, 7.3, C.ink, false, 3.3);
-    p.fit(formatReportValue(kpi.value, kpi.unit), x + colW - 2, y + 6, 26, 10, C.navy, true, 'right');
+    p.text(`${String(index + 1).padStart(2, '0')}`, x + 2, y + 4.5, 6.3, C.muted);
+    p.lines(kpi.label, x + 8, y + 4.5, 47, 2, 7.3, C.ink, false, 3.1);
+    p.fit(formatReportValue(kpi.value, kpi.unit), x + colW - 2, y + 5.5, 26, 10, C.navy, true, 'right');
     const reference = kpi.denominator != null && kpi.numerator != null ? `${formatReportValue(kpi.numerator)}/${formatReportValue(kpi.denominator)}` : '';
-    p.fit(`${reference}${kpi.corrected ? ' *' : ''}`, x + colW - 2, y + 10.8, 42, 6.3, C.muted, false, 'right');
+    p.fit(reference, x + colW - 2, y + 8.8, 26, 6.3, C.muted, false, 'right');
+    if (kpi.display_description) p.lines(kpi.display_description, x + 8, y + 11.1, 76, 2, 7, C.muted, false, 3.2);
   });
-  p.box(M, 251, 178, 24, C.mint);
-  p.text('LETTURA DEI DATI', M + 4, 257, 7, C.teal, true);
-  const coverage = coverageNotes(report)[0] || 'Le tracce operative ricostruiscono una partecipazione minima verificabile; visite e denominatori assenti restano N/D.';
-  const message = `${sourceSummary(report)} ${coverage}${report.notes ? ` Note: ${report.notes}` : ''}`;
-  const operational = compactOperationalSummary(report);
-  if (operational) {
-    p.fit(operational, M + 4, 261.5, 170, 7.2, C.ink);
-    p.lines(message, M + 4, 264.9, 170, 2, 7.2, C.ink, false, 3.4);
-  } else p.lines(message, M + 4, 261.5, 170, 3, 7.2, C.ink, false, 3.4);
-  p.text('N/D: misura non disponibile. * Corretto in revisione. Testi abbreviati; note integrali archiviate.', M, 273, 6.3, C.muted);
+  p.lines(report.notes ? `Note: ${report.notes}` : coverageNotes(report)[0] || 'N/D: misura non disponibile. Testi abbreviati per la leggibilità.', M, 275, 178, 1, 6.5, C.muted);
   footer(doc, p, report, 1, total);
 }
 
@@ -176,19 +170,17 @@ function detailPage(doc, p, report) {
     };
   });
   table(p, 'Risultati per sponsor', [{ key: 'name', label: 'PARTNER', x: 0, width: 62 }, { key: 'reach', label: 'COPERTURA', x: 62, width: 30 }, { key: 'impressions', label: 'ESPOSIZIONI', x: 92, width: 35 }, { key: 'clickers', label: 'UTENTI CLIC', x: 127, width: 31 }, { key: 'ctr', label: 'TASSO', x: 158, width: 20 }], sponsors, 163, 'Nessun dettaglio sponsor disponibile nella misurazione.');
-  p.box(M, 253, 178, 21, C.mint);
   const operational = reportOperationalItems(report.details);
-  p.text(operational.length ? 'DATI OPERATIVI DELL’EVENTO' : 'COME UTILIZZARE QUESTI RISULTATI', M + 4, 259, 7.2, C.teal, true);
-  const summary = operational.length
-    ? operational.map(item => `${item.label}: ${formatReportValue(item.value)}`).join(' | ')
-    : 'Confrontare i giochi per partecipazione e completamenti; discutere con ogni partner copertura e risposta effettiva. I dati descrivono interazioni osservate: non attribuiscono fatturato o ritorni economici.';
-  p.lines(summary, M + 4, 264, 170, 3, 7, C.ink, false, 3.4);
+  if (operational.length) {
+    p.text('DATI OPERATIVI DELL’EVENTO', M, 257, 7.2, C.teal, true);
+    p.lines(operational.map(item => `${item.label}: ${formatReportValue(item.value)}`).join(' | '), M, 262, 178, 3, 7, C.ink, false, 3.4);
+  }
   footer(doc, p, report, 2, 3);
 }
 
 function methodPage(doc, p, report, kpis) {
   doc.addPage();
-  header(doc, p, report, 'Metodo e prossimi passi', 'Trasparenza della misurazione | Fonti, revisioni e indicazioni operative');
+  header(doc, p, report, 'Metodo e prossimi passi', 'Trasparenza della misurazione | Fonti e indicazioni operative');
   p.text('BASE DI CALCOLO E FONTI', M, 76, 9, C.teal, true);
   kpis.forEach((kpi, index) => {
     const y = 82 + index * 7.3;
@@ -204,9 +196,8 @@ function methodPage(doc, p, report, kpis) {
   const sourceCount = report.details?.sources?.length;
   const coverage = coverageNotes(report).join(' ') || 'Le tracce operative descrivono una partecipazione minima. Le visite senza azioni e i pubblici eleggibili richiedono telemetria. Risposte e clic senza identità non misurano persone uniche.';
   p.lines(`${sourceSummary(report)}${sourceCount ? ` ${sourceCount} tabelle consultate.` : ''} ${coverage}`, M, 243, 178, 3, 7.3, C.ink, false, 3.5);
-  const corrected = kpis.filter(kpi => kpi.correction_note).map(kpi => `${kpi.label}: ${kpi.correction_note}`).join(' | ');
-  p.lines(corrected ? `REVISIONI: ${corrected}` : report.notes ? `NOTE: ${report.notes}` : 'N/D = misura assente o denominatore nullo. Utenti anonimi deduplicati per browser. Il tempo medio usa solo utenti con intervalli validi, pagina visibile e attività recente. Le registrazioni non attestano consenso marketing.', M, 258, 178, 4, 7, C.muted, false, 3.4);
-  p.text('Testi e tabelle abbreviati per la leggibilità. Dati originali e revisioni integrali conservati nel report approvato.', M, 275, 6.3, C.muted);
+  p.lines(report.notes ? `Note: ${report.notes}` : 'N/D = misura assente o denominatore nullo. Utenti anonimi deduplicati per browser. Il tempo medio usa solo utenti con intervalli validi, pagina visibile e attività recente. Le registrazioni non attestano consenso marketing.', M, 258, 178, 4, 7, C.muted, false, 3.4);
+  p.text('Testi e tabelle abbreviati per la leggibilità. Dati integrali conservati nel report approvato.', M, 275, 6.3, C.muted);
   footer(doc, p, report, 3, 3);
 }
 
