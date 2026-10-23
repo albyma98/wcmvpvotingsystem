@@ -6,7 +6,7 @@ import { REPORT_KPIS } from './engagementReport.js';
 
 function pageText(doc) { return doc.internal.pages.flat().join('\n'); }
 
-test('one pager contains all twenty KPIs, report identity and issuer on one A4 page', () => {
+test('one pager contains all twenty KPIs and report identity without a visible issuer name', () => {
   const report = engagementReportFixture('one_page');
   const doc = createEngagementReportPdf(report);
   assert.equal(doc.getNumberOfPages(), 1);
@@ -16,7 +16,7 @@ test('one pager contains all twenty KPIs, report identity and issuer on one A4 p
   const nativeText = [...rendered.matchAll(/\(([^)]*)\) Tj/g)].map(match => match[1]).join(' ');
   for (const kpi of REPORT_KPIS) assert.ok(nativeText.includes(pdfText(kpi.label)), kpi.label);
   assert.ok(rendered.includes('Report #42'));
-  assert.ok(rendered.includes('ArenaBoostX'));
+  assert.ok(!rendered.includes('ArenaBoostX'));
   assert.ok(doc.output('arraybuffer').byteLength > 3000);
   assert.ok(doc.output().includes('/Author (ArenaBoostX)'));
 });
@@ -66,12 +66,21 @@ test('unapproved snapshots and unsupported formats cannot be exported', () => {
   assert.equal(pdfText('Società 🏀 — città'), 'Società - città');
 });
 
-test('validated issuer PNG is embedded while an unreadable logo retains the issuer name', () => {
-  const report = engagementReportFixture();
+test('both report formats sign every page with only the logo and no issuer-name fallback', () => {
   // A small opaque test image, generated locally rather than a third-party logo.
-  report.branding.logo_data = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAMCAIAAAD3UuoiAAAAGklEQVR4nGPkqUhloAZgooopowaNGjRsDQIAR8oBAcx3rNgAAAAASUVORK5CYII=';
-  const branded = createEngagementReportPdf(report);
-  assert.equal(Object.keys(branded.internal.collections.addImage_images).length, 1);
-  report.branding.logo_data = 'data:image/png;base64,invalid';
-  assert.ok(pageText(createEngagementReportPdf(report)).includes('ArenaBoostX'));
+  const logo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAMCAIAAAD3UuoiAAAAGklEQVR4nGPkqUhloAZgooopowaNGjRsDQIAR8oBAcx3rNgAAAAASUVORK5CYII=';
+  for (const format of ['one_page', 'extended']) {
+    const report = engagementReportFixture(format);
+    report.branding = { company_name: 'Issuer name must remain invisible', logo_data: logo };
+    const branded = createEngagementReportPdf(report);
+    assert.equal(Object.keys(branded.internal.collections.addImage_images).length, 1);
+    assert.ok(!pageText(branded).includes(report.branding.company_name));
+    for (const page of branded.internal.pages.slice(1)) assert.equal((page.join('\n').match(/\/I\d+ Do/g) || []).length, 2);
+    for (const unavailable of ['', 'data:image/png;base64,invalid']) {
+      report.branding.logo_data = unavailable;
+      const unbranded = createEngagementReportPdf(report);
+      assert.ok(!pageText(unbranded).includes(report.branding.company_name));
+      assert.ok(!pageText(unbranded).includes('ArenaBoostX'));
+    }
+  }
 });

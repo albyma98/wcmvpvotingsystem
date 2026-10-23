@@ -32,7 +32,7 @@
 
             <fieldset class="eng-report__formats" :disabled="saving"><legend>Formato del PDF</legend><label :class="{ selected: format === 'one_page' }"><input v-model="format" type="radio" value="one_page" /><span><strong>One pager</strong><small>1 pagina · tutti i KPI e sintesi direzionale</small></span></label><label :class="{ selected: format === 'extended' }"><input v-model="format" type="radio" value="extended" /><span><strong>Report completo</strong><small>3 pagine · KPI, giochi, partner e metodologia</small></span></label></fieldset>
             <div v-if="validationErrors.length" class="eng-report__error" role="alert"><strong>Controlla i dati prima di confermare:</strong><ul><li v-for="item in validationErrors" :key="item">{{ item }}</li></ul></div>
-            <p class="eng-report__signature">Report emesso da <strong>{{ snapshot.branding?.company_name || 'ArenaBoostX' }}</strong>. Dati originali, correzioni e note vengono conservati con un identificativo di approvazione.</p>
+            <p class="eng-report__signature">Il report è firmato con il solo logo dell’emittente. Dati originali, correzioni e note vengono conservati con un identificativo di approvazione.</p>
           </template>
         </div>
 

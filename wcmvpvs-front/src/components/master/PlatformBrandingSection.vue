@@ -147,7 +147,7 @@ async function save() {
     const { data } = await apiClient.put(ENDPOINT, payload);
     if (currentRevision !== revision) return;
     applyBranding(data);
-    success.value = 'Identità salvata. I prossimi report utilizzeranno questo nome e questo logo.';
+    success.value = 'Identità salvata. I prossimi report utilizzeranno il logo come firma.';
   } catch (cause) {
     if (currentRevision === revision) {
       error.value = cause?.response?.status === 403
@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
       <div>
         <p class="eyebrow">Identità globale</p>
         <h2 id="platform-branding-heading">Emittente dei report</h2>
-        <p class="hint">Il nome e il logo della piattaforma firmano i PDF scaricati da tutte le società, sia nel formato one pager sia nel report completo.</p>
+        <p class="hint">Il logo della piattaforma firma i PDF scaricati da tutte le società, sia nel formato one pager sia nel report completo.</p>
       </div>
       <span class="scope-badge">Tutte le società</span>
     </header>
@@ -183,7 +183,7 @@ onBeforeUnmount(() => {
         <div class="branding-fields">
           <label for="report-company-name">Nome societario dell’emittente</label>
           <input id="report-company-name" v-model="form.company_name" name="company_name" type="text" maxlength="120" required :disabled="busy" placeholder="ArenaBoostX" @input="success = ''" />
-          <p class="field-hint">Comparirà nell’intestazione e nella firma del report.</p>
+          <p class="field-hint">Identificativo interno della piattaforma. Il nome non compare nella firma del report.</p>
 
           <label for="report-company-logo">Logo dell’emittente</label>
           <input id="report-company-logo" ref="fileInput" class="logo-file" type="file" accept="image/png,image/jpeg,image/webp" :disabled="loading || saving" aria-describedby="report-logo-help" @change="readLogo" />
@@ -197,13 +197,11 @@ onBeforeUnmount(() => {
           <p class="preview-label">Anteprima firma</p>
           <div class="signature-paper">
             <div class="preview-logo">
-              <img v-if="form.logo_data" :src="form.logo_data" :alt="`Logo ${form.company_name || 'emittente'}`" />
+              <img v-if="form.logo_data" :src="form.logo_data" alt="Logo dell’emittente" />
               <span v-else class="logo-placeholder">Logo emittente</span>
             </div>
-            <strong>{{ form.company_name.trim() || 'ArenaBoostX' }}</strong>
-            <span class="preview-description">Fan engagement · Report evento</span>
           </div>
-          <p class="field-hint">L’identità della società sportiva resta presente nel report insieme alla firma dell’emittente.</p>
+          <p class="field-hint">La firma del report mostra solo il logo dell’emittente. L’identità della società sportiva resta presente nel report.</p>
         </aside>
       </div>
       <div class="branding-actions">

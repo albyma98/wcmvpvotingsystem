@@ -66,8 +66,7 @@ function drawLogo(doc, data, x, y, maxW, maxH) {
 
 function header(doc, p, report, title, subtitle) {
   p.box(0, 0, WIDTH, 3, C.teal, 0);
-  const logo = drawLogo(doc, report.branding?.logo_data, M, 12, 25, 12);
-  p.lines(report.branding?.company_name || 'ArenaBoostX', logo ? M + 29 : M, 18, logo ? 90 : 119, 1, 13, C.navy, true);
+  drawLogo(doc, report.branding?.logo_data, M, 12, 60, 12);
   p.text('EVENT INTELLIGENCE', WIDTH - M, 18, 7.4, C.teal, true, { align: 'right' });
   p.line(29);
   p.text(title, M, 40, 21, C.navy, true);
@@ -77,9 +76,9 @@ function header(doc, p, report, title, subtitle) {
   p.lines([report.event?.organization_name, report.event?.location].filter(Boolean).join('  |  '), M, 63, WIDTH - M * 2, 1, 8, C.muted);
 }
 
-function footer(p, report, page, total) {
+function footer(doc, p, report, page, total) {
   p.line(280);
-  p.lines(report.branding?.company_name || 'ArenaBoostX', M, 286, 64, 1, 7, C.muted);
+  drawLogo(doc, report.branding?.logo_data, M, 282, 36, 8);
   p.fit(`Report #${report.id || 'N/D'}`, 84, 286, 48, 7, C.muted);
   p.text(`Approvato ${date(report.approved_at)}  |  ${page}/${total}`, WIDTH - M, 286, 7, C.muted, false, { align: 'right' });
 }
@@ -116,7 +115,7 @@ function overview(doc, p, report, kpis, total) {
   const message = report.notes || 'Misurazione dedicata alla home /new. Valori mancanti: N/D. I dati anonimi stimano browser, non persone fisiche. I profili verificati non implicano un consenso marketing.';
   p.lines(message, M + 4, 262, 170, 2, 7.4, C.ink, false, 3.4);
   p.text('N/D: misura non disponibile. * Corretto in revisione. Testi abbreviati; note integrali archiviate.', M, 273, 6.3, C.muted);
-  footer(p, report, 1, total);
+  footer(doc, p, report, 1, total);
 }
 
 function table(p, title, columns, rows, y, emptyMessage, maxRows = 6, rowHeight = 9) {
@@ -143,7 +142,7 @@ function detailPage(doc, p, report) {
   p.box(M, 253, 178, 21, C.mint);
   p.text('COME UTILIZZARE QUESTI RISULTATI', M + 4, 259, 7.2, C.teal, true);
   p.lines('Confrontare i giochi per partecipazione e completamenti; discutere con ogni partner copertura e risposta effettiva. I dati descrivono interazioni osservate: non attribuiscono fatturato o ritorni economici.', M + 4, 264, 170, 2, 7.4, C.ink, false, 3.5);
-  footer(p, report, 2, 3);
+  footer(doc, p, report, 2, 3);
 }
 
 function methodPage(doc, p, report, kpis) {
@@ -172,7 +171,7 @@ function methodPage(doc, p, report, kpis) {
   const corrected = kpis.filter(kpi => kpi.correction_note).map(kpi => `${kpi.label}: ${kpi.correction_note}`).join(' | ');
   p.lines(corrected ? `REVISIONI: ${corrected}` : report.notes ? `NOTE: ${report.notes}` : 'N/D = misura assente o denominatore nullo. Utenti anonimi deduplicati per browser. Tempo attivo misurato solo con pagina visibile e attività recente. Le nuove registrazioni non attestano consenso marketing.', M, 258, 178, 4, 7, C.muted, false, 3.4);
   p.text('Testi e tabelle abbreviati per la leggibilità. Dati originali e revisioni integrali conservati nel report approvato.', M, 275, 6.3, C.muted);
-  footer(p, report, 3, 3);
+  footer(doc, p, report, 3, 3);
 }
 
 /** Returns a deterministic A4 document from an immutable server-approved snapshot. */

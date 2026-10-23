@@ -9,7 +9,8 @@ aggiornare i dati di base (le percentuali vengono ricalcolate), scegliere il for
 La versione approvata resta archiviata e può essere scaricata nuovamente.
 
 Il master configura il nome dell'emittente e il logo in **Report e marchio**.
-Il nome predefinito è ArenaBoostX. Sono supportati logo PNG/JPEG e caricamenti
+Il nome predefinito è ArenaBoostX ed è un identificativo interno: la firma dei PDF
+mostra solo il logo. Sono supportati logo PNG/JPEG e caricamenti
 WebP convertiti dal pannello; le immagini vengono validate e ridimensionate.
 
 Le misurazioni sono indipendenti dallo storico precedente: vengono raccolte
