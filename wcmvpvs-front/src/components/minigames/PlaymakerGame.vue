@@ -69,7 +69,7 @@ import { startPlaymakerSession, submitPlaymakerPass } from '../../api';
 import { PLAYMAKER_WORLD, PLAYMAKER_START, getPlaymakerScene, createPlaymakerPass, samplePlaymakerPass } from '../../games/playmaker';
 
 const props = defineProps({ eventId: { type: Number, required: true }, walletCoins: { type: Number, default: 0 }, earnedCoins: { type: Number, default: 0 }, clubName: { type: String, default: '' }, clubLogoUrl: { type: String, default: '' }, organizationSlug: { type: String, default: '' } });
-const emit = defineEmits(['credited', 'saving-change']);
+const emit = defineEmits(['credited', 'saving-change', 'round-started', 'round-completed']);
 const gameEventId = props.eventId;
 const state = ref('intro');
 const courtEl = ref(null);
@@ -140,6 +140,7 @@ function tick() {
   if (session.value && state.value !== 'finished' && (remainingMs.value > 0 || state.value === 'flying')) frameId = window.requestAnimationFrame(tick);
 }
 function finish() {
+  if (session.value && state.value !== 'finished') emit('round-completed', { roundId: session.value.session_id });
   releasePointer();
   window.clearTimeout(resultTimer);
   window.cancelAnimationFrame(frameId);
@@ -161,6 +162,7 @@ async function startSession() {
       state.value = 'error'; errorMessage.value = response.message || 'Campo non disponibile. Controlla la connessione e riprova.'; return;
     }
     session.value = data;
+    emit('round-started', { roundId: data.session_id });
     attempt.value = data.attempt;
     clockElapsedBase = 30000 - data.remaining_ms;
     clockStartedAt = clockNow();

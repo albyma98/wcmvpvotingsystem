@@ -77,15 +77,17 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { apiClient } from '../../api';
 import { newMinigameRoundId } from '../../fanJourney';
 
-const emit = defineEmits(['claim', 'exit']);
+const emit = defineEmits(['claim', 'exit', 'round-started', 'round-completed']);
 const props = defineProps({
   completionReward: { type: Number, default: null },
+  sponsor: { type: Object, default: null },
 });
 const hasFixedReward = computed(() => Number.isFinite(props.completionReward) && props.completionReward >= 0);
 const fixedReward = computed(() => hasFixedReward.value ? Math.floor(props.completionReward) : 0);
 
 const arenaRef = ref(null);
 const sponsorLogo = ref('');
+const roundSponsor = ref(null);
 const phase = ref('ready');
 const countdown = ref(3);
 const score = ref(0);
@@ -145,9 +147,15 @@ onBeforeUnmount(() => {
 
 async function loadSponsorLogo() {
   try {
+    if (props.sponsor) {
+      sponsorLogo.value = props.sponsor.imageUrl || '';
+      roundSponsor.value = props.sponsor;
+      return;
+    }
     const { data } = await apiClient.get('/sponsors');
     const first = Array.isArray(data) ? data.find((item) => typeof item?.logo_data === 'string' && item.logo_data.trim()) : null;
     sponsorLogo.value = first?.logo_data || '';
+    roundSponsor.value = first;
   } catch (error) {
     sponsorLogo.value = '';
   }
@@ -216,6 +224,7 @@ function resetRound() {
 function startGameplay() {
   syncArenaSize();
   phase.value = 'playing';
+  emit('round-started', { roundId, sponsorId: roundSponsor.value?.id, sponsorName: roundSponsor.value?.name });
   loopStart = performance.now();
   lastTick = loopStart;
   stopGameLoop();
@@ -287,6 +296,8 @@ function updateItems(dt) {
 }
 
 function finishRound() {
+  if (phase.value !== 'playing') return;
+  emit('round-completed', { roundId, sponsorId: roundSponsor.value?.id, sponsorName: roundSponsor.value?.name });
   stopGameLoop();
   phase.value = 'result';
 }

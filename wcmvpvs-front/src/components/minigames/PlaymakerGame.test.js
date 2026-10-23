@@ -182,7 +182,7 @@ test('a predicted assist animates first and only a valid server receipt grants p
   assert.equal(game.state.bestStreak.value, 1);
   assert.equal(game.state.matchEarned.value, 5);
   assert.equal(game.state.attempt.value, 1);
-  assert.deepEqual(game.events, [['saving-change', true], ['credited', { ...receipt, event_id: 42 }], ['saving-change', false]]);
+  assert.deepEqual(game.events, [['round-started', { roundId: sessionId }], ['saving-change', true], ['credited', { ...receipt, event_id: 42 }], ['saving-change', false]]);
   assert.equal(game.window.localStorage.getItem('cento:playmaker:best:club:42'), '1');
 });
 

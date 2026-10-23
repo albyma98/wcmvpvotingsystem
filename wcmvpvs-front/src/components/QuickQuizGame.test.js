@@ -29,22 +29,22 @@ test('completing the quiz gives the advertised fixed bonus even with an incorrec
   t.after(() => scope.stop());
   await state.loadQuiz();
   state.claimCoins();
-  assert.equal(events.length, 0);
+  assert.deepEqual(events.map(([name]) => name), ['round-started']);
   await state.submitAnswer(1);
   finishFeedback(window);
   assert.equal(state.state.value, 'summary');
   assert.equal(state.totalCoins.value, 15);
   state.claimCoins();
   state.claimCoins();
-  assert.equal(events.length, 1);
-  assert.equal(events[0][1].coins, 15);
-  const firstRound = events[0][1].roundId;
+  assert.deepEqual(events.map(([name]) => name), ['round-started', 'round-completed', 'claim']);
+  assert.equal(events[2][1].coins, 15);
+  const firstRound = events[2][1].roundId;
   await state.loadQuiz();
   await state.submitAnswer(1);
   finishFeedback(window);
   state.claimCoins();
-  assert.equal(events.length, 2);
-  assert.notEqual(events[1][1].roundId, firstRound);
+  assert.equal(events.filter(([name]) => name === 'claim').length, 2);
+  assert.notEqual(events.at(-1)[1].roundId, firstRound);
 });
 
 test('network errors do not count as answers or produce a completion reward', async (t) => {
@@ -57,7 +57,7 @@ test('network errors do not count as answers or produce a completion reward', as
   assert.equal(state.totalCoins.value, 0);
   assert.ok(state.errorMessage.value);
   state.claimCoins();
-  assert.equal(events.length, 0);
+  assert.deepEqual(events.map(([name]) => name), ['round-started']);
 });
 
 test('an unavailable quiz cannot be claimed and busy wallet saves disable claims', async (t) => {
@@ -74,7 +74,7 @@ test('an unavailable quiz cannot be claimed and busy wallet saves disable claims
   finishFeedback(completed.window);
   completed.props.claiming = true;
   completed.state.claimCoins();
-  assert.equal(completed.events.length, 0);
+  assert.deepEqual(completed.events.map(([name]) => name), ['round-started', 'round-completed']);
 });
 
 test('other pages retain the existing variable quiz rewards', async (t) => {

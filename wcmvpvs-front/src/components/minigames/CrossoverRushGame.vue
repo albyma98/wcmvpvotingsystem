@@ -52,7 +52,7 @@ import { startCrossoverSession, submitCrossoverDuel } from '../../api';
 import { CROSSOVER_WORLD, CROSSOVER_ANIMATION_MS, evaluateCrossoverDuel, getCrossoverScene, sampleCrossoverFinish } from '../../games/crossover';
 
 const props = defineProps({ eventId: { type: Number, required: true }, walletCoins: { type: Number, default: 0 }, earnedCoins: { type: Number, default: 0 }, clubName: { type: String, default: '' }, clubLogoUrl: { type: String, default: '' }, organizationSlug: { type: String, default: '' } });
-const emit = defineEmits(['credited', 'saving-change']);
+const emit = defineEmits(['credited', 'saving-change', 'round-started', 'round-completed']);
 const gameEventId = props.eventId;
 const state = ref('intro');
 const courtEl = ref(null);
@@ -151,6 +151,7 @@ function tick() {
   if (session.value && state.value !== 'finished' && (remainingMs.value > 0 || state.value === 'animating')) frameId = window.requestAnimationFrame(tick);
 }
 function finish() {
+  if (session.value && state.value !== 'finished') emit('round-completed', { roundId: session.value.session_id });
   releasePointer(); window.clearTimeout(resultTimer); window.cancelAnimationFrame(frameId); celebration.value = false; state.value = 'finished'; updateBest();
 }
 function readStats(data) {
@@ -172,6 +173,7 @@ async function startSession() {
       state.value = 'error'; errorMessage.value = response.message || 'Campo non disponibile. Controlla la connessione e riprova.'; return;
     }
     session.value = data; duelIndex.value = data.next_duel; clockElapsedBase = 25000 - data.remaining_ms; clockStartedAt = clockNow();
+    emit('round-started', { roundId: data.session_id });
     elapsedMs.value = clockElapsedBase; remainingMs.value = data.remaining_ms; samples.value = []; controlX.value = 0; duelElapsedMs.value = 0;
     outcome.value = null; releasePose.value = null; animationProgress.value = 0; celebration.value = false; hint.value = ''; newRecord.value = false;
     readStats(data); state.value = 'ready'; frameId = window.requestAnimationFrame(tick);

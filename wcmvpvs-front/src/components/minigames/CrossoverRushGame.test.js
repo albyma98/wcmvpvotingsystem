@@ -183,7 +183,7 @@ test('the golden thumb feint launches a predicted dunk and credits only after se
   assert.equal(game.state.matchEarned.value, 5);
   assert.equal(game.state.duelIndex.value, 1);
   assert.equal(game.state.celebration.value, true);
-  assert.deepEqual(game.events, [['saving-change', true], ['credited', { ...receipt, event_id: 42 }], ['saving-change', false]]);
+  assert.deepEqual(game.events, [['round-started', { roundId: sessionId }], ['saving-change', true], ['credited', { ...receipt, event_id: 42 }], ['saving-change', false]]);
 });
 
 test('phone and letterboxed SVG coordinates produce the same normalized thumb trace', async (t) => {

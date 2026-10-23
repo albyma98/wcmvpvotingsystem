@@ -65,7 +65,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { newMinigameRoundId } from '../fanJourney';
 
-const emit = defineEmits(['claim', 'exit']);
+const emit = defineEmits(['claim', 'exit', 'round-started', 'round-completed']);
 const props = defineProps({
   completionReward: { type: Number, default: null },
 });
@@ -302,6 +302,7 @@ function finalizeRound(result) {
   roundResults.value = [...roundResults.value, result];
   phase.value = 'result';
   tapLocked.value = true;
+  if (currentRound.value === TOTAL_ROUNDS) emit('round-completed', { roundId });
 }
 
 function onPlayTap() {
@@ -351,6 +352,7 @@ function showRoundCoins() {
 function onPrimaryAction() {
   if (phase.value === 'intro') {
     resetGame();
+    emit('round-started', { roundId });
     startCountdown();
     return;
   }

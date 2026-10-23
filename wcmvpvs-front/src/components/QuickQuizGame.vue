@@ -66,7 +66,7 @@ const props = defineProps({
   completionReward: { type: Number, default: 0 },
   claiming: { type: Boolean, default: false },
 });
-const emit = defineEmits(['claim', 'exit']);
+const emit = defineEmits(['claim', 'exit', 'round-started', 'round-completed']);
 
 const state = ref('loading');
 const questions = ref([]);
@@ -114,6 +114,7 @@ async function loadQuiz() {
   index.value = 0;
   totalCoins.value = 0;
   streak.value = 0;
+  emit('round-started', { roundId });
   startQuestion();
 }
 
@@ -173,6 +174,7 @@ async function submitAnswer(selectedIndex) {
         ? props.completionReward
         : totalCoins.value + Number(config.value.completion_bonus || 0);
       state.value = 'summary';
+      emit('round-completed', { roundId });
     } else {
       index.value += 1;
       startQuestion();

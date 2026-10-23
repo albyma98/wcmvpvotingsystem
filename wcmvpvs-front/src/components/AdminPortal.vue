@@ -1248,14 +1248,9 @@
                     <button
                       class="btn outline"
                       type="button"
-                      :disabled="isDownloadingHistoryReport(entry.id)"
-                      @click="downloadEventHistoryReport(entry)"
+                      @click="openEngagementReport(entry)"
                     >
-                      {{
-                        isDownloadingHistoryReport(entry.id)
-                          ? "Generazione report…"
-                          : "Scarica report"
-                      }}
+                      Prepara report
                     </button>
                     <button
                       v-if="isSuperAdmin"
@@ -1939,6 +1934,14 @@
         <section v-else-if="section === 'marketing'" class="card">
           <MarketingSection />
         </section>
+        <EngagementReportModal
+          v-model="engagementReportDialog.visible"
+          :event-id="engagementReportDialog.eventId"
+          :event-title="engagementReportDialog.eventTitle"
+          :auth-headers="authHeaders"
+          @unauthorized="handleUnauthorized"
+          @generated="onEngagementReportGenerated"
+        />
         <div
           v-if="purgeDialog.visible"
           class="modal-backdrop"
@@ -2025,6 +2028,7 @@ import AdminPartnersSection from "./admin/AdminPartnersSection.vue";
 import AdminSponsorsSection from "./admin/AdminSponsorsSection.vue";
 import AdminPlayersSection from "./admin/AdminPlayersSection.vue";
 import AdminCouponsSection from "./admin/AdminCouponsSection.vue";
+import EngagementReportModal from "./EngagementReportModal.vue";
 
 const props = defineProps({
   organizationSlug: {
@@ -2311,7 +2315,7 @@ const selfieLoadError = ref("");
 const selfieModerationMessage = ref("");
 const selectedSelfieEventId = ref(0);
 const selfieBusyState = reactive({});
-const historyReportDownloadState = reactive({});
+const engagementReportDialog = reactive({ visible: false, eventId: 0, eventTitle: "" });
 const historyAiGenerateState = reactive({});
 const purgeDialog = reactive({
   visible: false,
@@ -3431,9 +3435,7 @@ function clearCollections() {
   Object.keys(selfieBusyState).forEach((key) => {
     delete selfieBusyState[key];
   });
-  Object.keys(historyReportDownloadState).forEach((key) => {
-    delete historyReportDownloadState[key];
-  });
+  engagementReportDialog.visible = false;
   lastCreatedEventLink.value = "";
   resetNewCouponForm();
   couponBeingSaved.value = 0;
@@ -5049,21 +5051,6 @@ function isSelfieBusy(id) {
   return Boolean(selfieBusyState[id]);
 }
 
-function setHistoryReportBusy(id, busy) {
-  if (!id) {
-    return;
-  }
-  if (busy) {
-    historyReportDownloadState[id] = true;
-  } else {
-    delete historyReportDownloadState[id];
-  }
-}
-
-function isDownloadingHistoryReport(id) {
-  return Boolean(id && historyReportDownloadState[id]);
-}
-
 function setHistoryAiBusy(id, busy) {
   if (!id) return;
   if (busy) historyAiGenerateState[id] = true;
@@ -6051,83 +6038,16 @@ function normalizeAiHistoryReport(item) {
   };
 }
 
-function buildHistoryReportFilename(entry) {
-  const eventId = Number(entry?.id) || 0;
-  const parsedDate = parseHistoryDate(entry?.startDatetime);
-  const datePart = parsedDate
-    ? `${parsedDate.getFullYear()}${String(parsedDate.getMonth() + 1).padStart(2, "0")}${String(
-        parsedDate.getDate(),
-      ).padStart(2, "0")}`
-    : "";
-  const rawTitle = typeof entry?.title === "string" ? entry.title : "";
-  const normalizedTitle = rawTitle
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  const parts = [];
-  if (datePart) {
-    parts.push(datePart);
-  }
-  if (normalizedTitle) {
-    parts.push(normalizedTitle);
-  }
-  if (eventId) {
-    parts.push(`evento-${eventId}`);
-  } else {
-    parts.push("evento-storico");
-  }
-  return `${parts.join("_")}.pdf`;
+function openEngagementReport(entry) {
+  if (!entry?.id) return;
+  engagementReportDialog.eventId = Number(entry.id);
+  engagementReportDialog.eventTitle = entry.title || `Evento #${entry.id}`;
+  engagementReportDialog.visible = true;
 }
 
-async function downloadEventHistoryReport(entry) {
-  if (!entry || typeof entry !== "object" || !entry.id) {
-    return;
-  }
-
-  const eventId = entry.id;
-  setHistoryReportBusy(eventId, true);
+function onEngagementReportGenerated(entry) {
+  eventHistorySuccess.value = `Report approvato per "${entry.title}" scaricato correttamente.`;
   eventHistoryError.value = "";
-
-  try {
-    await nextTick();
-    const config = {
-      ...authHeaders.value,
-      responseType: "blob",
-    };
-    const response = await apiClient.get(
-      `/admin/events/history/${eventId}/report`,
-      config,
-    );
-    const blob = new Blob([response?.data], { type: "application/pdf" });
-    const filename =
-      buildHistoryReportFilename(entry) || `evento-${eventId}.pdf`;
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    const safeTitle =
-      typeof entry.title === "string" ? entry.title : `Evento #${entry.id}`;
-    eventHistorySuccess.value = `Report per "${safeTitle}" scaricato correttamente.`;
-  } catch (error) {
-    if (error?.response?.status === 401) {
-      handleUnauthorized();
-    } else if (error?.response?.status === 404) {
-      eventHistoryError.value = "Il report richiesto non è disponibile.";
-    } else {
-      console.error("history report download error", error);
-      eventHistoryError.value =
-        "Impossibile generare il report PDF. Riprova più tardi.";
-    }
-    eventHistorySuccess.value = "";
-  } finally {
-    setHistoryReportBusy(eventId, false);
-  }
 }
 
 async function generateEventAiReport(entry) {

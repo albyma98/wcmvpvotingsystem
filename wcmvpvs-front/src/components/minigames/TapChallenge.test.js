@@ -39,8 +39,8 @@ test('server saving blocks a fixed claim, and a new session can earn another rew
   await setup.state.startGame();
   setup.state.status.value = 'finished';
   await setup.state.claimReward();
-  assert.equal(setup.events.length, 2);
-  assert.notEqual(setup.events[1][1].roundId, firstRound);
+  assert.deepEqual(setup.events.map(([name]) => name), ['claim', 'round-started', 'claim']);
+  assert.notEqual(setup.events[2][1].roundId, firstRound);
   assert.deepEqual(setup.awards, []);
 });
 

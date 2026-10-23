@@ -31,17 +31,17 @@ test('a first completion requests eight coins once and wallet changes only throu
   const setup = game(t, { walletCoins: 3 });
   setup.completeRound();
   assert.equal(setup.state.state.value, 'win');
-  assert.equal(setup.events.length, 1);
-  assert.equal(setup.events[0][1].coins, 8);
-  const firstRound = setup.events[0][1].roundId;
+  assert.deepEqual(setup.events.map(([name]) => name), ['round-started', 'round-completed', 'claim']);
+  assert.equal(setup.events[2][1].coins, 8);
+  const firstRound = setup.events[2][1].roundId;
   setup.state.onWin();
-  assert.equal(setup.events.length, 1);
+  assert.equal(setup.events.filter(([name]) => name === 'claim').length, 1);
   assert.equal(setup.state.displayedCoins.value, 3);
   setup.props.walletCoins = 11;
   assert.equal(setup.state.displayedCoins.value, 11);
   setup.completeRound();
-  assert.equal(setup.events.length, 2, 'a second victory requests a second reward');
-  assert.notEqual(setup.events[1][1].roundId, firstRound);
+  assert.equal(setup.events.filter(([name]) => name === 'claim').length, 2, 'a second victory requests a second reward');
+  assert.notEqual(setup.events.at(-1)[1].roundId, firstRound);
   assert.equal(setup.state.displayedCoins.value, 11);
 });
 
@@ -53,7 +53,7 @@ test('retry is free even with a zero balance and another victory can earn coins'
   assert.equal(setup.state.displayedCoins.value, 0);
   setup.completeRound();
   assert.equal(setup.state.state.value, 'win');
-  assert.equal(setup.events.length, 1);
-  assert.equal(setup.events[0][1].coins, 8);
+  assert.equal(setup.events.filter(([name]) => name === 'claim').length, 1);
+  assert.equal(setup.events.at(-1)[1].coins, 8);
   assert.equal(setup.state.displayedCoins.value, 0);
 });

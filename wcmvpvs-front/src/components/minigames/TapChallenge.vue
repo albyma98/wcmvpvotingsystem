@@ -186,7 +186,7 @@ const props = defineProps({
   eventId: { type: Number, default: 0 }, cooldownSeconds: { type: Number, default: 0 },
   completionReward: { type: Number, default: null }, claiming: { type: Boolean, default: false },
 });
-const emit = defineEmits(['claim', 'exit']);
+const emit = defineEmits(['claim', 'exit', 'round-started', 'round-completed']);
 
 const ROUND_DURATION_MS = 10_000;
 const MATCHMAKING_TIMEOUT_MS = 20_000;
@@ -399,6 +399,7 @@ function onPrimaryAction() {
 }
 async function startGame() {
   roundId = newMinigameRoundId();
+  emit('round-started', { roundId });
   stopTimer();
   stopBallMovement();
   errorMessage.value = '';
@@ -451,6 +452,7 @@ function onTap() {
 }
 async function finishGame() {
   if (status.value !== 'playing') return;
+  emit('round-completed', { roundId });
   stopTimer();
   stopBallMovement();
   status.value = 'finished';

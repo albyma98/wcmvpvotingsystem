@@ -116,6 +116,7 @@
             <button
               v-for="sponsor in sponsors.slice(0, 6)"
               :key="sponsor.id"
+              :ref="(element) => observeReportSponsor(element, sponsor)"
               class="sponsor-chip"
               type="button"
               @click="onSponsorClick(sponsor)"
@@ -242,6 +243,7 @@
             <button
               v-for="(mission, index) in earnMissions"
               :key="mission.key"
+              :ref="(element) => observeReportMission(element, mission)"
               class="mission-card"
               :class="{ 'is-completed': !mission.repeatable && (doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)) }"
               :style="{ '--mission-delay': `${index * 25}ms` }"
@@ -472,6 +474,8 @@
             class="game-fill"
             :completion-reward="10"
             @claim="onGameClaim"
+            @round-started="onReportGameStarted"
+            @round-completed="onReportGameCompleted"
             @exit="closeGame"
           />
           <QuickQuizGame
@@ -481,6 +485,8 @@
             :completion-reward="QUIZ_REWARD"
             :claiming="isSavingCoins"
             @claim="onGameClaim"
+            @round-started="onReportGameStarted"
+            @round-completed="onReportGameCompleted"
             @exit="closeGame"
           />
           <BasketballShootout
@@ -493,6 +499,8 @@
             :club-name="homeName"
             :club-logo-url="homeLogoUrl"
             @credited="onBasketballCredit"
+            @round-started="onReportGameStarted"
+            @round-completed="onReportGameCompleted"
             @saving-change="isBasketballSaving = $event"
           />
           <PlaymakerGame
@@ -506,6 +514,8 @@
             :club-logo-url="homeLogoUrl"
             :organization-slug="organizationSlug"
             @credited="onPlaymakerCredit"
+            @round-started="onReportGameStarted"
+            @round-completed="onReportGameCompleted"
             @saving-change="isPlaymakerSaving = $event"
           />
           <CrossoverRushGame
@@ -519,6 +529,8 @@
             :club-logo-url="homeLogoUrl"
             :organization-slug="organizationSlug"
             @credited="onCrossoverCredit"
+            @round-started="onReportGameStarted"
+            @round-completed="onReportGameCompleted"
             @saving-change="isCrossoverSaving = $event"
           />
           <TapChallenge
@@ -528,13 +540,18 @@
             :completion-reward="8"
             :claiming="isSavingCoins"
             @claim="onGameClaim"
+            @round-started="onReportGameStarted"
+            @round-completed="onReportGameCompleted"
             @exit="closeGame"
           />
           <SponsorRushGame
             v-else-if="activeGameId === 'sponsor-rush'"
             class="game-fill"
             :completion-reward="12"
+            :sponsor="sponsors[0] || null"
             @claim="onGameClaim"
+            @round-started="onReportGameStarted"
+            @round-completed="onReportGameCompleted"
             @exit="closeGame"
           />
           <MemoryFlashGame
@@ -543,6 +560,8 @@
             :wallet-coins="totalCoins"
             :claiming="isSavingCoins || Boolean(pendingGameClaim)"
             @claim="onGameClaim"
+            @round-started="onReportGameStarted"
+            @round-completed="onReportGameCompleted"
             @exit="closeGame"
           />
         </div>
@@ -555,6 +574,7 @@
       v-model="isFeedbackModalOpen"
       :event-id="eventId"
       :feedback-survey="feedbackSurvey"
+      :report-experience-enabled="true"
       :theme-style="themeStyle"
       @submitted="handleFeedbackSubmitted"
     />
@@ -567,6 +587,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import { normalizeOrganizationColors, organizationThemeStyle } from '../organizationTheme';
 import { preloadFanHomeImages } from '../fanHomeAssets';
 import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
+import { createEventReportTelemetry, createReportSignalSender, reportSource } from '../eventReportTelemetry';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
 import FanMvpRoster from '../components/FanMvpRoster.vue';
@@ -850,6 +871,7 @@ async function refreshLiveStatus() {
 
 function openRegistration(trigger = 'profile_overlay', rewardLabel = '') {
   if (shopBusy.value) return;
+  if (!isRegistrationOpen.value && !isRegistered.value) reportTelemetry?.record('registration_started');
   registrationTrigger.value = trigger;
   registrationRewardLabel.value = rewardLabel;
   registrationOriginSheet.value = activeSheet.value;
@@ -873,6 +895,7 @@ async function registerJourneyFan(form) {
   const response = await registerFanProfile({ event_id: props.eventId, nickname: form.nickname, phone: form.phone, ...fanRegistrationAcceptance(form), guest_coins: totalCoins.value });
   if (isDisposed || scope !== walletScope()) return { ok: false };
   if (!response.ok) return response;
+  reportTelemetry?.record('registration_completed');
   isRegistered.value = true;
   fanNickname.value = String(response.data?.user?.nickname || form.nickname || '').trim();
   setCoins(Number(response.data?.wallet ?? totalCoins.value));
@@ -1009,7 +1032,8 @@ function openFeedbackModal() {
   closeSheets();
   isFeedbackModalOpen.value = true;
 }
-function handleFeedbackSubmitted() {
+function handleFeedbackSubmitted(answers = {}) {
+  reportTelemetry?.record('feedback_completed', { experience: answers.report_experience, perks_interest: answers.perks_interest });
   hasSubmittedFeedback.value = true;
   try {
     window.localStorage.setItem(feedbackStorageKey(props.eventId), '1');
@@ -1134,6 +1158,7 @@ function openSheet(id) {
   sheetRevision += 1;
   if (id !== 'vote-result') cancelVotePresentation();
   activeSheet.value = id;
+  if (id === 'spend') reportTelemetry?.record('shop_view');
   if (['wallet', 'spend', 'profile'].includes(id)) loadWallet();
 }
 function closeSheets() {
@@ -1482,6 +1507,7 @@ async function castVote(player) {
       return;
     }
     hasVoted.value = true;
+    reportTelemetry?.record('vote_completed');
     votedPlayerId.value = player.id;
     pendingVotePlayerId.value = null;
     localVoted.value = { ...player };
@@ -1638,6 +1664,7 @@ async function loadSponsors() {
   }
 }
 function onSponsorClick(sponsor) {
+  if (sponsor?.linkUrl && /^https?:\/\//i.test(sponsor.linkUrl)) reportTelemetry?.record('sponsor_click', { sponsor_id: sponsor.id, name: sponsor.name });
   if (props.eventId && sponsor?.id) {
     apiClient
       .post(`/events/${props.eventId}/sponsors/${sponsor.id}/click`, { at: new Date().toISOString() })
@@ -1668,6 +1695,7 @@ async function redeem(reward) {
     }
     if (!response.ok || !applyWallet(response.data)) { walletError.value = response.message || 'Acquisto non confermato. Riprova: gli oggetti già ottenuti non vengono addebitati due volte.'; return; }
     walletError.value = '';
+    if (response.data.purchased !== false) reportTelemetry?.record('redemption_completed', { item_key: reward.key });
     shopMessage.value = response.data.purchased === false ? 'Questo oggetto è già nella tua collezione.' : `${reward.title} aggiunta alla tua collezione!`;
     const obtained = collection.value.items.find((item) => item.key === reward.key && (item.kind === 'frame' || Number(item.event_id) === props.eventId));
     if (obtained && ['spend', 'collectible'].includes(activeSheet.value)) showCollectible(obtained, { reveal: response.data.purchased !== false });
@@ -1733,7 +1761,56 @@ function onKeydown(e) {
 }
 
 /* ---------- Lifecycle ---------- */
+let reportTelemetry = null;
+let reportTelemetryScope = '';
+const reportRoundsStarted = new Set();
+const reportRoundsCompleted = new Set();
+function resetReportTelemetry() {
+  const organizationSlug = props.organizationSlug;
+  const scope = `${organizationSlug}:${props.eventId}`;
+  if (scope === reportTelemetryScope && reportTelemetry) return;
+  reportTelemetry?.stop();
+  reportTelemetryScope = scope;
+  reportRoundsStarted.clear(); reportRoundsCompleted.clear();
+  const deviceHeaders = getDeviceHeaders();
+  reportTelemetry = props.eventId ? createEventReportTelemetry({
+    eventId: props.eventId,
+    identity: () => {
+      let fanHeaders = {};
+      try { fanHeaders = getFanSessionHeaders(organizationSlug); } catch { /* A guest remains measurable when storage is blocked. */ }
+      return { ...deviceHeaders, ...fanHeaders, 'X-Organization-Slug': organizationSlug };
+    },
+    send: createReportSignalSender({ apiClient, resolveApiUrl }),
+  }) : null;
+}
+function observeReportSponsor(element, sponsor) {
+  reportTelemetry?.observeSponsor(element, { sponsor_id: sponsor.id, name: sponsor.name, placement: 'home_partner' });
+}
+function observeReportMission(element, mission) {
+  const sponsor = sponsors.value[0];
+  if (mission.key === 'sponsor-rush' && sponsor) reportTelemetry?.observeSponsor(element, { sponsor_id: sponsor.id, name: sponsor.name, placement: 'sponsor_rush_entry' }, 'sponsored_game_view');
+}
+function reportGameRound(name, payload = {}) {
+  const gameId = activeGameId.value;
+  const roundId = String(payload.roundId || '').trim();
+  if (!gameId || !roundId) return;
+  const key = `${gameId}:${roundId}`;
+  const recorded = name === 'game_started' ? reportRoundsStarted : reportRoundsCompleted;
+  if (recorded.has(key) || (name === 'game_completed' && !reportRoundsStarted.has(key))) return;
+  recorded.add(key);
+  reportTelemetry?.record(name, { game_id: gameId, round_id: roundId, ...(payload.sponsorId ? { sponsor_id: payload.sponsorId, name: payload.sponsorName || '' } : {}) });
+}
+function onReportGameStarted(payload) { reportGameRound('game_started', payload); }
+function onReportGameCompleted(payload) { reportGameRound('game_completed', payload); }
+function reportPageAvailability() {
+  return { vote_available: canVote.value, games_available: !matchConcluded.value, feedback_available: hasFeedbackSurvey.value, source: reportSource(window.location?.search || '') };
+}
+watch([canVote, matchConcluded, hasFeedbackSurvey], () => {
+  if (!isHomeLoading.value) reportTelemetry?.record('page_view', reportPageAvailability());
+});
+
 async function bootstrap() {
+  resetReportTelemetry();
   const revision = ++bootstrapRevision;
   assetController?.abort();
   isHomeLoading.value = true;
@@ -1814,6 +1891,7 @@ async function bootstrap() {
   ], { signal });
   if (revision !== bootstrapRevision || signal.aborted) return;
   isHomeLoading.value = false;
+  reportTelemetry?.start(reportPageAvailability());
   startCoinsStream();
   loadWallet({ collectionOnly: true });
 }
@@ -1845,6 +1923,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  reportTelemetry?.stop();
   isDisposed = true;
   voteRequestRevision += 1;
   journeyRewardRevision += 1;

@@ -93,7 +93,7 @@ import { prepareBasketballShot, submitBasketballShot } from '../../api';
 import { BASKETBALL_WORLD, BASKETBALL_START, BASKETBALL_HOOP, createBasketballShot, sampleBasketballShot } from '../../games/basketballShot';
 
 const props = defineProps({ eventId: { type: Number, required: true }, walletCoins: { type: Number, default: 0 }, earnedCoins: { type: Number, default: 0 }, clubName: { type: String, default: '' }, clubLogoUrl: { type: String, default: '' } });
-const emit = defineEmits(['credited', 'saving-change']);
+const emit = defineEmits(['credited', 'saving-change', 'round-started', 'round-completed']);
 const gameEventId = props.eventId;
 const state = ref('loading');
 const courtEl = ref(null);
@@ -236,6 +236,7 @@ async function shoot() {
   if (!shot) { state.value = 'ready'; hint.value = 'Accompagna la palla più in alto, verso il canestro.'; return; }
   activeShot.value = shot;
   pendingThrow.value = { shotId: challenge.value.shot_id, dx: drag.value.x, dy: drag.value.y };
+  emit('round-started', { roundId: pendingThrow.value.shotId });
   state.value = 'flying';
   hint.value = '';
   showCelebration.value = false;
@@ -265,6 +266,7 @@ async function saveThrow() {
     if (receipt.made) { sessionMakes.value += 1; streak.value += 1; showCelebration.value = true; playSwish(); }
     else { streak.value = 0; hint.value = activeShot.value?.missKind === 'short' ? 'Tiro corto: trascina un po’ più in alto.' : activeShot.value?.missKind === 'long' ? 'Tiro lungo: accorcia il trascinamento.' : 'Aggiusta la direzione e riprova.'; }
     emit('credited', { ...receipt, event_id: gameEventId });
+    emit('round-completed', { roundId: attempt.shotId });
     pendingThrow.value = null;
     challenge.value = null;
     state.value = 'result';

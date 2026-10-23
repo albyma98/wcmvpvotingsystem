@@ -133,8 +133,10 @@ test('a valid drag animates first and credits exactly the server acknowledgement
   assert.equal(game.state.matchEarned.value, 4);
   assert.equal(game.state.showCelebration.value, true);
   assert.deepEqual(game.events, [
+    ['round-started', { roundId: shotId }],
     ['saving-change', true],
     ['credited', { ...receipt, event_id: 42 }],
+    ['round-completed', { roundId: shotId }],
     ['saving-change', false],
   ]);
 });

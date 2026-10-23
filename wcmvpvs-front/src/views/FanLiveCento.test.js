@@ -67,6 +67,8 @@ function deferred() {
 
 function fixture(overrides = {}, options = {}) {
   const saves = [];
+  const reportSignals = [];
+  const reportContexts = [];
   let serverWallet = 0;
   const serverAwards = new Set();
   const window = testWindow();
@@ -96,6 +98,10 @@ function fixture(overrides = {}, options = {}) {
     vue: options.vue || testVue, '../api': api, '../organizationTheme': brand, '../fanJourney': journey,
     '../fanHomeAssets': options.assets || assets,
     '../fanGameArtwork': gameArtwork,
+    '../eventReportTelemetry': { createEventReportTelemetry: (configuration) => {
+      reportContexts.push(configuration);
+      return { record(name, metadata) { reportSignals.push({ eventId: configuration.eventId, name, metadata }); }, start() {}, observeSponsor() {}, stop() {} };
+    }, createReportSignalSender: () => async () => {}, reportSource: () => 'unknown' },
     '../fanRegistration': registration,
     '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
@@ -105,8 +111,56 @@ function fixture(overrides = {}, options = {}) {
     '../components/FanAvatar.vue': {},
     '../components/FanMatchCard.vue': {},
   }, { eventId: 42, organizationSlug: 'club', initialDataReady: true, activeEvent: { is_active: true, votes_closed: false }, ...options.props }, { window });
-  return { ...setup, saves, window, api };
+  return { ...setup, saves, window, api, reportSignals, reportContexts };
 }
+
+test('report games count actual unique started and finished rounds, including zero-score losses and replay', (t) => {
+  const { state, scope, reportSignals } = fixture();
+  t.after(() => scope.stop());
+  state.resetReportTelemetry();
+  state.openGame('memory-flash');
+  assert.equal(reportSignals.length, 0, 'opening the intro is not a played round');
+  state.onReportGameCompleted({ roundId: 'unstarted' });
+  state.onReportGameStarted({ roundId: 'loss-1' });
+  state.onReportGameStarted({ roundId: 'loss-1' });
+  state.onReportGameCompleted({ roundId: 'loss-1' });
+  state.onReportGameCompleted({ roundId: 'loss-1' });
+  state.onReportGameStarted({ roundId: 'loss-2' });
+  state.onReportGameCompleted({ roundId: 'loss-2' });
+  assert.deepEqual(reportSignals.map(({ name }) => name), ['game_started', 'game_completed', 'game_started', 'game_completed']);
+  assert.equal(reportSignals[1].metadata.round_id, 'loss-1');
+  assert.equal(reportSignals[1].metadata.game_id, 'memory-flash');
+});
+
+test('report signals follow successful MVP and feedback actions without personal data', async (t) => {
+  const { state, scope, reportSignals } = fixture();
+  t.after(() => scope.stop());
+  state.resetReportTelemetry();
+  await state.castVote(player);
+  state.handleFeedbackSubmitted({ experience: 'very_easy', report_experience: 'awesome', perks_interest: 'yes', suggestion: 'Private text' });
+  assert.deepEqual(reportSignals.map(({ name }) => name), ['vote_completed', 'feedback_completed']);
+  assert.deepEqual(reportSignals[1].metadata, { experience: 'awesome', perks_interest: 'yes' });
+  const failed = fixture({ vote: async () => ({ ok: false }) });
+  t.after(() => failed.scope.stop());
+  failed.state.resetReportTelemetry();
+  await failed.state.castVote(player);
+  assert.equal(failed.reportSignals.length, 0);
+});
+
+test('report identity keeps its original organization and one device header when fan storage is blocked', (t) => {
+  let deviceReads = 0;
+  const { state, scope, props, reportContexts } = fixture({
+    getDeviceHeaders: () => ({ 'X-Device-ID': `fallback-${++deviceReads}` }),
+    getFanSessionHeaders: () => { throw new Error('storage denied'); },
+  });
+  t.after(() => scope.stop());
+  state.resetReportTelemetry();
+  props.organizationSlug = 'next-club';
+  const oldIdentity = reportContexts[0].identity;
+  assert.deepEqual(oldIdentity(), { 'X-Device-ID': 'fallback-1', 'X-Organization-Slug': 'club' });
+  assert.deepEqual(oldIdentity(), { 'X-Device-ID': 'fallback-1', 'X-Organization-Slug': 'club' });
+  assert.equal(deviceReads, 1);
+});
 
 test('registration saves no gender and leaves the success screen open until completion', async (t) => {
   let submitted;

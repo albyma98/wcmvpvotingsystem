@@ -14,13 +14,15 @@ function game(t, props = {}) {
 
 test('finishing Sponsor Rush with zero logos requests the fixed reward once', async (t) => {
   const setup = game(t, { completionReward: 12 });
+  setup.state.phase.value = 'playing';
+  setup.state.finishRound();
   setup.state.finishRound();
   assert.equal(setup.state.rewardCoins.value, 12);
   assert.equal(setup.state.won.value, false);
   await setup.state.claimReward();
   await setup.state.claimReward();
-  assert.equal(setup.events.length, 1);
-  assert.equal(setup.events[0][1].coins, 12);
+  assert.deepEqual(setup.events.map(([name]) => name), ['round-completed', 'claim']);
+  assert.equal(setup.events[1][1].coins, 12);
 });
 
 test('new rounds can claim again and legacy scoring keeps its variable amount', (t) => {

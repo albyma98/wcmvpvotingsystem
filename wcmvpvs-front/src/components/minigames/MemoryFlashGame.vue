@@ -71,7 +71,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { newMinigameRoundId } from '../../fanJourney';
 
-const emit = defineEmits(['claim', 'exit']);
+const emit = defineEmits(['claim', 'exit', 'round-started', 'round-completed']);
 const props = defineProps({
   walletCoins: {
     type: Number,
@@ -142,6 +142,7 @@ function buildDeck() {
 function startRound() {
   if (props.claiming) return;
   roundId = newMinigameRoundId();
+  emit('round-started', { roundId });
   rewardRequested = false;
   clearAllTimers();
   state.value = 'preview';
@@ -234,6 +235,7 @@ function resetTurn() {
 
 function onWin() {
   if (state.value !== 'playing') return;
+  emit('round-completed', { roundId });
   state.value = 'win';
   boardLocked.value = true;
   window.clearInterval(countdownId);
@@ -244,6 +246,8 @@ function onWin() {
 }
 
 function onLose() {
+  if (state.value !== 'playing') return;
+  emit('round-completed', { roundId });
   state.value = 'lose';
   boardLocked.value = true;
   window.clearInterval(countdownId);

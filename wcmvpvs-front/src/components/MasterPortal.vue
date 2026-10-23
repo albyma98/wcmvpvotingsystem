@@ -616,6 +616,8 @@
 
         <MasterTournamentsSection v-else-if="activeSection === 'tournaments'" />
 
+        <PlatformBrandingSection v-else-if="activeSection === 'report-branding'" />
+
         <div v-else-if="activeSection === 'qr-redirects'" class="qr-redirects-view">
           <header class="section-header">
             <div>
@@ -833,6 +835,7 @@ const tabs = [
   { id: 'clubs', label: 'Club Hub' },
   { id: 'tournaments', label: 'Tornei' },
   { id: 'qr-redirects', label: 'QR Redirect' },
+  { id: 'report-branding', label: 'Report e marchio' },
 ];
 const activeSection = ref('dashboard');
 
@@ -840,6 +843,8 @@ const MasterTournamentsSection = defineAsyncComponent(() =>
   import('./master/MasterTournamentsSection.vue'));
 const MasterClubsSection = defineAsyncComponent(() =>
   import('./master/MasterClubsSection.vue'));
+const PlatformBrandingSection = defineAsyncComponent(() =>
+  import('./master/PlatformBrandingSection.vue'));
 
 const loginForm = reactive({ username: '', password: '' });
 const isLoggingIn = ref(false);

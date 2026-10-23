@@ -1,5 +1,36 @@
 # wcmvpvotingsystem
 
+## Report di engagement della home /new
+
+Nel portale della società, **Storico eventi → Prepara report** apre la revisione
+dei 20 KPI dell'evento. È possibile correggere gli indicatori con una motivazione,
+aggiornare i dati di base (le percentuali vengono ricalcolate), scegliere il formato
+**one pager** o **completo di tre pagine**, quindi confermare e scaricare il PDF.
+La versione approvata resta archiviata e può essere scaricata nuovamente.
+
+Il master configura il nome dell'emittente e il logo in **Report e marchio**.
+Il nome predefinito è ArenaBoostX. Sono supportati logo PNG/JPEG e caricamenti
+WebP convertiti dal pannello; le immagini vengono validate e ridimensionate.
+
+Le misurazioni sono indipendenti dallo storico precedente: vengono raccolte
+esclusivamente dal percorso `/:slug/new` tramite `/events/{eventId}/report-signals`.
+Le tabelle vengono create automaticamente all'avvio del backend, senza migrare
+o stimare i vecchi dati. Le misure assenti rimangono N/D e gli zero indicano
+assenza di azioni in una raccolta presente. Le presenze in arena sono un dato
+esterno inserito dalla società; `?source=arena` attribuisce gli accessi al relativo
+canale, senza certificare la presenza fisica.
+
+La raccolta deduplica invii e round, unisce gli intervalli di tempo attivo,
+considera visibili gli sponsor al 50% per almeno un secondo e mantiene distinti
+profili verificati e stime per browser. Una domanda aggiuntiva su `/new` rileva
+la soddisfazione dell'esperienza ArenaBoostX. I PDF contengono solo dati aggregati;
+le correzioni sono salvate insieme ai dati originali e non modificano le osservazioni.
+
+I nuovi endpoint amministrativi sono `GET/POST /admin/events/{eventId}/engagement-report`
+e `GET/PUT /admin/master/report-branding`. Il marchio richiede il ruolo superadmin;
+il report richiede l'accesso alla società proprietaria dell'evento. Il generatore
+PDF è caricato solo al download e non richiede servizi esterni o chiavi AI.
+
 ## ArenaBoostX Club — portale annuale multi-squadra
 
 Il repository include un terzo verticale separato da Live e Tournament:

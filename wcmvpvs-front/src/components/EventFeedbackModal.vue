@@ -89,6 +89,10 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+  reportExperienceEnabled: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['update:modelValue', 'submitted']);
@@ -166,6 +170,20 @@ const normalizedSurvey = computed(() => {
     })
     .filter(Boolean);
 
+  if (props.reportExperienceEnabled) {
+    questions.push({
+      id: 'report_experience',
+      answerKey: 'report_experience',
+      title: 'Com’è stata la tua esperienza con ArenaBoostX oggi?',
+      options: [
+        { value: 'awesome', label: 'Fantastica', icon: '😍' },
+        { value: 'good', label: 'Bella', icon: '🙂' },
+        { value: 'ok', label: 'Così così', icon: '😐' },
+        { value: 'bad', label: 'Da migliorare', icon: '😕' },
+      ],
+    });
+  }
+
   return {
     questions,
     suggestionPrompt: String(props.feedbackSurvey?.suggestionPrompt || props.feedbackSurvey?.suggestion_prompt || defaultSurvey.suggestionPrompt || '').trim(),
@@ -173,7 +191,7 @@ const normalizedSurvey = computed(() => {
 });
 
 const mandatoryKeys = ['experience', 'team_spirit', 'perks_interest', 'mini_games_interest'];
-const answers = reactive({ experience: '', team_spirit: '', perks_interest: '', mini_games_interest: '', suggestion: '' });
+const answers = reactive({ experience: '', team_spirit: '', perks_interest: '', mini_games_interest: '', report_experience: '', suggestion: '' });
 const step = ref(0);
 const isSubmitting = ref(false);
 const errorMessage = ref('');
@@ -209,6 +227,7 @@ function resetFlow() {
   answers.team_spirit = '';
   answers.perks_interest = '';
   answers.mini_games_interest = '';
+  answers.report_experience = '';
   answers.suggestion = '';
 }
 
@@ -256,7 +275,8 @@ async function submit() {
     errorMessage.value = 'Evento non disponibile.';
     return;
   }
-  for (const key of mandatoryKeys) {
+  const requiredKeys = props.reportExperienceEnabled ? [...mandatoryKeys, 'report_experience'] : mandatoryKeys;
+  for (const key of requiredKeys) {
     if (!answers[key]) {
       errorMessage.value = 'Rispondi a tutte le domande prima di inviare.';
       return;
@@ -265,15 +285,19 @@ async function submit() {
 
   isSubmitting.value = true;
   errorMessage.value = '';
+  const eventId = props.eventId;
+  const reportAnswers = { experience: answers.experience, perks_interest: answers.perks_interest };
+  if (props.reportExperienceEnabled) reportAnswers.report_experience = answers.report_experience;
 
   try {
-    const result = await submitEventFeedback(props.eventId, {
+    const result = await submitEventFeedback(eventId, {
       experience: answers.experience,
       team_spirit: answers.team_spirit,
       perks_interest: answers.perks_interest,
       mini_games_interest: answers.mini_games_interest,
       suggestion: answers.suggestion.trim(),
     });
+    if (eventId !== props.eventId) return;
 
     if (!result?.ok) {
       errorMessage.value = 'Non siamo riusciti a salvare il feedback. Riprova tra poco.';
@@ -281,8 +305,9 @@ async function submit() {
     }
 
     successMessage.value = 'Grazie! Feedback inviato con successo.';
-    emit('submitted');
+    emit('submitted', reportAnswers);
     setTimeout(() => {
+      if (eventId !== props.eventId) return;
       emit('update:modelValue', false);
       resetFlow();
     }, 550);
