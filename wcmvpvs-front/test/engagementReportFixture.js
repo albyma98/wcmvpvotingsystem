@@ -2,7 +2,7 @@ import { calculateReportKpis } from '../src/engagementReport.js';
 
 export function engagementReportFixture(format = 'one_page', stress = false) {
   const facts = {
-    visitors: 1240, onsite_visitors: 960, attendees: 1800, active_visitors: 897, active_seconds: 281480,
+    visitors: 1240, engagement_eligible_visitors: 1240, timed_visitors: 1040, onsite_visitors: 960, attendees: 1800, active_visitors: 897, active_seconds: 281480,
     voters: 712, vote_eligible_visitors: 1140, players: 534, game_eligible_visitors: 1120, rounds_completed: 1894,
     repeat_players: 322, multi_experience_visitors: 492, new_profiles: 187, registration_starters: 278,
     returning_profiles: 204, previous_event_profiles: 580, redeemers: 96, shop_eligible_profiles: 420,

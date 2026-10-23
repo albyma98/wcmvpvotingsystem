@@ -1,5 +1,7 @@
 # Report post partita della home /:slug/new
 
+> Per le query realmente usate dal pulsante report e dalle sue 20 KPI, leggere [Query e calcolo delle KPI del report evento](engagement-report-queries.md). Questo documento riguarda le 10 query manuali sulle fonti operative. Le limitazioni sulla mancanza di impression e visite si riferiscono ai dati storici senza i segnali dedicati della nuova telemetria.
+
 Le [10 query SQL](new-fan-post-match.sql) sono scritte per SQLite e per lo schema dell'ultima versione del backend presente nel repository. Non richiedono PostHog e non interrogano il database locale dell'ambiente di sviluppo. Non e' stata verificata la versione effettivamente distribuita sul server della partita.
 
 Ogni blocco numerato contiene una query indipendente di sola lettura. Il file non crea tabelle o viste e non modifica dati. Eseguire i blocchi separatamente nel client SQL collegato al database da analizzare. Impostare i parametri nel client, oppure sostituirli con valori SQL letterali.

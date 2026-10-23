@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { REPORT_KPIS, formatReportValue } from './engagementReport.js';
+import { REPORT_KPIS, formatReportValue, reportOperationalItems, reportSourceLabel } from './engagementReport.js';
 
 const C = { navy: [14, 33, 57], teal: [12, 120, 101], ink: [28, 45, 65], muted: [99, 115, 133], pale: [242, 246, 249], line: [218, 227, 235], mint: [231, 246, 240] };
 const WIDTH = 210, HEIGHT = 297, M = 16;
@@ -50,8 +50,31 @@ function normalizedKpis(report) {
     const item = report.kpis?.find(kpi => kpi.id === definition.id) || {};
     const override = report.overrides?.[definition.id];
     const corrected = item.corrected || item.source === 'manual' || Boolean(override);
-    return { ...definition, ...item, label: definition.label, numerator: override ? null : item.numerator, denominator: override ? null : item.denominator, corrected, correction_note: item.correction_note || override?.note || (corrected ? item.note : '') || '' };
+    return { ...definition, ...item, numerator: override ? null : item.numerator, denominator: override ? null : item.denominator, corrected, correction_note: item.correction_note || override?.note || (corrected ? item.note : '') || '' };
   });
+}
+
+function coverageNotes(report) {
+  return (report.details?.coverage_notes || []).filter(note => typeof note === 'string' && note.trim());
+}
+
+function sourceSummary(report) {
+  const hasOperational = reportOperationalItems(report.details).length > 0 || report.kpis.some(kpi => ['operational', 'mixed'].includes(kpi.source));
+  return hasOperational ? 'Fonti: telemetria /new e dati operativi dell’evento.' : 'Fonte: misurazione dedicata alla home /new.';
+}
+
+function compactOperationalSummary(report) {
+  const values = Object.fromEntries(reportOperationalItems(report.details).map(item => [item.key, item.value]));
+  const parts = [];
+  if (Object.hasOwn(values, 'votes')) parts.push(`${formatReportValue(values.votes)} voti`);
+  if (Object.hasOwn(values, 'shop_redemptions')) parts.push(`${formatReportValue(values.shop_redemptions)} riscatti`);
+  const coins = [];
+  if (Object.hasOwn(values, 'coins_earned')) coins.push(`+${formatReportValue(values.coins_earned)}`);
+  if (Object.hasOwn(values, 'coins_spent')) coins.push(`-${formatReportValue(values.coins_spent)}`);
+  if (coins.length) parts.push(`coin ${coins.join('/')}`);
+  if (Object.hasOwn(values, 'feedback_responses')) parts.push(`${formatReportValue(values.feedback_responses)} feedback`);
+  if (Object.hasOwn(values, 'sponsor_clicks')) parts.push(`${formatReportValue(values.sponsor_clicks)} clic sponsor`);
+  return parts.length ? `Operativo: ${parts.join(' | ')}` : '';
 }
 
 function drawLogo(doc, data, x, y, maxW, maxH) {
@@ -90,7 +113,7 @@ function summary(p, kpis, y) {
     const x = M + index * 61;
     p.box(x, y, 56, 24, index === 1 ? C.navy : C.pale);
     p.fit(formatReportValue(kpi.value, kpi.unit), x + 4, y + 11, 48, 17, index === 1 ? [255, 255, 255] : C.navy, true);
-    p.text(kpi.label, x + 4, y + 19, 7, index === 1 ? [195, 226, 219] : C.muted);
+    p.fit(kpi.label, x + 4, y + 19, 48, 7, index === 1 ? [195, 226, 219] : C.muted);
   });
 }
 
@@ -112,8 +135,13 @@ function overview(doc, p, report, kpis, total) {
   });
   p.box(M, 251, 178, 24, C.mint);
   p.text('LETTURA DEI DATI', M + 4, 257, 7, C.teal, true);
-  const message = report.notes || 'Misurazione dedicata alla home /new. Valori mancanti: N/D. I dati anonimi stimano browser, non persone fisiche. I profili verificati non implicano un consenso marketing.';
-  p.lines(message, M + 4, 262, 170, 2, 7.4, C.ink, false, 3.4);
+  const coverage = coverageNotes(report)[0] || 'Le tracce operative ricostruiscono una partecipazione minima verificabile; visite e denominatori assenti restano N/D.';
+  const message = `${sourceSummary(report)} ${coverage}${report.notes ? ` Note: ${report.notes}` : ''}`;
+  const operational = compactOperationalSummary(report);
+  if (operational) {
+    p.fit(operational, M + 4, 261.5, 170, 7.2, C.ink);
+    p.lines(message, M + 4, 264.9, 170, 2, 7.2, C.ink, false, 3.4);
+  } else p.lines(message, M + 4, 261.5, 170, 3, 7.2, C.ink, false, 3.4);
   p.text('N/D: misura non disponibile. * Corretto in revisione. Testi abbreviati; note integrali archiviate.', M, 273, 6.3, C.muted);
   footer(doc, p, report, 1, total);
 }
@@ -137,11 +165,24 @@ function detailPage(doc, p, report) {
   header(doc, p, report, 'Esperienze e partner', 'Dettaglio operativo | Utilizzo dei giochi e risposta agli sponsor');
   const games = (report.details?.games || []).map(item => ({ name: item.name || item.id, players: formatReportValue(item.players), started: formatReportValue(item.rounds_started), completed: formatReportValue(item.rounds_completed) }));
   table(p, 'Giochi e attività', [{ key: 'name', label: 'ESPERIENZA', x: 0, width: 76 }, { key: 'players', label: 'GIOCATORI', x: 76, width: 34 }, { key: 'started', label: 'AVVIATI', x: 110, width: 32 }, { key: 'completed', label: 'COMPLETATI', x: 142, width: 36 }], games, 77, 'Nessun dettaglio giochi disponibile nella misurazione.', 8, 7.2);
-  const sponsors = (report.details?.sponsors || []).map(item => ({ name: item.name || item.id, reach: formatReportValue(item.reach), impressions: formatReportValue(item.impressions), clickers: formatReportValue(item.clickers), ctr: formatReportValue(item.ctr, 'percent') }));
+  const sponsors = (report.details?.sponsors || []).map(item => {
+    const exposureMeasured = item.exposure_measured !== false;
+    return {
+      name: item.name || item.id,
+      reach: formatReportValue(exposureMeasured ? item.reach : null),
+      impressions: formatReportValue(exposureMeasured ? item.impressions : null),
+      clickers: formatReportValue(exposureMeasured ? item.clickers : null),
+      ctr: formatReportValue(exposureMeasured ? item.ctr : null, 'percent'),
+    };
+  });
   table(p, 'Risultati per sponsor', [{ key: 'name', label: 'PARTNER', x: 0, width: 62 }, { key: 'reach', label: 'COPERTURA', x: 62, width: 30 }, { key: 'impressions', label: 'ESPOSIZIONI', x: 92, width: 35 }, { key: 'clickers', label: 'UTENTI CLIC', x: 127, width: 31 }, { key: 'ctr', label: 'TASSO', x: 158, width: 20 }], sponsors, 163, 'Nessun dettaglio sponsor disponibile nella misurazione.');
   p.box(M, 253, 178, 21, C.mint);
-  p.text('COME UTILIZZARE QUESTI RISULTATI', M + 4, 259, 7.2, C.teal, true);
-  p.lines('Confrontare i giochi per partecipazione e completamenti; discutere con ogni partner copertura e risposta effettiva. I dati descrivono interazioni osservate: non attribuiscono fatturato o ritorni economici.', M + 4, 264, 170, 2, 7.4, C.ink, false, 3.5);
+  const operational = reportOperationalItems(report.details);
+  p.text(operational.length ? 'DATI OPERATIVI DELL’EVENTO' : 'COME UTILIZZARE QUESTI RISULTATI', M + 4, 259, 7.2, C.teal, true);
+  const summary = operational.length
+    ? operational.map(item => `${item.label}: ${formatReportValue(item.value)}`).join(' | ')
+    : 'Confrontare i giochi per partecipazione e completamenti; discutere con ogni partner copertura e risposta effettiva. I dati descrivono interazioni osservate: non attribuiscono fatturato o ritorni economici.';
+  p.lines(summary, M + 4, 264, 170, 3, 7, C.ink, false, 3.4);
   footer(doc, p, report, 2, 3);
 }
 
@@ -156,20 +197,15 @@ function methodPage(doc, p, report, kpis) {
     p.lines(kpi.label, M + 8, y + 4.5, 65, 1, 6.7, C.ink, false);
     const reference = kpi.denominator != null && kpi.numerator != null ? `${formatReportValue(kpi.numerator)} / ${formatReportValue(kpi.denominator)}` : formatReportValue(kpi.value, kpi.unit);
     p.lines(reference, M + 77, y + 4.5, 39, 1, 6.5, C.muted);
-    const source = kpi.value == null ? 'N/D' : kpi.corrected || kpi.source === 'manual' ? 'Verificato / corretto *' : 'Home /new';
+    const source = kpi.value == null ? 'N/D' : reportSourceLabel(kpi.corrected ? 'manual' : kpi.source, true);
     p.lines(source, M + 121, y + 4.5, 54, 1, 6.5, C.muted);
   });
-  p.text('AZIONI SUGGERITE', M, 237, 8, C.teal, true);
-  const has = id => kpis.find(kpi => kpi.id === id)?.value != null;
-  const recommendations = [];
-  if (!has('venue_adoption')) recommendations.push('Integrare presenze e attribuzione all’arena per misurare l’adozione sul pubblico fisico.');
-  if (has('registration_conversion')) recommendations.push('Usare la conversione alla registrazione per migliorare il percorso di acquisizione dei profili.');
-  if (has('event_retention')) recommendations.push('Monitorare il ritorno dei profili negli eventi successivi per valutare la fidelizzazione.');
-  if (has('satisfaction')) recommendations.push('Leggere soddisfazione e interesse per vantaggi insieme al numero di rispondenti.');
-  recommendations.push('Confrontare eventi omogenei e mantenere invariati definizioni e pubblici di riferimento.');
-  p.lines(recommendations.slice(0, 2).join(' '), M, 243, 178, 3, 7.5, C.ink, false, 3.5);
+  p.text('COPERTURA DELLE FONTI', M, 237, 8, C.teal, true);
+  const sourceCount = report.details?.sources?.length;
+  const coverage = coverageNotes(report).join(' ') || 'Le tracce operative descrivono una partecipazione minima. Le visite senza azioni e i pubblici eleggibili richiedono telemetria. Risposte e clic senza identità non misurano persone uniche.';
+  p.lines(`${sourceSummary(report)}${sourceCount ? ` ${sourceCount} tabelle consultate.` : ''} ${coverage}`, M, 243, 178, 3, 7.3, C.ink, false, 3.5);
   const corrected = kpis.filter(kpi => kpi.correction_note).map(kpi => `${kpi.label}: ${kpi.correction_note}`).join(' | ');
-  p.lines(corrected ? `REVISIONI: ${corrected}` : report.notes ? `NOTE: ${report.notes}` : 'N/D = misura assente o denominatore nullo. Utenti anonimi deduplicati per browser. Tempo attivo misurato solo con pagina visibile e attività recente. Le nuove registrazioni non attestano consenso marketing.', M, 258, 178, 4, 7, C.muted, false, 3.4);
+  p.lines(corrected ? `REVISIONI: ${corrected}` : report.notes ? `NOTE: ${report.notes}` : 'N/D = misura assente o denominatore nullo. Utenti anonimi deduplicati per browser. Il tempo medio usa solo utenti con intervalli validi, pagina visibile e attività recente. Le registrazioni non attestano consenso marketing.', M, 258, 178, 4, 7, C.muted, false, 3.4);
   p.text('Testi e tabelle abbreviati per la leggibilità. Dati originali e revisioni integrali conservati nel report approvato.', M, 275, 6.3, C.muted);
   footer(doc, p, report, 3, 3);
 }

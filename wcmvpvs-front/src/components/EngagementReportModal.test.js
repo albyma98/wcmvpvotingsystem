@@ -11,7 +11,7 @@ const source = compileScript(descriptor, { id: 'report-modal-test' }).content
   .replace("await import('../engagementReportPdf.js')", 'await Promise.resolve({ createEngagementReportPdf: createPdf })')
   .replace('export default', 'return');
 const componentFactory = new Function('imports', 'document', 'createPdf', source);
-const measured = { calculation_id: 'calc-42', event: { id: 42, title: 'Finale' }, branding: { company_name: 'ArenaBoostX' }, calculated_at: '2026-10-23T10:00:00Z', facts: { visitors: 100, active_visitors: 40 }, kpis: [{ id: 'visitors', value: 100 }, { id: 'active_participation', value: 40 }] };
+const measured = { calculation_id: 'calc-42', event: { id: 42, title: 'Finale' }, branding: { company_name: 'ArenaBoostX' }, calculated_at: '2026-10-23T10:00:00Z', facts: { visitors: 100, engagement_eligible_visitors: 100, active_visitors: 40 }, kpis: [{ id: 'visitors', value: 100 }, { id: 'active_participation', value: 40 }] };
 const flush = () => new Promise(setImmediate);
 
 async function fixture({ get, post, downloadError = false } = {}) {
@@ -37,6 +37,8 @@ test('opening fetches independent measurements; base edits require a note before
   assert.equal(f.state.kpis.value.length, 20);
   assert.equal(f.document.body.style.overflow, 'hidden');
   f.state.facts.visitors = 200;
+  assert.equal(f.state.kpis.value.find(kpi => kpi.id === 'active_participation').value, 40);
+  f.state.facts.engagement_eligible_visitors = 200;
   assert.equal(f.state.kpis.value.find(kpi => kpi.id === 'active_participation').value, 20);
   await f.state.approveAndDownload();
   assert.equal(f.requests.length, 1);
@@ -46,6 +48,7 @@ test('opening fetches independent measurements; base edits require a note before
   await f.state.approveAndDownload();
   assert.equal(f.requests[1][2].calculation_id, 'calc-42');
   assert.equal(f.requests[1][2].facts.visitors, 200);
+  assert.equal(f.requests[1][2].facts.engagement_eligible_visitors, 200);
   assert.equal(f.requests[1][2].format, 'extended');
   assert.equal(f.rendered[0].id, 73);
   assert.equal(f.rendered[0].kpis.find(kpi => kpi.id === 'active_participation').value, 20);
@@ -66,6 +69,32 @@ test('failed PDF keeps the approved snapshot for download retry', async t => {
   assert.equal(f.state.saving.value, false);
   f.state.notes.value = 'Nuova revisione';
   assert.equal(f.state.approved.value, null);
+});
+
+test('mixed-source review exposes coverage and operational provenance without renaming observed participants as visits', async t => {
+  const data = structuredClone(measured);
+  data.kpis = Report.REPORT_KPIS.map(definition => ({ id: definition.id, group: definition.id === 'visitors' ? 'Pubblico' : 'Engagement', value: measured.kpis.find(kpi => kpi.id === definition.id)?.value ?? null }));
+  data.kpis[0] = { ...data.kpis[0], group: 'Pubblico', label: 'Partecipanti digitali osservabili', source: 'mixed', note: 'Partecipazione minima verificabile.' };
+  data.details = {
+    coverage_notes: ['Le visite prive di azioni richiedono telemetria.'],
+    operational: { votes: 19, identified_participants: 7, sponsor_clicks_without_identity: 3 },
+    sources: [{ table: 'votes', rows: 19 }, { table: 'engagement_report_signals', rows: 4 }],
+  };
+  const f = await fixture({ get: async () => ({ data }) });
+  t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
+  assert.equal(f.state.kpis.value[0].label, data.kpis[0].label);
+  assert.equal(f.state.kpis.value[0].source, 'mixed');
+  assert.equal(f.state.groups.value[0].name, 'Pubblico');
+  assert.equal(f.state.groups.value[1].name, 'Engagement');
+  assert.equal(f.state.groups.value.flatMap(group => group.kpis).length, 20);
+  assert.equal(f.state.groups.value[0].kpis[0].id, 'visitors');
+  assert.equal(f.state.factLabel('visitors'), data.kpis[0].label);
+  assert.deepEqual(f.state.coverageNotes.value, data.details.coverage_notes);
+  assert.equal(f.state.sourceTables.value[0].table, 'votes');
+  assert.equal(f.state.operationalItems.value.find(item => item.key === 'identified_participants').label, 'Profili identificati attivi');
+  f.state.facts.visitors = 101;
+  assert.equal(f.state.kpis.value[0].source, 'manual');
+  assert.equal(f.state.kpis.value[0].note, data.kpis[0].note);
 });
 
 test('failed approval preserves corrections and does not generate an unapproved PDF', async t => {

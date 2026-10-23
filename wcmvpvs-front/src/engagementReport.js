@@ -3,8 +3,8 @@
 export const REPORT_KPIS = [
   ['visitors', 'Visitatori unici', 'Pubblico e attenzione', 'count', 'visitors'],
   ['venue_adoption', 'Adozione sul pubblico presente', 'Pubblico e attenzione', 'percent', 'onsite_visitors', 'attendees'],
-  ['active_participation', 'Partecipazione attiva', 'Pubblico e attenzione', 'percent', 'active_visitors', 'visitors'],
-  ['active_time', 'Tempo attivo medio', 'Pubblico e attenzione', 'seconds', 'active_seconds', 'visitors'],
+  ['active_participation', 'Partecipazione attiva', 'Pubblico e attenzione', 'percent', 'active_visitors', 'engagement_eligible_visitors'],
+  ['active_time', 'Tempo attivo medio misurato', 'Pubblico e attenzione', 'seconds', 'active_seconds', 'timed_visitors'],
   ['mvp_participation', 'Partecipazione al voto MVP', 'Esperienze e giochi', 'percent', 'voters', 'vote_eligible_visitors'],
   ['game_participation', 'Partecipazione ai giochi', 'Esperienze e giochi', 'percent', 'players', 'game_eligible_visitors'],
   ['completed_rounds', 'Round di gioco completati', 'Esperienze e giochi', 'count', 'rounds_completed'],
@@ -26,6 +26,7 @@ export const REPORT_KPIS = [
 export const REPORT_FACT_LABELS = {
   visitors: 'Visitatori unici', onsite_visitors: 'Visitatori attribuiti all’arena', attendees: 'Spettatori presenti (dato della società)',
   active_visitors: 'Visitatori attivi', active_seconds: 'Secondi attivi complessivi', voters: 'Votanti unici',
+  engagement_eligible_visitors: 'Pubblico osservabile con rilevamento delle visite', timed_visitors: 'Utenti con intervalli di tempo attivo misurati',
   vote_eligible_visitors: 'Visitatori con voto disponibile', players: 'Giocatori unici', game_eligible_visitors: 'Visitatori con giochi disponibili',
   rounds_completed: 'Round completati', repeat_players: 'Giocatori con almeno due partite', multi_experience_visitors: 'Utenti attivi in almeno due aree',
   new_profiles: 'Nuovi profili verificati', registration_starters: 'Ospiti che iniziano la registrazione', returning_profiles: 'Profili tornati dall’evento precedente',
@@ -37,15 +38,48 @@ export const REPORT_FACT_LABELS = {
   perks_positive: 'Risposte positive sui vantaggi', perks_responses: 'Risposte valide sui vantaggi',
 };
 
+export function reportSourceLabel(value, compact = false) {
+  const labels = compact ? {
+    new_tracking: 'Telemetria /new', operational: 'Dati operativi', mixed: 'Telemetria + operativi',
+    manual: 'Verificato / corretto *', unavailable: 'N/D',
+  } : {
+    new_tracking: 'Misurazione dedicata home /new', operational: 'Dati operativi dell’evento', mixed: 'Misurazione /new e dati operativi riconciliati',
+    manual: 'Inserimento manuale verificato', unavailable: 'Misura non disponibile',
+  };
+  return labels[value] || labels.unavailable;
+}
+
+export const REPORT_OPERATIONAL_LABELS = {
+  votes: 'Voti registrati', identified_participants: 'Profili identificati attivi',
+  game_reward_receipts: 'Premi di gioco confermati', shop_redemptions: 'Riscatti shop confermati',
+  coins_earned: 'Coin guadagnati', coins_spent: 'Coin spesi', feedback_responses: 'Risposte al feedback',
+  sponsor_clicks: 'Clic sponsor registrati', sponsor_clicks_without_identity: 'Clic sponsor senza identità',
+};
+
+export function reportOperationalItems(details = {}) {
+  return Object.entries(REPORT_OPERATIONAL_LABELS)
+    .map(([key, label]) => ({ key, label, value: numericReportValue(details?.operational?.[key]) }))
+    .filter(item => item.value !== null);
+}
+
 export function numericReportValue(value) {
   if (value === '' || value === null || value === undefined) return null;
   const result = Number(value);
   return Number.isFinite(result) ? result : null;
 }
 
+function reportKpiDefinition(schema, original = {}) {
+  return {
+    ...schema,
+    numeratorKey: original.fact_key || original.numerator_key || schema.numeratorKey,
+    denominatorKey: original.denominator_key || schema.denominatorKey,
+  };
+}
+
 export function calculateReportKpis(facts = {}, originalKpis = [], overrides = {}, originalFacts = {}) {
-  return REPORT_KPIS.map((definition) => {
-    const original = originalKpis.find((item) => item.id === definition.id) || {};
+  return REPORT_KPIS.map((schema) => {
+    const original = originalKpis.find((item) => item.id === schema.id) || {};
+    const definition = reportKpiDefinition(schema, original);
     const numerator = numericReportValue(facts[definition.numeratorKey]);
     const denominator = definition.denominatorKey ? numericReportValue(facts[definition.denominatorKey]) : undefined;
     const calculated = definition.denominatorKey
@@ -62,7 +96,8 @@ export function calculateReportKpis(facts = {}, originalKpis = [], overrides = {
     const baseChanged = definition.denominatorKey && (factChanged(definition.numeratorKey, 'numerator') || factChanged(definition.denominatorKey, 'denominator'));
     const corrected = Boolean(override) || calculationChanged || Boolean(baseChanged);
     return {
-      ...original, ...definition, numerator: override ? null : numerator, denominator: override ? null : denominator,
+      ...definition, ...original, numeratorKey: definition.numeratorKey, denominatorKey: definition.denominatorKey,
+      numerator: override ? null : numerator, denominator: override ? null : denominator,
       calculated_numerator: numerator, calculated_denominator: denominator,
       measured_value: original.value ?? null,
       calculated_value: calculated,
@@ -74,14 +109,18 @@ export function calculateReportKpis(facts = {}, originalKpis = [], overrides = {
   });
 }
 
-export function validateReportReview(facts, overrides, notes = '') {
+export function validateReportReview(facts, overrides, notes = '', originalKpis = []) {
   const errors = [];
   for (const [key, value] of Object.entries(facts || {})) {
     if (value === null || value === '') continue;
     const number = Number(value);
     if (!Number.isFinite(number) || number < 0 || !Number.isInteger(number)) errors.push(`${REPORT_FACT_LABELS[key] || key}: inserisci un intero non negativo o lascia vuoto.`);
   }
-  for (const kpi of REPORT_KPIS) {
+  const visitors = numericReportValue(facts?.visitors);
+  const activeVisitors = numericReportValue(facts?.active_visitors);
+  if (visitors !== null && activeVisitors !== null && activeVisitors > visitors) errors.push('I partecipanti attivi non possono superare i partecipanti digitali osservabili.');
+  for (const schema of REPORT_KPIS) {
+    const kpi = reportKpiDefinition(schema, originalKpis.find(item => item.id === schema.id));
     const numerator = numericReportValue(facts?.[kpi.numeratorKey]);
     const denominator = numericReportValue(facts?.[kpi.denominatorKey]);
     if (kpi.unit === 'percent' && numerator !== null && denominator !== null && numerator > denominator) {

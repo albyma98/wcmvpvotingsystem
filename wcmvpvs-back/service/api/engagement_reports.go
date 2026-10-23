@@ -1,7 +1,7 @@
 package api
 
-// The /new report pipeline deliberately owns its observations and snapshots.
-// No legacy event-history aggregates or AI-generated measurements enter it.
+// The report combines /new observations with raw, event-scoped operational
+// evidence. Event-history aggregates never substitute for missing observations.
 import (
 	"bytes"
 	"crypto/rand"
@@ -393,7 +393,13 @@ func (rt *_router) prepareEngagementReport(w http.ResponseWriter, r *http.Reques
 		reportError(w, 500, "Impossibile calcolare le misurazioni.")
 		return
 	}
+	operational, err := rt.loadReportOperationalData(eventID, orgID)
+	if err != nil {
+		reportError(w, 500, "Impossibile caricare i dati operativi dell'evento.")
+		return
+	}
 	previous := []reportSignal{}
+	previousOperational := reportOperationalData{}
 	var previousID int
 	err = rt.db.SQLConn().QueryRow(`SELECT id FROM events WHERE organization_id=? AND id<>? AND (julianday(start_datetime) < julianday(?) OR (julianday(start_datetime)=julianday(?) AND id<?)) ORDER BY julianday(start_datetime) DESC,id DESC LIMIT 1`, orgID, eventID, event.StartDateTime, event.StartDateTime, eventID).Scan(&previousID)
 	if err != nil && err != sql.ErrNoRows {
@@ -406,8 +412,13 @@ func (rt *_router) prepareEngagementReport(w http.ResponseWriter, r *http.Reques
 			reportError(w, 500, "Impossibile confrontare l'evento precedente.")
 			return
 		}
+		previousOperational, err = rt.loadReportOperationalData(previousID, orgID)
+		if err != nil {
+			reportError(w, 500, "Impossibile confrontare le attività dell'evento precedente.")
+			return
+		}
 	}
-	facts, details, started := calculateReportMetrics(signals, previous)
+	facts, details, started := calculateCombinedReportMetrics(signals, previous, operational, previousOperational)
 	title := strings.TrimSpace(event.Title + " - " + event.OrganizationName)
 	if title == "-" || title == "" {
 		title = fmt.Sprintf("Evento #%d", event.ID)
@@ -417,7 +428,7 @@ func (rt *_router) prepareEngagementReport(w http.ResponseWriter, r *http.Reques
 		reportError(w, 500, "Impossibile caricare la società.")
 		return
 	}
-	snapshot := engagementReportSnapshot{CalculationID: newReportID(), Event: reportEvent{event.ID, title, event.StartDateTime, event.Location, org.Name, org.LogoURL}, Branding: brand, CalculatedAt: time.Now().UTC().Format(time.RFC3339Nano), MeasurementStartedAt: started, Facts: facts, KPIs: buildReportKPIs(facts), Details: details, SchemaVersion: 1}
+	snapshot := engagementReportSnapshot{CalculationID: newReportID(), Event: reportEvent{event.ID, title, event.StartDateTime, event.Location, org.Name, org.LogoURL}, Branding: brand, CalculatedAt: time.Now().UTC().Format(time.RFC3339Nano), MeasurementStartedAt: started, Facts: facts, KPIs: buildCombinedReportKPIs(facts, details, signals, previous, operational, previousOperational), Details: details, SchemaVersion: 1}
 	raw, err := json.Marshal(snapshot)
 	if err != nil {
 		reportError(w, 500, "Impossibile preparare il report.")
@@ -509,10 +520,29 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		reportError(w, 400, "Motiva nelle note le modifiche ai dati di base.")
 		return
 	}
+	if active, visitors := reviewed["active_visitors"], reviewed["visitors"]; active != nil && visitors != nil && *active > *visitors {
+		reportError(w, 400, "I partecipanti attivi non possono superare i partecipanti digitali osservabili.")
+		return
+	}
 	kpis := buildReportKPIs(reviewed)
 	knownKPIs := map[string]bool{}
 	for i := range kpis {
 		k := &kpis[i]
+		// Keep the frozen calculation's provenance and coverage wording when
+		// approving it; recalculation alone must not relabel mixed data as /new.
+		for _, measured := range snapshot.KPIs {
+			if measured.ID == k.ID {
+				k.Label, k.Description, k.Source, k.Note = measured.Label, measured.Description, measured.Source, measured.Note
+				k.FactKey, k.NumeratorKey, k.DenominatorKey = measured.FactKey, measured.NumeratorKey, measured.DenominatorKey
+				if k.FactKey != "" {
+					k.Value = reviewed[k.FactKey]
+				} else {
+					k.Numerator, k.Denominator = reviewed[k.NumeratorKey], reviewed[k.DenominatorKey]
+					k.Value = reportMetricRatio(k.Numerator, k.Denominator, k.Unit == "percent")
+				}
+				break
+			}
+		}
 		knownKPIs[k.ID] = true
 		if k.Unit == "percent" && k.Numerator != nil && k.Denominator != nil && *k.Numerator > *k.Denominator {
 			reportError(w, 400, "Il numeratore supera il pubblico di riferimento: "+k.Label)

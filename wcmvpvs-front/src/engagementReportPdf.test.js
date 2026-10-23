@@ -32,6 +32,52 @@ test('extended report stays at three pages with measured game and sponsor detail
   assert.ok(rendered.includes('3/3'));
 });
 
+test('combined-source PDFs preserve coverage-specific labels and distinguish operational sources', () => {
+  for (const format of ['one_page', 'extended']) {
+    const report = engagementReportFixture(format);
+    report.overrides = {};
+    Object.assign(report.kpis.find(kpi => kpi.id === 'visitors'), { label: 'Partecipanti osservabili', source: 'mixed', corrected: false });
+    Object.assign(report.kpis.find(kpi => kpi.id === 'completed_rounds'), { source: 'operational' });
+    report.details.coverage_notes = ['Partecipazione minima verificabile. Visite passive non ricostruibili.'];
+    report.details.operational = { votes: 14, shop_redemptions: 3, coins_earned: 1200, coins_spent: 150, feedback_responses: 8, sponsor_clicks: 5, sponsor_clicks_without_identity: 2 };
+    report.details.sources = [{ table: 'votes', rows: 14 }, { table: 'engagement_report_signals', rows: 3 }];
+    report.notes = 'Revisione della società.';
+    const doc = createEngagementReportPdf(report);
+    assert.equal(doc.getNumberOfPages(), format === 'one_page' ? 1 : 3);
+    const rendered = pageText(doc);
+    assert.ok(rendered.includes('Partecipanti osservabili'));
+    assert.ok(rendered.includes('Partecipazione minima verificabile.'));
+    assert.ok(rendered.includes('14 voti'));
+    assert.ok(rendered.includes('3 riscatti'));
+    assert.ok(rendered.includes('coin +1200/-150'));
+    assert.ok(rendered.includes('8 feedback'));
+    assert.ok(rendered.includes('5 clic sponsor'));
+    if (format === 'extended') {
+      assert.ok(rendered.includes('Telemetria + operativi'));
+      assert.ok(rendered.includes('Dati operativi'));
+      assert.ok(rendered.includes('Voti registrati: 14'));
+      assert.ok(rendered.includes('2 tabelle consultate.'));
+    }
+  }
+});
+
+test('sponsor detail leaves exposure metrics unavailable for a partner observed only through clicks', () => {
+  const report = engagementReportFixture('extended');
+  report.details.sponsors = [{ id: 91, name: 'Partner con soli clic', exposure_measured: false, reach: 0, impressions: 0, clickers: 0, ctr: 0 }];
+  const doc = createEngagementReportPdf(report);
+  const page = doc.internal.pages[2].join('\n');
+  const nativeText = [...page.matchAll(/\(([^)]*)\) Tj/g)].map(match => match[1]);
+  assert.ok(nativeText.includes('Partner con soli clic'));
+  assert.equal(nativeText.filter(text => text === 'N/D').length, 4);
+  assert.ok(!nativeText.includes('0%'));
+  report.details.sponsors[0].exposure_measured = true;
+  const measured = createEngagementReportPdf(report).internal.pages[2].join('\n');
+  assert.ok(measured.includes('(0%)'));
+  delete report.details.sponsors[0].exposure_measured;
+  const previous = createEngagementReportPdf(report).internal.pages[2].join('\n');
+  assert.ok(previous.includes('(0%)'));
+});
+
 test('direct overrides hide measured fractions and base-fact corrections retain their reason', () => {
   const report = engagementReportFixture('extended');
   report.overrides = { active_participation: { value: 70, note: 'Valore finale riconciliato' } };

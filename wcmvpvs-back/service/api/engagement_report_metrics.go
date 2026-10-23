@@ -35,21 +35,25 @@ type reportGame struct {
 }
 
 type reportSponsor struct {
-	ID          int      `json:"id"`
-	Name        string   `json:"name"`
-	Reach       int      `json:"reach"`
-	Impressions int      `json:"impressions"`
-	Clickers    int      `json:"clickers"`
-	CTR         *float64 `json:"ctr"`
+	ID               int      `json:"id"`
+	Name             string   `json:"name"`
+	Reach            int      `json:"reach"`
+	Impressions      int      `json:"impressions"`
+	Clickers         int      `json:"clickers"`
+	CTR              *float64 `json:"ctr"`
+	ExposureMeasured bool     `json:"exposure_measured"`
 }
 
 type reportDetails struct {
-	Games    []reportGame    `json:"games"`
-	Sponsors []reportSponsor `json:"sponsors"`
+	Games         []reportGame              `json:"games"`
+	Sponsors      []reportSponsor           `json:"sponsors"`
+	Sources       []reportSourceRows        `json:"sources,omitempty"`
+	Operational   *reportOperationalSummary `json:"operational,omitempty"`
+	CoverageNotes []string                  `json:"coverage_notes,omitempty"`
 }
 
 var engagementReportFactKeys = []string{
-	"visitors", "onsite_visitors", "attendees", "active_visitors", "active_seconds",
+	"visitors", "onsite_visitors", "attendees", "active_visitors", "active_seconds", "engagement_eligible_visitors", "timed_visitors",
 	"voters", "vote_eligible_visitors", "players", "game_eligible_visitors",
 	"rounds_completed", "repeat_players", "multi_experience_visitors", "new_profiles",
 	"registration_starters", "returning_profiles", "previous_event_profiles",
@@ -137,9 +141,9 @@ type reportMetricSponsorState struct {
 	players     reportVisitorSet
 }
 
-// calculateReportMetrics reads only signals emitted by /new. Each successful
-// action also proves a visit; it never manufactures an eligible audience when
-// the corresponding availability flag was not observed.
+// calculateReportMetrics accepts /new observations and normalized, event-scoped
+// operational evidence. A successful action proves an observed participant; it
+// never manufactures an eligible audience without an availability observation.
 func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (map[string]*float64, reportDetails, string) {
 	facts := map[string]*float64{}
 	for _, key := range engagementReportFactKeys {
@@ -177,6 +181,19 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 		}
 		return ""
 	}
+	// Legacy receipts have no round identifier. They prove at least one round,
+	// but cannot be added to modern receipts/telemetry for the same actor/game.
+	modernRounds := reportVisitorSet{}
+	modernCompleted := reportVisitorSet{}
+	for _, signal := range signals {
+		legacy, _ := signal.Metadata["_legacy_round"].(bool)
+		if !legacy && (signal.Name == "game_started" || signal.Name == "game_completed") && reportMetricString(signal.Metadata, "round_id") != "" {
+			modernRounds[identity(signal)+"\x00"+reportMetricString(signal.Metadata, "game_id")] = true
+			if signal.Name == "game_completed" {
+				modernCompleted[identity(signal)+"\x00"+reportMetricString(signal.Metadata, "game_id")] = true
+			}
+		}
+	}
 	ordered := append([]reportSignal{}, signals...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		return reportMetricTime(ordered[i].OccurredAt).Before(reportMetricTime(ordered[j].OccurredAt))
@@ -195,15 +212,19 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 	games := map[string]*reportMetricGameState{}
 	sponsors := map[int]*reportMetricSponsorState{}
 	intervals := map[string][]reportMetricInterval{}
-	voteFlags, gameFlags, feedbackFlags, arenaSource := false, false, false, false
+	voteFlags, gameFlags, feedbackFlags, arenaSource, pageObserved := false, false, false, false, false
 	seenIDs := reportVisitorSet{}
 	var earliest time.Time
 	for _, signal := range ordered {
 		if signal.ID != "" {
-			if seenIDs[signal.ID] {
+			origin := "browser:"
+			if operational, _ := signal.Metadata["_operational"].(bool); operational {
+				origin = "operational:"
+			}
+			if seenIDs[origin+signal.ID] {
 				continue
 			}
-			seenIDs[signal.ID] = true
+			seenIDs[origin+signal.ID] = true
 		}
 		visitor := identity(signal)
 		if visitor == "" {
@@ -227,6 +248,7 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 		}
 		switch signal.Name {
 		case "page_view":
+			pageObserved = true
 			if reportMetricString(signal.Metadata, "source") == "arena" {
 				arenaSource = true
 				onsite[visitor] = true
@@ -290,6 +312,16 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 			}
 			game.players[visitor] = true
 			if roundID := reportMetricString(signal.Metadata, "round_id"); roundID != "" {
+				legacy, _ := signal.Metadata["_legacy_round"].(bool)
+				if legacy && modernRounds[visitor+"\x00"+gameID] {
+					// Preserve the legacy proof of a completion if modern evidence
+					// only shows a start. Do not manufacture a second started round.
+					if signal.Name == "game_completed" && !modernCompleted[visitor+"\x00"+gameID] {
+						round := visitor + "\x00" + gameID + "\x00legacy-confirmed"
+						completedRounds[round], game.completed[round] = true, true
+					}
+					continue
+				}
 				round := visitor + "\x00" + gameID + "\x00" + roundID
 				startedRounds[round], game.started[round] = true, true
 				if roundsByPlayer[visitor] == nil {
@@ -365,6 +397,10 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 	facts["attendees"], facts["onsite_visitors"] = nil, nil
 	count := func(key string, set reportVisitorSet) { facts[key] = reportMetricFloat(float64(len(set))) }
 	count("visitors", visitors)
+	facts["engagement_eligible_visitors"] = nil
+	if pageObserved {
+		count("engagement_eligible_visitors", visitors)
+	}
 	count("active_visitors", active)
 	count("voters", voters)
 	count("players", players)
@@ -422,6 +458,10 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 		activeSeconds += merged.end.Sub(merged.start).Seconds()
 	}
 	facts["active_seconds"] = reportMetricFloat(math.Round(activeSeconds))
+	facts["timed_visitors"] = nil
+	if len(intervals) > 0 {
+		facts["timed_visitors"] = reportMetricFloat(float64(len(intervals)))
+	}
 	previousProfiles, returning := reportVisitorSet{}, reportVisitorSet{}
 	previousDevices := map[string]map[int]bool{}
 	for _, signal := range previous {
@@ -475,7 +515,7 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 			allSponsoredPlayers[visitor] = true
 		}
 		impressions += len(sponsor.impressions)
-		details.Sponsors = append(details.Sponsors, reportSponsor{ID: id, Name: sponsor.name, Reach: len(sponsor.reach), Impressions: len(sponsor.impressions), Clickers: len(clickers), CTR: reportMetricRatio(reportMetricFloat(float64(len(clickers))), reportMetricFloat(float64(len(sponsor.reach))), true)})
+		details.Sponsors = append(details.Sponsors, reportSponsor{ID: id, Name: sponsor.name, Reach: len(sponsor.reach), Impressions: len(sponsor.impressions), Clickers: len(clickers), CTR: reportMetricRatio(reportMetricFloat(float64(len(clickers))), reportMetricFloat(float64(len(sponsor.reach))), true), ExposureMeasured: len(sponsor.reach) > 0})
 	}
 	sort.Slice(details.Sponsors, func(i, j int) bool { return details.Sponsors[i].ID < details.Sponsors[j].ID })
 	count("sponsor_reach", allReach)
@@ -494,8 +534,8 @@ func buildReportKPIs(facts map[string]*float64) []reportKPI {
 	definitions := []reportKPI{
 		{ID: "visitors", Label: "Visitatori digitali unici", Group: "Pubblico", Unit: "count", FactKey: "visitors", Description: "Identità osservate in /new: profilo verificato quando disponibile, altrimenti dispositivo. Un dispositivo condiviso resta distinto se il collegamento al profilo è ambiguo."},
 		{ID: "venue_adoption", Label: "Adozione del pubblico presente", Group: "Pubblico", Unit: "percent", NumeratorKey: "onsite_visitors", DenominatorKey: "attendees", Description: "Visitatori con provenienza arena esplicita divisi per le presenze effettive inserite dalla società. La provenienza non dimostra da sola la presenza fisica."},
-		{ID: "active_participation", Label: "Partecipazione attiva", Group: "Engagement", Unit: "percent", NumeratorKey: "active_visitors", DenominatorKey: "visitors", Description: "Visitatori con voto, avvio o completamento gioco, riscatto, clic sponsor o feedback, rispetto ai visitatori osservati."},
-		{ID: "active_time", Label: "Tempo attivo medio", Group: "Engagement", Unit: "seconds", NumeratorKey: "active_seconds", DenominatorKey: "visitors", Description: "Secondi di attività dichiarata in primo piano per visitatore. Intervalli sovrapposti dello stesso utente vengono uniti; ogni heartbeat vale al massimo 15 secondi."},
+		{ID: "active_participation", Label: "Partecipazione attiva", Group: "Engagement", Unit: "percent", NumeratorKey: "active_visitors", DenominatorKey: "engagement_eligible_visitors", Description: "Partecipanti con voto, gioco, riscatto, clic sponsor o feedback rispetto al pubblico digitale osservabile. Il denominatore richiede almeno una rilevazione della home e resta assente se esistono soltanto azioni salvate."},
+		{ID: "active_time", Label: "Tempo attivo medio misurato", Group: "Engagement", Unit: "seconds", NumeratorKey: "active_seconds", DenominatorKey: "timed_visitors", Description: "Secondi di attività in primo piano per identità con almeno un intervallo valido. Il campione esclude le identità senza misurazioni del tempo. Intervalli sovrapposti uniti; ogni heartbeat vale al massimo 15 secondi."},
 		{ID: "mvp_participation", Label: "Partecipazione al voto MVP", Group: "Engagement", Unit: "percent", NumeratorKey: "voters", DenominatorKey: "vote_eligible_visitors", Description: "Votanti unici rispetto ai visitatori per cui la votazione risultava disponibile. I cambi di voto non aggiungono un votante."},
 		{ID: "game_participation", Label: "Partecipazione ai giochi", Group: "Gaming", Unit: "percent", NumeratorKey: "players", DenominatorKey: "game_eligible_visitors", Description: "Giocatori unici con almeno un avvio o completamento rispetto ai visitatori con giochi disponibili."},
 		{ID: "completed_rounds", Label: "Round di gioco completati", Group: "Gaming", Unit: "count", FactKey: "rounds_completed", Description: "Round distinti per utente, gioco e identificativo del round. La dichiarazione di completamento non certifica ogni gesto di gioco."},

@@ -135,7 +135,7 @@ func engagementReportImage(t *testing.T, format string, width, height int) strin
 	return "data:image/" + format + ";base64," + base64.StdEncoding.EncodeToString(out.Bytes())
 }
 
-func TestEngagementReportPrepareUsesOnlyNewPipelineAndPreservesMissingData(t *testing.T) {
+func TestEngagementReportPrepareExcludesLegacyHistoryAggregatesAndPreservesMissingData(t *testing.T) {
 	f := newEngagementReportFixture(t)
 	// A populated legacy history must not manufacture observations for /new.
 	if _, err := f.conn.Exec(`INSERT INTO tracking_events(event_id,organization_id,device_id,event_name,metadata_json) VALUES(?,?,?,?,?)`, f.event, f.org.ID, "legacy-browser", "page_view", `{"seconds":900}`); err != nil {
@@ -311,7 +311,7 @@ func TestEngagementReportApprovalRecalculatesAndStoresImmutableVersionedSnapshot
 	}
 	// Changing the platform identity after calculation must not alter its signed version.
 	engagementReportRequireStatus(t, engagementReportRequest(t, f.router.putReportBranding, http.MethodPut, f.event, reportBranding{CompanyName: "New issuer"}, master, nil), http.StatusOK)
-	approval := map[string]interface{}{"calculation_id": draft.CalculationID, "format": "extended", "facts": map[string]*float64{"visitors": engagementReportFloat(2)}, "notes": "Presenze digitali verificate dalla società"}
+	approval := map[string]interface{}{"calculation_id": draft.CalculationID, "format": "extended", "facts": map[string]*float64{"visitors": engagementReportFloat(2), "engagement_eligible_visitors": engagementReportFloat(2)}, "notes": "Presenze digitali verificate dalla società"}
 	approved := engagementReportDecodeSnapshot(t, engagementReportRequest(t, f.router.approveEngagementReport, http.MethodPost, f.event, approval, f.ctx, nil))
 	if approved.ID == "" || approved.ApprovedBy != f.ctx.AdminUsername || approved.SchemaVersion != 1 || approved.Branding.CompanyName != "Original issuer" || approved.Branding.LogoData != firstLogo || approved.OriginalFacts["visitors"] == nil || *approved.OriginalFacts["visitors"] != 1 || *approved.Facts["visitors"] != 2 {
 		t.Fatalf("wrong approved snapshot: %+v", approved)
@@ -444,7 +444,7 @@ func TestEngagementReportProportionalFactCorrectionsRemainExplicit(t *testing.T)
 	batch := map[string]interface{}{"events": []interface{}{engagementReportSignalPayload("proportion-view", "page_view", nil), engagementReportSignalPayload("proportion-vote", "vote_completed", nil)}}
 	engagementReportRequireStatus(t, engagementReportRequest(t, f.router.recordReportSignals, http.MethodPost, f.event, batch, f.ctx, map[string]string{"X-Device-ID": "browser"}), http.StatusNoContent)
 	draft := engagementReportDecodeSnapshot(t, engagementReportRequest(t, f.router.prepareEngagementReport, http.MethodGet, f.event, nil, f.ctx, nil))
-	input := map[string]interface{}{"calculation_id": draft.CalculationID, "format": "one_page", "facts": map[string]*float64{"visitors": engagementReportFloat(2), "active_visitors": engagementReportFloat(2)}, "notes": "Presenze e partecipanti confermati"}
+	input := map[string]interface{}{"calculation_id": draft.CalculationID, "format": "one_page", "facts": map[string]*float64{"visitors": engagementReportFloat(2), "engagement_eligible_visitors": engagementReportFloat(2), "active_visitors": engagementReportFloat(2)}, "notes": "Presenze e partecipanti confermati"}
 	approved := engagementReportDecodeSnapshot(t, engagementReportRequest(t, f.router.approveEngagementReport, http.MethodPost, f.event, input, f.ctx, nil))
 	for _, kpi := range approved.KPIs {
 		if kpi.ID == "active_participation" && (kpi.Value == nil || *kpi.Value != 100 || !kpi.Corrected || kpi.Source != "manual" || kpi.Numerator == nil || *kpi.Numerator != 2) {
