@@ -50,6 +50,7 @@ type reportDetails struct {
 	Sponsors      []reportSponsor           `json:"sponsors"`
 	Sources       []reportSourceRows        `json:"sources,omitempty"`
 	Operational   *reportOperationalSummary `json:"operational,omitempty"`
+	TimeEstimate  *reportTimeEstimate       `json:"time_estimate,omitempty"`
 	CoverageNotes []string                  `json:"coverage_notes,omitempty"`
 }
 
@@ -62,6 +63,8 @@ var engagementReportFactKeys = []string{
 	"sponsor_clickers", "sponsored_players", "sponsored_exposed_visitors",
 	"feedback_respondents", "feedback_eligible_visitors", "experience_positive",
 	"experience_responses", "perks_positive", "perks_responses",
+	"estimated_seconds", "estimated_timed_visitors", "identified_visitors", "guest_visitors",
+	"total_sponsor_clicks", "sponsor_interactors", "sponsor_engaged_exposed", "shop_redemptions", "feedback_collected",
 }
 
 type reportVisitorSet map[string]bool
@@ -142,20 +145,9 @@ type reportMetricSponsorState struct {
 	players     reportVisitorSet
 }
 
-// calculateReportMetrics accepts /new observations and normalized, event-scoped
-// operational evidence. A successful action proves an observed participant; it
-// never manufactures an eligible audience without an availability observation.
-func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (map[string]*float64, reportDetails, string) {
-	facts := map[string]*float64{}
-	for _, key := range engagementReportFactKeys {
-		facts[key] = nil
-	}
-	details := reportDetails{Games: []reportGame{}, Sponsors: []reportSponsor{}}
-	if len(signals) == 0 {
-		return facts, details, ""
-	}
-	// A shared device is linked only when exactly one identified profile was
-	// seen on it during this event. No cross-event anonymous matching occurs.
+// Canonical identity is local to one event: a device joins a profile only when
+// that event contains exactly one verified profile associated with the device.
+func reportMetricIdentityResolver(signals []reportSignal) func(reportSignal) string {
 	devices := map[string]map[int]bool{}
 	for _, signal := range signals {
 		if signal.FanID > 0 && signal.DeviceID != "" {
@@ -165,7 +157,7 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 			devices[signal.DeviceID][signal.FanID] = true
 		}
 	}
-	identity := func(signal reportSignal) string {
+	return func(signal reportSignal) string {
 		if signal.FanID > 0 {
 			return "fan:" + strconv.Itoa(signal.FanID)
 		}
@@ -182,6 +174,21 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 		}
 		return ""
 	}
+}
+
+// calculateReportMetrics accepts /new observations and normalized, event-scoped
+// operational evidence. A successful action proves an observed participant; it
+// never manufactures an eligible audience without an availability observation.
+func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (map[string]*float64, reportDetails, string) {
+	facts := map[string]*float64{}
+	for _, key := range engagementReportFactKeys {
+		facts[key] = nil
+	}
+	details := reportDetails{Games: []reportGame{}, Sponsors: []reportSponsor{}}
+	if len(signals) == 0 {
+		return facts, details, ""
+	}
+	identity := reportMetricIdentityResolver(signals)
 	// Legacy receipts have no round identifier. They prove at least one round,
 	// but cannot be added to modern receipts/telemetry for the same actor/game.
 	modernRounds := reportVisitorSet{}
@@ -215,6 +222,7 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 	intervals := map[string][]reportMetricInterval{}
 	voteFlags, gameFlags, feedbackFlags, arenaSource, pageObserved := false, false, false, false, false
 	seenIDs := reportVisitorSet{}
+	clickActions, redemptionActions := reportVisitorSet{}, reportVisitorSet{}
 	var earliest time.Time
 	for _, signal := range ordered {
 		if signal.ID != "" {
@@ -344,6 +352,9 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 				shopEligible[visitor] = true
 			}
 		case "redemption_completed":
+			if item := reportMetricString(signal.Metadata, "item_key"); item != "" {
+				redemptionActions[visitor+"\x00"+item] = true
+			}
 			if signal.FanID > 0 {
 				redeemers[visitor], shopEligible[visitor] = true, true
 			}
@@ -384,6 +395,11 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 				}
 			case "sponsor_click":
 				sponsor.clickers[visitor] = true
+				action := signal.ID
+				if action == "" {
+					action = signal.SessionID + "\x00" + signal.OccurredAt
+				}
+				clickActions[visitor+"\x00"+strconv.Itoa(sponsorID)+"\x00"+action] = true
 			case "game_started", "game_completed":
 				sponsor.players[visitor] = true
 			}
@@ -398,6 +414,26 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 	facts["attendees"], facts["onsite_visitors"] = nil, nil
 	count := func(key string, set reportVisitorSet) { facts[key] = reportMetricFloat(float64(len(set))) }
 	count("visitors", visitors)
+	identified, guests := reportVisitorSet{}, reportVisitorSet{}
+	for visitor := range visitors {
+		if strings.HasPrefix(visitor, "fan:") {
+			identified[visitor] = true
+		} else {
+			guests[visitor] = true
+		}
+	}
+	count("identified_visitors", identified)
+	count("guest_visitors", guests)
+	count("total_sponsor_clicks", clickActions)
+	count("shop_redemptions", redemptionActions)
+	count("feedback_collected", respondents)
+	estimated, estimate := calculateReportTimeEstimate(signals)
+	details.TimeEstimate = &estimate
+	facts["estimated_seconds"], facts["estimated_timed_visitors"] = nil, nil
+	if estimate.CoveredVisitors > 0 {
+		facts["estimated_seconds"] = reportMetricFloat(estimated)
+		facts["estimated_timed_visitors"] = reportMetricFloat(float64(estimate.CoveredVisitors))
+	}
 	facts["engagement_eligible_visitors"] = nil
 	if pageObserved {
 		count("engagement_eligible_visitors", visitors)
@@ -499,9 +535,20 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 	}
 	sort.Slice(details.Games, func(i, j int) bool { return details.Games[i].ID < details.Games[j].ID })
 	allReach, allClickers, allSponsored, allSponsoredPlayers := reportVisitorSet{}, reportVisitorSet{}, reportVisitorSet{}, reportVisitorSet{}
+	allInteractors, allEngagedExposed := reportVisitorSet{}, reportVisitorSet{}
 	impressions := 0
 	for id, sponsor := range sponsors {
 		clickers := reportMetricIntersection(sponsor.clickers, sponsor.reach)
+		interactors := reportVisitorSet{}
+		for visitor := range sponsor.clickers {
+			interactors[visitor], allInteractors[visitor] = true, true
+		}
+		for visitor := range sponsor.players {
+			interactors[visitor], allInteractors[visitor] = true, true
+		}
+		for visitor := range reportMetricIntersection(interactors, sponsor.reach) {
+			allEngagedExposed[visitor] = true
+		}
 		sponsoredPlayers := reportMetricIntersection(sponsor.players, sponsor.sponsored)
 		for visitor := range sponsor.reach {
 			allReach[visitor] = true
@@ -523,6 +570,8 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 	count("sponsor_clickers", allClickers)
 	count("sponsored_exposed_visitors", allSponsored)
 	count("sponsored_players", allSponsoredPlayers)
+	count("sponsor_interactors", allInteractors)
+	count("sponsor_engaged_exposed", allEngagedExposed)
 	facts["sponsor_impressions"] = reportMetricFloat(float64(impressions))
 	startedAt := ""
 	if !earliest.IsZero() {
@@ -553,6 +602,16 @@ func buildReportKPIs(facts map[string]*float64) []reportKPI {
 		{ID: "feedback_response", Label: "Risposta al feedback", Group: "Feedback", Unit: "percent", NumeratorKey: "feedback_respondents", DenominatorKey: "feedback_eligible_visitors", Description: "Rispondenti unici rispetto ai visitatori con sondaggio disponibile. Per ogni identità viene considerata la prima risposta dell'evento."},
 		{ID: "satisfaction", Label: "Esperienza positiva", Group: "Feedback", Unit: "percent", NumeratorKey: "experience_positive", DenominatorKey: "experience_responses", Description: "Risposte Fantastica o Bella rispetto alle risposte valide alla domanda sull'esperienza. Il risultato descrive soltanto il campione rispondente."},
 		{ID: "perks_interest", Label: "Interesse per premi e vantaggi", Group: "Feedback", Unit: "percent", NumeratorKey: "perks_positive", DenominatorKey: "perks_responses", Description: "Risposte Sì molto rispetto alle risposte valide alla domanda su premi e vantaggi; Forse non è conteggiato come interesse positivo."},
+		{ID: "estimated_total_time", Label: "Tempo totale stimato sulla piattaforma", Group: "Engagement", Unit: "seconds", FactKey: "estimated_seconds", Description: "Stima conservativa per ospiti e profili: unione dei tempi misurati e dei primi 60 secondi tra azioni consecutive distanti al massimo 5 minuti. Nessun tempo prima della prima o dopo l'ultima azione; identità con una sola prova senza heartbeat escluse."},
+		{ID: "estimated_avg_time", Label: "Tempo medio stimato per partecipante", Group: "Engagement", Unit: "seconds", NumeratorKey: "estimated_seconds", DenominatorKey: "estimated_timed_visitors", Description: "Tempo totale stimato diviso per le identità con almeno un intervallo valido. La copertura è dichiarata separatamente: ospiti e profili senza una durata ricostruibile non valgono zero e non entrano nella media."},
+		{ID: "identified_visitors", Label: "Partecipanti identificati", Group: "Pubblico", Unit: "count", FactKey: "identified_visitors", Description: "Profili verificati osservati nell'evento. Le azioni da ospite sono associate al profilo solo se il collegamento del dispositivo è univoco nell'evento; non implica consenso marketing."},
+		{ID: "guest_visitors", Label: "Partecipanti ospiti", Group: "Pubblico", Unit: "count", FactKey: "guest_visitors", Description: "Identità osservabili rimaste prive di un profilo verificato dopo la riconciliazione locale all'evento. Sono dispositivi o sessioni, non persone fisiche certificate."},
+		{ID: "sponsor_clicks", Label: "Clic complessivi verso gli sponsor", Group: "Sponsor", Unit: "count", FactKey: "total_sponsor_clicks", Description: "Clic salvati nell'evento, inclusi quelli senza identità. Il totale operativo è prioritario e non viene sommato alle sue copie telemetriche; in sua assenza si usa il minimo osservato nei segnali."},
+		{ID: "sponsor_interactors", Label: "Partecipanti attivi con gli sponsor", Group: "Sponsor", Unit: "count", FactKey: "sponsor_interactors", Description: "Identità uniche con almeno un clic sponsor o un avvio/completamento di gioco attribuito a uno sponsor. Le prove prive di identità non generano utenti unici e ogni identità conta una volta."},
+		{ID: "sponsor_engagement", Label: "Coinvolgimento del pubblico esposto agli sponsor", Group: "Sponsor", Unit: "percent", NumeratorKey: "sponsor_engaged_exposed", DenominatorKey: "sponsor_reach", Description: "Identità che interagiscono con un clic o gioco dello stesso sponsor per cui esiste un'esposizione qualificata, rispetto alla copertura unica sponsor. Senza esposizioni misurate il tasso resta N/D."},
+		{ID: "shop_redemptions", Label: "Riscatti di premi virtuali", Group: "Fidelizzazione", Unit: "count", FactKey: "shop_redemptions", Description: "Acquisti dello shop addebitati in monete virtuali e attribuiti all'evento. Le copie dei segnali non vengono sommate al registro; in assenza di addebiti si usa il minimo osservato per identità e oggetto. Non misura ricavi in euro."},
+		{ID: "audience_registration_conversion", Label: "Nuovi profili sul pubblico osservabile", Group: "Acquisizione", Unit: "percent", NumeratorKey: "new_profiles", DenominatorKey: "visitors", Description: "Prime registrazioni verificate attribuite all'evento rispetto alle identità digitali osservabili. Il pubblico può essere un minimo verificabile quando mancano visite passive storiche; il tasso non è una conversione su tutti gli spettatori."},
+		{ID: "feedback_collected", Label: "Feedback raccolti", Group: "Feedback", Unit: "count", FactKey: "feedback_collected", Description: "Risposte salvate nell'evento, anche anonime, senza sommare le copie telemetriche. In assenza di risposte operative si usa il minimo di risposte identificabili nei segnali; non equivale a un conteggio di persone uniche."},
 	}
 	for index := range definitions {
 		kpi := &definitions[index]
@@ -573,6 +632,10 @@ func buildReportKPIs(facts map[string]*float64) []reportKPI {
 			kpi.Source = "manual"
 			kpi.Note = "Presenze confermate manualmente dalla società; provenienza arena rilevata dalla piattaforma."
 		}
+		if (kpi.ID == "estimated_total_time" || kpi.ID == "estimated_avg_time") && kpi.Value != nil {
+			kpi.Source = "estimated"
+			kpi.Note = "Stima da azioni e tempi misurati; massimo 60 secondi per intervallo, esclusi gap oltre 5 minuti. Identità prive di durata ricostruibile escluse. Non equivale a tempo di permanenza misurato."
+		}
 	}
 	return definitions
 }
@@ -580,24 +643,34 @@ func buildReportKPIs(facts map[string]*float64) []reportKPI {
 // Brief report captions are editable presentation text, separate from the
 // calculation definitions and provenance retained in Description and Note.
 var reportKPIDisplayDescriptions = map[string]string{
-	"visitors":                "Identità uniche osservabili dai segnali e dalle attività salvate.",
-	"venue_adoption":          "Accessi dichiarati da arena rispetto alle presenze confermate dalla società.",
-	"active_participation":    "Visitatori osservabili con almeno una partecipazione attiva.",
-	"active_time":             "Tempo medio in primo piano tra le identità con intervalli validi misurati.",
-	"mvp_participation":       "Votanti unici rispetto al pubblico osservato con votazione disponibile.",
-	"game_participation":      "Giocatori unici rispetto al pubblico osservato con giochi disponibili.",
-	"completed_rounds":        "Giocate completate confermate dai segnali o dalle prove operative disponibili.",
-	"replay_rate":             "Quota di giocatori con almeno due round distinti osservabili.",
-	"multi_experience":        "Partecipanti attivi che utilizzano almeno due funzionalità diverse.",
-	"new_profiles":            "Prime registrazioni verificate attribuite all'evento dai segnali.",
-	"registration_conversion": "Prime registrazioni verificate rispetto ai percorsi di registrazione avviati.",
-	"event_retention":         "Profili attivi nell'evento precedente tornati attivi in questo evento.",
-	"redemption_conversion":   "Profili con riscatti rispetto al pubblico registrato osservato nello shop o home.",
-	"sponsor_reach":           "Identità uniche con almeno una visualizzazione sponsor qualificata.",
-	"sponsor_impressions":     "Visualizzazioni sponsor qualificate, distinte per sessione e posizionamento.",
-	"sponsor_ctr":             "Utenti con clic sullo stesso sponsor visto rispetto alla copertura unica.",
-	"sponsored_participation": "Giocatori dello sponsor rispetto al pubblico esposto al suo gioco.",
-	"feedback_response":       "Rispondenti unici nei segnali rispetto al pubblico con sondaggio disponibile.",
-	"satisfaction":            "Risposte positive alla domanda dedicata sull'esperienza nel campione rispondente.",
-	"perks_interest":          "Risposte positive su premi e vantaggi tra le risposte valide raccolte.",
+	"visitors":                         "Identità uniche osservabili dai segnali e dalle attività salvate.",
+	"venue_adoption":                   "Accessi dichiarati da arena rispetto alle presenze confermate dalla società.",
+	"active_participation":             "Visitatori osservabili con almeno una partecipazione attiva.",
+	"active_time":                      "Tempo medio in primo piano tra le identità con intervalli validi misurati.",
+	"mvp_participation":                "Votanti unici rispetto al pubblico osservato con votazione disponibile.",
+	"game_participation":               "Giocatori unici rispetto al pubblico osservato con giochi disponibili.",
+	"completed_rounds":                 "Giocate completate confermate dai segnali o dalle prove operative disponibili.",
+	"replay_rate":                      "Quota di giocatori con almeno due round distinti osservabili.",
+	"multi_experience":                 "Partecipanti attivi che utilizzano almeno due funzionalità diverse.",
+	"new_profiles":                     "Prime registrazioni verificate attribuite all'evento dai segnali.",
+	"registration_conversion":          "Prime registrazioni verificate rispetto ai percorsi di registrazione avviati.",
+	"event_retention":                  "Profili attivi nell'evento precedente tornati attivi in questo evento.",
+	"redemption_conversion":            "Profili con riscatti rispetto al pubblico registrato osservato nello shop o home.",
+	"sponsor_reach":                    "Identità uniche con almeno una visualizzazione sponsor qualificata.",
+	"sponsor_impressions":              "Visualizzazioni sponsor qualificate, distinte per sessione e posizionamento.",
+	"sponsor_ctr":                      "Utenti con clic sullo stesso sponsor visto rispetto alla copertura unica.",
+	"sponsored_participation":          "Giocatori dello sponsor rispetto al pubblico esposto al suo gioco.",
+	"feedback_response":                "Rispondenti unici nei segnali rispetto al pubblico con sondaggio disponibile.",
+	"satisfaction":                     "Risposte positive alla domanda dedicata sull'esperienza nel campione rispondente.",
+	"perks_interest":                   "Risposte positive su premi e vantaggi tra le risposte valide raccolte.",
+	"estimated_total_time":             "Secondi stimati dalle azioni osservate e dai tempi misurati, per ospiti e profili.",
+	"estimated_avg_time":               "Secondi medi stimati tra i partecipanti con una durata ricostruibile.",
+	"identified_visitors":              "Profili verificati che partecipano all'evento, riconciliati con le azioni da ospite.",
+	"guest_visitors":                   "Dispositivi o sessioni osservati senza un collegamento univoco a un profilo verificato.",
+	"sponsor_clicks":                   "Clic verso gli sponsor salvati nell'evento, inclusi quelli senza identità.",
+	"sponsor_interactors":              "Identità uniche che cliccano uno sponsor o partecipano al suo gioco.",
+	"sponsor_engagement":               "Pubblico esposto che interagisce con lo stesso sponsor tramite clic o gioco.",
+	"shop_redemptions":                 "Riscatti dello shop attribuiti all'evento e pagati in monete virtuali.",
+	"audience_registration_conversion": "Prime registrazioni verificate rispetto al pubblico digitale osservabile dell'evento.",
+	"feedback_collected":               "Risposte raccolte nell'evento; il totale può comprendere feedback anonimi.",
 }

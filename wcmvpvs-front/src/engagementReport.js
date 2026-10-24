@@ -21,6 +21,16 @@ export const REPORT_KPIS = [
   ['feedback_response', 'Risposta al feedback', 'Ascolto e soddisfazione', 'percent', 'feedback_respondents', 'feedback_eligible_visitors'],
   ['satisfaction', 'Soddisfazione esperienza', 'Ascolto e soddisfazione', 'percent', 'experience_positive', 'experience_responses'],
   ['perks_interest', 'Interesse per premi e vantaggi', 'Ascolto e soddisfazione', 'percent', 'perks_positive', 'perks_responses'],
+  ['estimated_total_time', 'Tempo complessivo stimato', 'Pubblico e attenzione', 'seconds', 'estimated_seconds'],
+  ['estimated_avg_time', 'Tempo medio stimato per utente', 'Pubblico e attenzione', 'seconds', 'estimated_seconds', 'estimated_timed_visitors'],
+  ['identified_visitors', 'Partecipanti con profilo', 'Relazione con i tifosi', 'count', 'identified_visitors'],
+  ['guest_visitors', 'Partecipanti ospiti', 'Pubblico e attenzione', 'count', 'guest_visitors'],
+  ['sponsor_clicks', 'Clic verso gli sponsor', 'Valore per i partner', 'count', 'total_sponsor_clicks'],
+  ['sponsor_interactors', 'Utenti che interagiscono con gli sponsor', 'Valore per i partner', 'count', 'sponsor_interactors'],
+  ['sponsor_engagement', 'Coinvolgimento degli esposti agli sponsor', 'Valore per i partner', 'percent', 'sponsor_engaged_exposed', 'sponsor_reach'],
+  ['shop_redemptions', 'Collezionabili riscattati', 'Relazione con i tifosi', 'count', 'shop_redemptions'],
+  ['audience_registration_conversion', 'Nuovi profili sul pubblico osservabile', 'Relazione con i tifosi', 'percent', 'new_profiles', 'visitors'],
+  ['feedback_collected', 'Feedback raccolti', 'Ascolto e soddisfazione', 'count', 'feedback_collected'],
 ].map(([id, label, group, unit, numeratorKey, denominatorKey]) => ({ id, label, group, unit, numeratorKey, denominatorKey }));
 
 export const REPORT_FACT_LABELS = {
@@ -36,14 +46,21 @@ export const REPORT_FACT_LABELS = {
   feedback_respondents: 'Partecipanti al feedback', feedback_eligible_visitors: 'Utenti con feedback disponibile',
   experience_positive: 'Risposte positive sull’esperienza', experience_responses: 'Risposte valide sull’esperienza',
   perks_positive: 'Risposte positive sui vantaggi', perks_responses: 'Risposte valide sui vantaggi',
+  estimated_seconds: 'Secondi complessivi stimati dalle azioni', estimated_timed_visitors: 'Utenti con una stima temporale ricostruibile',
+  identified_visitors: 'Partecipanti con profilo riconciliato', guest_visitors: 'Partecipanti rimasti ospiti',
+  total_sponsor_clicks: 'Clic sponsor riconciliati', sponsor_interactors: 'Utenti con interazioni sponsor',
+  sponsor_engaged_exposed: 'Utenti esposti con interazioni sponsor', shop_redemptions: 'Riscatti di collezionabili confermati',
+  feedback_collected: 'Risposte al feedback raccolte',
 };
 
 export function reportSourceLabel(value, compact = false) {
   const labels = compact ? {
     new_tracking: 'Telemetria /new', operational: 'Dati operativi', mixed: 'Telemetria + operativi',
+    estimated: 'Stima da azioni',
     manual: 'Verificato / corretto', unavailable: 'N/D',
   } : {
     new_tracking: 'Misurazione dedicata home /new', operational: 'Dati operativi dell’evento', mixed: 'Misurazione /new e dati operativi riconciliati',
+    estimated: 'Stima da azioni',
     manual: 'Inserimento manuale verificato', unavailable: 'Misura non disponibile',
   };
   return labels[value] || labels.unavailable;
@@ -66,6 +83,24 @@ export function numericReportValue(value) {
   if (value === '' || value === null || value === undefined) return null;
   const result = Number(value);
   return Number.isFinite(result) ? result : null;
+}
+
+export function reportSelectedKpiIds(snapshot = {}) {
+  return Array.isArray(snapshot.selected_kpi_ids)
+    ? [...snapshot.selected_kpi_ids]
+    : (snapshot.kpis || []).map(kpi => kpi.id);
+}
+
+export function validateReportSelection(selectedIds, availableKpis = [], format = 'one_page') {
+  if (!Array.isArray(selectedIds) || selectedIds.length === 0) return ['Seleziona almeno un KPI da inserire nel PDF.'];
+  const errors = [];
+  const availableIds = new Set(availableKpis.map(kpi => kpi.id));
+  if (new Set(selectedIds).size !== selectedIds.length || selectedIds.some(id => !availableIds.has(id))) errors.push('La selezione contiene KPI non disponibili o ripetuti.');
+  const limit = format === 'extended' ? 30 : 20;
+  if (selectedIds.length > limit) errors.push(format === 'extended'
+    ? 'Il report completo può contenere al massimo 30 KPI.'
+    : 'Il one pager può contenere al massimo 20 KPI. Riduci la selezione o scegli il report completo di 3 pagine.');
+  return errors;
 }
 
 function reportKpiDefinition(schema, original = {}) {

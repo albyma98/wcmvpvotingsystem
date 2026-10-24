@@ -1,10 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEngagementReportPdf, pdfText } from './engagementReportPdf.js';
-import { engagementReportFixture } from '../test/engagementReportFixture.js';
+import { engagementReportFixture as completeReportFixture } from '../test/engagementReportFixture.js';
 import { REPORT_KPIS } from './engagementReport.js';
 
 function pageText(doc) { return doc.internal.pages.flat().join('\n'); }
+
+function engagementReportFixture(format = 'one_page', stress = false) {
+  const report = completeReportFixture(format, stress);
+  report.kpis = report.kpis.slice(0, 20);
+  delete report.selected_kpi_ids;
+  return report;
+}
+
+function thirtyKpiFixture() {
+  const report = completeReportFixture('extended');
+  report.kpis = REPORT_KPIS.map((definition, index) => ({ ...definition, value: definition.unit === 'percent' ? 30 + index : 1200 + index, source: ['estimated_total_time', 'estimated_avg_time'].includes(definition.id) ? 'estimated' : 'operational', display_description: `Descrizione selezionabile ${String(index + 1).padStart(2, '0')}.` }));
+  report.overrides = {};
+  report.selected_kpi_ids = report.kpis.map(kpi => kpi.id);
+  report.details.time_estimate = { method: 'Intervalli tra azioni con limite per intervallo e inattività.', covered_visitors: 380, total_visitors: 520, excluded_visitors: 140 };
+  return report;
+}
 
 test('one pager contains all twenty KPIs and report identity without a visible issuer name', () => {
   const report = engagementReportFixture('one_page');
@@ -14,7 +30,7 @@ test('one pager contains all twenty KPIs and report identity without a visible i
   assert.ok(Math.abs(doc.internal.pageSize.getHeight() - 297) < .01);
   const rendered = pageText(doc);
   const nativeText = [...rendered.matchAll(/\(([^)]*)\) Tj/g)].map(match => match[1]).join(' ');
-  for (const kpi of REPORT_KPIS) assert.ok(nativeText.includes(pdfText(kpi.label)), kpi.label);
+  for (const kpi of report.kpis) assert.ok(nativeText.includes(pdfText(kpi.label)), kpi.label);
   assert.ok(rendered.includes('Report #42'));
   assert.ok(!rendered.includes('ArenaBoostX'));
   assert.ok(doc.output('arraybuffer').byteLength > 3000);
@@ -35,6 +51,8 @@ test('extended report stays at three pages with measured game and sponsor detail
 test('combined-source PDFs preserve coverage-specific labels and distinguish operational sources', () => {
   for (const format of ['one_page', 'extended']) {
     const report = engagementReportFixture(format);
+    for (const id of ['shop_redemptions', 'feedback_collected', 'sponsor_clicks']) report.kpis.push({ ...REPORT_KPIS.find(kpi => kpi.id === id), value: 3, source: 'operational' });
+    report.selected_kpi_ids = [...report.kpis.slice(0, 17).map(kpi => kpi.id), 'shop_redemptions', 'feedback_collected', 'sponsor_clicks'];
     report.overrides = {};
     Object.assign(report.kpis.find(kpi => kpi.id === 'visitors'), { label: 'Partecipanti osservabili', source: 'mixed', corrected: false });
     Object.assign(report.kpis.find(kpi => kpi.id === 'completed_rounds'), { source: 'operational' });
@@ -49,7 +67,7 @@ test('combined-source PDFs preserve coverage-specific labels and distinguish ope
     assert.ok(rendered.includes('Partecipazione minima verificabile.'));
     assert.ok(rendered.includes('14 voti'));
     assert.ok(rendered.includes('3 riscatti'));
-    assert.ok(rendered.includes('coin +1200/-150'));
+    assert.ok(rendered.includes('coin virtuali +1200/-150'));
     assert.ok(rendered.includes('8 feedback'));
     assert.ok(rendered.includes('5 clic sponsor'));
     if (format === 'extended') {
@@ -170,5 +188,163 @@ test('both report formats sign every page with only the logo and no issuer-name 
       assert.ok(!pageText(unbranded).includes(report.branding.company_name));
       assert.ok(!pageText(unbranded).includes('ArenaBoostX'));
     }
+  }
+});
+
+test('selection controls overview cards, KPI rows, source rows and PDF metadata', () => {
+  for (const format of ['one_page', 'extended']) {
+    const report = engagementReportFixture(format);
+    report.selected_kpi_ids = ['satisfaction', 'perks_interest'];
+    report.notes = '';
+    report.kpis.forEach(kpi => { kpi.display_description = `Testo specifico ${kpi.id}`; });
+    const doc = createEngagementReportPdf(report);
+    const rendered = pageText(doc);
+    assert.ok(rendered.includes(pdfText('Soddisfazione esperienza')));
+    assert.ok(rendered.includes(pdfText('Interesse per premi e vantaggi')));
+    assert.ok(rendered.includes('2 indicatori selezionati'));
+    for (const kpi of report.kpis.filter(kpi => !report.selected_kpi_ids.includes(kpi.id))) {
+      assert.ok(!rendered.includes(pdfText(kpi.label)), kpi.label);
+      assert.ok(!rendered.includes(`Testo specifico ${kpi.id}`), kpi.id);
+    }
+    assert.ok(doc.output().includes('/Subject (2 KPI - Report approvato 42)'));
+  }
+});
+
+test('legacy approved snapshots export their actual twenty KPIs without inventing new indicators', () => {
+  const report = engagementReportFixture('extended');
+  assert.equal(report.kpis.length, 20);
+  const rendered = pageText(createEngagementReportPdf(report));
+  assert.ok(rendered.includes('20 indicatori selezionati'));
+  for (const definition of REPORT_KPIS.slice(20)) assert.ok(!rendered.includes(pdfText(definition.label)), definition.id);
+  report.selected_kpi_ids = ['estimated_total_time'];
+  assert.throws(() => createEngagementReportPdf(report), /non presente/);
+});
+
+test('PDF rejects empty, unknown, duplicate and over-limit selections before rendering', () => {
+  const report = thirtyKpiFixture();
+  assert.equal(report.kpis.length, 30);
+  for (const selection of [[], null, 'visitors']) {
+    report.selected_kpi_ids = selection;
+    assert.throws(() => createEngagementReportPdf(report), /almeno una KPI/);
+  }
+  report.selected_kpi_ids = ['visitors', 'visitors'];
+  assert.throws(() => createEngagementReportPdf(report), /duplicati/);
+  report.selected_kpi_ids = ['unknown-kpi'];
+  assert.throws(() => createEngagementReportPdf(report), /non presente/);
+  report.selected_kpi_ids = report.kpis.map(kpi => kpi.id);
+  report.format = 'one_page';
+  assert.throws(() => createEngagementReportPdf(report), /massimo 20 KPI/);
+  report.selected_kpi_ids = report.selected_kpi_ids.slice(0, 20);
+  assert.equal(createEngagementReportPdf(report).getNumberOfPages(), 1);
+});
+
+test('all thirty selected indicators and their descriptions fit in exactly three pages', () => {
+  const report = thirtyKpiFixture();
+  const doc = createEngagementReportPdf(report);
+  assert.equal(doc.getNumberOfPages(), 3);
+  const rendered = pageText(doc);
+  assert.ok(doc.internal.pages[1].join('\n').includes('1-15 di 30'));
+  assert.ok(doc.internal.pages[2].join('\n').includes('16-30 di 30'));
+  for (const kpi of report.kpis) {
+    assert.ok(rendered.includes(pdfText(kpi.label)), kpi.id);
+    assert.ok(rendered.includes(kpi.display_description), kpi.id);
+  }
+  assert.ok(rendered.includes('Basketball Shootout'));
+  assert.ok(rendered.includes('Partner principale'));
+  assert.ok(rendered.includes('Fonti delle 30 KPI selezionate:'));
+  assert.ok(!rendered.includes('LETTURA DEI DATI'));
+  assert.ok(!rendered.includes('COME UTILIZZARE QUESTI RISULTATI'));
+  assert.ok(!rendered.includes('*'));
+});
+
+test('selection above twenty never drops selected rows and excludes unselected KPI descriptions', () => {
+  const report = thirtyKpiFixture();
+  report.selected_kpi_ids = report.kpis.slice(0, 21).map(kpi => kpi.id);
+  const doc = createEngagementReportPdf(report);
+  const rendered = pageText(doc);
+  assert.equal(doc.getNumberOfPages(), 3);
+  assert.ok(doc.internal.pages[2].join('\n').includes('16-21 di 21'));
+  for (const kpi of report.kpis.slice(0, 21)) assert.ok(rendered.includes(kpi.display_description), kpi.id);
+  for (const kpi of report.kpis.slice(21)) assert.ok(!rendered.includes(kpi.display_description), kpi.id);
+});
+
+test('estimated time is labeled beside values and includes only supplied method and coverage', () => {
+  for (const format of ['one_page', 'extended']) {
+    const report = thirtyKpiFixture();
+    report.format = format;
+    report.selected_kpi_ids = ['estimated_total_time', 'estimated_avg_time'];
+    report.notes = '';
+    const total = report.kpis.find(kpi => kpi.id === 'estimated_total_time');
+    total.source = 'manual';
+    total.corrected = true;
+    const rendered = pageText(createEngagementReportPdf(report));
+    assert.ok(rendered.includes('(Stima)'));
+    assert.ok(rendered.includes('Stima del tempo:'));
+    assert.ok(rendered.includes('Copertura: 380/520 partecipanti osservabili'));
+    assert.ok(rendered.includes('140 senza intervalli stimabili'));
+    assert.ok(rendered.includes(pdfText(report.details.time_estimate.method)));
+    if (format === 'extended') assert.ok(rendered.includes('Stima verificata'));
+    delete report.details.time_estimate;
+    const noCoverage = pageText(createEngagementReportPdf(report));
+    assert.ok(noCoverage.includes('(Stima)'));
+    assert.ok(!noCoverage.includes('Copertura:'));
+    report.selected_kpi_ids = ['visitors'];
+    report.details.time_estimate = { method: 'Metodo escluso insieme alle KPI stimate', covered_visitors: 380, total_visitors: 520 };
+    assert.ok(!pageText(createEngagementReportPdf(report)).includes('Metodo escluso'));
+  }
+});
+
+test('time-only PDFs omit unselected operational totals and unrelated game and sponsor tables', () => {
+  for (const format of ['one_page', 'extended']) {
+    const report = thirtyKpiFixture();
+    report.format = format;
+    report.selected_kpi_ids = ['estimated_total_time', 'estimated_avg_time'];
+    report.notes = '';
+    report.details.operational = { votes: 99111, identified_participants: 99222, game_reward_receipts: 99333, shop_redemptions: 99444, coins_earned: 99555, coins_spent: 99666, feedback_responses: 99777, sponsor_clicks: 99888, sponsor_clicks_without_identity: 99999 };
+    Object.assign(report.details.time_estimate, { interval_cap_seconds: 60, gap_limit_seconds: 300 });
+    const rendered = pageText(createEngagementReportPdf(report));
+    for (const label of ['Voti registrati', 'Profili identificati attivi', 'Premi di gioco confermati', 'Riscatti shop confermati', 'Risposte al feedback', 'Clic sponsor registrati', 'Coin virtuali', 'Basketball Shootout', 'Partner principale', 'Operativo:']) assert.ok(!rendered.includes(label), label);
+    assert.ok(rendered.includes('Copertura: 380/520 partecipanti osservabili'));
+    assert.ok(rendered.includes('Intervalli fino a 60 s; pause ammesse fino a 300 s'));
+    const methodStart = rendered.indexOf('Intervalli tra azioni');
+    assert.ok(methodStart === -1 || rendered.indexOf('Copertura: 380/520') < methodStart);
+  }
+});
+
+test('operational count KPIs excluded from selection cannot reappear as raw totals', () => {
+  const report = thirtyKpiFixture();
+  report.selected_kpi_ids = report.kpis.filter(kpi => !['shop_redemptions', 'feedback_collected', 'sponsor_clicks'].includes(kpi.id)).map(kpi => kpi.id);
+  report.details.operational = { votes: 14, shop_redemptions: 33441, coins_earned: 1200, coins_spent: 150, feedback_responses: 33442, sponsor_clicks: 33443, sponsor_clicks_without_identity: 33444 };
+  const rendered = pageText(createEngagementReportPdf(report));
+  for (const label of ['Riscatti shop confermati', 'Risposte al feedback', 'Clic sponsor registrati', 'Clic sponsor senza identità', '33.441', '33.442', '33.443', '33.444']) assert.ok(!rendered.includes(pdfText(label)), label);
+  assert.ok(rendered.includes('Coin virtuali guadagnati'));
+});
+
+test('experience detail columns follow the selected related KPIs', () => {
+  const report = thirtyKpiFixture();
+  report.selected_kpi_ids = ['completed_rounds', 'sponsor_impressions'];
+  report.notes = '';
+  const page = createEngagementReportPdf(report).internal.pages[2].join('\n');
+  assert.ok(page.includes('(COMPLETATI)'));
+  assert.ok(page.includes('(ESPOSIZIONI)'));
+  for (const column of ['GIOCATORI', 'AVVIATI', 'COPERTURA', 'UTENTI CLIC', 'TASSO']) assert.ok(!page.includes(`(${column})`), column);
+});
+
+test('generic backend time coverage notes do not leak unselected estimated KPI measurements', () => {
+  for (const format of ['one_page', 'extended']) {
+    const report = thirtyKpiFixture();
+    report.format = format;
+    report.selected_kpi_ids = report.kpis.slice(0, 20).map(kpi => kpi.id);
+    report.notes = '';
+    report.details.coverage_notes = ['Tempo stimato: durata ricostruibile per 777 partecipanti su 999.', 'Copertura verificabile delle fonti operative.'];
+    const rendered = pageText(createEngagementReportPdf(report));
+    assert.ok(!rendered.includes('Tempo stimato:'));
+    assert.ok(!rendered.includes('777 partecipanti'));
+    assert.ok(!rendered.includes('Stima del tempo:'));
+    assert.ok(rendered.includes('Copertura verificabile delle fonti operative.'));
+    report.selected_kpi_ids = ['estimated_total_time'];
+    const selected = pageText(createEngagementReportPdf(report));
+    assert.ok(!selected.includes('Tempo stimato:'));
+    assert.ok(selected.includes('Copertura: 380/520 partecipanti osservabili'));
   }
 });

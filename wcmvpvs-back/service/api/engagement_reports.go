@@ -69,6 +69,7 @@ type engagementReportSnapshot struct {
 	Format               string                    `json:"format,omitempty"`
 	Facts                map[string]*float64       `json:"facts"`
 	KPIs                 []reportKPI               `json:"kpis"`
+	SelectedKPIIDs       []string                  `json:"selected_kpi_ids,omitempty"`
 	Details              reportDetails             `json:"details"`
 	OriginalFacts        map[string]*float64       `json:"original_facts,omitempty"`
 	Overrides            map[string]reportOverride `json:"overrides,omitempty"`
@@ -429,6 +430,14 @@ func (rt *_router) prepareEngagementReport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	snapshot := engagementReportSnapshot{CalculationID: newReportID(), Event: reportEvent{event.ID, title, event.StartDateTime, event.Location, org.Name, org.LogoURL}, Branding: brand, CalculatedAt: time.Now().UTC().Format(time.RFC3339Nano), MeasurementStartedAt: started, Facts: facts, KPIs: buildCombinedReportKPIs(facts, details, signals, previous, operational, previousOperational), Details: details, SchemaVersion: 1}
+	// Preserve the existing one-page default while exposing every available
+	// indicator in the review form. Additional KPIs can be selected explicitly.
+	for i, kpi := range snapshot.KPIs {
+		if i >= 20 {
+			break
+		}
+		snapshot.SelectedKPIIDs = append(snapshot.SelectedKPIIDs, kpi.ID)
+	}
 	raw, err := json.Marshal(snapshot)
 	if err != nil {
 		reportError(w, 500, "Impossibile preparare il report.")
@@ -469,12 +478,13 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var input struct {
-		CalculationID string                    `json:"calculation_id"`
-		Format        string                    `json:"format"`
-		Facts         map[string]*float64       `json:"facts"`
-		Overrides     map[string]reportOverride `json:"overrides"`
-		Descriptions  map[string]string         `json:"descriptions"`
-		Notes         string                    `json:"notes"`
+		CalculationID  string                    `json:"calculation_id"`
+		Format         string                    `json:"format"`
+		Facts          map[string]*float64       `json:"facts"`
+		Overrides      map[string]reportOverride `json:"overrides"`
+		Descriptions   map[string]string         `json:"descriptions"`
+		SelectedKPIIDs *[]string                 `json:"selected_kpi_ids"`
+		Notes          string                    `json:"notes"`
 	}
 	if !decodeReportBody(w, r, 128*1024, &input) {
 		return
@@ -519,26 +529,23 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		reportError(w, 400, "I partecipanti attivi non possono superare i partecipanti digitali osservabili.")
 		return
 	}
-	kpis := buildReportKPIs(reviewed)
+	// Formulas, captions and the available indicator set belong to the frozen
+	// calculation. An older 20-KPI draft must not gain newly introduced KPIs.
+	kpis := append([]reportKPI{}, snapshot.KPIs...)
+	selected, err := validateReportKPISelection(kpis, input.SelectedKPIIDs, snapshot.SelectedKPIIDs, input.Format)
+	if err != nil {
+		reportError(w, 400, err.Error())
+		return
+	}
 	knownKPIs := map[string]bool{}
 	reviewedDescriptions := map[string]string{}
 	for i := range kpis {
 		k := &kpis[i]
-		// Keep the frozen calculation's provenance and coverage wording when
-		// approving it; recalculation alone must not relabel mixed data as /new.
-		for _, measured := range snapshot.KPIs {
-			if measured.ID == k.ID {
-				k.Label, k.Description, k.Source, k.Note = measured.Label, measured.Description, measured.Source, measured.Note
-				k.DisplayDescription = measured.DisplayDescription
-				k.FactKey, k.NumeratorKey, k.DenominatorKey = measured.FactKey, measured.NumeratorKey, measured.DenominatorKey
-				if k.FactKey != "" {
-					k.Value = reviewed[k.FactKey]
-				} else {
-					k.Numerator, k.Denominator = reviewed[k.NumeratorKey], reviewed[k.DenominatorKey]
-					k.Value = reportMetricRatio(k.Numerator, k.Denominator, k.Unit == "percent")
-				}
-				break
-			}
+		if k.FactKey != "" {
+			k.Value = reviewed[k.FactKey]
+		} else {
+			k.Numerator, k.Denominator = reviewed[k.NumeratorKey], reviewed[k.DenominatorKey]
+			k.Value = reportMetricRatio(k.Numerator, k.Denominator, k.Unit == "percent")
 		}
 		knownKPIs[k.ID] = true
 		if description, exists := input.Descriptions[k.ID]; exists {
@@ -599,6 +606,7 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 	snapshot.OriginalFacts = original
 	snapshot.Facts = reviewed
 	snapshot.KPIs = kpis
+	snapshot.SelectedKPIIDs = selected
 	snapshot.Overrides = input.Overrides
 	snapshot.Notes = input.Notes
 	rawBytes, err := json.Marshal(snapshot)
@@ -607,13 +615,14 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	approvalInput, _ := json.Marshal(struct {
-		CalculationID string
-		Format        string
-		Facts         map[string]*float64
-		Overrides     map[string]reportOverride
-		Descriptions  map[string]string
-		Notes         string
-	}{input.CalculationID, input.Format, reviewed, input.Overrides, reviewedDescriptions, input.Notes})
+		CalculationID  string
+		Format         string
+		Facts          map[string]*float64
+		Overrides      map[string]reportOverride
+		Descriptions   map[string]string
+		SelectedKPIIDs []string
+		Notes          string
+	}{input.CalculationID, input.Format, reviewed, input.Overrides, reviewedDescriptions, selected, input.Notes})
 	approvalHash := sha256.Sum256(approvalInput)
 	approvalKey := hex.EncodeToString(approvalHash[:])
 	_, err = rt.db.SQLConn().Exec(`INSERT INTO engagement_report_snapshots(id,calculation_id,approval_key,event_id,admin_id,payload,approved_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(approval_key) DO NOTHING`, snapshot.ID, snapshot.CalculationID, approvalKey, eventID, ctx.AdminID, string(rawBytes), snapshot.ApprovedAt)

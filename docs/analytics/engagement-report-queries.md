@@ -1,4 +1,4 @@
-# Query e calcolo delle 20 KPI del report evento
+# Query e calcolo delle 30 KPI del report evento
 
 Questo documento descrive il calcolo eseguito dal pulsante report in **Storico eventi**, per la home `/:slug/new`. Il report combina i segnali di `engagement_report_signals` con le registrazioni operative delle funzionalità della home. Non usa i riepiloghi già calcolati nello storico eventi.
 
@@ -17,7 +17,7 @@ Il backend usa SQLite e parametri posizionali `?`. Negli esempi SQL del document
 
 Le query riportate sono di sola lettura. Il flusso applicativo salva anche una bozza di calcolo e, dopo la conferma nella modale, una versione approvata del report: questi salvataggi non sono fonti di misurazione delle KPI.
 
-Non esiste una query distinta per ognuna delle 20 KPI. Il backend carica le osservazioni, riconcilia le identità e le azioni duplicate, costruisce i fatti di base e applica le formule in Go. Una stessa query contribuisce quindi a più KPI.
+Non esiste una query distinta per ognuna delle 30 KPI. Il backend carica le osservazioni, riconcilia le identità e le azioni duplicate, costruisce i fatti di base e applica le formule in Go. Una stessa query contribuisce quindi a più KPI. Le dieci KPI aggiuntive riutilizzano le stesse fonti: non introducono query di estrazione ulteriori.
 
 `null`, mostrato come **N/D**, significa dato non ricostruibile oppure denominatore assente o nullo. Non viene sostituito automaticamente con zero. Una percentuale viene calcolata soltanto se entrambi i fatti sono disponibili e il denominatore è maggiore di zero.
 
@@ -67,7 +67,7 @@ Il controllo della società è già stato applicato all'evento. `metadata` viene
 
 La chiave primaria `(event_id, signal_id)` rende idempotente la ricezione dello stesso segnale. I segnali non vengono contati con un semplice `COUNT(*)`: un voto, un giocatore o un round possono avere più osservazioni riferite alla stessa azione.
 
-## Fonti operative: le 13 letture applicative
+## Fonti operative: 14 letture, inclusa la convalida dei profili
 
 Il caricatore `loadReportOperationalData(eventID, orgID)` legge le tabelle di seguito anche quando `engagement_report_signals` è vuota. Il suo risultato viene trasformato in osservazioni interne: non vengono inserite righe retroattive nella tabella dei segnali.
 
@@ -301,7 +301,7 @@ LIMIT 1;
 
 Per l'evento trovato vengono lette le stesse fonti di misurazione. Il confronto riguarda i profili identificati attivi: non si collegano dispositivi ospiti appartenenti a eventi diversi. Senza un precedente comparabile o senza un denominatore identificabile, il ritorno resta N/D.
 
-## Formule delle 20 KPI
+## Formule delle 30 KPI
 
 I nomi tra backtick sono le chiavi dei fatti restituiti dall'API e modificabili nella modale. Le percentuali sono moltiplicate per 100.
 
@@ -327,6 +327,16 @@ I nomi tra backtick sono le chiavi dei fatti restituiti dall'API e modificabili 
 | 18 | Risposta al feedback | `feedback_respondents / feedback_eligible_visitors × 100` |
 | 19 | Esperienza positiva | `experience_positive / experience_responses × 100` |
 | 20 | Interesse per premi e vantaggi | `perks_positive / perks_responses × 100` |
+| 21 | Tempo totale stimato sulla piattaforma | `estimated_seconds`, in secondi |
+| 22 | Tempo medio stimato per partecipante | `estimated_seconds / estimated_timed_visitors`, in secondi |
+| 23 | Partecipanti identificati | `identified_visitors` |
+| 24 | Partecipanti ospiti | `guest_visitors` |
+| 25 | Clic complessivi verso gli sponsor | `total_sponsor_clicks` |
+| 26 | Partecipanti attivi con gli sponsor | `sponsor_interactors` |
+| 27 | Coinvolgimento del pubblico esposto agli sponsor | `sponsor_engaged_exposed / sponsor_reach × 100` |
+| 28 | Riscatti di premi virtuali | `shop_redemptions` |
+| 29 | Nuovi profili sul pubblico osservabile | `new_profiles / visitors × 100` |
+| 30 | Feedback raccolti | `feedback_collected` |
 
 ### Fonte e denominatore di ciascuna KPI
 
@@ -352,16 +362,63 @@ I nomi tra backtick sono le chiavi dei fatti restituiti dall'API e modificabili 
 | 18 | Se esistono segnali `feedback_completed`, il numeratore conta le identità rispondenti del **solo campione tracciato**; il denominatore richiede il pubblico con feedback disponibile osservato nei `page_view`. Le risposte anonime di `event_feedback` non vengono sommate e non rendono indisponibile il campione identificato. Se mancano i segnali di risposta o il relativo denominatore, N/D. Il tasso non viene presentato come copertura di tutte le risposte storiche; il totale operativo resta distinto. |
 | 19 | Prima risposta valida per identità alla domanda dedicata: `awesome` o `good` sono positive; `ok` e `bad` sono valide non positive. La domanda storica sulla facilità del voto non entra né nel numeratore né nel denominatore. Senza risposte alla domanda dedicata, N/D. |
 | 20 | Con risposte operative valide si usa `event_feedback`: `yes` positivo, `yes/maybe/little/no` denominatore. Non si sommano le copie telemetriche. Se tali risposte operative mancano, si usano le risposte identificate dei segnali. Il risultato riguarda il campione rispondente; non misura l'interesse di tutti i visitatori. |
+| 21 | Stima ricavata dagli intervalli tra azioni con timestamp valido e dagli intervalli `active_time`, dopo la riconciliazione delle identità ospite/profilo e delle prove duplicate. Gli intervalli sovrapposti vengono uniti. Senza alcuna durata ricostruibile, N/D. Il metodo e la copertura sono specificati nella sezione seguente. |
+| 22 | Il numeratore è la KPI 21; il denominatore comprende soltanto identità con almeno un intervallo temporale valido, sia ospiti sia profili. Le identità prive di intervalli non valgono zero e sono escluse dalla media. Non è il tempo medio di tutti i visitatori, di tutti gli spettatori o del solo pubblico registrato. |
+| 23 | Identità osservate riconducibili a un profilo verificato della società dopo la riconciliazione locale all'evento. Le azioni precedenti da ospite non creano un partecipante aggiuntivo quando il dispositivo è collegato univocamente a quel profilo. L'identificazione non implica un consenso marketing. |
+| 24 | Identità osservabili rimaste prive di un collegamento univoco a un profilo verificato. Possono essere dispositivi o sessioni; non certificano il numero di persone fisiche. Le KPI 23 e 24 ripartiscono il medesimo insieme osservabile della KPI 1. |
+| 25 | Se il totale operativo di `sponsor_clicks` è positivo, viene usato quel totale, inclusi i clic senza identità, senza sommarvi copie telemetriche. In assenza di clic operativi si usa il minimo dei clic identificabili osservati nei segnali, deduplicati per identità, sponsor e ID dell'azione. Non è un numero di utenti unici e non dimostra acquisti. |
+| 26 | Unione delle identità con almeno un clic sponsor oppure un avvio/completamento di gioco esplicitamente attribuito a uno sponsor. Ogni identità conta una sola volta anche se interagisce con più sponsor. Le prove senza identità e i giochi senza attribuzione sponsor sono esclusi. Non richiede un'esposizione osservata, quindi può essere disponibile anche quando la KPI 27 è N/D. |
+| 27 | Per ogni sponsor si intersecano le identità esposte con quelle che hanno cliccato o avviato/completato un suo gioco; l'unione di queste intersezioni costituisce `sponsor_engaged_exposed`. Più sponsor non moltiplicano la stessa identità nel totale. Senza esposizioni qualificate e copertura unica misurata, N/D: un'interazione non viene trasformata retroattivamente in un'impression. |
+| 28 | Se presenti, gli addebiti operativi `shop:club_frame` e `shop:match_card` con `delta < 0`, attribuiti all'evento, costituiscono il totale prioritario. Le copie telemetriche non si aggiungono. In assenza di addebiti si usa il minimo osservato nei segnali, una volta per identità e oggetto. Un riscatto è un'azione in monete virtuali: non equivale a ricavi in euro né a un'offerta commerciale realmente utilizzata. |
+| 29 | Nuove registrazioni attribuite all'evento come nella KPI 10, divise per l'insieme delle identità digitali osservabili della KPI 1. Senza nuove registrazioni attribuibili o senza pubblico osservabile, N/D. Con dati storici privi di visite passive, il denominatore è un minimo verificabile; non è una conversione sul pubblico totale presente. |
+| 30 | Se esistono risposte in `event_feedback`, si usa il totale delle righe operative senza aggiungervi le copie telemetriche. In loro assenza si usa il minimo delle identità rispondenti nei segnali. Le risposte operative possono essere anonime e non permettono di certificare utenti unici; il conteggio delle risposte resta distinto dalla soddisfazione della KPI 19 e dal tasso della KPI 18. |
+
+### Stima del tempo: metodo riproducibile e copertura
+
+Le KPI 21 e 22 sono marcate `source = estimated`, mostrato come **Stima da azioni**. Restano separate dal tempo attivo misurato della KPI 4. Il calcolo usa le osservazioni browser e operative già caricate, senza query aggiuntive e senza assegnare a priori una durata convenzionale a un voto, a un gioco o a un premio.
+
+Per ciascuna identità riconciliata nell'evento il backend:
+
+1. Deduplica le osservazioni e le prove della stessa azione. Gli ID di round legano avvio, ricevuta e completamento; prove legacy e accrediti non aggiungono una nuova azione se esiste già una prova datata più specifica. Una prova senza timestamp non elimina una ricevuta datata e un avvio moderno conserva il completamento legacy quando manca quello moderno datato. Clic vicini sullo stesso sponsor vengono ricondotti alla stessa osservazione quando distano al massimo due secondi. Per voti e altri duplicati viene preferito il timestamp browser rispetto alla ricevuta operativa tardiva.
+2. Ordina i punti temporali validi. Fra due azioni consecutive con distanza positiva **non superiore a 300 secondi**, considera solo l'intervallo che parte dalla prima azione e dura `min(distanza, 60 secondi)`. Gap più lunghi non generano durata. Una tabella senza timestamp non riceve un timestamp inventato.
+3. Recupera gli intervalli `active_time` validi: ogni heartbeat copre al massimo **15 secondi**, usando `started_at` e `ended_at` quando disponibili e rispettando il limite dichiarato dal segnale.
+4. Unisce gli intervalli ricostruiti con quelli misurati per la stessa identità. Sovrapposizioni, schede multiple e copie della stessa azione non sommano secondi duplicati. Non aggiunge durata prima della prima azione o dopo l'ultima; un heartbeat valido costituisce un intervallo esplicitamente osservato.
+5. Somma le durate unite e arrotonda il totale ai secondi. Un'identità entra nel campione della media soltanto se possiede almeno un intervallo positivo. Un'unica azione senza heartbeat valido non genera una durata: quell'identità viene esclusa dal campione, anziché trattata come una visita di zero secondi.
+
+Esempio: due azioni a 75 secondi di distanza contribuiscono con i primi 60 secondi. Un heartbeat di 10 secondi interamente contenuto in questi 60 non porta il totale a 70. Due azioni distanti dieci minuti non consentono invece di riempire il periodo intermedio. I timestamp operativi sono quelli conservati dalle tabelle, che possono descrivere il voto attuale o una ricevuta; per questo il risultato è una stima di attività osservabile, non una misura certificata di permanenza continua.
+
+`details.time_estimate` contiene i seguenti metadati, mostrati insieme alla copertura nella modale e usati per dichiarare il campione del report:
+
+| Campo | Significato |
+| --- | --- |
+| `method` | Testo del metodo applicato |
+| `covered_visitors` | Identità con almeno un intervallo valido; coincide con `estimated_timed_visitors` quando la stima è disponibile |
+| `total_visitors` | Identità osservabili complessive dell'evento, ospiti e profili riconciliati |
+| `excluded_visitors` | `total_visitors - covered_visitors`; identità prive di durata ricostruibile |
+| `gap_limit_seconds` | `300`: distanza massima fra due azioni consecutive utilizzabile per la stima |
+| `interval_cap_seconds` | `60`: durata massima ricostruita per una coppia di azioni |
+| `measured_seconds` | Secondi misurati dagli heartbeat, uniti per identità e arrotondati |
+| `inferred_seconds` | Parte aggiunta dalla ricostruzione, al netto delle sovrapposizioni con i tempi misurati: totale stimato arrotondato meno `measured_seconds` |
+
+Se nessuna identità ha un intervallo valido, `estimated_seconds` ed `estimated_timed_visitors` restano `null`, entrambe le KPI sono N/D e il campione escluso resta dichiarato. La mancanza di durata non dimostra disinteresse né una permanenza nulla.
 
 ### Riepilogo operativo aggiuntivo
 
-Oltre alle 20 KPI, `details.operational` espone i conteggi effettivamente ricostruibili: voti salvati, profili identificati con attività operativa, ricevute premio dei giochi ammessi, riscatti, monete ottenute e spese, risposte feedback, clic sponsor e clic sponsor privi di identità. Questi valori permettono di consultare dati utili anche quando manca il denominatore di una percentuale.
+Oltre alle 30 KPI, `details.operational` espone i conteggi effettivamente ricostruibili: voti salvati, profili identificati con attività operativa, ricevute premio dei giochi ammessi, riscatti, monete ottenute e spese, risposte feedback, clic sponsor e clic sponsor privi di identità. Alcuni totali alimentano anche le KPI aggiuntive; il riepilogo conserva la distinzione fra dati operativi e campioni tracciati. Questi valori permettono di consultare dati utili anche quando manca il denominatore di una percentuale.
 
-`details.coverage_notes` accompagna il report con i limiti delle fonti. I valori derivati dai segnali sono marcati `new_tracking`, quelli operativi `operational`, le combinazioni `mixed`; le modifiche approvate sono `manual` e i valori non ricostruibili `unavailable`. La provenienza indica come è stato ottenuto il dato, non certifica una copertura completa del pubblico.
+`details.coverage_notes` accompagna il report con i limiti delle fonti. I valori derivati dai segnali sono marcati `new_tracking`, quelli operativi `operational`, le combinazioni `mixed` e le stime temporali `estimated`; le modifiche approvate sono `manual` e i valori non ricostruibili `unavailable`. La provenienza indica come è stato ottenuto il dato, non certifica una copertura completa del pubblico.
 
 ## Revisione e versione approvata
 
-L'apertura della modale prepara un nuovo calcolo. Le modifiche manuali vengono separate dai fatti originari; non è richiesto un motivo della correzione. Il salvataggio approvato conserva dati, provenienza, descrizioni e formato; scaricare nuovamente quella versione non rilegge i dati live.
+L'apertura della modale prepara un nuovo calcolo con 30 KPI disponibili e le 20 originarie preselezionate. Ogni KPI dispone della casella **Includi nel PDF**; la modale permette anche di selezionarle tutte, selezionare soltanto quelle con dati o deselezionarle. Sono consentite **da 1 a 20 KPI nel one pager** e **da 1 a 30 nel report completo di tre pagine**. Una selezione troppo ampia richiede di ridurla o cambiare formato: non viene troncata automaticamente. Anche una KPI N/D può essere selezionata e, se necessario, verificata o modificata.
+
+La richiesta di approvazione include `selected_kpi_ids`. Il backend rifiuta una selezione vuota, ID sconosciuti, duplicati e il superamento del limite del formato; poi ordina la selezione secondo l'ordine delle KPI del calcolo originale. Questa selezione canonica viene congelata nello snapshot e inclusa nell'hash dell'approvazione insieme a formato, fatti, modifiche, descrizioni e note. Cambiare soltanto l'ordine dei medesimi ID non crea una revisione diversa; cambiare gli ID selezionati cambia la revisione. Un retry della stessa approvazione restituisce la versione salvata.
+
+Valori, modifiche e descrizioni delle KPI non selezionate restano archiviati nel report approvato; il PDF stampa soltanto la selezione. La modifica della selezione nella modale invalida l'approvazione corrente del form. Scaricare nuovamente una versione già approvata usa i dati, le descrizioni e la selezione congelati, senza rileggere i dati live.
+
+Le bozze e le versioni precedenti con 20 KPI mantengono il proprio insieme originale: non ricevono dieci KPI sintetiche dal nuovo codice. Se `selected_kpi_ids` manca, vengono usati gli ID congelati nella bozza oppure, per le vecchie bozze prive di selezione, tutti gli indicatori originali. Anche un PDF storico senza selezione esplicita conserva tutti i suoi indicatori.
+
+Le modifiche manuali vengono separate dai fatti originari; non è richiesto un motivo della correzione. Il salvataggio approvato conserva dati, provenienza, descrizioni, selezione e formato.
 
 Ogni KPI dispone inoltre di una mini descrizione facoltativa e modificabile (`display_description`). Il testo può essere svuotato per ometterlo dal PDF e può contenere al massimo 120 caratteri. La descrizione sintetica di stampa è separata dalla descrizione tecnica della formula (`description`): modificarla non cambia i fatti o il calcolo. Le descrizioni approvate vengono conservate nella versione del report e partecipano all'identificazione della revisione, come i valori modificati. Nel PDF le correzioni non vengono segnalate con asterischi e non vengono stampati i riquadri esplicativi verdi a fondo pagina.
 
@@ -383,6 +440,8 @@ Il logo dell'emittente firma il PDF; il nome dell'emittente non viene stampato n
 - `wcmvpvs-back/service/api/engagement_report_metrics.go`: identità, deduplicazione, fatti e formule delle KPI.
 - `wcmvpvs-back/service/api/engagement_report_sources.go`: query operative e loro normalizzazione.
 - `wcmvpvs-back/service/api/engagement_report_combined.go`: unione delle fonti, provenienza e limiti dei denominatori.
+- `wcmvpvs-back/service/api/engagement_report_time.go`: stima temporale, unione degli intervalli e copertura del campione.
+- `wcmvpvs-back/service/api/engagement_report_selection.go`: selezione valida e ordine canonico delle KPI nel PDF.
 - `wcmvpvs-front/src/eventReportTelemetry.js`: osservazioni inviate dalla home.
 - `wcmvpvs-front/src/views/FanLiveCento.vue`: azioni e disponibilità effettivamente osservate nella pagina.
 

@@ -142,7 +142,7 @@ func TestEngagementReportPrepareExcludesLegacyHistoryAggregatesAndPreservesMissi
 		t.Fatal(err)
 	}
 	snapshot := engagementReportDecodeSnapshot(t, engagementReportRequest(t, f.router.prepareEngagementReport, http.MethodGet, f.event, nil, f.ctx, nil))
-	if len(snapshot.KPIs) != 20 || len(snapshot.Facts) == 0 || snapshot.SchemaVersion != 1 {
+	if len(snapshot.KPIs) != 30 || len(snapshot.SelectedKPIIDs) != 20 || len(snapshot.Facts) == 0 || snapshot.SchemaVersion != 1 {
 		t.Fatalf("incomplete report: %+v", snapshot)
 	}
 	for key, value := range snapshot.Facts {

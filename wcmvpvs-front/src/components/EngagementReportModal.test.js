@@ -16,9 +16,10 @@ const flush = () => new Promise(setImmediate);
 
 async function fixture({ get, post, downloadError = false } = {}) {
   const requests = [], events = [], saved = [], rendered = [], handlers = new Map();
+  let loaded = measured;
   const http = {
-    get: async (...args) => { requests.push(['get', ...args]); return get ? get(...args) : { data: structuredClone(measured) }; },
-    post: async (...args) => { requests.push(['post', ...args]); return post ? post(...args) : { data: { ...structuredClone(measured), id: 73, approved_at: '2026-10-23T11:00:00Z', format: args[1].format, facts: args[1].facts, overrides: args[1].overrides, kpis: Report.calculateReportKpis(args[1].facts, measured.kpis, args[1].overrides, measured.facts, args[1].descriptions) } }; },
+    get: async (...args) => { requests.push(['get', ...args]); const response = get ? await get(...args) : { data: structuredClone(measured) }; loaded = response.data; return response; },
+    post: async (...args) => { requests.push(['post', ...args]); return post ? post(...args) : { data: { ...structuredClone(loaded), id: 73, approved_at: '2026-10-23T11:00:00Z', format: args[1].format, facts: args[1].facts, overrides: args[1].overrides, selected_kpi_ids: args[1].selected_kpi_ids, kpis: Report.calculateReportKpis(args[1].facts, loaded.kpis, args[1].overrides, loaded.facts, args[1].descriptions).filter(kpi => loaded.kpis.some(available => available.id === kpi.id)) } }; },
   };
   const focus = { calls: 0, focus() { this.calls++; } };
   const document = { body: { style: { overflow: 'auto' } }, activeElement: focus, addEventListener: (key, handler) => handlers.set(key, handler), removeEventListener: key => handlers.delete(key) };
@@ -34,7 +35,7 @@ async function fixture({ get, post, downloadError = false } = {}) {
 test('opening fetches measurements and base edits approve without requiring a correction reason', async t => {
   const f = await fixture(); t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
   assert.equal(f.requests[0][1], '/admin/events/42/engagement-report');
-  assert.equal(f.state.kpis.value.length, 20);
+  assert.equal(f.state.kpis.value.length, 2);
   assert.equal(f.document.body.style.overflow, 'hidden');
   f.state.facts.visitors = 200;
   assert.equal(f.state.kpis.value.find(kpi => kpi.id === 'active_participation').value, 40);
@@ -74,7 +75,7 @@ test('failed PDF keeps the approved snapshot for download retry', async t => {
 
 test('all KPI descriptions are editable, clearable, resettable and included in approval', async t => {
   const f = await fixture(); t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
-  assert.equal(Object.keys(f.state.descriptions).length, 20);
+  assert.equal(Object.keys(f.state.descriptions).length, 2);
   assert.equal(f.state.descriptions.visitors, measured.kpis[0].display_description);
   f.state.descriptions.visitors = 'Descrizione temporanea';
   f.state.descriptions.active_participation = '';
@@ -87,7 +88,7 @@ test('all KPI descriptions are editable, clearable, resettable and included in a
   f.state.overrides.visitors.value = 110;
   await f.state.approveAndDownload();
   const body = f.requests.find(([verb]) => verb === 'post')[2];
-  assert.equal(Object.keys(body.descriptions).length, 20);
+  assert.equal(Object.keys(body.descriptions).length, 2);
   assert.equal(body.descriptions.visitors, 'Pubblico personalizzato');
   assert.equal(body.descriptions.active_participation, '');
   assert.deepEqual(body.overrides.visitors, { value: 110 });
@@ -98,7 +99,7 @@ test('all KPI descriptions are editable, clearable, resettable and included in a
 
 test('mixed-source review exposes coverage and operational provenance without renaming observed participants as visits', async t => {
   const data = structuredClone(measured);
-  data.kpis = Report.REPORT_KPIS.map(definition => ({ id: definition.id, group: definition.id === 'visitors' ? 'Pubblico' : 'Engagement', value: measured.kpis.find(kpi => kpi.id === definition.id)?.value ?? null }));
+  data.kpis = Report.REPORT_KPIS.slice(0, 20).map(definition => ({ id: definition.id, group: definition.id === 'visitors' ? 'Pubblico' : 'Engagement', value: measured.kpis.find(kpi => kpi.id === definition.id)?.value ?? null }));
   data.kpis[0] = { ...data.kpis[0], group: 'Pubblico', label: 'Partecipanti digitali osservabili', source: 'mixed', note: 'Partecipazione minima verificabile.' };
   data.details = {
     coverage_notes: ['Le visite prive di azioni richiedono telemetria.'],
@@ -144,4 +145,96 @@ test('authorization failure and Escape close are surfaced without losing scroll 
   f.handlers.get('keydown')({ key: 'Escape', preventDefault() { prevented = true; } });
   assert.equal(prevented, true);
   assert.ok(f.events.some(([name, value]) => name === 'update:modelValue' && value === false));
+});
+
+function thirtyKpiSnapshot() {
+  const data = structuredClone(measured);
+  data.facts = { ...data.facts, estimated_seconds: 600, estimated_timed_visitors: 3, identified_visitors: 60, guest_visitors: 40 };
+  data.kpis = Report.calculateReportKpis(data.facts).map(kpi => ({ ...kpi, display_description: `Descrizione ${kpi.id}`, source: kpi.id.startsWith('estimated_') ? 'estimated' : 'mixed' }));
+  data.selected_kpi_ids = data.kpis.slice(0, 20).map(kpi => kpi.id);
+  data.details = { time_estimate: { method: 'Intervalli tra azioni vicine, riconciliati con il tempo misurato.', covered_visitors: 3, total_visitors: 100, excluded_visitors: 97, gap_limit_seconds: 300, interval_cap_seconds: 60, measured_seconds: 100, inferred_seconds: 500 } };
+  return data;
+}
+
+test('thirty KPI form defaults to the frozen selection and caps one page without discarding choices', async t => {
+  const data = thirtyKpiSnapshot();
+  const f = await fixture({ get: async () => ({ data: structuredClone(data) }) });
+  t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
+  assert.equal(f.state.kpis.value.length, 30);
+  assert.deepEqual(f.state.selectedKpiIds.value, data.selected_kpi_ids);
+  assert.equal(f.state.timeEstimate.value.covered_visitors, 3);
+  assert.equal(f.state.sourceLabel('estimated'), 'Stima da azioni');
+  f.state.selectKpis('all');
+  assert.equal(f.state.selectedKpiIds.value.length, 30);
+  await f.state.approveAndDownload();
+  assert.equal(f.requests.filter(([verb]) => verb === 'post').length, 0);
+  assert.ok(f.state.validationErrors.value.some(message => message.includes('20 KPI')));
+  assert.equal(f.state.selectedKpiIds.value.length, 30);
+  f.state.format.value = 'extended';
+  await f.state.approveAndDownload();
+  const body = f.requests.find(([verb]) => verb === 'post')[2];
+  assert.equal(body.selected_kpi_ids.length, 30);
+  assert.deepEqual(body.selected_kpi_ids, data.kpis.map(kpi => kpi.id));
+  assert.equal(f.rendered[0].selected_kpi_ids.length, 30);
+  f.state.selectedKpiIds.value = ['estimated_avg_time', 'visitors'];
+  assert.equal(f.state.approved.value, null);
+  f.state.resetReview();
+  assert.deepEqual(f.state.selectedKpiIds.value, data.selected_kpi_ids);
+});
+
+test('selection and unselected KPI edits are archived while PDF retry uses its approved selection', async t => {
+  const data = thirtyKpiSnapshot();
+  data.selected_kpi_ids = ['estimated_total_time', 'guest_visitors'];
+  const f = await fixture({ get: async () => ({ data: structuredClone(data) }), downloadError: true });
+  t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
+  f.state.descriptions.visitors = 'Conserva anche la descrizione non selezionata';
+  f.state.toggleOverride(f.state.kpis.value.find(kpi => kpi.id === 'identified_visitors'));
+  f.state.overrides.identified_visitors.value = 61;
+  await f.state.approveAndDownload();
+  const body = f.requests.find(([verb]) => verb === 'post')[2];
+  assert.deepEqual(body.selected_kpi_ids, ['estimated_total_time', 'guest_visitors']);
+  assert.equal(Object.keys(body.descriptions).length, 30);
+  assert.equal(body.descriptions.visitors, 'Conserva anche la descrizione non selezionata');
+  assert.deepEqual(body.overrides.identified_visitors, { value: 61 });
+  await f.state.approveAndDownload();
+  assert.equal(f.requests.filter(([verb]) => verb === 'post').length, 1);
+  assert.deepEqual(f.rendered[1].selected_kpi_ids, body.selected_kpi_ids);
+  f.state.selectedKpiIds.value = ['visitors'];
+  assert.equal(f.state.approved.value, null);
+});
+
+test('empty or unknown selections are rejected and only data selection retains zero values', async t => {
+  const data = thirtyKpiSnapshot();
+  data.facts.shop_redemptions = 0;
+  data.kpis = Report.calculateReportKpis(data.facts);
+  const f = await fixture({ get: async () => ({ data: structuredClone(data) }) });
+  t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
+  f.state.selectKpis('none');
+  await f.state.approveAndDownload();
+  assert.ok(f.state.validationErrors.value.some(message => message.includes('almeno un')));
+  f.state.selectedKpiIds.value = ['unknown'];
+  await f.state.approveAndDownload();
+  assert.ok(f.state.validationErrors.value.some(message => message.includes('non disponibili')));
+  f.state.selectKpis('available');
+  assert.ok(f.state.selectedKpiIds.value.includes('shop_redemptions'));
+  assert.ok(!f.state.selectedKpiIds.value.includes('satisfaction'));
+  assert.deepEqual(f.state.selectedKpiIds.value, f.state.kpis.value.filter(kpi => kpi.value !== null).map(kpi => kpi.id));
+  assert.equal(f.requests.filter(([verb]) => verb === 'post').length, 0);
+});
+
+test('twenty KPI snapshots without selection preserve their complete original form and payload', async t => {
+  const data = thirtyKpiSnapshot();
+  data.kpis = data.kpis.slice(0, 20);
+  delete data.selected_kpi_ids;
+  const f = await fixture({ get: async () => ({ data: structuredClone(data) }) });
+  t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
+  assert.equal(f.state.kpis.value.length, 20);
+  assert.equal(f.state.selectedKpiIds.value.length, 20);
+  assert.equal(f.state.factKeys.value.includes('estimated_seconds'), false);
+  await f.state.approveAndDownload();
+  const body = f.requests.find(([verb]) => verb === 'post')[2];
+  assert.equal(body.selected_kpi_ids.length, 20);
+  assert.equal(Object.keys(body.descriptions).length, 20);
+  assert.equal(body.facts.estimated_seconds, undefined);
+  assert.equal(body.descriptions.estimated_avg_time, undefined);
 });

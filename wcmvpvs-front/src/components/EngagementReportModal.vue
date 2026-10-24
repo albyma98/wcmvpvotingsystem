@@ -8,10 +8,10 @@
         </header>
 
         <div class="eng-report__body">
-          <p v-if="loading" role="status" class="eng-report__loading">Calcolo dei 20 KPI dell’esperienza /new…</p>
+          <p v-if="loading" role="status" class="eng-report__loading">Calcolo dei KPI dell’esperienza /new…</p>
           <div v-if="error" class="eng-report__error" role="alert">{{ error }}<button v-if="!snapshot && !loading" type="button" class="eng-report__link" @click="loadReport">Riprova</button></div>
           <template v-if="snapshot && !loading">
-            <div class="eng-report__intro"><div><strong>Una fotografia verificabile dell’evento</strong><p>Il report riconcilia la misurazione dedicata alla home /new con voti, giochi, premi, wallet e feedback salvati per l’evento. Le tracce operative ricostruiscono una partecipazione minima verificabile; non misurano tutte le visite. N/D indica una misura assente o un pubblico di riferimento non disponibile.</p></div><span class="eng-report__badge">20 KPI strategici</span></div>
+            <div class="eng-report__intro"><div><strong>Una fotografia verificabile dell’evento</strong><p>Il report riconcilia la misurazione dedicata alla home /new con voti, giochi, premi, wallet e feedback salvati per l’evento. Le tracce operative ricostruiscono una partecipazione minima verificabile; non misurano tutte le visite. N/D indica una misura assente o un pubblico di riferimento non disponibile.</p></div><span class="eng-report__badge">{{ kpis.length }} KPI disponibili</span></div>
             <p class="eng-report__meta">Calcolato il {{ dateLabel(snapshot.calculated_at) }}<template v-if="snapshot.measurement_started_at"> · Primo dato disponibile: {{ dateLabel(snapshot.measurement_started_at) }}</template></p>
             <div v-if="snapshot.latest_report" class="eng-report__previous"><span>Ultimo report approvato: {{ dateLabel(snapshot.latest_report.approved_at) }}</span><button type="button" class="eng-report__link" :disabled="saving" @click="downloadPrevious">Scarica versione approvata</button></div>
 
@@ -23,11 +23,24 @@
               <details v-if="sourceTables.length" class="eng-report__sources"><summary>Tabelle e righe consultate</summary><ul><li v-for="source in sourceTables" :key="source.table"><code>{{ source.table }}</code><span>{{ formatReportValue(source.rows) }} righe</span></li></ul></details>
             </section>
 
+            <section v-if="timeEstimate" class="eng-report__coverage" aria-labelledby="eng-report-time-title">
+              <h3 id="eng-report-time-title">Tempo sulla piattaforma: stima e copertura</h3>
+              <p class="eng-report__time-method">{{ timeEstimate.method }}</p>
+              <p class="eng-report__time-coverage">Stima ricostruibile per <strong>{{ formatReportValue(timeEstimate.covered_visitors) }}</strong> utenti su {{ formatReportValue(timeEstimate.total_visitors) }} osservabili, ospiti e registrati. Esclusi dal calcolo: {{ formatReportValue(timeEstimate.excluded_visitors) }}.</p>
+              <p class="eng-report__coverage-caption">Il tempo stimato unisce intervalli misurati e intervalli ricostruiti tra azioni vicine. Una singola azione senza un intervallo valido non genera secondi stimati; nessun tempo viene aggiunto prima della prima azione o dopo l’ultima.</p>
+            </section>
+
+            <section class="eng-report__selection" aria-labelledby="eng-report-selection-title">
+              <div><h3 id="eng-report-selection-title">KPI da inserire nel PDF</h3><p aria-live="polite">{{ selectedKpiIds.length }} di {{ kpis.length }} selezionati · {{ format === 'extended' ? 'massimo 30 nel report completo' : 'massimo 20 nel one pager' }}</p></div>
+              <div class="eng-report__selection-actions"><button type="button" class="eng-report__link" :disabled="saving" @click="selectKpis('all')">Seleziona tutti</button><button type="button" class="eng-report__link" :disabled="saving" @click="selectKpis('available')">Solo KPI con dati</button><button type="button" class="eng-report__link" :disabled="saving" @click="selectKpis('none')">Deseleziona tutti</button></div>
+              <p v-for="message in selectionErrors" :key="message" class="eng-report__selection-warning" role="status">{{ message }}</p>
+            </section>
+
             <section v-for="group in groups" :key="group.name" class="eng-report__group">
               <h3>{{ group.name }}</h3>
               <div class="eng-report__table-head" aria-hidden="true"><span>Indicatore e fonte</span><span>Rilevato</span><span>Valore report</span><span>Revisione</span></div>
               <article v-for="kpi in group.kpis" :key="kpi.id" class="eng-report__kpi" :class="{ 'is-corrected': kpi.corrected }">
-                <div class="eng-report__kpi-name"><strong>{{ kpi.label }}</strong><details><summary>Definizione e fonte</summary><p>{{ kpi.description || formulaLabel(kpi) }}</p><p>Fonte: {{ sourceLabel(kpi.source) }}<template v-if="kpi.note"> · {{ kpi.note }}</template></p></details></div>
+                <div class="eng-report__kpi-name"><strong>{{ kpi.label }}</strong><label class="eng-report__include"><input v-model="selectedKpiIds" :value="kpi.id" :disabled="saving" type="checkbox" :aria-label="`Includi nel PDF: ${kpi.label}`" /> Includi nel PDF</label><details><summary>Definizione e fonte</summary><p>{{ kpi.description || formulaLabel(kpi) }}</p><p>Fonte: {{ sourceLabel(kpi.source) }}<template v-if="kpi.note"> · {{ kpi.note }}</template></p></details></div>
                 <div class="eng-report__measured"><span class="eng-report__mobile-label">Rilevato</span>{{ formatReportValue(kpi.measured_value, kpi.unit) }}</div>
                 <div class="eng-report__reviewed"><span class="eng-report__mobile-label">Valore report</span><strong>{{ formatReportValue(kpi.value, kpi.unit) }}</strong><small v-if="kpi.denominator !== undefined && kpi.numerator !== null && kpi.denominator !== null">{{ formatReportValue(kpi.numerator) }} / {{ formatReportValue(kpi.denominator) }}</small><small v-if="kpi.corrected">Corretto in revisione</small></div>
                 <div class="eng-report__override"><button type="button" class="eng-report__link" :disabled="saving" @click="toggleOverride(kpi)">{{ overrides[kpi.id] ? 'Ripristina calcolo' : 'Modifica KPI' }}</button></div>
@@ -39,7 +52,7 @@
             <details class="eng-report__facts"><summary>Verifica o modifica i dati di base <span>Le percentuali si ricalcolano automaticamente</span></summary><div class="eng-report__facts-grid"><label v-for="key in factKeys" :key="key">{{ factLabel(key) }}<input v-model="facts[key]" :disabled="saving" type="number" min="0" step="1" placeholder="N/D" /><small>Rilevato: {{ formatReportValue(snapshot.facts?.[key]) }}</small></label></div></details>
             <label class="eng-report__notes">Note per il report (facoltative)<textarea v-model="notes" :disabled="saving" rows="3" maxlength="4000" placeholder="Contesto dell’evento ed eventuali osservazioni…"></textarea><small>Le note complete restano archiviate nella versione approvata. Il PDF può abbreviarle per rispettare il formato scelto.</small></label>
 
-            <fieldset class="eng-report__formats" :disabled="saving"><legend>Formato del PDF</legend><label :class="{ selected: format === 'one_page' }"><input v-model="format" type="radio" value="one_page" /><span><strong>One pager</strong><small>1 pagina · tutti i KPI e sintesi direzionale</small></span></label><label :class="{ selected: format === 'extended' }"><input v-model="format" type="radio" value="extended" /><span><strong>Report completo</strong><small>3 pagine · KPI, giochi, partner e metodologia</small></span></label></fieldset>
+            <fieldset class="eng-report__formats" :disabled="saving"><legend>Formato del PDF</legend><label :class="{ selected: format === 'one_page' }"><input v-model="format" type="radio" value="one_page" /><span><strong>One pager</strong><small>1 pagina · fino a 20 KPI selezionati</small></span></label><label :class="{ selected: format === 'extended' }"><input v-model="format" type="radio" value="extended" /><span><strong>Report completo</strong><small>3 pagine · fino a 30 KPI, giochi e partner</small></span></label></fieldset>
             <div v-if="validationErrors.length" class="eng-report__error" role="alert"><strong>Controlla i dati prima di confermare:</strong><ul><li v-for="item in validationErrors" :key="item">{{ item }}</li></ul></div>
             <p class="eng-report__signature">Il report è firmato con il solo logo dell’emittente. Dati originali, correzioni e note vengono conservati con un identificativo di approvazione.</p>
           </template>
@@ -54,20 +67,26 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
-import { REPORT_KPIS, REPORT_FACT_LABELS, calculateReportKpis, formatReportValue, numericReportValue, reportDownloadFilename, reportOperationalItems, reportSourceLabel, validateReportReview } from '../engagementReport.js';
+import { REPORT_KPIS, REPORT_FACT_LABELS, calculateReportKpis, formatReportValue, numericReportValue, reportDownloadFilename, reportOperationalItems, reportSelectedKpiIds, reportSourceLabel, validateReportReview, validateReportSelection } from '../engagementReport.js';
 
 const props = defineProps({ modelValue: Boolean, eventId: { type: Number, default: 0 }, eventTitle: { type: String, default: '' }, authHeaders: { type: Object, default: () => ({}) } });
 const emit = defineEmits(['update:modelValue', 'generated', 'unauthorized']);
 const panel = ref(null), snapshot = ref(null), loading = ref(false), saving = ref(false), error = ref(''), approved = ref(null);
 const facts = reactive({}), overrides = reactive({}), descriptions = reactive({}), notes = ref(''), format = ref('one_page'), validationErrors = ref([]);
+const selectedKpiIds = ref([]);
 let requestController, previousFocus, previousOverflow, dialogOpen = false;
-const kpis = computed(() => calculateReportKpis(facts, snapshot.value?.kpis || [], overrides, snapshot.value?.facts || {}, descriptions));
+const kpis = computed(() => {
+  const availableIds = new Set((snapshot.value?.kpis || []).map(kpi => kpi.id));
+  return calculateReportKpis(facts, snapshot.value?.kpis || [], overrides, snapshot.value?.facts || {}, descriptions).filter(kpi => availableIds.has(kpi.id));
+});
 const factKeys = computed(() => [...new Set(kpis.value.flatMap(kpi => [kpi.numeratorKey, kpi.denominatorKey]).filter(Boolean))]);
 const groups = computed(() => [...new Set(kpis.value.map(kpi => kpi.group))].map(name => ({ name, kpis: kpis.value.filter(kpi => kpi.group === name) })));
 const coverageNotes = computed(() => (snapshot.value?.details?.coverage_notes || []).filter(note => typeof note === 'string' && note.trim()));
 const operationalItems = computed(() => reportOperationalItems(snapshot.value?.details));
 const sourceTables = computed(() => (snapshot.value?.details?.sources || []).filter(source => typeof source?.table === 'string'));
-watch([facts, overrides, descriptions, notes, format], () => { approved.value = null; validationErrors.value = []; }, { deep: true, flush: 'sync' });
+const timeEstimate = computed(() => snapshot.value?.details?.time_estimate || null);
+const selectionErrors = computed(() => validateReportSelection(selectedKpiIds.value, kpis.value, format.value));
+watch([facts, overrides, descriptions, notes, format, selectedKpiIds], () => { approved.value = null; validationErrors.value = []; }, { deep: true, flush: 'sync' });
 
 function dateLabel(value) { const date = new Date(value); return value && Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('it-IT', { dateStyle: 'short', timeStyle: 'short' }).format(date) : 'N/D'; }
 function sourceLabel(value) { return reportSourceLabel(value); }
@@ -82,10 +101,12 @@ function resetReview() {
   factKeys.value.forEach(key => { facts[key] = snapshot.value?.facts?.[key] ?? null; });
   Object.keys(overrides).forEach(key => delete overrides[key]);
   Object.keys(descriptions).forEach(key => delete descriptions[key]);
-  REPORT_KPIS.forEach(kpi => { descriptions[kpi.id] = snapshot.value?.kpis.find(item => item.id === kpi.id)?.display_description || ''; });
+  (snapshot.value?.kpis || []).forEach(kpi => { descriptions[kpi.id] = kpi.display_description || ''; });
+  selectedKpiIds.value = reportSelectedKpiIds(snapshot.value);
   notes.value = ''; error.value = ''; validationErrors.value = []; approved.value = null;
 }
 function toggleOverride(kpi) { if (overrides[kpi.id]) delete overrides[kpi.id]; else overrides[kpi.id] = { value: kpi.value }; }
+function selectKpis(mode) { selectedKpiIds.value = kpis.value.filter(kpi => mode === 'all' || (mode === 'available' && numericReportValue(kpi.value) !== null)).map(kpi => kpi.id); }
 function handleFailure(cause, fallback) {
   if (cause?.response?.status === 401) emit('unauthorized');
   error.value = typeof cause?.response?.data?.message === 'string' ? cause.response.data.message : typeof cause?.response?.data?.error === 'string' ? cause.response.data.error : fallback;
@@ -118,15 +139,16 @@ async function downloadPrevious() {
 }
 async function approveAndDownload() {
   if (!snapshot.value || saving.value) return;
-  validationErrors.value = validateReportReview(facts, overrides, notes.value, snapshot.value.kpis, descriptions);
+  validationErrors.value = [...validateReportReview(facts, overrides, notes.value, snapshot.value.kpis, descriptions), ...selectionErrors.value];
   if (validationErrors.value.length) return;
   saving.value = true; error.value = '';
   try {
     if (!approved.value) {
       const cleanFacts = Object.fromEntries(Object.entries(facts).map(([key, value]) => [key, numericReportValue(value)]));
       const cleanOverrides = Object.fromEntries(Object.entries(overrides).map(([key, value]) => [key, { value: numericReportValue(value.value) }]));
-      const cleanDescriptions = Object.fromEntries(REPORT_KPIS.map(kpi => [kpi.id, descriptions[kpi.id].trim()]));
-      const { data } = await apiClient.post(`/admin/events/${props.eventId}/engagement-report`, { calculation_id: snapshot.value.calculation_id, format: format.value, facts: cleanFacts, overrides: cleanOverrides, descriptions: cleanDescriptions, notes: notes.value.trim() }, props.authHeaders);
+      const cleanDescriptions = Object.fromEntries(kpis.value.map(kpi => [kpi.id, descriptions[kpi.id].trim()]));
+      const canonicalSelection = kpis.value.filter(kpi => selectedKpiIds.value.includes(kpi.id)).map(kpi => kpi.id);
+      const { data } = await apiClient.post(`/admin/events/${props.eventId}/engagement-report`, { calculation_id: snapshot.value.calculation_id, format: format.value, facts: cleanFacts, overrides: cleanOverrides, descriptions: cleanDescriptions, selected_kpi_ids: canonicalSelection, notes: notes.value.trim() }, props.authHeaders);
       if (!data?.id || !Array.isArray(data.kpis) || !data.approved_at) throw new Error('Invalid approval');
       approved.value = data;
       snapshot.value.latest_report = data;
@@ -164,6 +186,7 @@ onBeforeUnmount(releaseDialog);
 .eng-report__body{padding:24px 28px;overflow:auto;overscroll-behavior:contain}.eng-report__intro{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;background:#eff8f7;border:1px solid #d4eae5;border-radius:12px;padding:16px}.eng-report__intro p{font-size:12px;line-height:1.6;margin:7px 0 0;color:#516378}.eng-report__badge{font-size:11px;white-space:nowrap;background:#d2f1e9;color:#146451;border-radius:20px;padding:6px 10px;font-weight:700}.eng-report__meta{font-size:11px;color:#657389;margin:13px 0 22px}.eng-report__group{margin:22px 0}.eng-report__group h3{font-size:16px;margin:0 0 10px}.eng-report__table-head,.eng-report__kpi{display:grid;grid-template-columns:minmax(220px,1fr) 110px 130px 130px;gap:14px;align-items:center}.eng-report__table-head{background:#f4f6fa;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#657389;padding:10px 12px;border-radius:8px}.eng-report__kpi{padding:14px 12px;border-bottom:1px solid #e7ecf2}.eng-report__kpi.is-corrected{background:#fffbef}.eng-report__kpi-name strong{font-size:13px}.eng-report__kpi-name details{font-size:11px;color:#657389;margin-top:5px}.eng-report__kpi-name summary{cursor:pointer}.eng-report__kpi-name details p{line-height:1.5;margin:6px 0}.eng-report__measured{font-size:13px;color:#657389}.eng-report__reviewed strong{font-size:17px;color:#0f6659;display:block}.eng-report__reviewed small{font-size:10px;display:block;margin-top:3px;color:#657389}.eng-report__mobile-label{display:none}.eng-report__link{border:0;padding:3px 0;background:transparent;color:#076d61;text-align:left;text-decoration:underline;text-underline-offset:3px;font-size:12px;cursor:pointer}.eng-report__override-fields{grid-column:1 / -1;display:grid;grid-template-columns:1fr 2fr;gap:15px;padding-top:5px}.eng-report label{font-size:12px;font-weight:600}.eng-report input[type=number],.eng-report input[type=text],.eng-report textarea{display:block;width:100%;box-sizing:border-box;font:inherit;font-weight:400;color:#17263b;background:#fff;border:1px solid #c8d3df;border-radius:8px;padding:10px;margin-top:6px}.eng-report textarea{resize:vertical;min-height:78px;max-height:220px}.eng-report :focus-visible{outline:3px solid #23a98e;outline-offset:3px}.eng-report__facts{background:#f6f8fb;padding:16px;border:1px solid #e2e8f0;border-radius:12px;margin:20px 0}.eng-report__facts summary{font-weight:700;font-size:13px;cursor:pointer}.eng-report__facts summary span{display:block;font-weight:400;color:#657389;font-size:11px;margin-top:5px}.eng-report__facts-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:17px;margin-top:20px}.eng-report small{font-weight:400}.eng-report__facts-grid small,.eng-report__notes small{color:#657389;font-size:10px;display:block;margin-top:5px}.eng-report__notes{display:block}.eng-report__notes>span{color:#9b6210;font-size:11px;margin-left:8px}.eng-report__formats{padding:0;border:0;display:flex;gap:12px;margin:24px 0 15px}.eng-report__formats legend{font-size:13px;font-weight:700;margin-bottom:10px}.eng-report__formats label{flex:1;display:flex;gap:10px;align-items:center;border:1px solid #dbe3ec;padding:14px;border-radius:10px;cursor:pointer}.eng-report__formats label.selected{border-color:#148b76;background:#effaf7}.eng-report__formats input{accent-color:#11826e}.eng-report__formats strong,.eng-report__formats small{display:block}.eng-report__formats small{font-size:11px;color:#657389;margin-top:5px}.eng-report__signature{color:#657389;font-size:11px;line-height:1.6}.eng-report__footer{background:#f8fafc;border-top:1px solid #e1e7ef;padding:16px 28px;display:flex;gap:12px;justify-content:space-between}.eng-report__footer>div{display:flex;gap:10px}.eng-report__button{padding:11px 15px;border-radius:9px;border:1px solid #ccd7e3;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.eng-report__button--light{background:#fff;color:#3e526b}.eng-report__button--primary{background:#0b7665;border-color:#0b7665;color:#fff}.eng-report button:disabled{opacity:.5;cursor:wait}.eng-report__error{font-size:12px;line-height:1.6;color:#9a2929;background:#fff0ef;border:1px solid #f0cdca;padding:12px 15px;border-radius:10px;margin-bottom:15px}.eng-report__error .eng-report__link{display:block;margin-top:8px}.eng-report__error ul{padding-left:18px;margin:5px 0}.eng-report__previous{font-size:11px;background:#f5f7fb;display:flex;gap:12px;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:8px}.eng-report__loading{padding:45px 10px;text-align:center;color:#657389}
 .eng-report__coverage{margin:20px 0;padding:16px;border:1px solid #dce5ed;border-radius:12px;background:#f8fafc}.eng-report__coverage h3{font-size:14px;margin:0 0 10px}.eng-report__coverage-notes{font-size:12px;line-height:1.6;padding-left:18px;margin:0 0 14px;color:#516378}.eng-report__operational{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:0}.eng-report__operational>div{padding:10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px}.eng-report__operational dt{font-size:11px;color:#657389;line-height:1.4}.eng-report__operational dd{font-size:18px;font-weight:700;color:#0f6659;margin:6px 0 0}.eng-report__coverage-caption{font-size:11px;line-height:1.6;color:#657389;margin:12px 0 0}.eng-report__sources{font-size:11px;margin-top:12px;color:#516378}.eng-report__sources summary{cursor:pointer;font-weight:600}.eng-report__sources ul{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:6px 20px}.eng-report__sources li{display:flex;justify-content:space-between;gap:10px;overflow-wrap:anywhere}.eng-report__sources code{font-size:10px;min-width:0}.eng-report__sources li span{white-space:nowrap}
 .eng-report__override-fields{grid-template-columns:minmax(0,320px)}.eng-report__description{grid-column:1 / -1;display:block;margin-top:2px}.eng-report__description small{display:block;text-align:right;font-size:10px;color:#657389;margin-top:4px}
+.eng-report__selection{border:1px solid #dce5ed;border-radius:12px;padding:16px;margin:20px 0;background:#f8fafc}.eng-report__selection h3{font-size:14px;margin:0 0 8px}.eng-report__selection p{font-size:12px;line-height:1.5;margin:0;color:#516378}.eng-report__selection-actions{display:flex;flex-wrap:wrap;gap:10px 20px;margin-top:10px}.eng-report__selection .eng-report__selection-warning{color:#9a2929;margin-top:10px}.eng-report__include{display:flex;gap:7px;align-items:center;margin-top:8px;color:#516378}.eng-report__include input{accent-color:#11826e;width:15px;height:15px}.eng-report__time-method,.eng-report__time-coverage{font-size:12px;line-height:1.6;color:#516378;margin:8px 0}
 @media(max-width:760px){.eng-report-backdrop{padding:8px}.eng-report{max-height:calc(100dvh - 16px);border-radius:12px}.eng-report__header{padding:20px}.eng-report__header h2{font-size:20px}.eng-report__body{padding:18px}.eng-report__badge{display:none}.eng-report__table-head{display:none}.eng-report__kpi{grid-template-columns:1fr 1fr;gap:10px;padding:14px 4px}.eng-report__kpi-name{grid-column:1 / -1}.eng-report__override{grid-column:1 / -1}.eng-report__mobile-label{display:block;text-transform:uppercase;font-size:9px;color:#657389;margin-bottom:5px}.eng-report__facts-grid{grid-template-columns:1fr 1fr}.eng-report__override-fields{grid-template-columns:1fr}.eng-report__formats{flex-direction:column}.eng-report__footer{padding:12px;flex-wrap:wrap}.eng-report__footer>div{margin-left:auto;flex-wrap:wrap}.eng-report__button{padding:10px;font-size:11px}.eng-report__previous{align-items:flex-start;flex-direction:column}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>

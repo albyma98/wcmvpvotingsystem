@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { REPORT_KPIS, calculateReportKpis, formatReportValue, reportOperationalItems, reportSourceLabel, validateReportReview } from './engagementReport.js';
+import { REPORT_KPIS, calculateReportKpis, formatReportValue, reportOperationalItems, reportSelectedKpiIds, reportSourceLabel, validateReportReview, validateReportSelection } from './engagementReport.js';
 
 test('review changes recalculate dependent rates without mutating measured values', () => {
   const measured = [{ id: 'visitors', value: 100 }, { id: 'active_participation', value: 40 }];
   const reviewed = calculateReportKpis({ visitors: 200, engagement_eligible_visitors: 200, timed_visitors: 20, active_visitors: 40, active_seconds: 1200 }, measured);
-  assert.equal(reviewed.length, 20);
+  assert.equal(reviewed.length, 30);
   assert.equal(reviewed.find(k => k.id === 'active_participation').value, 20);
   assert.equal(reviewed.find(k => k.id === 'active_participation').measured_value, 40);
   assert.equal(reviewed.find(k => k.id === 'active_time').value, 60);
@@ -135,5 +135,39 @@ test('review rejects impossible rates and negative counts without requiring corr
   assert.deepEqual(validateReportReview({}, { visitors: { value: 5 } }), []);
   assert.ok(validateReportReview({}, { satisfaction: { value: 101, note: 'Corretto' } }).length);
   assert.deepEqual(validateReportReview({ visitors: 100, active_visitors: 40 }, { satisfaction: { value: null, note: 'Questionario non comparabile' } }), []);
-  assert.equal(new Set(REPORT_KPIS.map(item => item.id)).size, 20);
+  assert.equal(new Set(REPORT_KPIS.map(item => item.id)).size, 30);
+});
+
+test('the ten additional KPIs use action estimates and observable commercial outcomes', () => {
+  const facts = { visitors: 20, estimated_seconds: 900, estimated_timed_visitors: 10, identified_visitors: 8, guest_visitors: 12, total_sponsor_clicks: 11, sponsor_interactors: 6, sponsor_engaged_exposed: 4, sponsor_reach: 10, shop_redemptions: 3, new_profiles: 2, feedback_collected: 5 };
+  const kpis = calculateReportKpis(facts);
+  assert.deepEqual(kpis.slice(20).map(kpi => kpi.value), [900, 90, 8, 12, 11, 6, 40, 3, 10, 5]);
+  assert.equal(kpis.find(kpi => kpi.id === 'estimated_total_time').unit, 'seconds');
+  assert.equal(reportSourceLabel('estimated'), 'Stima da azioni');
+  assert.equal(reportSourceLabel('estimated', true), 'Stima da azioni');
+  assert.equal(calculateReportKpis({ estimated_seconds: null, estimated_timed_visitors: 0 }).find(kpi => kpi.id === 'estimated_avg_time').value, null);
+  assert.ok(validateReportReview({ sponsor_engaged_exposed: 11, sponsor_reach: 10 }, {}).some(error => error.includes('numeratore')));
+});
+
+test('PDF selection preserves explicit choices and reads old snapshots without inventing KPIs', () => {
+  const old = { kpis: REPORT_KPIS.slice(0, 20) };
+  assert.deepEqual(reportSelectedKpiIds(old), old.kpis.map(kpi => kpi.id));
+  assert.equal(reportSelectedKpiIds(old).length, 20);
+  const current = { kpis: REPORT_KPIS, selected_kpi_ids: ['guest_visitors', 'estimated_avg_time'] };
+  const selected = reportSelectedKpiIds(current);
+  assert.deepEqual(selected, current.selected_kpi_ids);
+  selected.push('visitors');
+  assert.equal(current.selected_kpi_ids.length, 2);
+  assert.deepEqual(reportSelectedKpiIds({ ...current, selected_kpi_ids: [] }), []);
+});
+
+test('PDF selection validates empty, unknown, repeated and oversized selections', () => {
+  const all = REPORT_KPIS.map(kpi => kpi.id);
+  assert.ok(validateReportSelection([], REPORT_KPIS).some(error => error.includes('almeno un')));
+  assert.ok(validateReportSelection(['invented'], REPORT_KPIS).some(error => error.includes('non disponibili')));
+  assert.ok(validateReportSelection(['visitors', 'visitors'], REPORT_KPIS).length);
+  assert.deepEqual(validateReportSelection(all.slice(0, 20), REPORT_KPIS, 'one_page'), []);
+  assert.ok(validateReportSelection(all.slice(0, 21), REPORT_KPIS, 'one_page').some(error => error.includes('20 KPI')));
+  assert.deepEqual(validateReportSelection(all, REPORT_KPIS, 'extended'), []);
+  assert.ok(validateReportSelection([...all, 'more'], [...REPORT_KPIS, { id: 'more' }], 'extended').some(error => error.includes('30 KPI')));
 });

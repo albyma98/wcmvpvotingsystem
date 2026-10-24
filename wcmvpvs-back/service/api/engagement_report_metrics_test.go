@@ -46,7 +46,7 @@ func TestEngagementReportMetricsNoSignalsIsUnavailable(t *testing.T) {
 		t.Fatalf("unexpected empty report: %+v %q", details, startedAt)
 	}
 	kpis := buildReportKPIs(facts)
-	if len(kpis) != 20 {
+	if len(kpis) != 30 {
 		t.Fatalf("got %d KPIs", len(kpis))
 	}
 	seen := map[string]bool{}
@@ -66,6 +66,8 @@ func TestEngagementReportMetricsIdentityAndEligibility(t *testing.T) {
 	vote := reportTestSignal("vote", "vote_completed", "phone", 7, "02", nil)
 	facts, _, startedAt := calculateReportMetrics([]reportSignal{vote, page, vote}, nil)
 	reportTestFact(t, facts, "visitors", 1)
+	reportTestFact(t, facts, "identified_visitors", 1)
+	reportTestFact(t, facts, "guest_visitors", 0)
 	reportTestFact(t, facts, "active_visitors", 1)
 	reportTestFact(t, facts, "voters", 1)
 	reportTestFact(t, facts, "vote_eligible_visitors", 1)
@@ -79,6 +81,8 @@ func TestEngagementReportMetricsIdentityAndEligibility(t *testing.T) {
 	other := reportTestSignal("other", "page_view", "phone", 8, "03", nil)
 	facts, _, _ = calculateReportMetrics([]reportSignal{page, vote, other}, nil)
 	reportTestFact(t, facts, "visitors", 3)
+	reportTestFact(t, facts, "identified_visitors", 2)
+	reportTestFact(t, facts, "guest_visitors", 1)
 	// A successful vote proves a visit, but no eligibility flag means unknown.
 	facts, _, _ = calculateReportMetrics([]reportSignal{vote}, nil)
 	reportTestFact(t, facts, "visitors", 1)
@@ -152,6 +156,10 @@ func TestEngagementReportMetricsSponsorClicksRequireSameSponsorExposure(t *testi
 	reportTestFact(t, facts, "sponsor_impressions", 3)
 	reportTestFact(t, facts, "sponsored_players", 1)
 	reportTestFact(t, facts, "sponsored_exposed_visitors", 1)
+	reportTestFact(t, facts, "total_sponsor_clicks", 2)
+	reportTestFact(t, facts, "sponsor_interactors", 2)
+	reportTestFact(t, facts, "sponsor_engaged_exposed", 2)
+	reportTestKPI(t, facts, "sponsor_engagement", reportMetricFloat(100))
 	reportTestKPI(t, facts, "sponsor_ctr", reportMetricFloat(50))
 	reportTestKPI(t, facts, "sponsored_participation", reportMetricFloat(100))
 	if len(details.Sponsors) != 2 || details.Sponsors[0].Clickers != 0 || details.Sponsors[1].Clickers != 1 {
