@@ -17,6 +17,7 @@ func validateClubFonts(site *ClubSite) error {
 		"Inter": true, "Montserrat": true, "Poppins": true, "Roboto": true,
 		"Open Sans": true, "Lato": true, "Barlow Condensed": true, "Oswald": true,
 		"Merriweather": true, "Playfair Display": true, "Arial": true, "Georgia": true,
+		"ENDURA": true,
 	}
 	for _, font := range []*string{&site.TitleFont, &site.BodyFont} {
 		*font = strings.TrimSpace(*font)

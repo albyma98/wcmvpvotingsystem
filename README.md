@@ -54,6 +54,18 @@ Le tabelle `club_*`, le sessioni `club_admin_session` e le API `/v1/clubs/*` e
 `/v1/club-admin/*` sono dedicate a questo verticale. Il collegamento con il core
 avviene tramite `club_sites.organization_id`.
 
+Nel CMS, **Homepage → Font della home e delle modali** permette di scegliere
+separatamente i font dei titoli e dei testi, con anteprima e salvataggio per club.
+ENDURA usa un webfont dedicato: la fonte ufficiale individuata è
+[Endura di AlperCakici](https://www.myfonts.com/collections/endura-font-alpercakici).
+Dopo aver ottenuto il kit con licenza web, ospitare il CSS con la dichiarazione
+`@font-face` della famiglia `ENDURA` e i relativi file del font, quindi impostare
+`VITE_CLUB_ENDURA_STYLESHEET` all’URL HTTPS del CSS e ricompilare il frontend.
+Per Docker la variabile viene letta dal `.env` della root; per Vite in sviluppo
+va inserita in `wcmvpvs-front/.env.local`. Il font resta disabilitato finché
+la sorgente non è configurata; la home e l’anteprima caricano il CSS quando
+ENDURA è selezionato. I file del kit non sono inclusi nel repository.
+
 ## Creazione di un nuovo admin
 
 ### 1. Creare il primo amministratore

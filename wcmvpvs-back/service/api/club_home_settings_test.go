@@ -144,6 +144,13 @@ func TestClubHomeSettingsCMSPublicRoundTrip(t *testing.T) {
 	if len(saved.Contacts) != 0 || len(saved.TileIcons) != 0 {
 		t.Fatal("removing contacts and restoring default icons was not persisted")
 	}
+	if w := call("PUT", "/v1/club-admin/aurora/settings", `{"titleFont":"ENDURA","bodyFont":"ENDURA"}`, token); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	saved, _ = store.ClubSiteByID(ctx, siteID)
+	if saved.TitleFont != "ENDURA" || saved.BodyFont != "ENDURA" {
+		t.Fatal("ENDURA selections were not persisted")
+	}
 	if w := call("PUT", "/v1/club-admin/aurora/settings", `{"titleFont":"","bodyFont":""}`, token); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}

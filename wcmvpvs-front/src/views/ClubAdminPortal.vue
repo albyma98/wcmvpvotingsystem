@@ -123,7 +123,7 @@ onMounted(loadOverview)
 
 <template>
   <main class="club-admin">
-    <link v-if="typography.stylesheet" rel="stylesheet" :href="typography.stylesheet" />
+    <link v-for="stylesheet in typography.stylesheets" :key="stylesheet" rel="stylesheet" :href="stylesheet" />
     <section v-if="checking" class="center">Caricamento CMS Club…</section>
     <section v-else-if="!authenticated" class="login-shell">
       <div class="login-card"><p class="eyebrow">ARENABOOSTX CLUB</p><h1>Gestisci il tuo Club Hub</h1><p>Homepage, squadre, roster, annunci, fotografie e calendario.</p><form @submit.prevent="loginSubmit"><label>Username<input v-model="login.username" autocomplete="username" /></label><label>Password<input v-model="login.password" type="password" autocomplete="current-password" /></label><button :disabled="busy">{{busy?'Accesso…':'Entra nel CMS'}}</button></form><p v-if="error" class="error">{{error}}</p></div>
@@ -145,19 +145,22 @@ onMounted(loadOverview)
         </div>
 
         <form v-else-if="activeTab==='settings'" class="card" @submit.prevent="saveSettings">
+          <fieldset class="typography-editor">
+            <legend>Font della home e delle modali</legend>
+            <p class="form-hint">Scegli separatamente il font dei titoli e quello dei testi, poi premi Salva homepage.</p>
+            <div class="form-grid">
+              <label for="club-title-font">Font titoli<select id="club-title-font" v-model="settings.titleFont" class="font-select"><option v-for="font in CLUB_FONTS" :key="font.name" :value="font.name" :disabled="font.disabled">{{ font.name }}{{ font.disabled ? ' (da attivare)' : '' }}</option></select></label>
+              <label for="club-body-font">Font testi<select id="club-body-font" v-model="settings.bodyFont" class="font-select"><option v-for="font in CLUB_FONTS" :key="font.name" :value="font.name" :disabled="font.disabled">{{ font.name }}{{ font.disabled ? ' (da attivare)' : '' }}</option></select></label>
+            </div>
+            <p v-if="CLUB_FONTS.find(font => font.name === 'ENDURA')?.disabled" class="form-hint">ENDURA sarà disponibile dopo l’attivazione del webfont.</p>
+            <div class="typography-preview" :style="typography.style">
+              <small>Anteprima</small>
+              <h3>{{ settings.name || 'Il tuo club' }}: una sola passione</h3>
+              <p>Notizie, squadre e appuntamenti della società. Segui il club e scopri tutte le novità della stagione.</p>
+            </div>
+          </fieldset>
           <h2>Identità e homepage</h2>
           <div class="form-grid"><label>Nome<input v-model="settings.name" required /></label><label>Città<input v-model="settings.city" /></label><label class="wide">Claim<input v-model="settings.tagline" /></label><label>Stagione<input v-model="settings.seasonLabel" /></label><label>Logo URL<input v-model="settings.logoUrl" /></label><label class="wide">Immagine hero URL<input v-model="settings.heroImageUrl" /></label><label>Colore primario<input v-model="settings.primaryColor" type="color" /></label><label>Colore accento<input v-model="settings.secondaryColor" type="color" /></label><label class="check"><input v-model="settings.active" type="checkbox" /> Sito pubblico attivo</label></div>
-          <h2>Tipografia</h2>
-          <p class="form-hint">Scegli un font per i titoli e uno per i testi della home e di tutte le modali del club.</p>
-          <div class="form-grid">
-            <label>Font titoli<select v-model="settings.titleFont"><option v-for="font in CLUB_FONTS" :key="font.name" :value="font.name">{{ font.name }}</option></select></label>
-            <label>Font testi<select v-model="settings.bodyFont"><option v-for="font in CLUB_FONTS" :key="font.name" :value="font.name">{{ font.name }}</option></select></label>
-          </div>
-          <div class="typography-preview" :style="typography.style">
-            <small>Anteprima</small>
-            <h3>{{ settings.name || 'Il tuo club' }}: una sola passione</h3>
-            <p>Notizie, squadre e appuntamenti della società. Segui il club e scopri tutte le novità della stagione.</p>
-          </div>
           <h2>Icone delle tile</h2>
           <p class="form-hint">Carica un’immagine per ogni tile della homepage. Le immagini vengono adattate automaticamente; premi Salva homepage per pubblicarle.</p>
           <div class="tile-icons-grid">
@@ -224,4 +227,11 @@ onMounted(loadOverview)
 @media(max-width:1100px){.tile-icons-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.tile-icons-grid{grid-template-columns:1fr}.contact-editor{padding:12px}.contacts-editor .buttons{flex-wrap:wrap}}
 .typography-preview{margin:18px 0 28px;padding:22px;border:1px solid #334155;border-radius:12px;background:#f8fafc;color:#0f172a;font-family:var(--club-font-body)}
 .typography-preview small{color:#475569;font-size:12px}.typography-preview h3{margin:12px 0;font-family:var(--club-font-title);font-size:clamp(22px,3vw,32px);line-height:1.2}.typography-preview p{margin:0;font-size:15px;line-height:1.6}
+.typography-editor{min-width:0;margin:0 0 28px;padding:18px;border:1px solid #475569;border-radius:14px;background:#111d31}
+.typography-editor legend{padding:0 8px;color:#f8fafc;font-size:20px;font-weight:800}.typography-editor .typography-preview{margin-bottom:0}
+.club-admin select{display:block;min-height:46px;appearance:auto;color-scheme:dark}
+.club-admin select option{background:#060d19;color:#f8fafc}
+.club-admin .font-select{min-width:0;min-height:48px;padding:10px 12px;border:2px solid #94a3b8;border-radius:10px;background:#fff;color:#0f172a;color-scheme:light;font-size:16px;line-height:1.5;cursor:pointer}
+.club-admin .font-select option{background:#fff;color:#0f172a}.club-admin .font-select option:disabled{color:#64748b}
+.club-admin select:focus-visible{outline:3px solid #f59e0b;outline-offset:3px}
 </style>

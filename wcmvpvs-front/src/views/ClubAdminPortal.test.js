@@ -1,22 +1,36 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { compileScript, parse } from '@vue/compiler-sfc'
+import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc'
 import * as Vue from 'vue'
+import * as VueSSR from 'vue/server-renderer'
 import { clubHomeTiles } from '../clubHub.js'
 import { CLUB_FONTS, clubTypography } from '../clubTypography.js'
 
 const { descriptor } = parse(readFileSync(new URL('./ClubAdminPortal.vue', import.meta.url), 'utf8'))
-const script = compileScript(descriptor, { id: 'club-cms-test' }).content
+const compiledScript = compileScript(descriptor, { id: 'club-cms-test' })
+const script = compiledScript.content
   .replace(/^import .* from .*\r?\n/gm, '')
   .replace('export default', 'return')
 const createComponent = new Function('Vue', 'clubHomeTiles', 'CLUB_FONTS', 'clubTypography', 'ClubTileIconUpload', 'fetch', 'setTimeout', 'onMounted',
   `const { computed, reactive, ref } = Vue;\n${script}`)
 
+const template = compileTemplate({ source: descriptor.template.content, id: 'club-cms-test', ssr: true, ssrCssVars: [], compilerOptions: { bindingMetadata: compiledScript.bindings } })
+assert.deepEqual(template.errors, [])
+const helpers = {}
+const renderCode = template.code.replace(/^import \{([^}]+)\} from "([^"]+)"\r?$/gm, (_, imports, module) => {
+  for (const item of imports.split(',')) {
+    const [name, alias = name] = item.trim().split(/\s+as\s+/)
+    helpers[alias] = (module === 'vue' ? Vue : VueSSR)[name]
+  }
+  return ''
+}).replace('export function ssrRender', 'return function ssrRender')
+const render = new Function(...Object.keys(helpers), renderCode)(...Object.values(helpers))
+
 async function fixture(t, failSave = false) {
   let club = { name: 'Aurora', active: true, contacts: [{ name: 'Segreteria', email: 'info@aurora.it' }], tileIcons: {} }
   const writes = []
-  const component = createComponent(Vue, clubHomeTiles, CLUB_FONTS, clubTypography, {}, async (path, options) => {
+  const component = createComponent(Vue, clubHomeTiles, CLUB_FONTS, clubTypography, { render: () => null }, async (path, options) => {
     let data = {}
     if (path.endsWith('/overview')) data = { club: structuredClone(club), teams: [{ id: 1, name: 'Under 16', active: true }] }
     if (path.endsWith('/teams')) data = { teams: [{ id: 1, name: 'Under 16', active: true }], players: {} }
@@ -90,4 +104,20 @@ test('CMS defaults legacy fonts and persists separate title and body selections'
   await state.saveSettings()
   assert.equal(writes[1].titleFont, 'Oswald')
   assert.equal(writes[1].bodyFont, 'Lato')
+})
+
+test('Homepage renders both labeled font selectors with their options before identity settings', async t => {
+  const { state } = await fixture(t)
+  state.activeTab.value = 'settings'
+  let html = ''
+  render({}, chunk => { html += chunk }, null, {}, { slug: 'aurora' }, Vue.proxyRefs(state), {}, {})
+  for (const id of ['club-title-font', 'club-body-font']) {
+    assert.ok(html.includes(`for="${id}"`))
+    const select = html.match(new RegExp(`<select id="${id}"[^>]*>([\\s\\S]*?)</select>`))
+    assert.ok(select, `missing ${id}`)
+    assert.match(select[1], /value="Inter" selected/)
+    assert.match(select[1], /value="ENDURA" disabled/)
+    assert.equal((select[1].match(/<option /g) || []).length, CLUB_FONTS.length)
+  }
+  assert.ok(html.indexOf('club-title-font') < html.indexOf('Identità e homepage'))
 })
