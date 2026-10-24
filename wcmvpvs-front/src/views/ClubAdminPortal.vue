@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import ClubTileIconUpload from '../components/ClubTileIconUpload.vue'
 import { clubHomeTiles } from '../clubHub'
+import { CLUB_FONTS, clubTypography } from '../clubTypography'
 
 const props = defineProps({ slug: { type: String, required: true } })
 const authenticated = ref(false)
@@ -14,7 +15,7 @@ const overview = ref({ club: {}, teams: [], posts: [], gallery: [], matches: [],
 const playersByTeam = ref({})
 const login = reactive({ username: `club-${props.slug}`, password: '' })
 
-const settings = reactive({ contacts: [], tileIcons: {} })
+const settings = reactive({ contacts: [], tileIcons: {}, titleFont: 'Inter', bodyFont: 'Inter' })
 const iconUploads = ref(0)
 const teamForm = reactive(emptyTeam())
 const postForm = reactive({ kind: 'announcement', title: '', excerpt: '', body: '', imageUrl: '', teamId: 0, pinned: false, active: true, publishedAt: '' })
@@ -30,6 +31,7 @@ const tabs = [
 ]
 const teams = computed(() => overview.value.teams ?? [])
 const editableTiles = computed(() => clubHomeTiles({ ...overview.value, club: settings, teams: teams.value.filter(team => team.active) }))
+const typography = computed(() => clubTypography(settings))
 
 function emptyTeam() { return { id: 0, name: '', slug: '', category: '', gender: 'mixed', championship: '', description: '', logoUrl: '', heroImageUrl: '', position: 0, active: true } }
 function resetObject(target, source) { Object.keys(target).forEach(key => delete target[key]); Object.assign(target, source) }
@@ -53,6 +55,8 @@ async function loadOverview() {
     authenticated.value = true
     resetObject(settings, {
       ...overview.value.club,
+      titleFont: overview.value.club.titleFont || 'Inter',
+      bodyFont: overview.value.club.bodyFont || 'Inter',
       contacts: (overview.value.club.contacts ?? []).map(contact => ({ ...contact })),
       tileIcons: { ...(overview.value.club.tileIcons ?? {}) },
     })
@@ -80,6 +84,7 @@ async function saveSettings() {
       too_many_contacts: 'Puoi inserire al massimo 50 contatti.',
       tile_icon_too_large: 'Un’icona è troppo pesante. Carica un’immagine più piccola.',
       invalid_tile_icon: 'Una delle icone non è valida. Prova a caricarla nuovamente.',
+      invalid_font: 'Scegli i font dall’elenco disponibile.',
     }
     error.value = messages[e.message] || 'Salvataggio fallito. Riprova.'
   } finally { busy.value = false }
@@ -118,6 +123,7 @@ onMounted(loadOverview)
 
 <template>
   <main class="club-admin">
+    <link v-if="typography.stylesheet" rel="stylesheet" :href="typography.stylesheet" />
     <section v-if="checking" class="center">Caricamento CMS Club…</section>
     <section v-else-if="!authenticated" class="login-shell">
       <div class="login-card"><p class="eyebrow">ARENABOOSTX CLUB</p><h1>Gestisci il tuo Club Hub</h1><p>Homepage, squadre, roster, annunci, fotografie e calendario.</p><form @submit.prevent="loginSubmit"><label>Username<input v-model="login.username" autocomplete="username" /></label><label>Password<input v-model="login.password" type="password" autocomplete="current-password" /></label><button :disabled="busy">{{busy?'Accesso…':'Entra nel CMS'}}</button></form><p v-if="error" class="error">{{error}}</p></div>
@@ -141,6 +147,17 @@ onMounted(loadOverview)
         <form v-else-if="activeTab==='settings'" class="card" @submit.prevent="saveSettings">
           <h2>Identità e homepage</h2>
           <div class="form-grid"><label>Nome<input v-model="settings.name" required /></label><label>Città<input v-model="settings.city" /></label><label class="wide">Claim<input v-model="settings.tagline" /></label><label>Stagione<input v-model="settings.seasonLabel" /></label><label>Logo URL<input v-model="settings.logoUrl" /></label><label class="wide">Immagine hero URL<input v-model="settings.heroImageUrl" /></label><label>Colore primario<input v-model="settings.primaryColor" type="color" /></label><label>Colore accento<input v-model="settings.secondaryColor" type="color" /></label><label class="check"><input v-model="settings.active" type="checkbox" /> Sito pubblico attivo</label></div>
+          <h2>Tipografia</h2>
+          <p class="form-hint">Scegli un font per i titoli e uno per i testi della home e di tutte le modali del club.</p>
+          <div class="form-grid">
+            <label>Font titoli<select v-model="settings.titleFont"><option v-for="font in CLUB_FONTS" :key="font.name" :value="font.name">{{ font.name }}</option></select></label>
+            <label>Font testi<select v-model="settings.bodyFont"><option v-for="font in CLUB_FONTS" :key="font.name" :value="font.name">{{ font.name }}</option></select></label>
+          </div>
+          <div class="typography-preview" :style="typography.style">
+            <small>Anteprima</small>
+            <h3>{{ settings.name || 'Il tuo club' }}: una sola passione</h3>
+            <p>Notizie, squadre e appuntamenti della società. Segui il club e scopri tutte le novità della stagione.</p>
+          </div>
           <h2>Icone delle tile</h2>
           <p class="form-hint">Carica un’immagine per ogni tile della homepage. Le immagini vengono adattate automaticamente; premi Salva homepage per pubblicarle.</p>
           <div class="tile-icons-grid">
@@ -205,4 +222,6 @@ onMounted(loadOverview)
 .form-hint{color:#94a3b8;font-size:13px;line-height:1.5}.tile-icons-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0 24px}.contact-editor{position:relative;min-width:0;border:1px solid #263449;border-radius:16px;padding:18px;margin:20px 0}.contact-editor legend{padding:0 8px;color:#f8fafc;font-size:14px;font-weight:800}.contact-actions{display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px}.contact-actions button,.contacts-editor .buttons>button:not(.primary){border:1px solid #334155;background:#172238;color:#cbd5e1;border-radius:8px;padding:8px 12px;cursor:pointer}.contact-actions button.danger{color:#fca5a5}.club-admin button:disabled{opacity:.5;cursor:not-allowed}
 .form-grid+h2{margin-top:32px}.contacts-editor .buttons>.primary{background:#f59e0b;color:#111827;border-color:#f59e0b}
 @media(max-width:1100px){.tile-icons-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.tile-icons-grid{grid-template-columns:1fr}.contact-editor{padding:12px}.contacts-editor .buttons{flex-wrap:wrap}}
+.typography-preview{margin:18px 0 28px;padding:22px;border:1px solid #334155;border-radius:12px;background:#f8fafc;color:#0f172a;font-family:var(--club-font-body)}
+.typography-preview small{color:#475569;font-size:12px}.typography-preview h3{margin:12px 0;font-family:var(--club-font-title);font-size:clamp(22px,3vw,32px);line-height:1.2}.typography-preview p{margin:0;font-size:15px;line-height:1.6}
 </style>

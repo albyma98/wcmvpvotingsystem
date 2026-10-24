@@ -25,6 +25,8 @@ type ClubSite struct {
 	HeroImageURL   string            `json:"heroImageUrl"`
 	PrimaryColor   string            `json:"primaryColor"`
 	SecondaryColor string            `json:"secondaryColor"`
+	TitleFont      string            `json:"titleFont"`
+	BodyFont       string            `json:"bodyFont"`
 	SeasonLabel    string            `json:"seasonLabel"`
 	Active         bool              `json:"active"`
 	CreatedAt      string            `json:"createdAt"`
@@ -128,6 +130,8 @@ func (s *Store) EnsureClubTables() error {
 			hero_image_url TEXT NOT NULL DEFAULT '',
 			primary_color TEXT NOT NULL DEFAULT '#172554',
 			secondary_color TEXT NOT NULL DEFAULT '#f59e0b',
+			title_font TEXT NOT NULL DEFAULT 'Inter',
+			body_font TEXT NOT NULL DEFAULT 'Inter',
 			season_label TEXT NOT NULL DEFAULT '',
 			contacts_json TEXT NOT NULL DEFAULT '[]',
 			tile_icons_json TEXT NOT NULL DEFAULT '{}',
@@ -232,6 +236,8 @@ func (s *Store) EnsureClubTables() error {
 	for _, column := range []struct{ name, definition string }{
 		{"contacts_json", "TEXT NOT NULL DEFAULT '[]'"},
 		{"tile_icons_json", "TEXT NOT NULL DEFAULT '{}'"},
+		{"title_font", "TEXT NOT NULL DEFAULT 'Inter'"},
+		{"body_font", "TEXT NOT NULL DEFAULT 'Inter'"},
 	} {
 		if !columns[column.name] {
 			if _, err := s.db.Exec("ALTER TABLE club_sites ADD COLUMN " + column.name + " " + column.definition); err != nil {
@@ -250,11 +256,11 @@ func boolInt(v bool) int {
 }
 
 func (s *Store) ClubSiteBySlug(ctx context.Context, slug string) (ClubSite, error) {
-	return scanClubSite(s.db.QueryRowContext(ctx, `SELECT id, organization_id, slug, name, tagline, city, logo_url, hero_image_url, primary_color, secondary_color, season_label, active, created_at, contacts_json, tile_icons_json FROM club_sites WHERE slug=?`, strings.TrimSpace(slug)))
+	return scanClubSite(s.db.QueryRowContext(ctx, `SELECT id, organization_id, slug, name, tagline, city, logo_url, hero_image_url, primary_color, secondary_color, season_label, active, created_at, contacts_json, tile_icons_json, title_font, body_font FROM club_sites WHERE slug=?`, strings.TrimSpace(slug)))
 }
 
 func (s *Store) ClubSiteByID(ctx context.Context, id int64) (ClubSite, error) {
-	return scanClubSite(s.db.QueryRowContext(ctx, `SELECT id, organization_id, slug, name, tagline, city, logo_url, hero_image_url, primary_color, secondary_color, season_label, active, created_at, contacts_json, tile_icons_json FROM club_sites WHERE id=?`, id))
+	return scanClubSite(s.db.QueryRowContext(ctx, `SELECT id, organization_id, slug, name, tagline, city, logo_url, hero_image_url, primary_color, secondary_color, season_label, active, created_at, contacts_json, tile_icons_json, title_font, body_font FROM club_sites WHERE id=?`, id))
 }
 
 type rowScanner interface {
@@ -265,7 +271,7 @@ func scanClubSite(row rowScanner) (ClubSite, error) {
 	var v ClubSite
 	var active int
 	var contactsJSON, iconsJSON string
-	err := row.Scan(&v.ID, &v.OrganizationID, &v.Slug, &v.Name, &v.Tagline, &v.City, &v.LogoURL, &v.HeroImageURL, &v.PrimaryColor, &v.SecondaryColor, &v.SeasonLabel, &active, &v.CreatedAt, &contactsJSON, &iconsJSON)
+	err := row.Scan(&v.ID, &v.OrganizationID, &v.Slug, &v.Name, &v.Tagline, &v.City, &v.LogoURL, &v.HeroImageURL, &v.PrimaryColor, &v.SecondaryColor, &v.SeasonLabel, &active, &v.CreatedAt, &contactsJSON, &iconsJSON, &v.TitleFont, &v.BodyFont)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, errClubNotFound
 	}
@@ -304,12 +310,15 @@ func (s *Store) ListClubSites(ctx context.Context) ([]map[string]interface{}, er
 }
 
 func (s *Store) CreateClubSite(ctx context.Context, site ClubSite, categories []string, username, passwordHash string) (int64, error) {
+	if err := validateClubFonts(&site); err != nil {
+		return 0, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `INSERT INTO club_sites (organization_id,slug,name,tagline,city,logo_url,hero_image_url,primary_color,secondary_color,season_label,active) VALUES (?,?,?,?,?,?,?,?,?,?,1)`, site.OrganizationID, site.Slug, site.Name, site.Tagline, site.City, site.LogoURL, site.HeroImageURL, site.PrimaryColor, site.SecondaryColor, site.SeasonLabel)
+	res, err := tx.ExecContext(ctx, `INSERT INTO club_sites (organization_id,slug,name,tagline,city,logo_url,hero_image_url,primary_color,secondary_color,season_label,title_font,body_font,active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)`, site.OrganizationID, site.Slug, site.Name, site.Tagline, site.City, site.LogoURL, site.HeroImageURL, site.PrimaryColor, site.SecondaryColor, site.SeasonLabel, site.TitleFont, site.BodyFont)
 	if err != nil {
 		return 0, err
 	}
@@ -349,7 +358,7 @@ func (s *Store) UpdateClubSite(ctx context.Context, site ClubSite) error {
 	if err != nil {
 		return err
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE club_sites SET name=?,tagline=?,city=?,logo_url=?,hero_image_url=?,primary_color=?,secondary_color=?,season_label=?,active=?,contacts_json=?,tile_icons_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`, site.Name, site.Tagline, site.City, site.LogoURL, site.HeroImageURL, site.PrimaryColor, site.SecondaryColor, site.SeasonLabel, boolInt(site.Active), string(contactsJSON), string(iconsJSON), site.ID)
+	res, err := s.db.ExecContext(ctx, `UPDATE club_sites SET name=?,tagline=?,city=?,logo_url=?,hero_image_url=?,primary_color=?,secondary_color=?,season_label=?,active=?,contacts_json=?,tile_icons_json=?,title_font=?,body_font=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`, site.Name, site.Tagline, site.City, site.LogoURL, site.HeroImageURL, site.PrimaryColor, site.SecondaryColor, site.SeasonLabel, boolInt(site.Active), string(contactsJSON), string(iconsJSON), site.TitleFont, site.BodyFont, site.ID)
 	if err != nil {
 		return err
 	}

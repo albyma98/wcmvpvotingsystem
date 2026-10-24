@@ -12,7 +12,28 @@ import (
 const maxClubIconBytes = 160 * 1024
 const maxClubSettingsBytes = 2 * 1024 * 1024
 
+func validateClubFonts(site *ClubSite) error {
+	allowed := map[string]bool{
+		"Inter": true, "Montserrat": true, "Poppins": true, "Roboto": true,
+		"Open Sans": true, "Lato": true, "Barlow Condensed": true, "Oswald": true,
+		"Merriweather": true, "Playfair Display": true, "Arial": true, "Georgia": true,
+	}
+	for _, font := range []*string{&site.TitleFont, &site.BodyFont} {
+		*font = strings.TrimSpace(*font)
+		if *font == "" {
+			*font = "Inter"
+		}
+		if !allowed[*font] {
+			return fmt.Errorf("invalid_font")
+		}
+	}
+	return nil
+}
+
 func validateClubHomeSettings(site *ClubSite, teams []ClubTeam) error {
+	if err := validateClubFonts(site); err != nil {
+		return err
+	}
 	if len(site.Contacts) > 50 {
 		return fmt.Errorf("too_many_contacts")
 	}

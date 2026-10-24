@@ -4,18 +4,19 @@ import { readFileSync } from 'node:fs'
 import { compileScript, parse } from '@vue/compiler-sfc'
 import * as Vue from 'vue'
 import { clubHomeTiles } from '../clubHub.js'
+import { CLUB_FONTS, clubTypography } from '../clubTypography.js'
 
 const { descriptor } = parse(readFileSync(new URL('./ClubAdminPortal.vue', import.meta.url), 'utf8'))
 const script = compileScript(descriptor, { id: 'club-cms-test' }).content
   .replace(/^import .* from .*\r?\n/gm, '')
   .replace('export default', 'return')
-const createComponent = new Function('Vue', 'clubHomeTiles', 'ClubTileIconUpload', 'fetch', 'setTimeout', 'onMounted',
+const createComponent = new Function('Vue', 'clubHomeTiles', 'CLUB_FONTS', 'clubTypography', 'ClubTileIconUpload', 'fetch', 'setTimeout', 'onMounted',
   `const { computed, reactive, ref } = Vue;\n${script}`)
 
 async function fixture(t, failSave = false) {
   let club = { name: 'Aurora', active: true, contacts: [{ name: 'Segreteria', email: 'info@aurora.it' }], tileIcons: {} }
   const writes = []
-  const component = createComponent(Vue, clubHomeTiles, {}, async (path, options) => {
+  const component = createComponent(Vue, clubHomeTiles, CLUB_FONTS, clubTypography, {}, async (path, options) => {
     let data = {}
     if (path.endsWith('/overview')) data = { club: structuredClone(club), teams: [{ id: 1, name: 'Under 16', active: true }] }
     if (path.endsWith('/teams')) data = { teams: [{ id: 1, name: 'Under 16', active: true }], players: {} }
@@ -69,4 +70,24 @@ test('CMS retains edits on validation errors and waits for image processing befo
   assert.match(state.error.value, /indirizzi email/)
   assert.equal(state.settings.contacts[0].email, 'wrong')
   assert.equal(state.busy.value, false)
+})
+
+test('CMS defaults legacy fonts and persists separate title and body selections', async t => {
+  const { state, writes } = await fixture(t)
+  assert.equal(state.settings.titleFont, 'Inter')
+  assert.equal(state.settings.bodyFont, 'Inter')
+  state.settings.titleFont = 'Oswald'
+  state.settings.bodyFont = 'Lato'
+  assert.match(state.typography.value.style['--club-font-title'], /^"Oswald"/)
+  assert.match(state.typography.value.style['--club-font-body'], /^"Lato"/)
+  await state.saveSettings()
+  assert.equal(writes[0].titleFont, 'Oswald')
+  assert.equal(writes[0].bodyFont, 'Lato')
+  assert.equal(state.settings.titleFont, 'Oswald')
+  assert.equal(state.settings.bodyFont, 'Lato')
+  // Saving a different tab must also retain the published typography.
+  state.activeTab.value = 'contacts'
+  await state.saveSettings()
+  assert.equal(writes[1].titleFont, 'Oswald')
+  assert.equal(writes[1].bodyFont, 'Lato')
 })

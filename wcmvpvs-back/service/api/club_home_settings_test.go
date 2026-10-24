@@ -60,7 +60,7 @@ func TestClubHomeSettingsCMSPublicRoundTrip(t *testing.T) {
 		{Name: " Segreteria ", Role: "Iscrizioni", Phone: "+39 012 3456789", Email: "info@aurora.it", Address: "Via Roma 1", Website: "https://aurora.it"},
 		{Name: "Mario Rossi", Role: "Direttore sportivo"},
 	}
-	encoded, _ := json.Marshal(map[string]interface{}{"contacts": contacts, "tileIcons": map[string]string{"contacts": clubTestIcon, "sponsors": clubTestIcon, teamKey: clubTestIcon}})
+	encoded, _ := json.Marshal(map[string]interface{}{"contacts": contacts, "tileIcons": map[string]string{"contacts": clubTestIcon, "sponsors": clubTestIcon, teamKey: clubTestIcon}, "titleFont": "Oswald", "bodyFont": "Lato"})
 	if w := call("PUT", "/v1/club-admin/aurora/settings", string(encoded), ""); w.Code != 401 {
 		t.Fatalf("anonymous write: %d", w.Code)
 	}
@@ -70,7 +70,7 @@ func TestClubHomeSettingsCMSPublicRoundTrip(t *testing.T) {
 	if w := call("PUT", "/v1/club-admin/aurora/settings", string(encoded), token); w.Code != 200 {
 		t.Fatalf("save: %d %s", w.Code, w.Body.String())
 	}
-	for _, path := range []string{"/v1/clubs/aurora/home", "/v1/club-admin/aurora/overview"} {
+	for _, path := range []string{"/v1/clubs/aurora/home", "/v1/club-admin/aurora/overview", "/v1/clubs/aurora/teams/" + teams[0].Slug} {
 		w := call("GET", path, "", token)
 		var payload struct {
 			Club ClubSite `json:"club"`
@@ -81,9 +81,12 @@ func TestClubHomeSettingsCMSPublicRoundTrip(t *testing.T) {
 		if len(payload.Club.Contacts) != 2 || payload.Club.Contacts[0].Name != "Segreteria" || payload.Club.Contacts[0].Email != "info@aurora.it" || payload.Club.TileIcons[teamKey] != clubTestIcon || payload.Club.TileIcons["contacts"] != clubTestIcon || payload.Club.TileIcons["sponsors"] != clubTestIcon {
 			t.Fatalf("lost saved settings: %#v", payload.Club)
 		}
+		if payload.Club.TitleFont != "Oswald" || payload.Club.BodyFont != "Lato" {
+			t.Fatalf("lost saved fonts at %s: %#v", path, payload.Club)
+		}
 	}
 	other, _ := store.ClubSiteBySlug(ctx, "other")
-	if len(other.Contacts) != 0 || len(other.TileIcons) != 0 {
+	if len(other.Contacts) != 0 || len(other.TileIcons) != 0 || other.TitleFont != "Inter" || other.BodyFont != "Inter" {
 		t.Fatal("settings leaked to another club")
 	}
 	// Invalid edits must leave the previously published contacts and icons intact.
@@ -93,13 +96,15 @@ func TestClubHomeSettingsCMSPublicRoundTrip(t *testing.T) {
 		`{"contacts":[{"name":"Test","website":"javascript:alert(1)"}]}`,
 		`{"tileIcons":{"contacts":"data:image/png;base64,bm90IGFuIGltYWdl"}}`,
 		`{"tileIcons":{"contacts":"data:image/svg+xml;base64,PHN2Zz4="}}`,
+		`{"titleFont":"Unknown"}`,
+		`{"bodyFont":"Inter; color:red"}`,
 		`{"name":"` + strings.Repeat("x", maxClubSettingsBytes) + `"}`,
 	} {
 		if w := call("PUT", "/v1/club-admin/aurora/settings", body, token); w.Code != 400 {
 			t.Fatalf("invalid edit accepted: %d", w.Code)
 		}
 		saved, _ := store.ClubSiteByID(ctx, siteID)
-		if saved.Name != "Aurora" || len(saved.Contacts) != 2 || saved.TileIcons["contacts"] != clubTestIcon {
+		if saved.Name != "Aurora" || len(saved.Contacts) != 2 || saved.TileIcons["contacts"] != clubTestIcon || saved.TitleFont != "Oswald" || saved.BodyFont != "Lato" {
 			t.Fatal("invalid edit changed published settings")
 		}
 	}
@@ -108,7 +113,7 @@ func TestClubHomeSettingsCMSPublicRoundTrip(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 	saved, _ := store.ClubSiteByID(ctx, siteID)
-	if len(saved.Contacts) != 2 || saved.TileIcons[teamKey] != clubTestIcon {
+	if len(saved.Contacts) != 2 || saved.TileIcons[teamKey] != clubTestIcon || saved.TitleFont != "Oswald" || saved.BodyFont != "Lato" {
 		t.Fatal("identity edit erased contacts or icons")
 	}
 	// Reordering, editing and deleting contacts also survive a database reload.
@@ -139,6 +144,13 @@ func TestClubHomeSettingsCMSPublicRoundTrip(t *testing.T) {
 	if len(saved.Contacts) != 0 || len(saved.TileIcons) != 0 {
 		t.Fatal("removing contacts and restoring default icons was not persisted")
 	}
+	if w := call("PUT", "/v1/club-admin/aurora/settings", `{"titleFont":"","bodyFont":""}`, token); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	saved, _ = store.ClubSiteByID(ctx, siteID)
+	if saved.TitleFont != "Inter" || saved.BodyFont != "Inter" {
+		t.Fatal("restoring default fonts was not persisted")
+	}
 }
 
 func TestClubHomeSettingsLegacyMigration(t *testing.T) {
@@ -165,7 +177,7 @@ func TestClubHomeSettingsLegacyMigration(t *testing.T) {
 		}
 	}
 	site, err := store.ClubSiteBySlug(context.Background(), "existing")
-	if err != nil || site.Name != "Existing Club" || site.Contacts == nil || site.TileIcons == nil {
+	if err != nil || site.Name != "Existing Club" || site.Contacts == nil || site.TileIcons == nil || site.TitleFont != "Inter" || site.BodyFont != "Inter" {
 		t.Fatalf("migration lost existing site or defaults: %#v err=%v", site, err)
 	}
 }
