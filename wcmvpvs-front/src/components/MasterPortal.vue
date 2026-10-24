@@ -2058,7 +2058,8 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.form-grid input {
+.form-grid input,
+.form-grid select {
   padding: 0.65rem 0.8rem;
   border-radius: 0.65rem;
   border: 1px solid rgba(15, 23, 42, 0.2);
