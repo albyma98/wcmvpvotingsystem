@@ -434,13 +434,15 @@
                 Città / Descrizione
                 <input v-model.trim="organizationForm.city" type="text" placeholder="Es. Milano" />
               </label>
-              <label>
-                Sport praticato
-                <select v-model="organizationForm.sport" required>
-                  <option disabled value="">Seleziona uno sport</option>
-                  <option v-for="sport in organizationSports" :key="sport" :value="sport">{{ sport }}</option>
-                </select>
-              </label>
+              <fieldset class="organization-sport">
+                <legend>Sport praticato</legend>
+                <div class="sport-options">
+                  <label v-for="sport in organizationSports" :key="sport" class="sport-option">
+                    <input v-model="organizationForm.sport" type="radio" name="organization-sport" :value="sport" required />
+                    <span>{{ sport }}</span>
+                  </label>
+                </div>
+              </fieldset>
               <label>
                 Logo (URL)
                 <input
@@ -2058,11 +2060,41 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.form-grid input,
+.form-grid input:not([type='radio']),
 .form-grid select {
   padding: 0.65rem 0.8rem;
   border-radius: 0.65rem;
   border: 1px solid rgba(15, 23, 42, 0.2);
+}
+
+.organization-sport {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.organization-sport legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+.sport-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-top: 0.4rem;
+}
+
+.form-grid .sport-option {
+  flex-direction: row;
+  align-items: center;
+  cursor: pointer;
+}
+
+.sport-option input {
+  margin: 0;
+  cursor: pointer;
 }
 
 .help-text {

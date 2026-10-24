@@ -49,7 +49,12 @@ test('master requires a sport, creates each supported sport and restores it when
     assert.equal(writes.length, before);
     assert.match(state.organizationFormError.value, /Seleziona lo sport/);
     state.organizationForm.sport = sport;
-    assert.match(html(), new RegExp(`<option value="${sport}" selected>`));
+    const radios = html().match(/<input\b[^>]*type="radio"[^>]*>/g) || [];
+    assert.equal(radios.length, 3);
+    assert.ok(radios.every(radio => radio.includes('name="organization-sport"') && radio.includes(' required')));
+    const checked = radios.filter(radio => radio.includes(' checked'));
+    assert.equal(checked.length, 1);
+    assert.match(checked[0], new RegExp(`value="${sport}"`));
     await state.submitOrganizationForm();
     assert.equal(writes.at(-1).method, 'POST');
     assert.equal(writes.at(-1).body.sport, sport);
@@ -70,7 +75,9 @@ test('master shows stored sports and marks legacy organizations as awaiting sele
   assert.match(html(), /<td>Da impostare<\/td>/);
   state.openEditOrganization(state.organizations.value[0]);
   assert.equal(state.organizationForm.sport, '');
-  assert.match(html(), /<select required>/);
+  const radios = html().match(/<input\b[^>]*type="radio"[^>]*>/g) || [];
+  assert.equal(radios.length, 3);
+  assert.ok(radios.every(radio => !radio.includes(' checked')));
   state.activeSection.value = 'organization-detail';
   state.organizationDetail.value = { organization: state.organizations.value[1], stats: {} };
   assert.match(html(), /<dt>Sport praticato<\/dt>\s*<dd>Pallavolo<\/dd>/);
