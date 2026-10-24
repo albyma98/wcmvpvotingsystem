@@ -19,3 +19,18 @@ export function clubContactPhoneLink(phone = '') {
   const number = phone.replace(/[^\d+]/g, '')
   return /\d/.test(number) ? `tel:${number}` : ''
 }
+
+export function formatClubDate(value) {
+  if (!value) return 'Data da definire'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date)
+}
+
+export function clubInitials(name) {
+  return String(name || '').split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase()
+}
+
+export function clubScoreLabel(match) {
+  return match.home ? `${match.scoreFor} – ${match.scoreAgainst}` : `${match.scoreAgainst} – ${match.scoreFor}`
+}
