@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { clubContactPhoneLink, clubHomeTiles } from '../clubHub'
 
 const props = defineProps({ slug: { type: String, required: true }, teamSlug: { type: String, default: '' } })
 const data = ref(null)
@@ -20,22 +21,12 @@ const teamModalLoading = ref(false)
 const teamModalError = ref('')
 const teamModalCache = new Map()
 let teamRequestSequence = 0
-const homeTeams = computed(() => (data.value?.teams ?? []).slice(0, 4))
+const contacts = computed(() => club.value.contacts ?? [])
 const featuredMatch = computed(() => {
   const matches = data.value?.matches ?? []
   return matches.find(match => match.status === 'live') || upcoming.value[0] || results.value[0] || null
 })
-const homeTiles = computed(() => [
-  ...homeTeams.value.map((team, index) => ({
-    id: `team-${team.id}`, kind: 'team', team,
-    label: team.name, sub: team.championship || team.category || 'Scopri la squadra',
-    icon: ['🏐', '⚡', '🏆', '⭐'][index % 4],
-  })),
-  { id: 'matches', kind: 'panel', panel: 'matches', label: 'Partite', sub: `${data.value?.matches?.length ?? 0} appuntamenti`, icon: '📅' },
-  { id: 'announcements', kind: 'panel', panel: 'announcements', label: 'Annunci', sub: `${announcements.value.length} comunicazioni`, icon: '📣' },
-  { id: 'news', kind: 'panel', panel: 'news', label: 'News', sub: `${news.value.length} dal club`, icon: '📰' },
-  { id: 'gallery', kind: 'panel', panel: 'gallery', label: 'Gallery', sub: `${data.value?.gallery?.length ?? 0} fotografie`, icon: '📸' },
-])
+const homeTiles = computed(() => clubHomeTiles(data.value ?? {}))
 
 const theme = computed(() => ({
   '--club-primary': club.value.primaryColor || '#172554',
@@ -146,9 +137,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
               <div class="cd-grid">
                 <template v-for="(tile, index) in homeTiles" :key="tile.id">
                   <button v-if="tile.kind === 'team'" :class="['cd-tile', `tone-${index + 1}`]" type="button" :style="tile.team.heroImageUrl ? { backgroundImage: `linear-gradient(150deg, color-mix(in srgb, var(--club-primary) 75%, transparent), rgba(3,7,18,.84)), url('${tile.team.heroImageUrl}')` } : {}" @click="openTeam(tile.team)">
-                    <span class="cd-icon"><img v-if="tile.team.logoUrl" :src="tile.team.logoUrl" alt="" /><i v-else>{{ tile.icon }}</i></span><strong>{{ tile.label }}</strong><small>{{ tile.sub }}</small><b>APRI <i>›</i></b>
+                    <span class="cd-icon"><img v-if="tile.iconImage" :src="tile.iconImage" alt="" /><i v-else>{{ tile.icon }}</i></span><strong>{{ tile.label }}</strong><small>{{ tile.sub }}</small><b>APRI <i>›</i></b>
                   </button>
-                  <button v-else :class="['cd-tile', 'cd-action', `tone-${index + 1}`]" type="button" @click="openPanel(tile.panel)"><span class="cd-icon"><i>{{ tile.icon }}</i></span><strong>{{ tile.label }}</strong><small>{{ tile.sub }}</small><b>VEDI <i>›</i></b></button>
+                  <button v-else :class="['cd-tile', 'cd-action', `tone-${index + 1}`, { 'cd-tile-wide': tile.wide }]" type="button" @click="openPanel(tile.panel)"><span class="cd-icon"><img v-if="tile.iconImage" :src="tile.iconImage" alt="" /><i v-else>{{ tile.icon }}</i></span><strong>{{ tile.label }}</strong><small>{{ tile.sub }}</small><b>VEDI <i>›</i></b></button>
                 </template>
               </div>
             </div>
@@ -157,8 +148,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 
         <transition name="cd-modal">
           <div v-if="activePanel" class="cd-modal-backdrop" @click.self="closePanel">
-            <section :class="['cd-modal', { 'cd-modal-team': activePanel === 'team' }]" role="dialog" aria-modal="true">
-              <header><div><p class="kicker">{{ club.name }}</p><h2>{{ activePanel === 'team' ? (activeTeamData?.team?.name || 'Squadra') : activePanel === 'matches' ? 'Partite' : activePanel === 'announcements' ? 'Annunci' : activePanel === 'news' ? 'News' : 'Photo gallery' }}</h2></div><button type="button" aria-label="Chiudi" @click="closePanel">×</button></header>
+            <section :class="['cd-modal', { 'cd-modal-team': activePanel === 'team' }]" role="dialog" aria-modal="true" aria-labelledby="club-panel-title">
+              <header><div><p class="kicker">{{ club.name }}</p><h2 id="club-panel-title">{{ activePanel === 'team' ? (activeTeamData?.team?.name || 'Squadra') : activePanel === 'matches' ? 'Partite' : activePanel === 'announcements' ? 'Annunci' : activePanel === 'contacts' ? 'Contatti' : activePanel === 'news' ? 'News' : 'Photo gallery' }}</h2></div><button type="button" aria-label="Chiudi" @click="closePanel">×</button></header>
               <div v-if="activePanel === 'team'" class="cd-team-modal">
                 <div v-if="teamModalLoading" class="cd-team-state"><span class="cd-spinner"></span><strong>Caricamento squadra…</strong></div>
                 <div v-else-if="teamModalError" class="cd-team-state cd-team-error"><strong>{{ teamModalError }}</strong><button type="button" @click="closePanel">Chiudi</button></div>
@@ -186,6 +177,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
               <div v-else-if="activePanel === 'matches'" class="cd-modal-list"><article v-for="match in data.matches" :key="match.id" class="cd-modal-match"><div><b>{{ teamName(match) }}</b><time>{{ formatDate(match.scheduledAt) }}</time></div><strong>{{ match.home ? teamName(match) : match.opponent }} <i>{{ match.status === 'completed' ? scoreLabel(match) : 'VS' }}</i> {{ match.home ? match.opponent : teamName(match) }}</strong><small>{{ match.competition }} · {{ match.location }}</small></article><p v-if="!data.matches?.length" class="cd-empty">Calendario in aggiornamento.</p></div>
               <div v-else-if="activePanel === 'announcements'" class="cd-modal-list"><article v-for="post in announcements" :key="post.id" class="cd-modal-post"><span>{{ post.pinned ? 'IN EVIDENZA' : post.teamName || 'SOCIETÀ' }}</span><h3>{{ post.title }}</h3><p>{{ post.body || post.excerpt }}</p><time>{{ formatDate(post.publishedAt) }}</time></article><p v-if="!announcements.length" class="cd-empty">Nessun annuncio pubblicato.</p></div>
               <div v-else-if="activePanel === 'news'" class="cd-modal-news"><article v-for="post in news" :key="post.id"><img v-if="post.imageUrl" :src="post.imageUrl" :alt="post.title" /><div><span>{{ post.teamName || 'SOCIETÀ' }}</span><h3>{{ post.title }}</h3><p>{{ post.excerpt || post.body }}</p></div></article><p v-if="!news.length" class="cd-empty">Nessuna notizia pubblicata.</p></div>
+              <div v-else-if="activePanel === 'contacts'" class="cd-modal-contacts">
+                <article v-for="(contact, index) in contacts" :key="index" class="cd-contact">
+                  <span class="cd-contact-avatar" aria-hidden="true">{{ initials(contact.name) }}</span>
+                  <div class="cd-contact-details">
+                    <p v-if="contact.role" class="cd-contact-role">{{ contact.role }}</p>
+                    <h3>{{ contact.name }}</h3>
+                    <a v-if="contact.phone && clubContactPhoneLink(contact.phone)" :href="clubContactPhoneLink(contact.phone)"><span>Telefono</span>{{ contact.phone }}</a>
+                    <p v-else-if="contact.phone"><span>Telefono</span>{{ contact.phone }}</p>
+                    <a v-if="contact.email" :href="`mailto:${contact.email}`"><span>Email</span>{{ contact.email }}</a>
+                    <p v-if="contact.address"><span>Indirizzo</span>{{ contact.address }}</p>
+                    <a v-if="contact.website" :href="contact.website" target="_blank" rel="noopener noreferrer"><span>Sito web</span>{{ contact.website }}</a>
+                  </div>
+                </article>
+                <p v-if="!contacts.length" class="cd-empty">I contatti della società saranno disponibili a breve.</p>
+              </div>
               <div v-else class="cd-modal-gallery"><figure v-for="photo in data.gallery" :key="photo.id"><img :src="photo.imageUrl" :alt="photo.title || photo.caption" /><figcaption>{{ photo.title || photo.teamName }}</figcaption></figure><p v-if="!data.gallery?.length" class="cd-empty">La gallery è ancora vuota.</p></div>
             </section>
           </div>
@@ -232,4 +238,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 @media(max-width:900px){.cd-status,.cd-season{font-size:9px}.cd-identity p{font-size:10px}.cd-identity small{font-size:11px}.cd-breaking b{font-size:9px}.cd-breaking span{font-size:12px}.cd-match-head{font-size:9px}.cd-match>small{font-size:10px}.cd-tile>strong{font-size:clamp(12px,1.8dvh,15px)}.cd-tile>small{font-size:9px}.cd-tile>b{font-size:8px}.cd-modal>header .kicker{font-size:10px}.cd-team-intro small{font-size:11px}.cd-team-tabs button{font-size:12px}.cd-modal-match>div{font-size:11px}.cd-modal-match>strong{font-size:15px}.cd-modal-match small,.cd-modal-post p,.cd-team-next small{font-size:12px}.cd-team-roster small{font-size:10px}.cd-team-roster strong{font-size:14px}}
 @media(max-width:900px) and (max-height:620px) and (orientation:portrait){.cd-identity small{font-size:9px}.cd-tile>strong{font-size:10px}.cd-match>small{display:none}}
 @media(max-width:960px) and (max-height:520px) and (orientation:landscape){.cd-tile>strong{font-size:11px}.cd-match>small{display:none}}
+.cd-tile-wide{grid-column:span 2}
+.cd-modal-contacts{flex:1;min-height:0;width:min(1200px,100%);margin-inline:auto;overflow:auto;padding:24px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:16px}
+.cd-contact{min-width:0;display:flex;align-items:flex-start;gap:16px;padding:24px;border:1px solid #e2e8f0;border-radius:18px;background:#fff}
+.cd-contact-avatar{flex:none;width:52px;height:52px;display:grid;place-items:center;border-radius:15px;background:color-mix(in srgb,var(--club-primary) 10%,#fff);color:var(--club-primary);font-size:18px;font-weight:900}
+.cd-contact-details{min-width:0;flex:1}.cd-contact h3{margin:0 0 18px;font-size:22px;overflow-wrap:anywhere}.cd-contact-role{margin:0 0 5px;color:var(--club-primary);font-size:12px;font-weight:800}
+.cd-contact-details>a,.cd-contact-details>p:not(.cd-contact-role){display:block;margin:12px 0 0;color:#334155;font-size:15px;line-height:1.5;overflow-wrap:anywhere;white-space:pre-line}
+.cd-contact-details>a{text-decoration:none}.cd-contact-details>a:hover{text-decoration:underline;color:var(--club-primary)}.cd-contact-details span{display:block;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+@media(max-width:600px){.cd-modal-contacts{grid-template-columns:1fr;padding:16px;gap:12px}.cd-contact{padding:18px;gap:12px}.cd-contact h3{font-size:20px}.cd-contact-avatar{width:42px;height:42px;font-size:15px}}
 </style>

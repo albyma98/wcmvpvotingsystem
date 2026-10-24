@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -14,19 +15,30 @@ import (
 var errClubNotFound = errors.New("club not found")
 
 type ClubSite struct {
-	ID             int64  `json:"id"`
-	OrganizationID int64  `json:"organizationId"`
-	Slug           string `json:"slug"`
-	Name           string `json:"name"`
-	Tagline        string `json:"tagline"`
-	City           string `json:"city"`
-	LogoURL        string `json:"logoUrl"`
-	HeroImageURL   string `json:"heroImageUrl"`
-	PrimaryColor   string `json:"primaryColor"`
-	SecondaryColor string `json:"secondaryColor"`
-	SeasonLabel    string `json:"seasonLabel"`
-	Active         bool   `json:"active"`
-	CreatedAt      string `json:"createdAt"`
+	ID             int64             `json:"id"`
+	OrganizationID int64             `json:"organizationId"`
+	Slug           string            `json:"slug"`
+	Name           string            `json:"name"`
+	Tagline        string            `json:"tagline"`
+	City           string            `json:"city"`
+	LogoURL        string            `json:"logoUrl"`
+	HeroImageURL   string            `json:"heroImageUrl"`
+	PrimaryColor   string            `json:"primaryColor"`
+	SecondaryColor string            `json:"secondaryColor"`
+	SeasonLabel    string            `json:"seasonLabel"`
+	Active         bool              `json:"active"`
+	CreatedAt      string            `json:"createdAt"`
+	Contacts       []ClubContact     `json:"contacts"`
+	TileIcons      map[string]string `json:"tileIcons"`
+}
+
+type ClubContact struct {
+	Name    string `json:"name"`
+	Role    string `json:"role"`
+	Phone   string `json:"phone"`
+	Email   string `json:"email"`
+	Address string `json:"address"`
+	Website string `json:"website"`
 }
 
 type ClubTeam struct {
@@ -117,6 +129,8 @@ func (s *Store) EnsureClubTables() error {
 			primary_color TEXT NOT NULL DEFAULT '#172554',
 			secondary_color TEXT NOT NULL DEFAULT '#f59e0b',
 			season_label TEXT NOT NULL DEFAULT '',
+			contacts_json TEXT NOT NULL DEFAULT '[]',
+			tile_icons_json TEXT NOT NULL DEFAULT '{}',
 			active INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -210,6 +224,21 @@ func (s *Store) EnsureClubTables() error {
 			return fmt.Errorf("club tables: %w", err)
 		}
 	}
+	// Existing Club Hubs receive empty settings without changing their content.
+	columns, err := s.tableColumns("club_sites")
+	if err != nil {
+		return err
+	}
+	for _, column := range []struct{ name, definition string }{
+		{"contacts_json", "TEXT NOT NULL DEFAULT '[]'"},
+		{"tile_icons_json", "TEXT NOT NULL DEFAULT '{}'"},
+	} {
+		if !columns[column.name] {
+			if _, err := s.db.Exec("ALTER TABLE club_sites ADD COLUMN " + column.name + " " + column.definition); err != nil {
+				return fmt.Errorf("club settings migration: %w", err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -221,11 +250,11 @@ func boolInt(v bool) int {
 }
 
 func (s *Store) ClubSiteBySlug(ctx context.Context, slug string) (ClubSite, error) {
-	return scanClubSite(s.db.QueryRowContext(ctx, `SELECT id, organization_id, slug, name, tagline, city, logo_url, hero_image_url, primary_color, secondary_color, season_label, active, created_at FROM club_sites WHERE slug=?`, strings.TrimSpace(slug)))
+	return scanClubSite(s.db.QueryRowContext(ctx, `SELECT id, organization_id, slug, name, tagline, city, logo_url, hero_image_url, primary_color, secondary_color, season_label, active, created_at, contacts_json, tile_icons_json FROM club_sites WHERE slug=?`, strings.TrimSpace(slug)))
 }
 
 func (s *Store) ClubSiteByID(ctx context.Context, id int64) (ClubSite, error) {
-	return scanClubSite(s.db.QueryRowContext(ctx, `SELECT id, organization_id, slug, name, tagline, city, logo_url, hero_image_url, primary_color, secondary_color, season_label, active, created_at FROM club_sites WHERE id=?`, id))
+	return scanClubSite(s.db.QueryRowContext(ctx, `SELECT id, organization_id, slug, name, tagline, city, logo_url, hero_image_url, primary_color, secondary_color, season_label, active, created_at, contacts_json, tile_icons_json FROM club_sites WHERE id=?`, id))
 }
 
 type rowScanner interface {
@@ -235,11 +264,21 @@ type rowScanner interface {
 func scanClubSite(row rowScanner) (ClubSite, error) {
 	var v ClubSite
 	var active int
-	err := row.Scan(&v.ID, &v.OrganizationID, &v.Slug, &v.Name, &v.Tagline, &v.City, &v.LogoURL, &v.HeroImageURL, &v.PrimaryColor, &v.SecondaryColor, &v.SeasonLabel, &active, &v.CreatedAt)
+	var contactsJSON, iconsJSON string
+	err := row.Scan(&v.ID, &v.OrganizationID, &v.Slug, &v.Name, &v.Tagline, &v.City, &v.LogoURL, &v.HeroImageURL, &v.PrimaryColor, &v.SecondaryColor, &v.SeasonLabel, &active, &v.CreatedAt, &contactsJSON, &iconsJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, errClubNotFound
 	}
 	v.Active = active != 0
+	if err != nil {
+		return v, err
+	}
+	v.Contacts = []ClubContact{}
+	v.TileIcons = map[string]string{}
+	if err := json.Unmarshal([]byte(contactsJSON), &v.Contacts); err != nil {
+		return v, err
+	}
+	err = json.Unmarshal([]byte(iconsJSON), &v.TileIcons)
 	return v, err
 }
 
@@ -302,7 +341,15 @@ func (s *Store) CreateClubSite(ctx context.Context, site ClubSite, categories []
 }
 
 func (s *Store) UpdateClubSite(ctx context.Context, site ClubSite) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE club_sites SET name=?,tagline=?,city=?,logo_url=?,hero_image_url=?,primary_color=?,secondary_color=?,season_label=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`, site.Name, site.Tagline, site.City, site.LogoURL, site.HeroImageURL, site.PrimaryColor, site.SecondaryColor, site.SeasonLabel, boolInt(site.Active), site.ID)
+	contactsJSON, err := json.Marshal(site.Contacts)
+	if err != nil {
+		return err
+	}
+	iconsJSON, err := json.Marshal(site.TileIcons)
+	if err != nil {
+		return err
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE club_sites SET name=?,tagline=?,city=?,logo_url=?,hero_image_url=?,primary_color=?,secondary_color=?,season_label=?,active=?,contacts_json=?,tile_icons_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`, site.Name, site.Tagline, site.City, site.LogoURL, site.HeroImageURL, site.PrimaryColor, site.SecondaryColor, site.SeasonLabel, boolInt(site.Active), string(contactsJSON), string(iconsJSON), site.ID)
 	if err != nil {
 		return err
 	}

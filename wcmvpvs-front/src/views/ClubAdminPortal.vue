@@ -1,5 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import ClubTileIconUpload from '../components/ClubTileIconUpload.vue'
+import { clubHomeTiles } from '../clubHub'
 
 const props = defineProps({ slug: { type: String, required: true } })
 const authenticated = ref(false)
@@ -12,7 +14,8 @@ const overview = ref({ club: {}, teams: [], posts: [], gallery: [], matches: [],
 const playersByTeam = ref({})
 const login = reactive({ username: `club-${props.slug}`, password: '' })
 
-const settings = reactive({})
+const settings = reactive({ contacts: [], tileIcons: {} })
+const iconUploads = ref(0)
 const teamForm = reactive(emptyTeam())
 const postForm = reactive({ kind: 'announcement', title: '', excerpt: '', body: '', imageUrl: '', teamId: 0, pinned: false, active: true, publishedAt: '' })
 const galleryForm = reactive({ title: '', imageUrl: '', caption: '', eventDate: '', teamId: 0, active: true })
@@ -23,8 +26,10 @@ const rosterText = ref('')
 const tabs = [
   ['dashboard','Panoramica'], ['settings','Homepage'], ['teams','Squadre e roster'],
   ['posts','Annunci e news'], ['gallery','Photo gallery'], ['matches','Calendario'],
+  ['contacts','Contatti'],
 ]
 const teams = computed(() => overview.value.teams ?? [])
+const editableTiles = computed(() => clubHomeTiles({ ...overview.value, club: settings, teams: teams.value.filter(team => team.active) }))
 
 function emptyTeam() { return { id: 0, name: '', slug: '', category: '', gender: 'mixed', championship: '', description: '', logoUrl: '', heroImageUrl: '', position: 0, active: true } }
 function resetObject(target, source) { Object.keys(target).forEach(key => delete target[key]); Object.assign(target, source) }
@@ -46,7 +51,11 @@ async function loadOverview() {
   try {
     overview.value = await request('/overview')
     authenticated.value = true
-    resetObject(settings, overview.value.club)
+    resetObject(settings, {
+      ...overview.value.club,
+      contacts: (overview.value.club.contacts ?? []).map(contact => ({ ...contact })),
+      tileIcons: { ...(overview.value.club.tileIcons ?? {}) },
+    })
     await loadTeams()
   } catch (e) { if (e.message !== 'unauthorized') error.value = 'Impossibile caricare il CMS.' }
   finally { checking.value = false }
@@ -55,7 +64,40 @@ async function loadTeams() { const data = await request('/teams'); overview.valu
 async function loginSubmit() { busy.value = true; error.value = ''; try { await request('/login', { method:'POST', body: JSON.stringify(login) }); authenticated.value = true; await loadOverview() } catch { error.value = 'Credenziali non valide.' } finally { busy.value = false } }
 async function logout() { await request('/logout', { method:'POST' }).catch(()=>{}); authenticated.value = false; login.password = '' }
 
-async function saveSettings() { busy.value=true;try{await request('/settings',{method:'PUT',body:JSON.stringify(settings)});message('Homepage aggiornata.');await loadOverview()}catch{error.value='Salvataggio fallito.'}finally{busy.value=false} }
+async function saveSettings() {
+  if (busy.value || iconUploads.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await request('/settings', { method: 'PUT', body: JSON.stringify(settings) })
+    message(activeTab.value === 'contacts' ? 'Contatti aggiornati.' : 'Homepage aggiornata.')
+    await loadOverview()
+  } catch (e) {
+    const messages = {
+      invalid_contact: 'Inserisci un nome per ogni contatto e verifica la lunghezza dei campi.',
+      invalid_contact_email: 'Verifica gli indirizzi email dei contatti.',
+      invalid_contact_website: 'I siti web dei contatti devono iniziare con https:// o http://.',
+      too_many_contacts: 'Puoi inserire al massimo 50 contatti.',
+      tile_icon_too_large: 'Un’icona è troppo pesante. Carica un’immagine più piccola.',
+      invalid_tile_icon: 'Una delle icone non è valida. Prova a caricarla nuovamente.',
+    }
+    error.value = messages[e.message] || 'Salvataggio fallito. Riprova.'
+  } finally { busy.value = false }
+}
+function addContact() {
+  settings.contacts.push({ name: '', role: '', phone: '', email: '', address: '', website: '' })
+}
+function moveContact(index, direction) {
+  const target = index + direction
+  if (target < 0 || target >= settings.contacts.length) return
+  const [contact] = settings.contacts.splice(index, 1)
+  settings.contacts.splice(target, 0, contact)
+}
+function setTileIcon(id, value) {
+  if (value) settings.tileIcons[id] = value
+  else delete settings.tileIcons[id]
+}
+function trackIconUpload(loading) { iconUploads.value = Math.max(0, iconUploads.value + (loading ? 1 : -1)) }
 function editTeam(team) { resetObject(teamForm, { ...emptyTeam(), ...team }); activeTab.value='teams' }
 async function saveTeam() { if(!teamForm.name.trim())return;busy.value=true;try{const path=teamForm.id?`/teams/${teamForm.id}`:'/teams';await request(path,{method:teamForm.id?'PUT':'POST',body:JSON.stringify(teamForm)});resetObject(teamForm,emptyTeam());await loadTeams();message('Squadra salvata.')}catch{error.value='Impossibile salvare la squadra.'}finally{busy.value=false} }
 async function deleteTeam(team) { if(!confirm(`Eliminare ${team.name} con roster, partite e contenuti collegati?`))return;await request(`/teams/${team.id}`,{method:'DELETE'});await loadOverview() }
@@ -96,7 +138,42 @@ onMounted(loadOverview)
           <section class="card"><h2>Avvio rapido</h2><div class="quick"><button @click="activeTab='settings'">1. Personalizza homepage</button><button @click="activeTab='teams'">2. Completa squadre e roster</button><button @click="activeTab='matches'">3. Inserisci calendario</button><button @click="activeTab='posts'">4. Pubblica un annuncio</button></div></section>
         </div>
 
-        <section v-else-if="activeTab==='settings'" class="card"><h2>Identità e homepage</h2><div class="form-grid"><label>Nome<input v-model="settings.name" /></label><label>Città<input v-model="settings.city" /></label><label class="wide">Claim<input v-model="settings.tagline" /></label><label>Stagione<input v-model="settings.seasonLabel" /></label><label>Logo URL<input v-model="settings.logoUrl" /></label><label class="wide">Immagine hero URL<input v-model="settings.heroImageUrl" /></label><label>Colore primario<input v-model="settings.primaryColor" type="color" /></label><label>Colore accento<input v-model="settings.secondaryColor" type="color" /></label><label class="check"><input v-model="settings.active" type="checkbox" /> Sito pubblico attivo</label></div><button class="primary" :disabled="busy" @click="saveSettings">Salva homepage</button></section>
+        <form v-else-if="activeTab==='settings'" class="card" @submit.prevent="saveSettings">
+          <h2>Identità e homepage</h2>
+          <div class="form-grid"><label>Nome<input v-model="settings.name" required /></label><label>Città<input v-model="settings.city" /></label><label class="wide">Claim<input v-model="settings.tagline" /></label><label>Stagione<input v-model="settings.seasonLabel" /></label><label>Logo URL<input v-model="settings.logoUrl" /></label><label class="wide">Immagine hero URL<input v-model="settings.heroImageUrl" /></label><label>Colore primario<input v-model="settings.primaryColor" type="color" /></label><label>Colore accento<input v-model="settings.secondaryColor" type="color" /></label><label class="check"><input v-model="settings.active" type="checkbox" /> Sito pubblico attivo</label></div>
+          <h2>Icone delle tile</h2>
+          <p class="form-hint">Carica un’immagine per ogni tile della homepage. Le immagini vengono adattate automaticamente; premi Salva homepage per pubblicarle.</p>
+          <div class="tile-icons-grid">
+            <ClubTileIconUpload v-for="tile in editableTiles" :key="tile.id" :model-value="settings.tileIcons[tile.id] || ''" :label="tile.label" :fallback-image="tile.team?.logoUrl || ''" :fallback-icon="tile.icon" @update:model-value="setTileIcon(tile.id, $event)" @uploading="trackIconUpload" />
+          </div>
+          <button class="primary" :disabled="busy || iconUploads > 0">{{ busy ? 'Salvataggio…' : 'Salva homepage' }}</button>
+        </form>
+
+        <form v-else-if="activeTab==='contacts'" class="card contacts-editor" @submit.prevent="saveSettings">
+          <h2>Contatti della società</h2>
+          <p class="form-hint">Questi contatti compaiono nella modale Contatti del sito pubblico, nell’ordine scelto qui.</p>
+          <p v-if="!settings.contacts.length" class="form-hint">Nessun contatto inserito. Aggiungi il primo contatto della società.</p>
+          <fieldset v-for="(contact, index) in settings.contacts" :key="index" class="contact-editor">
+            <legend>Contatto {{ index + 1 }}</legend>
+            <div class="contact-actions">
+              <button type="button" :disabled="index === 0 || busy" :aria-label="`Sposta in alto il contatto ${index + 1}`" @click="moveContact(index, -1)">↑</button>
+              <button type="button" :disabled="index === settings.contacts.length - 1 || busy" :aria-label="`Sposta in basso il contatto ${index + 1}`" @click="moveContact(index, 1)">↓</button>
+              <button class="danger" type="button" :disabled="busy" :aria-label="`Rimuovi il contatto ${index + 1}`" @click="settings.contacts.splice(index, 1)">Rimuovi</button>
+            </div>
+            <div class="form-grid">
+              <label>Nome o ufficio *<input v-model="contact.name" required maxlength="200" placeholder="Segreteria del club" /></label>
+              <label>Ruolo o funzione<input v-model="contact.role" maxlength="200" placeholder="Informazioni e iscrizioni" /></label>
+              <label>Telefono<input v-model="contact.phone" type="tel" maxlength="100" placeholder="+39 012 3456789" /></label>
+              <label>Email<input v-model="contact.email" type="email" maxlength="254" placeholder="info@club.it" /></label>
+              <label class="wide">Indirizzo<textarea v-model="contact.address" rows="2" maxlength="500" placeholder="Via, numero civico, città" /></label>
+              <label class="wide">Sito web<input v-model="contact.website" type="url" maxlength="2000" placeholder="https://…" /></label>
+            </div>
+          </fieldset>
+          <div class="buttons">
+            <button type="button" :disabled="busy || settings.contacts.length >= 50" @click="addContact">+ Aggiungi contatto</button>
+            <button class="primary" :disabled="busy || iconUploads > 0">{{ busy ? 'Salvataggio…' : 'Salva contatti' }}</button>
+          </div>
+        </form>
 
         <div v-else-if="activeTab==='teams'" class="split">
           <section class="card"><h2>{{teamForm.id?'Modifica squadra':'Nuova squadra'}}</h2><div class="form-grid single"><label>Nome<input v-model="teamForm.name" placeholder="Prima Divisione Femminile" /></label><label>Categoria<input v-model="teamForm.category" placeholder="Prima Divisione" /></label><label>Genere<select v-model="teamForm.gender"><option value="female">Femminile</option><option value="male">Maschile</option><option value="mixed">Misto</option></select></label><label>Campionato<input v-model="teamForm.championship" /></label><label>Logo URL<input v-model="teamForm.logoUrl" /></label><label>Hero URL<input v-model="teamForm.heroImageUrl" /></label><label>Descrizione<textarea v-model="teamForm.description" rows="4" /></label><label class="check"><input v-model="teamForm.active" type="checkbox" /> Visibile</label></div><div class="buttons"><button class="primary" @click="saveTeam">Salva</button><button v-if="teamForm.id" @click="resetObject(teamForm,emptyTeam())">Annulla</button></div></section>
@@ -125,4 +202,7 @@ onMounted(loadOverview)
 
 <style scoped>
 *{box-sizing:border-box}.club-admin{min-height:100vh;background:#07101f;color:#e5e7eb;font-family:Inter,ui-sans-serif,system-ui,sans-serif}.center,.login-shell{min-height:100vh;display:grid;place-items:center}.login-shell{background:radial-gradient(circle at 20% 20%,#172554,#07101f 55%)}.login-card{width:min(460px,calc(100% - 32px));padding:38px;background:rgba(15,23,42,.88);border:1px solid #263449;border-radius:24px;box-shadow:0 30px 80px rgba(0,0,0,.35)}.login-card h1{font-size:38px;letter-spacing:-.05em;margin:8px 0}.login-card>p{color:#94a3b8}.login-card form{display:grid;gap:14px;margin-top:24px}.login-card label,.form-grid label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#94a3b8}.login-card input,.form-grid input,.form-grid textarea,.form-grid select,.roster-editor textarea{width:100%;background:#060d19;border:1px solid #293548;border-radius:9px;padding:10px 11px;color:#f8fafc;font:inherit}.login-card button,.primary{border:0;border-radius:9px;padding:11px 16px;background:#f59e0b;color:#111827;font-weight:900;cursor:pointer}.eyebrow{margin:0;color:#f59e0b;font-size:10px;font-weight:950;letter-spacing:.16em}.error{color:#f87171}.notice{position:fixed;right:24px;top:22px;background:#dcfce7;color:#166534;padding:11px 16px;border-radius:10px;z-index:10}aside{position:fixed;inset:0 auto 0 0;width:245px;background:#030712;border-right:1px solid #172033;padding:24px 18px;display:flex;flex-direction:column}.admin-brand{display:flex;align-items:center;gap:11px;color:#fff;text-decoration:none;margin-bottom:34px}.admin-brand>span{width:43px;height:43px;display:grid;place-items:center;border-radius:11px;background:#f59e0b;color:#111827;font-weight:950}.admin-brand div{display:flex;flex-direction:column}.admin-brand small{color:#64748b}.club-admin nav{display:grid;gap:6px}.club-admin nav button{border:0;border-radius:9px;padding:11px 13px;text-align:left;background:transparent;color:#94a3b8;font-weight:700;cursor:pointer}.club-admin nav button.active{background:#172554;color:#fff}.aside-bottom{margin-top:auto;display:grid;gap:10px}.aside-bottom a,.aside-bottom button{color:#94a3b8;background:transparent;border:0;text-align:left;text-decoration:none;cursor:pointer}.workspace{margin-left:245px;min-height:100vh;padding:34px max(28px,calc((100vw - 1220px)/2))}.workspace>header{display:flex;align-items:center;justify-content:space-between;margin-bottom:30px}.workspace h1{font-size:36px;letter-spacing:-.04em;margin:4px 0}.status{font-size:10px;font-weight:900;padding:7px 10px;border-radius:999px;background:#052e16;color:#4ade80}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}.stats article,.card{background:#0e1727;border:1px solid #233047;border-radius:16px;padding:20px}.stats span{display:block;color:#64748b;font-size:12px}.stats strong{font-size:34px}.card{margin-bottom:16px}.card h2{margin:0 0 18px}.welcome{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(120deg,#172554,#111827)}.welcome h2{font-size:30px;margin:6px 0}.welcome p{color:#94a3b8}.welcome a{background:#f59e0b;color:#111827;padding:11px 16px;border-radius:9px;text-decoration:none;font-weight:900}.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.quick button,.buttons button,.list button{background:#111d31;border:1px solid #2b3a52;border-radius:9px;color:#cbd5e1;padding:10px;cursor:pointer}.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:13px}.form-grid.single{grid-template-columns:1fr}.form-grid .wide{grid-column:1/-1}.form-grid .check{flex-direction:row;align-items:center}.form-grid .check input{width:auto}.card>.primary{margin-top:18px}.split{display:grid;grid-template-columns:minmax(290px,.75fr) minmax(420px,1.25fr);gap:16px;align-items:start}.roster-editor{grid-column:1/-1}.roster-editor>p{color:#94a3b8}.roster-editor textarea{resize:vertical}.buttons{display:flex;gap:8px;margin-top:14px}.list{display:grid;gap:8px}.list article{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;background:#091221;border:1px solid #1c2940;border-radius:10px}.list small{display:block;color:#64748b;margin-top:3px}.list .danger,.actions .danger{color:#f87171}.photo-admin{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.photo-admin figure{margin:0;background:#091221;border-radius:10px;overflow:hidden}.photo-admin img{width:100%;aspect-ratio:1;object-fit:cover}.photo-admin figcaption{display:flex;justify-content:space-between;padding:8px;font-size:11px}.photo-admin button{border:0;background:transparent;color:#f87171;cursor:pointer}@media(max-width:900px){aside{position:static;width:100%;height:auto}.club-admin nav{display:flex;overflow:auto}.aside-bottom{display:none}.workspace{margin-left:0;padding:22px 16px}.stats{grid-template-columns:repeat(2,1fr)}.split,.form-grid{grid-template-columns:1fr}.quick{grid-template-columns:1fr 1fr}.welcome{align-items:flex-start;gap:20px;flex-direction:column}.photo-admin{grid-template-columns:repeat(2,1fr)}}
+.form-hint{color:#94a3b8;font-size:13px;line-height:1.5}.tile-icons-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0 24px}.contact-editor{position:relative;min-width:0;border:1px solid #263449;border-radius:16px;padding:18px;margin:20px 0}.contact-editor legend{padding:0 8px;color:#f8fafc;font-size:14px;font-weight:800}.contact-actions{display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px}.contact-actions button,.contacts-editor .buttons>button:not(.primary){border:1px solid #334155;background:#172238;color:#cbd5e1;border-radius:8px;padding:8px 12px;cursor:pointer}.contact-actions button.danger{color:#fca5a5}.club-admin button:disabled{opacity:.5;cursor:not-allowed}
+.form-grid+h2{margin-top:32px}.contacts-editor .buttons>.primary{background:#f59e0b;color:#111827;border-color:#f59e0b}
+@media(max-width:1100px){.tile-icons-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.tile-icons-grid{grid-template-columns:1fr}.contact-editor{padding:12px}.contacts-editor .buttons{flex-wrap:wrap}}
 </style>

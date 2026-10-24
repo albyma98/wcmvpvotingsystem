@@ -331,15 +331,30 @@ func (rt *_router) clubAdminUpdateSettings(w http.ResponseWriter, r *http.Reques
 		http.Error(w, `{"error":"not_found"}`, 404)
 		return
 	}
-	if json.NewDecoder(r.Body).Decode(&site) != nil {
+	// Decode a new map so an empty object can restore all default icons.
+	existingIcons := site.TileIcons
+	site.TileIcons = nil
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, maxClubSettingsBytes)).Decode(&site) != nil {
 		http.Error(w, `{"error":"bad_json"}`, 400)
 		return
+	}
+	if site.TileIcons == nil {
+		site.TileIcons = existingIcons
 	}
 	site.ID = siteID
 	site.PrimaryColor = cleanColor(site.PrimaryColor, "#172554")
 	site.SecondaryColor = cleanColor(site.SecondaryColor, "#f59e0b")
 	if strings.TrimSpace(site.Name) == "" {
 		http.Error(w, `{"error":"name_required"}`, 400)
+		return
+	}
+	teams, err := rt.store.ListClubTeams(r.Context(), siteID, false)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, 500)
+		return
+	}
+	if err := validateClubHomeSettings(&site, teams); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if err = rt.store.UpdateClubSite(r.Context(), site); err != nil {
