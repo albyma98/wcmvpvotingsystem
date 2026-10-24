@@ -77,6 +77,9 @@ func TestOrganizationColorsPersistenceAndValidation(t *testing.T) {
 	if legacy.PrimaryColor != DefaultOrganizationPrimaryColor || legacy.SecondaryColor != DefaultOrganizationSecondaryColor || legacy.TertiaryColor != DefaultOrganizationTertiaryColor {
 		t.Fatalf("legacy defaults: %+v", legacy)
 	}
+	if legacy.Sport != "" {
+		t.Fatalf("migration assigned a sport to an existing organization: %+v", legacy)
+	}
 	// Running startup migrations again must be safe.
 	if _, err := New(conn); err != nil {
 		t.Fatal(err)
