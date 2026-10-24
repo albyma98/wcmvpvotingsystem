@@ -10,7 +10,8 @@ export function clubHomeTiles(data = {}) {
     })),
     { id: 'matches', kind: 'panel', panel: 'matches', label: 'Partite', sub: `${data.matches?.length ?? 0} appuntamenti`, icon: '📅', iconImage: icons.matches || '' },
     { id: 'announcements', kind: 'panel', panel: 'announcements', label: 'Annunci', sub: `${(data.posts ?? []).filter(post => post.kind === 'announcement').length} comunicazioni`, icon: '📣', iconImage: icons.announcements || '' },
-    { id: 'contacts', kind: 'panel', panel: 'contacts', label: 'Contatti', sub: contacts.length ? `${contacts.length} ${contacts.length === 1 ? 'contatto' : 'contatti'} della società` : 'Scrivici o vieni a trovarci', icon: '☎', iconImage: icons.contacts || '', wide: true },
+    { id: 'contacts', kind: 'panel', panel: 'contacts', label: 'Contatti', sub: contacts.length ? `${contacts.length} ${contacts.length === 1 ? 'contatto' : 'contatti'} della società` : 'Scrivici o vieni a trovarci', icon: '☎', iconImage: icons.contacts || '' },
+    { id: 'sponsors', kind: 'panel', panel: 'sponsors', label: 'I nostri Sponsor', sub: 'Chi sostiene la nostra società', icon: '🤝', iconImage: icons.sponsors || '' },
   ]
 }
 

@@ -43,7 +43,7 @@ func validateClubHomeSettings(site *ClubSite, teams []ClubTeam) error {
 			}
 		}
 	}
-	allowedTiles := map[string]bool{"matches": true, "announcements": true, "contacts": true}
+	allowedTiles := map[string]bool{"matches": true, "announcements": true, "contacts": true, "sponsors": true}
 	for _, team := range teams {
 		allowedTiles[fmt.Sprintf("team-%d", team.ID)] = true
 	}

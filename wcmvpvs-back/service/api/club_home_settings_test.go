@@ -60,7 +60,7 @@ func TestClubHomeSettingsCMSPublicRoundTrip(t *testing.T) {
 		{Name: " Segreteria ", Role: "Iscrizioni", Phone: "+39 012 3456789", Email: "info@aurora.it", Address: "Via Roma 1", Website: "https://aurora.it"},
 		{Name: "Mario Rossi", Role: "Direttore sportivo"},
 	}
-	encoded, _ := json.Marshal(map[string]interface{}{"contacts": contacts, "tileIcons": map[string]string{"contacts": clubTestIcon, teamKey: clubTestIcon}})
+	encoded, _ := json.Marshal(map[string]interface{}{"contacts": contacts, "tileIcons": map[string]string{"contacts": clubTestIcon, "sponsors": clubTestIcon, teamKey: clubTestIcon}})
 	if w := call("PUT", "/v1/club-admin/aurora/settings", string(encoded), ""); w.Code != 401 {
 		t.Fatalf("anonymous write: %d", w.Code)
 	}
@@ -78,7 +78,7 @@ func TestClubHomeSettingsCMSPublicRoundTrip(t *testing.T) {
 		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &payload) != nil {
 			t.Fatalf("load %s: %d %s", path, w.Code, w.Body.String())
 		}
-		if len(payload.Club.Contacts) != 2 || payload.Club.Contacts[0].Name != "Segreteria" || payload.Club.Contacts[0].Email != "info@aurora.it" || payload.Club.TileIcons[teamKey] != clubTestIcon || payload.Club.TileIcons["contacts"] != clubTestIcon {
+		if len(payload.Club.Contacts) != 2 || payload.Club.Contacts[0].Name != "Segreteria" || payload.Club.Contacts[0].Email != "info@aurora.it" || payload.Club.TileIcons[teamKey] != clubTestIcon || payload.Club.TileIcons["contacts"] != clubTestIcon || payload.Club.TileIcons["sponsors"] != clubTestIcon {
 			t.Fatalf("lost saved settings: %#v", payload.Club)
 		}
 	}

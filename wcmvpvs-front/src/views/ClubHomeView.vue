@@ -139,7 +139,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
                   <button v-if="tile.kind === 'team'" :class="['cd-tile', `tone-${index + 1}`]" type="button" :style="tile.team.heroImageUrl ? { backgroundImage: `linear-gradient(150deg, color-mix(in srgb, var(--club-primary) 75%, transparent), rgba(3,7,18,.84)), url('${tile.team.heroImageUrl}')` } : {}" @click="openTeam(tile.team)">
                     <span class="cd-icon"><img v-if="tile.iconImage" :src="tile.iconImage" alt="" /><i v-else>{{ tile.icon }}</i></span><strong>{{ tile.label }}</strong><small>{{ tile.sub }}</small><b>APRI <i>›</i></b>
                   </button>
-                  <button v-else :class="['cd-tile', 'cd-action', `tone-${index + 1}`, { 'cd-tile-wide': tile.wide }]" type="button" @click="openPanel(tile.panel)"><span class="cd-icon"><img v-if="tile.iconImage" :src="tile.iconImage" alt="" /><i v-else>{{ tile.icon }}</i></span><strong>{{ tile.label }}</strong><small>{{ tile.sub }}</small><b>VEDI <i>›</i></b></button>
+                  <button v-else :class="['cd-tile', 'cd-action', `tone-${index + 1}`]" type="button" @click="openPanel(tile.panel)"><span class="cd-icon"><img v-if="tile.iconImage" :src="tile.iconImage" alt="" /><i v-else>{{ tile.icon }}</i></span><strong>{{ tile.label }}</strong><small>{{ tile.sub }}</small><b>VEDI <i>›</i></b></button>
                 </template>
               </div>
             </div>
@@ -149,7 +149,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
         <transition name="cd-modal">
           <div v-if="activePanel" class="cd-modal-backdrop" @click.self="closePanel">
             <section :class="['cd-modal', { 'cd-modal-team': activePanel === 'team' }]" role="dialog" aria-modal="true" aria-labelledby="club-panel-title">
-              <header><div><p class="kicker">{{ club.name }}</p><h2 id="club-panel-title">{{ activePanel === 'team' ? (activeTeamData?.team?.name || 'Squadra') : activePanel === 'matches' ? 'Partite' : activePanel === 'announcements' ? 'Annunci' : activePanel === 'contacts' ? 'Contatti' : activePanel === 'news' ? 'News' : 'Photo gallery' }}</h2></div><button type="button" aria-label="Chiudi" @click="closePanel">×</button></header>
+              <header><div><p class="kicker">{{ club.name }}</p><h2 id="club-panel-title">{{ activePanel === 'team' ? (activeTeamData?.team?.name || 'Squadra') : activePanel === 'matches' ? 'Partite' : activePanel === 'announcements' ? 'Annunci' : activePanel === 'contacts' ? 'Contatti' : activePanel === 'sponsors' ? 'I nostri Sponsor' : activePanel === 'news' ? 'News' : 'Photo gallery' }}</h2></div><button type="button" aria-label="Chiudi" @click="closePanel">×</button></header>
               <div v-if="activePanel === 'team'" class="cd-team-modal">
                 <div v-if="teamModalLoading" class="cd-team-state"><span class="cd-spinner"></span><strong>Caricamento squadra…</strong></div>
                 <div v-else-if="teamModalError" class="cd-team-state cd-team-error"><strong>{{ teamModalError }}</strong><button type="button" @click="closePanel">Chiudi</button></div>
@@ -192,6 +192,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
                 </article>
                 <p v-if="!contacts.length" class="cd-empty">I contatti della società saranno disponibili a breve.</p>
               </div>
+              <div v-else-if="activePanel === 'sponsors'" class="cd-modal-list"><p class="cd-empty">I nostri sponsor saranno disponibili a breve.</p></div>
               <div v-else class="cd-modal-gallery"><figure v-for="photo in data.gallery" :key="photo.id"><img :src="photo.imageUrl" :alt="photo.title || photo.caption" /><figcaption>{{ photo.title || photo.teamName }}</figcaption></figure><p v-if="!data.gallery?.length" class="cd-empty">La gallery è ancora vuota.</p></div>
             </section>
           </div>
@@ -238,7 +239,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 @media(max-width:900px){.cd-status,.cd-season{font-size:9px}.cd-identity p{font-size:10px}.cd-identity small{font-size:11px}.cd-breaking b{font-size:9px}.cd-breaking span{font-size:12px}.cd-match-head{font-size:9px}.cd-match>small{font-size:10px}.cd-tile>strong{font-size:clamp(12px,1.8dvh,15px)}.cd-tile>small{font-size:9px}.cd-tile>b{font-size:8px}.cd-modal>header .kicker{font-size:10px}.cd-team-intro small{font-size:11px}.cd-team-tabs button{font-size:12px}.cd-modal-match>div{font-size:11px}.cd-modal-match>strong{font-size:15px}.cd-modal-match small,.cd-modal-post p,.cd-team-next small{font-size:12px}.cd-team-roster small{font-size:10px}.cd-team-roster strong{font-size:14px}}
 @media(max-width:900px) and (max-height:620px) and (orientation:portrait){.cd-identity small{font-size:9px}.cd-tile>strong{font-size:10px}.cd-match>small{display:none}}
 @media(max-width:960px) and (max-height:520px) and (orientation:landscape){.cd-tile>strong{font-size:11px}.cd-match>small{display:none}}
-.cd-tile-wide{grid-column:span 2}
 .cd-modal-contacts{flex:1;min-height:0;width:min(1200px,100%);margin-inline:auto;overflow:auto;padding:24px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:16px}
 .cd-contact{min-width:0;display:flex;align-items:flex-start;gap:16px;padding:24px;border:1px solid #e2e8f0;border-radius:18px;background:#fff}
 .cd-contact-avatar{flex:none;width:52px;height:52px;display:grid;place-items:center;border-radius:15px;background:color-mix(in srgb,var(--club-primary) 10%,#fff);color:var(--club-primary);font-size:18px;font-weight:900}
