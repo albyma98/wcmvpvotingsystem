@@ -4,8 +4,10 @@ import { clubHomeTiles, clubInitials as initials, clubScoreLabel as scoreLabel, 
 import { organizationThemeStyle } from '../organizationTheme'
 import { clubTypography } from '../clubTypography'
 import ClubContentModal from '../components/ClubContentModal.vue'
+import { clubHomePath } from '../clubDomain'
 
-const props = defineProps({ slug: { type: String, required: true }, teamSlug: { type: String, default: '' } })
+const props = defineProps({ slug: { type: String, required: true }, teamSlug: { type: String, default: '' }, customDomain: Boolean })
+const homePath = computed(() => clubHomePath(props.slug, props.customDomain))
 const data = ref(null)
 const loading = ref(true)
 const error = ref('')
@@ -112,12 +114,12 @@ onMounted(load)
     <div v-else-if="error" class="state error"><strong>Pagina non disponibile</strong><span>{{ error }}</span></div>
     <template v-else>
       <header v-if="isTeam" class="topbar">
-        <a class="brand" :href="`/club/${slug}`">
+        <a class="brand" :href="homePath">
           <img v-if="club.logoUrl" :src="club.logoUrl" :alt="club.name" />
           <span v-else class="logo-fallback">{{ initials(club.name) }}</span>
           <span><strong>{{ club.name }}</strong><small>{{ club.seasonLabel }}</small></span>
         </a>
-        <nav><a :href="`/club/${slug}`">Home</a><a :href="`/club/${slug}#squadre`">Squadre</a><a :href="`/club/${slug}#notizie`">Notizie</a><a :href="`/club/${slug}#gallery`">Gallery</a></nav>
+        <nav><a :href="homePath">Home</a><a :href="`${homePath}#squadre`">Squadre</a><a :href="`${homePath}#notizie`">Notizie</a><a :href="`${homePath}#gallery`">Gallery</a></nav>
       </header>
 
       <template v-if="!isTeam">
@@ -159,7 +161,7 @@ onMounted(load)
 
       <template v-else>
         <section class="team-hero" :style="data.team.heroImageUrl ? { backgroundImage: `linear-gradient(110deg, rgba(4,10,24,.95), rgba(4,10,24,.3)), url('${data.team.heroImageUrl}')` } : {}">
-          <div class="shell"><a class="back" :href="`/club/${slug}`">← Tutte le squadre</a><div class="team-title"><div class="team-badge large"><img v-if="data.team.logoUrl" :src="data.team.logoUrl" alt="" /><span v-else>{{ initials(data.team.name) }}</span></div><div><p class="kicker">{{ data.team.category }}</p><h1>{{ data.team.name }}</h1><p>{{ data.team.championship }}</p></div></div></div>
+          <div class="shell"><a class="back" :href="homePath">← Tutte le squadre</a><div class="team-title"><div class="team-badge large"><img v-if="data.team.logoUrl" :src="data.team.logoUrl" alt="" /><span v-else>{{ initials(data.team.name) }}</span></div><div><p class="kicker">{{ data.team.category }}</p><h1>{{ data.team.name }}</h1><p>{{ data.team.championship }}</p></div></div></div>
         </section>
         <div class="team-content shell">
           <section class="section compact"><div class="section-heading"><div><p class="kicker">STAGIONE</p><h2>Calendario e risultati</h2></div></div><div class="fixture-list"><article v-for="match in data.matches" :key="match.id" class="fixture"><div><time>{{ formatDate(match.scheduledAt) }}</time><small>{{ match.competition }} · {{ match.roundLabel }}</small></div><div class="fixture-teams"><strong>{{ match.home ? data.team.name : match.opponent }}</strong><b :class="{ completed: match.status === 'completed' }">{{ match.status === 'completed' ? scoreLabel(match) : 'VS' }}</b><strong>{{ match.home ? match.opponent : data.team.name }}</strong></div><span :class="['status', match.status]">{{ match.status === 'completed' ? 'Conclusa' : match.status === 'live' ? 'Live' : 'Programmata' }}</span></article><p v-if="!data.matches?.length" class="empty">Il calendario sarà pubblicato a breve.</p></div></section>

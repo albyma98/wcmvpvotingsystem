@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import MasterClubDomains from './MasterClubDomains.vue'
 
 const clubs = ref([])
 const loading = ref(false)
@@ -10,6 +11,7 @@ const deleting = ref(null)
 const passwordOpen = ref(null)
 const passwordInput = ref('')
 const passwordResult = ref(null)
+const domainsOpen = ref(null)
 
 const form = reactive({
   name: '', slug: '', city: '', tagline: '', logoUrl: '', heroImageUrl: '',
@@ -127,7 +129,8 @@ onMounted(load)
           <div><strong>{{ club.name }}</strong><small>{{ club.city || 'Città non indicata' }} · {{ club.slug }}</small></div>
           <div class="metrics"><span>{{ club.teamsCount }} squadre</span><span>{{ club.postsCount }} contenuti</span></div>
           <div class="links"><a :href="`/club/${club.slug}`" target="_blank">Sito</a><a :href="`/club-admin/${club.slug}`" target="_blank">CMS</a></div>
-          <div class="actions"><button @click="passwordOpen = passwordOpen === club.id ? null : club.id">Password</button><button class="danger" :disabled="deleting === club.id" @click="remove(club)">Elimina</button></div>
+          <div class="actions"><button @click="domainsOpen = domainsOpen === club.id ? null : club.id">Domini</button><button @click="passwordOpen = passwordOpen === club.id ? null : club.id">Password</button><button class="danger" :disabled="deleting === club.id" @click="remove(club)">Elimina</button></div>
+          <MasterClubDomains v-if="domainsOpen === club.id" :key="club.id" :club="club" />
           <div v-if="passwordOpen === club.id" class="password-row"><input v-model="passwordInput" placeholder="Vuoto = genera password" /><button class="primary" @click="resetPassword(club)">Imposta</button></div>
           <div v-if="passwordResult?.id === club.id" class="password-row result"><code>{{ passwordResult.adminUsername }}</code><code>{{ passwordResult.adminPassword }}</code><button @click="copy(passwordResult.adminPassword)">Copia password</button></div>
         </article>

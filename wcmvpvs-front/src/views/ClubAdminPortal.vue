@@ -4,7 +4,8 @@ import ClubTileIconUpload from '../components/ClubTileIconUpload.vue'
 import { clubHomeTiles } from '../clubHub'
 import { CLUB_FONTS, clubTypography } from '../clubTypography'
 
-const props = defineProps({ slug: { type: String, required: true } })
+const props = defineProps({ slug: { type: String, required: true }, customDomain: Boolean })
+const publicPath = computed(() => props.customDomain ? '/' : `/club/${encodeURIComponent(props.slug)}`)
 const authenticated = ref(false)
 const checking = ref(true)
 const busy = ref(false)
@@ -130,9 +131,9 @@ onMounted(loadOverview)
     </section>
     <template v-else>
       <aside>
-        <a class="admin-brand" :href="`/club/${slug}`" target="_blank"><span>AX</span><div><strong>Club CMS</strong><small>{{overview.club.name}}</small></div></a>
+        <a class="admin-brand" :href="publicPath" target="_blank"><span>AX</span><div><strong>Club CMS</strong><small>{{overview.club.name}}</small></div></a>
         <nav><button v-for="tab in tabs" :key="tab[0]" :class="{active:activeTab===tab[0]}" @click="activeTab=tab[0]">{{tab[1]}}</button></nav>
-        <div class="aside-bottom"><a :href="`/club/${slug}`" target="_blank">Apri sito pubblico ↗</a><button @click="logout">Esci</button></div>
+        <div class="aside-bottom"><a :href="publicPath" target="_blank">Apri sito pubblico ↗</a><button @click="logout">Esci</button></div>
       </aside>
       <section class="workspace">
         <header><div><p class="eyebrow">{{overview.club.seasonLabel}}</p><h1>{{tabs.find(tab=>tab[0]===activeTab)?.[1]}}</h1></div><span class="status">ONLINE</span></header>
@@ -140,7 +141,7 @@ onMounted(loadOverview)
 
         <div v-if="activeTab==='dashboard'">
           <div class="stats"><article v-for="entry in [['Squadre',overview.counts.teams],['Atleti',overview.counts.players],['Contenuti',overview.counts.posts],['Foto',overview.counts.photos],['Partite',overview.counts.matches]]" :key="entry[0]"><span>{{entry[0]}}</span><strong>{{entry[1]||0}}</strong></article></div>
-          <section class="card welcome"><div><p class="eyebrow">IL TUO HUB ANNUALE</p><h2>{{overview.club.name}}</h2><p>{{overview.club.tagline||'Completa la homepage e inizia a pubblicare contenuti.'}}</p></div><a :href="`/club/${slug}`" target="_blank">Visualizza sito</a></section>
+          <section class="card welcome"><div><p class="eyebrow">IL TUO HUB ANNUALE</p><h2>{{overview.club.name}}</h2><p>{{overview.club.tagline||'Completa la homepage e inizia a pubblicare contenuti.'}}</p></div><a :href="publicPath" target="_blank">Visualizza sito</a></section>
           <section class="card"><h2>Avvio rapido</h2><div class="quick"><button @click="activeTab='settings'">1. Personalizza homepage</button><button @click="activeTab='teams'">2. Completa squadre e roster</button><button @click="activeTab='matches'">3. Inserisci calendario</button><button @click="activeTab='posts'">4. Pubblica un annuncio</button></div></section>
         </div>
 

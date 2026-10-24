@@ -104,6 +104,7 @@ func New(cfg Config) (Router, error) {
 	// handled.
 	router := chi.NewRouter()
 
+	store := NewStore(cfg.Database.SQLConn())
 	return &_router{
 		router:                  router,
 		baseLogger:              cfg.Logger,
@@ -156,7 +157,8 @@ func New(cfg Config) (Router, error) {
 
 		// Tournament Mode: store SQLite (raw *sql.DB condiviso) + cache TTL +
 		// hub SSE (push live al posto del polling, keyed per event ID).
-		store:         NewStore(cfg.Database.SQLConn()),
+		store:         store,
+		clubDomains:   newClubDomainManager(store),
 		liveCache:     NewTTLCache(),
 		tournamentHub: newSSEHub(),
 	}, nil
@@ -190,11 +192,11 @@ type _router struct {
 	authRateByPhone map[string][]time.Time
 	authRateByIP    map[string][]time.Time
 
-	loginRateMu      sync.Mutex
-	loginRateByIP    map[string][]time.Time
-	loginRateByUser  map[string][]time.Time
+	loginRateMu     sync.Mutex
+	loginRateByIP   map[string][]time.Time
+	loginRateByUser map[string][]time.Time
 
-	brandedGameRateMu sync.Mutex
+	brandedGameRateMu       sync.Mutex
 	brandedGameRateByDevice map[string][]time.Time
 
 	marketingRateMu    sync.Mutex
@@ -218,6 +220,7 @@ type _router struct {
 
 	// Tournament Mode (modalità torneo): data layer + cache live + hub SSE.
 	store         *Store
+	clubDomains   *clubDomainManager
 	liveCache     *TTLCache
 	tournamentHub *sseHub
 }

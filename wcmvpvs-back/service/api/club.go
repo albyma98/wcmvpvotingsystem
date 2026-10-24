@@ -21,6 +21,7 @@ func registerClubRoutes(rt *_router) {
 	if err := rt.store.EnsureClubTables(); err != nil {
 		panic("club tables: " + err.Error())
 	}
+	registerClubDomainRoutes(rt)
 
 	// Provisioning centrale.
 	rt.router.Get("/admin/master/clubs", rt.wrapAdmin(rt.listMasterClubs))

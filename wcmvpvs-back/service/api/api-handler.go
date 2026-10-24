@@ -224,6 +224,7 @@ func (rt *_router) Handler() chi.Router {
 	// Club Hub — terzo verticale: sito annuale multi-squadra, CMS dedicato e
 	// provisioning dal portale master. Non condivide sessioni con Live/Tournament.
 	registerClubRoutes(rt)
+	rt.clubDomains.start()
 
 	rt.router.NotFound(rt.wrap(rt.handleQRRedirectNotFound))
 

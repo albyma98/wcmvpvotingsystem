@@ -1,9 +1,15 @@
-mvp.wearingcash.it {
-  encode gzip
+{
+	on_demand_tls {
+		ask http://backend:3000/internal/club-domains/ask
+	}
+}
 
-  # ✅ Content Security Policy (necessaria per camera + QR scanner)
-  header {
-    Content-Security-Policy "
+(clubhub_app) {
+	encode gzip
+
+	# ✅ Content Security Policy (necessaria per camera + QR scanner)
+	header {
+		Content-Security-Policy "
       default-src 'self';
       script-src 'self' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net;
       worker-src 'self' blob:;
@@ -11,26 +17,57 @@ mvp.wearingcash.it {
       media-src 'self' blob:;
       connect-src 'self' blob:;
     "
-    Referrer-Policy "strict-origin-when-cross-origin"
-    X-Content-Type-Options "nosniff"
-    X-Frame-Options "DENY"
-    X-XSS-Protection "1; mode=block"
-  }
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "1; mode=block"
+	}
 
-  @html {
-      path /index.html /
-    }
-  header @html Cache-Control "no-cache, must-revalidate"
-  
+	@html {
+		path /index.html /
+	}
+	header @html Cache-Control "no-cache, must-revalidate"
 
-  handle_path /api/* {
-    reverse_proxy backend:3000
-  }
+	# Gli endpoint di autorizzazione TLS sono riservati alla rete Docker.
+	handle /api/internal/* {
+		respond 404
+	}
+	handle /internal/* {
+		respond 404
+	}
 
+	handle_path /api/* {
+		reverse_proxy backend:3000
+	}
 
+	handle {
+		reverse_proxy frontend:80
+	}
+}
 
-  handle {
-    reverse_proxy frontend:80
-  }
+mvp.wearingcash.it {
+	import clubhub_app
+}
 
+# Nuovi domini: nessuna modifica a questo file dopo l'associazione dal Master.
+https:// {
+	tls {
+		on_demand
+	}
+	route {
+		# Verifica anche ogni richiesta: la revoca vale per i certificati già emessi.
+		forward_auth backend:3000 {
+			uri /internal/club-domains/host
+		}
+		import clubhub_app
+	}
+}
+
+http:// {
+	route {
+		forward_auth backend:3000 {
+			uri /internal/club-domains/host
+		}
+		redir https://{host}{uri} 308
+	}
 }

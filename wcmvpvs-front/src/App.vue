@@ -1,6 +1,7 @@
 <template>
   <div class="app-shell">
-    <AdminLottery v-if="appView === 'lottery'" />
+    <section v-if="appView === 'club-not-found'" class="club-domain-not-found"><h1>Pagina non trovata</h1><a href="/">Torna alla home del club</a></section>
+    <AdminLottery v-else-if="appView === 'lottery'" />
     <MasterPortal v-else-if="appView === 'master'" />
     <AdminPortal v-else-if="appView === 'portal'" :organization-slug="organizationSlug" />
     <TicketValidationView v-else-if="appView === 'ticket-validation'" />
@@ -68,11 +69,13 @@
     <ClubAdminPortal
       v-else-if="appView === 'club-admin'"
       :slug="clubSlug"
+      :custom-domain="Boolean(domainClub)"
     />
     <ClubHomeView
       v-else-if="appView === 'club'"
       :slug="clubSlug"
       :team-slug="clubTeamSlug"
+      :custom-domain="Boolean(domainClub)"
     />
     <TournamentAdminPortal
       v-else-if="appView === 'tournament-admin'"
@@ -111,7 +114,7 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import VoteScreen from './components/VoteScreen.vue';
 import LiveExperienceHome from './views/LiveExperienceHome.vue';
 import NewUiVoteModal from './components/NewUiVoteModal.vue';
@@ -143,6 +146,7 @@ const PartnerPortal = defineAsyncComponent(() => import('./components/PartnerPor
 const TicketValidationView = defineAsyncComponent(() => import('./components/TicketValidationView.vue'));
 const CashLanding = defineAsyncComponent(() => import('./components/CashLanding.vue'));
 import { apiClient, fetchVoteStatus } from './api';
+import { clubDomainRoute } from './clubDomain';
 
 function readEventId(search) {
   const params = new URLSearchParams(search || '');
@@ -154,6 +158,8 @@ function readEventId(search) {
 const currentPath = ref(typeof window !== 'undefined' ? window.location.pathname : '/');
 const currentSearch = ref(typeof window !== 'undefined' ? window.location.search : '');
 const currentEventId = ref(typeof window !== 'undefined' ? readEventId(window.location.search) : undefined);
+const domainClub = inject('clubDomain', null);
+const domainRoute = computed(() => clubDomainRoute(domainClub, currentPath.value));
 const activeEvent = ref(null);
 const isFetchingActiveEvent = ref(false);
 const hasCheckedActiveEvent = ref(false);
@@ -172,10 +178,10 @@ const pathSegments = computed(() =>
 const isClubPath = computed(() => pathSegments.value[0] === 'club' && pathSegments.value.length >= 2);
 const isClubAdminPath = computed(() => pathSegments.value[0] === 'club-admin' && pathSegments.value.length >= 2);
 const clubSlug = computed(() =>
-  isClubPath.value || isClubAdminPath.value ? pathSegments.value[1] : '',
+  domainRoute.value?.clubSlug || (isClubPath.value || isClubAdminPath.value ? pathSegments.value[1] : ''),
 );
 const clubTeamSlug = computed(() =>
-  isClubPath.value && pathSegments.value[2] === 'team' ? (pathSegments.value[3] ?? '') : '',
+  domainRoute.value?.teamSlug || (isClubPath.value && pathSegments.value[2] === 'team' ? (pathSegments.value[3] ?? '') : ''),
 );
 
 const isNewUiPath = computed(() => {
@@ -254,6 +260,7 @@ const tournamentSection = computed(() =>
 );
 
 const appView = computed(() => {
+  if (domainRoute.value) return domainRoute.value.view;
   if (currentPath.value === '/dev/stack-it-demo') {
     return 'dev-stack-it';
   }
@@ -605,6 +612,7 @@ watch(
 </script>
 
 <style scoped>
+.club-domain-not-found{padding:48px 24px;text-align:center}.club-domain-not-found a{display:inline-block;margin-top:20px;text-decoration:underline}
 .app-shell {
   min-height: 100vh;
   background: linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);

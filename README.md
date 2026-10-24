@@ -66,6 +66,71 @@ va inserita in `wcmvpvs-front/.env.local`. Il font resta disabilitato finché
 la sorgente non è configurata; la home e l’anteprima caricano il CSS quando
 ENDURA è selezionato. I file del kit non sono inclusi nel repository.
 
+## Domini personalizzati ClubHub
+
+Dal Master → Club Hub → **Domini**, associare un dominio alla società. L'opzione
+**Collega anche www** crea un alias con lo stesso record TXT di verifica. I nomi
+sono univoci fra tutti i club; la gestione è riservata ai superadmin.
+
+Configurazione del server, una sola volta nel `.env` della root:
+
+```dotenv
+CLUB_DOMAIN_TARGET=mvp.wearingcash.it
+CLUB_DOMAIN_TARGET_IPS=IP_PUBBLICO_DEL_SERVER
+CLUB_DOMAIN_RESERVED_HOSTS=
+```
+
+`CLUB_DOMAIN_TARGET_IPS` accetta IPv4/IPv6 separati da virgola. Se lasciato vuoto,
+il verificatore usa gli indirizzi A/AAAA di `CLUB_DOMAIN_TARGET`. Impostare IP
+pubblici reali, raggiungibili sulle porte 80 e 443. Ulteriori hostname della
+piattaforma possono essere riservati con `CLUB_DOMAIN_RESERVED_HOSTS`.
+
+Dopo il primo aggiornamento di backend, frontend e Caddyfile, ogni nuovo dominio
+si configura dal Master senza ricompilazioni o modifiche a Caddy. L'ambiente
+Docker esistente legge le variabili dal `.env`; il backend rimane esposto solo
+sulla rete interna. Applicare il nuovo Caddyfile con:
+
+```sh
+docker compose up -d --build backend frontend
+docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+```
+
+Nel pannello DNS del registrar inserire i record mostrati dal Master. Ad esempio:
+
+| Tipo | Nome | Valore |
+| --- | --- | --- |
+| A | `@` | IPv4 pubblico del server |
+| AAAA | `@` | IPv6 pubblico del server, soltanto se disponibile |
+| CNAME | `www` | `mvp.wearingcash.it` o il target configurato |
+| TXT | `_clubhub` | Codice `clubhub-verification=…` generato dal Master |
+
+Il nome TXT completo viene mostrato nel pannello: alcuni registrar richiedono
+soltanto la parte relativa alla zona. Per sottodomini usare il nome indicato dal
+Master. I domini internazionalizzati vanno inseriti nella forma ASCII/Punycode.
+
+Il backend ricontrolla i DNS ogni minuto (anche a pannello chiuso). Il pulsante
+**Verifica ora** permette un controllo immediato. Sono necessari sia il TXT
+corretto sia tutti gli indirizzi A/AAAA diretti al server ammesso. Mantenere il
+TXT: se la verifica fallisce, il dominio torna in attesa e l'accesso viene negato.
+Una verifica non aggiornata da 24 ore non autorizza più il dominio.
+
+Il Caddyfile usa [On-Demand TLS](https://caddyserver.com/docs/automatic-https#on-demand-tls):
+l'endpoint interno `/internal/club-domains/ask` autorizza l'emissione dei
+certificati soltanto per domini verificati di club attivi. L'HTTPS viene emesso
+al primo accesso e rinnovato da Caddy; lo stato «Autorizzato» conferma la verifica
+DNS, non l'avvenuta emissione del certificato. Gli endpoint interni sono bloccati
+dal proxy pubblico. Anche le richieste successive vengono autorizzate, così la
+rimozione del dominio vale pure se il certificato è già in cache.
+
+La home si apre su `/`; le categorie sono disponibili anche su `/team/{slug}`
+e il CMS conserva `/club-admin/{slug}`. Gli alias vengono portati al dominio
+principale quando quest'ultimo è verificato. Percorsi appartenenti ad altri club
+o alle altre applicazioni non vengono mostrati sui domini personalizzati.
+Gli indirizzi della piattaforma `/club/{slug}` restano disponibili.
+
+Acquisto del dominio e modifica iniziale dei DNS restano operazioni del registrar;
+questa integrazione automatizza verifica, autorizzazione, associazione e HTTPS.
+
 ## Creazione di un nuovo admin
 
 ### 1. Creare il primo amministratore

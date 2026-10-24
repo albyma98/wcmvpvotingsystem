@@ -375,6 +375,16 @@ func (s *Store) DeleteClubSite(ctx context.Context, siteID int64) error {
 		return err
 	}
 	defer tx.Rollback()
+	// Older installations may not yet have the optional custom-domain table.
+	var domainTable int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='club_domains'`).Scan(&domainTable); err != nil {
+		return err
+	}
+	if domainTable > 0 {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM club_domains WHERE site_id=?`, siteID); err != nil {
+			return err
+		}
+	}
 	for _, table := range []string{"club_admin_sessions", "club_admins", "club_players", "club_posts", "club_gallery", "club_matches", "club_teams"} {
 		if _, err = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE site_id=?", siteID); err != nil {
 			return err
