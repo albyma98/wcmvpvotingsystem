@@ -381,7 +381,7 @@ func clubPlayersMap(rt *_router, r *http.Request, siteID int64, teams []ClubTeam
 	return out
 }
 func (rt *_router) clubAdminSaveTeam(w http.ResponseWriter, r *http.Request, siteID int64) {
-	var v ClubTeam
+	v := ClubTeam{Active: true}
 	if json.NewDecoder(r.Body).Decode(&v) != nil {
 		http.Error(w, `{"error":"bad_json"}`, 400)
 		return
@@ -392,9 +392,6 @@ func (rt *_router) clubAdminSaveTeam(w http.ResponseWriter, r *http.Request, sit
 	if strings.TrimSpace(v.Name) == "" {
 		http.Error(w, `{"error":"name_required"}`, 400)
 		return
-	}
-	if v.ID == 0 && !v.Active {
-		v.Active = true
 	}
 	id, err := rt.store.SaveClubTeam(r.Context(), siteID, v)
 	if err != nil {
@@ -441,7 +438,7 @@ func (rt *_router) clubAdminPosts(w http.ResponseWriter, r *http.Request, siteID
 	writeJSON(w, 200, map[string]interface{}{"posts": v})
 }
 func (rt *_router) clubAdminSavePost(w http.ResponseWriter, r *http.Request, siteID int64) {
-	var v ClubPost
+	v := ClubPost{Active: true}
 	if json.NewDecoder(r.Body).Decode(&v) != nil {
 		http.Error(w, `{"error":"bad_json"}`, 400)
 		return
@@ -455,9 +452,6 @@ func (rt *_router) clubAdminSavePost(w http.ResponseWriter, r *http.Request, sit
 	}
 	if v.Kind == "" {
 		v.Kind = "announcement"
-	}
-	if v.ID == 0 && !v.Active {
-		v.Active = true
 	}
 	id, e := rt.store.SaveClubPost(r.Context(), siteID, v)
 	if e != nil {
@@ -474,7 +468,7 @@ func (rt *_router) clubAdminGallery(w http.ResponseWriter, r *http.Request, site
 	writeJSON(w, 200, map[string]interface{}{"gallery": v})
 }
 func (rt *_router) clubAdminSaveGallery(w http.ResponseWriter, r *http.Request, siteID int64) {
-	var v ClubGalleryItem
+	v := ClubGalleryItem{Active: true}
 	if json.NewDecoder(r.Body).Decode(&v) != nil {
 		http.Error(w, `{"error":"bad_json"}`, 400)
 		return
@@ -485,9 +479,6 @@ func (rt *_router) clubAdminSaveGallery(w http.ResponseWriter, r *http.Request, 
 	if strings.TrimSpace(v.ImageURL) == "" {
 		http.Error(w, `{"error":"image_required"}`, 400)
 		return
-	}
-	if v.ID == 0 && !v.Active {
-		v.Active = true
 	}
 	id, e := rt.store.SaveClubGallery(r.Context(), siteID, v)
 	if e != nil {
