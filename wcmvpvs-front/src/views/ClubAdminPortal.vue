@@ -13,7 +13,7 @@ const busy = ref(false)
 const error = ref('')
 const notice = ref('')
 const activeTab = ref('dashboard')
-const overview = ref({ club: {}, teams: [], posts: [], gallery: [], matches: [], counts: {} })
+const overview = ref({ club: {}, teams: [], posts: [], gallery: [], matches: [], sponsors: [], counts: {} })
 const playersByTeam = ref({})
 const login = reactive({ username: `club-${props.slug}`, password: '' })
 
@@ -24,13 +24,14 @@ const teamForm = reactive(emptyTeam())
 const postForm = reactive(emptyPost())
 const galleryForm = reactive(emptyGallery())
 const matchForm = reactive(emptyMatch())
+const sponsorForm = reactive(emptySponsor())
 const rosterTeamId = ref(0)
 const rosterPlayers = ref([])
 const editorPanel = ref(null)
 const deleteDialog = ref(null)
 const pendingDelete = ref(null)
-const baselines = reactive({ settings: '', team: '', post: '', gallery: '', match: '', roster: '' })
-const collectionTabs = ['teams', 'posts', 'gallery', 'matches']
+const baselines = reactive({ settings: '', team: '', post: '', gallery: '', match: '', sponsor: '', roster: '' })
+const collectionTabs = ['teams', 'posts', 'gallery', 'matches', 'sponsors']
 const filters = reactive(Object.fromEntries(collectionTabs.map(tab => [tab, { query: '', teamId: 0, state: '' }])))
 let playerKey = 0
 let setKey = 0
@@ -38,7 +39,7 @@ let setKey = 0
 const tabs = [
   ['dashboard','Panoramica'], ['settings','Homepage'], ['teams','Squadre e roster'],
   ['posts','Annunci e news'], ['gallery','Photo gallery'], ['matches','Calendario'],
-  ['contacts','Contatti'],
+  ['sponsors','Sponsor'], ['contacts','Contatti'],
 ]
 const teams = computed(() => overview.value.teams ?? [])
 const editableTiles = computed(() => clubHomeTiles({ ...overview.value, club: settings, teams: teams.value.filter(team => team.active) }))
@@ -50,6 +51,7 @@ const descriptions = {
   posts: 'Crea, aggiorna e organizza le comunicazioni della società.',
   gallery: 'Organizza le fotografie con didascalie, date e squadre.',
   matches: 'Pianifica gli incontri e aggiorna risultati e parziali.',
+  sponsors: 'Presenta i partner che sostengono il club e collega i loro siti web.',
   contacts: 'Mantieni aggiornati i riferimenti di uffici e persone.',
 }
 const statusLabels = { scheduled: 'Programmata', live: 'In diretta', completed: 'Conclusa' }
@@ -57,18 +59,20 @@ const filteredTeams = computed(() => filterItems('teams', teams.value, team => [
 const filteredPosts = computed(() => filterItems('posts', overview.value.posts ?? [], post => [post.title, post.excerpt, teamName(post.teamId)]))
 const filteredGallery = computed(() => filterItems('gallery', overview.value.gallery ?? [], photo => [photo.title, photo.caption, teamName(photo.teamId)]))
 const filteredMatches = computed(() => filterItems('matches', overview.value.matches ?? [], match => [match.opponent, match.competition, match.location, teamName(match.teamId)]))
-const resultCount = computed(() => ({ teams: filteredTeams.value.length, posts: filteredPosts.value.length, gallery: filteredGallery.value.length, matches: filteredMatches.value.length })[activeTab.value])
+const filteredSponsors = computed(() => filterItems('sponsors', overview.value.sponsors ?? [], sponsor => [sponsor.name, sponsor.website, sponsor.description]))
+const resultCount = computed(() => ({ teams: filteredTeams.value.length, posts: filteredPosts.value.length, gallery: filteredGallery.value.length, matches: filteredMatches.value.length, sponsors: filteredSponsors.value.length })[activeTab.value])
 const hasUnsavedChanges = computed(() => Boolean(
   imageUploads.value ||
   (baselines.settings && JSON.stringify(settings) !== baselines.settings) ||
-  ['team', 'post', 'gallery', 'match'].some(kind => isDirty(kind)) ||
+  ['team', 'post', 'gallery', 'match', 'sponsor'].some(kind => isDirty(kind)) ||
   (rosterTeamId.value && JSON.stringify(rosterPlayers.value) !== baselines.roster)))
 
 function emptyTeam() { return { id: 0, name: '', slug: '', category: '', gender: 'mixed', championship: '', description: '', logoUrl: '', heroImageUrl: '', position: 0, active: true } }
 function emptyPost() { return { id: 0, kind: 'announcement', title: '', excerpt: '', body: '', imageUrl: '', teamId: 0, pinned: false, active: true, publishedAt: '' } }
 function emptyGallery() { return { id: 0, title: '', imageUrl: '', caption: '', eventDate: '', teamId: 0, active: true, position: 0 } }
 function emptyMatch() { return { id: 0, teamId: 0, opponent: '', competition: '', roundLabel: '', scheduledAt: '', location: '', home: true, status: 'scheduled', scoreFor: 0, scoreAgainst: 0, sets: [] } }
-function editor(kind) { return { team: [teamForm, emptyTeam], post: [postForm, emptyPost], gallery: [galleryForm, emptyGallery], match: [matchForm, emptyMatch] }[kind] }
+function emptySponsor() { return { id: 0, name: '', logoUrl: '', website: '', description: '', position: 0, active: true } }
+function editor(kind) { return { team: [teamForm, emptyTeam], post: [postForm, emptyPost], gallery: [galleryForm, emptyGallery], match: [matchForm, emptyMatch], sponsor: [sponsorForm, emptySponsor] }[kind] }
 function isDirty(kind) { const [form, empty] = editor(kind); return JSON.stringify(form) !== (baselines[kind] || JSON.stringify(empty())) }
 function resetEditor(kind) { const [form, empty] = editor(kind); resetObject(form, empty()); baselines[kind] = JSON.stringify(form) }
 function clearEditor(kind) { if (busy.value || imageUploads.value || (isDirty(kind) && !confirm('Scartare le modifiche non salvate di questa scheda?'))) return; resetEditor(kind) }
@@ -95,6 +99,7 @@ async function editRecord(kind, item) {
 function editTeam(item) { return editRecord('team', item) }
 function editPost(item) { return editRecord('post', item) }
 function editGallery(item) { return editRecord('gallery', item) }
+function editSponsor(item) { return editRecord('sponsor', item) }
 async function editMatch(item) { try { await editRecord('match', item) } catch { error.value = 'I parziali di questa partita non sono leggibili. Verifica i dati esistenti prima di modificarli.' } }
 function localDateTime(value) {
   if (!value) return ''
@@ -160,7 +165,7 @@ async function logout() {
     await request('/logout', { method: 'POST' })
     authenticated.value = false
     login.password = ''
-    for (const kind of ['team', 'post', 'gallery', 'match']) resetEditor(kind)
+    for (const kind of ['team', 'post', 'gallery', 'match', 'sponsor']) resetEditor(kind)
     rosterTeamId.value = 0
     baselines.settings = ''
   } catch { error.value = 'Impossibile uscire dal CMS. Riprova.' }
@@ -212,7 +217,16 @@ async function saveRecord(kind, path, payload, success) {
     resetEditor(kind)
     message(success)
     await loadOverview({ resetSettings: false })
-  } catch (e) { error.value = e.message === 'unauthorized' ? 'La sessione è scaduta. Accedi nuovamente per continuare.' : 'Salvataggio non riuscito. I dati inseriti sono conservati: verifica i campi e riprova.' }
+  } catch (e) {
+    const sponsorErrors = {
+      invalid_sponsor_name: 'Inserisci il nome dello sponsor (massimo 200 caratteri).',
+      invalid_sponsor_logo: 'Inserisci un logo valido, fino a 300 KB. Prova a caricarlo nuovamente.',
+      invalid_sponsor_website: 'Inserisci un sito web valido che inizi con https:// o http://.',
+      invalid_sponsor_description: 'La descrizione dello sponsor può contenere al massimo 3000 caratteri.',
+      invalid_sponsor_position: 'L’ordine dello sponsor deve essere un numero intero tra 0 e 1000000.',
+    }
+    error.value = e.message === 'unauthorized' ? 'La sessione è scaduta. Accedi nuovamente per continuare.' : (kind === 'sponsor' && sponsorErrors[e.message]) || 'Salvataggio non riuscito. I dati inseriti sono conservati: verifica i campi e riprova.'
+  }
   finally { busy.value = false }
 }
 function invalid(message) { error.value = message; return false }
@@ -227,6 +241,22 @@ function savePost() {
 function saveGallery() {
   if (!galleryForm.imageUrl.trim()) return invalid('Inserisci il collegamento alla fotografia.')
   return saveRecord('gallery', '/gallery', { ...galleryForm, imageUrl: galleryForm.imageUrl.trim(), teamId: Number(galleryForm.teamId) || 0 }, 'Fotografia salvata.')
+}
+function saveSponsor() {
+  if (processing.value) return
+  const name = sponsorForm.name.trim()
+  const logoUrl = sponsorForm.logoUrl.trim()
+  const website = sponsorForm.website.trim()
+  const description = sponsorForm.description.trim()
+  if (!name || name.length > 200) return invalid('Inserisci il nome dello sponsor (massimo 200 caratteri).')
+  if (!logoUrl) return invalid('Carica il logo dello sponsor o inserisci il collegamento a un’immagine.')
+  try {
+    const url = new URL(website)
+    if (!/^https?:\/\//i.test(website) || !['https:', 'http:'].includes(url.protocol) || !url.hostname || url.username || url.password || /[\s\\\u0000-\u001f\u007f]/.test(website) || website.length > 2000) throw new Error('invalid_url')
+  } catch { return invalid('Inserisci un sito web valido che inizi con https:// o http://.') }
+  if (description.length > 3000) return invalid('La descrizione dello sponsor può contenere al massimo 3000 caratteri.')
+  if (!validScore(sponsorForm.position) || Number(sponsorForm.position) > 1000000) return invalid('L’ordine dello sponsor deve essere un numero intero tra 0 e 1000000.')
+  return saveRecord('sponsor', '/sponsors', { ...sponsorForm, name, logoUrl, website, description, position: Number(sponsorForm.position) }, 'Sponsor salvato.')
 }
 function addSet() { matchForm.sets.push({ key: ++setKey, scoreFor: '', scoreAgainst: '' }) }
 function validScore(value) { return value !== '' && value !== null && Number.isSafeInteger(Number(value)) && Number(value) >= 0 }
@@ -277,7 +307,7 @@ async function confirmDelete() {
   error.value = ''
   try {
     await request(`/${kind}/${item.id}`, { method: 'DELETE' })
-    const editorKind = { teams: 'team', posts: 'post', gallery: 'gallery', matches: 'match' }[kind]
+    const editorKind = { teams: 'team', posts: 'post', gallery: 'gallery', matches: 'match', sponsors: 'sponsor' }[kind]
     if (editor(editorKind)[0].id === item.id) resetEditor(editorKind)
     if (kind === 'teams' && rosterTeamId.value === item.id) rosterTeamId.value = 0
     deleteDialog.value?.close()
@@ -300,7 +330,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
     <link v-for="stylesheet in typography.stylesheets" :key="stylesheet" rel="stylesheet" :href="stylesheet" />
     <section v-if="checking" class="center">Caricamento CMS Club…</section>
     <section v-else-if="!authenticated" class="login-shell">
-      <div class="login-card"><p class="eyebrow">ARENABOOSTX CLUB</p><h1>Gestisci il tuo Club Hub</h1><p>Homepage, squadre, roster, annunci, fotografie e calendario.</p><form @submit.prevent="loginSubmit"><label>Username<input v-model="login.username" autocomplete="username" /></label><label>Password<input v-model="login.password" type="password" autocomplete="current-password" /></label><button :disabled="processing">{{busy?'Accesso…':'Entra nel CMS'}}</button></form><p v-if="error" class="error">{{error}}</p></div>
+      <div class="login-card"><p class="eyebrow">ARENABOOSTX CLUB</p><h1>Gestisci il tuo Club Hub</h1><p>Homepage, squadre, roster, annunci, fotografie, calendario e sponsor.</p><form @submit.prevent="loginSubmit"><label>Username<input v-model="login.username" autocomplete="username" /></label><label>Password<input v-model="login.password" type="password" autocomplete="current-password" /></label><button :disabled="processing">{{busy?'Accesso…':'Entra nel CMS'}}</button></form><p v-if="error" class="error">{{error}}</p></div>
     </section>
     <template v-else>
       <aside>
@@ -314,14 +344,14 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
         <p v-if="imageUploads" class="processing-banner" role="status">Ottimizzazione dell’immagine in corso. Attendi prima di salvare.</p>
 
         <section v-if="collectionTabs.includes(activeTab) && (activeTab !== 'teams' || !rosterTeamId)" class="collection-toolbar" aria-label="Ricerca e filtri">
-          <label class="search-field">Cerca {{ activeTab === 'teams' ? 'squadre' : activeTab === 'posts' ? 'contenuti' : activeTab === 'gallery' ? 'fotografie' : 'partite' }}<input v-model="filters[activeTab].query" type="search" placeholder="Digita per cercare…" /></label>
-          <label v-if="activeTab !== 'teams'">Squadra<select v-model.number="filters[activeTab].teamId"><option :value="0">Tutte le squadre</option><option v-for="team in teams" :key="team.id" :value="team.id">{{team.name}}</option></select></label>
-          <label>Stato<select v-model="filters[activeTab].state"><option value="">Tutti gli stati</option><template v-if="activeTab === 'matches'"><option v-for="(label, value) in statusLabels" :key="value" :value="value">{{ label }}</option></template><template v-else><option value="true">Visibile</option><option value="false">Nascosto</option></template></select></label>
+          <label class="search-field">Cerca {{ activeTab === 'teams' ? 'squadre' : activeTab === 'posts' ? 'contenuti' : activeTab === 'gallery' ? 'fotografie' : activeTab === 'sponsors' ? 'sponsor' : 'partite' }}<input v-model="filters[activeTab].query" type="search" placeholder="Digita per cercare…" /></label>
+          <label v-if="activeTab !== 'teams' && activeTab !== 'sponsors'">Squadra<select v-model.number="filters[activeTab].teamId"><option :value="0">Tutte le squadre</option><option v-for="team in teams" :key="team.id" :value="team.id">{{team.name}}</option></select></label>
+          <label>Stato<select v-model="filters[activeTab].state"><option value="">Tutti gli stati</option><template v-if="activeTab === 'matches'"><option v-for="(label, value) in statusLabels" :key="value" :value="value">{{ label }}</option></template><template v-else><option value="true">{{ activeTab === 'sponsors' ? 'Pubblicato' : 'Visibile' }}</option><option value="false">{{ activeTab === 'sponsors' ? 'Bozza' : 'Nascosto' }}</option></template></select></label>
           <div class="filter-summary"><span aria-live="polite">{{ resultCount }} risultati</span><button v-if="filters[activeTab].query || filters[activeTab].teamId || filters[activeTab].state" type="button" @click="resetFilters">Azzera filtri</button></div>
         </section>
 
         <div v-if="activeTab==='dashboard'">
-          <div class="stats"><article v-for="entry in [['Squadre',overview.counts.teams],['Atleti',overview.counts.players],['Contenuti',overview.counts.posts],['Foto',overview.counts.photos],['Partite',overview.counts.matches]]" :key="entry[0]"><span>{{entry[0]}}</span><strong>{{entry[1]||0}}</strong></article></div>
+          <div class="stats"><article v-for="entry in [['Squadre',overview.counts.teams],['Atleti',overview.counts.players],['Contenuti',overview.counts.posts],['Foto',overview.counts.photos],['Partite',overview.counts.matches],['Sponsor',overview.counts.sponsors]]" :key="entry[0]"><span>{{entry[0]}}</span><strong>{{entry[1]||0}}</strong></article></div>
           <section class="card welcome"><div><p class="eyebrow">IL TUO HUB ANNUALE</p><h2>{{overview.club.name}}</h2><p>{{overview.club.tagline||'Completa la homepage e inizia a pubblicare contenuti.'}}</p></div><a :href="publicPath" target="_blank">Visualizza sito</a></section>
           <section class="card"><h2>Avvio rapido</h2><div class="quick"><button @click="activeTab='settings'">1. Personalizza homepage</button><button @click="activeTab='teams'">2. Completa squadre e roster</button><button @click="activeTab='matches'">3. Inserisci calendario</button><button @click="activeTab='posts'">4. Pubblica un annuncio</button></div></section>
         </div>
@@ -499,6 +529,35 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
           </section>
         </div>
 
+        <div v-else-if="activeTab==='sponsors'" class="editor-layout">
+          <form ref="editorPanel" class="card content-editor" :aria-busy="busy" @submit.prevent="saveSponsor">
+            <div class="editor-heading"><div><p class="eyebrow">PARTNER DEL CLUB</p><h2>{{ sponsorForm.id ? 'Modifica sponsor' : 'Nuovo sponsor' }}</h2></div><span v-if="sponsorForm.id" class="badge">In modifica</span></div>
+            <p class="form-hint required-hint">* Campi obbligatori. Gli sponsor pubblicati compaiono nella modale “I nostri Sponsor”.</p>
+            <fieldset class="form-body" :disabled="processing">
+              <fieldset class="form-section"><legend><span>01</span> Presentazione dello sponsor</legend><div class="form-grid">
+                <label class="wide">Nome sponsor *<input v-model="sponsorForm.name" required maxlength="200" placeholder="Nome dell’azienda o del partner" /></label>
+                <ClubMediaField v-model="sponsorForm.logoUrl" class="wide" label="Logo dello sponsor" :max-side="512" required @uploading="trackImageUpload" />
+                <label class="wide">Sito web *<input v-model="sponsorForm.website" type="url" required maxlength="2000" placeholder="https://www.sponsor.it" /><small>Il logo e il nome apriranno questo sito in una nuova scheda.</small></label>
+                <label class="wide">Descrizione (opzionale)<textarea v-model="sponsorForm.description" rows="4" maxlength="3000" placeholder="Presenta lo sponsor e il suo sostegno al club…" /></label>
+              </div></fieldset>
+              <fieldset class="form-section"><legend><span>02</span> Ordine e pubblicazione</legend><div class="form-grid">
+                <label>Ordine di visualizzazione<input v-model.number="sponsorForm.position" type="number" min="0" max="1000000" step="1" required /><small>I valori più bassi compaiono per primi.</small></label>
+                <label class="check"><input v-model="sponsorForm.active" type="checkbox" /> Pubblicato sul sito pubblico</label>
+              </div></fieldset>
+            </fieldset>
+            <footer class="editor-footer"><button type="button" :disabled="processing" @click="clearEditor('sponsor')">{{ sponsorForm.id ? 'Annulla modifica' : 'Svuota campi' }}</button><button class="primary" :disabled="processing">{{ busy ? 'Salvataggio…' : 'Salva sponsor' }}</button></footer>
+          </form>
+          <section class="card records-panel"><div class="panel-heading"><h2>Gli sponsor del club</h2><span class="badge">{{ filteredSponsors.length }}</span></div>
+            <p v-if="!filteredSponsors.length" class="empty-state">{{ overview.sponsors?.length ? 'Nessuno sponsor corrisponde ai filtri.' : 'Aggiungi il primo sponsor con logo e collegamento al suo sito.' }}</p>
+            <div class="records-list"><article v-for="sponsor in filteredSponsors" :key="sponsor.id" class="record-card sponsor-record" :class="{ selected: sponsorForm.id === sponsor.id }">
+              <img :src="sponsor.logoUrl" :alt="`Logo ${sponsor.name}`" loading="lazy" />
+              <div class="record-meta"><span class="badge" :class="{ muted: !sponsor.active }">{{ sponsor.active ? 'Pubblicato' : 'Bozza' }}</span><span>Ordine {{ sponsor.position }}</span></div>
+              <h3>{{ sponsor.name }}</h3><p>{{ sponsor.website }}</p><p v-if="sponsor.description" class="record-excerpt">{{ sponsor.description }}</p>
+              <div class="record-actions"><button :disabled="processing" :aria-label="`Modifica sponsor ${sponsor.name}`" @click="editSponsor(sponsor)">Modifica</button><button class="danger" :disabled="processing" :aria-label="`Elimina sponsor ${sponsor.name}`" @click="askDelete('sponsors', sponsor)">Elimina</button></div>
+            </article></div>
+          </section>
+        </div>
+
         <div v-else-if="activeTab==='matches'" class="editor-layout">
           <form ref="editorPanel" class="card content-editor" :aria-busy="busy" @submit.prevent="saveMatch">
             <div class="editor-heading"><div><p class="eyebrow">CALENDARIO E RISULTATI</p><h2>{{ matchForm.id ? 'Modifica partita' : 'Nuova partita' }}</h2></div><span v-if="matchForm.id" class="badge">In modifica</span></div>
@@ -601,11 +660,11 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
 .empty-state{border:1px dashed #3e506b;border-radius:10px;background:#0b1525;padding:28px 20px;text-align:center;font-size:13px;line-height:1.8;color:#a9bad0;margin:16px 0}.error-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #9d4355;background:#401e2c;color:#fecdd3;border-radius:10px;padding:14px 18px;font-size:14px;position:sticky;top:12px;z-index:5}.club-admin .error-banner button{padding:0 6px;background:transparent;border:0;color:inherit;font-size:22px}.notice{box-shadow:0 8px 30px #0004;max-width:calc(100vw - 32px)}
 .roster-editor{grid-column:1/-1}.roster-summary{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:24px 0;color:#a5b4c9;font-size:12px}.player-editor{min-width:0;position:relative;margin:20px 0;padding:20px;border:1px solid #344660;border-radius:12px;background:#0c1626}.player-editor legend{color:#e2e8f0;font-size:14px;font-weight:750;padding:0 8px;max-width:100%;overflow-wrap:anywhere}.row-actions{display:flex;justify-content:flex-end;gap:8px;margin:0 0 18px}.player-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.add-row{padding:16px 0 24px}.club-admin .add-row button,.club-admin .add-set{border-style:dashed;color:#fcd34d;background:#19263a}
 .set-editor{padding:18px;background:#0a1424;border:1px solid #30415b;border-radius:10px}.set-editor h3{margin:0;font-size:14px}.set-row{display:grid;grid-template-columns:28px minmax(0,1fr) 8px minmax(0,1fr) 30px;align-items:end;gap:8px;margin:18px 0}.set-row>label{font-size:11px}.set-number{align-self:end;line-height:44px;color:#94a3b8;font-weight:700}.set-row>span:not(.set-number){line-height:44px;text-align:center}.club-admin .set-row button{padding:8px 0;height:44px;font-size:20px;border-color:transparent;background:transparent}.set-row input{text-align:center;font-variant-numeric:tabular-nums}.add-set{margin-top:8px;width:100%}.match-result{margin-top:16px;font-size:26px;font-weight:800;color:#f8fafc;font-variant-numeric:tabular-nums}.match-result>span{color:#64748b;margin:0 6px}.match-result small{display:block;font-size:11px;font-weight:500;color:#9aabc1}.versus{font-size:11px;color:#94a3b8;font-weight:500}
-.media-preview{display:grid;justify-items:center;gap:10px;padding:14px;border:1px dashed #3e506b;border-radius:10px;background:#091322}.media-preview img{width:100%;max-height:220px;object-fit:contain;border-radius:6px}.media-preview span{font-size:11px;color:#9aabc1;text-align:center}.photo-record>img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#17243a;margin-bottom:14px}.typography-editor{background:#0c1626;border-color:#344660}.typography-editor legend{font-size:16px}.settings-editor .form-section{margin-top:28px}
+.media-preview{display:grid;justify-items:center;gap:10px;padding:14px;border:1px dashed #3e506b;border-radius:10px;background:#091322}.media-preview img{width:100%;max-height:220px;object-fit:contain;border-radius:6px}.media-preview span{font-size:11px;color:#9aabc1;text-align:center}.photo-record>img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#17243a;margin-bottom:14px}.sponsor-record>img{display:block;width:100%;height:130px;object-fit:contain;border-radius:6px;background:#f8fafc;padding:14px;margin-bottom:14px}.stats{grid-template-columns:repeat(6,minmax(0,1fr))}.typography-editor{background:#0c1626;border-color:#344660}.typography-editor legend{font-size:16px}.settings-editor .form-section{margin-top:28px}
 .delete-dialog{width:min(480px,calc(100vw - 32px));border:1px solid #485a74;border-radius:16px;padding:28px;background:#101b2c;color:#e2e8f0;box-shadow:0 24px 80px #0008}.delete-dialog::backdrop{background:#020817b8;backdrop-filter:blur(3px)}.delete-dialog h2{font-size:22px;line-height:1.3;margin:12px 0}.delete-dialog p{font-size:14px;line-height:1.7;color:#afbed2}.delete-dialog .eyebrow{font-size:10px;color:#fca5a5}.delete-dialog .delete-name{color:#fff;font-weight:700;overflow-wrap:anywhere}.dialog-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}.club-admin .danger-filled{border:1px solid #dc4c67;border-radius:8px;padding:10px 14px;background:#b42342;color:#fff;cursor:pointer}
 @media(min-width:1600px){.editor-layout{grid-template-columns:minmax(0,1.3fr) minmax(340px,.85fr)}}
 @media(max-width:1200px){.editor-layout{grid-template-columns:minmax(0,1fr)}.records-list{grid-template-columns:repeat(2,minmax(0,1fr))}.player-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:900px){.workspace{margin-left:0;padding:24px 20px}.admin-brand{margin-bottom:20px}.club-admin nav{padding-bottom:4px}.club-admin nav button:not(.primary){white-space:nowrap}.workspace>header{margin-bottom:24px}.collection-toolbar{gap:12px}.aside-bottom{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-top:18px}.draft-indicator{margin:0}}
+@media(max-width:900px){.workspace{margin-left:0;padding:24px 20px}.stats{grid-template-columns:repeat(3,minmax(0,1fr))}.admin-brand{margin-bottom:20px}.club-admin nav{padding-bottom:4px}.club-admin nav button:not(.primary){white-space:nowrap}.workspace>header{margin-bottom:24px}.collection-toolbar{gap:12px}.aside-bottom{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-top:18px}.draft-indicator{margin:0}}
 @media(max-width:600px){.workspace{padding:22px 14px}.workspace>header{flex-direction:column;gap:16px}.workspace h1{font-size:28px}.public-link{align-self:flex-start}.card{padding:18px}.form-grid,.player-grid{grid-template-columns:minmax(0,1fr)}.records-list{grid-template-columns:minmax(0,1fr)}.collection-toolbar{padding:14px}.collection-toolbar label,.collection-toolbar .search-field{flex-basis:100%}.filter-summary{justify-content:space-between}.editor-heading{flex-wrap:wrap}.editor-footer{flex-wrap:wrap}.editor-footer>span{max-width:100%;flex-basis:100%}.editor-footer button.primary{flex:1}.player-editor{padding:14px}.set-editor{padding:12px}.set-row{grid-template-columns:24px minmax(0,1fr) 5px minmax(0,1fr) 26px;gap:5px}.set-row label{font-size:10px}.set-row input{padding:10px 6px}.dialog-actions{flex-direction:column-reverse}.dialog-actions button{width:100%}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 </style>

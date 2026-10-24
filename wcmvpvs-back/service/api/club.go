@@ -55,6 +55,10 @@ func registerClubRoutes(rt *_router) {
 	rt.router.Post("/v1/club-admin/{slug}/matches", rt.wrapClubAdmin(rt.clubAdminSaveMatch))
 	rt.router.Put("/v1/club-admin/{slug}/matches/{id}", rt.wrapClubAdmin(rt.clubAdminSaveMatch))
 	rt.router.Delete("/v1/club-admin/{slug}/matches/{id}", rt.wrapClubAdmin(rt.clubAdminDeleteMatch))
+	rt.router.Get("/v1/club-admin/{slug}/sponsors", rt.wrapClubAdmin(rt.clubAdminSponsors))
+	rt.router.Post("/v1/club-admin/{slug}/sponsors", rt.wrapClubAdmin(rt.clubAdminSaveSponsor))
+	rt.router.Put("/v1/club-admin/{slug}/sponsors/{id}", rt.wrapClubAdmin(rt.clubAdminSaveSponsor))
+	rt.router.Delete("/v1/club-admin/{slug}/sponsors/{id}", rt.wrapClubAdmin(rt.clubAdminDeleteSponsor))
 }
 
 func (rt *_router) listMasterClubs(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -214,13 +218,18 @@ func (rt *_router) clubPublicHome(w http.ResponseWriter, r *http.Request) {
 	posts, _ := rt.store.ListClubPosts(r.Context(), site.ID, 0, true)
 	gallery, _ := rt.store.ListClubGallery(r.Context(), site.ID, 0, true)
 	matches, _ := rt.store.ListClubMatches(r.Context(), site.ID, 0)
+	sponsors, err := rt.store.ListClubSponsors(r.Context(), site.ID, true)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, 500)
+		return
+	}
 	if len(posts) > 12 {
 		posts = posts[:12]
 	}
 	if len(gallery) > 16 {
 		gallery = gallery[:16]
 	}
-	writeJSON(w, 200, map[string]interface{}{"club": site, "teams": teams, "posts": posts, "gallery": gallery, "matches": matches})
+	writeJSON(w, 200, map[string]interface{}{"club": site, "teams": teams, "posts": posts, "gallery": gallery, "matches": matches, "sponsors": sponsors})
 }
 func (rt *_router) clubPublicTeam(w http.ResponseWriter, r *http.Request) {
 	site, err := rt.store.ClubSiteBySlug(r.Context(), chi.URLParam(r, "slug"))
@@ -319,12 +328,17 @@ func (rt *_router) clubAdminOverview(w http.ResponseWriter, r *http.Request, sit
 	posts, _ := rt.store.ListClubPosts(r.Context(), siteID, 0, false)
 	gallery, _ := rt.store.ListClubGallery(r.Context(), siteID, 0, false)
 	matches, _ := rt.store.ListClubMatches(r.Context(), siteID, 0)
+	sponsors, err := rt.store.ListClubSponsors(r.Context(), siteID, false)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, 500)
+		return
+	}
 	playerCount := 0
 	for i := range teams {
 		players, _ := rt.store.ListClubPlayers(r.Context(), siteID, teams[i].ID)
 		playerCount += len(players)
 	}
-	writeJSON(w, 200, map[string]interface{}{"club": site, "teams": teams, "posts": posts, "gallery": gallery, "matches": matches, "counts": map[string]int{"teams": len(teams), "players": playerCount, "posts": len(posts), "photos": len(gallery), "matches": len(matches)}})
+	writeJSON(w, 200, map[string]interface{}{"club": site, "teams": teams, "posts": posts, "gallery": gallery, "matches": matches, "sponsors": sponsors, "counts": map[string]int{"teams": len(teams), "players": playerCount, "posts": len(posts), "photos": len(gallery), "matches": len(matches), "sponsors": len(sponsors)}})
 }
 func (rt *_router) clubAdminUpdateSettings(w http.ResponseWriter, r *http.Request, siteID int64) {
 	site, err := rt.store.ClubSiteByID(r.Context(), siteID)

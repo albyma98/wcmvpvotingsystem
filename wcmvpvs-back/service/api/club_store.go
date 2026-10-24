@@ -222,6 +222,17 @@ func (s *Store) EnsureClubTables() error {
 		`CREATE INDEX IF NOT EXISTS idx_club_posts_site ON club_posts(site_id, pinned DESC, published_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_club_gallery_site ON club_gallery(site_id, position, id DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_club_matches_team ON club_matches(site_id, team_id, scheduled_at);`,
+		`CREATE TABLE IF NOT EXISTS club_sponsors (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			site_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			logo_url TEXT NOT NULL,
+			website TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			position INTEGER NOT NULL DEFAULT 0,
+			active INTEGER NOT NULL DEFAULT 1
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_club_sponsors_site ON club_sponsors(site_id, position, id);`,
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(q); err != nil {
@@ -385,7 +396,7 @@ func (s *Store) DeleteClubSite(ctx context.Context, siteID int64) error {
 			return err
 		}
 	}
-	for _, table := range []string{"club_admin_sessions", "club_admins", "club_players", "club_posts", "club_gallery", "club_matches", "club_teams"} {
+	for _, table := range []string{"club_admin_sessions", "club_admins", "club_players", "club_posts", "club_gallery", "club_matches", "club_teams", "club_sponsors"} {
 		if _, err = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE site_id=?", siteID); err != nil {
 			return err
 		}

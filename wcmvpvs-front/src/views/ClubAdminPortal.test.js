@@ -29,19 +29,27 @@ const render = new Function(...Object.keys(helpers), renderCode)(...Object.value
 
 async function fixture(t, failSave = false, config = {}) {
   let club = { name: 'Aurora', active: true, contacts: [{ name: 'Segreteria', email: 'info@aurora.it' }], tileIcons: {} }
+  let sponsors = structuredClone(config.sponsors || [])
   const writes = []
   const requests = []
   const component = createComponent(Vue, clubHomeTiles, CLUB_FONTS, clubTypography, { render: () => null }, { render: () => null }, async (path, options) => {
     requests.push({ path, ...options, body: options?.body ? JSON.parse(options.body) : undefined })
-    if (options?.method && config.failWrites) return { ok: false, status: 500, json: async () => ({ error: 'save_failed' }) }
+    if (options?.method && config.failWrites) return { ok: false, status: 500, json: async () => ({ error: config.writeError || 'save_failed' }) }
     if (options?.method && config.waitForWrite) await config.waitForWrite
     let data = {}
-    if (path.endsWith('/overview')) data = { club: structuredClone(club), teams: [{ id: 1, name: 'Under 16', active: true }] }
+    if (path.endsWith('/overview')) data = { club: structuredClone(club), teams: [{ id: 1, name: 'Under 16', active: true }], sponsors: structuredClone(sponsors), counts: { sponsors: sponsors.length } }
     if (path.endsWith('/teams')) data = { teams: [{ id: 1, name: 'Under 16', active: true }], players: config.players || {} }
     if (path.endsWith('/settings')) {
       writes.push(JSON.parse(options.body))
       if (failSave) return { ok: false, status: 400, json: async () => ({ error: 'invalid_contact_email' }) }
       club = JSON.parse(options.body)
+    }
+    if (path.includes('/sponsors') && options?.method) {
+      const body = options.body ? JSON.parse(options.body) : null
+      const id = Number(path.match(/\/sponsors\/(\d+)$/)?.[1])
+      if (options.method === 'DELETE') sponsors = sponsors.filter(sponsor => sponsor.id !== id)
+      else if (options.method === 'PUT') sponsors = sponsors.map(sponsor => sponsor.id === id ? { ...body, id } : sponsor)
+      else { const nextID = Math.max(0, ...sponsors.map(sponsor => sponsor.id)) + 1; sponsors.push({ ...body, id: nextID }); data = { id: nextID, ok: true } }
     }
     return { ok: true, status: 200, json: async () => data }
   }, () => {}, () => {}, () => {}, () => config.confirm ?? true)
@@ -328,7 +336,7 @@ test('Unsaved edits survive canceled resets and trigger the browser leave guard'
 
 test('Every collection renders a real labeled form; roster and partials expose structured fields', async t => {
   const { state } = await fixture(t)
-  for (const tab of ['teams', 'posts', 'gallery', 'matches', 'contacts']) {
+  for (const tab of ['teams', 'posts', 'gallery', 'matches', 'contacts', 'sponsors']) {
     state.activeTab.value = tab
     let html = ''
     render({}, chunk => { html += chunk }, null, {}, { slug: 'aurora' }, Vue.proxyRefs(state), {}, {})
@@ -352,4 +360,129 @@ test('Every collection renders a real labeled form; roster and partials expose s
   render({}, chunk => { match += chunk }, null, {}, { slug: 'aurora' }, Vue.proxyRefs(state), {}, {})
   assert.match(match, /aria-label="Parziale 1, squadra del club"/)
   assert.match(match, /aria-label="Parziale 1, avversario"/)
+})
+
+test('Sponsor CMS creates, reloads, edits and deletes a sponsor without overwriting homepage drafts', async t => {
+  const { state, requests } = await fixture(t)
+  state.activeTab.value = 'sponsors'
+  state.settings.tagline = 'Homepage in lavorazione'
+  Object.assign(state.sponsorForm, { name: '  Partner del club  ', logoUrl: ' /partner.png ', website: ' https://partner.example ', description: '', position: 3, active: false })
+  await state.saveSponsor()
+  const created = mutations(requests)[0]
+  assert.equal(created.method, 'POST')
+  assert.equal(created.path, '/api/v1/club-admin/aurora/sponsors')
+  assert.equal(created.body.name, 'Partner del club')
+  assert.equal(created.body.logoUrl, '/partner.png')
+  assert.equal(created.body.website, 'https://partner.example')
+  assert.equal(created.body.description, '')
+  assert.equal(created.body.position, 3)
+  assert.equal(created.body.active, false)
+  assert.equal(state.overview.value.sponsors.length, 1)
+  assert.equal(state.overview.value.counts.sponsors, 1)
+  assert.equal(state.sponsorForm.id, 0)
+  assert.equal(state.sponsorForm.name, '')
+  assert.equal(state.settings.tagline, 'Homepage in lavorazione')
+
+  const sponsor = state.overview.value.sponsors[0]
+  await state.editSponsor(sponsor)
+  state.sponsorForm.description = '  Sostiene la prima squadra  '
+  state.sponsorForm.active = true
+  state.sponsorForm.position = 0
+  assert.equal(sponsor.description, '')
+  await state.saveSponsor()
+  const updated = mutations(requests)[1]
+  assert.equal(updated.method, 'PUT')
+  assert.equal(updated.path, `/api/v1/club-admin/aurora/sponsors/${sponsor.id}`)
+  assert.equal(updated.body.description, 'Sostiene la prima squadra')
+  assert.equal(updated.body.position, 0)
+  assert.equal(updated.body.active, true)
+  assert.equal(state.overview.value.sponsors[0].description, updated.body.description)
+
+  await state.editSponsor(state.overview.value.sponsors[0])
+  await state.askDelete('sponsors', sponsor)
+  assert.equal(mutations(requests).length, 2)
+  await state.confirmDelete()
+  const deleted = mutations(requests)[2]
+  assert.equal(deleted.method, 'DELETE')
+  assert.equal(deleted.path, `/api/v1/club-admin/aurora/sponsors/${sponsor.id}`)
+  assert.equal(state.sponsorForm.id, 0)
+  assert.deepEqual(state.overview.value.sponsors, [])
+  assert.equal(state.pendingDelete.value, null)
+  assert.equal(state.settings.tagline, 'Homepage in lavorazione')
+})
+
+test('Sponsor validation and media processing prevent invalid or premature writes', async t => {
+  const { state, requests } = await fixture(t)
+  await state.saveSponsor()
+  assert.match(state.error.value, /nome dello sponsor/)
+  state.sponsorForm.name = 'Partner'
+  await state.saveSponsor()
+  assert.match(state.error.value, /logo dello sponsor/)
+  state.sponsorForm.logoUrl = '/logo.png'
+  for (const website of ['', 'partner.example', 'javascript:alert(1)', 'https:///', 'https://user:password@partner.example', 'https://partner.example/a b', 'https://partner.example/\\path']) {
+    state.sponsorForm.website = website
+    await state.saveSponsor()
+    assert.match(state.error.value, /sito web valido/)
+  }
+  state.sponsorForm.website = 'https://partner.example'
+  for (const position of ['', -1, 1.5, 1000001]) {
+    state.sponsorForm.position = position
+    await state.saveSponsor()
+    assert.match(state.error.value, /ordine dello sponsor/)
+  }
+  state.sponsorForm.position = 0
+  state.sponsorForm.description = 'a'.repeat(3001)
+  await state.saveSponsor()
+  assert.match(state.error.value, /descrizione/)
+  state.sponsorForm.description = ''
+  state.trackImageUpload(true)
+  await state.saveSponsor()
+  await state.editSponsor({ id: 5, name: 'Altro partner' })
+  assert.equal(state.sponsorForm.name, 'Partner')
+  assert.equal(mutations(requests).length, 0)
+  state.trackImageUpload(false)
+  await state.saveSponsor()
+  assert.equal(mutations(requests).length, 1)
+})
+
+test('Sponsor failures retain drafts, apply leave guards and expose backend validation messages', async t => {
+  const { state, requests } = await fixture(t, false, { failWrites: true, writeError: 'invalid_sponsor_logo', confirm: false })
+  Object.assign(state.sponsorForm, { name: 'Sponsor da conservare', logoUrl: '/logo.png', website: 'https://partner.example', description: 'Bozza', active: false })
+  await state.saveSponsor()
+  assert.equal(mutations(requests).length, 1)
+  assert.match(state.error.value, /logo valido/)
+  assert.equal(state.sponsorForm.name, 'Sponsor da conservare')
+  assert.equal(state.sponsorForm.description, 'Bozza')
+  assert.equal(state.busy.value, false)
+  assert.equal(state.hasUnsavedChanges.value, true)
+  state.clearEditor('sponsor')
+  assert.equal(state.sponsorForm.name, 'Sponsor da conservare')
+  await state.editSponsor({ id: 8, name: 'Altro sponsor' })
+  assert.equal(state.sponsorForm.name, 'Sponsor da conservare')
+  let prevented = false
+  state.beforeUnload({ preventDefault() { prevented = true } })
+  assert.equal(prevented, true)
+})
+
+test('Sponsor list combines search and publication filters and renders existing logos and edit actions', async t => {
+  const sponsors = [
+    { id: 1, name: 'Sport Partner', logoUrl: '/sport.png', website: 'https://sport.example', description: 'Prima squadra', position: 0, active: true },
+    { id: 2, name: 'Market', logoUrl: '/market.png', website: 'https://market.example', description: 'Partner giovanili', position: 1, active: false },
+  ]
+  const { state } = await fixture(t, false, { sponsors })
+  state.activeTab.value = 'sponsors'
+  Object.assign(state.filters.sponsors, { query: 'partner', state: 'false' })
+  assert.deepEqual(state.filteredSponsors.value.map(sponsor => sponsor.id), [2])
+  state.resetFilters()
+  assert.deepEqual(state.filteredSponsors.value.map(sponsor => sponsor.id), [1, 2])
+  let html = ''
+  render({}, chunk => { html += chunk }, null, {}, { slug: 'aurora' }, Vue.proxyRefs(state), {}, {})
+  assert.match(html, /Nome sponsor \*/)
+  assert.match(html, /type="url" required/)
+  assert.match(html, /Descrizione \(opzionale\)/)
+  assert.match(html, /Ordine di visualizzazione/)
+  assert.match(html, /src="\/sport.png"/)
+  assert.match(html, /aria-label="Modifica sponsor Sport Partner"/)
+  assert.match(html, /aria-label="Elimina sponsor Market"/)
+  assert.ok(!html.includes('<label>Squadra<select'))
 })

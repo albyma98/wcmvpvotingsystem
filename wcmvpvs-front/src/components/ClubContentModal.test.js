@@ -240,3 +240,45 @@ test('club panels render their own content and useful contact links', async t =>
     assert.ok(!find(root, node => node.props['aria-label'] === 'Sezioni squadra'))
   }
 })
+
+test('sponsor cards display logos and optional descriptions with one external link per sponsor', t => {
+  const sponsors = [
+    { id: 21, name: 'Sport e Passione', logoUrl: '/sport-logo.png', website: 'https://sport.example', description: 'Al fianco del club.\nDa oltre venti anni.' },
+    { id: 22, name: 'Partner senza descrizione', logoUrl: 'https://images.example/partner.webp', website: 'https://partner.example', description: '' },
+  ]
+  const { root } = fixture(t, { panel: 'sponsors', teamData: null, data: { sponsors } })
+  const section = find(root, node => node.props['aria-label'] === 'Sponsor del club')
+  assert.ok(section)
+  const cards = nodes(section, node => node.tag === 'a')
+  assert.equal(cards.length, 2)
+  for (const [index, card] of cards.entries()) {
+    const sponsor = sponsors[index]
+    assert.equal(card.props.href, sponsor.website)
+    assert.equal(card.props.target, '_blank')
+    assert.equal(card.props.rel, 'noopener noreferrer')
+    assert.ok(card.props['aria-label'].includes(sponsor.name))
+    assert.ok(card.props['aria-label'].includes('nuova scheda'))
+    assert.equal(textOf(find(card, node => node.tag === 'h3')), sponsor.name)
+    const logo = find(card, node => node.tag === 'img')
+    assert.equal(logo.props.src, sponsor.logoUrl)
+    assert.equal(logo.props.alt, sponsor.name)
+    assert.equal(logo.props.loading, 'lazy')
+    assert.ok(textOf(card).includes('Visita il sito'))
+  }
+  assert.equal(textOf(find(cards[0], node => node.tag === 'p')), sponsors[0].description)
+  assert.ok(!find(cards[1], node => node.tag === 'p'))
+  assert.ok(!textOf(root).includes('sponsor saranno disponibili'))
+})
+
+test('sponsor modal updates from the empty state when the club payload changes', async t => {
+  const { root, props } = fixture(t, { panel: 'sponsors', teamData: null })
+  assert.match(textOf(root), /sponsor saranno disponibili/)
+  props.data = { sponsors: [{ id: 1, name: 'Nuovo sponsor', logoUrl: '/new.png', website: 'https://new.example', description: '' }] }
+  await Vue.nextTick()
+  assert.ok(textOf(root).includes('Nuovo sponsor'))
+  assert.ok(!textOf(root).includes('sponsor saranno disponibili'))
+  props.panel = 'contacts'
+  await Vue.nextTick()
+  assert.ok(!textOf(root).includes('Nuovo sponsor'))
+  assert.ok(textOf(root).includes('Segreteria'))
+})

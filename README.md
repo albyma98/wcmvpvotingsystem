@@ -48,11 +48,23 @@ le categorie iniziali e l'account del responsabile. Il CMS Club gestisce per ora
 - squadre/categorie e relativi roster;
 - annunci e notizie, globali o assegnati a una squadra;
 - photo gallery;
-- calendario, risultati e punteggi.
+- calendario, risultati e punteggi;
+- sponsor con logo, sito web e descrizione opzionale.
 
 Le tabelle `club_*`, le sessioni `club_admin_session` e le API `/v1/clubs/*` e
 `/v1/club-admin/*` sono dedicate a questo verticale. Il collegamento con il core
 avviene tramite `club_sites.organization_id`.
+
+Nel CMS, **Sponsor** permette di creare, modificare ed eliminare i partner del
+club. Nome, logo e sito web sono obbligatori; la descrizione è opzionale. Il logo
+può essere caricato dal computer (con ottimizzazione automatica) oppure indicato
+tramite collegamento. Il sito deve iniziare con `https://` o `http://`.
+L'ordine di visualizzazione segue il valore numerico crescente, a parità di
+valore segue l'ordine di inserimento. Disattivando **Pubblicato sul sito pubblico**
+lo sponsor resta nel CMS come bozza. Gli sponsor pubblicati compaiono nella
+modale **I nostri Sponsor** della homepage; il clic sulla scheda apre il sito
+del partner in una nuova scheda. I dati sono salvati nella tabella dedicata
+`club_sponsors`, creata automaticamente all'avvio del backend aggiornato.
 
 Nel CMS, **Homepage → Font della home e delle modali** permette di scegliere
 separatamente i font dei titoli e dei testi, con anteprima e salvataggio per club.

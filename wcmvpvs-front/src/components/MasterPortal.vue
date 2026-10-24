@@ -435,6 +435,13 @@
                 <input v-model.trim="organizationForm.city" type="text" placeholder="Es. Milano" />
               </label>
               <label>
+                Sport praticato
+                <select v-model="organizationForm.sport" required>
+                  <option disabled value="">Seleziona uno sport</option>
+                  <option v-for="sport in organizationSports" :key="sport" :value="sport">{{ sport }}</option>
+                </select>
+              </label>
+              <label>
                 Logo (URL)
                 <input
                   v-model.trim="organizationForm.logo_url"
@@ -508,6 +515,7 @@
                   <th>Società</th>
                   <th>Slug / URL</th>
                   <th>Città</th>
+                  <th>Sport</th>
                   <th>Stato</th>
                   <th>BAR</th>
                   <th>Costo SMS</th>
@@ -551,6 +559,7 @@
                     </div>
                   </td>
                   <td>{{ org.city || '—' }}</td>
+                  <td>{{ org.sport || 'Da impostare' }}</td>
                   <td>
                     <span :class="['status-pill', org.is_active ? 'active' : 'inactive']">
                       {{ org.is_active ? 'Attiva' : 'Disattiva' }}
@@ -577,10 +586,10 @@
                   </td>
                 </tr>
                 <tr v-if="!organizations.length && !isLoadingOrganizations">
-                  <td colspan="9" class="empty">Nessuna società registrata.</td>
+                  <td colspan="10" class="empty">Nessuna società registrata.</td>
                 </tr>
                 <tr v-if="isLoadingOrganizations">
-                  <td colspan="9" class="empty">Caricamento in corso…</td>
+                  <td colspan="10" class="empty">Caricamento in corso…</td>
                 </tr>
               </tbody>
             </table>
@@ -775,6 +784,10 @@
                     </dd>
                   </div>
                   <div>
+                    <dt>Sport praticato</dt>
+                    <dd>{{ organizationDetail.organization.sport || 'Da impostare' }}</dd>
+                  </div>
+                  <div>
                     <dt>Feature BAR</dt>
                     <dd>
                       <span :class="['status-pill', organizationDetail.organization.bar_enabled ? 'active' : 'inactive']">
@@ -892,7 +905,8 @@ const organizationColorFields = [
   { key: 'secondary_color', label: 'Colore secondario', description: 'Wallet, premi ed evidenze.' },
   { key: 'tertiary_color', label: 'Colore terziario', description: 'Sfondo e superfici della home.' },
 ];
-const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', logo_url: '', is_active: true, sms_cost: 0.08, free_sms: 0, bar_enabled: true, ...DEFAULT_ORGANIZATION_COLORS });
+const organizationSports = ['Calcio', 'Pallacanestro', 'Pallavolo'];
+const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', sport: '', logo_url: '', is_active: true, sms_cost: 0.08, free_sms: 0, bar_enabled: true, ...DEFAULT_ORGANIZATION_COLORS });
 const organizationFormVisible = ref(false);
 const organizationFormMode = ref('create');
 const isSavingOrganization = ref(false);
@@ -921,6 +935,7 @@ function resetOrganizationForm() {
   organizationForm.name = '';
   organizationForm.slug = '';
   organizationForm.city = '';
+  organizationForm.sport = '';
   organizationForm.logo_url = '';
   organizationForm.is_active = true;
   organizationForm.sms_cost = 0.08;
@@ -951,6 +966,7 @@ function openEditOrganization(org) {
   organizationForm.name = org.name;
   organizationForm.slug = org.slug || '';
   organizationForm.city = org.city || '';
+  organizationForm.sport = org.sport || '';
   organizationForm.logo_url = org.logo_url || '';
   organizationForm.is_active = Boolean(org.is_active);
   organizationForm.sms_cost = Number(org.sms_cost ?? 0.08);
@@ -1419,6 +1435,10 @@ async function fetchOrganizationDetail(id = selectedOrganizationId.value) {
 }
 
 async function submitOrganizationForm() {
+  if (!organizationSports.includes(organizationForm.sport)) {
+    organizationFormError.value = 'Seleziona lo sport praticato dalla società.';
+    return;
+  }
   if (organizationColorFields.some(({ key }) => !isHexColor(organizationForm[key]))) {
     organizationFormError.value = 'Inserisci tre colori validi nel formato #RRGGBB.';
     return;
@@ -1435,6 +1455,7 @@ async function submitOrganizationForm() {
       name: organizationForm.name,
       slug: organizationForm.slug,
       city: organizationForm.city,
+      sport: organizationForm.sport,
       logo_url: organizationForm.logo_url,
       is_active: organizationForm.is_active,
       sms_cost: Number(organizationForm.sms_cost || 0),

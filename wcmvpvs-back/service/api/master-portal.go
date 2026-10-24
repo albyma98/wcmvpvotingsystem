@@ -77,6 +77,7 @@ func (rt *_router) createMasterOrganization(w http.ResponseWriter, r *http.Reque
 	var payload struct {
 		Name           string  `json:"name"`
 		Slug           string  `json:"slug"`
+		Sport          string  `json:"sport"`
 		City           string  `json:"city"`
 		LogoURL        string  `json:"logo_url"`
 		PrimaryColor   string  `json:"primary_color"`
@@ -96,6 +97,7 @@ func (rt *_router) createMasterOrganization(w http.ResponseWriter, r *http.Reque
 	org, err := rt.db.CreateOrganization(database.Organization{
 		Name:           payload.Name,
 		Slug:           payload.Slug,
+		Sport:          payload.Sport,
 		City:           payload.City,
 		LogoURL:        payload.LogoURL,
 		PrimaryColor:   payload.PrimaryColor,
@@ -134,6 +136,7 @@ func (rt *_router) updateMasterOrganization(w http.ResponseWriter, r *http.Reque
 	var payload struct {
 		Name           string  `json:"name"`
 		Slug           string  `json:"slug"`
+		Sport          string  `json:"sport"`
 		City           string  `json:"city"`
 		LogoURL        string  `json:"logo_url"`
 		PrimaryColor   string  `json:"primary_color"`
@@ -154,6 +157,7 @@ func (rt *_router) updateMasterOrganization(w http.ResponseWriter, r *http.Reque
 		ID:             orgID,
 		Name:           payload.Name,
 		Slug:           payload.Slug,
+		Sport:          payload.Sport,
 		City:           payload.City,
 		LogoURL:        payload.LogoURL,
 		PrimaryColor:   payload.PrimaryColor,
