@@ -4,7 +4,16 @@ Nella dashboard dell'admin società, il superadmin può salvare:
 
 - uno o più organizzatori con nome, telefono internazionale e ricezione abilitata;
 - il Content Template SID Twilio della società (`HX` e 32 caratteri esadecimali);
-- la modalità casuale oppure i tre migliori nella classifica tifosi tra i votanti.
+- la modalità casuale oppure i tre migliori nella classifica tifosi tra i votanti;
+- la visibilità del biglietto nel profilo di `/slug/new`: **Visibile dopo il voto**
+  oppure **Nascosto**, che è il valore iniziale.
+
+Con la visibilità abilitata, codice e QR del biglietto personale vengono mostrati
+nel profilo dopo il voto, senza una sezione da espandere, anche a votazioni chiuse.
+La scelta vale per la singola società e viene aggiornata nelle pagine già aperte
+con il controllo dello stato dell'evento, ogni 30 secondi. Nascondere il biglietto
+non modifica la generazione del codice né l'idoneità alle estrazioni. I database
+esistenti mantengono il biglietto nascosto dopo l'aggiornamento.
 
 Le impostazioni appartengono alla singola società. Al login lo staff apre
 direttamente Chiusura votazioni e accede soltanto a questa schermata, con i

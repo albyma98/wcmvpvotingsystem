@@ -84,6 +84,7 @@ type Event struct {
 	ShowPreVoteSponsors       bool                       `json:"show_pre_vote_sponsors"`
 	ShowPreVoteBottomSponsors bool                       `json:"show_pre_vote_bottom_sponsors"`
 	ShowVoteCounter           bool                       `json:"show_vote_counter"`
+	ShowLotteryTicket         bool                       `json:"show_lottery_ticket"`
 	ShowBrandedGame           bool                       `json:"show_branded_game"`
 	AvailableMinigames        []string                   `json:"available_minigames"`
 	BrandedGameConfig         string                     `json:"branded_game_config,omitempty"`
@@ -4195,14 +4196,16 @@ SELECT e.id,
        IFNULL(o.logo_url, ''),
        IFNULL(o.bar_enabled, 1),
        IFNULL(t1.name, ''),
-       IFNULL(t2.name, '')
+       IFNULL(t2.name, ''),
+       COALESCE(vs.show_lottery_ticket, 0)
 FROM events e
 LEFT JOIN organizations o ON o.id = e.organization_id
 LEFT JOIN teams t1 ON t1.id = e.team1_id
 LEFT JOIN teams t2 ON t2.id = e.team2_id
+LEFT JOIN organization_voting_settings vs ON vs.organization_id = e.organization_id
 WHERE e.is_active = 1 AND e.organization_id = ?
 LIMIT 1
-`, organizationID).Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &showBrandedGame, &e.BrandedGameConfig, &e.OrganizationName, &e.OrganizationLogoURL, &e.OrganizationBarEnabled, &e.Team1Name, &e.Team2Name)
+`, organizationID).Scan(&e.ID, &e.OrganizationID, &e.Team1ID, &e.Team2ID, &e.StartDateTime, &e.Location, &isActive, &votesClosed, &isConcluded, &showReaction, &showSelfie, &showVoteTrend, &showFeedback, &showPreVoteSponsors, &showPreVoteBottomSponsors, &showVoteCounter, &surveyConfig, &showBrandedGame, &e.BrandedGameConfig, &e.OrganizationName, &e.OrganizationLogoURL, &e.OrganizationBarEnabled, &e.Team1Name, &e.Team2Name, &e.ShowLotteryTicket)
 	if err != nil {
 		return Event{}, err
 	}

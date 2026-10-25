@@ -58,6 +58,19 @@ func TestFanLiveStatus(t *testing.T) {
 		return data
 	}
 	data := read()
+	if data["show_lottery_ticket"] != false {
+		t.Fatalf("ticket visible by default: %+v", data)
+	}
+	db.event.ShowLotteryTicket = true
+	data = read()
+	if data["show_lottery_ticket"] != true {
+		t.Fatalf("ticket visibility not published: %+v", data)
+	}
+	for _, private := range []string{"recipients", "template_sid", "phone"} {
+		if _, exposed := data[private]; exposed {
+			t.Fatalf("private voting settings exposed: %s", private)
+		}
+	}
 	if data["quiz"].(map[string]interface{})["available"] != true || db.resultsRead != 0 {
 		t.Fatalf("active quiz/results: %+v", data)
 	}

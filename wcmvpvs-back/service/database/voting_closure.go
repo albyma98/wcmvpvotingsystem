@@ -30,9 +30,10 @@ type VotingRecipient struct {
 }
 
 type VotingSettings struct {
-	TemplateSID string            `json:"template_sid"`
-	DrawMode    string            `json:"draw_mode"`
-	Recipients  []VotingRecipient `json:"recipients"`
+	TemplateSID       string            `json:"template_sid"`
+	DrawMode          string            `json:"draw_mode"`
+	ShowLotteryTicket bool              `json:"show_lottery_ticket"`
+	Recipients        []VotingRecipient `json:"recipients"`
 }
 
 type VotingClosurePrize struct {
@@ -102,6 +103,7 @@ func ensureVotingClosureTables(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS organization_voting_settings (
 			organization_id INTEGER PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
 			template_sid TEXT NOT NULL DEFAULT '', draw_mode TEXT NOT NULL DEFAULT 'random',
+			show_lottery_ticket INTEGER NOT NULL DEFAULT 0 CHECK(show_lottery_ticket IN (0,1)),
 			recipients_json TEXT NOT NULL DEFAULT '[]');`,
 		`CREATE TABLE IF NOT EXISTS event_voting_closures (
 			event_id INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
@@ -123,6 +125,9 @@ func ensureVotingClosureTables(db *sql.DB) error {
 			return fmt.Errorf("voting closure schema: %w", err)
 		}
 	}
+	if _, err := db.Exec(`ALTER TABLE organization_voting_settings ADD COLUMN show_lottery_ticket INTEGER NOT NULL DEFAULT 0 CHECK(show_lottery_ticket IN (0,1))`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+		return fmt.Errorf("voting ticket visibility migration: %w", err)
+	}
 	return nil
 }
 
@@ -133,7 +138,7 @@ type votingRowQuerier interface {
 func loadVotingSettings(q votingRowQuerier, organizationID int) (VotingSettings, error) {
 	settings := VotingSettings{DrawMode: VotingDrawRandom, Recipients: []VotingRecipient{}}
 	var recipients string
-	err := q.QueryRow(`SELECT template_sid,draw_mode,recipients_json FROM organization_voting_settings WHERE organization_id=?`, organizationID).Scan(&settings.TemplateSID, &settings.DrawMode, &recipients)
+	err := q.QueryRow(`SELECT template_sid,draw_mode,show_lottery_ticket,recipients_json FROM organization_voting_settings WHERE organization_id=?`, organizationID).Scan(&settings.TemplateSID, &settings.DrawMode, &settings.ShowLotteryTicket, &recipients)
 	if errors.Is(err, sql.ErrNoRows) {
 		return settings, nil
 	}
@@ -176,9 +181,9 @@ func (db *appdbimpl) SaveVotingSettings(organizationID int, settings VotingSetti
 	if err != nil {
 		return settings, err
 	}
-	_, err = db.c.Exec(`INSERT INTO organization_voting_settings(organization_id,template_sid,draw_mode,recipients_json) VALUES(?,?,?,?)
-		ON CONFLICT(organization_id) DO UPDATE SET template_sid=excluded.template_sid,draw_mode=excluded.draw_mode,recipients_json=excluded.recipients_json`,
-		organizationID, settings.TemplateSID, settings.DrawMode, string(recipients))
+	_, err = db.c.Exec(`INSERT INTO organization_voting_settings(organization_id,template_sid,draw_mode,show_lottery_ticket,recipients_json) VALUES(?,?,?,?,?)
+		ON CONFLICT(organization_id) DO UPDATE SET template_sid=excluded.template_sid,draw_mode=excluded.draw_mode,show_lottery_ticket=excluded.show_lottery_ticket,recipients_json=excluded.recipients_json`,
+		organizationID, settings.TemplateSID, settings.DrawMode, boolToInt(settings.ShowLotteryTicket), string(recipients))
 	return settings, err
 }
 

@@ -90,6 +90,63 @@ func TestVotingSettingsValidationAndOrganizationIsolation(t *testing.T) {
 	}
 }
 
+func TestVotingSettingsLotteryTicketVisibilityMigrationAndPublicReads(t *testing.T) {
+	db, club, other, eventID, _ := fanEconomyFixture(t)
+	if _, err := db.c.Exec(`UPDATE events SET location='' WHERE id=?`, eventID); err != nil {
+		t.Fatal(err)
+	}
+	// Recreate the previous schema to check additive upgrades of existing clubs.
+	if _, err := db.c.Exec(`DROP TABLE organization_voting_settings;
+		CREATE TABLE organization_voting_settings(organization_id INTEGER PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+		template_sid TEXT NOT NULL DEFAULT '',draw_mode TEXT NOT NULL DEFAULT 'random',recipients_json TEXT NOT NULL DEFAULT '[]');`); err != nil {
+		t.Fatal(err)
+	}
+	sid := "HX" + strings.Repeat("c", 32)
+	if _, err := db.c.Exec(`INSERT INTO organization_voting_settings(organization_id,template_sid,draw_mode,recipients_json) VALUES(?,?,'random',?)`,
+		club.ID, sid, `[{"name":"Segreteria","phone":"+393331234567","enabled":true}]`); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureVotingClosureTables(db.c); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := db.GetVotingSettings(club.ID)
+	if err != nil || settings.ShowLotteryTicket || settings.TemplateSID != sid || len(settings.Recipients) != 1 {
+		t.Fatalf("old settings changed: %+v %v", settings, err)
+	}
+	initial, err := db.GetFanLiveEvent(eventID, club.ID)
+	if err != nil || initial.ShowLotteryTicket {
+		t.Fatalf("old club must stay hidden: %+v %v", initial, err)
+	}
+	for _, visible := range []bool{true, false} {
+		settings.ShowLotteryTicket = visible
+		if _, err := db.SaveVotingSettings(club.ID, settings); err != nil {
+			t.Fatal(err)
+		}
+		if err := ensureVotingClosureTables(db.c); err != nil {
+			t.Fatal(err)
+		}
+		saved, err := db.GetVotingSettings(club.ID)
+		if err != nil || saved.ShowLotteryTicket != visible {
+			t.Fatalf("visibility not saved: %+v %v", saved, err)
+		}
+		live, err := db.GetFanLiveEvent(eventID, club.ID)
+		if err != nil || live.ShowLotteryTicket != visible {
+			t.Fatalf("live event visibility: %+v %v", live, err)
+		}
+		active, err := db.GetActiveEvent(club.ID)
+		if err != nil || active.ShowLotteryTicket != visible {
+			t.Fatalf("active event visibility: %+v %v", active, err)
+		}
+		otherSettings, err := db.GetVotingSettings(other.ID)
+		if err != nil || otherSettings.ShowLotteryTicket {
+			t.Fatalf("setting leaked to another club: %+v %v", otherSettings, err)
+		}
+	}
+	if _, err := db.GetFanLiveEvent(eventID, other.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("cross-club live event: %v", err)
+	}
+}
+
 func TestVotingClosureLeaderboardUsesEligibleVotersAndRankingPoints(t *testing.T) {
 	db, club, other, event, fans := votingClosureFixture(t)
 	// Spending does not lower the existing leaderboard's cumulative points.

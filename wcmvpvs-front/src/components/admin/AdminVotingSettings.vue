@@ -37,6 +37,14 @@
             <span><strong>Estrai 3 migliori in classifica tifoso</strong><small>Primi tre per punti nella classifica monete, tra i tifosi che hanno votato alla partita. Un premio per tifoso; a parità vale l’ordine della classifica.</small></span>
           </label>
         </fieldset>
+        <fieldset class="ticket-visibility">
+          <legend>Biglietto lotteria nel profilo tifoso</legend>
+          <div class="recipient-status">
+            <label class="enabled"><input v-model="settings.show_lottery_ticket" type="radio" name="voting-lottery-ticket" :value="true" /> Visibile dopo il voto</label>
+            <label class="enabled"><input v-model="settings.show_lottery_ticket" type="radio" name="voting-lottery-ticket" :value="false" /> Nascosto</label>
+          </div>
+          <small>Nel profilo di /{{ organizationSlug }}/new, mostra il codice e il QR del biglietto dopo il voto. Il biglietto rimane aperto anche dopo la chiusura delle votazioni.</small>
+        </fieldset>
         <div class="recipients-heading"><h4>Destinatari WhatsApp</h4><span>{{ settings.recipients.length }}/20</span></div>
         <p v-if="!settings.recipients.length" class="muted">Aggiungi i numeri degli organizzatori autorizzati a ricevere i risultati della società.</p>
         <div v-for="(recipient, index) in settings.recipients" :key="index" class="recipient-row">
@@ -59,7 +67,7 @@
           <button class="btn primary" type="submit">{{ saving ? 'Salvataggio…' : 'Salva configurazione' }}</button>
         </div>
       </fieldset>
-      <p v-if="saved" class="success-message" role="status">Configurazione salvata. Sarà usata alla prossima chiusura.</p>
+      <p v-if="saved" class="success-message" role="status">Configurazione della società salvata.</p>
     </form>
   </article>
 </template>
@@ -73,7 +81,7 @@ const props = defineProps({
   organizationSlug: { type: String, default: '' },
 });
 const emit = defineEmits(['unauthorized']);
-const settings = reactive({ template_sid: '', draw_mode: 'random', recipients: [] });
+const settings = reactive({ template_sid: '', draw_mode: 'random', show_lottery_ticket: false, recipients: [] });
 const loading = ref(false);
 const loaded = ref(false);
 const saving = ref(false);
@@ -100,7 +108,7 @@ async function load() {
   try {
     const { data } = await apiClient.get('/admin/voting-settings', props.authHeaders);
     if (current !== generation) return;
-    Object.assign(settings, data);
+    Object.assign(settings, data, { show_lottery_ticket: data?.show_lottery_ticket === true });
     loaded.value = true;
   } catch (e) {
     if (current !== generation) return;
@@ -155,10 +163,11 @@ async function save() {
     const { data } = await apiClient.put('/admin/voting-settings', {
       template_sid: settings.template_sid,
       draw_mode: settings.draw_mode,
+      show_lottery_ticket: settings.show_lottery_ticket === true,
       recipients: settings.recipients.map(recipient => ({ ...recipient })),
     }, props.authHeaders);
     if (current !== generation) return;
-    Object.assign(settings, data);
+    Object.assign(settings, data, { show_lottery_ticket: data?.show_lottery_ticket === true });
     saved.value = true;
   } catch (e) {
     if (current !== generation) return;
@@ -185,8 +194,9 @@ onUnmounted(() => { generation++; });
 small { display: block; font-size: .8rem; line-height: 1.5; font-weight: 400; }
 .template-test { margin-top: 1rem; padding: 1rem; border: 1px solid #cbd5e1; border-radius: .65rem; }
 .template-test-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .75rem; margin-bottom: .65rem; }
-.voting-settings .draw-modes { margin: 1.5rem 0; }
-.draw-modes legend { margin-bottom: .75rem; font-weight: 600; }
+.voting-settings .draw-modes, .voting-settings .ticket-visibility { margin: 1.5rem 0; }
+.draw-modes legend, .ticket-visibility legend { margin-bottom: .75rem; font-weight: 600; }
+.ticket-visibility small { margin-top: .65rem; }
 .radio-option { display: flex; align-items: flex-start; gap: .65rem; padding: .85rem; margin-top: .5rem; background: rgba(148,163,184,.06); border: 1px solid #334155; border-radius: .65rem; cursor: pointer; }
 .radio-option input { width: auto; accent-color: #8b5cf6; }
 .recipients-heading, .settings-actions { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }

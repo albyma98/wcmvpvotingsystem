@@ -448,15 +448,12 @@
           </FanCollectionPanel>
           <button v-if="walletError" type="button" class="journey-next" :disabled="shopBusy" @click="loadWallet">Riprova a caricare la collezione</button>
 
-          <details v-if="SHOW_MVP_LOTTERY_QR" class="lottery-box">
-            <summary class="lottery-title">QR Lotteria MVP<span aria-hidden="true">⌄</span></summary>
-            <template v-if="lotteryCode">
-              <div class="lottery-code">{{ lotteryCode }}</div>
-              <img v-if="lotteryQrUrl" :src="lotteryQrUrl" alt="QR lotteria" class="lottery-qr" />
-              <p class="lottery-hint">Resta fino a fine partita per ritirare il premio.</p>
-            </template>
-            <p v-else class="lottery-empty">Vota l'MVP per ottenere il tuo QR lotteria personale.</p>
-          </details>
+          <section v-if="showLotteryTicket" class="lottery-box" aria-label="Biglietto lotteria MVP">
+            <h3 class="lottery-title">QR Lotteria MVP</h3>
+            <div class="lottery-code">{{ lotteryCode }}</div>
+            <img v-if="lotteryQrUrl" :src="lotteryQrUrl" alt="QR lotteria" class="lottery-qr" />
+            <p class="lottery-hint">Conserva questo biglietto per il ritiro di un eventuale premio.</p>
+          </section>
         </div>
       </div>
 
@@ -645,8 +642,6 @@ import {
 const FAN_NICKNAME_MIN_LEN = 3;
 const FAN_NICKNAME_MAX_LEN = 24;
 const FAN_NICKNAME_PATTERN = /^[A-Za-z0-9._ -]+$/;
-// QR temporaneamente nascosto nel profilo; la logica della lotteria resta attiva.
-const SHOW_MVP_LOTTERY_QR = false;
 
 const props = defineProps({
   initialDataReady: { type: Boolean, default: true },
@@ -884,10 +879,11 @@ async function loadQuizAvailability() {
 async function refreshLiveStatus() {
   const eventId = props.eventId;
   if (!eventId || liveRequestEventId === eventId || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return;
+  const scope = walletScope();
   liveRequestEventId = eventId;
   try {
     const { data } = await apiClient.get(`/events/${eventId}/fan-live`);
-    if (eventId !== props.eventId || Number(data?.event_id) !== eventId) return;
+    if (isDisposed || scope !== walletScope() || eventId !== props.eventId || Number(data?.event_id) !== eventId) return;
     liveEvent.value = data;
     quizAvailable.value = data.quiz?.available === true;
   } catch (error) { /* conserva le ultime informazioni ricevute se la rete non è disponibile */ }
@@ -1101,7 +1097,9 @@ const canSubmitNickname = computed(
   () => !isSavingNickname.value && nicknameDraft.value.trim() !== fanNickname.value.trim(),
 );
 const lotteryCode = computed(() => String(fanLotteryTicket.value?.ticket_code || '').trim());
+const showLotteryTicket = computed(() => eventState.value?.show_lottery_ticket === true && Boolean(lotteryCode.value));
 const lotteryQrUrl = computed(() => {
+  if (!showLotteryTicket.value) return '';
   const qr = String(fanLotteryTicket.value?.qr_data || '').trim();
   return qr ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(qr)}` : '';
 });
@@ -3012,7 +3010,7 @@ main {
 .profile-signin strong { font-size: 13px; font-weight: 800; line-height: 1.4; }
 .profile-signin small { margin-top: 3px; font-size: 10px; font-weight: 500; line-height: 1.4; }
 .profile-signin > span:last-child { flex: none; font-size: 20px; }
-.profile-balance:focus-visible, .profile-edit:focus-visible, .profile-signin:focus-visible, .lottery-title:focus-visible { outline: 2px solid var(--red-text); outline-offset: 3px; }
+.profile-balance:focus-visible, .profile-edit:focus-visible, .profile-signin:focus-visible { outline: 2px solid var(--red-text); outline-offset: 3px; }
 .nick-editor {
   display: flex;
   gap: 8px;
@@ -3057,7 +3055,7 @@ main {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 13px;
-  padding: 0 12px;
+  padding: 0 12px 12px;
 }
 .lottery-title {
   display: flex;
@@ -3068,13 +3066,7 @@ main {
   font-size: 12px;
   font-weight: 750;
   color: var(--ink);
-  cursor: pointer;
-  list-style: none;
 }
-.lottery-title::-webkit-details-marker { display: none; }
-.lottery-title > span { color: var(--muted); font-size: 17px; }
-.lottery-box[open] .lottery-title > span { transform: rotate(180deg); }
-.lottery-box[open] { padding-bottom: 12px; }
 .lottery-code {
   margin-bottom: 8px;
   font-family: 'Fraunces', serif;
@@ -3101,12 +3093,6 @@ main {
   background: var(--gold-soft);
   border-radius: 10px;
   padding: 8px 11px;
-}
-.lottery-empty {
-  font-size: 12px;
-  color: var(--muted);
-  font-weight: 500;
-  line-height: 1.5;
 }
 
 /* Overlay gioco a schermo pieno */

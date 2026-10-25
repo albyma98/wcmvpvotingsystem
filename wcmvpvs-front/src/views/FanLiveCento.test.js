@@ -9,6 +9,68 @@ import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
 
+test('the lottery ticket stays hidden by default even after a vote and does not load its QR image', t => {
+  const { state, scope } = fixture();
+  t.after(() => scope.stop());
+  state.hasVoted.value = true;
+  state.fanLotteryTicket.value = { ticket_code: '0042', qr_data: 'https://example.test/t?event_id=42&code=0042' };
+  assert.equal(state.showLotteryTicket.value, false);
+  assert.equal(state.lotteryQrUrl.value, '');
+});
+
+test('enabled lottery tickets appear after the saved vote and remain visible after closing votes', async t => {
+  let voted = false;
+  const ticket = { ticket_code: '0042', qr_data: 'https://example.test/t?event_id=42&code=0042' };
+  const { state, props, scope } = fixture({
+    vote: async () => { voted = true; return { ok: true }; },
+    fetchFanProfile: async () => ({ ok: true, data: { registered: true, wallet: 0, user: { nickname: 'Tifoso' }, lottery_ticket: voted ? ticket : null } }),
+  }, { props: { activeEvent: { is_active: true, votes_closed: false, show_lottery_ticket: true } } });
+  t.after(() => scope.stop());
+  await state.loadFanProfile();
+  assert.equal(state.showLotteryTicket.value, false);
+  await state.castVote(player);
+  state.openProfile();
+  await flush();
+  assert.equal(state.showLotteryTicket.value, true);
+  assert.equal(state.lotteryCode.value, '0042');
+  assert.ok(state.lotteryQrUrl.value.endsWith(encodeURIComponent(ticket.qr_data)));
+  props.activeEvent = { ...props.activeEvent, votes_closed: true, is_concluded: true };
+  state.closeSheets();
+  state.openProfile();
+  await flush();
+  assert.equal(state.showLotteryTicket.value, true);
+  assert.equal(state.activeSheet.value, 'profile');
+});
+
+test('live status applies the society visibility choice to an existing ticket without changing its code', async t => {
+  let visible = false;
+  const { state, scope } = fixture({ apiClient: { get: async () => ({ data: { event_id: 42, is_active: true, show_lottery_ticket: visible, quiz: {} } }) } },
+    { props: { activeEvent: { is_active: true, show_lottery_ticket: true } } });
+  t.after(() => scope.stop());
+  state.fanLotteryTicket.value = { ticket_code: '0042', qr_data: 'https://example.test/t?code=0042' };
+  assert.equal(state.showLotteryTicket.value, true);
+  await state.refreshLiveStatus();
+  assert.equal(state.showLotteryTicket.value, false);
+  assert.equal(state.lotteryQrUrl.value, '');
+  assert.equal(state.lotteryCode.value, '0042');
+  visible = true;
+  await state.refreshLiveStatus();
+  assert.equal(state.showLotteryTicket.value, true);
+  assert.equal(state.lotteryCode.value, '0042');
+});
+
+test('a live response from a previous society cannot enable its lottery QR in the new society', async t => {
+  const pending = deferred();
+  const { state, props, scope } = fixture({ apiClient: { get: () => pending.promise } }, { props: { initialDataReady: false } });
+  t.after(() => scope.stop());
+  const loading = state.refreshLiveStatus();
+  props.organizationSlug = 'other';
+  pending.resolve({ data: { event_id: 42, is_active: true, show_lottery_ticket: true, quiz: {} } });
+  await loading;
+  assert.equal(state.liveEvent.value, null);
+  assert.equal(state.showLotteryTicket.value, false);
+});
+
 test('all three volleyball games use authoritative cumulative receipts and protect a pending save', t => {
   for (const gameId of ['volley-rush', 'setter-pro', 'monster-block']) {
     const { state, scope, saves } = fixture({}, { props: { activeEvent: { is_active: true, available_minigames: [gameId] } } });

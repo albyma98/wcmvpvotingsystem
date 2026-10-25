@@ -67,5 +67,6 @@ func (rt *_router) getFanLiveStatus(w http.ResponseWriter, r *http.Request, ctx 
 		"is_concluded": event.IsConcluded, "team2_name": event.Team2Name, "quiz": quiz, "mvp": winners,
 		"show_feedback_survey": event.ShowFeedbackSurvey, "feedback_survey": event.FeedbackSurvey,
 		"available_minigames": games,
+		"show_lottery_ticket": event.ShowLotteryTicket,
 	})
 }

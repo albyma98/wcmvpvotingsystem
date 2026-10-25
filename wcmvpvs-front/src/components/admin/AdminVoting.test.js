@@ -45,7 +45,7 @@ function fixture(t, compiled, apiClient, initialProps) {
   return { state, props, events, timers, html };
 }
 
-const initialSettings = () => ({ template_sid: 'HX' + 'a'.repeat(32), draw_mode: 'random', recipients: [{ name: 'Segreteria', phone: '+393331234567', enabled: true }] });
+const initialSettings = () => ({ template_sid: 'HX' + 'a'.repeat(32), draw_mode: 'random', show_lottery_ticket: false, recipients: [{ name: 'Segreteria', phone: '+393331234567', enabled: true }] });
 const closureData = status => ({
   summary: { event_id: 9, draw_mode: 'leaderboard', mvp_name: 'Mario Rossi', percentage: '62,50', total_votes: 80,
     prizes: [{ id: 1, name: 'Maglia', ticket_code: '0007', nickname: 'Tifoso' }], warnings: [] },
@@ -117,7 +117,7 @@ test('template test uses the current unsaved SID and a temporary phone without s
   assert.match(await html(), /Numero WhatsApp di prova/);
   assert.match(await html(), />Testa<\/button>/);
   await state.save();
-  assert.deepEqual(Object.keys(saves[0]).sort(), ['draw_mode', 'recipients', 'template_sid']);
+  assert.deepEqual(Object.keys(saves[0]).sort(), ['draw_mode', 'recipients', 'show_lottery_ticket', 'template_sid']);
   assert.equal(saves[0].recipients.length, 1);
   state.testPhone.value = '+393334443323';
   assert.equal(state.testMessage.value, '');
@@ -196,6 +196,44 @@ test('configuration from an older club response cannot overwrite the newly selec
   firstResolve({ data: initialSettings() });
   await settle();
   assert.equal(state.settings.template_sid, 'HX' + 'c'.repeat(32));
+});
+
+test('lottery ticket visibility saves both boolean choices and reloads the saved company setting', async t => {
+  let stored = initialSettings();
+  const writes = [];
+  const { state, html } = fixture(t, settingsComponent, {
+    get: async () => ({ data: structuredClone(stored) }),
+    put: async (path, body) => { writes.push(structuredClone(body)); stored = structuredClone(body); return { data: structuredClone(stored) }; },
+  }, { organizationSlug: 'club' });
+  await settle();
+  assert.equal(state.settings.show_lottery_ticket, false);
+  state.settings.show_lottery_ticket = true;
+  await state.save();
+  assert.equal(writes[0].show_lottery_ticket, true);
+  await state.load();
+  assert.equal(state.settings.show_lottery_ticket, true);
+  const rendered = await html();
+  assert.match(rendered, /Visibile dopo il voto/);
+  assert.match(rendered, /Nascosto/);
+  const visible = rendered.match(/<input[^>]*name="voting-lottery-ticket"[^>]*value="true"[^>]*>/)?.[0];
+  assert.match(visible || '', /\bchecked\b/);
+  state.settings.show_lottery_ticket = false;
+  await state.save();
+  await state.load();
+  assert.equal(writes[1].show_lottery_ticket, false);
+  assert.equal(state.settings.show_lottery_ticket, false);
+});
+
+test('missing visibility settings default to hidden when switching societies', async t => {
+  let reads = 0;
+  const { state, props } = fixture(t, settingsComponent, {
+    get: async () => ({ data: ++reads === 1 ? { ...initialSettings(), show_lottery_ticket: true } : { template_sid: '', draw_mode: 'random', recipients: [] } }),
+  }, { organizationSlug: 'first' });
+  await settle();
+  assert.equal(state.settings.show_lottery_ticket, true);
+  props.organizationSlug = 'second';
+  await settle();
+  assert.equal(state.settings.show_lottery_ticket, false);
 });
 
 test('closing status polls queued organizer messages, displays real codes and stops after provider acceptance', async t => {
