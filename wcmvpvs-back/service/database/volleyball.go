@@ -18,6 +18,8 @@ var (
 	ErrVolleyballGame     = errors.New("invalid volleyball game")
 )
 
+const volleyballMinActionMS = 180
+
 type VolleyballPoint struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
@@ -30,6 +32,7 @@ type VolleyballRound struct {
 	Target       VolleyballPoint `json:"target"`
 	Blocker      VolleyballPoint `json:"blocker"`
 	TimingTarget float64         `json:"timing_target"`
+	MinActionMS  int             `json:"min_action_ms"`
 	ExpiresAt    string          `json:"expires_at"`
 }
 
@@ -157,7 +160,7 @@ func (db *appdbimpl) CreateVolleyballRound(eventID, organizationID, fanID int, d
 	if _, err := tx.Exec(`UPDATE volleyball_rounds SET status='expired' WHERE event_id=? AND organization_id=? AND device_id=? AND game_id=? AND status='pending' AND expires_at<=?`, eventID, organizationID, deviceID, gameID, now.Add(10*time.Second).UnixMilli()); err != nil {
 		return VolleyballRound{}, err
 	}
-	round := VolleyballRound{GameID: gameID, TimingTarget: 0.7}
+	round := VolleyballRound{GameID: gameID, TimingTarget: 0.7, MinActionMS: volleyballMinActionMS}
 	var expires int64
 	var owner int
 	err = tx.QueryRow(`SELECT round_id,attempt,target_x,target_y,blocker_x,blocker_y,timing_target,expires_at,fan_id FROM volleyball_rounds WHERE event_id=? AND organization_id=? AND device_id=? AND game_id=? AND status='pending'`, eventID, organizationID, deviceID, gameID).Scan(&round.RoundID, &round.Attempt, &round.Target.X, &round.Target.Y, &round.Blocker.X, &round.Blocker.Y, &round.TimingTarget, &expires, &owner)
@@ -230,7 +233,7 @@ func (db *appdbimpl) ResolveVolleyballRound(eventID, organizationID, fanID int, 
 		if now.UnixMilli() >= expires {
 			return result, ErrVolleyballExpired
 		}
-		if now.UnixMilli()-issued < 600 {
+		if now.UnixMilli()-issued < volleyballMinActionMS {
 			return result, ErrVolleyballTooEarly
 		}
 		success, perfect, err := volleyballEvaluateRound(gameID, target, blocker, timingTarget, aimX, aimY, timing)

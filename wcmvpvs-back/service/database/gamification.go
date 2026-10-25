@@ -43,7 +43,7 @@ func minigameCatalog() []Minigame {
 		{ID: "stack_it", Name: "Stack It", Description: "Costruisci la torre sponsorizzata."},
 		{ID: "libero-reflex", Name: "Libero Reflex", Description: "Blocca la palla nella zona verde dopo il voto."},
 		{ID: "volley-rush", Name: "Volley Rush", Description: "Mira, supera il muro e schiaccia: un punto, una moneta.", Sports: []string{"Pallavolo"}},
-		{ID: "setter-pro", Name: "Setter Pro", Description: "L’alzata perfetta: precisione e tempismo per servire lo schiacciatore.", Sports: []string{"Pallavolo"}},
+		{ID: "setter-pro", Name: "Setter Pro", Description: "Un gesto per l’alzata perfetta e l’assist allo schiacciatore.", Sports: []string{"Pallavolo"}},
 		{ID: "monster-block", Name: "Monster Block", Description: "Leggi l’attacco, chiudi a rete e firma il muro vincente.", Sports: []string{"Pallavolo"}},
 	}
 }

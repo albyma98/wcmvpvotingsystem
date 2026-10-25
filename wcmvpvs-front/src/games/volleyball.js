@@ -1,9 +1,9 @@
 export const VOLLEYBALL_WORLD = Object.freeze({ width: 360, height: 560 });
 export const VOLLEYBALL_START = Object.freeze({ x: 180, y: 466 });
 export const VOLLEYBALL_MODES = Object.freeze({
-  'volley-rush': { title: 'VOLLEY', emphasis: 'RUSH', eyebrow: 'TROVA LO SPAZIO. CHIUDI IL PUNTO.', action: 'SCHIACCIA', noun: 'SCHIACCIATE', success: 'PUNTO A TERRA!', rx: 48, ry: 40, timingWindow: .24, cycleMs: 1750, flightMs: 850, target: { x: 180, y: 205 } },
-  'setter-pro': { title: 'SETTER', emphasis: 'PRO', eyebrow: 'LE MANI GIUSTE. IL MOMENTO GIUSTO.', action: 'ALZA', noun: 'ALZATE', success: 'ALZATA PERFETTA!', rx: 34, ry: 30, timingWindow: .20, cycleMs: 1850, flightMs: 1050, target: { x: 180, y: 135 } },
-  'monster-block': { title: 'MONSTER', emphasis: 'BLOCK', eyebrow: 'LEGGI L’ATTACCO. CHIUDI LA RETE.', action: 'MURA', noun: 'MURI', success: 'MURO VINCENTE!', rx: 44, ry: 34, timingWindow: .16, cycleMs: 1950, flightMs: 720, target: { x: 180, y: 275 } },
+  'volley-rush': { title: 'VOLLEY', emphasis: 'RUSH', eyebrow: 'UN GESTO. PALLA A TERRA.', action: 'SCHIACCIA', noun: 'SCHIACCIATE', success: 'PUNTO A TERRA!', rx: 48, ry: 40, timingWindow: .24, cycleMs: 1750, flightMs: 360, target: { x: 180, y: 205 } },
+  'setter-pro': { title: 'SETTER', emphasis: 'PRO', eyebrow: 'UN TOCCO. L’ASSIST PERFETTO.', action: 'ALZA', noun: 'ALZATE', success: 'ALZATA PERFETTA!', rx: 34, ry: 30, timingWindow: .20, cycleMs: 1850, flightMs: 420, target: { x: 180, y: 135 } },
+  'monster-block': { title: 'MONSTER', emphasis: 'BLOCK', eyebrow: 'LEGGI LA PALLA. TOCCA E MURA.', action: 'MURA', noun: 'MURI', success: 'MURO VINCENTE!', rx: 44, ry: 34, timingWindow: .16, cycleMs: 900, flightMs: 320, target: { x: 180, y: 275 } },
 });
 
 export const clamp = (value, min, max) => Math.max(min, Math.min(max, Number.isFinite(Number(value)) ? Number(value) : min));

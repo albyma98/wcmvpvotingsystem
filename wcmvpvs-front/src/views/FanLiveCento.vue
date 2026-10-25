@@ -1152,7 +1152,7 @@ const earnMissions = computed(() => [
   { key: 'reaction', emoji: '⚡', title: 'Reaction Test', subtitle: 'Testa i riflessi', pts: 10, game: 'reaction', repeatable: true },
   { key: 'quiz', emoji: '🧠', title: 'Quiz Lampo', subtitle: 'Domande sul match', pts: 15, game: 'quiz', repeatable: true },
   { key: 'volley-rush', emoji: '🏐', title: 'Volley Rush', subtitle: 'Supera il muro, trova il campo · Schiaccia e segna', pts: 1, game: 'volley-rush', repeatable: true, rewardUnit: 'punto' },
-  { key: 'setter-pro', emoji: '🙌', title: 'Setter Pro', subtitle: 'L’alzata perfetta · Precisione e tempismo', pts: 1, game: 'setter-pro', repeatable: true, rewardUnit: 'alzata vincente' },
+  { key: 'setter-pro', emoji: '🙌', title: 'Setter Pro', subtitle: 'Un tocco, l’alzata perfetta · Servi il tuo attaccante', pts: 1, game: 'setter-pro', repeatable: true, rewardUnit: 'alzata vincente' },
   { key: 'monster-block', emoji: '🧱', title: 'Monster Block', subtitle: 'Leggi l’attacco · Chiudi il muro al momento giusto', pts: 1, game: 'monster-block', repeatable: true, rewardUnit: 'muro vincente' },
   { key: 'basketball', emoji: '🏀', title: 'Basket Rush', subtitle: 'Trascina e tira · 1 moneta a canestro', pts: 1, game: 'basketball', repeatable: true, rewardUnit: 'canestro' },
   { key: 'playmaker', emoji: '🤝', title: 'Playmaker', subtitle: 'L’assist perfetto · Sessioni da 30 secondi', pts: 1, game: 'playmaker', repeatable: true, rewardUnit: 'assist' },

@@ -28,11 +28,11 @@ func TestVolleyballAtomicRewardsAndReplay(t *testing.T) {
 				t.Fatal(err)
 			}
 			target, blocker := volleyballTargetForAttempt(game, attempt)
-			if round.Attempt != attempt || round.Target != target || round.Blocker != blocker || round.GameID != game {
+			if round.Attempt != attempt || round.Target != target || round.Blocker != blocker || round.GameID != game || round.MinActionMS != 180 {
 				t.Fatalf("target %+v", round)
 			}
 			repeat, err := db.CreateVolleyballRound(42, 7, 0, "device", game, start.Add(100*time.Millisecond))
-			if err != nil || repeat.RoundID != round.RoundID {
+			if err != nil || repeat.RoundID != round.RoundID || repeat.MinActionMS != 180 {
 				t.Fatalf("pending %+v: %v", repeat, err)
 			}
 			result, err := db.ResolveVolleyballRound(42, 7, 0, "device", game, round.RoundID, target.X, target.Y, round.TimingTarget, start.Add(time.Second))
@@ -74,7 +74,7 @@ func TestVolleyballScopeTimingAndExpiry(t *testing.T) {
 			t.Fatalf("scope %+v: %v", scope, err)
 		}
 	}
-	if _, err := db.ResolveVolleyballRound(42, 7, 0, "device", "volley-rush", round.RoundID, round.Target.X, round.Target.Y, .7, now.Add(599*time.Millisecond)); !errors.Is(err, ErrVolleyballTooEarly) {
+	if _, err := db.ResolveVolleyballRound(42, 7, 0, "device", "volley-rush", round.RoundID, round.Target.X, round.Target.Y, .7, now.Add(100*time.Millisecond)); !errors.Is(err, ErrVolleyballTooEarly) {
 		t.Fatalf("early %v", err)
 	}
 	for _, values := range [][3]float64{{math.NaN(), 150, .7}, {100, math.Inf(1), .7}, {100, 150, math.Inf(-1)}, {-1, 150, .7}, {361, 150, .7}, {100, 561, .7}, {100, 150, -0.1}, {100, 150, 1.1}} {
@@ -82,7 +82,7 @@ func TestVolleyballScopeTimingAndExpiry(t *testing.T) {
 			t.Fatalf("gesture %v: %v", values, err)
 		}
 	}
-	miss, err := db.ResolveVolleyballRound(42, 7, 0, "device", "volley-rush", round.RoundID, round.Target.X, round.Target.Y, .1, now.Add(600*time.Millisecond))
+	miss, err := db.ResolveVolleyballRound(42, 7, 0, "device", "volley-rush", round.RoundID, round.Target.X, round.Target.Y, .1, now.Add(180*time.Millisecond))
 	if err != nil || miss.Success || miss.Perfect || miss.Wallet != 0 || miss.CoinsEarned != 0 {
 		t.Fatalf("bad timing %+v: %v", miss, err)
 	}
@@ -115,6 +115,30 @@ func TestVolleyballScopeTimingAndExpiry(t *testing.T) {
 	}
 	if _, err := db.CreateVolleyballRound(42, 7, 0, "device", "setter-pro", now); !errors.Is(err, ErrVolleyballClosed) {
 		t.Fatalf("closed create %v", err)
+	}
+}
+
+func TestVolleyballArcadeMinimumActionAge(t *testing.T) {
+	db, now := volleyballTestDB(t)
+	for _, game := range []string{"volley-rush", "setter-pro", "monster-block"} {
+		round, err := db.CreateVolleyballRound(42, 7, 0, "device", game, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if round.MinActionMS != 180 {
+			t.Fatalf("%s minimum action age: %d", game, round.MinActionMS)
+		}
+		reused, err := db.CreateVolleyballRound(42, 7, 0, "device", game, now.Add(50*time.Millisecond))
+		if err != nil || reused.RoundID != round.RoundID || reused.MinActionMS != 180 {
+			t.Fatalf("%s pending challenge %+v: %v", game, reused, err)
+		}
+		if _, err := db.ResolveVolleyballRound(42, 7, 0, "device", game, round.RoundID, round.Target.X, round.Target.Y, .7, now.Add(179*time.Millisecond)); !errors.Is(err, ErrVolleyballTooEarly) {
+			t.Fatalf("%s accepted action before minimum age: %v", game, err)
+		}
+		result, err := db.ResolveVolleyballRound(42, 7, 0, "device", game, round.RoundID, round.Target.X, round.Target.Y, .7, now.Add(180*time.Millisecond))
+		if err != nil || !result.Success || !result.Perfect || result.CoinsEarned != 1 {
+			t.Fatalf("%s boundary result %+v: %v", game, result, err)
+		}
 	}
 }
 
