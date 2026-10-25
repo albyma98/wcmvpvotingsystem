@@ -35,7 +35,10 @@
           <label class="field">Numero WhatsApp
             <input v-model.trim="recipient.phone" type="tel" placeholder="+39 333 1234567" required :aria-label="`Numero WhatsApp organizzatore ${index + 1}`" />
           </label>
-          <label class="enabled"><input v-model="recipient.enabled" type="checkbox" /> Abilitato</label>
+          <fieldset class="recipient-status" :aria-label="`Ricezione WhatsApp organizzatore ${index + 1}`">
+            <label class="enabled"><input v-model="recipient.enabled" type="radio" :name="`voting-recipient-enabled-${index}`" :value="true" /> Abilitato</label>
+            <label class="enabled"><input v-model="recipient.enabled" type="radio" :name="`voting-recipient-enabled-${index}`" :value="false" /> Disabilitato</label>
+          </fieldset>
           <button class="btn outline" type="button" :aria-label="`Rimuovi organizzatore ${index + 1}`" @click="settings.recipients.splice(index, 1)">Rimuovi</button>
         </div>
         <div class="settings-actions">
@@ -135,7 +138,8 @@ small { display: block; font-size: .8rem; line-height: 1.5; font-weight: 400; }
 .recipients-heading, .settings-actions { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
 .recipients-heading span { font-size: .8rem; color: #94a3b8; }
 .recipient-row { display: grid; grid-template-columns: 1fr 1fr auto auto; align-items: end; gap: .75rem; margin-top: 1rem; }
-.enabled { display: flex; align-items: center; gap: .4rem; min-height: 44px; font-size: .85rem; white-space: nowrap; }
+.recipient-status { display: grid; gap: .4rem; }
+.enabled { display: flex; align-items: center; gap: .4rem; min-height: 20px; font-size: .85rem; white-space: nowrap; }
 .settings-actions { margin-top: 1.25rem; }
 .error { color: #fca5a5; }
 .success-message { color: #86efac; }
