@@ -67,6 +67,11 @@
           </button>
         </div>
 
+        <button v-if="showLotteryShortcut" class="lottery-shortcut" type="button" :aria-label="`Apri il QR della lotteria, codice ${lotteryCode}`" @click="openLotteryTicket">
+          <span>Il tuo codice: <strong>{{ lotteryCode }}</strong></span>
+          <span class="lottery-shortcut-action">Apri QR <span aria-hidden="true">→</span></span>
+        </button>
+
         <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" class="feedback-cta" type="button" @click="openFeedbackModal">
           <span class="feedback-cta-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 3V11.5a10 10 0 0 1 20 0Z"/><path d="M7 10h8M7 14h5"/></svg>
@@ -417,7 +422,7 @@
           </div>
           <p class="profile-economy-hint">1 moneta guadagnata = 1 punto. I punti restano anche se spendi.</p>
         </div>
-        <div class="sheet-body profile-body">
+        <div ref="profileBodyEl" class="sheet-body profile-body">
           <FanCollectionPanel v-if="activeSheet === 'profile'" :nickname="profileNickname" :club-name="homeName" :club-logo-url="homeLogoUrl" :sport="organizationSport" :registered="isRegistered" :collection="hasLoadedCollection ? collection : null" :loading="isLoadingWallet" :busy="shopBusy" :error="walletError" @equip="equipCollectionItem" @open-shop="openSheet('spend')" @inspect="inspectCollectible">
             <template #identity-action>
               <button class="profile-edit" type="button" :aria-expanded="isNicknameEditorOpen" aria-controls="profile-nickname-editor" @click="toggleNicknameEditor">{{ isNicknameEditorOpen ? 'Annulla' : 'Modifica nickname' }}</button>
@@ -454,7 +459,7 @@
           </FanCollectionPanel>
           <button v-if="walletError" type="button" class="journey-next" :disabled="shopBusy" @click="loadWallet">Riprova a caricare la collezione</button>
 
-          <section v-if="showLotteryTicket" class="lottery-box" aria-label="Biglietto lotteria MVP">
+          <section v-if="showLotteryTicket" ref="lotteryTicketEl" class="lottery-box" aria-label="Biglietto lotteria MVP" tabindex="-1">
             <h3 class="lottery-title">QR Lotteria MVP</h3>
             <div class="lottery-code">{{ lotteryCode }}</div>
             <img v-if="lotteryQrUrl" :src="lotteryQrUrl" alt="QR lotteria" class="lottery-qr" />
@@ -788,6 +793,8 @@ const doneKeys = ref([]); // missioni completate (persistite per evento)
 const activeSheet = ref('');
 const platformInfoTriggerRef = ref(null);
 const platformInfoRef = ref(null);
+const profileBodyEl = ref(null);
+const lotteryTicketEl = ref(null);
 const activeGameId = ref(null);
 const isFeedbackModalOpen = ref(false);
 const hasSubmittedFeedback = ref(false);
@@ -1111,6 +1118,7 @@ const canSubmitNickname = computed(
 );
 const lotteryCode = computed(() => String(fanLotteryTicket.value?.ticket_code || '').trim());
 const showLotteryTicket = computed(() => eventState.value?.show_lottery_ticket === true && Boolean(lotteryCode.value));
+const showLotteryShortcut = computed(() => isRegistered.value && showLotteryTicket.value);
 const lotteryQrUrl = computed(() => {
   if (!showLotteryTicket.value) return '';
   const qr = String(fanLotteryTicket.value?.qr_data || '').trim();
@@ -1199,7 +1207,7 @@ function openSheet(id) {
   if (id !== 'vote-result') cancelVotePresentation();
   activeSheet.value = id;
   if (id === 'spend') reportTelemetry?.record('shop_view');
-  if (['wallet', 'spend', 'profile'].includes(id)) loadWallet();
+  if (['wallet', 'spend', 'profile'].includes(id)) return loadWallet();
 }
 function closeSheets() {
   const wasPlatformInfo = activeSheet.value === 'info';
@@ -1553,6 +1561,9 @@ async function castVote(player) {
       return;
     }
     hasVoted.value = true;
+    if (isRegistered.value && String(response.vote?.code || '').trim()) {
+      fanLotteryTicket.value = { ticket_code: String(response.vote.code).trim(), qr_data: String(response.vote.qr_data || '').trim() };
+    }
     reportTelemetry?.record('vote_completed');
     votedPlayerId.value = player.id;
     pendingVotePlayerId.value = null;
@@ -1638,8 +1649,24 @@ function openProfile() {
   isNicknameEditorOpen.value = false;
   nicknameError.value = '';
   nicknameSuccess.value = '';
-  loadFanProfile();
-  openSheet('profile');
+  const profileLoading = loadFanProfile();
+  const walletLoading = openSheet('profile');
+  return Promise.allSettled([profileLoading, walletLoading]);
+}
+async function openLotteryTicket() {
+  if (!showLotteryShortcut.value) return;
+  const scope = walletScope();
+  const loading = openProfile();
+  const revision = sheetRevision;
+  await loading;
+  await nextTick();
+  if (isDisposed || scope !== walletScope() || revision !== sheetRevision || activeSheet.value !== 'profile' || !showLotteryShortcut.value) return;
+  const body = profileBodyEl.value;
+  const ticket = lotteryTicketEl.value;
+  if (!body || !ticket) return;
+  const top = body.scrollTop + ticket.getBoundingClientRect().top - body.getBoundingClientRect().top - 8;
+  body.scrollTo({ top: Math.max(0, top), behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  ticket.focus({ preventScroll: true });
 }
 function toggleNicknameEditor() {
   isNicknameEditorOpen.value = !isNicknameEditorOpen.value;
@@ -3065,6 +3092,10 @@ main {
 .nick-msg.ok {
   color: var(--gold-deep);
 }
+.lottery-shortcut { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; width: 100%; min-height: 44px; flex: none; border: 1px solid var(--gold); border-radius: 12px; padding: 10px 12px; background: var(--gold-soft); color: var(--ink); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.lottery-shortcut strong { margin-left: 4px; font-size: 15px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: .08em; }
+.lottery-shortcut-action { display: flex; align-items: center; gap: 6px; color: var(--gold-deep); font-weight: 800; white-space: nowrap; }
+.lottery-shortcut:focus-visible, .lottery-box:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
 .lottery-box {
   background: var(--card);
   border: 1px solid var(--line);

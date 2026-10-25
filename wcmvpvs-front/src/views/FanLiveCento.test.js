@@ -95,6 +95,110 @@ test('a live response from a previous society cannot enable its lottery QR in th
   assert.equal(state.showLotteryTicket.value, false);
 });
 
+test('the home lottery shortcut requires registration, the society setting and a ticket, and precedes feedback or challenge', async t => {
+  const setup = fixture({}, { props: { activeEvent: { is_active: true, show_lottery_ticket: true, feedback_survey: { questions: [{ id: 'atmosphere' }] } } } });
+  const { state, props, scope } = setup;
+  t.after(() => scope.stop());
+  state.isRegistered.value = true;
+  assert.doesNotMatch(await renderHome(setup), /class="lottery-shortcut"/);
+  state.fanLotteryTicket.value = { ticket_code: '0042', qr_data: 'https://example.test/qr' };
+  let html = await renderHome(setup);
+  assert.match(html, /Il tuo codice: <strong>0042<\/strong>/);
+  assert.match(html, /Apri QR/);
+  assert.ok(html.indexOf('class="lottery-shortcut"') > html.indexOf('Shop Tifoso'));
+  assert.ok(html.indexOf('class="lottery-shortcut"') < html.indexOf('class="feedback-cta"'));
+  state.handleFeedbackSubmitted();
+  html = await renderHome(setup);
+  assert.ok(html.indexOf('class="lottery-shortcut"') < html.indexOf('Sfida del momento'));
+  state.isRegistered.value = false;
+  assert.doesNotMatch(await renderHome(setup), /class="lottery-shortcut"/);
+  state.isRegistered.value = true;
+  props.activeEvent = { ...props.activeEvent, show_lottery_ticket: false };
+  assert.doesNotMatch(await renderHome(setup), /class="lottery-shortcut"/);
+  props.activeEvent = { ...props.activeEvent, show_lottery_ticket: true, votes_closed: true, is_concluded: true };
+  assert.match(await renderHome(setup), /class="lottery-shortcut"/);
+});
+
+test('a registered fan sees the shortcut immediately from the confirmed vote without opening the profile', async t => {
+  const setup = fixture({ vote: async () => ({ ok: true, vote: { code: '0017', qr_data: 'https://example.test/qr17' } }) },
+    { props: { activeEvent: { is_active: true, show_lottery_ticket: true } } });
+  const { state, scope } = setup;
+  t.after(() => scope.stop());
+  state.isRegistered.value = true;
+  await state.castVote(player);
+  assert.equal(state.showLotteryShortcut.value, true);
+  assert.equal(state.lotteryCode.value, '0017');
+  assert.notEqual(state.activeSheet.value, 'profile');
+  assert.match(await renderHome(setup), /Il tuo codice: <strong>0017<\/strong>/);
+});
+
+test('registering after a guest vote makes the home shortcut appear with the ticket returned by the server', async t => {
+  const ticket = { ticket_code: '0023', qr_data: 'https://example.test/qr23' };
+  const setup = fixture({
+    vote: async () => ({ ok: true, vote: { code: ticket.ticket_code, qr_data: ticket.qr_data } }),
+    registerFanProfile: async () => ({ ok: true, data: { user: { nickname: 'Tifoso' }, wallet: 10 } }),
+    fetchFanProfile: async () => ({ ok: true, data: { registered: true, user: { nickname: 'Tifoso' }, wallet: 10, lottery_ticket: ticket } }),
+  }, { props: { activeEvent: { is_active: true, show_lottery_ticket: true } } });
+  const { state, scope } = setup;
+  t.after(() => scope.stop());
+  await state.castVote(player);
+  assert.equal(state.showLotteryShortcut.value, false);
+  assert.equal(state.lotteryQrUrl.value, '');
+  state.openRegistration('after_vote');
+  const result = await state.registerJourneyFan({ nickname: 'Tifoso', phone: '+393331234567', acceptedTerms: true, ageEligibilityDeclared: true });
+  assert.equal(result.ok, true);
+  state.completeRegistration();
+  state.closeSheets();
+  assert.equal(state.showLotteryShortcut.value, true);
+  assert.match(await renderHome(setup), /Il tuo codice: <strong>0023<\/strong>/);
+});
+
+test('opening the shortcut waits for profile content then scrolls only its panel to the QR and focuses the ticket', async t => {
+  for (const reduceMotion of [false, true]) {
+    const wallet = deferred();
+    const ticket = { ticket_code: '0042', qr_data: 'https://example.test/qr' };
+    const { state, scope, window } = fixture({
+      fetchFanProfile: async () => ({ ok: true, data: { registered: true, wallet: 0, lottery_ticket: ticket } }),
+      fetchFanWallet: () => wallet.promise,
+    }, { props: { activeEvent: { is_active: true, show_lottery_ticket: true } } });
+    t.after(() => scope.stop());
+    window.matchMedia = () => ({ matches: reduceMotion });
+    state.isRegistered.value = true;
+    state.fanLotteryTicket.value = ticket;
+    const scrolls = [], focuses = [];
+    let ticketTop = 200;
+    state.profileBodyEl.value = { scrollTop: 50, getBoundingClientRect: () => ({ top: 100 }), scrollTo: options => scrolls.push(options) };
+    state.lotteryTicketEl.value = { getBoundingClientRect: () => ({ top: ticketTop }), focus: options => focuses.push(options) };
+    const opening = state.openLotteryTicket();
+    assert.equal(state.activeSheet.value, 'profile');
+    await flush();
+    assert.deepEqual(scrolls, []);
+    ticketTop = 600;
+    wallet.resolve({ ok: true, data: walletData() });
+    await opening;
+    assert.deepEqual(scrolls, [{ top: 542, behavior: reduceMotion ? 'auto' : 'smooth' }]);
+    assert.deepEqual(focuses, [{ preventScroll: true }]);
+  }
+});
+
+test('a late profile response cannot scroll or focus after closing the lottery shortcut destination', async t => {
+  const profile = deferred();
+  const { state, scope } = fixture({ fetchFanProfile: () => profile.promise }, { props: { activeEvent: { is_active: true, show_lottery_ticket: true } } });
+  t.after(() => scope.stop());
+  state.isRegistered.value = true;
+  state.fanLotteryTicket.value = { ticket_code: '0042', qr_data: 'https://example.test/qr' };
+  const scrolls = [], focuses = [];
+  state.profileBodyEl.value = { scrollTop: 0, getBoundingClientRect: () => ({ top: 0 }), scrollTo: options => scrolls.push(options) };
+  state.lotteryTicketEl.value = { getBoundingClientRect: () => ({ top: 500 }), focus: options => focuses.push(options) };
+  const opening = state.openLotteryTicket();
+  state.closeSheets();
+  profile.resolve({ ok: true, data: { registered: true, wallet: 0, lottery_ticket: { ticket_code: '0042', qr_data: 'https://example.test/qr' } } });
+  await opening;
+  assert.equal(state.activeSheet.value, '');
+  assert.deepEqual(scrolls, []);
+  assert.deepEqual(focuses, []);
+});
+
 test('all three volleyball games use authoritative cumulative receipts and protect a pending save', t => {
   for (const gameId of ['volley-rush', 'setter-pro', 'monster-block']) {
     const { state, scope, saves } = fixture({}, { props: { activeEvent: { is_active: true, available_minigames: [gameId] } } });
