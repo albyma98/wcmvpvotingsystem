@@ -1225,6 +1225,13 @@ type AppDatabase interface {
 	SetActiveEvent(eventID int, organizationID int) error
 	ClearActiveEvent(organizationID int) error
 	CloseEventVoting(eventID int) error
+	GetVotingSettings(organizationID int) (VotingSettings, error)
+	SaveVotingSettings(organizationID int, settings VotingSettings) (VotingSettings, error)
+	CloseEventVotingAndDraw(eventID, organizationID int) (VotingClosure, error)
+	GetVotingClosure(eventID, organizationID int) (VotingClosure, []VotingNotification, error)
+	ClaimVotingNotification() (VotingNotification, error)
+	FinishVotingNotification(id int, status, sid, providerStatus, message string) error
+	RetryVotingNotifications(eventID, organizationID int) error
 	ConcludeEvent(eventID int) error
 	GetActiveEvent(organizationID int) (Event, error)
 	GetEventTeamIDs(eventID int) (int, int, error)
@@ -2681,6 +2688,9 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if err = ensureTournamentTables(db); err != nil {
 		return nil, err
 	}
+	if err = ensureVotingClosureTables(db); err != nil {
+		return nil, err
+	}
 
 	return &appdbimpl{
 		c: db,
@@ -2960,12 +2970,19 @@ func (db *appdbimpl) SQLConn() *sql.DB {
 // only the selected player (and optional user binding) is updated while preserving the
 // original ticket code/signature assigned to that device+event pair.
 func (db *appdbimpl) AddVote(eventID, playerID int, code, signature, deviceID string, userID *int) error {
-	_, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id, user_id)
-VALUES (?, ?, ?, ?, ?, ?)
+	res, err := db.c.Exec(`INSERT INTO votes (event_id, player_id, ticket_code, ticket_signature, device_id, user_id)
+SELECT ?, ?, ?, ?, ?, ? FROM events WHERE id=? AND votes_closed=0 AND is_concluded=0
 ON CONFLICT(event_id, device_id) DO UPDATE SET
 player_id = excluded.player_id,
 user_id = excluded.user_id,
-created_at = CURRENT_TIMESTAMP`, eventID, playerID, code, signature, deviceID, userID)
+created_at = CURRENT_TIMESTAMP`, eventID, playerID, code, signature, deviceID, userID, eventID)
+	if err != nil {
+		return err
+	}
+	count, err := res.RowsAffected()
+	if err == nil && count == 0 {
+		return ErrEventVotingClosed
+	}
 	return err
 }
 
@@ -3960,7 +3977,7 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	defer tx.Rollback()
 	// The /new reporting subsystem is installed by the API. Explicit cleanup
 	// also works on SQLite connections where foreign-key cascades are disabled.
-	for _, table := range []string{"engagement_report_signals", "engagement_report_calculations", "engagement_report_snapshots"} {
+	for _, table := range []string{"engagement_report_signals", "engagement_report_calculations", "engagement_report_snapshots", "voting_notifications", "event_voting_closures"} {
 		var exists int
 		if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&exists); err != nil {
 			return err
@@ -4540,6 +4557,9 @@ func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize
 		return EventPrize{}, err
 	}
 	defer tx.Rollback()
+	if err := lockVotingPrizesForManualChange(tx, eventID); err != nil {
+		return EventPrize{}, err
+	}
 
 	var prizeEventID int
 	if err := tx.QueryRow(`SELECT event_id FROM event_prizes WHERE id = ?`, prizeID).Scan(&prizeEventID); err != nil {
@@ -4603,7 +4623,15 @@ func (db *appdbimpl) AssignPrizeWinner(eventID, prizeID, voteID int) (EventPrize
 }
 
 func (db *appdbimpl) ClearPrizeWinner(eventID, prizeID int) error {
-	res, err := db.c.Exec(`UPDATE event_prizes
+	tx, err := db.c.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := lockVotingPrizesForManualChange(tx, eventID); err != nil {
+		return err
+	}
+	res, err := tx.Exec(`UPDATE event_prizes
 		SET winner_vote_id = NULL,
 		    winner_user_id = NULL,
 		    winner_lottery_code = NULL,
@@ -4622,7 +4650,7 @@ func (db *appdbimpl) ClearPrizeWinner(eventID, prizeID int) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (db *appdbimpl) MarkPrizeWinnerNotified(eventID, prizeID int, smsSID string) error {

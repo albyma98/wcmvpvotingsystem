@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 )
 
 // postVote handles a vote submission
@@ -112,6 +113,9 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 			signature = signCode(rt.VoteSecret, code)
 			if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID, fanID); err != nil {
 				switch {
+				case errors.Is(err, database.ErrEventVotingClosed):
+					_ = writeJSONMessage(w, http.StatusConflict, "Le votazioni per questa partita sono chiuse.")
+					return
 				case isVoteCodeCollision(err):
 					ctx.Logger.WithError(err).Warn("duplicate vote code detected, retrying")
 					continue
@@ -131,6 +135,10 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		}
 	} else {
 		if err := rt.db.AddVote(req.EventID, req.PlayerID, code, signature, req.DeviceID, fanID); err != nil {
+			if errors.Is(err, database.ErrEventVotingClosed) {
+				_ = writeJSONMessage(w, http.StatusConflict, "Le votazioni per questa partita sono chiuse.")
+				return
+			}
 			ctx.Logger.WithError(err).Error("cannot update vote while reusing existing ticket code")
 			_ = writeJSONMessage(w, http.StatusInternalServerError, "Servizio non disponibile. Riprova tra pochi istanti.")
 			return

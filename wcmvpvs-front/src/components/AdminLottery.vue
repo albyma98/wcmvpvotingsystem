@@ -658,7 +658,7 @@ async function finalizePrizeDraw(prize, ticket) {
     ensureCurrentPrize();
   } catch (error) {
     if (error?.response?.status === 409) {
-      drawError.value = 'Il premio risulta già assegnato. Aggiorna la pagina e riprova.';
+      drawError.value = error?.response?.data?.message || 'Il premio risulta già assegnato. Aggiorna la pagina e riprova.';
     } else if (error?.response?.status === 400) {
       drawError.value = 'Ticket non valido per questo evento.';
     } else if (error?.response?.status !== 401) {
@@ -724,6 +724,8 @@ async function resetPrize(prize) {
   } catch (error) {
     if (error?.response?.status === 404) {
       drawError.value = 'Premio non trovato o già ripristinato.';
+    } else if (error?.response?.status === 409) {
+      drawError.value = error?.response?.data?.message || 'I premi della chiusura automatica sono definitivi.';
     } else if (error?.response?.status !== 401) {
       drawError.value = 'Impossibile annullare il vincitore. Riprova.';
     }

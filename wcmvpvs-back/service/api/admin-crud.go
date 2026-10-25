@@ -487,7 +487,8 @@ func (rt *_router) closeEventVoting(w http.ResponseWriter, r *http.Request, ctx 
 		return
 	}
 
-	if err := rt.db.CloseEventVoting(id); err != nil {
+	summary, err := rt.db.CloseEventVotingAndDraw(id, ctx.OrganizationID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -497,7 +498,8 @@ func (rt *_router) closeEventVoting(w http.ResponseWriter, r *http.Request, ctx 
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	rt.wakeVotingNotifications()
+	_ = writeJSON(w, http.StatusOK, summary)
 	ctx.Logger.WithField("event_id", id).Info("event voting closed")
 }
 
@@ -611,6 +613,8 @@ func (rt *_router) assignPrizeWinner(w http.ResponseWriter, r *http.Request, ctx
 			w.WriteHeader(http.StatusNotFound)
 		case errors.Is(err, database.ErrPrizeAlreadyAssigned), errors.Is(err, database.ErrPrizeWinnerConflict):
 			w.WriteHeader(http.StatusConflict)
+		case errors.Is(err, database.ErrVotingClosureLocked):
+			_ = writeJSONMessage(w, http.StatusConflict, "I premi della chiusura automatica sono definitivi.")
 		case errors.Is(err, database.ErrPrizeVoteMismatch):
 			w.WriteHeader(http.StatusBadRequest)
 		default:
@@ -670,6 +674,10 @@ func (rt *_router) clearPrizeWinner(w http.ResponseWriter, r *http.Request, ctx 
 	}
 
 	if err := rt.db.ClearPrizeWinner(eventID, prizeID); err != nil {
+		if errors.Is(err, database.ErrVotingClosureLocked) {
+			_ = writeJSONMessage(w, http.StatusConflict, "I premi della chiusura automatica sono definitivi.")
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNotFound)
 			return

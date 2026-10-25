@@ -21,6 +21,8 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/admin/login", rt.wrap(rt.adminLogin))
 	rt.router.Post("/admin/logout", rt.wrap(rt.adminLogout))
 	rt.router.Get("/admin/me", rt.wrapAdmin(rt.adminMe))
+	rt.router.Get("/admin/voting-settings", rt.wrapAdmin(rt.getVotingSettings))
+	rt.router.Put("/admin/voting-settings", rt.wrapAdmin(rt.putVotingSettings))
 
 	rt.router.Get("/public/players", rt.wrap(rt.listPublicPlayers))
 	rt.router.Get("/bar/categories", rt.wrap(rt.listBarCategories))
@@ -108,6 +110,8 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/events", rt.wrapAdmin(rt.createEvent))
 	rt.router.Post("/events/deactivate", rt.wrapAdmin(rt.deactivateEvents))
 	rt.router.Post("/events/{id}/close-votes", rt.wrapAdmin(rt.closeEventVoting))
+	rt.router.Get("/events/{id}/voting-closure", rt.wrapAdmin(rt.getVotingClosure))
+	rt.router.Post("/events/{id}/voting-closure/retry", rt.wrapAdmin(rt.retryVotingNotifications))
 	rt.router.Post("/events/{id}/conclude", rt.wrapAdmin(rt.concludeEvent))
 	rt.router.Post("/events/{id}/activate", rt.wrapAdmin(rt.activateEvent))
 	rt.router.Put("/events/{id}", rt.wrapAdmin(rt.updateEvent))
@@ -230,6 +234,9 @@ func (rt *_router) Handler() chi.Router {
 	// provisioning dal portale master. Non condivide sessioni con Live/Tournament.
 	registerClubRoutes(rt)
 	rt.clubDomains.start()
+	if rt.votingNotifications != nil {
+		rt.votingNotifications.start()
+	}
 
 	rt.router.NotFound(rt.wrap(rt.handleQRRedirectNotFound))
 

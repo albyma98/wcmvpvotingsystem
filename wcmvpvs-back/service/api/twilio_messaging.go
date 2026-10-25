@@ -38,7 +38,7 @@ func (c *twilioMessagingClient) enabled() bool {
 }
 
 func (c *twilioMessagingClient) enabledWhatsApp() bool {
-	return strings.TrimSpace(c.cfg.AccountSID) != "" &&
+	return c != nil && strings.TrimSpace(c.cfg.AccountSID) != "" &&
 		strings.TrimSpace(c.cfg.AuthToken) != "" &&
 		strings.TrimSpace(c.cfg.WhatsAppMessagingServiceSID) != ""
 }
@@ -117,6 +117,33 @@ func (c *twilioMessagingClient) SendWhatsAppWinnerTemplate(phone string) (twilio
 		return twilioMessageResult{}, err
 	}
 	return parsed, nil
+}
+
+func (c *twilioMessagingClient) SendWhatsAppResultsTemplate(phone, contentSID string, variables map[string]string) (twilioMessageResult, error) {
+	if !c.enabledWhatsApp() || strings.TrimSpace(contentSID) == "" {
+		return twilioMessageResult{}, errors.New("twilio results whatsapp template not configured")
+	}
+	data, err := json.Marshal(variables)
+	if err != nil {
+		return twilioMessageResult{}, err
+	}
+	values := url.Values{}
+	values.Set("To", "whatsapp:"+strings.TrimSpace(phone))
+	values.Set("MessagingServiceSid", strings.TrimSpace(c.cfg.WhatsAppMessagingServiceSID))
+	values.Set("ContentSid", strings.TrimSpace(contentSID))
+	values.Set("ContentVariables", string(data))
+	body, err := c.postForm(values)
+	if err != nil {
+		return twilioMessageResult{}, err
+	}
+	var result twilioMessageResult
+	if err := json.Unmarshal(body, &result); err != nil {
+		return result, err
+	}
+	if result.SID == "" {
+		return result, errors.New("twilio returned no message SID")
+	}
+	return result, nil
 }
 
 func buildTwilioMessageValues(to, body, messagingServiceSID string) (url.Values, error) {

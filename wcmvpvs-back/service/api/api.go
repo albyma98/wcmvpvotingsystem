@@ -105,7 +105,7 @@ func New(cfg Config) (Router, error) {
 	router := chi.NewRouter()
 
 	store := NewStore(cfg.Database.SQLConn())
-	return &_router{
+	rt := &_router{
 		router:                  router,
 		baseLogger:              cfg.Logger,
 		db:                      cfg.Database,
@@ -161,7 +161,9 @@ func New(cfg Config) (Router, error) {
 		clubDomains:   newClubDomainManager(store),
 		liveCache:     NewTTLCache(),
 		tournamentHub: newSSEHub(),
-	}, nil
+	}
+	rt.votingNotifications = newVotingNotificationWorker(rt)
+	return rt, nil
 }
 
 type _router struct {
@@ -202,8 +204,9 @@ type _router struct {
 	marketingRateMu    sync.Mutex
 	marketingRateByOrg map[int][]time.Time
 
-	twilioVerify    *twilioVerifyClient
-	twilioMessaging *twilioMessagingClient
+	twilioVerify        *twilioVerifyClient
+	twilioMessaging     *twilioMessagingClient
+	votingNotifications *votingNotificationWorker
 
 	stripeSecretKey     string
 	stripeWebhookSecret string

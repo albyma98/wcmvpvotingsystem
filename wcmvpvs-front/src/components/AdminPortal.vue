@@ -50,6 +50,7 @@
             <p>{{ action.description }}</p>
             <button class="btn primary" type="button" @click="selectSection(action.id)">Apri</button>
           </article>
+          <AdminVotingSettings v-if="isSuperAdmin" :auth-headers="authHeaders" :organization-slug="organizationSlug" @unauthorized="handleUnauthorized" />
         </section>
 
         <section v-if="section === 'events'" class="ev-section">
@@ -794,6 +795,7 @@
               Gestisci lo stato delle votazioni per la partita attualmente
               attiva.
             </p>
+            <p class="muted">“Chiudi votazioni” assegna automaticamente i premi e avvia il riepilogo WhatsApp secondo la configurazione della dashboard.</p>
           </header>
 
           <div v-if="activeEventEntry" class="active-event-summary">
@@ -858,6 +860,7 @@
           <p v-if="closeVotesMessage" class="success-message">
             {{ closeVotesMessage }}
           </p>
+          <AdminVotingClosure v-if="activeEventEntry && activeEventVotesClosed" :event-id="activeEventId" :auth-headers="authHeaders" @unauthorized="handleUnauthorized" />
         </section>
 
         <section v-else-if="section === 'results'" class="card results-card">
@@ -2028,6 +2031,8 @@ import AdminPartnersSection from "./admin/AdminPartnersSection.vue";
 import AdminSponsorsSection from "./admin/AdminSponsorsSection.vue";
 import AdminPlayersSection from "./admin/AdminPlayersSection.vue";
 import AdminCouponsSection from "./admin/AdminCouponsSection.vue";
+import AdminVotingSettings from "./admin/AdminVotingSettings.vue";
+import AdminVotingClosure from "./admin/AdminVotingClosure.vue";
 import EngagementReportModal from "./EngagementReportModal.vue";
 
 const props = defineProps({
@@ -6415,12 +6420,14 @@ async function closeActiveEventVoting() {
     );
     await loadEvents();
     closeVotesMessage.value =
-      "Le votazioni per l'evento attivo sono state chiuse.";
+      "Votazioni chiuse. Premi elaborati e notifiche WhatsApp messe in coda per gli organizzatori abilitati.";
   } catch (error) {
     closeVotesMessage.value = "";
     if (error?.response?.status === 404) {
       globalError.value =
         "Impossibile chiudere le votazioni: nessun evento attivo trovato.";
+    } else if (error?.response?.status !== 401) {
+      globalError.value = "Impossibile completare la chiusura. Aggiorna la pagina prima di riprovare.";
     }
   } finally {
     isClosingVotes.value = false;
