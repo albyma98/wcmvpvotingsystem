@@ -848,7 +848,7 @@ export async function syncGuestCoins(eventId, coins) {
   }
 }
 
-export async function claimFanJourneyReward(eventId: number, key: 'vote' | 'quiz' | 'reaction' | 'tap' | 'sponsor-rush' | 'memory-flash', requestId = '') {
+export async function claimFanJourneyReward(eventId: number, key: 'vote' | 'quiz' | 'reaction' | 'tap' | 'tap-volley' | 'sponsor-rush' | 'memory-flash', requestId = '') {
   try {
     const { data } = await apiClient.post(`/events/${eventId}/journey-rewards`, { key, ...(requestId ? { request_id: requestId } : {}) }, { headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() } });
     return { ok: true, data };
@@ -998,9 +998,13 @@ export async function fetchFanSupportLeaderboard(eventId, limit = 10) {
   }
 }
 
-export async function joinTapLiveQueue(eventId: number) {
+function tapLivePath(eventId: number, gameId = 'tap') {
+  return `/events/${eventId}/${gameId === 'tap-volley' ? 'tap-volley-live' : 'tap-live'}`;
+}
+
+export async function joinTapLiveQueue(eventId: number, gameId = 'tap') {
   try {
-    const { data } = await apiClient.post(`/events/${eventId}/tap-live/queue`, {}, {
+    const { data } = await apiClient.post(`${tapLivePath(eventId, gameId)}/queue`, {}, {
       headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
     });
     return { ok: true, data };
@@ -1011,9 +1015,9 @@ export async function joinTapLiveQueue(eventId: number) {
   }
 }
 
-export async function cancelTapLiveQueue(eventId: number) {
+export async function cancelTapLiveQueue(eventId: number, gameId = 'tap') {
   try {
-    await apiClient.delete(`/events/${eventId}/tap-live/queue`, {
+    await apiClient.delete(`${tapLivePath(eventId, gameId)}/queue`, {
       headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
     });
     return { ok: true };
@@ -1022,9 +1026,9 @@ export async function cancelTapLiveQueue(eventId: number) {
   }
 }
 
-export async function fetchTapLiveState(eventId: number) {
+export async function fetchTapLiveState(eventId: number, gameId = 'tap') {
   try {
-    const { data } = await apiClient.get(`/events/${eventId}/tap-live/state`, {
+    const { data } = await apiClient.get(`${tapLivePath(eventId, gameId)}/state`, {
       headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
     });
     return { ok: true, data };
@@ -1035,9 +1039,9 @@ export async function fetchTapLiveState(eventId: number) {
   }
 }
 
-export async function submitTapLiveScore(eventId: number, matchId: string, score: number) {
+export async function submitTapLiveScore(eventId: number, matchId: string, score: number, gameId = 'tap') {
   try {
-    await apiClient.post(`/events/${eventId}/tap-live/submit`, {
+    await apiClient.post(`${tapLivePath(eventId, gameId)}/submit`, {
       match_id: matchId,
       score,
     }, {
@@ -1049,9 +1053,9 @@ export async function submitTapLiveScore(eventId: number, matchId: string, score
   }
 }
 
-export async function abortTapLiveMatch(eventId: number, matchId: string) {
+export async function abortTapLiveMatch(eventId: number, matchId: string, gameId = 'tap') {
   try {
-    await apiClient.post(`/events/${eventId}/tap-live/abort`, {
+    await apiClient.post(`${tapLivePath(eventId, gameId)}/abort`, {
       match_id: matchId,
     }, {
       headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
@@ -1062,9 +1066,9 @@ export async function abortTapLiveMatch(eventId: number, matchId: string) {
   }
 }
 
-export async function fetchTapLiveResult(eventId: number, matchId: string) {
+export async function fetchTapLiveResult(eventId: number, matchId: string, gameId = 'tap') {
   try {
-    const { data } = await apiClient.get(`/events/${eventId}/tap-live/result`, {
+    const { data } = await apiClient.get(`${tapLivePath(eventId, gameId)}/result`, {
       params: { match_id: matchId },
       headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
     });
@@ -1074,9 +1078,9 @@ export async function fetchTapLiveResult(eventId: number, matchId: string) {
   }
 }
 
-export async function requestTapLiveRematch(eventId: number, matchId: string, action: 'request' | 'decline' | 'leave' = 'request') {
+export async function requestTapLiveRematch(eventId: number, matchId: string, action: 'request' | 'decline' | 'leave' = 'request', gameId = 'tap') {
   try {
-    const { data } = await apiClient.post(`/events/${eventId}/tap-live/rematch`, {
+    const { data } = await apiClient.post(`${tapLivePath(eventId, gameId)}/rematch`, {
       match_id: matchId,
       action,
     }, {
@@ -1089,9 +1093,9 @@ export async function requestTapLiveRematch(eventId: number, matchId: string, ac
   }
 }
 
-export async function leaveTapLivePostmatch(eventId: number, matchId: string) {
+export async function leaveTapLivePostmatch(eventId: number, matchId: string, gameId = 'tap') {
   try {
-    await apiClient.post(`/events/${eventId}/tap-live/postmatch-leave`, {
+    await apiClient.post(`${tapLivePath(eventId, gameId)}/postmatch-leave`, {
       match_id: matchId,
     }, {
       headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
@@ -1102,9 +1106,9 @@ export async function leaveTapLivePostmatch(eventId: number, matchId: string) {
   }
 }
 
-export function buildTapLiveSseUrl(eventId: number) {
+export function buildTapLiveSseUrl(eventId: number, gameId = 'tap') {
   const token = encodeURIComponent(getFanSessionToken());
-  return resolveApiUrl(`/events/${eventId}/tap-live/stream?fan_session=${token}`);
+  return resolveApiUrl(`${tapLivePath(eventId, gameId)}/stream?fan_session=${token}`);
 }
 
 export async function generateAIBarUpsell(payload: Record<string, unknown>) {

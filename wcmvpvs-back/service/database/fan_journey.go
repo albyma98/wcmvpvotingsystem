@@ -75,12 +75,23 @@ func (db *appdbimpl) ListFanJourneyRewards(eventID, organizationID, fanID int, d
 		return nil, err
 	}
 	if fanID > 0 {
-		var liveTap int
-		if err := db.c.QueryRow(`SELECT COALESCE(SUM(CASE WHEN fan1_id=? THEN fan1_coins ELSE 0 END+CASE WHEN fan2_id=? THEN fan2_coins ELSE 0 END),0) FROM tap_live_matches WHERE event_id=? AND organization_id=? AND status='finished' AND (fan1_id=? OR fan2_id=?)`, fanID, fanID, eventID, organizationID, fanID, fanID).Scan(&liveTap); err != nil {
+		rows, err := db.c.Query(`SELECT game_id,COALESCE(SUM(CASE WHEN fan1_id=? THEN fan1_coins ELSE 0 END+CASE WHEN fan2_id=? THEN fan2_coins ELSE 0 END),0) FROM tap_live_matches WHERE event_id=? AND organization_id=? AND status='finished' AND (fan1_id=? OR fan2_id=?) GROUP BY game_id`, fanID, fanID, eventID, organizationID, fanID, fanID)
+		if err != nil {
 			return nil, err
 		}
-		if liveTap > 0 {
-			rewards["tap"] += liveTap
+		defer rows.Close()
+		for rows.Next() {
+			var key string
+			var coins int
+			if err := rows.Scan(&key, &coins); err != nil {
+				return nil, err
+			}
+			if coins > 0 {
+				rewards[key] += coins
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
 		}
 	}
 	return rewards, nil
@@ -93,7 +104,7 @@ func FanJourneyRewardAmount(key string) int {
 		return 10
 	case "quiz":
 		return 15
-	case "tap", "memory-flash":
+	case "tap", "tap-volley", "memory-flash":
 		return 8
 	case "sponsor-rush":
 		return 12

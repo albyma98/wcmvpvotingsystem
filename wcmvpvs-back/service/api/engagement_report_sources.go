@@ -59,7 +59,7 @@ func reportOperationalEpoch(milliseconds int64) string {
 }
 
 func reportOperationalGame(key string) string {
-	for _, game := range []string{"reaction", "quiz", "tap", "sponsor-rush", "memory-flash", "basketball", "playmaker", "crossover", "volley-rush", "setter-pro", "monster-block"} {
+	for _, game := range []string{"reaction", "quiz", "tap", "tap-volley", "sponsor-rush", "memory-flash", "basketball", "playmaker", "crossover", "volley-rush", "setter-pro", "monster-block"} {
 		if key == game {
 			return game
 		}
@@ -255,7 +255,7 @@ func (rt *_router) loadReportOperationalData(eventID, orgID int) (reportOperatio
 			return out, err
 		}
 	}
-	if err = read("fan_wallet_movements", `SELECT id,device_id,fan_id,source,delta,created_at FROM fan_wallet_movements WHERE event_id=? AND organization_id=? AND source IN ('basketball','playmaker','crossover','volley-rush','setter-pro','monster-block','journey:vote','journey:reaction','journey:quiz','journey:tap','journey:sponsor-rush','journey:memory-flash','journey:basketball','journey:playmaker','journey:crossover','minigame:reaction','minigame:quiz','minigame:tap','minigame:sponsor-rush','minigame:memory-flash','minigame:basketball','minigame:playmaker','minigame:crossover','shop:club_frame','shop:match_card')`, func(rows *sql.Rows) error {
+	if err = read("fan_wallet_movements", `SELECT id,device_id,fan_id,source,delta,created_at FROM fan_wallet_movements WHERE event_id=? AND organization_id=? AND source IN ('basketball','playmaker','crossover','volley-rush','setter-pro','monster-block','journey:vote','journey:reaction','journey:quiz','journey:tap','journey:tap-volley','journey:sponsor-rush','journey:memory-flash','journey:basketball','journey:playmaker','journey:crossover','minigame:reaction','minigame:quiz','minigame:tap','minigame:tap-volley','minigame:sponsor-rush','minigame:memory-flash','minigame:basketball','minigame:playmaker','minigame:crossover','shop:club_frame','shop:match_card')`, func(rows *sql.Rows) error {
 		var id, fanID, delta int
 		var device, source, at string
 		if err := rows.Scan(&id, &device, &fanID, &source, &delta, &at); err != nil {

@@ -37,6 +37,7 @@ func minigameCatalog() []Minigame {
 		{ID: "playmaker", Name: "Playmaker", Description: "Assist e passaggi a tempo."},
 		{ID: "crossover", Name: "Crossover Rush", Description: "Finte, cambi di mano e schiacciate."},
 		{ID: "tap", Name: "Tap Challenge / Tap Battle", Description: "Sfida di tocchi, anche in modalità live e sponsor."},
+		{ID: "tap-volley", Name: "Tap Volley Challenge", Description: "Dieci secondi sotto rete: insegui il pallone da pallavolo, anche in sfida live.", Sports: []string{"Pallavolo"}},
 		{ID: "sponsor-rush", Name: "Sponsor Rush", Description: "Raccogli i loghi degli sponsor; include la versione sponsor."},
 		{ID: "memory-flash", Name: "Memory Flash", Description: "Trova le coppie; include la versione sponsor."},
 		{ID: "free_throw_challenge", Name: "Free Throw Challenge", Description: "Sfida sponsor di tiri liberi."},

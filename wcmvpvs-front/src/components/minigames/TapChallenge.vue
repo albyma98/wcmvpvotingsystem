@@ -1,8 +1,8 @@
 <template>
-  <div class="tap-challenge" :class="{ 'is-playing': status === 'playing', 'is-urgent': status === 'playing' && timeLeftMs <= 3000 }">
+  <div class="tap-challenge" :class="{ 'is-volleyball': isVolleyball, 'is-playing': status === 'playing', 'is-urgent': status === 'playing' && timeLeftMs <= 3000 }">
     <header class="tap-header">
-      <div class="tap-brand"><span class="tap-mark" aria-hidden="true">TC</span><div><span class="eyebrow">RITMO DA PLAYGROUND</span><h2>Tap <em>Challenge</em></h2></div></div>
-      <span class="mode-pill"><i aria-hidden="true"></i>{{ isLiveFlow ? 'BASKET · 1 VS 1' : 'BASKET · 10s' }}</span>
+      <div class="tap-brand"><span class="tap-mark" aria-hidden="true">{{ isVolleyball ? 'TV' : 'TC' }}</span><div><span class="eyebrow">{{ isVolleyball ? 'RITMO SOTTO RETE' : 'RITMO DA PLAYGROUND' }}</span><h2>Tap <em>{{ isVolleyball ? 'Volley' : 'Challenge' }}</em></h2></div></div>
+      <span class="mode-pill"><i aria-hidden="true"></i>{{ isVolleyball ? 'VOLLEY' : 'BASKET' }} · {{ isLiveFlow ? '1 VS 1' : '10s' }}</span>
     </header>
 
     <div v-if="showGameHud" class="hud">
@@ -16,7 +16,15 @@
       class="game-area"
       @touchmove="status === 'playing' && $event.preventDefault()"
     >
-      <svg class="tap-court" viewBox="0 0 360 500" preserveAspectRatio="none" aria-hidden="true">
+      <svg v-if="isVolleyball" class="tap-court" viewBox="0 0 360 500" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M36 34h288v432H36Z" fill="#ea8456" fill-opacity=".68" stroke="#fff5d9" stroke-width="2"/>
+        <path d="M36 178h288M36 322h288" stroke="#fff5d9" stroke-width="2"/>
+        <path d="M36 250h288" stroke="#fff5d9" stroke-width="2" stroke-opacity=".6"/>
+        <g stroke="#e7faff" fill="none"><path d="M18 237h324v26H18Z" fill="#0b344f" fill-opacity=".5" stroke-width="2"/><path d="M18 246h324M18 254h324M36 237v26M60 237v26M84 237v26M108 237v26M132 237v26M156 237v26M180 237v26M204 237v26M228 237v26M252 237v26M276 237v26M300 237v26M324 237v26" stroke-opacity=".45"/></g>
+        <path d="M18 224v52M342 224v52" stroke="#0b344f" stroke-width="7" stroke-linecap="round"/>
+        <text x="180" y="116" text-anchor="middle" fill="#fff5d9" fill-opacity=".24" font-family="system-ui, sans-serif" font-size="17" font-weight="900" letter-spacing="3">TAP VOLLEY</text>
+      </svg>
+      <svg v-else class="tap-court" viewBox="0 0 360 500" preserveAspectRatio="none" aria-hidden="true">
         <path d="M22 22h316v456H22Z" fill="#e9b46c" fill-opacity=".08" stroke="#ffe4b7" stroke-opacity=".5" stroke-width="1.5"/>
         <path d="M126 22h108v93H126ZM126 385h108v93H126Z" fill="#17383c" fill-opacity=".4"/>
         <g fill="none" stroke="#ffe4b7" stroke-opacity=".4" stroke-width="1.5">
@@ -39,10 +47,10 @@
         type="button"
         class="ball"
         :style="ballStyle"
-        aria-label="Tocca il pallone da basket"
+        :aria-label="isVolleyball ? 'Tocca il pallone da pallavolo' : 'Tocca il pallone da basket'"
         @click="onTap"
       >
-        <ArcadeBasketball class="ball-art" />
+        <component :is="isVolleyball ? ArcadeVolleyball : ArcadeBasketball" class="ball-art" />
       </button>
 
       <span v-if="status === 'playing'" class="tap-play-hint" aria-hidden="true">{{ timeLeftMs <= 3000 ? 'ULTIMI SECONDI. DAI TUTTO!' : 'TOCCA. INSEGUI. RIPETI.' }}</span>
@@ -141,11 +149,11 @@
       </section>
 
       <div v-else-if="status !== 'playing'" class="overlay tap-cover" :class="{ 'tap-cover--finished': status === 'finished' }">
-        <div class="tap-hero" aria-hidden="true"><span class="hero-orbit"></span><ArcadeBasketball /><span class="hero-label">{{ status === 'finished' ? 'TIME OUT' : 'DOMINA IL PARQUET' }}</span></div>
+        <div class="tap-hero" aria-hidden="true"><span class="hero-orbit"></span><component :is="isVolleyball ? ArcadeVolleyball : ArcadeBasketball" /><span class="hero-label">{{ status === 'finished' ? 'TIME OUT' : isVolleyball ? 'DOMINA SOTTO RETE' : 'DOMINA IL PARQUET' }}</span></div>
         <p class="eyebrow">{{ status === 'finished' ? 'SESSIONE COMPLETATA' : 'VELOCITÀ. PRECISIONE. ISTINTO.' }}</p>
         <template v-if="status === 'finished'"><strong class="final-taps">{{ tapCount }}<small>tap</small></strong><h3>Ogni colpo conta.</h3></template>
-        <h3 v-else>Dieci secondi.<br />Domina il parquet.</h3>
-        <p class="cover-copy">{{ status === 'finished' ? 'Il tempo si ferma. Il tuo risultato resta.' : 'Tocca il pallone da basket e inseguilo sul parquet. A ogni tocco il ritmo aumenta.' }}</p>
+        <h3 v-else>Dieci secondi.<br />{{ isVolleyball ? 'Domina sotto rete.' : 'Domina il parquet.' }}</h3>
+        <p class="cover-copy">{{ status === 'finished' ? 'Il tempo si ferma. Il tuo risultato resta.' : isVolleyball ? 'Tocca il pallone da pallavolo e inseguilo sul campo. A ogni tocco il ritmo aumenta.' : 'Tocca il pallone da basket e inseguilo sul parquet. A ogni tocco il ritmo aumenta.' }}</p>
         <div class="tap-rules" v-if="status !== 'finished'"><span><b>10</b> secondi</span><i></i><span><b>1</b> palla</span><i></i><span><b>∞</b> energia</span></div>
         <p v-if="isFixedSingleplayer" class="cover-reward"><span class="tap-coin" aria-hidden="true"></span>+{{ fixedReward }} monete a ogni partita completata</p>
         <p v-else-if="status === 'finished'" class="cover-reward"><span class="tap-coin" aria-hidden="true"></span>{{ earnedCoins }} monete da riscattare</p>
@@ -167,6 +175,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
 import ArcadeBasketball from './ArcadeBasketball.vue';
+import ArcadeVolleyball from './ArcadeVolleyball.vue';
 import { newMinigameRoundId } from '../../fanJourney';
 import { awardTapChallengeCoins } from '../../services/coins';
 import {
@@ -185,8 +194,12 @@ import {
 const props = defineProps({
   eventId: { type: Number, default: 0 }, cooldownSeconds: { type: Number, default: 0 },
   completionReward: { type: Number, default: null }, claiming: { type: Boolean, default: false },
+  variant: { type: String, default: 'basketball' },
 });
 const emit = defineEmits(['claim', 'exit', 'round-started', 'round-completed']);
+const isVolleyball = computed(() => props.variant === 'volleyball');
+const tapGameId = computed(() => isVolleyball.value ? 'tap-volley' : 'tap');
+const cooldownStorageKey = computed(() => isVolleyball.value ? 'tap_volley_cooldown_until' : 'tap_challenge_cooldown_until');
 
 const ROUND_DURATION_MS = 10_000;
 const MATCHMAKING_TIMEOUT_MS = 20_000;
@@ -329,10 +342,12 @@ onBeforeUnmount(async () => {
   stopMatchmakingTimer();
   stopCountdownTimer();
   sse?.close();
-  if (liveMatchId.value && (liveStep.value === 'searching' || liveStep.value === 'countdown' || liveStep.value === 'playing')) {
-    await abortTapLiveMatch(props.eventId, liveMatchId.value);
+  if (liveStep.value === 'searching') {
+    await cancelTapLiveQueue(props.eventId, tapGameId.value);
+  } else if (liveMatchId.value && (liveStep.value === 'countdown' || liveStep.value === 'playing')) {
+    await abortTapLiveMatch(props.eventId, liveMatchId.value, tapGameId.value);
   } else if (liveMatchId.value && liveStep.value === 'result') {
-    await leaveTapLivePostmatch(props.eventId, liveMatchId.value);
+    await leaveTapLivePostmatch(props.eventId, liveMatchId.value, tapGameId.value);
   }
   if (cooldownTickId && typeof window !== 'undefined') window.clearInterval(cooldownTickId);
 });
@@ -459,17 +474,17 @@ async function finishGame() {
   timeLeftMs.value = 0;
   if (liveStep.value === 'playing' && liveMatchId.value) {
     awaitingResult = true;
-    await submitTapLiveScore(props.eventId, liveMatchId.value, tapCount.value);
+    await submitTapLiveScore(props.eventId, liveMatchId.value, tapCount.value, tapGameId.value);
     await loadLiveResult();
     awaitingResult = false;
     return;
   }
   const nextCooldown = Date.now() + Math.max(0, props.cooldownSeconds) * 1000;
   cooldownUntil.value = nextCooldown;
-  window?.localStorage?.setItem('tap_challenge_cooldown_until', String(nextCooldown));
+  window?.localStorage?.setItem(cooldownStorageKey.value, String(nextCooldown));
 }
 async function loadLiveResult() {
-  const result = await fetchTapLiveResult(props.eventId, liveMatchId.value);
+  const result = await fetchTapLiveResult(props.eventId, liveMatchId.value, tapGameId.value);
   if (!result.ok) {
     errorMessage.value = 'Stiamo recuperando il risultato finale…';
     return;
@@ -531,7 +546,7 @@ async function startLive() {
   errorMessage.value = '';
   liveBusy.value = true;
   liveStep.value = 'searching';
-  const q = await joinTapLiveQueue(props.eventId);
+  const q = await joinTapLiveQueue(props.eventId, tapGameId.value);
   liveBusy.value = false;
   if (!q.ok) {
     liveStep.value = 'idle';
@@ -545,7 +560,7 @@ async function startLive() {
   await syncLiveState();
 }
 async function cancelLiveSearch() {
-  await cancelTapLiveQueue(props.eventId);
+  await cancelTapLiveQueue(props.eventId, tapGameId.value);
   resetLive();
 }
 function resetLive() {
@@ -578,7 +593,7 @@ function scheduleMatchmakingTimeout() {
     await syncLiveState();
     if (liveStep.value === 'searching') {
       errorMessage.value = 'Tempo di attesa scaduto, riprova.';
-      await cancelTapLiveQueue(props.eventId);
+      await cancelTapLiveQueue(props.eventId, tapGameId.value);
       resetLive();
     }
   }, delay + 80);
@@ -586,7 +601,7 @@ function scheduleMatchmakingTimeout() {
 function openLiveSSE() {
   if (typeof EventSource === 'undefined') return;
   sse?.close();
-  sse = new EventSource(buildTapLiveSseUrl(props.eventId));
+  sse = new EventSource(buildTapLiveSseUrl(props.eventId, tapGameId.value));
   sse.onmessage = () => {
     syncLiveState();
   };
@@ -596,7 +611,7 @@ function openLiveSSE() {
   sse.onerror = () => {};
 }
 async function syncLiveState() {
-  const state = await fetchTapLiveState(props.eventId);
+  const state = await fetchTapLiveState(props.eventId, tapGameId.value);
   if (!state.ok) return;
   const data = state.data || {};
   syncServerOffset(data.server_now);
@@ -666,7 +681,7 @@ async function requestRematchAction() {
   if (!liveMatchId.value || rematchButtonDisabled.value) return;
   rematchBusy.value = true;
   const action = rematchState.value.status === 'opponent_requested' ? 'request' : 'request';
-  const response = await requestTapLiveRematch(props.eventId, liveMatchId.value, action);
+  const response = await requestTapLiveRematch(props.eventId, liveMatchId.value, action, tapGameId.value);
   rematchBusy.value = false;
   if (!response.ok) {
     errorMessage.value = response.message || 'Impossibile inviare la richiesta di rivincita.';
@@ -679,12 +694,12 @@ async function requestRematchAction() {
   }
 }
 async function leavePostMatchAndExit() {
-  if (liveMatchId.value) await leaveTapLivePostmatch(props.eventId, liveMatchId.value);
+  if (liveMatchId.value) await leaveTapLivePostmatch(props.eventId, liveMatchId.value, tapGameId.value);
   resetLive();
   emit('exit');
 }
 async function searchNewOpponent() {
-  if (liveMatchId.value) await leaveTapLivePostmatch(props.eventId, liveMatchId.value);
+  if (liveMatchId.value) await leaveTapLivePostmatch(props.eventId, liveMatchId.value, tapGameId.value);
   resetLive();
   await startLive();
 }
@@ -710,7 +725,7 @@ function formatCooldown(ms) {
 function formatSeconds(ms) { return `${Math.max(1, Math.ceil(ms / 1000))}s`; }
 
 if (typeof window !== 'undefined') {
-  const stored = Number.parseInt(window.localStorage.getItem('tap_challenge_cooldown_until') || '', 10);
+  const stored = Number.parseInt(window.localStorage.getItem(cooldownStorageKey.value) || '', 10);
   if (Number.isFinite(stored) && stored > Date.now()) cooldownUntil.value = stored;
 }
 </script>
@@ -718,6 +733,11 @@ if (typeof window !== 'undefined') {
 <style scoped>
 .tap-challenge { --tap-accent: #f5cf81; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 760px; height: 100%; min-height: 0; margin-inline: auto; padding: 14px; overflow-y: auto; scrollbar-width: thin; border-radius: 24px; background: #102226; color: #f5f1df; user-select: none; font-family: 'Inter', system-ui, sans-serif; }
 .tap-challenge *, .tap-challenge *::before, .tap-challenge *::after { box-sizing: border-box; }
+.tap-challenge.is-volleyball { --tap-accent: #f9dc55; background: #0b2538; }
+.is-volleyball .game-area { background: radial-gradient(ellipse at 50% 35%, #188e98, #126170 65%, #103b52); border-color: #72dce980; }
+.is-volleyball .game-area::before { background: linear-gradient(110deg, #ffffff0a, transparent 50%, #ffffff08); }
+.is-volleyball .tap-cover { background: linear-gradient(#0b253810, #0b2538c9); }
+.is-volleyball .overlay--single { background: #0b2538ed; }
 button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button:focus-visible { outline: 3px solid #8ce0e2; outline-offset: 3px; }
 .tap-header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0 4px; }

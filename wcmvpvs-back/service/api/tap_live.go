@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -99,6 +100,7 @@ type tapLiveManager struct {
 }
 
 type tapLiveWaitingFan struct {
+	gameID     string
 	fanID      int
 	nickname   string
 	eventID    int
@@ -304,7 +306,7 @@ func (m *tapLiveManager) cancelWaiting(fanID int) {
 	delete(m.waiting, fanID)
 }
 
-func (m *tapLiveManager) matchFor(fanID int, eventID int, orgID int, now time.Time) (tapLiveWaitingFan, bool) {
+func (m *tapLiveManager) matchFor(fanID int, eventID int, orgID int, now time.Time, gameID string) (tapLiveWaitingFan, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, w := range m.waiting {
@@ -315,7 +317,7 @@ func (m *tapLiveManager) matchFor(fanID int, eventID int, orgID int, now time.Ti
 			delete(m.waiting, id)
 			continue
 		}
-		if w.eventID == eventID && w.orgID == orgID {
+		if w.eventID == eventID && w.orgID == orgID && w.gameID == gameID {
 			delete(m.waiting, id)
 			return w, true
 		}
@@ -323,7 +325,7 @@ func (m *tapLiveManager) matchFor(fanID int, eventID int, orgID int, now time.Ti
 	return tapLiveWaitingFan{}, false
 }
 
-func (m *tapLiveManager) waitingFor(fanID int, eventID int, orgID int, now time.Time) (tapLiveWaitingFan, bool) {
+func (m *tapLiveManager) waitingFor(fanID int, eventID int, orgID int, now time.Time, gameID string) (tapLiveWaitingFan, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	w, ok := m.waiting[fanID]
@@ -334,7 +336,7 @@ func (m *tapLiveManager) waitingFor(fanID int, eventID int, orgID int, now time.
 		delete(m.waiting, fanID)
 		return tapLiveWaitingFan{}, false
 	}
-	if w.eventID != eventID || w.orgID != orgID {
+	if w.eventID != eventID || w.orgID != orgID || w.gameID != gameID {
 		return tapLiveWaitingFan{}, false
 	}
 	return w, true
@@ -434,6 +436,10 @@ func (rt *_router) postTapLiveQueue(w http.ResponseWriter, r *http.Request, ctx 
 		return
 	}
 	if existing, err := rt.db.GetOpenTapLiveMatchByFan(eventID, fanID); err == nil && existing.ID > 0 {
+		if existing.GameID != tapLiveGameID(r) {
+			_ = writeJSONMessage(w, http.StatusConflict, "Hai già una sfida live attiva in un altro gioco")
+			return
+		}
 		_ = writeJSON(w, http.StatusOK, tapLiveQueueEntry{MatchID: existing.MatchID, Status: existing.Status, Message: "Cerchiamo un avversario…"})
 		return
 	}
@@ -443,10 +449,10 @@ func (rt *_router) postTapLiveQueue(w http.ResponseWriter, r *http.Request, ctx 
 		return
 	}
 
-	opp, found := rt.tapLive.matchFor(fanID, eventID, ctx.OrganizationID, now)
+	opp, found := rt.tapLive.matchFor(fanID, eventID, ctx.OrganizationID, now, tapLiveGameID(r))
 	if !found {
 		deadline := now.Add(tapLiveMatchWaitSec * time.Second)
-		rt.tapLive.putWaiting(tapLiveWaitingFan{fanID: fanID, nickname: me.Profile.Nickname, eventID: eventID, orgID: ctx.OrganizationID, createdAt: now})
+		rt.tapLive.putWaiting(tapLiveWaitingFan{gameID: tapLiveGameID(r), fanID: fanID, nickname: me.Profile.Nickname, eventID: eventID, orgID: ctx.OrganizationID, createdAt: now})
 		_ = writeJSON(w, http.StatusAccepted, tapLiveQueueEntry{Status: "searching", Message: "Cerchiamo un avversario…", WaitingDeadline: deadline.Unix()})
 		return
 	}
@@ -455,7 +461,7 @@ func (rt *_router) postTapLiveQueue(w http.ResponseWriter, r *http.Request, ctx 
 	countdownStart := now
 	startAt := countdownStart.Add(tapLiveCountdownSec * time.Second)
 	endAt := startAt.Add(tapLiveRoundDurationSec * time.Second)
-	created, err := rt.db.CreateTapLiveMatch(eventID, ctx.OrganizationID, matchID, fanID, opp.fanID, countdownStart, startAt, endAt)
+	created, err := rt.db.CreateTapLiveMatch(eventID, ctx.OrganizationID, matchID, fanID, opp.fanID, countdownStart, startAt, endAt, tapLiveGameID(r))
 	if err != nil {
 		ctx.Logger.WithError(err).Error("create tap live match")
 		_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore creazione sfida")
@@ -474,7 +480,7 @@ func (rt *_router) deleteTapLiveQueue(w http.ResponseWriter, r *http.Request, ct
 		return
 	}
 	me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r))
-	if err == nil {
+	if err == nil && rt.tapLiveWaitingInScope(r, ctx, me.Profile.ID) {
 		rt.tapLive.cancelWaiting(me.Profile.ID)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -492,14 +498,14 @@ func (rt *_router) getTapLiveState(w http.ResponseWriter, r *http.Request, ctx r
 		_ = writeJSONMessage(w, http.StatusUnauthorized, "Sessione fan non valida")
 		return
 	}
-	m, err := rt.db.GetOpenTapLiveMatchByFan(eventID, me.Profile.ID)
+	m, err := rt.db.GetOpenTapLiveMatchByFan(eventID, me.Profile.ID, tapLiveGameID(r))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			if waiting, ok := rt.tapLive.waitingFor(me.Profile.ID, eventID, ctx.OrganizationID, time.Now().UTC()); ok {
+			if waiting, ok := rt.tapLive.waitingFor(me.Profile.ID, eventID, ctx.OrganizationID, time.Now().UTC(), tapLiveGameID(r)); ok {
 				_ = writeJSON(w, http.StatusOK, tapLiveState{Status: "searching", Phase: "matchmaking", Message: "Cerchiamo un avversario…", DurationSeconds: tapLiveRoundDurationSec, CountdownStart: waiting.createdAt.Unix(), ServerNow: time.Now().UTC().UnixMilli(), MyNickname: me.Profile.Nickname})
 				return
 			}
-			if latest, latestErr := rt.db.GetLatestTapLiveMatchByFan(eventID, me.Profile.ID); latestErr == nil && latest.ID > 0 {
+			if latest, latestErr := rt.db.GetLatestTapLiveMatchByFan(eventID, me.Profile.ID, tapLiveGameID(r)); latestErr == nil && latest.ID > 0 {
 				opNick := latest.Fan1Nickname
 				if latest.Fan1ID == me.Profile.ID {
 					opNick = latest.Fan2Nickname
@@ -579,7 +585,7 @@ func (rt *_router) postTapLiveSubmit(w http.ResponseWriter, r *http.Request, ctx
 		_ = writeJSONMessage(w, http.StatusNotFound, "Sfida non trovata")
 		return
 	}
-	if match.EventID != eventID {
+	if match.EventID != eventID || !tapLiveMatchInScope(match, r, ctx) {
 		_ = writeJSONMessage(w, http.StatusForbidden, "Sfida non valida")
 		return
 	}
@@ -616,6 +622,11 @@ func (rt *_router) postTapLiveAbort(w http.ResponseWriter, r *http.Request, ctx 
 	}
 	var payload tapLiveAbortPayload
 	_ = json.NewDecoder(r.Body).Decode(&payload)
+	match, err := rt.db.GetTapLiveMatchByID(payload.MatchID)
+	if err != nil || !tapLiveMatchInScope(match, r, ctx) || (me.Profile.ID != match.Fan1ID && me.Profile.ID != match.Fan2ID) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	_ = rt.db.AbortTapLiveMatch(payload.MatchID, me.Profile.ID)
 	if m, err := rt.db.GetTapLiveMatchByID(payload.MatchID); err == nil {
 		rt.tapLive.clearActive(m.Fan1ID, m.Fan2ID)
@@ -643,7 +654,7 @@ func (rt *_router) getTapLiveResult(w http.ResponseWriter, r *http.Request, ctx 
 		return
 	}
 	m, err := rt.db.GetTapLiveMatchByID(matchID)
-	if err != nil || m.EventID != eventID {
+	if err != nil || m.EventID != eventID || !tapLiveMatchInScope(m, r, ctx) {
 		_ = writeJSONMessage(w, http.StatusNotFound, "Sfida non trovata")
 		return
 	}
@@ -715,7 +726,7 @@ func (rt *_router) postTapLiveRematch(w http.ResponseWriter, r *http.Request, ct
 		return
 	}
 	match, err := rt.db.GetTapLiveMatchByID(payload.MatchID)
-	if err != nil || match.EventID != eventID || match.Status != "finished" {
+	if err != nil || match.EventID != eventID || match.Status != "finished" || !tapLiveMatchInScope(match, r, ctx) {
 		_ = writeJSONMessage(w, http.StatusNotFound, "Match terminato non trovato")
 		return
 	}
@@ -726,7 +737,7 @@ func (rt *_router) postTapLiveRematch(w http.ResponseWriter, r *http.Request, ct
 		countdownStart := now
 		startAt := countdownStart.Add(tapLiveCountdownSec * time.Second)
 		endAt := startAt.Add(tapLiveRoundDurationSec * time.Second)
-		created, createErr := rt.db.CreateTapLiveMatch(eventID, ctx.OrganizationID, nextMatchID, match.Fan1ID, match.Fan2ID, countdownStart, startAt, endAt)
+		created, createErr := rt.db.CreateTapLiveMatch(eventID, ctx.OrganizationID, nextMatchID, match.Fan1ID, match.Fan2ID, countdownStart, startAt, endAt, match.GameID)
 		if createErr != nil {
 			ctx.Logger.WithError(createErr).Error("create tap live rematch")
 			_ = writeJSONMessage(w, http.StatusInternalServerError, "Errore creazione rivincita")
@@ -756,7 +767,7 @@ func (rt *_router) postTapLivePostmatchLeave(w http.ResponseWriter, r *http.Requ
 	var payload tapLivePostmatchLeavePayload
 	_ = json.NewDecoder(r.Body).Decode(&payload)
 	match, err := rt.db.GetTapLiveMatchByID(payload.MatchID)
-	if err != nil || match.EventID != eventID || match.Status != "finished" {
+	if err != nil || match.EventID != eventID || match.Status != "finished" || !tapLiveMatchInScope(match, r, ctx) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -764,6 +775,32 @@ func (rt *_router) postTapLivePostmatchLeave(w http.ResponseWriter, r *http.Requ
 	rt.tapLiveHub.Broadcast(match.Fan1ID)
 	rt.tapLiveHub.Broadcast(match.Fan2ID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type tapLiveGameKey struct{}
+
+func withTapLiveGame(gameID string, next httpRouterHandler) httpRouterHandler {
+	return func(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+		next(w, r.WithContext(context.WithValue(r.Context(), tapLiveGameKey{}, gameID)), ctx)
+	}
+}
+
+func tapLiveGameID(r *http.Request) string {
+	if gameID, ok := r.Context().Value(tapLiveGameKey{}).(string); ok {
+		return gameID
+	}
+	return "tap"
+}
+
+func tapLiveMatchInScope(match database.TapLiveMatch, r *http.Request, ctx reqcontext.RequestContext) bool {
+	eventID, _ := strconv.Atoi(chiURLParam(r, "eventId"))
+	return match.EventID == eventID && match.OrganizationID == ctx.OrganizationID && match.GameID == tapLiveGameID(r)
+}
+
+func (rt *_router) tapLiveWaitingInScope(r *http.Request, ctx reqcontext.RequestContext, fanID int) bool {
+	eventID, _ := strconv.Atoi(chiURLParam(r, "eventId"))
+	_, ok := rt.tapLive.waitingFor(fanID, eventID, ctx.OrganizationID, time.Now().UTC(), tapLiveGameID(r))
+	return ok
 }
 
 func chiURLParam(r *http.Request, key string) string {

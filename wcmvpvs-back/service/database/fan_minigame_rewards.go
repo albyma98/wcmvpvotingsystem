@@ -102,9 +102,9 @@ func (db *appdbimpl) ClaimFanMinigameReward(eventID, organizationID, fanID int, 
 	if err := tx.QueryRow(`SELECT COALESCE((SELECT MAX(coins) FROM fan_journey_rewards WHERE event_id=? AND organization_id=? AND reward_key=? AND ((fan_id=0 AND device_id=?) OR (?>0 AND fan_id=?))),0)+COALESCE((SELECT SUM(coins) FROM fan_minigame_rewards WHERE event_id=? AND organization_id=? AND reward_key=? AND ((fan_id=0 AND device_id=?) OR (?>0 AND fan_id=?))),0)`, eventID, organizationID, rewardKey, deviceID, fanID, fanID, eventID, organizationID, rewardKey, deviceID, fanID, fanID).Scan(&result.RewardTotal); err != nil {
 		return result, err
 	}
-	if rewardKey == "tap" && fanID > 0 {
+	if (rewardKey == "tap" || rewardKey == "tap-volley") && fanID > 0 {
 		var live int
-		if err := tx.QueryRow(`SELECT COALESCE(SUM(CASE WHEN fan1_id=? THEN fan1_coins ELSE 0 END+CASE WHEN fan2_id=? THEN fan2_coins ELSE 0 END),0) FROM tap_live_matches WHERE event_id=? AND organization_id=? AND status='finished' AND (fan1_id=? OR fan2_id=?)`, fanID, fanID, eventID, organizationID, fanID, fanID).Scan(&live); err != nil {
+		if err := tx.QueryRow(`SELECT COALESCE(SUM(CASE WHEN fan1_id=? THEN fan1_coins ELSE 0 END+CASE WHEN fan2_id=? THEN fan2_coins ELSE 0 END),0) FROM tap_live_matches WHERE event_id=? AND organization_id=? AND game_id=? AND status='finished' AND (fan1_id=? OR fan2_id=?)`, fanID, fanID, eventID, organizationID, rewardKey, fanID, fanID).Scan(&live); err != nil {
 			return result, err
 		}
 		result.RewardTotal += live

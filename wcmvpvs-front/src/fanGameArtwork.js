@@ -10,6 +10,7 @@ export const FAN_GAME_ARTWORK = Object.freeze({
   'setter-pro': new URL('./assets/fan-games/setter-pro.webp', import.meta.url).href,
   'monster-block': new URL('./assets/fan-games/monster-block.webp', import.meta.url).href,
   tap: new URL('./assets/fan-games/tap.webp', import.meta.url).href,
+  'tap-volley': new URL('./assets/fan-games/tap-volley.webp', import.meta.url).href,
   'sponsor-rush': new URL('./assets/fan-games/sponsor-rush.webp', import.meta.url).href,
   'memory-flash': new URL('./assets/fan-games/memory-flash.webp', import.meta.url).href,
 });

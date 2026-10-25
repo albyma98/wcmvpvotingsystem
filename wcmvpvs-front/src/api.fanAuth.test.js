@@ -14,14 +14,36 @@ function fixture(handler) {
     requests.push(request);
     return handler(request);
   };
-  const client = { defaults: { baseURL: '/api' }, interceptors: { request: { use: (callback) => { intercept = callback; } } }, get: (path, config) => send('get', path, undefined, config), post: (path, body, config) => send('post', path, body, config) };
+  const client = { defaults: { baseURL: '/api' }, interceptors: { request: { use: (callback) => { intercept = callback; } } }, get: (path, config) => send('get', path, undefined, config), post: (path, body, config) => send('post', path, body, config), delete: (path, config) => send('delete', path, undefined, config) };
   const axios = { create: () => client, isAxiosError: (error) => error?.isAxiosError === true };
   const source = stripTypeScriptTypes(readFileSync(new URL('./api.ts', import.meta.url), 'utf8').replaceAll('import.meta.env', '({})'))
     .replace(/^import .*;\r?\n/gm, '')
     .replace(/^export /gm, '');
-  const api = new Function('axios', 'getOrCreateDeviceId', 'readFanSessionToken', 'saveFanSessionToken', 'readLegacyFanSessionToken', 'window', `${source}\nreturn { getFanSessionToken, getFanSessionHeaders, startPhoneAuth, verifyPhoneAuth, registerFanProfile, fetchFanProfile, claimFanJourneyReward, submitQuickQuizAnswer, prepareVolleyballRound, submitVolleyballRound };`)(axios, () => 'device', sessions.readFanSessionToken, sessions.saveFanSessionToken, sessions.readLegacyFanSessionToken, window);
+  const api = new Function('axios', 'getOrCreateDeviceId', 'readFanSessionToken', 'saveFanSessionToken', 'readLegacyFanSessionToken', 'window', `${source}\nreturn { getFanSessionToken, getFanSessionHeaders, startPhoneAuth, verifyPhoneAuth, registerFanProfile, fetchFanProfile, claimFanJourneyReward, submitQuickQuizAnswer, prepareVolleyballRound, submitVolleyballRound, joinTapLiveQueue, cancelTapLiveQueue, fetchTapLiveState, submitTapLiveScore, abortTapLiveMatch, fetchTapLiveResult, requestTapLiveRematch, leaveTapLivePostmatch, buildTapLiveSseUrl };`)(axios, () => 'device', sessions.readFanSessionToken, sessions.saveFanSessionToken, sessions.readLegacyFanSessionToken, window);
   return { api, window, requests };
 }
+
+test('basket and volley tap live calls keep their separate endpoints and society headers', async () => {
+  const { api, requests } = fixture(async () => ({ data: {} }));
+  for (const game of ['tap', 'tap-volley']) {
+    const start = requests.length;
+    await api.joinTapLiveQueue(42, game);
+    await api.cancelTapLiveQueue(42, game);
+    await api.fetchTapLiveState(42, game);
+    await api.submitTapLiveScore(42, 'match', 12, game);
+    await api.abortTapLiveMatch(42, 'match', game);
+    await api.fetchTapLiveResult(42, 'match', game);
+    await api.requestTapLiveRematch(42, 'match', 'request', game);
+    await api.leaveTapLivePostmatch(42, 'match', game);
+    assert.equal(requests.length - start, 8);
+    for (const request of requests.slice(start)) {
+      assert.ok(request.path.startsWith(`/events/42/${game === 'tap' ? 'tap-live' : 'tap-volley-live'}/`));
+      assert.equal(request.config.headers['X-Organization-Slug'], 'club-a');
+      assert.equal(request.config.headers['X-Device-ID'], 'device');
+    }
+    assert.ok(api.buildTapLiveSseUrl(42, game).includes(`/${game === 'tap' ? 'tap-live' : 'tap-volley-live'}/stream?`));
+  }
+});
 
 test('volleyball rounds keep device and club scope and submit only the action to the round endpoint', async () => {
   const { api, requests } = fixture(async () => ({ data: {} }));

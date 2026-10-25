@@ -64,3 +64,11 @@ Two athletic hands performing a technically correct overhead volleyball set, fin
 
 Two strong athletic hands raised vertically above a taut indoor volleyball net making a spectacular block against a yellow, blue and white volleyball, bold violet and magenta luminous impact ring with a few sparks, deep purple indoor arena background, powerful tactile sport action. Hands only, no faces.
 
+### tap-volley.webp
+
+Generated with the built-in `image_gen` tool. Production export: 320 × 320 WebP, 16,688 bytes, Sharp quality 82 and effort 6. The in-game ball and court are native Vue/SVG graphics; this image is only the menu cover.
+
+Final prompt:
+
+Use case: stylized-concept. Asset type: square decorative mobile sports minigame cover matching an existing premium 3D arcade sports card set. Polished playful 3D arcade illustration, chunky sculpted forms, glossy highlights, rich saturated color, cinematic rim light, bold clear silhouette readable at thumbnail size. Main subject centered in upper half, fully visible with generous side margins; quieter dark background across lower third where live UI will overlay title. One cohesive full-bleed scene. No text, letters, numbers, brand, logos, watermarks, borders or UI. Authentic indoor volleyball. Subject: A large glossy yellow and blue volleyball suspended just above an indoor orange and turquoise volleyball court, a stylized athletic hand with its extended index finger tapping the volleyball from below, bright cyan concentric impact rings and a few golden sparks showing a quick tap action, a recognizable volleyball net subtly visible in the deep teal arena background. Tactile, fast, playful and satisfying. No basketballs, hoops or basketball markings. A clean distinctive cover for a volleyball tapping minigame.
+

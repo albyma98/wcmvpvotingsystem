@@ -72,12 +72,12 @@ func TestGamificationMasterAndPublicRestrictions(t *testing.T) {
 	request(master, "PUT", "/basketball", `{"sports":["Tutti","Calcio"]}`, "", 400)
 	request(master, "PUT", "/basketball", `{"sports":["Tennis"]}`, "", 400)
 	request(master, "PUT", "/unknown", `{"sports":["Tutti"]}`, "", 404)
-	for _, game := range []string{"basketball", "playmaker", "crossover", "reaction", "quiz", "tap", "sponsor-rush", "memory-flash", "free_throw_challenge", "stack_it", "libero-reflex", "volley-rush", "setter-pro", "monster-block"} {
+	for _, game := range []string{"basketball", "playmaker", "crossover", "reaction", "quiz", "tap", "tap-volley", "sponsor-rush", "memory-flash", "free_throw_challenge", "stack_it", "libero-reflex", "volley-rush", "setter-pro", "monster-block"} {
 		request(master, "PUT", "/"+game, `{"sports":["Pallacanestro"]}`, "", 200)
 	}
 	list := request(master, "GET", "/", "", "", 200)
 	var games []database.Minigame
-	if err := json.Unmarshal(list.Body.Bytes(), &games); err != nil || len(games) != 14 {
+	if err := json.Unmarshal(list.Body.Bytes(), &games); err != nil || len(games) != 15 {
 		t.Fatalf("master catalog: %+v %v", games, err)
 	}
 	public := router.Handler()
@@ -93,6 +93,7 @@ func TestGamificationMasterAndPublicRestrictions(t *testing.T) {
 		{"POST", "/playmaker/sessions"}, {"POST", "/playmaker/sessions/1/passes"},
 		{"POST", "/crossover/sessions"}, {"POST", "/crossover/sessions/1/duels"},
 		{"POST", "/tap-live/queue"}, {"POST", "/tap-live/submit"}, {"POST", "/tap-live/rematch"}, {"GET", "/tap-live/stream"},
+		{"POST", "/tap-volley-live/queue"}, {"POST", "/tap-volley-live/submit"}, {"POST", "/tap-volley-live/rematch"}, {"GET", "/tap-volley-live/stream"},
 	} {
 		request(public, endpoint.method, path+endpoint.suffix, `{}`, "volley", 403)
 	}
@@ -107,6 +108,7 @@ func TestGamificationMasterAndPublicRestrictions(t *testing.T) {
 	}
 	request(public, "POST", path+"/volleyball/unknown/rounds", `{}`, "volley", 404)
 	request(public, "POST", path+"/journey-rewards", `{"key":"reaction","request_id":"round-123"}`, "volley", 403)
+	request(public, "POST", path+"/journey-rewards", `{"key":"tap-volley","request_id":"volley-round-123"}`, "volley", 403)
 	for _, gameType := range []string{"tap_challenge", "memory_flash", "sponsor_rush", "free_throw_challenge", "stack_it"} {
 		if _, err := conn.Exec(`UPDATE events SET show_branded_game=1, branded_game_config=? WHERE id=?`, `{"game_type":"`+gameType+`"}`, event); err != nil {
 			t.Fatal(err)
@@ -125,4 +127,15 @@ func TestGamificationMasterAndPublicRestrictions(t *testing.T) {
 	}
 	request(master, "PUT", "/basketball", `{"sports":[]}`, "", 200)
 	request(public, "POST", path+"/basketball/shots", `{}`, "volley", 403)
+	request(master, "PUT", "/tap-volley", `{"sports":["Pallavolo"]}`, "", 200)
+	credit := request(public, "POST", path+"/journey-rewards", `{"key":"tap-volley","request_id":"volley-round-123"}`, "volley", 200)
+	if !strings.Contains(credit.Body.String(), `"coins_earned":8`) {
+		t.Fatalf("volley reward: %s", credit.Body.String())
+	}
+	retry := request(public, "POST", path+"/journey-rewards", `{"key":"tap-volley","request_id":"volley-round-123"}`, "volley", 200)
+	if !strings.Contains(retry.Body.String(), `"coins_earned":0`) {
+		t.Fatalf("duplicate volley reward: %s", retry.Body.String())
+	}
+	request(public, "POST", path+"/tap-volley-live/queue", `{}`, "volley", 401)
+	request(public, "POST", path+"/tap-live/queue", `{}`, "volley", 403)
 }

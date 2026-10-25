@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 )
 
@@ -97,15 +99,20 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Post("/events/{eventId}/rewards/redeem", rt.wrap(rt.postFanRewardRedeem))
 	rt.router.Get("/events/{eventId}/support/leaderboard", rt.wrap(rt.getFanSupportLeaderboard))
 	rt.router.Post("/events/{eventId}/support/donate", rt.wrap(rt.postFanSupportDonation))
-	rt.router.Get("/events/{eventId}/tap-live/stream", rt.wrap(rt.withMinigame("tap", rt.getTapLiveStream)))
-	rt.router.Post("/events/{eventId}/tap-live/queue", rt.wrap(rt.withMinigame("tap", rt.postTapLiveQueue)))
-	rt.router.Delete("/events/{eventId}/tap-live/queue", rt.wrap(rt.deleteTapLiveQueue))
-	rt.router.Get("/events/{eventId}/tap-live/state", rt.wrap(rt.getTapLiveState))
-	rt.router.Post("/events/{eventId}/tap-live/submit", rt.wrap(rt.withMinigame("tap", rt.postTapLiveSubmit)))
-	rt.router.Post("/events/{eventId}/tap-live/abort", rt.wrap(rt.postTapLiveAbort))
-	rt.router.Get("/events/{eventId}/tap-live/result", rt.wrap(rt.getTapLiveResult))
-	rt.router.Post("/events/{eventId}/tap-live/rematch", rt.wrap(rt.withMinigame("tap", rt.postTapLiveRematch)))
-	rt.router.Post("/events/{eventId}/tap-live/postmatch-leave", rt.wrap(rt.postTapLivePostmatchLeave))
+	for _, gameID := range []string{"tap", "tap-volley"} {
+		gameID := gameID
+		prefix := "/events/{eventId}/" + gameID + "-live"
+		bind := func(handler httpRouterHandler) http.HandlerFunc { return rt.wrap(withTapLiveGame(gameID, handler)) }
+		rt.router.Get(prefix+"/stream", bind(rt.withMinigame(gameID, rt.getTapLiveStream)))
+		rt.router.Post(prefix+"/queue", bind(rt.withMinigame(gameID, rt.postTapLiveQueue)))
+		rt.router.Delete(prefix+"/queue", bind(rt.deleteTapLiveQueue))
+		rt.router.Get(prefix+"/state", bind(rt.getTapLiveState))
+		rt.router.Post(prefix+"/submit", bind(rt.withMinigame(gameID, rt.postTapLiveSubmit)))
+		rt.router.Post(prefix+"/abort", bind(rt.postTapLiveAbort))
+		rt.router.Get(prefix+"/result", bind(rt.getTapLiveResult))
+		rt.router.Post(prefix+"/rematch", bind(rt.withMinigame(gameID, rt.postTapLiveRematch)))
+		rt.router.Post(prefix+"/postmatch-leave", bind(rt.postTapLivePostmatchLeave))
+	}
 
 	rt.router.Get("/events", rt.wrapAdmin(rt.listEvents))
 	rt.router.Post("/events", rt.wrapAdmin(rt.createEvent))

@@ -10,12 +10,12 @@ import (
 func TestGamificationSportsPersistAndFollowOrganizationSport(t *testing.T) {
 	db, club, _, _, _ := fanEconomyFixture(t)
 	games, err := db.ListMinigames()
-	if err != nil || len(games) != 14 {
+	if err != nil || len(games) != 15 {
 		t.Fatalf("catalog: %+v %v", games, err)
 	}
 	for _, game := range games {
 		expected := []string{"Tutti"}
-		if ValidVolleyballGame(game.ID) {
+		if ValidVolleyballGame(game.ID) || game.ID == "tap-volley" {
 			expected = []string{"Pallavolo"}
 		}
 		if !reflect.DeepEqual(game.Sports, expected) {
@@ -60,7 +60,7 @@ func TestGamificationSportsPersistAndFollowOrganizationSport(t *testing.T) {
 		if has("basketball") != (sport == "Pallacanestro") || has("reaction") != (sport == "Calcio" || sport == "Pallavolo") || has("quiz") || !has("tap") {
 			t.Fatalf("sport %q: %+v", sport, available)
 		}
-		for _, gameID := range []string{"volley-rush", "setter-pro", "monster-block"} {
+		for _, gameID := range []string{"volley-rush", "setter-pro", "monster-block", "tap-volley"} {
 			if has(gameID) != (sport == "Pallavolo") {
 				t.Fatalf("volleyball game %s for sport %q: %+v", gameID, sport, available)
 			}

@@ -231,7 +231,7 @@ function fixture(overrides = {}, options = {}) {
     vote: async () => ({ ok: true }),
     syncGuestCoins: async (eventId, coins) => { saves.push({ eventId, coins }); return { ok: true, data: { wallet: coins } }; },
     claimFanJourneyReward: async (eventId, key, roundId) => {
-      const amounts = { vote: 10, quiz: 15, reaction: 10, tap: 8, 'sponsor-rush': 12, 'memory-flash': 8 };
+      const amounts = { vote: 10, quiz: 15, reaction: 10, tap: 8, 'tap-volley': 8, 'sponsor-rush': 12, 'memory-flash': 8 };
       const receipt = key === 'vote' ? key : `${key}:${roundId}`;
       const coins = serverAwards.has(receipt) ? 0 : amounts[key] || 0;
       serverWallet += coins; serverAwards.add(receipt); saves.push({ eventId, coins: serverWallet });
@@ -1597,6 +1597,34 @@ test('an authoritative empty server reward list clears a stale local badge and c
   assert.equal(state.doneKeys.value.includes('basketball'), false);
   const stored = JSON.parse(window.localStorage.getItem(journey.journeyStorageKey('club', 42)));
   assert.deepEqual(stored.rewards, {});
+});
+
+test('Tap Volley is independently filtered, launched and credited without changing basket progress', async t => {
+  const { state, scope } = fixture({}, { props: { activeEvent: { is_active: true, available_minigames: ['tap-volley'] } } });
+  t.after(() => scope.stop());
+  assert.deepEqual(state.earnMissions.value.map(mission => mission.key), ['vote', 'tap-volley']);
+  assert.equal(state.featuredMission.value.title, 'Tap Volley Challenge');
+  state.openGame('tap');
+  assert.equal(state.activeGameId.value, null);
+  state.onMission(state.featuredMission.value);
+  assert.equal(state.activeGameId.value, 'tap-volley');
+  await state.onGameClaim({ coins: 999, roundId: 'volley-round-123' });
+  assert.equal(state.totalCoins.value, 8);
+  assert.equal(state.journey.value.rewards['tap-volley'], 8);
+  assert.equal(state.journey.value.rewards.tap, undefined);
+  assert.equal(state.celebrationName.value, 'Tap Volley Challenge');
+});
+
+test('Tap Volley live restores its server reward without issuing another credit', async t => {
+  const { state, scope, saves } = fixture({ fetchFanProfile: async () => ({ ok: true, data: { registered: true, wallet: 38, journey_rewards: { 'tap-volley': 30, tap: 8 } } }) });
+  t.after(() => scope.stop());
+  state.openGame('tap-volley');
+  await state.onGameClaim({ coins: 999, source: 'tap_challenge_live', keepOpen: true });
+  assert.equal(state.totalCoins.value, 38);
+  assert.equal(state.journey.value.rewards['tap-volley'], 30);
+  assert.equal(state.journey.value.rewards.tap, 8);
+  assert.equal(state.activeGameId.value, 'tap-volley');
+  assert.deepEqual(saves, []);
 });
 
 test('Tap Challenge single-player claims eight coins for each distinct game', async (t) => {

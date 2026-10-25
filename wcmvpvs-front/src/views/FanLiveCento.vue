@@ -551,8 +551,10 @@
             @round-completed="onReportGameCompleted"
             @saving-change="isVolleyballSaving = $event"
           />
-          <TapChallenge
-            v-else-if="activeGameId === 'tap'"
+          <component
+            v-else-if="activeGameId === 'tap' || activeGameId === 'tap-volley'"
+            :is="activeGameId === 'tap-volley' ? TapVolleyChallenge : TapChallenge"
+            :key="`${eventId}:${activeGameId}`"
             class="game-fill"
             :event-id="eventId"
             :completion-reward="8"
@@ -625,6 +627,7 @@ const PlaymakerGame = defineAsyncComponent(() => import('../components/minigames
 const CrossoverRushGame = defineAsyncComponent(() => import('../components/minigames/CrossoverRushGame.vue'));
 const VolleyballArena = defineAsyncComponent(() => import('../components/minigames/VolleyballArena.vue'));
 const TapChallenge = defineAsyncComponent(() => import('../components/minigames/TapChallenge.vue'));
+const TapVolleyChallenge = defineAsyncComponent(() => import('../components/minigames/TapVolleyChallenge.vue'));
 const SponsorRushGame = defineAsyncComponent(() => import('../components/minigames/SponsorRushGame.vue'));
 const MemoryFlashGame = defineAsyncComponent(() => import('../components/minigames/MemoryFlashGame.vue'));
 import {
@@ -801,6 +804,7 @@ const games = {
   'setter-pro': { title: 'Setter Pro', reward: 1 },
   'monster-block': { title: 'Monster Block', reward: 1 },
   tap: { title: 'Tap Challenge', reward: 8 },
+  'tap-volley': { title: 'Tap Volley Challenge', reward: 8 },
   'sponsor-rush': { title: 'Sponsor Rush', reward: 12 },
   'memory-flash': { title: 'Memory Flash', reward: 8 },
 };
@@ -1165,6 +1169,7 @@ const earnMissions = computed(() => [
   { key: 'playmaker', emoji: '🤝', title: 'Playmaker', subtitle: 'L’assist perfetto · Sessioni da 30 secondi', pts: 1, game: 'playmaker', repeatable: true, rewardUnit: 'assist' },
   { key: 'crossover', emoji: '💨', title: 'Crossover Rush', subtitle: 'Finta, cambia mano e schiaccia · 3 duelli', pts: 1, game: 'crossover', repeatable: true, rewardUnit: 'duello vinto' },
   { key: 'tap', emoji: '👆', title: 'Tap Challenge', subtitle: '10 secondi a martello', pts: 8, game: 'tap', repeatable: true },
+  { key: 'tap-volley', emoji: '🏐', title: 'Tap Volley Challenge', subtitle: '10 secondi sotto rete · Tocca e insegui il pallone', pts: 8, game: 'tap-volley', repeatable: true },
   {
     key: 'sponsor-rush',
     emoji: '🏷️',

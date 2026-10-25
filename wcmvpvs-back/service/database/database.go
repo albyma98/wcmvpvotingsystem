@@ -998,6 +998,7 @@ type FanSupportLeaderboardEntry struct {
 type TapLiveMatch struct {
 	ID               int       `json:"id"`
 	MatchID          string    `json:"match_id"`
+	GameID           string    `json:"game_id"`
 	EventID          int       `json:"event_id"`
 	OrganizationID   int       `json:"organization_id"`
 	Fan1ID           int       `json:"fan1_id"`
@@ -1330,9 +1331,9 @@ type AppDatabase interface {
 	GetFanByDevice(eventID int, organizationID int, deviceID string) (FanProfileSummary, error)
 	SetFanWalletCoins(fanID int, coins int) error
 	AddFanWalletCoins(fanID int, delta int) error
-	CreateTapLiveMatch(eventID, organizationID int, matchID string, fan1ID, fan2ID int, countdownStart, startAt, endAt time.Time) (TapLiveMatch, error)
-	GetOpenTapLiveMatchByFan(eventID int, fanID int) (TapLiveMatch, error)
-	GetLatestTapLiveMatchByFan(eventID int, fanID int) (TapLiveMatch, error)
+	CreateTapLiveMatch(eventID, organizationID int, matchID string, fan1ID, fan2ID int, countdownStart, startAt, endAt time.Time, gameIDs ...string) (TapLiveMatch, error)
+	GetOpenTapLiveMatchByFan(eventID int, fanID int, gameIDs ...string) (TapLiveMatch, error)
+	GetLatestTapLiveMatchByFan(eventID int, fanID int, gameIDs ...string) (TapLiveMatch, error)
 	GetTapLiveMatchByID(matchID string) (TapLiveMatch, error)
 	SubmitTapLiveScore(matchID string, fanID int, score int) error
 	TryFinalizeTapLiveMatch(matchID string) error
@@ -7726,6 +7727,7 @@ func ensureFanProfileTables(db *sql.DB) error {
 			FOREIGN KEY (fan2_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
 		);`,
 		`ALTER TABLE fan_profiles ADD COLUMN phone_e164 TEXT;`,
+		`ALTER TABLE tap_live_matches ADD COLUMN game_id TEXT NOT NULL DEFAULT 'tap' CHECK (game_id IN ('tap','tap-volley'));`,
 		`ALTER TABLE fan_profiles ADD COLUMN phone_verified_at TEXT;`,
 		`ALTER TABLE fan_profiles ADD COLUMN registration_pending INTEGER NOT NULL DEFAULT 0;`,
 		`ALTER TABLE fan_profiles ADD COLUMN marketing_consent INTEGER NOT NULL DEFAULT 0;`,
@@ -8195,7 +8197,7 @@ func (db *appdbimpl) scanTapLiveMatch(scanner interface {
 }) (TapLiveMatch, error) {
 	var m TapLiveMatch
 	var cStart, started, ended, s1, s2 sql.NullString
-	err := scanner.Scan(&m.ID, &m.MatchID, &m.EventID, &m.OrganizationID, &m.Fan1ID, &m.Fan2ID, &m.Fan1Nickname, &m.Fan2Nickname, &m.Status, &cStart, &started, &ended, &m.Fan1Score, &m.Fan2Score, &s1, &s2, &m.Fan1Result, &m.Fan2Result, &m.Fan1Coins, &m.Fan2Coins)
+	err := scanner.Scan(&m.ID, &m.MatchID, &m.EventID, &m.OrganizationID, &m.Fan1ID, &m.Fan2ID, &m.Fan1Nickname, &m.Fan2Nickname, &m.Status, &cStart, &started, &ended, &m.Fan1Score, &m.Fan2Score, &s1, &s2, &m.Fan1Result, &m.Fan2Result, &m.Fan1Coins, &m.Fan2Coins, &m.GameID)
 	if err != nil {
 		return TapLiveMatch{}, err
 	}
@@ -8223,9 +8225,16 @@ func (db *appdbimpl) scanTapLiveMatch(scanner interface {
 	return m, nil
 }
 
-func (db *appdbimpl) CreateTapLiveMatch(eventID, organizationID int, matchID string, fan1ID, fan2ID int, countdownStart, startAt, endAt time.Time) (TapLiveMatch, error) {
-	_, err := db.c.Exec(`INSERT INTO tap_live_matches (match_id, event_id, organization_id, fan1_id, fan2_id, status, countdown_start_at, started_at, ended_at)
-	VALUES (?, ?, ?, ?, ?, 'countdown', ?, ?, ?)`, matchID, eventID, organizationID, fan1ID, fan2ID, countdownStart.UTC().Format(time.RFC3339), startAt.UTC().Format(time.RFC3339), endAt.UTC().Format(time.RFC3339))
+func (db *appdbimpl) CreateTapLiveMatch(eventID, organizationID int, matchID string, fan1ID, fan2ID int, countdownStart, startAt, endAt time.Time, gameIDs ...string) (TapLiveMatch, error) {
+	gameID := "tap"
+	if len(gameIDs) > 0 {
+		gameID = gameIDs[0]
+	}
+	if gameID != "tap" && gameID != "tap-volley" {
+		return TapLiveMatch{}, sql.ErrNoRows
+	}
+	_, err := db.c.Exec(`INSERT INTO tap_live_matches (match_id, event_id, organization_id, fan1_id, fan2_id, status, countdown_start_at, started_at, ended_at, game_id)
+	VALUES (?, ?, ?, ?, ?, 'countdown', ?, ?, ?, ?)`, matchID, eventID, organizationID, fan1ID, fan2ID, countdownStart.UTC().Format(time.RFC3339), startAt.UTC().Format(time.RFC3339), endAt.UTC().Format(time.RFC3339), gameID)
 	if err != nil {
 		return TapLiveMatch{}, err
 	}
@@ -8235,7 +8244,7 @@ func (db *appdbimpl) CreateTapLiveMatch(eventID, organizationID int, matchID str
 func (db *appdbimpl) GetTapLiveMatchByID(matchID string) (TapLiveMatch, error) {
 	row := db.c.QueryRow(`SELECT m.id, m.match_id, m.event_id, m.organization_id, m.fan1_id, m.fan2_id,
 	f1.nickname, f2.nickname, m.status, m.countdown_start_at, m.started_at, m.ended_at,
-	m.fan1_score, m.fan2_score, m.fan1_submitted_at, m.fan2_submitted_at, m.fan1_result, m.fan2_result, m.fan1_coins, m.fan2_coins
+	m.fan1_score, m.fan2_score, m.fan1_submitted_at, m.fan2_submitted_at, m.fan1_result, m.fan2_result, m.fan1_coins, m.fan2_coins, m.game_id
 	FROM tap_live_matches m
 	JOIN fan_profiles f1 ON f1.id=m.fan1_id
 	JOIN fan_profiles f2 ON f2.id=m.fan2_id
@@ -8243,27 +8252,35 @@ func (db *appdbimpl) GetTapLiveMatchByID(matchID string) (TapLiveMatch, error) {
 	return db.scanTapLiveMatch(row)
 }
 
-func (db *appdbimpl) GetOpenTapLiveMatchByFan(eventID int, fanID int) (TapLiveMatch, error) {
+func (db *appdbimpl) GetOpenTapLiveMatchByFan(eventID int, fanID int, gameIDs ...string) (TapLiveMatch, error) {
+	gameID := ""
+	if len(gameIDs) > 0 {
+		gameID = gameIDs[0]
+	}
 	row := db.c.QueryRow(`SELECT m.id, m.match_id, m.event_id, m.organization_id, m.fan1_id, m.fan2_id,
 	f1.nickname, f2.nickname, m.status, m.countdown_start_at, m.started_at, m.ended_at,
-	m.fan1_score, m.fan2_score, m.fan1_submitted_at, m.fan2_submitted_at, m.fan1_result, m.fan2_result, m.fan1_coins, m.fan2_coins
+	m.fan1_score, m.fan2_score, m.fan1_submitted_at, m.fan2_submitted_at, m.fan1_result, m.fan2_result, m.fan1_coins, m.fan2_coins, m.game_id
 	FROM tap_live_matches m
 	JOIN fan_profiles f1 ON f1.id=m.fan1_id
 	JOIN fan_profiles f2 ON f2.id=m.fan2_id
-	WHERE m.event_id = ? AND (m.fan1_id = ? OR m.fan2_id = ?) AND m.status IN ('matched','countdown','playing')
-	ORDER BY m.id DESC LIMIT 1`, eventID, fanID, fanID)
+	WHERE m.event_id = ? AND (m.fan1_id = ? OR m.fan2_id = ?) AND m.status IN ('matched','countdown','playing') AND (?='' OR m.game_id=?)
+	ORDER BY m.id DESC LIMIT 1`, eventID, fanID, fanID, gameID, gameID)
 	return db.scanTapLiveMatch(row)
 }
 
-func (db *appdbimpl) GetLatestTapLiveMatchByFan(eventID int, fanID int) (TapLiveMatch, error) {
+func (db *appdbimpl) GetLatestTapLiveMatchByFan(eventID int, fanID int, gameIDs ...string) (TapLiveMatch, error) {
+	gameID := ""
+	if len(gameIDs) > 0 {
+		gameID = gameIDs[0]
+	}
 	row := db.c.QueryRow(`SELECT m.id, m.match_id, m.event_id, m.organization_id, m.fan1_id, m.fan2_id,
 	f1.nickname, f2.nickname, m.status, m.countdown_start_at, m.started_at, m.ended_at,
-	m.fan1_score, m.fan2_score, m.fan1_submitted_at, m.fan2_submitted_at, m.fan1_result, m.fan2_result, m.fan1_coins, m.fan2_coins
+	m.fan1_score, m.fan2_score, m.fan1_submitted_at, m.fan2_submitted_at, m.fan1_result, m.fan2_result, m.fan1_coins, m.fan2_coins, m.game_id
 	FROM tap_live_matches m
 	JOIN fan_profiles f1 ON f1.id=m.fan1_id
 	JOIN fan_profiles f2 ON f2.id=m.fan2_id
-	WHERE m.event_id = ? AND (m.fan1_id = ? OR m.fan2_id = ?)
-	ORDER BY m.id DESC LIMIT 1`, eventID, fanID, fanID)
+	WHERE m.event_id = ? AND (m.fan1_id = ? OR m.fan2_id = ?) AND (?='' OR m.game_id=?)
+	ORDER BY m.id DESC LIMIT 1`, eventID, fanID, fanID, gameID, gameID)
 	return db.scanTapLiveMatch(row)
 }
 
