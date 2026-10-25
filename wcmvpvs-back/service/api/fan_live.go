@@ -26,10 +26,22 @@ func (rt *_router) getFanLiveStatus(w http.ResponseWriter, r *http.Request, ctx 
 		}
 		return
 	}
+	games, err := rt.db.GetOrganizationMinigames(ctx.OrganizationID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("fan live minigames")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	quizAllowed := false
+	for _, id := range games {
+		if id == "quiz" {
+			quizAllowed = true
+		}
+	}
 	quiz := map[string]interface{}{"available": false}
 	if cfg, err := rt.db.GetEventQuizConfig(eventID); err == nil && cfg.Enabled && event.IsActive && !event.IsConcluded {
 		quiz["starts_at"], quiz["ends_at"] = cfg.ActiveFrom, cfg.ActiveTo
-		if quizInWindow(cfg) {
+		if quizAllowed && quizInWindow(cfg) {
 			if questions, err := rt.db.ListEventQuizQuestions(eventID); err == nil && len(questions) > 0 {
 				quiz["available"] = true
 			}
@@ -54,5 +66,6 @@ func (rt *_router) getFanLiveStatus(w http.ResponseWriter, r *http.Request, ctx 
 		"event_id": event.ID, "is_active": event.IsActive, "votes_closed": event.VotesClosed,
 		"is_concluded": event.IsConcluded, "team2_name": event.Team2Name, "quiz": quiz, "mvp": winners,
 		"show_feedback_survey": event.ShowFeedbackSurvey, "feedback_survey": event.FeedbackSurvey,
+		"available_minigames": games,
 	})
 }

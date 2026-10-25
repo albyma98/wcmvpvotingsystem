@@ -42,6 +42,9 @@ func (rt *_router) claimFanJourneyReward(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	if payload.Key != "vote" && !rt.ensureMinigameAvailable(w, ctx, payload.Key) {
+		return
+	}
 	fanID := 0
 	if token := rt.fanSessionTokenFromRequest(r); token != "" {
 		fan, err := rt.db.GetFanBySessionToken(token, deviceID)

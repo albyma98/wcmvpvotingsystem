@@ -28,6 +28,9 @@ func (db *fanLiveDB) GetFanLiveEvent(id, org int) (database.Event, error) {
 	return db.event, nil
 }
 func (db *fanLiveDB) GetEventQuizConfig(int) (database.EventQuizConfig, error) { return db.quiz, nil }
+func (db *fanLiveDB) GetOrganizationMinigames(int) ([]string, error) {
+	return []string{"quiz", "reaction"}, nil
+}
 func (db *fanLiveDB) ListEventQuizQuestions(int) ([]database.EventQuizQuestion, error) {
 	return []database.EventQuizQuestion{{ID: 1}}, nil
 }

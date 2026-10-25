@@ -9,6 +9,36 @@ import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
 
+test('sport rules filter every game entry and direct launch, while preserving the MVP vote', async t => {
+  const { state, scope } = fixture({}, { props: { activeEvent: { is_active: true, available_minigames: ['basketball'] } } });
+  t.after(() => scope.stop());
+  state.quizAvailable.value = true;
+  assert.deepEqual(state.earnMissions.value.map(mission => mission.key), ['vote', 'basketball']);
+  assert.equal(state.featuredMission.value.game, 'basketball');
+  state.openGame('quiz');
+  state.openGame('reaction');
+  assert.equal(state.activeGameId.value, null);
+  state.openGame('basketball');
+  assert.equal(state.activeGameId.value, 'basketball');
+  state.closeGame();
+  state.liveEvent.value = { event_id: 42, is_active: true, available_minigames: [] };
+  assert.deepEqual(state.earnMissions.value.map(mission => mission.key), ['vote']);
+  assert.equal(state.featuredMission.value, null);
+  state.openGame('basketball');
+  assert.equal(state.activeGameId.value, null);
+  state.hasVoted.value = true;
+  state.openJourneyNext();
+  assert.equal(state.activeSheet.value, 'earn');
+});
+
+test('live polling picks up changed sport assignments from the server', async t => {
+  const { state, scope } = fixture({ apiClient: { get: async () => ({ data: { event_id: 42, is_active: true, quiz: { available: false }, available_minigames: ['reaction'] } }) } });
+  t.after(() => scope.stop());
+  await state.refreshLiveStatus();
+  assert.deepEqual(state.earnMissions.value.map(mission => mission.key), ['vote', 'reaction']);
+  assert.equal(state.isGameAvailable('tap'), false);
+});
+
 test('information opens only its own panel without scrolling or loading wallet and profile', async (t) => {
   for (const registered of [false, true]) {
     let walletLoads = 0;

@@ -1872,12 +1872,12 @@ const preVoteSettings = computed(() => {
 const postVoteSettings = computed(() => {
   const event = props.activeEvent || null;
   return {
-    showReactionTest: resolveEventFlag(
+    showReactionTest: (!Array.isArray(event?.available_minigames) || event.available_minigames.includes('reaction')) && resolveEventFlag(
       event,
       ["show_reaction_test", "showReactionTest"],
       true,
     ),
-    showLiberoReflex: resolveEventFlag(
+    showLiberoReflex: (!Array.isArray(event?.available_minigames) || event.available_minigames.includes('libero-reflex')) && resolveEventFlag(
       event,
       ["show_libero_reflex", "showLiberoReflex", "show_reflex"],
       true,

@@ -48,6 +48,9 @@
             <div class="flex-1 px-4 pb-8 pt-5 md:px-6" :class="activeView === 'game' ? 'overflow-hidden' : 'overflow-y-auto'">
               <Transition name="slide" mode="out-in">
                 <div v-if="activeView === 'list'" key="list" class="mx-auto grid max-w-6xl grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <p v-if="catalogLoading" class="text-slate-300" role="status">Caricamento minigiochi…</p>
+                  <p v-else-if="catalogError" class="text-red-300" role="alert">{{ catalogError }} <button type="button" class="underline" @click="loadMinigames">Riprova</button></p>
+                  <p v-else-if="!earnOptions.length" class="text-slate-300">Nessun minigioco disponibile per questa società.</p>
                   <button
                     v-for="option in earnOptions"
                     :key="option.id"
@@ -130,6 +133,7 @@ import TapChallenge from './minigames/TapChallenge.vue';
 import MemoryFlashGame from './minigames/MemoryFlashGame.vue';
 import SponsorRushGame from './minigames/SponsorRushGame.vue';
 import { trackAppEvent } from '../eventTracking';
+import { apiClient } from '../api';
 
 const props = defineProps({
   modelValue: {
@@ -158,14 +162,36 @@ const isClaiming = ref(false);
 const gameStageRef = ref(null);
 const coinAnimationRef = ref(null);
 
-const earnOptions = [
+const availableMinigames = ref([]);
+const catalogLoading = ref(false);
+const catalogError = ref('');
+let catalogRevision = 0;
+const earnOptions = computed(() => [
   { id: 'reaction', title: 'Reaction Test', description: 'Testa i riflessi e scala la classifica.', reward: 10, icon: '⚡', type: 'game', isAvailable: true },
   // Temporaneamente disabilitato su richiesta: mostra la card ma impedisce l'avvio del gioco.
   { id: 'quiz', title: 'Quiz Lampo', description: 'Rispondi veloce a domande a tema match.', reward: 15, icon: '🧠', type: 'game', isAvailable: false },
   { id: 'tap', title: 'Tap Challenge', description: 'Tappa più forte che puoi in 10 secondi.', reward: 8, icon: '👆', type: 'game', isAvailable: true },
   { id: 'memory-flash', title: 'Memory Flash', description: 'Memorizza le coppie e chiudi il board prima del tempo.', reward: 8, icon: '🧩', type: 'game', isAvailable: true },
   { id: 'sponsor-rush', title: 'Sponsor Rush', description: 'Prendi i loghi sponsor al volo entro il tempo limite.', reward: 12, icon: '🏷️', type: 'game', isAvailable: true },
-];
+].filter(option => availableMinigames.value.includes(option.id)));
+
+async function loadMinigames() {
+  const revision = ++catalogRevision;
+  availableMinigames.value = [];
+  catalogError.value = '';
+  if (!props.eventId) return;
+  catalogLoading.value = true;
+  try {
+    const { data } = await apiClient.get(`/events/${props.eventId}/minigames`);
+    if (revision === catalogRevision) availableMinigames.value = data;
+  } catch {
+    if (revision === catalogRevision) catalogError.value = 'Impossibile caricare i minigiochi.';
+  } finally {
+    if (revision === catalogRevision) catalogLoading.value = false;
+  }
+}
+
+watch(() => props.eventId, () => { if (props.modelValue) { goBack(); loadMinigames(); } });
 
 watch(
   () => props.modelValue,
@@ -175,6 +201,7 @@ watch(
     }
 
     if (isOpen) {
+      loadMinigames();
       document.body.style.overflow = 'hidden';
       trackAppEvent('game.catalog_opened', { event_id: props.eventId, wallet_coins: props.walletCoins }, 'game');
       window.addEventListener('keydown', onKeydown);
@@ -224,6 +251,7 @@ function onKeydown(event) {
 }
 
 function openGame(option) {
+  if (!availableMinigames.value.includes(option?.id)) return;
   trackAppEvent('game.opened', { game_id: option?.id || '', title: option?.title || '', reward: option?.reward || 0 }, 'game');
   activeGame.value = option;
   activeView.value = 'game';

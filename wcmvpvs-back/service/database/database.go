@@ -85,6 +85,7 @@ type Event struct {
 	ShowPreVoteBottomSponsors bool                       `json:"show_pre_vote_bottom_sponsors"`
 	ShowVoteCounter           bool                       `json:"show_vote_counter"`
 	ShowBrandedGame           bool                       `json:"show_branded_game"`
+	AvailableMinigames        []string                   `json:"available_minigames"`
 	BrandedGameConfig         string                     `json:"branded_game_config,omitempty"`
 	Team1Name                 string                     `json:"team1_name,omitempty"`
 	Team2Name                 string                     `json:"team2_name,omitempty"`
@@ -1195,6 +1196,9 @@ type QRRedirect struct {
 
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
+	ListMinigames() ([]Minigame, error)
+	UpdateMinigameSports(id string, sports []string) (Minigame, error)
+	GetOrganizationMinigames(organizationID int) ([]string, error)
 	GetName() (string, error)
 	SetName(name string) error
 	AddVote(eventID, playerID int, code, signature, deviceID string, userID *int) error
@@ -2667,6 +2671,9 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 		return nil, err
 	}
 	if err = ensureBrandedGameTables(db); err != nil {
+		return nil, err
+	}
+	if err = ensureGamificationTables(db); err != nil {
 		return nil, err
 	}
 	if err = ensureTournamentTables(db); err != nil {

@@ -27,6 +27,13 @@ func (rt *_router) getActiveEvent(w http.ResponseWriter, r *http.Request, ctx re
 		return
 	}
 
+	event.AvailableMinigames, err = rt.db.GetOrganizationMinigames(ctx.OrganizationID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot fetch active event minigames")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("content-type", "application/json")
 	_ = json.NewEncoder(w).Encode(event)
 	ctx.Logger.WithField("event_id", event.ID).Info("returned active event")

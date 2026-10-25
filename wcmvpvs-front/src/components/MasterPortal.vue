@@ -393,6 +393,12 @@
         </div>
 
         <div v-else-if="activeSection === 'organizations'" class="organizations-view">
+          <nav class="organization-tabs" aria-label="Sezioni società">
+            <button type="button" :class="['nav-btn', { active: organizationSection === 'list' }]" :aria-pressed="organizationSection === 'list'" @click="organizationSection = 'list'">Elenco società</button>
+            <button type="button" :class="['nav-btn', { active: organizationSection === 'gamification' }]" :aria-pressed="organizationSection === 'gamification'" @click="organizationSection = 'gamification'">Gamification</button>
+          </nav>
+          <MasterGamificationSection v-if="organizationSection === 'gamification'" />
+          <template v-else>
           <header class="section-header">
             <div>
               <h2>Società</h2>
@@ -596,6 +602,7 @@
               </tbody>
             </table>
           </div>
+          </template>
         </div>
 
         <div v-if="organizationToDelete" class="delete-overlay" @click.self="closeDeleteOrganization">
@@ -853,6 +860,9 @@ const tabs = [
   { id: 'report-branding', label: 'Report e marchio' },
 ];
 const activeSection = ref('dashboard');
+const organizationSection = ref('list');
+const MasterGamificationSection = defineAsyncComponent(() =>
+  import('./master/MasterGamificationSection.vue'));
 
 const MasterTournamentsSection = defineAsyncComponent(() =>
   import('./master/MasterTournamentsSection.vue'));
@@ -1669,7 +1679,8 @@ onMounted(() => {
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
 }
 
-.master-nav {
+.master-nav,
+.organization-tabs {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;

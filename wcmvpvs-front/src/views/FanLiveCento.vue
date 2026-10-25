@@ -810,6 +810,10 @@ let leaderboardRequestRevision = 0;
 let isDisposed = false;
 let coinsStream = null;
 const eventState = computed(() => liveEvent.value || (!props.activeEvent?.id || props.activeEvent.id === props.eventId ? props.activeEvent : null));
+const availableMinigames = computed(() => liveEvent.value?.available_minigames ?? props.activeEvent?.available_minigames);
+function isGameAvailable(id) {
+  return !Array.isArray(availableMinigames.value) || availableMinigames.value.includes(id);
+}
 const matchConcluded = computed(() => eventState.value?.is_concluded === true);
 const showMatchSummary = computed(() => Boolean(props.eventId) && (matchConcluded.value || eventState.value?.votes_closed === true));
 const canVote = computed(() => Boolean(props.eventId) && Boolean(eventState.value) && eventState.value?.is_active !== false && !eventState.value?.votes_closed && !matchConcluded.value);
@@ -837,14 +841,14 @@ const journeyNextLabel = computed(() => {
   if (showMatchSummary.value) return 'La tua partita →';
   if (progress.value.unlocked) return 'Scopri i premi →';
   if (!hasVoted.value && canVote.value) return `Vota l’MVP · +${VOTE_REWARD}`;
-  if (quizAvailable.value && !doneKeys.value.includes('quiz')) return `Completa il quiz · +${QUIZ_REWARD}`;
+  if (isGameAvailable('quiz') && quizAvailable.value && !doneKeys.value.includes('quiz')) return `Completa il quiz · +${QUIZ_REWARD}`;
   return 'Scegli una sfida →';
 });
 function openJourneyNext() {
   if (showMatchSummary.value) openSheet('match-summary');
   else if (progress.value.unlocked) openSheet('spend');
   else if (!hasVoted.value && canVote.value) openSheet('mvp');
-  else if (quizAvailable.value && !doneKeys.value.includes('quiz')) openGame('quiz');
+  else if (isGameAvailable('quiz') && quizAvailable.value && !doneKeys.value.includes('quiz')) openGame('quiz');
   else openSheet('earn');
 }
 
@@ -1140,7 +1144,7 @@ const earnMissions = computed(() => [
     repeatable: true,
   },
   { key: 'memory-flash', emoji: '🧩', title: 'Memory Flash', subtitle: 'Memorizza le coppie', pts: 8, game: 'memory-flash', repeatable: true, rewardUnit: 'vittoria' },
-]);
+].filter(mission => !mission.game || isGameAvailable(mission.game)));
 
 /* ---------- Sponsor rush / partner ---------- */
 const rushSponsor = computed(() => {
@@ -1387,7 +1391,7 @@ function onMission(mission) {
 
 /* ---------- Giochi reali (overlay a schermo pieno) ---------- */
 function openGame(id) {
-  if (!games[id] || !props.eventId || shopBusy.value || matchConcluded.value || (id === 'quiz' && !quizAvailable.value)) return;
+  if (!games[id] || !isGameAvailable(id) || !props.eventId || shopBusy.value || matchConcluded.value || (id === 'quiz' && !quizAvailable.value)) return;
   coinError.value = '';
   pendingGameClaim.value = null;
   activeGameRoundId.value = newMinigameRoundId();

@@ -20,6 +20,10 @@ type fanMinigameAPIDB struct {
 	seen       map[string]bool
 }
 
+func (db *fanMinigameAPIDB) GetOrganizationMinigames(int) ([]string, error) {
+	return []string{"reaction", "quiz", "tap", "sponsor-rush", "memory-flash"}, nil
+}
+
 func (db *fanMinigameAPIDB) GetEventOrganizationID(event int) (int, error) {
 	if event != 42 {
 		return 0, sql.ErrNoRows
