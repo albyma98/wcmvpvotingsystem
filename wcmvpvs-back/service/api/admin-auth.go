@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,6 +64,10 @@ func (rt *_router) wrapAdmin(fn httpRouterHandler) http.HandlerFunc {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
+		if strings.EqualFold(session.Role, "staff") && !staffCanAccessAdminRoute(r) {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 
 		ctx.AdminID = session.AdminID
 		ctx.AdminRole = session.Role
@@ -81,6 +86,34 @@ func (rt *_router) wrapAdmin(fn httpRouterHandler) http.HandlerFunc {
 
 		fn(w, r, ctx)
 	})
+}
+
+// Staff uses only the voting closure screen and its event-state controls.
+func staffCanAccessAdminRoute(r *http.Request) bool {
+	path := r.URL.Path
+	if r.Method == http.MethodGet && (path == "/admin/me" || path == "/events") {
+		return true
+	}
+	if r.Method == http.MethodPost && path == "/events/deactivate" {
+		return true
+	}
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 3 || parts[0] != "events" {
+		return false
+	}
+	id, err := strconv.Atoi(parts[1])
+	if err != nil || id <= 0 {
+		return false
+	}
+	if len(parts) == 3 {
+		if r.Method == http.MethodGet {
+			return parts[2] == "voting-closure"
+		}
+		if r.Method == http.MethodPost {
+			return parts[2] == "close-votes" || parts[2] == "activate"
+		}
+	}
+	return r.Method == http.MethodPost && len(parts) == 4 && parts[2] == "voting-closure" && parts[3] == "retry"
 }
 
 func parseBearerToken(header string) string {

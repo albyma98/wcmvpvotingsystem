@@ -28,6 +28,7 @@
           :active-section="section"
           :organization-slug="organizationSlug"
           :organization-name="organizationName"
+          :show-lottery="!isStaff"
           @select="selectSection"
           @lottery="goToLottery"
           @logout="logout"
@@ -853,8 +854,8 @@
             </div>
           </div>
           <div v-else class="info-banner">
-            Nessun evento attivo al momento. Attiva una partita dalla sezione
-            "Eventi" per gestire le votazioni.
+            <template v-if="isStaff">Nessun evento attivo al momento. Contatta l’amministratore della società per attivare una partita.</template>
+            <template v-else>Nessun evento attivo al momento. Attiva una partita dalla sezione "Eventi" per gestire le votazioni.</template>
           </div>
 
           <p v-if="closeVotesMessage" class="success-message">
@@ -2298,7 +2299,7 @@ const tabs = [
   { id: "admins", label: "Admin" },
   { id: "marketing", label: "Marketing" },
 ];
-const STAFF_TAB_IDS = new Set(["dashboard", "closing", "results"]);
+const STAFF_TAB_IDS = new Set(["closing"]);
 const BAR_TAB_IDS = new Set(["bar"]);
 
 const teams = ref([]);
@@ -3187,7 +3188,7 @@ const filteredCouponEvents = computed(() => {
 });
 
 const activeUsername = ref(localStorage.getItem("adminUsername") || "");
-const activeRole = ref(localStorage.getItem("adminRole") || "");
+const activeRole = ref((localStorage.getItem("adminRole") || "").trim().toLowerCase());
 const organizationName = ref("");
 const isAuthenticated = computed(() => Boolean(activeUsername.value));
 const isSuperAdmin = computed(() => activeRole.value === "superadmin");
@@ -3309,6 +3310,9 @@ function selectDefaultSection() {
 }
 
 function selectSection(nextSection) {
+  if (!availableTabs.value.some((tab) => tab.id === nextSection)) {
+    return;
+  }
   section.value = nextSection;
   isSidebarOpen.value = false;
 }
@@ -4197,6 +4201,7 @@ function buildEventLink(eventId) {
 }
 
 function goToLottery() {
+  if (isStaff.value) return;
   const target = new URL(basePath.value || "/", window.location.origin);
   if (!target.pathname.endsWith("/")) {
     target.pathname = `${target.pathname}/`;
@@ -4608,7 +4613,7 @@ async function login() {
       password: loginForm.password,
     });
     activeUsername.value = data.username;
-    activeRole.value = data.role || "";
+    activeRole.value = (data.role || "").trim().toLowerCase();
     localStorage.setItem("adminUsername", activeUsername.value);
     localStorage.setItem("adminRole", activeRole.value);
     selectDefaultSection();
@@ -4695,7 +4700,7 @@ async function loadEvents() {
     ? data.map((event) => normalizeEventResponse(event)).filter(Boolean)
     : [];
   events.value = normalized;
-  for (const event of normalized) {
+  for (const event of isStaff.value ? [] : normalized) {
     quizDraftFor(event.id);
     if (!quizQuestionsByEvent[event.id]) {
       loadQuizForEvent(event.id).catch(() => {});
@@ -6194,7 +6199,14 @@ async function loadAll() {
   if (!isAuthenticated.value) {
     return;
   }
-  await Promise.all([loadEvents(), loadTeams(), loadOrganizationName()]);
+  await loadOrganizationName();
+  if (!isAuthenticated.value) return;
+  if (isStaff.value) {
+    selectDefaultSection();
+    await loadEvents();
+    return;
+  }
+  await Promise.all([loadEvents(), loadTeams()]);
   await loadPlayers();
   if (isSuperAdmin.value) {
     await Promise.all([loadAdmins(), loadSponsors(), loadPartners()]);
@@ -6215,6 +6227,10 @@ async function loadOrganizationName() {
   try {
     const { data } = await apiClient.get("/admin/me", authHeaders.value);
     organizationName.value = String(data?.organization_name || "").trim();
+    if (typeof data?.role === "string") {
+      activeRole.value = data.role.trim().toLowerCase();
+      localStorage.setItem("adminRole", activeRole.value);
+    }
   } catch (error) {
     if (error?.response?.status === 401) {
       handleUnauthorized();

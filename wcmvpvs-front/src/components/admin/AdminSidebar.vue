@@ -31,7 +31,7 @@
     <div class="sidebar__divider" />
 
     <div class="sidebar__footer">
-      <button class="sidebar__action sidebar__action--lottery" type="button" @click="$emit('lottery')">
+      <button v-if="showLottery" class="sidebar__action sidebar__action--lottery" type="button" @click="$emit('lottery')">
         <span>🎰</span> Lotteria
       </button>
       <button class="sidebar__action sidebar__action--logout" type="button" @click="$emit('logout')">
@@ -42,7 +42,7 @@
 </template>
 
 <script setup>
-defineProps({ groups: Array, activeSection: String, organizationSlug: String, organizationName: String });
+defineProps({ groups: Array, activeSection: String, organizationSlug: String, organizationName: String, showLottery: { type: Boolean, default: true } });
 defineEmits(['select', 'lottery', 'logout']);
 </script>
 
@@ -178,6 +178,8 @@ defineEmits(['select', 'lottery', 'logout']);
   font-family: inherit;
   transition: all 0.18s ease;
 }
+
+.sidebar__footer > :only-child { grid-column: 1 / -1; }
 
 .sidebar__action--lottery {
   background: #fef3c7;

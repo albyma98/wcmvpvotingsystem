@@ -1,5 +1,5 @@
 <template>
-  <div class="lottery-shell">
+  <div v-if="!isStaff" class="lottery-shell">
     <header class="lottery-header">
       <div>
         <h1>Lotteria evento</h1>
@@ -162,6 +162,8 @@ const selectedEventId = ref(0);
 const eventInput = ref('');
 
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
+const activeRole = ref((localStorage.getItem('adminRole') || '').trim().toLowerCase());
+const isStaff = computed(() => activeRole.value === 'staff');
 const isAuthenticated = computed(() => Boolean(activeUsername.value));
 
 const loginForm = reactive({
@@ -510,9 +512,10 @@ async function login() {
       username: loginForm.username,
       password: loginForm.password,
     });
+    activeRole.value = (data.role || '').trim().toLowerCase();
     activeUsername.value = data.username;
     localStorage.setItem('adminUsername', activeUsername.value);
-    localStorage.setItem('adminRole', data.role || '');
+    localStorage.setItem('adminRole', activeRole.value);
     loginForm.username = '';
     loginForm.password = '';
     await loadInitialData();
@@ -561,6 +564,13 @@ async function loadTeams() {
 }
 
 async function loadInitialData() {
+  if (isStaff.value) { goToPortal(); return; }
+  try {
+    const { data } = await secureRequest(() => apiClient.get('/admin/me', authHeaders.value));
+    activeRole.value = (data.role || '').trim().toLowerCase();
+    localStorage.setItem('adminRole', activeRole.value);
+    if (isStaff.value) { goToPortal(); return; }
+  } catch (_) { return; }
   await Promise.all([loadTeams(), loadEvents()]);
 }
 
@@ -743,7 +753,8 @@ function goToPortal() {
     target.pathname = `${target.pathname}/`;
   }
   target.pathname = `${target.pathname.replace(/\/+$/, '')}/admin`;
-  window.location.href = target.toString();
+  if (isStaff.value) window.location.replace(target.toString());
+  else window.location.href = target.toString();
 }
 
 watch(selectedEventId, (id) => {

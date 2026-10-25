@@ -6,8 +6,11 @@ Nella dashboard dell'admin società, il superadmin può salvare:
 - il Content Template SID Twilio della società (`HX` e 32 caratteri esadecimali);
 - la modalità casuale oppure i tre migliori nella classifica tifosi tra i votanti.
 
-Le impostazioni appartengono alla singola società. Lo staff può chiudere le
-votazioni e vedere gli esiti, ma non può modificare destinatari o template.
+Le impostazioni appartengono alla singola società. Al login lo staff apre
+direttamente Chiusura votazioni e accede soltanto a questa schermata, con i
+comandi sullo stato delle votazioni e gli esiti delle notifiche. Dashboard,
+Risultati e Lotteria non sono disponibili allo staff, che non può modificare
+destinatari o template.
 
 ## Al clic su “Chiudi votazioni”
 
