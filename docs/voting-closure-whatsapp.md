@@ -12,6 +12,15 @@ comandi sullo stato delle votazioni e gli esiti delle notifiche. Dashboard,
 Risultati e Lotteria non sono disponibili allo staff, che non può modificare
 destinatari o template.
 
+Sotto il Template SID, il campo **Numero WhatsApp di prova** e il pulsante
+**Testa** permettono al superadmin di inviare un messaggio reale di prova.
+Si usa il SID attualmente inserito, anche prima di salvare la configurazione,
+con risultati di esempio e il giocatore “Mario Rossi (TEST)”. Il numero di prova
+non viene salvato né aggiunto agli organizzatori; il test non modifica eventi,
+premi o notifiche della chiusura. Il mittente WhatsApp è lo stesso dell'invio
+agli organizzatori. Il form segnala l'accettazione da parte di Twilio oppure
+l'errore restituito; la ricezione va verificata sul telefono di prova.
+
 ## Al clic su “Chiudi votazioni”
 
 Un'unica transazione chiude i voti, salva MVP e percentuale sul totale dei voti

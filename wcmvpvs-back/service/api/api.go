@@ -201,8 +201,10 @@ type _router struct {
 	brandedGameRateMu       sync.Mutex
 	brandedGameRateByDevice map[string][]time.Time
 
-	marketingRateMu    sync.Mutex
-	marketingRateByOrg map[int][]time.Time
+	marketingRateMu       sync.Mutex
+	marketingRateByOrg    map[int][]time.Time
+	votingTemplateTestsMu sync.Mutex
+	votingTemplateTests   map[string][]time.Time
 
 	twilioVerify        *twilioVerifyClient
 	twilioMessaging     *twilioMessagingClient

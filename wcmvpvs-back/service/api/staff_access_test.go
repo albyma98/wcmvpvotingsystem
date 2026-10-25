@@ -54,6 +54,7 @@ func TestStaffAccessOnlyVotingClosureRoutes(t *testing.T) {
 		{http.MethodGet, "/admin/events/42/quiz", false},
 		{http.MethodGet, "/admin/voting-settings", false},
 		{http.MethodPut, "/admin/voting-settings", false},
+		{http.MethodPost, "/admin/voting-settings/test", false},
 		{http.MethodGet, "/admin/marketing/audience", false},
 		{http.MethodGet, "/admin/master/organizations", false},
 		{http.MethodGet, "/admin/bar/orders", false},

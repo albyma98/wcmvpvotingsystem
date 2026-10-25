@@ -23,6 +23,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/admin/me", rt.wrapAdmin(rt.adminMe))
 	rt.router.Get("/admin/voting-settings", rt.wrapAdmin(rt.getVotingSettings))
 	rt.router.Put("/admin/voting-settings", rt.wrapAdmin(rt.putVotingSettings))
+	rt.router.Post("/admin/voting-settings/test", rt.wrapAdmin(rt.sendVotingTemplateTest))
 
 	rt.router.Get("/public/players", rt.wrap(rt.listPublicPlayers))
 	rt.router.Get("/bar/categories", rt.wrap(rt.listBarCategories))

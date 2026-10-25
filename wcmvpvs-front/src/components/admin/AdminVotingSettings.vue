@@ -8,13 +8,24 @@
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <button v-if="!loaded && !loading" class="btn outline" type="button" @click="load">Riprova caricamento</button>
     <form v-if="loaded" @submit.prevent="save">
-      <fieldset :disabled="saving || loading">
+      <fieldset :disabled="saving || loading || testing">
         <label class="field">
           Template SID Twilio della società
           <input v-model.trim="settings.template_sid" type="text" placeholder="HX…" maxlength="34"
             pattern="HX[0-9a-fA-F]{32}" :required="hasEnabledRecipients" autocomplete="off" spellcheck="false" />
           <small>Il template WhatsApp approvato deve prevedere le 8 variabili per MVP, percentuale e tre premi con i codici vincitori.</small>
         </label>
+        <div class="template-test">
+          <div class="template-test-controls">
+            <label class="field">Numero WhatsApp di prova
+              <input v-model.trim="testPhone" type="tel" placeholder="+39 333 1234567" maxlength="40" autocomplete="off" @keydown.enter.prevent="testTemplate" />
+            </label>
+            <button class="btn outline" type="button" :disabled="!canTest" @click="testTemplate">{{ testing ? 'Invio…' : 'Testa' }}</button>
+          </div>
+          <small>Invia un WhatsApp reale con il Template SID inserito e risultati di esempio. Il numero di prova non viene salvato tra gli organizzatori.</small>
+          <p v-if="testMessage" class="success-message" role="status">{{ testMessage }}</p>
+          <p v-if="testError" class="error" role="alert">{{ testError }}</p>
+        </div>
         <fieldset class="draw-modes">
           <legend>Assegnazione dei premi</legend>
           <label class="radio-option">
@@ -35,11 +46,13 @@
           <label class="field">Numero WhatsApp
             <input v-model.trim="recipient.phone" type="tel" placeholder="+39 333 1234567" required :aria-label="`Numero WhatsApp organizzatore ${index + 1}`" />
           </label>
-          <fieldset class="recipient-status" :aria-label="`Ricezione WhatsApp organizzatore ${index + 1}`">
-            <label class="enabled"><input v-model="recipient.enabled" type="radio" :name="`voting-recipient-enabled-${index}`" :value="true" /> Abilitato</label>
-            <label class="enabled"><input v-model="recipient.enabled" type="radio" :name="`voting-recipient-enabled-${index}`" :value="false" /> Disabilitato</label>
-          </fieldset>
-          <button class="btn outline" type="button" :aria-label="`Rimuovi organizzatore ${index + 1}`" @click="settings.recipients.splice(index, 1)">Rimuovi</button>
+          <div class="recipient-controls">
+            <fieldset class="recipient-status" :aria-label="`Ricezione WhatsApp organizzatore ${index + 1}`">
+              <label class="enabled"><input v-model="recipient.enabled" type="radio" :name="`voting-recipient-enabled-${index}`" :value="true" /> Abilitato</label>
+              <label class="enabled"><input v-model="recipient.enabled" type="radio" :name="`voting-recipient-enabled-${index}`" :value="false" /> Disabilitato</label>
+            </fieldset>
+            <button class="btn outline" type="button" :aria-label="`Rimuovi organizzatore ${index + 1}`" @click="settings.recipients.splice(index, 1)">Rimuovi</button>
+          </div>
         </div>
         <div class="settings-actions">
           <button class="btn outline" type="button" :disabled="settings.recipients.length >= 20" @click="addRecipient">Aggiungi organizzatore</button>
@@ -66,7 +79,12 @@ const loaded = ref(false);
 const saving = ref(false);
 const saved = ref(false);
 const error = ref('');
+const testPhone = ref('');
+const testing = ref(false);
+const testMessage = ref('');
+const testError = ref('');
 const hasEnabledRecipients = computed(() => settings.recipients.some(recipient => recipient.enabled));
+const canTest = computed(() => loaded.value && !loading.value && !saving.value && !testing.value && Boolean(settings.template_sid.trim()) && Boolean(testPhone.value.trim()));
 let generation = 0;
 
 async function load() {
@@ -75,6 +93,10 @@ async function load() {
   loaded.value = false;
   error.value = '';
   saved.value = false;
+  testPhone.value = '';
+  testMessage.value = '';
+  testError.value = '';
+  testing.value = false;
   try {
     const { data } = await apiClient.get('/admin/voting-settings', props.authHeaders);
     if (current !== generation) return;
@@ -94,8 +116,37 @@ function addRecipient() {
   saved.value = false;
 }
 
+async function testTemplate() {
+  if (!canTest.value) return;
+  testMessage.value = '';
+  testError.value = '';
+  const templateSID = settings.template_sid.trim();
+  const phone = testPhone.value.replace(/[\s()-]/g, '');
+  if (!/^HX[0-9a-fA-F]{32}$/.test(templateSID)) {
+    testError.value = 'Inserisci un Template SID valido: HX seguito da 32 caratteri esadecimali.';
+    return;
+  }
+  if (!/^\+[1-9][0-9]{6,14}$/.test(phone)) {
+    testError.value = 'Inserisci il numero di prova con prefisso internazionale, per esempio +39 333 1234567.';
+    return;
+  }
+  const current = generation;
+  testing.value = true;
+  try {
+    const { data } = await apiClient.post('/admin/voting-settings/test', { template_sid: templateSID, phone }, props.authHeaders);
+    if (current !== generation) return;
+    testMessage.value = data?.message || 'Test accettato da Twilio. Controlla WhatsApp al numero indicato.';
+  } catch (e) {
+    if (current !== generation) return;
+    if (e?.response?.status === 401) emit('unauthorized');
+    testError.value = e?.response?.data?.message || 'Esito del test incerto. Verifica WhatsApp prima di riprovare.';
+  } finally {
+    if (current === generation) testing.value = false;
+  }
+}
+
 async function save() {
-  if (saving.value) return;
+  if (saving.value || testing.value) return;
   const current = generation;
   saving.value = true;
   saved.value = false;
@@ -120,6 +171,7 @@ async function save() {
 
 watch(() => props.organizationSlug, load, { immediate: true });
 watch(settings, () => { saved.value = false; }, { deep: true, flush: 'sync' });
+watch([testPhone, () => settings.template_sid], () => { testMessage.value = ''; testError.value = ''; }, { flush: 'sync' });
 onUnmounted(() => { generation++; });
 </script>
 
@@ -131,18 +183,26 @@ onUnmounted(() => { generation++; });
 .field { display: grid; gap: .5rem; font-size: .9rem; }
 .field input { width: 100%; min-width: 0; box-sizing: border-box; padding: .75rem; border-radius: .6rem; border: 1px solid #334155; background: #0f172a; color: #f1f5f9; }
 small { display: block; font-size: .8rem; line-height: 1.5; font-weight: 400; }
+.template-test { margin-top: 1rem; padding: 1rem; border: 1px solid #cbd5e1; border-radius: .65rem; }
+.template-test-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .75rem; margin-bottom: .65rem; }
 .voting-settings .draw-modes { margin: 1.5rem 0; }
 .draw-modes legend { margin-bottom: .75rem; font-weight: 600; }
 .radio-option { display: flex; align-items: flex-start; gap: .65rem; padding: .85rem; margin-top: .5rem; background: rgba(148,163,184,.06); border: 1px solid #334155; border-radius: .65rem; cursor: pointer; }
-.radio-option input, .enabled input { width: auto; accent-color: #8b5cf6; }
+.radio-option input { width: auto; accent-color: #8b5cf6; }
 .recipients-heading, .settings-actions { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
 .recipients-heading span { font-size: .8rem; color: #94a3b8; }
-.recipient-row { display: grid; grid-template-columns: 1fr 1fr auto auto; align-items: end; gap: .75rem; margin-top: 1rem; }
-.recipient-status { display: grid; gap: .4rem; }
-.enabled { display: flex; align-items: center; gap: .4rem; min-height: 20px; font-size: .85rem; white-space: nowrap; }
+.recipient-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: .75rem; margin-top: 1rem; }
+.recipient-controls { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding-bottom: .5rem; }
+.recipient-status { display: flex; flex-wrap: wrap; gap: .75rem; }
+.enabled { display: flex; align-items: center; gap: .6rem; min-height: 44px; box-sizing: border-box; padding: .5rem .75rem; border: 1px solid #cbd5e1; border-radius: .6rem; background: #fff; color: #334155; font-size: .85rem; white-space: nowrap; cursor: pointer; }
+.enabled:has(input:checked) { border-color: #0284c7; background: #f0f9ff; color: #075985; }
+.recipient-status input[type="radio"] { appearance: none; display: inline-block; flex: 0 0 20px; width: 20px; height: 20px; min-width: 20px; min-height: 20px; padding: 0; margin: 0; box-sizing: border-box; border: 2px solid #64748b; border-radius: 50%; background: #fff; cursor: pointer; }
+.recipient-status input[type="radio"]:checked { border-color: #0284c7; background: radial-gradient(circle, #0284c7 0 42%, #fff 45%); }
+.recipient-status input[type="radio"]:focus-visible { outline: 2px solid #0284c7; outline-offset: 3px; }
+.enabled:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+.recipient-status input[type="radio"]:disabled { cursor: not-allowed; }
 .settings-actions { margin-top: 1.25rem; }
 .error { color: #fca5a5; }
 .success-message { color: #86efac; }
-@media (max-width: 760px) { .recipient-row { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 440px) { .recipient-row { grid-template-columns: 1fr; } }
+@media (max-width: 440px) { .recipient-row, .template-test-controls { grid-template-columns: 1fr; } }
 </style>

@@ -96,6 +96,95 @@ test('failed organizer save retains unsaved edits and shows the server validatio
   assert.equal(state.settings.recipients[0].name, 'Modifica in corso');
 });
 
+test('template test uses the current unsaved SID and a temporary phone without saving settings or recipients', async t => {
+  const sends = [];
+  const saves = [];
+  const { state, html } = fixture(t, settingsComponent, {
+    get: async () => ({ data: initialSettings() }),
+    post: async (path, body) => { sends.push({ path, body }); return { data: { message: 'Test accettato da Twilio.' } }; },
+    put: async (path, body) => { saves.push(body); return { data: structuredClone(body) }; },
+  }, { organizationSlug: 'club' });
+  await settle();
+  state.settings.template_sid = 'HX' + 'b'.repeat(32);
+  state.testPhone.value = '+39 (333) 444-3322';
+  const recipients = JSON.stringify(state.settings.recipients);
+  await state.testTemplate();
+  assert.deepEqual(sends, [{ path: '/admin/voting-settings/test', body: { template_sid: 'HX' + 'b'.repeat(32), phone: '+393334443322' } }]);
+  assert.equal(JSON.stringify(state.settings.recipients), recipients);
+  assert.equal(saves.length, 0);
+  assert.equal(state.saved.value, false);
+  assert.equal(state.testMessage.value, 'Test accettato da Twilio.');
+  assert.match(await html(), /Numero WhatsApp di prova/);
+  assert.match(await html(), />Testa<\/button>/);
+  await state.save();
+  assert.deepEqual(Object.keys(saves[0]).sort(), ['draw_mode', 'recipients', 'template_sid']);
+  assert.equal(saves[0].recipients.length, 1);
+  state.testPhone.value = '+393334443323';
+  assert.equal(state.testMessage.value, '');
+});
+
+test('template test rejects invalid inputs and prevents duplicate sends while waiting for Twilio', async t => {
+  let sends = 0;
+  let rejectSend;
+  const { state } = fixture(t, settingsComponent, {
+    get: async () => ({ data: initialSettings() }),
+    post: () => { sends++; return new Promise((resolve, reject) => { rejectSend = reject; }); },
+  }, { organizationSlug: 'club' });
+  await settle();
+  assert.equal(state.canTest.value, false);
+  state.testPhone.value = '3334443322';
+  await state.testTemplate();
+  assert.match(state.testError.value, /prefisso internazionale/);
+  assert.equal(sends, 0);
+  state.testPhone.value = '+393334443322';
+  state.settings.template_sid = 'wrong';
+  await state.testTemplate();
+  assert.match(state.testError.value, /Template SID valido/);
+  assert.equal(sends, 0);
+  state.settings.template_sid = 'HX' + 'a'.repeat(32);
+  const pending = state.testTemplate();
+  assert.equal(state.testing.value, true);
+  assert.equal(state.canTest.value, false);
+  await state.testTemplate();
+  assert.equal(sends, 1);
+  rejectSend({ response: { status: 502, data: { message: 'Twilio ha rifiutato il test (codice 21656).' } } });
+  await pending;
+  assert.equal(state.testing.value, false);
+  assert.equal(state.testMessage.value, '');
+  assert.match(state.testError.value, /21656/);
+  assert.equal(sends, 1);
+});
+
+test('changing society clears the temporary test phone and ignores an old test result', async t => {
+  let resolveSend;
+  const { state, props } = fixture(t, settingsComponent, {
+    get: async () => ({ data: initialSettings() }),
+    post: () => new Promise(resolve => { resolveSend = resolve; }),
+  }, { organizationSlug: 'first' });
+  await settle();
+  state.testPhone.value = '+393334443322';
+  const pending = state.testTemplate();
+  props.organizationSlug = 'second';
+  await settle();
+  assert.equal(state.testPhone.value, '');
+  assert.equal(state.testing.value, false);
+  resolveSend({ data: { message: 'Test precedente accettato.' } });
+  await pending;
+  assert.equal(state.testMessage.value, '');
+});
+
+test('expired session during a template test notifies the portal', async t => {
+  const { state, events } = fixture(t, settingsComponent, {
+    get: async () => ({ data: initialSettings() }),
+    post: async () => { throw { response: { status: 401 } }; },
+  }, { organizationSlug: 'club' });
+  await settle();
+  state.testPhone.value = '+393334443322';
+  await state.testTemplate();
+  assert.deepEqual(events, [['unauthorized']]);
+  assert.equal(state.testing.value, false);
+});
+
 test('configuration from an older club response cannot overwrite the newly selected society', async t => {
   let firstResolve;
   let requests = 0;
