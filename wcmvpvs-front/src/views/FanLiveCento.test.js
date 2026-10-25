@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { compileTemplate, parse } from '@vue/compiler-sfc';
+import * as Vue from 'vue';
+import * as VueSSR from 'vue/server-renderer';
 import * as journey from '../fanJourney.js';
 import * as brand from '../organizationTheme.js';
 import * as assets from '../fanHomeAssets.js';
@@ -8,6 +12,26 @@ import * as registration from '../fanRegistration.js';
 import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
+
+// Render the real home template so the badge, feedback and challenge priorities are tested together.
+const { descriptor } = parse(readFileSync(new URL('./FanLiveCento.vue', import.meta.url), 'utf8'));
+const homeTemplate = descriptor.template.content.match(/<main>[\s\S]*?<\/main>/)[0];
+const compiledHome = compileTemplate({ source: homeTemplate, id: 'fan-home-test', ssr: true, ssrCssVars: [] });
+assert.deepEqual(compiledHome.errors, []);
+const homeHelpers = {};
+const homeRenderCode = compiledHome.code.replace(/^import \{([^}]+)\} from "([^"]+)"\r?$/gm, (_, imports, module) => {
+  for (const item of imports.split(',')) {
+    const [name, alias = name] = item.trim().split(/\s+as\s+/);
+    homeHelpers[alias] = (module === 'vue' ? Vue : VueSSR)[name];
+  }
+  return '';
+}).replace('export function ssrRender', 'return function ssrRender');
+const homeRender = new Function(...Object.keys(homeHelpers), homeRenderCode)(...Object.values(homeHelpers));
+function renderHome({ state, props }) {
+  const app = Vue.createSSRApp({ setup: () => ({ ...Vue.proxyRefs(state), ...props }), ssrRender: homeRender });
+  app.component('FanPlayerCard', { render: () => null });
+  return VueSSR.renderToString(app);
+}
 
 test('the lottery ticket stays hidden by default even after a vote and does not load its QR image', t => {
   const { state, scope } = fixture();
@@ -198,7 +222,7 @@ function fixture(overrides = {}, options = {}) {
   const reportContexts = [];
   let serverWallet = 0;
   const serverAwards = new Set();
-  const window = testWindow();
+  const window = testWindow(options.storage);
   const api = {
     apiClient: { get: async () => ({ data: { top3: [] } }) },
     fetchFanProfile: async () => ({ ok: true, data: { registered: false, guest_coins: 0 } }),
@@ -1415,6 +1439,73 @@ test('points rankings prefer permanent points over a smaller spendable wallet ba
   state.applyWallet(walletData({ wallet: 0, points: 80 }));
   assert.equal(state.leaderboardUser.value.rank, 2);
   assert.equal(state.leaderboardUser.value.points, 80);
+});
+
+test('feedback takes the featured slot until sent, then opens a game allowed for the society sport', async t => {
+  for (const [game, title] of [['basketball', 'Basket Rush'], ['volley-rush', 'Volley Rush']]) {
+    const initialEvent = { is_active: true, available_minigames: [game], feedback_survey: { questions: [{ id: 'atmosphere', text: 'Atmosfera?' }] } };
+    const setup = fixture({}, { props: { activeEvent: initialEvent } });
+    const { state, props, scope, window } = setup;
+    t.after(() => scope.stop());
+    assert.equal(state.progress.value.unlocked, false);
+    let html = await renderHome(setup);
+    assert.match(html, /class="feedback-cta"/);
+    assert.match(html, /La tua voce conta/);
+    assert.match(html, /Lascia un feedback/);
+    assert.ok(html.indexOf('class="feedback-cta"') < html.indexOf('class="journey-card"'));
+    assert.doesNotMatch(html, /Sfida del momento|feedback-link|Come sta andando\?/);
+
+    state.openFeedbackModal();
+    assert.equal(state.isFeedbackModalOpen.value, true);
+    state.isFeedbackModalOpen.value = false;
+    assert.match(await renderHome(setup), /class="feedback-cta"/, 'closing without sending keeps the invitation');
+    state.openFeedbackModal();
+    state.handleFeedbackSubmitted();
+    html = await renderHome(setup);
+    assert.doesNotMatch(html, /class="feedback-cta"|feedback-link/);
+    assert.match(html, /Sfida del momento/);
+    assert.ok(html.includes(title));
+    assert.match(html, /Gioca →/);
+    state.onMission(state.featuredMission.value);
+    assert.equal(state.activeGameId.value, game);
+
+    const restored = fixture({}, { storage: window.storage, props: { activeEvent: initialEvent } });
+    t.after(() => restored.scope.stop());
+    assert.equal(restored.state.hasSubmittedFeedback.value, true);
+    assert.match(await renderHome(restored), /Sfida del momento/);
+    assert.doesNotMatch(await renderHome(restored), /class="feedback-cta"/);
+    props.eventId = 43;
+    await Vue.nextTick();
+    assert.match(await renderHome(setup), /class="feedback-cta"/, 'a new match asks for its own feedback');
+  }
+});
+
+test('an absent or disabled feedback survey leaves the allowed challenge in the featured slot', async t => {
+  for (const feedback of [{}, { show_feedback_survey: false, feedback_survey: { questions: [{ id: 'atmosphere' }] } }]) {
+    const setup = fixture({}, { props: { activeEvent: { is_active: true, available_minigames: ['setter-pro'], ...feedback } } });
+    t.after(() => setup.scope.stop());
+    const html = await renderHome(setup);
+    assert.doesNotMatch(html, /class="feedback-cta"|feedback-link/);
+    assert.match(html, /Sfida del momento/);
+    assert.match(html, /Setter Pro/);
+  }
+});
+
+test('after feedback the home offers only available games and preserves the concluded match summary', async t => {
+  const setup = fixture({}, { props: { activeEvent: { is_active: true, votes_closed: true, available_minigames: ['basketball'], feedback_survey: { questions: [{ id: 'atmosphere' }] } } } });
+  const { state, scope } = setup;
+  t.after(() => scope.stop());
+  assert.match(await renderHome(setup), /class="feedback-cta"/);
+  state.handleFeedbackSubmitted();
+  assert.match(await renderHome(setup), /Sfida del momento/);
+  state.liveEvent.value = { event_id: 42, is_active: true, votes_closed: true, available_minigames: [] };
+  let html = await renderHome(setup);
+  assert.doesNotMatch(html, /Sfida del momento|class="feedback-cta"/);
+  assert.match(html, /La tua partita/);
+  state.liveEvent.value = { event_id: 42, is_active: true, is_concluded: true, available_minigames: ['basketball'] };
+  html = await renderHome(setup);
+  assert.doesNotMatch(html, /Sfida del momento/);
+  assert.match(html, /La tua partita/);
 });
 
 test('feedback opens only when configured and submitting it prevents another opening for the match', (t) => {

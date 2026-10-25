@@ -67,6 +67,28 @@
           </button>
         </div>
 
+        <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" class="feedback-cta" type="button" @click="openFeedbackModal">
+          <span class="feedback-cta-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 3V11.5a10 10 0 0 1 20 0Z"/><path d="M7 10h8M7 14h5"/></svg>
+          </span>
+          <span class="feedback-cta-copy">
+            <span class="feedback-cta-kicker">La tua voce conta</span>
+            <b>Come stai vivendo la partita?</b>
+            <span>Dillo al tuo club: rispondi alle domande e lascia un suggerimento.</span>
+          </span>
+          <span class="feedback-cta-action">Lascia un feedback <span aria-hidden="true">→</span></span>
+        </button>
+        <button v-else-if="featuredMission" class="moment-card" type="button" @click="onMission(featuredMission)">
+          <span class="avatar" aria-hidden="true">{{ featuredMission.emoji }}</span>
+          <span class="row-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
+          <span class="moment-action"><span class="row-pts">+{{ featuredMission.pts }} <span class="coin" aria-hidden="true"></span></span><span class="tile-cta">Gioca →</span></span>
+        </button>
+        <button v-else-if="showMatchSummary" class="moment-card" type="button" @click="openSheet('match-summary')">
+          <span class="avatar" aria-hidden="true">🏀</span>
+          <span class="row-copy"><b>La tua partita</b><span>{{ matchConcluded ? 'Risultato MVP e riepilogo della serata' : 'Votazioni chiuse · guarda il tuo riepilogo' }}</span></span>
+          <span class="tile-cta">Apri →</span>
+        </button>
+
         <section v-if="eventId && !showMatchSummary && (!progress.unlocked || journey.pendingVoteBonus)" class="journey-card" aria-label="Il tuo primo traguardo">
           <div class="journey-head">
             <div>
@@ -85,26 +107,10 @@
           <button v-if="journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare il bonus voto' }}</button>
         </section>
 
-        <button v-else-if="featuredMission && !showMatchSummary" class="moment-card" type="button" @click="onMission(featuredMission)">
-          <span class="avatar" aria-hidden="true">{{ featuredMission.emoji }}</span>
-          <span class="row-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
-          <span class="row-pts">+{{ featuredMission.pts }} <span class="coin" aria-hidden="true"></span></span>
-        </button>
-        <button v-else-if="showMatchSummary" class="moment-card" type="button" @click="openSheet('match-summary')">
-          <span class="avatar" aria-hidden="true">🏀</span>
-          <span class="row-copy"><b>La tua partita</b><span>{{ matchConcluded ? 'Risultato MVP e riepilogo della serata' : 'Votazioni chiuse · guarda il tuo riepilogo' }}</span></span>
-          <span class="tile-cta">Apri →</span>
-        </button>
-
         <button class="rank-link" type="button" @click="openLeaderboard">
           <span class="rank-link-icon" aria-hidden="true">🏆</span>
           <span><b>Classifica tifosi</b><small>{{ leaderboardUser ? `Sei al ${leaderboardUser.rank}° posto · ${leaderboardUser.points} punti` : 'Scopri i tifosi più attivi del club' }}</small></span>
           <span class="tile-cta" aria-hidden="true">→</span>
-        </button>
-
-        <!-- Feedback dell'evento: domande e suggerimento aperto finale -->
-        <button v-if="hasFeedbackSurvey" class="feedback-link" type="button" :disabled="hasSubmittedFeedback" @click="openFeedbackModal">
-          {{ hasSubmittedFeedback ? '✓ Feedback ricevuto, grazie!' : 'Come sta andando? Lascia un feedback →' }}
         </button>
 
         <!-- Sponsors (spazio ampliato al posto dello scoreboard) -->
@@ -2391,7 +2397,7 @@ main {
   font-size: 11px;
 }
 
-/* Box feedback */
+/* Traguardo e sfida in evidenza */
 .journey-card {
   flex: none;
   padding: 12px;
@@ -2414,6 +2420,7 @@ main {
 .journey-badge .row-copy span { white-space: normal; }
 .moment-card { display: flex; align-items: center; gap: 10px; flex: none; width: 100%; background: var(--card); border: 2px solid var(--line); border-radius: 18px; padding: 11px 12px; color: var(--ink); text-align: left; font-family: inherit; cursor: pointer; box-shadow: var(--shadow); }
 .moment-card .row-copy span { display: block; white-space: normal; }
+.moment-action { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 7px; }
 .match-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .match-stats > div { padding: 12px 7px; background: var(--card); border: 2px solid var(--line); border-radius: 14px; text-align: center; }
 .match-stats b { display: block; font-family: 'Fraunces', serif; font-size: 24px; }
@@ -2523,13 +2530,15 @@ main {
 
 .feedback-cta {
   flex: none;
-  display: flex;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
-  gap: 11px;
+  gap: 14px;
+  width: 100%;
   background: var(--red);
-  border: none;
+  border: 2px solid var(--red-deep);
   border-radius: 20px;
-  padding: 12px 14px;
+  padding: 18px;
   cursor: pointer;
   position: relative;
   overflow: hidden;
@@ -2537,71 +2546,70 @@ main {
   color: var(--on-primary);
   text-align: left;
   transition: transform 0.12s ease;
-  box-shadow: 0 4px 0 #0d0608;
+  box-shadow: 0 4px 0 var(--red-deep);
 }
+.feedback-cta:focus-visible { outline: 3px solid var(--red-text); outline-offset: 4px; }
 .feedback-cta:active {
   transform: scale(0.98) translateY(2px);
   box-shadow: none;
-}
-.feedback-cta:disabled {
-  cursor: default;
-  opacity: 0.7;
 }
 .feedback-cta::before {
   content: '';
   position: absolute;
   right: -18px;
   top: -22px;
-  width: 80px;
-  height: 80px;
+  width: 160px;
+  height: 160px;
   border-radius: 50%;
   background: var(--on-primary);
   opacity: 0.08;
 }
 .feedback-cta-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
   flex: none;
   background: var(--card);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Fraunces', serif;
-  font-weight: 900;
-  font-size: 16px;
   color: var(--ink);
   transform: rotate(-4deg);
 }
+.feedback-cta-icon svg { width: 26px; height: 26px; }
 .feedback-cta-copy {
   flex: 1;
   min-width: 0;
   position: relative;
 }
 .feedback-cta-copy b {
-  font-size: 12.5px;
+  font-size: 18px;
+  line-height: 1.2;
   font-weight: 800;
   display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin: 5px 0 7px;
 }
 .feedback-cta-copy span {
-  font-size: 10.5px;
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
   color: inherit;
   opacity: 0.85;
   font-weight: 500;
 }
+.feedback-cta-copy .feedback-cta-kicker { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; opacity: 1; }
 .feedback-cta-action {
   display: flex;
   align-items: center;
-  gap: 5px;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  gap: 12px;
   flex: none;
   background: var(--card);
-  padding: 6px 11px;
-  border-radius: 999px;
+  padding: 11px 14px;
+  border-radius: 12px;
   font-weight: 800;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--red-text);
   font-variant-numeric: tabular-nums;
   position: relative;
@@ -2930,8 +2938,6 @@ main {
 .rank-link b, .rank-link small { display: block; }
 .rank-link b { font-size: 12px; font-weight: 800; }
 .rank-link small { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.4; }
-.feedback-link { border: 0; padding: 6px 10px; background: transparent; color: var(--red-text); font: inherit; font-size: 10px; text-align: center; cursor: pointer; }
-.feedback-link:disabled { opacity: .7; cursor: default; }
 .wallet-total { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 22px 14px; border: 1px solid var(--gold); border-radius: 18px; background: var(--gold-soft); }
 .wallet-total strong { font-family: 'Fraunces', serif; font-size: 42px; line-height: 1; color: var(--gold-deep); }
 .wallet-total > span:last-child { flex-basis: 100%; text-align: center; font-size: 11px; color: var(--ink); }
@@ -2986,7 +2992,7 @@ main {
 @keyframes collectible-glint { 0% { opacity: 0; transform: translateX(-60%); } 25% { opacity: .5; } 100% { opacity: 0; transform: translateX(60%); } }
 @media (max-width: 350px) { .shop-gallery { gap: 8px; } .shop-item { padding: 7px; } .shop-item-copy > b { font-size: 12px; } .shop-artwork.frame { min-height: 190px; } .shop-wear-preview { padding: 2px; gap: 2px; } .shop-wear-preview b { font-size: 8px; } }
 @media (prefers-reduced-motion: reduce) { .collectible-stage.is-new, .collectible-stage.is-new::after { animation: none; } .collectible-stage.is-new::after { display: none; } .shop-artwork.match_card > :deep(.fan-match-card) { transition: none; transform: none; } }
-.rank-link:focus-visible, .feedback-link:focus-visible, .shop-buy:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
+.rank-link:focus-visible, .shop-buy:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
 
 /* Profilo */
 .profile-economy { flex: none; padding-bottom: 12px; }
