@@ -311,7 +311,7 @@
             <article v-for="item in catalog" :key="item.key" class="shop-item">
               <button class="shop-artwork" :class="item.kind" type="button" :aria-label="`Guarda ${item.title}`" :disabled="shopBusy" @click="previewCollectible(item)">
                 <template v-if="item.kind === 'frame'"><FanAvatar :name="profileNickname" framed :size="146" /><span class="shop-wear-preview"><FanAvatar :name="profileNickname" framed :size="32" /><b>{{ profileNickname }}</b></span></template>
-                <FanMatchCard v-else :memory="shopMatchMemory" :club-name="homeName" :club-logo-url="homeLogoUrl" compact />
+                <FanMatchCard v-else :memory="shopMatchMemory" :club-name="homeName" :club-logo-url="homeLogoUrl" :sport="organizationSport" compact />
                 <span class="shop-artwork-hint">{{ item.kind === 'frame' ? 'Provala sul tuo profilo' : 'Guarda da vicino' }} <span aria-hidden="true">↗</span></span>
               </button>
               <div class="shop-item-copy"><b>{{ item.title }}</b><p>{{ item.description }}</p><button type="button" class="shop-buy" :disabled="shopBusy || isLoadingWallet || Boolean(walletError) || (isRegistered && !item.owned && totalCoins < item.cost)" @click="item.owned ? previewCollectible(item) : redeem(item)">{{ item.owned ? 'Apri il tuo oggetto' : redeeming === item.key ? 'Salvataggio…' : `Ottieni · ${item.cost}` }} <span v-if="!item.owned" class="coin" aria-hidden="true"></span></button><small v-if="!item.owned && totalCoins < item.cost">Ti mancano {{ item.cost - totalCoins }} monete</small></div>
@@ -328,7 +328,7 @@
         <div v-if="selectedCollectible && activeSheet === 'collectible'" class="sheet-body collectible-body">
           <div :key="collectibleRevealRevision" class="collectible-stage" :class="{ 'is-new': isCollectibleNew, 'is-frame': selectedCollectible.kind === 'frame' }">
             <template v-if="selectedCollectible.kind === 'frame'"><FanAvatar :name="profileNickname" framed :size="210" /><b class="collectible-fan-name">{{ profileNickname }}</b><span class="collectible-club-name">{{ homeName }}</span></template>
-            <FanMatchCard v-else :memory="selectedCollectible" :club-name="homeName" :club-logo-url="homeLogoUrl" />
+            <FanMatchCard v-else :memory="selectedCollectible" :club-name="homeName" :club-logo-url="homeLogoUrl" :sport="organizationSport" />
           </div>
           <p v-if="selectedCollectible.kind === 'frame'" class="collectible-description">La tua cornice sull’avatar, nel profilo e in classifica.</p>
           <p v-else class="collectible-description">Il ricordo della tua partita, da ritrovare nella collezione.</p>
@@ -418,7 +418,7 @@
           <p class="profile-economy-hint">1 moneta guadagnata = 1 punto. I punti restano anche se spendi.</p>
         </div>
         <div class="sheet-body profile-body">
-          <FanCollectionPanel v-if="activeSheet === 'profile'" :nickname="profileNickname" :club-name="homeName" :club-logo-url="homeLogoUrl" :registered="isRegistered" :collection="hasLoadedCollection ? collection : null" :loading="isLoadingWallet" :busy="shopBusy" :error="walletError" @equip="equipCollectionItem" @open-shop="openSheet('spend')" @inspect="inspectCollectible">
+          <FanCollectionPanel v-if="activeSheet === 'profile'" :nickname="profileNickname" :club-name="homeName" :club-logo-url="homeLogoUrl" :sport="organizationSport" :registered="isRegistered" :collection="hasLoadedCollection ? collection : null" :loading="isLoadingWallet" :busy="shopBusy" :error="walletError" @equip="equipCollectionItem" @open-shop="openSheet('spend')" @inspect="inspectCollectible">
             <template #identity-action>
               <button class="profile-edit" type="button" :aria-expanded="isNicknameEditorOpen" aria-controls="profile-nickname-editor" @click="toggleNicknameEditor">{{ isNicknameEditorOpen ? 'Annulla' : 'Modifica nickname' }}</button>
             </template>
@@ -676,12 +676,14 @@ watch(isHomeLoading, (loading) => emit('loading-change', loading), { immediate: 
 const organizationColors = ref(normalizeOrganizationColors());
 const organizationName = ref('');
 const organizationLogoUrl = ref('');
+const organizationSport = ref('');
 const homeLogoUrl = computed(() => props.organizationSlug ? organizationLogoUrl.value : props.teamLogoUrl);
 const themeStyle = computed(() => organizationThemeStyle(organizationColors.value));
 watch(() => props.organizationSlug, (slug, previous, onCleanup) => {
   organizationColors.value = normalizeOrganizationColors();
   organizationName.value = '';
   organizationLogoUrl.value = '';
+  organizationSport.value = '';
   if (!slug) {
     organizationThemeRequest = Promise.resolve();
     return;
@@ -700,6 +702,7 @@ async function loadOrganizationBrand(slug, signal) {
       organizationColors.value = normalizeOrganizationColors(data);
       organizationName.value = String(data?.name || '').trim();
       organizationLogoUrl.value = String(data?.logo_url || '').trim();
+      organizationSport.value = String(data?.sport || '').trim();
     }
   } catch (error) {
     if (!signal.aborted) console.error('Impossibile caricare i dati della società', error);

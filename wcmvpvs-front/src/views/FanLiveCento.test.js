@@ -458,7 +458,7 @@ test('home splash waits for the session wallet, saved vote, and every home image
   const { state, scope, events } = fixture({
     fetchFanProfile: () => new Promise((resolve) => { finishProfile = resolve; }),
     apiClient: { get: async (path) => ({ data:
-      path === '/organization-theme' ? { primary_color: '#123456', logo_url: '/club.png', name: 'Club' }
+      path === '/organization-theme' ? { primary_color: '#123456', logo_url: '/club.png', name: 'Club', sport: 'Pallavolo' }
         : path === '/public/players' ? [{ id: 7, image_url: '/player.png' }]
           : path === '/sponsors' ? [{ id: 1, logo_data: '/sponsor.png' }] : {},
     }) },
@@ -480,7 +480,25 @@ test('home splash waits for the session wallet, saved vote, and every home image
   finishImages();
   await loading;
   assert.equal(state.isHomeLoading.value, false);
+  assert.equal(state.organizationSport.value, 'Pallavolo');
   assert.deepEqual(events.at(-1), ['loading-change', false]);
+});
+
+test('collectible artwork uses the society sport even without volleyball games and resets on society changes', async t => {
+  const nextTheme = deferred();
+  const setup = fixture({ apiClient: { get: async (path, config) => ({ data: path === '/organization-theme'
+    ? config.params.organization_slug === 'club' ? { sport: 'Pallavolo' } : await nextTheme.promise
+    : {} }) } }, { props: { activeEvent: { is_active: true, available_minigames: ['quiz'] } } });
+  const { state, props, scope } = setup;
+  t.after(() => scope.stop());
+  await flush();
+  assert.equal(state.organizationSport.value, 'Pallavolo');
+  props.organizationSlug = 'other-club';
+  await Vue.nextTick();
+  assert.equal(state.organizationSport.value, '');
+  nextTheme.resolve({ sport: 'Pallacanestro' });
+  await flush();
+  assert.equal(state.organizationSport.value, 'Pallacanestro');
 });
 
 test('trying a frame shows the actual fan name without equipping or spending', (t) => {

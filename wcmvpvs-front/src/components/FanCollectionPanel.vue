@@ -31,7 +31,7 @@
         <summary class="collection-section-head"><span>Ricordi delle partite</span><span class="collection-count">{{ memories.length }}</span><span class="collection-chevron" aria-hidden="true">⌄</span></summary>
         <ul class="memory-grid">
           <li v-for="memory in memories" :key="`${memory.key}:${memory.event_id}`" class="match-memory">
-            <button type="button" class="memory-open" :disabled="busy" :aria-label="`Apri il ricordo ${matchLabel(memory)}`" @click="inspectMemory(memory)"><FanMatchCard :memory="memory" :club-name="clubName" :club-logo-url="clubLogoUrl" compact /></button>
+            <button type="button" class="memory-open" :disabled="busy" :aria-label="`Apri il ricordo ${matchLabel(memory)}`" @click="inspectMemory(memory)"><FanMatchCard :memory="memory" :club-name="clubName" :club-logo-url="clubLogoUrl" :sport="sport" compact /></button>
             <span class="memory-hint">Tocca per ingrandire <span aria-hidden="true">↗</span></span>
           </li>
         </ul>
@@ -63,6 +63,7 @@ const props = defineProps({
   nickname: { type: String, default: '' },
   clubName: { type: String, default: '' },
   clubLogoUrl: { type: String, default: '' },
+  sport: { type: String, default: '' },
   registered: { type: Boolean, default: false },
   collection: { type: Object, default: null },
   loading: { type: Boolean, default: false },

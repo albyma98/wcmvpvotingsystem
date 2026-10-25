@@ -1,4 +1,4 @@
-# Basketball collectibles artwork
+# Sports collectibles artwork
 
 Generated with the built-in `image_gen` tool from the approved two-object concept. The source concept is a preview, not a club photograph. The arena is generic illustrative artwork. Club logos, names, opponents, dates and avatar initials are rendered by Vue from actual application data; no match information is baked into these images.
 
@@ -12,12 +12,19 @@ Production WebP exports preserve transparency and are the files imported by Vue:
 | `avatar-frame-small.webp` | 256 × 256 | 22,526 bytes |
 | `avatar-frame.webp` | 640 × 640 | 95,582 bytes |
 | `match-card.webp` | 768 × 1024 | 287,804 bytes |
+| `match-card-volleyball.webp` | 768 × 1024 | 150,960 bytes |
 
 Mechanical export used Sharp with WebP quality 90 for the frames, 88 for the card, alpha quality 100, effort 6. Sharp is an export tool only and is not a project dependency. The avatar uses responsive `srcset`/`sizes`; original PNGs are not imported into the application build.
 
 Components share these assets across shop, profile and object detail. Shop/profile collectible artwork is mounted when the corresponding sheet opens; the avatar frame is only requested when displayed as framed. Both assets use neutral metal panels, with club color accents supplied by the interface.
 
+The volleyball variant was generated with the built-in `image_gen` tool using `match-card.webp` as the edit target. `match-card-volleyball.png` is the 1086 × 1448 source; its production WebP uses the same 768 × 1024 size and quality 88 export as the basketball card. `FanMatchCard` selects it for the society sport `Pallavolo`, supplied by `/organization-theme`, across the shop, preview, purchase reveal and profile collection. The footer ball icon also follows the sport. The existing background remains the default for other or missing sports.
+
 ## Final prompts
+
+### Volleyball match card
+
+Create a volleyball variant of the provided existing basketball collectible card background. This image is the edit target: preserve its portrait 3:4 aspect ratio, silver beveled metal perimeter and corner shapes, black textured empty top plaque and empty bottom plaque, and premium photorealistic dark indoor sports arena style. Replace the basketball court image in the central window with a professional indoor volleyball court: orange playing surface with clear white volleyball boundary lines and teal surrounding free zone, taut regulation volleyball net spanning across the middle of the court with two padded posts and slim antennae. Similar low courtside wide-angle viewpoint, empty stadium seating and dramatic arena lights, sharp realistic floor reflections. The net must be prominent in the central area and remain recognizable at thumbnail size. Remove basketball hoops, backboards and all basketball court markings. No people, no balls, no text, no lettering, no logos, no watermarks. Keep the empty plaques and overall visual composition of the reference for UI text overlays. Generate a finished production image for the app, not a mockup.
 
 ### Avatar frame
 

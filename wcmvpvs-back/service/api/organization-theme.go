@@ -30,8 +30,9 @@ func (rt *_router) getOrganizationTheme(w http.ResponseWriter, r *http.Request, 
 	_ = json.NewEncoder(w).Encode(struct {
 		Name           string `json:"name"`
 		LogoURL        string `json:"logo_url"`
+		Sport          string `json:"sport"`
 		PrimaryColor   string `json:"primary_color"`
 		SecondaryColor string `json:"secondary_color"`
 		TertiaryColor  string `json:"tertiary_color"`
-	}{org.Name, org.LogoURL, org.PrimaryColor, org.SecondaryColor, org.TertiaryColor})
+	}{org.Name, org.LogoURL, org.Sport, org.PrimaryColor, org.SecondaryColor, org.TertiaryColor})
 }

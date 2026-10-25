@@ -11,7 +11,7 @@
       <span class="match-card-caption">RICORDO DAL PALAZZETTO</span>
       <strong class="match-card-club-name">{{ displayClubName }}</strong>
       <span v-if="opponent" class="match-card-opponent"><small>VS</small><strong>{{ opponent }}</strong></span>
-      <span class="match-card-footer"><time v-if="eventDateLabel" :datetime="eventDateISO">{{ eventDateLabel }}</time><span v-else>LA TUA COLLEZIONE</span><span class="match-card-basket" aria-hidden="true"><svg viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="9"/><path d="M2 11h18M11 2v18M5 4q12 7 0 14M17 4q-12 7 0 14"/></svg></span></span>
+      <span class="match-card-footer"><time v-if="eventDateLabel" :datetime="eventDateISO">{{ eventDateLabel }}</time><span v-else>LA TUA COLLEZIONE</span><span class="match-card-sport" aria-hidden="true"><svg viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="9"/><path v-if="isVolleyball" d="M11 11Q6 8 7 3M11 11Q16 8 19 11M11 11Q11 17 7 19M4 6Q3 12 8 15M16 3Q11 4 9 9M19 15Q14 18 10 15"/><path v-else d="M2 11h18M11 2v18M5 4q12 7 0 14M17 4q-12 7 0 14"/></svg></span></span>
     </span>
     <span class="match-card-sheen" aria-hidden="true"></span>
   </span>
@@ -19,16 +19,20 @@
 
 <script setup>
 import { computed } from 'vue';
-import matchCardArtwork from '../assets/fan-collectibles/match-card.webp';
+import basketballCardArtwork from '../assets/fan-collectibles/match-card.webp';
+import volleyballCardArtwork from '../assets/fan-collectibles/match-card-volleyball.webp';
 
 const props = defineProps({
   memory: { type: Object, default: () => ({}) },
   clubName: { type: String, default: '' },
   clubLogoUrl: { type: String, default: '' },
+  sport: { type: String, default: '' },
   compact: { type: Boolean, default: false },
 });
 
 function cleanText(value) { return typeof value === 'string' ? value.trim() : ''; }
+const isVolleyball = computed(() => cleanText(props.sport).toLocaleLowerCase('it-IT') === 'pallavolo');
+const matchCardArtwork = computed(() => isVolleyball.value ? volleyballCardArtwork : basketballCardArtwork);
 const safeMemory = computed(() => props.memory && typeof props.memory === 'object' && !Array.isArray(props.memory) ? props.memory : {});
 const displayClubName = computed(() => cleanText(safeMemory.value.club_name) || cleanText(props.clubName) || 'La tua squadra');
 const opponent = computed(() => cleanText(safeMemory.value.opponent));
@@ -64,8 +68,8 @@ const accessibleLabel = computed(() => ['Card ricordo della partita', displayClu
 .match-card-opponent small { flex: none; color: #99a9bc; font-size: clamp(6px, 3.2cqi, 12px); font-weight: 900; letter-spacing: .1em; }
 .match-card-opponent strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; color: #f1f5fc; font-size: clamp(9px, 5.25cqi, 19px); font-weight: 850; line-height: 1.2; overflow-wrap: anywhere; }
 .match-card-footer { display: flex; justify-content: space-between; align-items: center; gap: 6%; margin-top: 10%; color: #cbd7e5; font-size: clamp(6px, 3.2cqi, 12px); font-weight: 700; letter-spacing: .07em; line-height: 1.4; text-transform: uppercase; }
-.match-card-basket { width: 10%; aspect-ratio: 1; flex: none; color: #b8cadd; }
-.match-card-basket svg { width: 100%; height: 100%; stroke: currentColor; stroke-width: .9; }
+.match-card-sport { width: 10%; aspect-ratio: 1; flex: none; color: #b8cadd; }
+.match-card-sport svg { width: 100%; height: 100%; stroke: currentColor; stroke-width: .9; }
 .match-card-sheen { position: absolute; z-index: 7; inset: 0; overflow: hidden; pointer-events: none; }
 .match-card-sheen::after { content: ''; position: absolute; inset: -30% -60%; background: linear-gradient(115deg, transparent 40%, #e7f5ff00 43%, #e7f5ff55 49%, #e7f5ff00 55%, transparent 59%); transform: translateX(-50%); opacity: 0; }
 @media (hover: hover) { .fan-match-card:hover .match-card-sheen::after { animation: card-reflection .7s ease-out both; } }
