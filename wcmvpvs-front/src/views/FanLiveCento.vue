@@ -463,9 +463,9 @@
       <!-- Overlay gioco a schermo pieno -->
       <div v-if="activeGameId" class="game-overlay">
         <header class="game-head">
-          <button class="close" type="button" aria-label="Indietro" :disabled="isBasketballSaving || isPlaymakerSaving || isCrossoverSaving" @click="closeGame">←</button>
+          <button class="close" type="button" aria-label="Indietro" :disabled="isBasketballSaving || isPlaymakerSaving || isCrossoverSaving || isVolleyballSaving" @click="closeGame">←</button>
           <div class="game-title">{{ games[activeGameId]?.title }}</div>
-          <button class="close" type="button" aria-label="Chiudi" :disabled="isBasketballSaving || isPlaymakerSaving || isCrossoverSaving" @click="closeGame">✕</button>
+          <button class="close" type="button" aria-label="Chiudi" :disabled="isBasketballSaving || isPlaymakerSaving || isCrossoverSaving || isVolleyballSaving" @click="closeGame">✕</button>
         </header>
         <div v-if="coinError" class="game-credit-error" role="alert"><p>{{ coinError }}</p><button v-if="pendingGameClaim" type="button" class="journey-next" :disabled="isSavingCoins" @click="onGameClaim(pendingGameClaim)">Riprova il salvataggio</button></div>
         <div class="game-stage">
@@ -532,6 +532,21 @@
             @round-started="onReportGameStarted"
             @round-completed="onReportGameCompleted"
             @saving-change="isCrossoverSaving = $event"
+          />
+          <VolleyballArena
+            v-else-if="volleyballGameIds.includes(activeGameId)"
+            :key="`${eventId}:${activeGameId}`"
+            class="game-fill"
+            :game-id="activeGameId"
+            :event-id="eventId"
+            :wallet-coins="totalCoins"
+            :earned-coins="journey.rewards[activeGameId] || 0"
+            :club-name="homeName"
+            :club-logo-url="homeLogoUrl"
+            @credited="onVolleyballCredit"
+            @round-started="onReportGameStarted"
+            @round-completed="onReportGameCompleted"
+            @saving-change="isVolleyballSaving = $event"
           />
           <TapChallenge
             v-else-if="activeGameId === 'tap'"
@@ -605,6 +620,7 @@ const QuickQuizGame = defineAsyncComponent(() => import('../components/QuickQuiz
 const BasketballShootout = defineAsyncComponent(() => import('../components/minigames/BasketballShootout.vue'));
 const PlaymakerGame = defineAsyncComponent(() => import('../components/minigames/PlaymakerGame.vue'));
 const CrossoverRushGame = defineAsyncComponent(() => import('../components/minigames/CrossoverRushGame.vue'));
+const VolleyballArena = defineAsyncComponent(() => import('../components/minigames/VolleyballArena.vue'));
 const TapChallenge = defineAsyncComponent(() => import('../components/minigames/TapChallenge.vue'));
 const SponsorRushGame = defineAsyncComponent(() => import('../components/minigames/SponsorRushGame.vue'));
 const MemoryFlashGame = defineAsyncComponent(() => import('../components/minigames/MemoryFlashGame.vue'));
@@ -736,6 +752,7 @@ const isSavingCoins = ref(false);
 const isBasketballSaving = ref(false);
 const isPlaymakerSaving = ref(false);
 const isCrossoverSaving = ref(false);
+const isVolleyballSaving = ref(false);
 const pendingGameClaim = ref(null);
 const activeGameRoundId = ref('');
 const voteBonusCoins = ref(0);
@@ -769,12 +786,16 @@ const isFeedbackModalOpen = ref(false);
 const hasSubmittedFeedback = ref(false);
 
 // Registry giochi reali (titolo + reward indicativa mostrata nella lista).
+const volleyballGameIds = ['volley-rush', 'setter-pro', 'monster-block'];
 const games = {
   reaction: { title: 'Reaction Test', reward: 10 },
   quiz: { title: 'Quiz Lampo', reward: 15 },
   basketball: { title: 'Basket Rush', reward: 1 },
   playmaker: { title: 'Playmaker', reward: 1 },
   crossover: { title: 'Crossover Rush', reward: 1 },
+  'volley-rush': { title: 'Volley Rush', reward: 1 },
+  'setter-pro': { title: 'Setter Pro', reward: 1 },
+  'monster-block': { title: 'Monster Block', reward: 1 },
   tap: { title: 'Tap Challenge', reward: 8 },
   'sponsor-rush': { title: 'Sponsor Rush', reward: 12 },
   'memory-flash': { title: 'Memory Flash', reward: 8 },
@@ -804,7 +825,7 @@ const shopMatchMemory = computed(() => ({
   club_name: homeName.value, opponent: String(eventState.value?.team2_name || '').trim(),
   event_date: eventState.value?.start_datetime || ((!props.activeEvent?.id || props.activeEvent.id === props.eventId) ? props.activeEvent?.start_datetime : '') || '',
 }));
-const shopBusy = computed(() => Boolean(redeeming.value) || equipping.value || isSavingCoins.value || isBasketballSaving.value || isPlaymakerSaving.value || isCrossoverSaving.value);
+const shopBusy = computed(() => Boolean(redeeming.value) || equipping.value || isSavingCoins.value || isBasketballSaving.value || isPlaymakerSaving.value || isCrossoverSaving.value || isVolleyballSaving.value);
 let walletRequestRevision = 0;
 let leaderboardRequestRevision = 0;
 let isDisposed = false;
@@ -1130,6 +1151,9 @@ const earnMissions = computed(() => [
   { key: 'vote', emoji: '🏆', title: "Vota l'MVP", subtitle: 'Un voto per partita', pts: 10, opensMvp: true },
   { key: 'reaction', emoji: '⚡', title: 'Reaction Test', subtitle: 'Testa i riflessi', pts: 10, game: 'reaction', repeatable: true },
   { key: 'quiz', emoji: '🧠', title: 'Quiz Lampo', subtitle: 'Domande sul match', pts: 15, game: 'quiz', repeatable: true },
+  { key: 'volley-rush', emoji: '🏐', title: 'Volley Rush', subtitle: 'Supera il muro, trova il campo · Schiaccia e segna', pts: 1, game: 'volley-rush', repeatable: true, rewardUnit: 'punto' },
+  { key: 'setter-pro', emoji: '🙌', title: 'Setter Pro', subtitle: 'L’alzata perfetta · Precisione e tempismo', pts: 1, game: 'setter-pro', repeatable: true, rewardUnit: 'alzata vincente' },
+  { key: 'monster-block', emoji: '🧱', title: 'Monster Block', subtitle: 'Leggi l’attacco · Chiudi il muro al momento giusto', pts: 1, game: 'monster-block', repeatable: true, rewardUnit: 'muro vincente' },
   { key: 'basketball', emoji: '🏀', title: 'Basket Rush', subtitle: 'Trascina e tira · 1 moneta a canestro', pts: 1, game: 'basketball', repeatable: true, rewardUnit: 'canestro' },
   { key: 'playmaker', emoji: '🤝', title: 'Playmaker', subtitle: 'L’assist perfetto · Sessioni da 30 secondi', pts: 1, game: 'playmaker', repeatable: true, rewardUnit: 'assist' },
   { key: 'crossover', emoji: '💨', title: 'Crossover Rush', subtitle: 'Finta, cambia mano e schiaccia · 3 duelli', pts: 1, game: 'crossover', repeatable: true, rewardUnit: 'duello vinto' },
@@ -1399,11 +1423,13 @@ function openGame(id) {
   activeGameId.value = id;
 }
 function closeGame() {
-  if (isSavingCoins.value || isBasketballSaving.value || isPlaymakerSaving.value || isCrossoverSaving.value) return;
+  if (isSavingCoins.value || isBasketballSaving.value || isPlaymakerSaving.value || isCrossoverSaving.value || isVolleyballSaving.value) return;
+  const wasVolleyball = volleyballGameIds.includes(activeGameId.value);
   const wasGame = Boolean(activeGameId.value);
   activeGameId.value = null;
   if (wasGame) {
     openSheet('earn'); // torna alla lista giochi
+    if (wasVolleyball) void loadFanProfile();
   }
 }
 function onBasketballCredit(receipt) {
@@ -1414,6 +1440,10 @@ function onPlaymakerCredit(receipt) {
 }
 function onCrossoverCredit(receipt) {
   applyLiveGameCredit('crossover', receipt, 'crossover_earned');
+}
+function onVolleyballCredit(receipt) {
+  if (!volleyballGameIds.includes(receipt?.game_id) || receipt.game_id !== activeGameId.value) return;
+  applyLiveGameCredit(receipt.game_id, receipt, 'game_earned');
 }
 function applyLiveGameCredit(key, receipt, totalField) {
   if (receipt?.event_id !== props.eventId) return;
@@ -1864,6 +1894,7 @@ async function bootstrap() {
     isBasketballSaving.value = false;
     isPlaymakerSaving.value = false;
     isCrossoverSaving.value = false;
+    isVolleyballSaving.value = false;
     closeSheets();
     coinError.value = '';
     voteError.value = '';

@@ -19,9 +19,24 @@ function fixture(handler) {
   const source = stripTypeScriptTypes(readFileSync(new URL('./api.ts', import.meta.url), 'utf8').replaceAll('import.meta.env', '({})'))
     .replace(/^import .*;\r?\n/gm, '')
     .replace(/^export /gm, '');
-  const api = new Function('axios', 'getOrCreateDeviceId', 'readFanSessionToken', 'saveFanSessionToken', 'readLegacyFanSessionToken', 'window', `${source}\nreturn { getFanSessionToken, getFanSessionHeaders, startPhoneAuth, verifyPhoneAuth, registerFanProfile, fetchFanProfile, claimFanJourneyReward, submitQuickQuizAnswer };`)(axios, () => 'device', sessions.readFanSessionToken, sessions.saveFanSessionToken, sessions.readLegacyFanSessionToken, window);
+  const api = new Function('axios', 'getOrCreateDeviceId', 'readFanSessionToken', 'saveFanSessionToken', 'readLegacyFanSessionToken', 'window', `${source}\nreturn { getFanSessionToken, getFanSessionHeaders, startPhoneAuth, verifyPhoneAuth, registerFanProfile, fetchFanProfile, claimFanJourneyReward, submitQuickQuizAnswer, prepareVolleyballRound, submitVolleyballRound };`)(axios, () => 'device', sessions.readFanSessionToken, sessions.saveFanSessionToken, sessions.readLegacyFanSessionToken, window);
   return { api, window, requests };
 }
+
+test('volleyball rounds keep device and club scope and submit only the action to the round endpoint', async () => {
+  const { api, requests } = fixture(async () => ({ data: {} }));
+  assert.equal((await api.prepareVolleyballRound(42, 'unknown')).status, 400);
+  assert.equal(requests.length, 0);
+  for (const gameId of ['volley-rush', 'setter-pro', 'monster-block']) {
+    await api.prepareVolleyballRound(42, gameId);
+    const action = { aim_x: 220, aim_y: 180, timing: .7 };
+    await api.submitVolleyballRound(42, gameId, 'round-a', action);
+    assert.equal(requests.at(-1).path, `/events/42/volleyball/${gameId}/rounds/round-a`);
+    assert.deepEqual(requests.at(-1).body, action);
+    assert.equal(requests.at(-1).config.headers['X-Organization-Slug'], 'club-a');
+    assert.equal(requests.at(-1).config.headers['X-Device-ID'], 'device');
+  }
+});
 
 test('OTP tokens stay with the requesting club even if navigation changes during verification', async () => {
   let finish;

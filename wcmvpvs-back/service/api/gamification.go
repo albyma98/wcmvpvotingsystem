@@ -98,6 +98,13 @@ func (rt *_router) withMinigame(gameID string, next httpRouterHandler) httpRoute
 			return
 		}
 		id := gameID
+		if id == "volleyball" {
+			id = chi.URLParam(r, "gameId")
+			if !database.ValidVolleyballGame(id) {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+		}
 		if id == "branded" {
 			event, err := rt.db.GetEventByID(eventID)
 			if err != nil {

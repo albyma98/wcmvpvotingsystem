@@ -942,6 +942,25 @@ export function submitCrossoverDuel(eventId: number, sessionId: string, duel: { 
   return requestCrossover(eventId, sessionId, duel);
 }
 
+async function requestVolleyball(eventId: number, gameId: string, roundId?: string, action?: { aim_x: number; aim_y: number; timing: number }) {
+  if (!Number.isInteger(eventId) || eventId <= 0 || !['volley-rush', 'setter-pro', 'monster-block'].includes(gameId)) {
+    return { ok: false, message: 'Sfida non disponibile.', status: 400 };
+  }
+  try {
+    const path = `/events/${eventId}/volleyball/${gameId}/rounds${roundId ? `/${encodeURIComponent(roundId)}` : ''}`;
+    const { data } = await apiClient.post(path, action || {}, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() }, timeout: 12000,
+    });
+    return { ok: true, data };
+  } catch (error) {
+    const response = axios.isAxiosError(error) ? error.response : undefined;
+    return { ok: false, error, status: response?.status, message: response?.data?.message };
+  }
+}
+
+export const prepareVolleyballRound = (eventId: number, gameId: string) => requestVolleyball(eventId, gameId);
+export const submitVolleyballRound = (eventId: number, gameId: string, roundId: string, action: { aim_x: number; aim_y: number; timing: number }) => requestVolleyball(eventId, gameId, roundId, action);
+
 export async function redeemFanReward(eventId, rewardKey, costCoins) {
   try {
     const { data } = await apiClient.post(`/events/${eventId}/rewards/redeem`, { reward_key: rewardKey, cost_coins: costCoins }, {

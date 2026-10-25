@@ -218,8 +218,7 @@ func (rt *_router) recordReportSignals(w http.ResponseWriter, r *http.Request, c
 		if s.Name == "game_started" || s.Name == "game_completed" {
 			game, _ := s.Metadata["game_id"].(string)
 			round, _ := s.Metadata["round_id"].(string)
-			validGames := map[string]bool{"reaction": true, "quiz": true, "basketball": true, "playmaker": true, "crossover": true, "tap": true, "sponsor-rush": true, "memory-flash": true}
-			if !validGames[game] || strings.TrimSpace(round) == "" {
+			if reportOperationalGame(game) == "" || strings.TrimSpace(round) == "" {
 				reportError(w, 400, "Round di gioco non valido.")
 				return
 			}

@@ -3,7 +3,7 @@ export const VOTE_REWARD = 10;
 export const QUIZ_REWARD = 15;
 export const FAN_BADGE_NAME = 'Tifoso Attivo';
 
-const rewardKeys = ['vote', 'quiz', 'reaction', 'tap', 'sponsor-rush', 'memory-flash', 'basketball', 'playmaker', 'crossover'];
+const rewardKeys = ['vote', 'quiz', 'reaction', 'tap', 'sponsor-rush', 'memory-flash', 'basketball', 'playmaker', 'crossover', 'volley-rush', 'setter-pro', 'monster-block'];
 
 export function newMinigameRoundId() {
   return globalThis.crypto?.randomUUID?.() || `round_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;

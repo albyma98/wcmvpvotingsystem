@@ -70,7 +70,7 @@ func TestEngagementReportOperationalSourcesReadEventFactsWithoutInventingTelemet
 	for _, source := range data.Sources {
 		counts[source.Table] = source.Rows
 	}
-	if len(counts) != 14 || counts["fan_profiles"] != 1 || counts["fan_minigame_rewards"] != 3 || counts["basketball_shots"] != 3 || counts["fan_wallet_movements"] != 2 || counts["sponsor_clicks"] != 2 {
+	if len(counts) != 15 || counts["fan_profiles"] != 1 || counts["fan_minigame_rewards"] != 3 || counts["basketball_shots"] != 3 || counts["volleyball_rounds"] != 0 || counts["fan_wallet_movements"] != 2 || counts["sponsor_clicks"] != 2 {
 		t.Fatalf("source counts=%+v", counts)
 	}
 	completed, resolvedShots := 0, 0

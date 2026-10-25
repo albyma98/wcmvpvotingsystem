@@ -1196,6 +1196,8 @@ type QRRedirect struct {
 
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
+	CreateVolleyballRound(eventID, organizationID, fanID int, deviceID, gameID string, now time.Time) (VolleyballRound, error)
+	ResolveVolleyballRound(eventID, organizationID, fanID int, deviceID, gameID, roundID string, aimX, aimY, timing float64, now time.Time) (VolleyballResult, error)
 	ListMinigames() ([]Minigame, error)
 	UpdateMinigameSports(id string, sports []string) (Minigame, error)
 	GetOrganizationMinigames(organizationID int) ([]string, error)
@@ -3986,6 +3988,9 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM basketball_shots WHERE event_id=?`, eventID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM volleyball_rounds WHERE event_id=?`, eventID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM playmaker_passes WHERE event_id=?`, eventID); err != nil {
@@ -7746,6 +7751,9 @@ func ensureFanProfileTables(db *sql.DB) error {
 			return fmt.Errorf("error ensuring fan nickname uniqueness: %w", err)
 		}
 	}
+	if err := ensureVolleyballTables(db); err != nil {
+		return err
+	}
 	return ensureFanEconomyTables(db)
 }
 
@@ -7855,6 +7863,9 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 			return FanProfileSummary{}, err
 		}
 		if _, err = tx.Exec(`UPDATE basketball_shots SET fan_id=? WHERE fan_id=0 AND device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
+			return FanProfileSummary{}, err
+		}
+		if _, err = tx.Exec(`UPDATE volleyball_rounds SET fan_id=? WHERE fan_id=0 AND device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {
 			return FanProfileSummary{}, err
 		}
 		if _, err = tx.Exec(`UPDATE playmaker_sessions SET fan_id=? WHERE fan_id=0 AND device_id=? AND organization_id=? AND (?=0 OR event_id=?)`, profile.ID, input.DeviceID, profile.OrganizationID, input.EventID, input.EventID); err != nil {

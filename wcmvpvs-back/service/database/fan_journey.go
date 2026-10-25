@@ -56,6 +56,24 @@ func (db *appdbimpl) ListFanJourneyRewards(eventID, organizationID, fanID int, d
 	if crossover > 0 {
 		rewards["crossover"] = crossover
 	}
+	volleyball, err := db.c.Query(`SELECT game_id,COUNT(*) FROM volleyball_rounds WHERE event_id=? AND organization_id=? AND status='success' AND ((device_id=? AND fan_id=0) OR (?>0 AND fan_id=?)) GROUP BY game_id`, eventID, organizationID, deviceID, fanID, fanID)
+	if err != nil {
+		return nil, err
+	}
+	for volleyball.Next() {
+		var key string
+		var earned int
+		if err := volleyball.Scan(&key, &earned); err != nil {
+			volleyball.Close()
+			return nil, err
+		}
+		rewards[key] = earned
+	}
+	err = volleyball.Err()
+	volleyball.Close()
+	if err != nil {
+		return nil, err
+	}
 	if fanID > 0 {
 		var liveTap int
 		if err := db.c.QueryRow(`SELECT COALESCE(SUM(CASE WHEN fan1_id=? THEN fan1_coins ELSE 0 END+CASE WHEN fan2_id=? THEN fan2_coins ELSE 0 END),0) FROM tap_live_matches WHERE event_id=? AND organization_id=? AND status='finished' AND (fan1_id=? OR fan2_id=?)`, fanID, fanID, eventID, organizationID, fanID, fanID).Scan(&liveTap); err != nil {

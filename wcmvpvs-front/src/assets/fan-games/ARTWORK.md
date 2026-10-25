@@ -46,3 +46,21 @@ Several colorful blank glossy ticket-shaped tokens flying in an upward spiral wi
 
 Four thick rounded square memory-game tiles floating in a staggered arrangement, one matching pair face-up with the same simple gold star symbol, other two with glossy blue backs, subtle mint sparkle trail, deep teal blue background. Tactile and playful.
 
+## Volleyball additions
+
+Generated separately with the built-in imagegen tool, then mechanically resized to 320 × 320 WebP (Pillow/Lanczos, quality 82, method 6). Each prompt used the exact shared specification below, followed by `Subject:` and the corresponding paragraph.
+
+Use case: stylized-concept. Asset type: square decorative mobile sports minigame cover matching an existing premium 3D arcade sports card set. Polished playful 3D arcade illustration, chunky sculpted forms, glossy highlights, rich saturated color, cinematic rim light, bold clear silhouette readable at thumbnail size. Main subject centered in upper half, fully visible with generous side margins; quieter dark background across lower third where live UI will overlay title. One cohesive full-bleed scene. No text, letters, numbers, brand, logos, watermarks, borders or UI. Authentic indoor volleyball (NOT basketball).
+
+### volley-rush.webp
+
+A powerful athletic hand striking a yellow, blue and white volleyball over an indoor volleyball net toward the opponent's court, electric orange motion arc and bright impact sparks, energetic spike action, deep navy and fiery orange indoor arena lighting. Hands only, no faces.
+
+### setter-pro.webp
+
+Two athletic hands performing a technically correct overhead volleyball set, fingers spread making an open triangle below a yellow, blue and white volleyball, high graceful cyan glowing arc indicating a perfect assist, deep teal and midnight blue indoor arena background. Hands and ball only, no faces.
+
+### monster-block.webp
+
+Two strong athletic hands raised vertically above a taut indoor volleyball net making a spectacular block against a yellow, blue and white volleyball, bold violet and magenta luminous impact ring with a few sparks, deep purple indoor arena background, powerful tactile sport action. Hands only, no faces.
+

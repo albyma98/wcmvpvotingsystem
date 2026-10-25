@@ -138,6 +138,7 @@ func collectionParticipation(tx *sql.Tx, organizationID, fanID int, device strin
 		{"fan_journey_rewards", "MAX(coins)", "1=1", "event_id,reward_key"},
 		{"fan_minigame_rewards", "SUM(coins)", "1=1", "event_id,reward_key"},
 		{"basketball_shots", "COUNT(*)", "status='made'", "event_id"},
+		{"volleyball_rounds", "COUNT(*)", "status='success'", "event_id"},
 		{"playmaker_passes", "COUNT(*)", "assisted=1", "event_id"},
 		{"crossover_duels", "COUNT(*)", "won=1", "event_id"},
 	} {

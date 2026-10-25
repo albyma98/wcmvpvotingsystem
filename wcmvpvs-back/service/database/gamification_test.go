@@ -10,11 +10,15 @@ import (
 func TestGamificationSportsPersistAndFollowOrganizationSport(t *testing.T) {
 	db, club, _, _, _ := fanEconomyFixture(t)
 	games, err := db.ListMinigames()
-	if err != nil || len(games) != 11 {
+	if err != nil || len(games) != 14 {
 		t.Fatalf("catalog: %+v %v", games, err)
 	}
 	for _, game := range games {
-		if !reflect.DeepEqual(game.Sports, []string{"Tutti"}) {
+		expected := []string{"Tutti"}
+		if ValidVolleyballGame(game.ID) {
+			expected = []string{"Pallavolo"}
+		}
+		if !reflect.DeepEqual(game.Sports, expected) {
 			t.Fatalf("default availability changed: %+v", game)
 		}
 	}
@@ -55,6 +59,11 @@ func TestGamificationSportsPersistAndFollowOrganizationSport(t *testing.T) {
 		}
 		if has("basketball") != (sport == "Pallacanestro") || has("reaction") != (sport == "Calcio" || sport == "Pallavolo") || has("quiz") || !has("tap") {
 			t.Fatalf("sport %q: %+v", sport, available)
+		}
+		for _, gameID := range []string{"volley-rush", "setter-pro", "monster-block"} {
+			if has(gameID) != (sport == "Pallavolo") {
+				t.Fatalf("volleyball game %s for sport %q: %+v", gameID, sport, available)
+			}
 		}
 	}
 	if _, err := db.UpdateMinigameSports("basketball", []string{"Tutti"}); err != nil {

@@ -9,6 +9,41 @@ import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
 
+test('all three volleyball games use authoritative cumulative receipts and protect a pending save', t => {
+  for (const gameId of ['volley-rush', 'setter-pro', 'monster-block']) {
+    const { state, scope, saves } = fixture({}, { props: { activeEvent: { is_active: true, available_minigames: [gameId] } } });
+    t.after(() => scope.stop());
+    assert.deepEqual(state.earnMissions.value.map(mission => mission.key), ['vote', gameId]);
+    state.openGame(gameId);
+    assert.equal(state.activeGameId.value, gameId);
+    state.isVolleyballSaving.value = true;
+    state.closeGame();
+    assert.equal(state.activeGameId.value, gameId);
+    state.onVolleyballCredit({ event_id: 43, game_id: gameId, game_earned: 100, wallet: 100 });
+    assert.equal(state.totalCoins.value, 0);
+    const receipt = { event_id: 42, game_id: gameId, game_earned: 2, wallet: 7, coins_earned: 1 };
+    state.onVolleyballCredit(receipt);
+    state.onVolleyballCredit({ ...receipt, coins_earned: 0 });
+    assert.equal(state.totalCoins.value, 7);
+    assert.equal(state.journey.value.rewards[gameId], 2);
+    assert.equal(state.progress.value.earned, 2);
+    assert.equal(saves.length, 0, 'server receipts never issue a second client coin claim');
+    state.isVolleyballSaving.value = false;
+    state.closeGame();
+    assert.equal(state.activeGameId.value, null);
+  }
+});
+
+test('closing volleyball recovers a server-credited point whose response was lost', async t => {
+  const { state, scope } = fixture({ fetchFanProfile: async () => ({ ok: true, data: { registered: false, guest_coins: 1, journey_rewards: { 'volley-rush': 1 } } }) });
+  t.after(() => scope.stop());
+  state.openGame('volley-rush');
+  state.closeGame();
+  await flush();
+  assert.equal(state.totalCoins.value, 1);
+  assert.equal(state.journey.value.rewards['volley-rush'], 1);
+});
+
 test('sport rules filter every game entry and direct launch, while preserving the MVP vote', async t => {
   const { state, scope } = fixture({}, { props: { activeEvent: { is_active: true, available_minigames: ['basketball'] } } });
   t.after(() => scope.stop());

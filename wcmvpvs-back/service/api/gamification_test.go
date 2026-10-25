@@ -72,12 +72,12 @@ func TestGamificationMasterAndPublicRestrictions(t *testing.T) {
 	request(master, "PUT", "/basketball", `{"sports":["Tutti","Calcio"]}`, "", 400)
 	request(master, "PUT", "/basketball", `{"sports":["Tennis"]}`, "", 400)
 	request(master, "PUT", "/unknown", `{"sports":["Tutti"]}`, "", 404)
-	for _, game := range []string{"basketball", "playmaker", "crossover", "reaction", "quiz", "tap", "sponsor-rush", "memory-flash", "free_throw_challenge", "stack_it", "libero-reflex"} {
+	for _, game := range []string{"basketball", "playmaker", "crossover", "reaction", "quiz", "tap", "sponsor-rush", "memory-flash", "free_throw_challenge", "stack_it", "libero-reflex", "volley-rush", "setter-pro", "monster-block"} {
 		request(master, "PUT", "/"+game, `{"sports":["Pallacanestro"]}`, "", 200)
 	}
 	list := request(master, "GET", "/", "", "", 200)
 	var games []database.Minigame
-	if err := json.Unmarshal(list.Body.Bytes(), &games); err != nil || len(games) != 11 {
+	if err := json.Unmarshal(list.Body.Bytes(), &games); err != nil || len(games) != 14 {
 		t.Fatalf("master catalog: %+v %v", games, err)
 	}
 	public := router.Handler()
@@ -98,6 +98,14 @@ func TestGamificationMasterAndPublicRestrictions(t *testing.T) {
 	}
 	request(public, "GET", "/public"+path+"/quiz", "", "volley", 403)
 	request(public, "POST", "/public"+path+"/quiz/answer", `{}`, "volley", 403)
+	for _, game := range []string{"volley-rush", "setter-pro", "monster-block"} {
+		request(public, "POST", path+"/volleyball/"+game+"/rounds", `{}`, "volley", 403)
+		request(public, "POST", path+"/volleyball/"+game+"/rounds/test-round", `{}`, "volley", 403)
+		request(master, "PUT", "/"+game, `{"sports":["Pallavolo"]}`, "", 200)
+		request(public, "POST", path+"/volleyball/"+game+"/rounds", `{}`, "volley", 200)
+		request(master, "PUT", "/"+game, `{"sports":[]}`, "", 200)
+	}
+	request(public, "POST", path+"/volleyball/unknown/rounds", `{}`, "volley", 404)
 	request(public, "POST", path+"/journey-rewards", `{"key":"reaction","request_id":"round-123"}`, "volley", 403)
 	for _, gameType := range []string{"tap_challenge", "memory_flash", "sponsor_rush", "free_throw_challenge", "stack_it"} {
 		if _, err := conn.Exec(`UPDATE events SET show_branded_game=1, branded_game_config=? WHERE id=?`, `{"game_type":"`+gameType+`"}`, event); err != nil {
