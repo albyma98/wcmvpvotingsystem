@@ -674,7 +674,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
 .club-admin legend{max-width:100%;overflow-wrap:anywhere}
 .form-grid .check{position:relative;grid-column:1/-1;display:grid;grid-template-columns:22px minmax(0,1fr);align-items:center;align-content:center;gap:12px;width:100%;min-height:48px;padding:12px;border:1px solid #40516b;border-radius:8px;background:#091322;color:#e2e8f0;cursor:pointer}
 .check .checkbox-text{min-width:0;overflow-wrap:anywhere}
-.toggle-group{grid-column:1/-1;min-width:0;display:grid;gap:12px}
+.toggle-group{grid-column:1/-1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;gap:12px}
 .editor-heading,.editor-footer,.dialog-actions{flex-wrap:wrap}
 .editor-footer button{flex-shrink:1;max-width:100%;white-space:normal;overflow-wrap:anywhere}
 
