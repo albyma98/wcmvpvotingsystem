@@ -187,6 +187,29 @@ test('Match editor serializes numeric partials for the API, including zero and a
   assert.deepEqual(state.matchForm.sets, [])
 })
 
+test('Match editor uses the society name for scores and partials while preserving the category association', async t => {
+  const { state, requests } = await fixture(t)
+  state.activeTab.value = 'matches'
+  const match = { id: 1, teamId: 1, opponent: 'Ospiti', scheduledAt: '2026-10-25T18:30', home: true, status: 'completed', scoreFor: 3, scoreAgainst: 1 }
+  state.overview.value.matches = [match]
+  Object.assign(state.matchForm, match, { id: 0 })
+  state.addSet()
+  Object.assign(state.matchForm.sets[0], { scoreFor: 25, scoreAgainst: 18 })
+  let html = ''
+  render({}, chunk => { html += chunk }, null, {}, { slug: 'aurora' }, Vue.proxyRefs(state), {}, {})
+  assert.match(html, /Società<input[^>]*value="Aurora"/)
+  assert.match(html, /Società<input[^>]*readonly/)
+  assert.match(html, /Categoria \/ squadra \*/)
+  assert.match(html, /Risultato · Aurora<input/)
+  assert.match(html, /Aurora<input[^>]*aria-label="Parziale 1, squadra del club"/)
+  assert.match(html, /Aurora <span[^>]*>vs<\/span> Ospiti/)
+  assert.ok(!html.includes('Risultato · Under 16'))
+  state.filters.matches.query = 'Aurora'
+  assert.deepEqual(state.filteredMatches.value.map(item => item.id), [1])
+  await state.saveMatch()
+  assert.equal(mutations(requests)[0].body.teamId, 1)
+})
+
 test('Existing matches load partials into dedicated fields and update their existing id', async t => {
   const { state, requests } = await fixture(t)
   await state.editMatch({ id: 32, teamId: 1, opponent: 'Volley', scheduledAt: '2026-10-25T18:30:00', status: 'completed', scoreFor: 1, scoreAgainst: 0, setsJson: '["25-18"]' })

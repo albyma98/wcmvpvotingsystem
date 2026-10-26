@@ -42,6 +42,7 @@ const tabs = [
   ['sponsors','Sponsor'], ['contacts','Contatti'],
 ]
 const teams = computed(() => overview.value.teams ?? [])
+const matchClubName = computed(() => overview.value.club.name || 'Società')
 const editableTiles = computed(() => clubHomeTiles({ ...overview.value, club: settings, teams: teams.value.filter(team => team.active) }))
 const typography = computed(() => clubTypography(settings))
 const descriptions = {
@@ -58,7 +59,7 @@ const statusLabels = { scheduled: 'Programmata', live: 'In diretta', completed: 
 const filteredTeams = computed(() => filterItems('teams', teams.value, team => [team.name, team.category, team.championship]))
 const filteredPosts = computed(() => filterItems('posts', overview.value.posts ?? [], post => [post.title, post.excerpt, teamName(post.teamId)]))
 const filteredGallery = computed(() => filterItems('gallery', overview.value.gallery ?? [], photo => [photo.title, photo.caption, teamName(photo.teamId)]))
-const filteredMatches = computed(() => filterItems('matches', overview.value.matches ?? [], match => [match.opponent, match.competition, match.location, teamName(match.teamId)]))
+const filteredMatches = computed(() => filterItems('matches', overview.value.matches ?? [], match => [matchClubName.value, match.opponent, match.competition, match.location, teamName(match.teamId)]))
 const filteredSponsors = computed(() => filterItems('sponsors', overview.value.sponsors ?? [], sponsor => [sponsor.name, sponsor.website, sponsor.description]))
 const resultCount = computed(() => ({ teams: filteredTeams.value.length, posts: filteredPosts.value.length, gallery: filteredGallery.value.length, matches: filteredMatches.value.length, sponsors: filteredSponsors.value.length })[activeTab.value])
 const hasUnsavedChanges = computed(() => Boolean(
@@ -564,8 +565,9 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
             <p class="form-hint required-hint">* Campi obbligatori</p>
             <fieldset class="form-body" :disabled="processing">
               <fieldset class="form-section"><legend><span>01</span> Squadre e competizione</legend><div class="form-grid">
-                <label>Squadra del club *<select v-model.number="matchForm.teamId" required><option :value="0" disabled>Seleziona una squadra</option><option v-for="team in teams" :key="team.id" :value="team.id">{{team.name}}</option></select></label>
+                <label>Società<input :value="matchClubName" readonly /></label>
                 <label>Avversario *<input v-model="matchForm.opponent" required placeholder="Nome della squadra avversaria" /></label>
+                <label class="wide">Categoria / squadra *<select v-model.number="matchForm.teamId" required><option :value="0" disabled>Seleziona una categoria / squadra</option><option v-for="team in teams" :key="team.id" :value="team.id">{{team.name}}</option></select><small>Associa l’incontro al calendario della categoria.</small></label>
                 <label>Competizione<input v-model="matchForm.competition" placeholder="Es. Campionato regionale" /></label>
                 <label>Giornata o turno<input v-model="matchForm.roundLabel" placeholder="Es. 5ª giornata · Andata" /></label>
               </div></fieldset>
@@ -577,7 +579,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
               <fieldset class="form-section"><legend><span>03</span> Stato e risultato</legend><div class="form-grid">
                 <label class="wide">Stato della partita<select v-model="matchForm.status"><option v-for="(label, value) in statusLabels" :key="value" :value="value">{{label}}</option></select></label>
                 <template v-if="matchForm.status !== 'scheduled' || matchForm.sets.length">
-                  <label>Risultato · {{ teams.find(team => team.id === matchForm.teamId)?.name || 'Squadra del club' }}<input v-model.number="matchForm.scoreFor" type="number" min="0" step="1" required /></label>
+                  <label>Risultato · {{ matchClubName }}<input v-model.number="matchForm.scoreFor" type="number" min="0" step="1" required /></label>
                   <label>Risultato · {{ matchForm.opponent || 'Avversario' }}<input v-model.number="matchForm.scoreAgainst" type="number" min="0" step="1" required /></label>
                   <p class="form-hint wide">Inserisci il risultato complessivo (set vinti per la pallavolo). I parziali sono facoltativi e seguono sempre l’ordine squadra del club / avversario, anche in trasferta.</p>
                   <div class="set-editor wide">
@@ -585,7 +587,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
                     <p v-if="!matchForm.sets.length" class="form-hint">Nessun parziale. Aggiungi una riga per ogni set o periodo di gioco.</p>
                     <div v-for="(set, index) in matchForm.sets" :key="set.key" class="set-row">
                       <span class="set-number">{{index + 1}}°</span>
-                      <label>{{teams.find(team => team.id === matchForm.teamId)?.name || 'Squadra'}}<input v-model.number="set.scoreFor" type="number" min="0" step="1" required :aria-label="`Parziale ${index + 1}, squadra del club`" placeholder="0" /></label>
+                      <label>{{matchClubName}}<input v-model.number="set.scoreFor" type="number" min="0" step="1" required :aria-label="`Parziale ${index + 1}, squadra del club`" placeholder="0" /></label>
                       <span aria-hidden="true">:</span>
                       <label>{{matchForm.opponent || 'Avversario'}}<input v-model.number="set.scoreAgainst" type="number" min="0" step="1" required :aria-label="`Parziale ${index + 1}, avversario`" placeholder="0" /></label>
                       <button type="button" class="danger" :aria-label="`Rimuovi parziale ${index + 1}`" @click="matchForm.sets.splice(index, 1)">×</button>
@@ -602,7 +604,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
             <p v-if="!filteredMatches.length" class="empty-state">{{ overview.matches?.length ? 'Nessuna partita corrisponde ai filtri.' : 'Il calendario è vuoto. Inserisci il primo incontro della stagione.' }}</p>
             <div class="records-list"><article v-for="match in filteredMatches" :key="match.id" class="record-card" :class="{ selected: matchForm.id === match.id }">
               <div class="record-meta"><span class="badge" :class="match.status">{{ statusLabels[match.status] || match.status }}</span><span>{{match.home ? 'In casa' : 'Trasferta'}}</span></div>
-              <h3>{{teamName(match.teamId)}} <span class="versus">vs</span> {{match.opponent}}</h3>
+              <h3>{{matchClubName}} <span class="versus">vs</span> {{match.opponent}}</h3>
               <p>{{formatDate(match.scheduledAt)}}</p><p v-if="match.competition || match.roundLabel">{{[match.competition, match.roundLabel].filter(Boolean).join(' · ')}}</p><p v-if="match.location">{{match.location}}</p>
               <div v-if="match.status !== 'scheduled'" class="match-result">{{match.scoreFor}} <span>:</span> {{match.scoreAgainst}}<small>Squadra del club / avversario</small></div>
               <div class="record-actions"><button :disabled="processing" :aria-label="`Modifica partita contro ${match.opponent}`" @click="editMatch(match)">Modifica</button><button class="danger" :disabled="processing" :aria-label="`Elimina partita contro ${match.opponent}`" @click="askDelete('matches', match)">Elimina</button></div>

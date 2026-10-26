@@ -5,10 +5,7 @@ import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc'
 import * as Vue from 'vue'
 import * as clubHub from '../clubHub.js'
 
-const matchCard = {
-  props: ['match'],
-  setup: props => () => Vue.h('article', { 'data-match': props.match.id }, props.match.opponent),
-}
+const matchCard = loadComponent('./ClubMatchCard.vue', 'club-match-card-test', { vue: Vue, '../clubHub': clubHub })
 const imports = {
   vue: Vue,
   '../clubHub': clubHub,
@@ -186,6 +183,26 @@ test('overview statistics navigate to the requested section and show the feature
     ['update:section', 'matches'], ['update:section', 'roster'],
     ['update:section', 'news'], ['update:section', 'gallery'],
   ])
+})
+
+test('club and team scoreboards show the society name with correct home and away scores', async t => {
+  for (const [panel, section] of [['matches', 'matches'], ['team', 'matches'], ['team', 'overview']]) {
+    const { root, props } = fixture(t, { panel, section })
+    const match = (panel === 'team' ? props.teamData : props.data).matches[0]
+    Object.assign(match, { status: 'completed', scoreFor: 3, scoreAgainst: 1 })
+    for (const home of [true, false]) {
+      match.home = home
+      await Vue.nextTick()
+      const scoreboard = find(root, node => node.props.class === 'club-match-scoreboard')
+      const names = nodes(scoreboard, node => node.tag === 'strong').map(textOf)
+      assert.deepEqual(names, home ? ['Club Aurora', match.opponent] : [match.opponent, 'Club Aurora'])
+      assert.deepEqual(nodes(scoreboard, node => node.tag === 'b').map(textOf), home ? ['3', '1'] : ['1', '3'])
+      assert.ok(!textOf(scoreboard).includes('Under 18'))
+    }
+    props.club.name = 'Aurora Volley'
+    await Vue.nextTick()
+    assert.ok(textOf(find(root, node => node.props.class === 'club-match-scoreboard')).includes('Aurora Volley'))
+  }
 })
 
 test('switching controlled team sections renders matches, full roster names, news without images and photos', async t => {

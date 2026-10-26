@@ -17,7 +17,7 @@ const selectedPhoto = ref(null)
 const club = computed(() => data.value?.club ?? {})
 const typography = computed(() => clubTypography(club.value))
 const isTeam = computed(() => Boolean(props.teamSlug))
-const teamsById = computed(() => Object.fromEntries((data.value?.teams ?? []).map(team => [team.id, team])))
+const matchClubName = computed(() => club.value.name || 'Società')
 const announcements = computed(() => (data.value?.posts ?? []).filter(post => post.kind === 'announcement'))
 const upcoming = computed(() => (data.value?.matches ?? []).filter(match => match.status === 'scheduled').sort((a,b) => a.scheduledAt.localeCompare(b.scheduledAt)).slice(0, 6))
 const results = computed(() => (data.value?.matches ?? []).filter(match => match.status === 'completed').slice(0, 8))
@@ -62,7 +62,6 @@ async function load() {
   finally { loading.value = false }
 }
 
-function teamName(match) { return data.value?.team?.name || teamsById.value[match.teamId]?.name || 'Squadra' }
 function openPanel(panel) {
   teamRequestSequence += 1
   activeTeamData.value = null
@@ -139,8 +138,8 @@ onMounted(load)
             <div class="cd-body">
               <button v-if="featuredMatch" class="cd-match" type="button" @click="openPanel('matches')">
                 <div class="cd-match-head"><span :class="{ live: featuredMatch.status === 'live' }">{{ featuredMatch.status === 'live' ? '● LIVE ORA' : featuredMatch.status === 'completed' ? 'ULTIMO RISULTATO' : '⚡ PROSSIMA PARTITA' }}</span><time>{{ formatDate(featuredMatch.scheduledAt) }}</time></div>
-                <div class="cd-versus"><strong>{{ featuredMatch.home ? teamName(featuredMatch) : featuredMatch.opponent }}</strong><b>{{ featuredMatch.status === 'completed' ? scoreLabel(featuredMatch) : 'VS' }}</b><strong>{{ featuredMatch.home ? featuredMatch.opponent : teamName(featuredMatch) }}</strong></div>
-                <small>{{ teamName(featuredMatch) }} · {{ featuredMatch.location || featuredMatch.competition || 'Dettagli partita' }}</small>
+                <div class="cd-versus"><strong>{{ featuredMatch.home ? matchClubName : featuredMatch.opponent }}</strong><b>{{ featuredMatch.status === 'completed' ? scoreLabel(featuredMatch) : 'VS' }}</b><strong>{{ featuredMatch.home ? featuredMatch.opponent : matchClubName }}</strong></div>
+                <small>{{ matchClubName }} · {{ featuredMatch.location || featuredMatch.competition || 'Dettagli partita' }}</small>
               </button>
               <button v-else class="cd-match cd-match-empty" type="button" @click="openPanel('matches')"><span>📅</span><div><strong>Calendario in arrivo</strong><small>Apri la sezione partite</small></div><i>›</i></button>
 
@@ -166,7 +165,7 @@ onMounted(load)
           <div class="shell"><a class="back" :href="homePath">← Tutte le squadre</a><div class="team-title"><div class="team-badge large"><img v-if="data.team.logoUrl" :src="data.team.logoUrl" alt="" /><span v-else>{{ initials(data.team.name) }}</span></div><div><p class="kicker">{{ data.team.category }}</p><h1>{{ data.team.name }}</h1><p>{{ data.team.championship }}</p></div></div></div>
         </section>
         <div class="team-content shell">
-          <section class="section compact"><div class="section-heading"><div><p class="kicker">STAGIONE</p><h2>Calendario e risultati</h2></div></div><div class="fixture-list"><article v-for="match in data.matches" :key="match.id" class="fixture"><div><time>{{ formatDate(match.scheduledAt) }}</time><small>{{ match.competition }} · {{ match.roundLabel }}</small></div><div class="fixture-teams"><strong>{{ match.home ? data.team.name : match.opponent }}</strong><b :class="{ completed: match.status === 'completed' }">{{ match.status === 'completed' ? scoreLabel(match) : 'VS' }}</b><strong>{{ match.home ? match.opponent : data.team.name }}</strong></div><span :class="['status', match.status]">{{ match.status === 'completed' ? 'Conclusa' : match.status === 'live' ? 'Live' : 'Programmata' }}</span></article><p v-if="!data.matches?.length" class="empty">Il calendario sarà pubblicato a breve.</p></div></section>
+          <section class="section compact"><div class="section-heading"><div><p class="kicker">STAGIONE</p><h2>Calendario e risultati</h2></div></div><div class="fixture-list"><article v-for="match in data.matches" :key="match.id" class="fixture"><div><time>{{ formatDate(match.scheduledAt) }}</time><small>{{ match.competition }} · {{ match.roundLabel }}</small></div><div class="fixture-teams"><strong>{{ match.home ? matchClubName : match.opponent }}</strong><b :class="{ completed: match.status === 'completed' }">{{ match.status === 'completed' ? scoreLabel(match) : 'VS' }}</b><strong>{{ match.home ? match.opponent : matchClubName }}</strong></div><span :class="['status', match.status]">{{ match.status === 'completed' ? 'Conclusa' : match.status === 'live' ? 'Live' : 'Programmata' }}</span></article><p v-if="!data.matches?.length" class="empty">Il calendario sarà pubblicato a breve.</p></div></section>
           <section class="section compact"><div class="section-heading"><div><p class="kicker">LA SQUADRA</p><h2>Roster</h2></div></div><div class="roster-grid"><article v-for="player in data.players" :key="player.id" class="player"><div class="player-photo"><img v-if="player.imageUrl" :src="player.imageUrl" :alt="`${player.firstName} ${player.lastName}`" /><span v-else>{{ player.jerseyNumber || initials(`${player.firstName} ${player.lastName}`) }}</span></div><div><small>{{ player.role }}</small><h3>{{ player.firstName }} {{ player.lastName }}</h3><b v-if="player.jerseyNumber">#{{ player.jerseyNumber }}</b></div></article><p v-if="!data.players?.length" class="empty">Roster in aggiornamento.</p></div></section>
           <section v-if="data.posts?.length" class="section compact"><div class="section-heading"><div><p class="kicker">NOTIZIE</p><h2>Dalla squadra</h2></div></div><div class="news-grid"><article v-for="post in data.posts.slice(0,6)" :key="post.id" class="news-card"><div v-if="post.imageUrl" class="news-image" :style="{ backgroundImage: `url('${post.imageUrl}')` }"></div><div class="news-body"><h3>{{ post.title }}</h3><p>{{ post.excerpt || post.body }}</p></div></article></div></section>
           <section v-if="data.gallery?.length" class="section compact"><div class="section-heading"><div><p class="kicker">GALLERY</p><h2>Momenti della squadra</h2></div></div><div class="gallery-grid team-gallery"><figure v-for="photo in data.gallery" :key="photo.id"><button type="button" class="gallery-open" :aria-label="`Ingrandisci immagine: ${photo.title || photo.caption || 'Foto del club'}`" aria-haspopup="dialog" @click="selectedPhoto = photo"><img :src="photo.imageUrl" :alt="photo.title || photo.caption || 'Foto del club'" loading="lazy" /></button></figure></div></section>

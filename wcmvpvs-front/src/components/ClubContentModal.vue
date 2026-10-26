@@ -36,6 +36,7 @@ const news = computed(() => isTeam.value ? posts.value : posts.value.filter(post
 const gallery = computed(() => payload.value.gallery || [])
 const contacts = computed(() => props.club.contacts || [])
 const sponsors = computed(() => props.data.sponsors || [])
+const matchClubName = computed(() => props.club.name || props.data.club?.name || props.teamData?.club?.name || 'Società')
 const featuredMatch = computed(() => matches.value.find(match => match.status === 'live')
   || [...matches.value].filter(match => match.status === 'scheduled').sort((a, b) => String(a.scheduledAt || '').localeCompare(String(b.scheduledAt || '')))[0]
   || matches.value.find(match => match.status === 'completed') || null)
@@ -45,9 +46,6 @@ const stats = computed(() => [
   { section: 'news', label: 'Notizie', count: posts.value.length },
   { section: 'gallery', label: 'Foto', count: gallery.value.length },
 ])
-function matchTeamName(match) {
-  return payload.value.team?.name || (props.data.teams || []).find(team => team.id === match.teamId)?.name || 'Squadra'
-}
 function closeOutside(event) {
   if (event.target !== dialog.value) return
   const rect = dialog.value.getBoundingClientRect()
@@ -79,12 +77,12 @@ onBeforeUnmount(() => dialog.value?.close())
           <div class="club-stats">
             <button v-for="stat in stats" :key="stat.section" class="club-stat" type="button" @click="emit('update:section', stat.section)"><b>{{ stat.count }}</b><span>{{ stat.label }}</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg></button>
           </div>
-          <ClubMatchCard v-if="featuredMatch" :match="featuredMatch" :team-name="matchTeamName(featuredMatch)" featured />
+          <ClubMatchCard v-if="featuredMatch" :match="featuredMatch" :team-name="matchClubName" featured />
           <div v-else class="club-state"><span class="club-state-icon" aria-hidden="true">↗</span><h3>Ci vediamo in campo</h3><p>Il prossimo appuntamento sarà pubblicato a breve.</p></div>
         </section>
 
         <section v-else-if="currentView === 'matches'" class="club-match-list" aria-label="Calendario e risultati">
-          <ClubMatchCard v-for="match in matches" :key="match.id" :match="match" :team-name="matchTeamName(match)" />
+          <ClubMatchCard v-for="match in matches" :key="match.id" :match="match" :team-name="matchClubName" />
           <div v-if="!matches.length" class="club-state"><span class="club-state-icon" aria-hidden="true">↗</span><h3>Il calendario prende forma</h3><p>Le prossime partite saranno disponibili qui.</p></div>
         </section>
 
