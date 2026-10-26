@@ -2,16 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEventReportTelemetry, createReportSignalSender, reportSource } from './eventReportTelemetry.js';
 
-function fixture(send = async () => {}) {
+function fixture(send = async () => {}, options = {}) {
   let time = 1700000000000;
   let nextId = 0;
   const timers = new Map();
   const listeners = new Map();
-  const storage = new Map();
+  const storage = options.sessionStorage || new Map();
+  const localStorage = options.localStorage || new Map();
   const observers = [];
   const document = { visibilityState: 'visible', addEventListener: (name, callback) => listeners.set(name, callback), removeEventListener: (name) => listeners.delete(name) };
   const window = {
     sessionStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value) },
+    localStorage: { getItem: (key) => localStorage.get(key), setItem: (key, value) => localStorage.set(key, value) },
     setTimeout: (callback, ms) => { const key = ++nextId; timers.set(key, { callback, at: time + ms }); return key; },
     clearTimeout: (key) => timers.delete(key),
     setInterval: (callback, ms) => { const key = ++nextId; timers.set(key, { callback, at: time + ms, repeat: ms }); return key; },
@@ -26,7 +28,8 @@ function fixture(send = async () => {}) {
   };
   let identity = { 'X-Device-ID': 'guest' };
   const sent = [];
-  const telemetry = createEventReportTelemetry({ eventId: 42, window, document, now: () => time, id: () => `signal-${++nextId}`, identity: () => identity, send: async (...args) => { sent.push(args); await send(...args); } });
+  const mirrors = [];
+  const telemetry = createEventReportTelemetry({ eventId: options.eventId ?? 42, context: options.context || (() => ({})), canPersistVisits: options.canPersistVisits || (() => false), mirror: (event, context) => mirrors.push(structuredClone({ event, context })), window, document, now: () => time, id: () => `signal-${++nextId}`, identity: () => identity, send: async (...args) => { sent.push(args); await send(...args); } });
   async function advance(ms) {
     const until = time + ms;
     while (true) {
@@ -40,8 +43,177 @@ function fixture(send = async () => {}) {
     }
     time = until;
   }
-  return { telemetry, sent, window, document, observers, timers, listeners, advance, login() { identity = { 'X-Device-ID': 'guest', 'X-Fan-Session': 'verified' }; }, events() { return sent.flatMap(([, events]) => events); } };
+  return { telemetry, sent, mirrors, storage, localStorage, window, document, observers, timers, listeners, advance, login() { identity = { 'X-Device-ID': 'guest', 'X-Fan-Session': 'verified' }; }, events() { return sent.flatMap(([, events]) => events); } };
 }
+
+test('PostHog mirroring observes sanitized actions once, without credentials or delivery retry duplicates', async () => {
+  let fail = true;
+  const f = fixture(async () => { if (fail) throw new Error('offline'); }, { context: () => ({ organization_slug: 'club', registered: false, source: 'arena' }) });
+  const event = f.telemetry.record('vote_changed', { player_id: 7, previous_player_id: 8, is_change: true, phone: '+39333', name: 'Private', token: 'secret', nickname: 'Fan', qr_data: 'secret-url' });
+  await f.telemetry.flush();
+  fail = false;
+  await f.telemetry.flush();
+  assert.equal(f.mirrors.length, 1);
+  assert.equal(f.mirrors[0].event.id, event.id);
+  assert.deepEqual(event.metadata, { registered: false, source: 'arena', player_id: 7, previous_player_id: 8, is_change: true, schema_version: 1 });
+  assert.doesNotMatch(JSON.stringify(f.mirrors), /X-Device|X-Fan|secret|Private|nickname|phone|qr_data/);
+  assert.equal(f.telemetry.record('input_changed', { phone: '+39333' }), undefined);
+  f.telemetry.stop();
+});
+
+test('visit duration distinguishes active foreground time from idle and background time, and leaves only once', async () => {
+  const f = fixture();
+  f.telemetry.start();
+  await f.advance(30000);
+  f.document.visibilityState = 'hidden'; f.listeners.get('visibilitychange')();
+  await f.advance(45000);
+  f.document.visibilityState = 'visible'; f.listeners.get('visibilitychange')();
+  f.listeners.get('pointerdown')();
+  await f.advance(15000);
+  f.listeners.get('pagehide')();
+  f.telemetry.stop();
+  const leaves = f.mirrors.filter(({ event }) => event.name === 'page_leave');
+  assert.equal(leaves.length, 1);
+  assert.equal(leaves[0].event.metadata.duration_ms, 90000);
+  assert.equal(leaves[0].event.metadata.active_seconds, 45);
+  assert.equal(leaves[0].event.metadata.visible_seconds, 45);
+  assert.equal(f.mirrors.filter(({ event }) => event.name === 'page_hidden').length, 1);
+  assert.equal(f.mirrors.filter(({ event }) => event.name === 'page_visible').length, 1);
+});
+
+test('mid-visit opt-in mirrors only its seven consented seconds while internal timing keeps all twenty-two', async () => {
+  const f = fixture();
+  f.telemetry.resetMirrorClock(false);
+  f.telemetry.start();
+  await f.advance(15000);
+  assert.equal(f.mirrors.length, 0);
+  f.telemetry.resetMirrorClock(true);
+  f.telemetry.record('page_view', { duration_ms: 15000, active_seconds: 15, visible_seconds: 15 });
+  assert.equal(f.mirrors[0].event.metadata.duration_ms, 0);
+  assert.equal(f.mirrors[0].event.metadata.active_seconds, 0);
+  assert.equal(f.mirrors[0].event.metadata.visible_seconds, 0);
+  await f.advance(7000);
+  f.listeners.get('pagehide')();
+  await f.telemetry.flush();
+  const mirroredLeave = f.mirrors.find(({ event }) => event.name === 'page_leave').event;
+  const internalLeave = f.events().find((event) => event.name === 'page_leave');
+  assert.equal(mirroredLeave.metadata.duration_ms, 7000);
+  assert.equal(mirroredLeave.metadata.active_seconds, 7);
+  assert.equal(mirroredLeave.metadata.visible_seconds, 7);
+  assert.equal(internalLeave.metadata.duration_ms, 22000);
+  assert.equal(internalLeave.metadata.active_seconds, 22);
+  assert.equal(internalLeave.metadata.visible_seconds, 22);
+  assert.equal(f.mirrors.filter(({ event }) => event.name === 'active_time').reduce((sum, { event }) => sum + event.metadata.seconds, 0), 7);
+  f.telemetry.stop();
+});
+
+test('revocation discards mirror observations and re-enabling clips the next heartbeat and accumulated lifecycle totals', async () => {
+  const f = fixture();
+  f.telemetry.start();
+  await f.advance(5000);
+  f.telemetry.resetMirrorClock(false);
+  const observed = f.mirrors.length;
+  await f.advance(15000);
+  f.telemetry.record('vote_completed');
+  assert.equal(f.mirrors.length, observed);
+  f.telemetry.resetMirrorClock(true);
+  await f.advance(7000);
+  f.telemetry.record('game_completed', { duration_ms: 27000, elapsed_ms: 27000 });
+  f.listeners.get('pagehide')();
+  await f.telemetry.flush();
+  const game = f.mirrors.find(({ event }) => event.name === 'game_completed').event;
+  assert.equal(game.metadata.duration_ms, 7000);
+  assert.equal(game.metadata.elapsed_ms, 7000);
+  const mirroredLeave = f.mirrors.find(({ event }) => event.name === 'page_leave').event;
+  assert.equal(mirroredLeave.metadata.duration_ms, 7000);
+  assert.equal(mirroredLeave.metadata.active_seconds, 7);
+  assert.equal(mirroredLeave.metadata.visible_seconds, 7);
+  const active = f.mirrors.find(({ event }) => event.name === 'active_time').event.metadata;
+  assert.equal(active.seconds, 7);
+  assert.equal(Date.parse(active.ended_at) - Date.parse(active.started_at), 7000);
+  assert.equal(f.events().find((event) => event.name === 'page_leave').metadata.active_seconds, 27);
+  assert.equal(f.events().some((event) => event.name === 'vote_completed'), true);
+  f.telemetry.stop();
+});
+
+test('visit returns are scoped to organization/event and use persistent counters only with opt-in', () => {
+  const local = new Map(), session = new Map();
+  const context = () => ({ organization_slug: 'club' });
+  const first = fixture(undefined, { context, localStorage: local, sessionStorage: session });
+  first.telemetry.start(); first.telemetry.stop();
+  assert.equal(local.size, 0);
+  const sameTab = fixture(undefined, { context, localStorage: local, sessionStorage: session });
+  sameTab.telemetry.start();
+  assert.equal(sameTab.mirrors.find(({ event }) => event.name === 'visit_returned').event.metadata.visit_count, 2);
+  sameTab.telemetry.stop();
+  const otherEvent = fixture(undefined, { context, eventId: 43, localStorage: local, sessionStorage: session });
+  otherEvent.telemetry.start(); otherEvent.telemetry.stop();
+  assert.equal(otherEvent.mirrors.some(({ event }) => event.name === 'visit_returned'), false);
+  const optedIn = fixture(undefined, { context, localStorage: local, canPersistVisits: () => true });
+  optedIn.telemetry.start(); optedIn.telemetry.stop();
+  assert.equal(local.size, 1);
+  const newTab = fixture(undefined, { context, localStorage: local, canPersistVisits: () => true });
+  newTab.telemetry.start(); newTab.telemetry.stop();
+  assert.equal(newTab.mirrors.find(({ event }) => event.name === 'visit_returned').event.metadata.visit_count, 2);
+});
+
+test('first opt-in initializes cross-tab returns without inserting another internal page view', async () => {
+  let consent = false;
+  const local = new Map();
+  const options = { context: () => ({ organization_slug: 'club' }), localStorage: local, canPersistVisits: () => consent };
+  const first = fixture(undefined, options);
+  first.telemetry.setMirrorConsent(false);
+  first.telemetry.start({ games_available: true });
+  await first.advance(5000);
+  consent = true;
+  first.telemetry.setMirrorConsent(true, { games_available: true });
+  await first.telemetry.flush();
+  assert.equal(first.events().filter(({ name }) => name === 'page_view').length, 1);
+  assert.equal(first.events().filter(({ name }) => name === 'visit_started').length, 1);
+  assert.equal(first.mirrors.filter(({ event }) => event.name === 'page_view').length, 1);
+  assert.equal(first.mirrors.find(({ event }) => event.name === 'visit_started').event.metadata.visit_count, 1);
+  first.telemetry.setMirrorConsent(false);
+  first.telemetry.setMirrorConsent(true);
+  assert.equal([...local.values()][0], '1', 'reacceptance during one visit does not count another return');
+  assert.equal(first.mirrors.filter(({ event }) => event.name === 'page_view').length, 1, 'reacceptance cannot inflate page views');
+  first.telemetry.stop();
+  const second = fixture(undefined, options);
+  second.telemetry.start();
+  assert.equal(second.mirrors.find(({ event }) => event.name === 'visit_returned').event.metadata.visit_count, 2);
+  second.telemetry.setMirrorConsent(false);
+  second.telemetry.setMirrorConsent(true);
+  assert.equal(second.mirrors.filter(({ event }) => event.name === 'visit_returned').length, 1, 'one actual return stays one return');
+  second.telemetry.stop();
+});
+
+test('consent chosen before readiness defers its baseline until the single real visit starts', async () => {
+  const f = fixture(undefined, { canPersistVisits: () => true });
+  f.telemetry.setMirrorConsent(true, { games_available: true });
+  assert.equal(f.mirrors.length, 0);
+  f.telemetry.start({ games_available: true });
+  await f.telemetry.flush();
+  assert.equal(f.mirrors.filter(({ event }) => event.name === 'page_view').length, 1);
+  assert.equal(f.events().filter(({ name }) => name === 'page_view').length, 1);
+  f.telemetry.stop();
+});
+
+test('generic CTA and QR visibility ignores inert panels and requires a visible second', async () => {
+  const f = fixture();
+  f.telemetry.start();
+  let inert = true;
+  const target = { closest: () => inert ? {} : null };
+  f.telemetry.observeVisibility(target, 'lottery_qr_view', { placement: 'profile_ticket' }, { onceKey: 'own-ticket' });
+  f.observers[0].expose(1);
+  await f.advance(1200);
+  assert.equal(f.mirrors.some(({ event }) => event.name === 'lottery_qr_view'), false);
+  inert = false;
+  f.observers[0].expose(.75);
+  await f.advance(999);
+  assert.equal(f.mirrors.some(({ event }) => event.name === 'lottery_qr_view'), false);
+  await f.advance(1);
+  assert.equal(f.mirrors.filter(({ event }) => event.name === 'lottery_qr_view').length, 1);
+  f.telemetry.stop();
+});
 
 test('failed requests retry the same IDs with original guest identity and never mix an authenticated batch', async () => {
   let fail = true;

@@ -1,6 +1,6 @@
 # Informativa privacy del profilo tifoso
 
-Versione 2026-10-21.1 — 21 ottobre 2026
+Versione 2026-10-25.1 — 25 ottobre 2026
 
 ## Titolare e contatti
 
@@ -36,7 +36,13 @@ La collocazione dell'hosting in Francia non esclude da sola trattamenti fuori da
 
 Identificativi e memorie del dispositivo consentono autenticazione, continuità della sessione, progressi da ospite e protezione dagli abusi. Il servizio registra anche eventi tecnici e di utilizzo per gestire le funzionalità e analizzarne il funzionamento. Queste informazioni non sono automaticamente anonime solo perché prive del nome del tifoso.
 
-Nell'esperienza /new non viene attivata l'integrazione PostHog nel browser per tracciare individualmente il tifoso o registrare la sessione. Eventuali future analisi esterne o finalità ulteriori richiederanno un aggiornamento dell'informativa e, quando necessario, le relative scelte dell'utente.
+Nell'esperienza /new, le “Preferenze analisi” consentono di accettare o rifiutare separatamente le analisi facoltative tramite PostHog. In assenza di una scelta positiva, oppure dopo la revoca, il browser non invia queste misurazioni a PostHog. La scelta non condiziona il voto, i giochi, l'accesso o la registrazione del profilo; l'accettazione dei termini del profilo non vale come consenso alle analisi. Le richieste di non tracciamento espresse dal browser sono rispettate.
+
+Quando accetti, vengono misurati accessi e ritorni alla stessa partita, tempi di utilizzo e di attività, aperture dei pannelli, voti e cambi MVP, giochi e risultati, monete, interazioni con sponsor, shop, feedback e visualizzazione del biglietto. A PostHog vengono inviati identificativi tecnici casuali del browser distinti per società, riferimenti alla società e alla partita, categorie di azione, esiti e tempi. Il collegamento è pseudonimo e non certifica l'identità di una persona: lo stesso tifoso su browser diversi può risultare distinto. Il numero di telefono, il codice OTP, il nickname, i contenuti dei moduli, i commenti liberi, il codice del biglietto, il QR e i token di accesso non sono inclusi. Le sessioni dello schermo non vengono registrate e la raccolta automatica dei contenuti della pagina è disabilitata.
+
+Il fornitore delle analisi facoltative è PostHog, tramite l'endpoint europeo configurato per il servizio. Le statistiche interne del servizio restano separate dall'invio facoltativo a questo fornitore. I dati sono utilizzati per valutare il funzionamento, migliorare l'esperienza e produrre report aggregati relativi all'evento e alle iniziative degli sponsor; non comportano la comunicazione dei recapiti del tifoso agli sponsor. La collocazione europea dell'endpoint non costituisce da sola una garanzia sull'assenza di ulteriori trasferimenti: valgono gli accordi e le garanzie applicabili al fornitore.
+
+Puoi cambiare o revocare la scelta in ogni momento da “Preferenze analisi” nella home. La preferenza è conservata nel browser; il rifiuto o la revoca interrompono gli invii successivi senza spedire retroattivamente le attività precedenti all'accettazione. Per la cancellazione dei dati già raccolti e per conoscere i tempi di conservazione effettivi configurati per le analisi puoi scrivere al titolare. I report aggregati privi di riferimenti individuali possono essere conservati per confrontare gli eventi.
 
 ## Conservazione e cancellazione
 

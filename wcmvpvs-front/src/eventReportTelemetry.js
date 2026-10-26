@@ -1,4 +1,6 @@
-// Dedicated measurement for the /:slug/new experience. Never mirrors legacy analytics.
+import { FAN_ANALYTICS_EVENTS, FAN_ANALYTICS_SCHEMA_VERSION, sanitizeFanAnalyticsMetadata } from './fanAnalytics.js';
+
+// Dedicated measurement for /:slug/new. Optional PostHog mirroring happens once at observation time.
 const SESSION_KEY = 'arenaboostx:report-session:v1';
 const MAX_QUEUE = 120;
 const BATCH_SIZE = 20;
@@ -31,15 +33,19 @@ export function createReportSignalSender({ apiClient, resolveApiUrl, fetch: fetc
   };
 }
 
-export function createEventReportTelemetry({ eventId, send, identity = () => ({}), window: win = globalThis.window, document: doc = globalThis.document, now = Date.now, id = randomId } = {}) {
+export function createEventReportTelemetry({ eventId, send, identity = () => ({}), context = () => ({}), mirror = () => {}, canPersistVisits = () => false, window: win = globalThis.window, document: doc = globalThis.document, now = Date.now, id = randomId } = {}) {
   if (!Number.isInteger(eventId) || eventId <= 0 || typeof send !== 'function') {
-    return { record() {}, start() {}, observeSponsor() {}, stop() {}, flush: async () => {} };
+    return { record() {}, start() {}, observeSponsor() {}, observeVisibility() {}, resetMirrorClock() {}, setMirrorConsent() {}, stop() {}, flush: async () => {} };
   }
+  function currentContext() { try { return context() || {}; } catch { return {}; } }
+  const organization = String(currentContext().organization_slug || '');
+  const sessionKey = `${SESSION_KEY}:${organization}:${eventId}`;
+  const visitsKey = `arenaboostx:report-visits:v1:${organization}:${eventId}`;
   let sessionId = id();
   try {
-    const previous = JSON.parse(win?.sessionStorage?.getItem(SESSION_KEY) || 'null');
+    const previous = JSON.parse(win?.sessionStorage?.getItem(sessionKey) || 'null');
     if (previous?.id && now() - previous.last < 30 * 60000 && now() >= previous.last) sessionId = previous.id;
-    win?.sessionStorage?.setItem(SESSION_KEY, JSON.stringify({ id: sessionId, last: now() }));
+    win?.sessionStorage?.setItem(sessionKey, JSON.stringify({ id: sessionId, last: now() }));
   } catch { /* storage is optional */ }
   let queue = [];
   let timer;
@@ -53,8 +59,21 @@ export function createEventReportTelemetry({ eventId, send, identity = () => ({}
   let lastActivity = now();
   let lastTick = now();
   let wasVisible = doc?.visibilityState !== 'hidden';
+  let visitStartedAt = now();
+  let activeSeconds = 0;
+  let visibleMs = 0;
+  let visibleStartedAt = wasVisible ? now() : null;
+  let leaveRecorded = false;
+  let visitCount = 0;
+  let persistentVisitRecorded = false;
+  let externalVisitRecorded = false;
+  let mirrorEnabled = true;
+  let mirrorStartedAt = now();
+  let mirrorActiveSeconds = 0;
+  let mirrorVisibleMs = 0;
+  let mirrorVisibleStartedAt = wasVisible ? now() : null;
   const sponsorObservers = new Map();
-  const sponsorStorageKey = `arenaboostx:report-views:${eventId}:${sessionId}`;
+  const sponsorStorageKey = `arenaboostx:report-views:${organization}:${eventId}:${sessionId}`;
   let measuredSponsors = new Set();
   try { measuredSponsors = new Set(JSON.parse(win?.sessionStorage?.getItem(sponsorStorageKey) || '[]').slice(0, 100)); } catch { /* optional */ }
 
@@ -64,14 +83,77 @@ export function createEventReportTelemetry({ eventId, send, identity = () => ({}
   }
 
   function record(name, metadata = {}) {
-    if (stopped) return;
+    if (stopped || !FAN_ANALYTICS_EVENTS.has(name)) return;
+    const snapshot = currentContext();
+    const event = { id: id(), name, session_id: sessionId, occurred_at: new Date(now()).toISOString(), metadata: sanitizeFanAnalyticsMetadata({ ...snapshot, ...metadata, schema_version: FAN_ANALYTICS_SCHEMA_VERSION }) };
+    // Only the external copy uses the current consent window. Internal report timing stays intact.
+    const mirroredEvent = mirrorEvent(event);
+    if (mirroredEvent) {
+      // The external mirror must not receive credentials and must never run during retries.
+      try { mirror(mirroredEvent, snapshot); } catch { /* Analytics must never interrupt the fan flow. */ }
+    }
     // Capture credentials at observation time: login cannot reattribute a queued guest batch.
     let credentials = {};
-    try { credentials = { ...identity() }; } catch { return; }
-    queue.push({ event: { id: id(), name, session_id: sessionId, occurred_at: new Date(now()).toISOString(), metadata }, credentials });
+    try { credentials = { ...identity() }; } catch { return event; }
+    queue.push({ event, credentials });
     if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
-    try { win?.sessionStorage?.setItem(SESSION_KEY, JSON.stringify({ id: sessionId, last: now() })); } catch { /* optional */ }
+    try { win?.sessionStorage?.setItem(sessionKey, JSON.stringify({ id: sessionId, last: now() })); } catch { /* optional */ }
     if (queue.length >= BATCH_SIZE) void flush(); else schedule();
+    return event;
+  }
+
+  function mirrorOnly(name, metadata = {}) {
+    const snapshot = currentContext();
+    const event = { id: id(), name, session_id: sessionId, occurred_at: new Date(now()).toISOString(), metadata: sanitizeFanAnalyticsMetadata({ ...snapshot, ...metadata, schema_version: FAN_ANALYTICS_SCHEMA_VERSION }) };
+    const external = mirrorEvent(event);
+    if (external) { try { mirror(external, snapshot); } catch { /* optional analytics */ } }
+  }
+
+  // A new consent window is an external baseline, not a second internal page view.
+  function setMirrorConsent(enabled, metadata = {}) {
+    resetMirrorClock(enabled);
+    if (!mirrorEnabled || !started || stopped || externalVisitRecorded) return;
+    let persist = false;
+    try { persist = canPersistVisits(); } catch { /* optional storage */ }
+    if (persist && !persistentVisitRecorded) {
+      let storage;
+      try { storage = win?.localStorage; } catch { /* optional persistence */ }
+      visitCount = nextVisitCount(storage);
+      persistentVisitRecorded = true;
+    }
+    mirrorOnly('visit_started', { visit_count: visitCount, phase: 'active' });
+    if (visitCount > 1) mirrorOnly('visit_returned', { visit_count: visitCount });
+    mirrorOnly('page_view', metadata);
+    externalVisitRecorded = true;
+  }
+
+  function resetMirrorClock(enabled = true) {
+    mirrorEnabled = enabled === true;
+    mirrorStartedAt = now();
+    mirrorActiveSeconds = 0;
+    mirrorVisibleMs = 0;
+    mirrorVisibleStartedAt = mirrorEnabled && doc?.visibilityState !== 'hidden' ? now() : null;
+  }
+  function mirrorEvent(event) {
+    if (!mirrorEnabled) return null;
+    const metadata = { ...event.metadata };
+    const elapsed = Math.max(0, now() - mirrorStartedAt);
+    if (event.name === 'active_time') {
+      const end = Date.parse(metadata.ended_at);
+      const start = Math.max(Date.parse(metadata.started_at), mirrorStartedAt);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+      metadata.seconds = Math.min(15, (end - start) / 1000);
+      metadata.started_at = new Date(end - metadata.seconds * 1000).toISOString();
+      mirrorActiveSeconds += metadata.seconds;
+    }
+    for (const key of ['duration_ms', 'elapsed_ms', 'latency_ms', 'time_to_first_action_ms']) {
+      if (typeof metadata[key] === 'number') metadata[key] = Math.min(metadata[key], elapsed);
+    }
+    if (typeof metadata.active_seconds === 'number') metadata.active_seconds = mirrorActiveSeconds;
+    if (typeof metadata.visible_seconds === 'number') {
+      metadata.visible_seconds = (mirrorVisibleMs + (mirrorVisibleStartedAt === null ? 0 : Math.max(0, now() - mirrorVisibleStartedAt))) / 1000;
+    }
+    return { ...event, metadata };
   }
 
   async function flush({ keepalive = false } = {}) {
@@ -118,7 +200,10 @@ export function createEventReportTelemetry({ eventId, send, identity = () => ({}
     const visible = doc?.visibilityState !== 'hidden';
     const end = Math.min(time, lastActivity + IDLE_MS);
     const seconds = Math.min(15, Math.max(0, end - lastTick) / 1000);
-    if (wasVisible && seconds > 0) record('active_time', { seconds, started_at: new Date(end - seconds * 1000).toISOString(), ended_at: new Date(end).toISOString() });
+    if (wasVisible && seconds > 0) {
+      activeSeconds += seconds;
+      record('active_time', { seconds, started_at: new Date(end - seconds * 1000).toISOString(), ended_at: new Date(end).toISOString() });
+    }
     lastTick = time;
     wasVisible = visible;
   }
@@ -127,7 +212,10 @@ export function createEventReportTelemetry({ eventId, send, identity = () => ({}
     lastActivity = now();
   }
   function visibility() {
+    const previouslyVisible = wasVisible;
     tick();
+    updateVisibleClock();
+    if (previouslyVisible !== wasVisible) record(wasVisible ? 'page_visible' : 'page_hidden', visitMetadata());
     for (const observer of sponsorObservers.values()) observer.visibility();
     if (doc?.visibilityState === 'hidden') void flush();
   }
@@ -135,27 +223,84 @@ export function createEventReportTelemetry({ eventId, send, identity = () => ({}
     if (started || stopped) return;
     started = true;
     lastTick = now(); lastActivity = now(); wasVisible = doc?.visibilityState !== 'hidden';
+    visitStartedAt = now(); visibleStartedAt = wasVisible ? now() : null;
+    resetMirrorClock(mirrorEnabled);
+    recordVisit();
     record('page_view', metadata);
-    for (const name of ['pointerdown', 'keydown', 'touchstart', 'scroll']) win?.addEventListener(name, activity, { passive: true });
+    for (const name of ['pointerdown', 'keydown', 'touchstart', 'scroll']) win?.addEventListener(name, activity, { passive: true, capture: name === 'scroll' });
     doc?.addEventListener('visibilitychange', visibility);
     win?.addEventListener('pagehide', onPageHide);
+    win?.addEventListener('pageshow', onPageShow);
     heartbeat = win?.setInterval(tick, HEARTBEAT_MS);
   }
-  function onPageHide() { tick(); void flush({ keepalive: true }); }
+  function updateVisibleClock() {
+    if (visibleStartedAt !== null) visibleMs += Math.max(0, now() - visibleStartedAt);
+    visibleStartedAt = doc?.visibilityState !== 'hidden' ? now() : null;
+    if (mirrorVisibleStartedAt !== null) mirrorVisibleMs += Math.max(0, now() - mirrorVisibleStartedAt);
+    mirrorVisibleStartedAt = mirrorEnabled && doc?.visibilityState !== 'hidden' ? now() : null;
+  }
+  function visitMetadata() {
+    return { duration_ms: Math.max(0, now() - visitStartedAt), active_seconds: activeSeconds, visible_seconds: visibleMs / 1000 };
+  }
+  function nextVisitCount(storage) {
+    let count = 0;
+    try {
+      const previous = storage?.getItem(visitsKey);
+      if (previous != null) count = Math.max(0, Math.min(1e9 - 1, Number(previous) || 0));
+    } catch { /* optional */ }
+    count += 1;
+    try { storage?.setItem(visitsKey, String(count)); } catch { /* optional */ }
+    return count;
+  }
+  function recordVisit() {
+    let storage;
+    try { storage = win?.sessionStorage; } catch { /* optional storage */ }
+    persistentVisitRecorded = false;
+    try { if (canPersistVisits()) { storage = win?.localStorage; persistentVisitRecorded = true; } } catch { /* same-tab fallback */ }
+    visitCount = nextVisitCount(storage);
+    externalVisitRecorded = persistentVisitRecorded;
+    record('visit_started', { visit_count: visitCount });
+    if (visitCount > 1) record('visit_returned', { visit_count: visitCount });
+  }
+  function recordLeave() {
+    if (leaveRecorded || !started) return;
+    leaveRecorded = true;
+    record('page_leave', visitMetadata());
+  }
+  function onPageHide() {
+    tick(); updateVisibleClock(); recordLeave();
+    visibleStartedAt = null;
+    mirrorVisibleStartedAt = null;
+    wasVisible = false;
+    void flush({ keepalive: true });
+  }
+  function onPageShow(event) {
+    if (!event?.persisted || stopped) return;
+    leaveRecorded = false;
+    visitStartedAt = now(); visibleMs = 0; activeSeconds = 0;
+    lastTick = now(); lastActivity = now(); wasVisible = doc?.visibilityState !== 'hidden';
+    visibleStartedAt = wasVisible ? now() : null;
+    resetMirrorClock(mirrorEnabled);
+    recordVisit();
+  }
 
   function observeSponsor(element, metadata, signalName = 'sponsor_view') {
-    if (!element || stopped || !metadata?.sponsor_id || !win?.IntersectionObserver) return;
-    const key = `${signalName}:${metadata.sponsor_id}:${metadata.placement || 'home'}`;
+    if (!metadata?.sponsor_id) return;
+    return observeVisibility(element, signalName, metadata, { onceKey: `${signalName}:${metadata.sponsor_id}:${metadata.placement || 'home'}` });
+  }
+  function observeVisibility(element, signalName, metadata = {}, { onceKey } = {}) {
+    if (!element || stopped || !FAN_ANALYTICS_EVENTS.has(signalName) || !win?.IntersectionObserver) return;
+    const key = onceKey || `${signalName}:${metadata.cta || metadata.section || metadata.placement || 'home'}`;
     if (sponsorObservers.has(element)) return;
     let visible = false;
     let dwellTimer;
     function cancel() { if (dwellTimer) win.clearTimeout(dwellTimer); dwellTimer = undefined; }
     function check() {
-      if (!visible || doc?.visibilityState === 'hidden' || measuredSponsors.has(key)) { cancel(); return; }
+      if (!visible || doc?.visibilityState === 'hidden' || element.closest?.('[inert], [aria-hidden="true"]') || measuredSponsors.has(key)) { cancel(); return; }
       if (dwellTimer) return;
       dwellTimer = win.setTimeout(() => {
         dwellTimer = undefined;
-        if (!visible || doc?.visibilityState === 'hidden' || stopped || measuredSponsors.has(key)) return;
+        if (!visible || doc?.visibilityState === 'hidden' || element.closest?.('[inert], [aria-hidden="true"]') || stopped || measuredSponsors.has(key)) return;
         measuredSponsors.add(key);
         try { win.sessionStorage?.setItem(sponsorStorageKey, JSON.stringify([...measuredSponsors].slice(-100))); } catch { /* optional */ }
         record(signalName, metadata);
@@ -170,15 +315,16 @@ export function createEventReportTelemetry({ eventId, send, identity = () => ({}
   }
   function stop() {
     if (stopped) return;
-    if (started) tick();
+    if (started) { tick(); updateVisibleClock(); recordLeave(); }
     stopped = true;
-    for (const name of ['pointerdown', 'keydown', 'touchstart', 'scroll']) win?.removeEventListener(name, activity);
+    for (const name of ['pointerdown', 'keydown', 'touchstart', 'scroll']) win?.removeEventListener(name, activity, name === 'scroll');
     doc?.removeEventListener('visibilitychange', visibility);
     win?.removeEventListener('pagehide', onPageHide);
+    win?.removeEventListener('pageshow', onPageShow);
     if (heartbeat) win.clearInterval(heartbeat);
     for (const observer of sponsorObservers.values()) observer.stop();
     sponsorObservers.clear();
     void flush({ keepalive: true });
   }
-  return { record, start, observeSponsor, stop, flush };
+  return { record, start, observeSponsor, observeVisibility, resetMirrorClock, setMirrorConsent, stop, flush, session_id: sessionId };
 }

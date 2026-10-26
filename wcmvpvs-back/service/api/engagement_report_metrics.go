@@ -180,6 +180,7 @@ func reportMetricIdentityResolver(signals []reportSignal) func(reportSignal) str
 // operational evidence. A successful action proves an observed participant; it
 // never manufactures an eligible audience without an availability observation.
 func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (map[string]*float64, reportDetails, string) {
+	signals, previous = reportMetricSignals(signals), reportMetricSignals(previous)
 	facts := map[string]*float64{}
 	for _, key := range engagementReportFactKeys {
 		facts[key] = nil

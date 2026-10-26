@@ -122,7 +122,7 @@ const props = defineProps({
   onSubmit: { type: Function, default: null },
   onLogin: { type: Function, default: null },
 });
-const emit = defineEmits(['update:modelValue', 'dismissed', 'completed']);
+const emit = defineEmits(['update:modelValue', 'dismissed', 'completed', 'telemetry']);
 const stage = ref('prompt');
 const authMode = ref('register');
 const loading = ref(false);
@@ -150,6 +150,16 @@ let resendTimer;
 let nicknameRevision = 0;
 let sessionRevision = 0;
 let returnFocus;
+let flowStartedAt = Date.now();
+let dismissalReported = false;
+function telemetry(name, metadata = {}) {
+  emit('telemetry', { name, metadata: { mode: authMode.value, count: stepNumber.value, ...metadata } });
+}
+function authStep(outcome) { telemetry('registration_step', { outcome }); }
+function authFailure(code = '', startedAt = Date.now()) {
+  const reason = ({ INVALID_PHONE: 'validation', RATE_LIMITED: 'rate_limited', PHONE_ALREADY_EXISTS: 'conflict', USER_NOT_FOUND: 'not_found', OTP_SEND_FAILED: 'request_failed', INVALID_OTP: 'otp_invalid', OTP_CHECK_FAILED: 'request_failed', PHONE_VERIFICATION_REQUIRED: 'otp_expired', REGISTRATION_INCOMPLETE: 'registration_required', NICKNAME_TAKEN: 'conflict', AGE_ELIGIBILITY_REQUIRED: 'validation', TERMS_REQUIRED: 'validation', LEGAL_VERSION_CHANGED: 'session_expired', NETWORK: 'network', VALIDATION: 'validation' })[code] || 'save_failed';
+  telemetry(authMode.value === 'login' ? 'login_failed' : 'registration_failed', { reason, outcome: 'failure', latency_ms: Math.min(86400000, Math.max(0, Date.now() - startedAt)) });
+}
 const nationalPhone = computed(() => String(form.phone || '').replace(/[\s()-]/g, ''));
 const isPhoneValid = computed(() => /^\d{8,15}$/.test(nationalPhone.value));
 const e164Phone = computed(() => `+39${nationalPhone.value}`);
@@ -255,24 +265,26 @@ function reset() {
   activeLegalDocument.value = '';
   errorMessage.value = ''; phoneVerified.value = false; phoneAlreadyExists.value = false;
   savedCoins.value = 0; otpCode.value = ''; otpNotice.value = ''; resendSeconds.value = 0;
+  flowStartedAt = Date.now(); dismissalReported = false;
 }
 onBeforeUnmount(() => { ++sessionRevision; ++nicknameRevision; clearTimeout(nicknameTimer); clearInterval(resendTimer); returnFocus?.focus?.(); });
-function startForm() { authMode.value = 'register'; stage.value = 'step1'; if (form.nickname) checkNickname(); }
-function startLogin() { authMode.value = 'login'; phoneVerified.value = false; errorMessage.value = ''; stage.value = 'login'; }
-function goPrompt() { stage.value = 'prompt'; }
+function startForm() { authMode.value = 'register'; stage.value = 'step1'; flowStartedAt = Date.now(); authStep('started'); if (form.nickname) checkNickname(); }
+function startLogin() { authMode.value = 'login'; phoneVerified.value = false; errorMessage.value = ''; stage.value = 'login'; flowStartedAt = Date.now(); telemetry('login_started', { outcome: 'started' }); }
+function goPrompt() { authStep('back'); stage.value = 'prompt'; }
 async function goStep2() {
   if (loading.value) return;
-  if (!form.ageEligibilityDeclared) { errorMessage.value = 'Per registrarti devi dichiarare di avere almeno 14 anni.'; return; }
+  if (!form.ageEligibilityDeclared) { errorMessage.value = 'Per registrarti devi dichiarare di avere almeno 14 anni.'; authFailure('VALIDATION'); return; }
   const revision = sessionRevision;
   loading.value = true;
   const available = await checkNickname();
   if (revision !== sessionRevision) return;
   loading.value = false;
-  if (available) stage.value = 'step2';
+  if (available) { stage.value = 'step2'; authStep('advanced'); }
+  else authFailure(nicknameStatus.value === 'error' ? '' : 'VALIDATION');
 }
-function closeAsLater() { if (loading.value) return; if (stage.value === 'success') { closeSuccess(); return; } emit('dismissed', props.trigger); emit('update:modelValue', false); }
+function closeAsLater() { if (loading.value) return; if (stage.value === 'success') { closeSuccess(); return; } if (!dismissalReported) { dismissalReported = true; telemetry('registration_dismissed', { reason: 'user_closed', duration_ms: Math.min(86400000, Math.max(0, Date.now() - flowStartedAt)) }); } emit('dismissed', props.trigger); emit('update:modelValue', false); }
 function closeSuccess() { emit('update:modelValue', false); emit('completed', authMode.value); }
-function editPhone() { phoneVerified.value = false; otpCode.value = ''; stage.value = authMode.value === 'login' ? 'login' : 'step2'; }
+function editPhone() { authStep('back'); phoneVerified.value = false; otpCode.value = ''; stage.value = authMode.value === 'login' ? 'login' : 'step2'; }
 function mapOtpError(code) {
   const registrationErrors = { AGE_ELIGIBILITY_REQUIRED: 'Per registrarti devi dichiarare di avere almeno 14 anni.', TERMS_REQUIRED: 'Accetta i Termini del servizio per creare il profilo.', LEGAL_VERSION_CHANGED: 'I documenti sono stati aggiornati. Ricarica la pagina e consulta i nuovi testi.', PHONE_VERIFICATION_REQUIRED: 'Verifica il numero con il codice SMS.' };
   if (registrationErrors[code]) return registrationErrors[code];
@@ -285,32 +297,38 @@ function startResendCountdown() {
 async function submit() {
   if (loading.value || !isPhoneValid.value || (authMode.value === 'register' && !hasRegistrationAcceptance.value)) return;
   if (phoneVerified.value && authMode.value === 'register') {
+    const revision = sessionRevision;
     loading.value = true;
-    try { await finishAuth(); } catch { errorMessage.value = 'Salvataggio non riuscito. Riprova.'; } finally { loading.value = false; }
+    try { await finishAuth(); } catch { if (revision === sessionRevision) { authFailure('NETWORK'); errorMessage.value = 'Salvataggio non riuscito. Riprova.'; } } finally { if (revision === sessionRevision) loading.value = false; }
   } else await sendOtp(false);
 }
 async function sendOtp(isResend = false) {
   if (loading.value || !isPhoneValid.value || (isResend && resendSeconds.value > 0)) return;
   if (authMode.value === 'register' && !hasRegistrationAcceptance.value) return;
   const revision = sessionRevision;
+  const requestStartedAt = Date.now();
   loading.value = true; errorMessage.value = ''; otpNotice.value = ''; phoneAlreadyExists.value = false;
   try {
     const response = isResend ? await resendPhoneAuth(e164Phone.value) : authMode.value === 'register' ? await startPhoneAuth(e164Phone.value, authMode.value, fanRegistrationAcceptance(form)) : await startPhoneAuth(e164Phone.value, authMode.value);
     if (revision !== sessionRevision) return;
-    if (!response.ok) { errorMessage.value = mapOtpError(response.code); phoneAlreadyExists.value = response.code === 'PHONE_ALREADY_EXISTS'; return; }
+    if (!response.ok) { authFailure(response.code, requestStartedAt); errorMessage.value = mapOtpError(response.code); phoneAlreadyExists.value = response.code === 'PHONE_ALREADY_EXISTS'; return; }
     if (!isResend) { otpCode.value = ''; stage.value = 'otp'; } else otpNotice.value = 'Un nuovo codice è stato inviato.';
     startResendCountdown();
-  } catch { if (revision === sessionRevision) errorMessage.value = 'Invio non riuscito. Controlla la connessione e riprova.'; }
+    authStep(isResend ? 'otp_resent' : 'otp_requested');
+  } catch { if (revision === sessionRevision) { authFailure('NETWORK', requestStartedAt); errorMessage.value = 'Invio non riuscito. Controlla la connessione e riprova.'; } }
   finally { if (revision === sessionRevision) loading.value = false; }
 }
 async function finishAuth() {
-  if (authMode.value === 'register' && !hasRegistrationAcceptance.value) { errorMessage.value = 'Conferma età e termini prima di creare il profilo.'; stage.value = 'step2'; return; }
+  if (authMode.value === 'register' && !hasRegistrationAcceptance.value) { authFailure('VALIDATION'); errorMessage.value = 'Conferma età e termini prima di creare il profilo.'; stage.value = 'step2'; return; }
   const revision = sessionRevision;
+  const requestStartedAt = Date.now();
+  authStep('details_submitted');
   const result = authMode.value === 'login'
     ? await props.onLogin?.({ phone: e164Phone.value, trigger: props.trigger })
     : await props.onSubmit?.({ nickname: form.nickname.trim(), phone: e164Phone.value, acceptedTerms: form.acceptedTerms, ageEligibilityDeclared: form.ageEligibilityDeclared, trigger: props.trigger });
   if (revision !== sessionRevision) return;
   if (!result || result.ok === false) {
+    authFailure(result?.code, requestStartedAt);
     if (result?.code === 'PHONE_VERIFICATION_REQUIRED') {
       phoneVerified.value = false; stage.value = 'step2';
       errorMessage.value = mapOtpError(result.code);
@@ -327,21 +345,24 @@ async function finishAuth() {
   }
   savedCoins.value = Math.max(0, Number(result.wallet ?? props.walletCoins) || 0);
   stage.value = 'success';
+  if (authMode.value === 'login') telemetry('login_completed', { outcome: 'success', duration_ms: Math.min(86400000, Math.max(0, Date.now() - flowStartedAt)) });
 }
 async function verifyOtpAndSubmit() {
   if (loading.value || !isOtpValid.value) return;
   if (authMode.value === 'register' && !hasRegistrationAcceptance.value) { stage.value = 'step2'; return; }
   const revision = sessionRevision;
+  const requestStartedAt = Date.now();
   loading.value = true; errorMessage.value = '';
   try {
     if (!phoneVerified.value) {
       const response = await verifyPhoneAuth(e164Phone.value, otpCode.value);
       if (revision !== sessionRevision) return;
-      if (!response.ok) { errorMessage.value = mapOtpError(response.code); return; }
+      if (!response.ok) { authFailure(response.code, requestStartedAt); errorMessage.value = mapOtpError(response.code); return; }
       phoneVerified.value = true;
+      authStep('otp_verified');
     }
     await finishAuth();
-  } catch { if (revision === sessionRevision) errorMessage.value = 'Connessione non riuscita. Riprova.'; }
+  } catch { if (revision === sessionRevision) { authFailure('NETWORK', requestStartedAt); errorMessage.value = 'Connessione non riuscita. Riprova.'; } }
   finally { if (revision === sessionRevision) loading.value = false; }
 }
 </script>

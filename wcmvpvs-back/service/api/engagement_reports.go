@@ -18,6 +18,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -143,34 +144,105 @@ func (rt *_router) reportEventScope(w http.ResponseWriter, r *http.Request, ctx 
 	return id, org, true
 }
 
-var reportSignalNames = map[string]bool{"page_view": true, "active_time": true, "vote_completed": true, "game_started": true, "game_completed": true, "registration_started": true, "registration_completed": true, "redemption_completed": true, "sponsor_view": true, "sponsor_click": true, "sponsored_game_view": true, "shop_view": true, "feedback_completed": true}
+// Diagnostic observations are stored beside the original report signals, but do
+// not expand the audience, timing or attribution of the existing report KPIs.
+var reportMetricSignalNames = reportStringSet("page_view active_time vote_completed game_started game_completed registration_started registration_completed redemption_completed sponsor_view sponsor_click sponsored_game_view shop_view feedback_completed")
+var reportSignalNames = reportStringSet("page_view active_time vote_completed game_started game_completed registration_started registration_completed redemption_completed sponsor_view sponsor_click sponsored_game_view shop_view feedback_completed home_loading_started home_ready home_load_failed visit_started visit_returned page_leave page_hidden page_visible section_opened section_closed cta_clicked cta_viewed vote_opened vote_player_selected vote_submitted vote_changed vote_failed game_opened game_closed game_abandoned game_reward_claimed game_reward_failed registration_dismissed registration_step registration_failed login_started login_completed login_failed shop_item_viewed redemption_started redemption_failed frame_equipped frame_equip_failed feedback_opened feedback_step feedback_dismissed feedback_failed lottery_shortcut_view lottery_shortcut_clicked lottery_qr_view leaderboard_loaded leaderboard_failed profile_loaded profile_failed profile_edit_started profile_updated profile_update_failed wallet_loaded wallet_failed vote_reward_claimed vote_reward_failed")
 
-func cleanReportMetadata(input map[string]interface{}) map[string]interface{} {
-	out := map[string]interface{}{}
-	for _, key := range []string{"game_id", "round_id", "name", "placement", "item_key", "experience", "perks_interest", "source", "started_at", "ended_at"} {
-		if value, ok := input[key].(string); ok && utf8.ValidString(value) {
-			out[key] = string([]rune(value)[:minReportInt(len([]rune(value)), 160)])
-		}
-	}
-	for _, key := range []string{"vote_available", "games_available", "feedback_available"} {
-		if value, ok := input[key].(bool); ok {
-			out[key] = value
-		}
-	}
-	if value, ok := input["sponsor_id"].(float64); ok && value > 0 && value <= 1e12 && value == math.Trunc(value) {
-		out["sponsor_id"] = value
-	}
-	if value, ok := input["seconds"].(float64); ok && value >= 0 && value <= 15 {
-		out["seconds"] = value
+func reportStringSet(values string) map[string]bool {
+	out := map[string]bool{}
+	for _, value := range strings.Fields(values) {
+		out[value] = true
 	}
 	return out
 }
 
-func minReportInt(a, b int) int {
-	if a < b {
-		return a
+func reportMetricSignals(signals []reportSignal) []reportSignal {
+	out := make([]reportSignal, 0, len(signals))
+	for _, signal := range signals {
+		if reportMetricSignalNames[signal.Name] {
+			out = append(out, signal)
+		}
 	}
-	return b
+	return out
+}
+
+var reportMetadataEnums = map[string]map[string]bool{
+	"section":        reportStringSet("home mvp vote-result earn wallet spend collectible leaderboard match-summary profile info"),
+	"from_section":   reportStringSet("home mvp vote-result earn wallet spend collectible leaderboard match-summary profile info"),
+	"placement":      reportStringSet("home_featured game_catalog home_grid topbar profile lottery_shortcut feedback_home profile_ticket info home_partner sponsor_rush_entry home game"),
+	"trigger":        reportStringSet("profile_overlay wallet spend_redeem after_vote leaderboard home shortcut cta manual profile shop mvp feedback lottery"),
+	"mode":           reportStringSet("singleplayer live register login"),
+	"source":         reportStringSet("arena remote unknown"),
+	"outcome":        reportStringSet("success failure win lose draw forfeit_win forfeit_lose completed abandoned selected advanced back skipped started otp_requested otp_resent otp_verified details_submitted"),
+	"reason":         reportStringSet("unknown network timeout server_error unavailable validation unauthorized forbidden not_found conflict insufficient_coins closed already_completed cancelled user_exit load_failed save_failed invalid_response registration_required otp_requested otp_invalid otp_expired rate_limited storage_unavailable not_ready request_failed not_allowed already_owned session_expired user_closed navigation"),
+	"phase":          reportStringSet("loading ready open closed active concluded request confirmed"),
+	"cta":            reportStringSet("mvp earn shop leaderboard profile wallet feedback lottery info collectible vote_bonus_retry"),
+	"game_id":        reportStringSet("reaction quiz tap tap-volley sponsor-rush memory-flash basketball playmaker crossover volley-rush setter-pro monster-block"),
+	"item_key":       reportStringSet("club_frame match_card"),
+	"experience":     reportStringSet("awesome good ok bad very_easy easy neutral difficult"),
+	"perks_interest": reportStringSet("yes maybe little no"),
+	"sport":          {"": true, "Calcio": true, "Pallacanestro": true, "Pallavolo": true},
+	"device_type":    reportStringSet("mobile tablet desktop unknown"),
+	"browser_family": reportStringSet("Chrome Edge Firefox Safari Other unknown"),
+}
+var reportRoundPattern = regexp.MustCompile(`^[A-Za-z0-9_:-]{8,128}$`)
+var reportAppVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]{1,30})?$`)
+
+func cleanReportMetadata(input map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{}
+	for key, allowed := range reportMetadataEnums {
+		if value, ok := input[key].(string); ok && allowed[value] {
+			out[key] = value
+		}
+	}
+	if value, ok := input["error_code"].(string); ok && reportMetadataEnums["reason"][value] {
+		out["error_code"] = value
+	}
+	for _, key := range []string{"vote_available", "games_available", "feedback_available", "registered", "has_voted", "is_concluded", "votes_closed", "is_change", "has_ticket", "success"} {
+		if value, ok := input[key].(bool); ok {
+			out[key] = value
+		}
+	}
+	for _, key := range []string{"sponsor_id", "player_id", "previous_player_id"} {
+		if value, ok := input[key].(float64); ok && value > 0 && value <= 1e12 && value == math.Trunc(value) {
+			out[key] = value
+		}
+	}
+	for _, bounds := range []struct {
+		keys string
+		max  float64
+	}{
+		{"score taps count amount coins coins_earned visit_count", 1e9},
+		{"duration_ms elapsed_ms latency_ms time_to_first_action_ms", 86400000},
+		{"seconds", 15}, {"active_seconds visible_seconds", 86400},
+	} {
+		for _, key := range strings.Fields(bounds.keys) {
+			if value, ok := input[key].(float64); ok && !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= bounds.max {
+				out[key] = value
+			}
+		}
+	}
+	if value, ok := input["status_code"].(float64); ok && value >= 100 && value <= 599 && value == math.Trunc(value) {
+		out["status_code"] = value
+	}
+	if value, ok := input["schema_version"].(float64); ok && value == 1 {
+		out["schema_version"] = value
+	}
+	if value, ok := input["round_id"].(string); ok && reportRoundPattern.MatchString(value) {
+		out["round_id"] = value
+	}
+	if value, ok := input["app_version"].(string); ok && reportAppVersionPattern.MatchString(value) {
+		out["app_version"] = value
+	}
+	for _, key := range []string{"started_at", "ended_at"} {
+		if value, ok := input[key].(string); ok && len(value) <= 35 {
+			if _, err := time.Parse(time.RFC3339Nano, value); err == nil {
+				out[key] = value
+			}
+		}
+	}
+	return out
 }
 
 func (rt *_router) recordReportSignals(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

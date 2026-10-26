@@ -77,7 +77,7 @@ test('failed save keeps the modal open and retains answers', async (t) => {
   assert.ok(state.errorMessage.value);
   assert.equal(state.answers.suggestion, 'Un suggerimento');
   assert.equal(state.isSubmitting.value, false);
-  assert.equal(events.length, 0);
+  assert.equal(events.filter(([name]) => name !== 'telemetry').length, 0);
   assert.equal(timers.length, 0);
 });
 
@@ -101,7 +101,7 @@ test('a late feedback acknowledgement cannot submit or close the next event', as
   props.eventId = 43;
   acknowledge({ ok: true });
   await new Promise(setImmediate);
-  assert.equal(events.length, 0);
+  assert.equal(events.filter(([name]) => name !== 'telemetry').length, 0);
   assert.equal(timers.length, 0);
 });
 
@@ -144,7 +144,7 @@ test('a failed feedback save retains report satisfaction without emitting a succ
   await new Promise(setImmediate);
   assert.equal(requests.length, 1);
   assert.equal(state.answers.report_experience, 'bad');
-  assert.equal(events.length, 0);
+  assert.equal(events.filter(([name]) => name !== 'telemetry').length, 0);
   assert.equal(timers.length, 0);
   assert.ok(state.errorMessage.value);
 });
@@ -154,4 +154,40 @@ test('the shared feedback modal keeps its original flow when report satisfaction
   t.after(() => scope.stop());
   assert.equal(state.normalizedSurvey.value.questions.length, 4);
   assert.equal(state.normalizedSurvey.value.questions.some(({ id }) => id === 'report_experience'), false);
+});
+
+test('feedback analytics records progress and failure without custom answers or suggestion text', async (t) => {
+  const { state, events, scope } = fixture({ ok: false });
+  t.after(() => scope.stop());
+  state.onContinue();
+  state.onSelectOption('very_easy');
+  state.goBack();
+  state.onContinue();
+  for (const value of ['high', 'yes', 'super_excited']) state.onSelectOption(value);
+  state.onContinue();
+  state.answers.suggestion = 'private@example.test';
+  state.skipOptional();
+  await new Promise(setImmediate);
+  const signals = events.filter(([name]) => name === 'telemetry').map(([, signal]) => signal);
+  assert.ok(signals.some(({ name, metadata }) => name === 'feedback_step' && metadata.outcome === 'back'));
+  assert.ok(signals.some(({ name, metadata }) => name === 'feedback_step' && metadata.outcome === 'skipped'));
+  assert.ok(signals.some(({ name, metadata }) => name === 'feedback_failed' && metadata.reason === 'save_failed'));
+  assert.equal(signals.some(({ name }) => name === 'feedback_completed'), false, 'the parent owns confirmed completion');
+  for (const value of ['private@example.test', 'very_easy', 'super_excited', 'suggestion']) assert.equal(JSON.stringify(signals).includes(value), false);
+  for (const { metadata } of signals) assert.ok(Object.keys(metadata).every((key) => ['count', 'outcome', 'reason', 'latency_ms'].includes(key)));
+});
+
+test('feedback dismissal is recorded once and delayed saves cannot measure the next event', async (t) => {
+  let acknowledge;
+  const { state, props, events, scope } = fixture(new Promise((resolve) => { acknowledge = resolve; }));
+  t.after(() => scope.stop());
+  state.close(); state.close();
+  assert.equal(events.filter(([, signal]) => signal?.name === 'feedback_dismissed').length, 1);
+  answerQuestions(state);
+  state.skipOptional();
+  const count = events.length;
+  props.eventId = 43;
+  acknowledge({ ok: false });
+  await new Promise(setImmediate);
+  assert.equal(events.length, count);
 });

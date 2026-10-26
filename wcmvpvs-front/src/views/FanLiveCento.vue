@@ -17,10 +17,10 @@
           <button ref="platformInfoTriggerRef" class="platform-info-button" type="button" aria-label="Informazioni e istruzioni" title="Come funziona ArenaBoostX" aria-haspopup="dialog" aria-controls="fan-platform-info" :aria-expanded="activeSheet === 'info'" @click="openPlatformInfo">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
           </button>
-          <button ref="walletEl" class="wallet" :class="{ 'wallet-pulse': walletPulse }" type="button" aria-label="Apri wallet e movimenti" @click="openSheet('wallet')">
+          <button ref="walletEl" class="wallet" :class="{ 'wallet-pulse': walletPulse }" type="button" aria-label="Apri wallet e movimenti" @click="openHomeAction('wallet')">
             <span class="coin"></span> <span>{{ totalCoins }}</span>
           </button>
-          <button class="profile-btn" type="button" :aria-label="isRegistered ? 'Profilo tifoso' : 'Accedi o crea il profilo tifoso'" @click="openProfile">
+          <button class="profile-btn" type="button" :aria-label="isRegistered ? 'Profilo tifoso' : 'Accedi o crea il profilo tifoso'" @click="openHomeAction('profile')">
             <FanAvatar v-if="isRegistered" :name="profileNickname" :framed="equippedFrame === 'club_frame'" :size="40" />
             <span v-else class="guest-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg></span>
           </button>
@@ -31,7 +31,7 @@
         <!-- Grid -->
         <div class="grid">
           <!-- MVP: sheet inline con giocatori reali + voto reale -->
-          <button class="tile tile-mvp" type="button" :disabled="!eventId" @click="showMatchSummary ? openSheet('match-summary') : openSheet('mvp')">
+          <button class="tile tile-mvp" type="button" :disabled="!eventId" @click="openHomeAction(showMatchSummary ? 'match-summary' : 'mvp')">
             <b>{{ hasVoted ? 'Il tuo MVP' : "Vota l'MVP del pubblico" }}</b>
             <p>{{ hasVoted ? 'Grazie per il voto!' : canVote ? 'Il tuo voto vale +10 monete' : 'In attesa della prossima votazione' }}</p>
             <div class="mvp-photo" :class="{ 'has-player': hasVoted }">
@@ -46,7 +46,7 @@
             <span class="btn-vote">{{ showMatchSummary ? 'Vedi il riepilogo' : hasVoted ? votedButtonLabel : canVote ? 'Vota ora' : 'Votazioni chiuse' }}</span>
           </button>
 
-          <button class="tile" type="button" @click="openSheet('earn')">
+          <button class="tile" type="button" @click="openHomeAction('earn')">
             <div class="tile-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" /></svg>
             </div>
@@ -56,7 +56,7 @@
             <span class="tile-cta">Gioca →</span>
           </button>
 
-          <button class="tile" type="button" @click="openSheet('spend')">
+          <button class="tile" type="button" @click="openHomeAction('spend')">
             <div class="tile-icon">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 7v13" /></svg>
             </div>
@@ -67,12 +67,12 @@
           </button>
         </div>
 
-        <button v-if="showLotteryShortcut" class="lottery-shortcut" type="button" :aria-label="`Apri il QR della lotteria, codice ${lotteryCode}`" @click="openLotteryTicket">
+        <button v-if="showLotteryShortcut" :ref="observeLotteryShortcut" class="lottery-shortcut" type="button" :aria-label="`Apri il QR della lotteria, codice ${lotteryCode}`" @click="openLotteryTicket">
           <span>Il tuo codice: <strong>{{ lotteryCode }}</strong></span>
           <span class="lottery-shortcut-action">Apri QR <span aria-hidden="true">→</span></span>
         </button>
 
-        <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" class="feedback-cta" type="button" @click="openFeedbackModal">
+        <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" :ref="observeFeedbackInvitation" class="feedback-cta" type="button" @click="openFeedbackModal">
           <span class="feedback-cta-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 3V11.5a10 10 0 0 1 20 0Z"/><path d="M7 10h8M7 14h5"/></svg>
           </span>
@@ -83,7 +83,7 @@
           </span>
           <span class="feedback-cta-action">Lascia un feedback <span aria-hidden="true">→</span></span>
         </button>
-        <button v-else-if="featuredMission" class="moment-card" type="button" @click="onMission(featuredMission)">
+        <button v-else-if="featuredMission" class="moment-card" type="button" @click="onMission(featuredMission, 'home_featured')">
           <span class="avatar" aria-hidden="true">{{ featuredMission.emoji }}</span>
           <span class="row-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
           <span class="moment-action"><span class="row-pts">+{{ featuredMission.pts }} <span class="coin" aria-hidden="true"></span></span><span class="tile-cta">Gioca →</span></span>
@@ -112,7 +112,7 @@
           <button v-if="journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare il bonus voto' }}</button>
         </section>
 
-        <button class="rank-link" type="button" @click="openLeaderboard">
+        <button class="rank-link" type="button" @click="openHomeAction('leaderboard')">
           <span class="rank-link-icon" aria-hidden="true">🏆</span>
           <span><b>Classifica tifosi</b><small>{{ leaderboardUser ? `Sei al ${leaderboardUser.rank}° posto · ${leaderboardUser.points} punti` : 'Scopri i tifosi più attivi del club' }}</small></span>
           <span class="tile-cta" aria-hidden="true">→</span>
@@ -137,6 +137,7 @@
             </button>
           </div>
         </section>
+        <FanAnalyticsPreferences :theme-style="themeStyle" :club-name="homeName" @changed="onAnalyticsConsentChanged" />
       </main>
 
       <!-- Overlay condiviso dai pannelli della home -->
@@ -459,7 +460,7 @@
           </FanCollectionPanel>
           <button v-if="walletError" type="button" class="journey-next" :disabled="shopBusy" @click="loadWallet">Riprova a caricare la collezione</button>
 
-          <section v-if="showLotteryTicket" ref="lotteryTicketEl" class="lottery-box" aria-label="Biglietto lotteria MVP" tabindex="-1">
+          <section v-if="showLotteryTicket" :ref="bindLotteryTicket" class="lottery-box" aria-label="Biglietto lotteria MVP" tabindex="-1">
             <h3 class="lottery-title">QR Lotteria MVP</h3>
             <div class="lottery-code">{{ lotteryCode }}</div>
             <img v-if="lotteryQrUrl" :src="lotteryQrUrl" alt="QR lotteria" class="lottery-qr" />
@@ -602,8 +603,9 @@
       :report-experience-enabled="true"
       :theme-style="themeStyle"
       @submitted="handleFeedbackSubmitted"
+      @telemetry="onFormTelemetry"
     />
-    <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" :trigger="registrationTrigger" :reward-label="registrationRewardLabel" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" @completed="completeRegistration" @dismissed="dismissRegistration" />
+    <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" :trigger="registrationTrigger" :reward-label="registrationRewardLabel" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" @completed="completeRegistration" @dismissed="dismissRegistration" @telemetry="onFormTelemetry" />
   </div>
 </template>
 
@@ -613,6 +615,9 @@ import { normalizeOrganizationColors, organizationThemeStyle } from '../organiza
 import { preloadFanHomeImages } from '../fanHomeAssets';
 import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
 import { createEventReportTelemetry, createReportSignalSender, reportSource } from '../eventReportTelemetry';
+import { captureFanAnalytics, isFanAnalyticsAllowed, prepareFanAnalytics } from '../lib/posthog';
+import { sanitizeFanAnalyticsMetadata } from '../fanAnalytics';
+import FanAnalyticsPreferences from '../components/FanAnalyticsPreferences.vue';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
 import FanMvpRoster from '../components/FanMvpRoster.vue';
@@ -656,6 +661,8 @@ import {
 const FAN_NICKNAME_MIN_LEN = 3;
 const FAN_NICKNAME_MAX_LEN = 24;
 const FAN_NICKNAME_PATTERN = /^[A-Za-z0-9._ -]+$/;
+
+prepareFanAnalytics();
 
 const props = defineProps({
   initialDataReady: { type: Boolean, default: true },
@@ -933,10 +940,12 @@ function dismissRegistration() {
 }
 async function registerJourneyFan(form) {
   const scope = walletScope();
+  const registrationStartedAt = Date.now();
+  const trigger = registrationTrigger.value;
   const response = await registerFanProfile({ event_id: props.eventId, nickname: form.nickname, phone: form.phone, ...fanRegistrationAcceptance(form), guest_coins: totalCoins.value });
   if (isDisposed || scope !== walletScope()) return { ok: false };
   if (!response.ok) return response;
-  reportTelemetry?.record('registration_completed');
+  recordFanEvent('registration_completed', { trigger, duration_ms: Math.max(0, Date.now() - registrationStartedAt) });
   isRegistered.value = true;
   fanNickname.value = String(response.data?.user?.nickname || form.nickname || '').trim();
   setCoins(Number(response.data?.wallet ?? totalCoins.value));
@@ -1070,8 +1079,10 @@ watch(() => props.eventId, (eventId) => {
 }, { immediate: true });
 function openFeedbackModal() {
   if (!hasFeedbackSurvey.value || hasSubmittedFeedback.value) return;
+  recordFanEvent('cta_clicked', { cta: 'feedback', placement: 'feedback_home' });
   closeSheets();
   isFeedbackModalOpen.value = true;
+  recordFanEvent('feedback_opened', { trigger: 'feedback' });
 }
 function handleFeedbackSubmitted(answers = {}) {
   reportTelemetry?.record('feedback_completed', { experience: answers.report_experience, perks_interest: answers.perks_interest });
@@ -1205,7 +1216,9 @@ function openSheet(id) {
   }
   sheetRevision += 1;
   if (id !== 'vote-result') cancelVotePresentation();
+  recordSectionChange(id);
   activeSheet.value = id;
+  if (id === 'mvp') recordFanEvent('vote_opened', { is_change: hasVoted.value });
   if (id === 'spend') reportTelemetry?.record('shop_view');
   if (['wallet', 'spend', 'profile'].includes(id)) return loadWallet();
 }
@@ -1213,10 +1226,12 @@ function closeSheets() {
   const wasPlatformInfo = activeSheet.value === 'info';
   sheetRevision += 1;
   cancelVotePresentation();
+  recordSectionChange('home');
   activeSheet.value = '';
   if (wasPlatformInfo) platformInfoTriggerRef.value?.focus({ preventScroll: true });
 }
 async function openPlatformInfo() {
+  recordFanEvent('cta_clicked', { cta: 'info', placement: 'topbar' });
   openSheet('info');
   await nextTick();
   if (activeSheet.value === 'info') platformInfoRef.value?.focus({ preventScroll: true });
@@ -1243,12 +1258,16 @@ function showCollectible(item, { preview = false, reveal = false, origin = 'spen
 function previewCollectible(item) {
   if (shopBusy.value || !catalog.value.some((entry) => entry.key === item?.key)) return;
   const owned = collection.value.items.find((entry) => entry.key === item.key && (entry.kind === 'frame' || Number(entry.event_id) === props.eventId));
+  recordFanEvent('shop_item_viewed', { item_key: item.key, outcome: owned ? 'completed' : 'selected' });
   showCollectible(owned || { ...(item.kind === 'match_card' ? shopMatchMemory.value : {}), ...item }, { preview: !owned });
 }
 function inspectCollectible(memory) {
   if (shopBusy.value) return;
   const owned = collection.value.items.find((entry) => entry.key === memory?.key && Number(entry.event_id) === Number(memory?.event_id));
-  if (owned) showCollectible(owned, { origin: 'profile' });
+  if (owned) {
+    recordFanEvent('shop_item_viewed', { item_key: owned.key, placement: 'profile', outcome: 'completed' });
+    showCollectible(owned, { origin: 'profile' });
+  }
 }
 function closeCollectible() { openSheet(collectibleOrigin.value); }
 
@@ -1293,15 +1312,22 @@ async function loadWallet({ collectionOnly = false } = {}) {
   if (!props.eventId) { walletError.value = 'Disponibile con una partita del club.'; return; }
   const scope = walletScope();
   const revision = walletRevision;
+  const startedAt = Date.now();
   isLoadingWallet.value = true;
   walletError.value = '';
   try {
     const response = await fetchFanWallet(props.eventId);
     if (isDisposed || request !== walletRequestRevision || scope !== walletScope()) return;
     if (revision !== walletRevision) { loadWallet({ collectionOnly }); return; }
-    if (!response.ok || !applyWallet(response.data, !collectionOnly)) walletError.value = response.message || 'Impossibile caricare il wallet. Riprova.';
+    if (!response.ok || !applyWallet(response.data, !collectionOnly)) {
+      walletError.value = response.message || 'Impossibile caricare il wallet. Riprova.';
+      recordFanEvent('wallet_failed', { reason: analyticsFailureReason(response), duration_ms: Math.max(0, Date.now() - startedAt) });
+    } else recordFanEvent('wallet_loaded', { duration_ms: Math.max(0, Date.now() - startedAt) });
   } catch (error) {
-    if (!isDisposed && request === walletRequestRevision && scope === walletScope()) walletError.value = 'Impossibile caricare il wallet. Riprova.';
+    if (!isDisposed && request === walletRequestRevision && scope === walletScope()) {
+      walletError.value = 'Impossibile caricare il wallet. Riprova.';
+      recordFanEvent('wallet_failed', { reason: 'network' });
+    }
   } finally {
     if (request === walletRequestRevision) isLoadingWallet.value = false;
   }
@@ -1316,8 +1342,16 @@ async function loadFanProfile() {
   const eventId = props.eventId;
   const scope = walletScope();
   const revision = walletRevision;
-  const { ok, data } = await fetchFanProfile(eventId);
-  if (!ok || !data || isDisposed || scope !== walletScope()) return;
+  const startedAt = Date.now();
+  let response;
+  try { response = await fetchFanProfile(eventId); }
+  catch (error) {
+    if (!isDisposed && scope === walletScope()) recordFanEvent('profile_failed', { reason: 'network' });
+    throw error;
+  }
+  const { ok, data } = response;
+  if (isDisposed || scope !== walletScope()) return;
+  if (!ok || !data) { recordFanEvent('profile_failed', { reason: analyticsFailureReason(response) }); return; }
   isWalletReady.value = true;
   if (data.journey_rewards && typeof data.journey_rewards === 'object') {
     const rewards = revision === walletRevision ? {} : { ...journey.value.rewards };
@@ -1346,6 +1380,7 @@ async function loadFanProfile() {
   if (data.user_rank) {
     leaderboardUser.value = { ...data.user_rank, points: Number(data.user_rank.points ?? data.user_rank.coins ?? 0) };
   }
+  recordFanEvent('profile_loaded', { registered: Boolean(data.registered), has_ticket: Boolean(data.lottery_ticket), duration_ms: Math.max(0, Date.now() - startedAt) });
   return data;
 }
 
@@ -1390,6 +1425,10 @@ async function retryVoteBonus() {
   if (!journey.value.pendingVoteBonus) return;
   const scope = walletScope();
   const result = await grantCoins(VOTE_REWARD, 'vote');
+  if (scope === walletScope()) {
+    if (!result.ok) recordFanEvent('vote_reward_failed', { reason: 'save_failed' });
+    else if (result.coins > 0) recordFanEvent('vote_reward_claimed', { amount: result.coins, outcome: 'success' });
+  }
   if (isDisposed || scope !== walletScope()) return;
   if (result.ok) {
     journey.value.pendingVoteBonus = false;
@@ -1422,7 +1461,8 @@ function markDone(key) {
   }
 }
 
-function onMission(mission) {
+function onMission(mission, placement = 'game_catalog') {
+  recordFanEvent('cta_clicked', { cta: mission.opensMvp ? 'mvp' : 'earn', game_id: mission.game, placement });
   // "Vota l'MVP" apre la lista giocatori; le monete arrivano col voto reale.
   if (mission.opensMvp) {
     openSheet('mvp');
@@ -1441,11 +1481,14 @@ function openGame(id) {
   activeGameRoundId.value = newMinigameRoundId();
   closeSheets();
   activeGameId.value = id;
+  analyticsGameOpenedAt = Date.now();
+  recordFanEvent('game_opened', { game_id: id });
 }
-function closeGame() {
+function closeGame(reason = 'user_closed') {
   if (isSavingCoins.value || isBasketballSaving.value || isPlaymakerSaving.value || isCrossoverSaving.value || isVolleyballSaving.value) return;
   const wasVolleyball = volleyballGameIds.includes(activeGameId.value);
   const wasGame = Boolean(activeGameId.value);
+  if (wasGame) recordGameExit(typeof reason === 'string' ? reason : 'user_closed');
   activeGameId.value = null;
   if (wasGame) {
     openSheet('earn'); // torna alla lista giochi
@@ -1470,6 +1513,7 @@ function applyLiveGameCredit(key, receipt, totalField) {
   const wallet = Number(receipt.wallet);
   const earned = Number(receipt[totalField]);
   if (!Number.isInteger(wallet) || wallet < 0 || !Number.isInteger(earned) || earned < 0) return;
+  const previousEarned = journey.value.rewards[key] || 0;
   setCoins(wallet);
   isWalletReady.value = true;
   journey.value = normalizeJourney({ ...journey.value, rewards: {
@@ -1477,12 +1521,18 @@ function applyLiveGameCredit(key, receipt, totalField) {
   } });
   saveJourney();
   if (earned > 0) markDone(key);
-  if (Number(receipt.coins_earned) > 0) { animateEarnedCoins(); refreshLeaderboard(); }
+  if (Number(receipt.coins_earned) > 0) {
+    if (earned > previousEarned) recordFanEvent('game_reward_claimed', { game_id: key, amount: Number(receipt.coins_earned), outcome: 'success' });
+    animateEarnedCoins(); refreshLeaderboard();
+  }
 }
 // Ogni gioco emette @claim { coins, keepOpen } al termine.
 async function onGameClaim(payload) {
   if (!activeGameId.value || isSavingCoins.value) return;
   const key = activeGameId.value;
+  const scope = walletScope();
+  const launchRound = activeGameRoundId.value;
+  const isCurrentClaim = () => !isDisposed && scope === walletScope() && key === activeGameId.value && launchRound === activeGameRoundId.value;
   const roundId = payload?.roundId || activeGameRoundId.value;
   pendingGameClaim.value = { ...payload, roundId };
   const coins = key === 'quiz' ? QUIZ_REWARD : Math.max(0, Number(payload?.coins) || 0);
@@ -1492,16 +1542,19 @@ async function onGameClaim(payload) {
     const previousEarned = journey.value.rewards[key] || 0;
     isWalletReady.value = false;
     await loadFanProfile();
-    if (!isWalletReady.value) { coinError.value = 'Risultato salvato. Riprova a caricare il saldo.'; return; }
+    if (!isCurrentClaim()) return;
+    if (!isWalletReady.value) { coinError.value = 'Risultato salvato. Riprova a caricare il saldo.'; recordFanEvent('game_reward_failed', { game_id: key, round_id: roundId, reason: 'load_failed' }); return; }
     earned = Math.max(0, (journey.value.rewards[key] || 0) - previousEarned);
   } else if (coins) {
     const result = await grantCoins(coins, key, roundId);
-    if (!result.ok) return;
+    if (!isCurrentClaim()) return;
+    if (!result.ok) { recordFanEvent('game_reward_failed', { game_id: key, round_id: roundId, reason: 'save_failed' }); return; }
     earned = result.coins;
   }
   pendingGameClaim.value = null;
+  if (earned > 0) recordFanEvent('game_reward_claimed', { game_id: key, round_id: roundId, amount: earned, outcome: 'success', mode: payload?.keepOpen ? 'live' : 'singleplayer' });
   if (!payload?.keepOpen) {
-    closeGame();
+    closeGame('completed');
     if (earned) {
       celebrationKind.value = key;
       celebrationName.value = games[key].title;
@@ -1523,6 +1576,7 @@ async function loadPlayers() {
     rawPlayers.value = Array.isArray(payload) ? payload : [];
   } catch (error) {
     playersError.value = 'Impossibile caricare i giocatori. Riprova.';
+    recordFanEvent('home_load_failed', { section: 'mvp', reason: 'load_failed' });
     rawPlayers.value = [];
   } finally {
     isLoadingPlayers.value = false;
@@ -1553,18 +1607,25 @@ async function castVote(player) {
   const presentationRevision = sheetRevision;
   const firstVote = !hasVoted.value && !doneKeys.value.includes('vote');
   const eventId = props.eventId;
+  const startedAt = Date.now();
+  const previousPlayerId = votedPlayerId.value;
+  const isChange = hasVoted.value && String(previousPlayerId) !== String(player.id);
+  recordFanEvent('vote_player_selected', { player_id: Number(player.id), previous_player_id: Number(previousPlayerId) || undefined, is_change: isChange });
+  recordFanEvent('vote_submitted', { player_id: Number(player.id), is_change: isChange });
   try {
     const response = await vote({ eventId, playerId: player.id });
     if (isDisposed || request !== voteRequestRevision || scope !== walletScope()) return;
     if (!response?.ok) {
       voteError.value = response?.message || 'Il voto non è stato salvato. Controlla la connessione e riprova.';
+      recordFanEvent('vote_failed', { player_id: Number(player.id), is_change: isChange, reason: analyticsFailureReason(response), duration_ms: Math.max(0, Date.now() - startedAt) });
       return;
     }
     hasVoted.value = true;
     if (isRegistered.value && String(response.vote?.code || '').trim()) {
       fanLotteryTicket.value = { ticket_code: String(response.vote.code).trim(), qr_data: String(response.vote.qr_data || '').trim() };
     }
-    reportTelemetry?.record('vote_completed');
+    recordFanEvent('vote_completed', { player_id: Number(player.id), is_change: isChange, duration_ms: Math.max(0, Date.now() - startedAt) });
+    if (isChange) recordFanEvent('vote_changed', { player_id: Number(player.id), previous_player_id: Number(previousPlayerId) || undefined, is_change: true });
     votedPlayerId.value = player.id;
     pendingVotePlayerId.value = null;
     localVoted.value = { ...player };
@@ -1582,6 +1643,7 @@ async function castVote(player) {
   } catch (error) {
     if (isDisposed || request !== voteRequestRevision || scope !== walletScope()) return;
     voteError.value = 'Impossibile salvare il voto. Riprova tra poco.';
+    recordFanEvent('vote_failed', { player_id: Number(player.id), is_change: isChange, reason: 'network', duration_ms: Math.max(0, Date.now() - startedAt) });
   } finally {
     if (!isDisposed && request === voteRequestRevision && scope === walletScope()) {
       isVoting.value = false;
@@ -1631,8 +1693,12 @@ async function refreshLeaderboard() {
       });
     }
     leaderboardRows.value = [...positions.values()].sort((a, b) => a.rank - b.rank);
+    if (activeSheet.value === 'leaderboard') recordFanEvent('leaderboard_loaded', { count: leaderboardRows.value.length });
   } catch (error) {
-    if (!isDisposed && request === leaderboardRequestRevision && scope === walletScope()) leaderboardError.value = 'Impossibile caricare la classifica. Riapri il pannello per riprovare.';
+    if (!isDisposed && request === leaderboardRequestRevision && scope === walletScope()) {
+      leaderboardError.value = 'Impossibile caricare la classifica. Riapri il pannello per riprovare.';
+      recordFanEvent('leaderboard_failed', { reason: 'network' });
+    }
   } finally {
     if (request === leaderboardRequestRevision) isLoadingLeaderboard.value = false;
   }
@@ -1655,6 +1721,8 @@ function openProfile() {
 }
 async function openLotteryTicket() {
   if (!showLotteryShortcut.value) return;
+  recordFanEvent('lottery_shortcut_clicked', { placement: 'lottery_shortcut', has_ticket: true });
+  recordFanEvent('cta_clicked', { cta: 'lottery', placement: 'lottery_shortcut' });
   const scope = walletScope();
   const loading = openProfile();
   const revision = sheetRevision;
@@ -1670,6 +1738,7 @@ async function openLotteryTicket() {
 }
 function toggleNicknameEditor() {
   isNicknameEditorOpen.value = !isNicknameEditorOpen.value;
+  if (isNicknameEditorOpen.value) recordFanEvent('profile_edit_started', { section: 'profile' });
   if (!isNicknameEditorOpen.value) {
     nicknameError.value = '';
     nicknameSuccess.value = '';
@@ -1684,11 +1753,13 @@ function validateNickname(raw) {
   return { valid: true, nickname: n };
 }
 async function submitNickname() {
+  if (isSavingNickname.value) return;
   nicknameError.value = '';
   nicknameSuccess.value = '';
   const check = validateNickname(nicknameDraft.value);
   if (!check.valid) {
     nicknameError.value = check.message;
+    recordFanEvent('profile_update_failed', { reason: 'validation' });
     return;
   }
   if (check.nickname === fanNickname.value.trim()) {
@@ -1696,17 +1767,26 @@ async function submitNickname() {
     return;
   }
   isSavingNickname.value = true;
-  const response = await updateFanNickname(check.nickname);
-  isSavingNickname.value = false;
-  if (!response?.ok) {
-    nicknameError.value = response?.message || 'Impossibile aggiornare il nickname.';
-    return;
-  }
-  fanNickname.value = String(response.data?.user?.nickname || check.nickname).trim();
-  nicknameDraft.value = fanNickname.value;
-  nicknameSuccess.value = response.data?.message || 'Nickname aggiornato';
-  isNicknameEditorOpen.value = false;
-  refreshLeaderboard();
+  const scope = walletScope();
+  const request = ++analyticsNicknameRevision;
+  const isCurrent = () => !isDisposed && scope === walletScope() && request === analyticsNicknameRevision;
+  try {
+    const response = await updateFanNickname(check.nickname);
+    if (!isCurrent()) return;
+    if (!response?.ok) {
+      nicknameError.value = response?.message || 'Impossibile aggiornare il nickname.';
+      recordFanEvent('profile_update_failed', { reason: analyticsFailureReason(response) });
+      return;
+    }
+    fanNickname.value = String(response.data?.user?.nickname || check.nickname).trim();
+    nicknameDraft.value = fanNickname.value;
+    nicknameSuccess.value = response.data?.message || 'Nickname aggiornato';
+    isNicknameEditorOpen.value = false;
+    recordFanEvent('profile_updated', { outcome: 'success' });
+    refreshLeaderboard();
+  } catch {
+    if (isCurrent()) { nicknameError.value = 'Impossibile salvare il nickname. Riprova.'; recordFanEvent('profile_update_failed', { reason: 'network' }); }
+  } finally { if (isCurrent()) isSavingNickname.value = false; }
 }
 
 /* ---------- Sponsors ---------- */
@@ -1737,7 +1817,7 @@ async function loadSponsors() {
   }
 }
 function onSponsorClick(sponsor) {
-  if (sponsor?.linkUrl && /^https?:\/\//i.test(sponsor.linkUrl)) reportTelemetry?.record('sponsor_click', { sponsor_id: sponsor.id, name: sponsor.name });
+  if (sponsor?.linkUrl && /^https?:\/\//i.test(sponsor.linkUrl)) recordFanEvent('sponsor_click', { sponsor_id: sponsor.id, placement: 'home_partner' });
   if (props.eventId && sponsor?.id) {
     apiClient
       .post(`/events/${props.eventId}/sponsors/${sponsor.id}/click`, { at: new Date().toISOString() })
@@ -1751,9 +1831,13 @@ function onSponsorClick(sponsor) {
 /* ---------- Riscatto premi ---------- */
 async function redeem(reward) {
   if (shopBusy.value || !props.eventId || !reward || reward.owned) return;
-  if (!isRegistered.value) { openRegistration('spend_redeem', reward.title); return; }
-  if (isLoadingWallet.value || walletError.value || totalCoins.value < reward.cost) return;
+  if (!isRegistered.value) { recordFanEvent('redemption_failed', { item_key: reward.key, reason: 'registration_required' }); openRegistration('spend_redeem', reward.title); return; }
+  if (isLoadingWallet.value || walletError.value || totalCoins.value < reward.cost) {
+    recordFanEvent('redemption_failed', { item_key: reward.key, reason: totalCoins.value < reward.cost ? 'insufficient_coins' : 'not_ready' });
+    return;
+  }
   const scope = walletScope();
+  recordFanEvent('redemption_started', { item_key: reward.key, amount: reward.cost });
   let profileRequired = false;
   walletRequestRevision += 1;
   redeeming.value = reward.key;
@@ -1762,19 +1846,20 @@ async function redeem(reward) {
     const response = await purchaseFanItem(props.eventId, reward.key);
     if (isDisposed || scope !== walletScope()) return;
     if (!response.ok && (response.status === 401 || response.code === 'PROFILE_REQUIRED')) {
+      recordFanEvent('redemption_failed', { item_key: reward.key, reason: 'session_expired' });
       isRegistered.value = false;
       profileRequired = true;
       return;
     }
-    if (!response.ok || !applyWallet(response.data)) { walletError.value = response.message || 'Acquisto non confermato. Riprova: gli oggetti già ottenuti non vengono addebitati due volte.'; return; }
+    if (!response.ok || !applyWallet(response.data)) { walletError.value = response.message || 'Acquisto non confermato. Riprova: gli oggetti già ottenuti non vengono addebitati due volte.'; recordFanEvent('redemption_failed', { item_key: reward.key, reason: analyticsFailureReason(response) }); return; }
     walletError.value = '';
-    if (response.data.purchased !== false) reportTelemetry?.record('redemption_completed', { item_key: reward.key });
+    if (response.data.purchased !== false) recordFanEvent('redemption_completed', { item_key: reward.key, amount: reward.cost });
     shopMessage.value = response.data.purchased === false ? 'Questo oggetto è già nella tua collezione.' : `${reward.title} aggiunta alla tua collezione!`;
     const obtained = collection.value.items.find((item) => item.key === reward.key && (item.kind === 'frame' || Number(item.event_id) === props.eventId));
     if (obtained && ['spend', 'collectible'].includes(activeSheet.value)) showCollectible(obtained, { reveal: response.data.purchased !== false });
     refreshLeaderboard();
   } catch (error) {
-    if (!isDisposed && scope === walletScope()) walletError.value = 'Acquisto non confermato. Controlla la connessione e riprova.';
+    if (!isDisposed && scope === walletScope()) { walletError.value = 'Acquisto non confermato. Controlla la connessione e riprova.'; recordFanEvent('redemption_failed', { item_key: reward.key, reason: 'network' }); }
   } finally {
     if (!isDisposed && scope === walletScope()) {
       redeeming.value = '';
@@ -1791,10 +1876,10 @@ async function equipCollectionItem(key) {
   try {
     const response = await equipFanItem(props.eventId, key);
     if (isDisposed || scope !== walletScope()) return;
-    if (!response.ok || !applyWallet(response.data)) walletError.value = response.message || 'Impossibile aggiornare la cornice. Riprova.';
-    else refreshLeaderboard();
+    if (!response.ok || !applyWallet(response.data)) { walletError.value = response.message || 'Impossibile aggiornare la cornice. Riprova.'; recordFanEvent('frame_equip_failed', { item_key: 'club_frame', reason: analyticsFailureReason(response) }); }
+    else { recordFanEvent('frame_equipped', { item_key: 'club_frame', outcome: key ? 'selected' : 'back' }); refreshLeaderboard(); }
   } catch (error) {
-    if (!isDisposed && scope === walletScope()) walletError.value = 'Impossibile aggiornare la cornice. Riprova.';
+    if (!isDisposed && scope === walletScope()) { walletError.value = 'Impossibile aggiornare la cornice. Riprova.'; recordFanEvent('frame_equip_failed', { item_key: 'club_frame', reason: 'network' }); }
   } finally {
     if (scope === walletScope()) equipping.value = false;
   }
@@ -1838,13 +1923,69 @@ let reportTelemetry = null;
 let reportTelemetryScope = '';
 const reportRoundsStarted = new Set();
 const reportRoundsCompleted = new Set();
+const reportRoundTimes = new Map();
+const reportRoundsAbandoned = new Set();
+let analyticsSectionOpenedAt = Date.now();
+let analyticsGameOpenedAt = 0;
+let analyticsNicknameRevision = 0;
+function recordFanEvent(name, metadata = {}) {
+  try { reportTelemetry?.record(name, sanitizeFanAnalyticsMetadata(metadata)); } catch { /* Measurement must not interrupt the fan experience. */ }
+}
+function reportBrowserContext() {
+  const ua = String(window.navigator?.userAgent || '');
+  const width = Number(window.innerWidth);
+  return {
+    device_type: Number.isFinite(width) ? width < 768 ? 'mobile' : width < 1024 ? 'tablet' : 'desktop' : 'unknown',
+    browser_family: !ua ? 'unknown' : /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Other',
+  };
+}
+function onFormTelemetry(event) {
+  if (!['feedback_step', 'feedback_dismissed', 'feedback_failed', 'registration_step', 'registration_failed', 'registration_dismissed', 'login_started', 'login_completed', 'login_failed'].includes(event?.name)) return;
+  recordFanEvent(event.name, { ...sanitizeFanAnalyticsMetadata(event.metadata), trigger: event.name.startsWith('feedback_') ? 'feedback' : registrationTrigger.value });
+}
+function onAnalyticsConsentChanged(consent) {
+  reportTelemetry?.setMirrorConsent?.(consent === true && isFanAnalyticsAllowed(), reportPageAvailability());
+}
+function analyticsFailureReason(response) {
+  const status = Number(response?.status ?? response?.error?.response?.status);
+  return ({ 400: 'validation', 401: 'session_expired', 403: 'not_allowed', 404: 'not_found', 409: 'conflict', 429: 'rate_limited' })[status] || (status >= 500 ? 'server_error' : 'request_failed');
+}
+function recordSectionChange(next) {
+  const previous = activeSheet.value || 'home';
+  if (previous === next) return;
+  recordFanEvent('section_closed', { section: previous, duration_ms: Math.max(0, Date.now() - analyticsSectionOpenedAt) });
+  recordFanEvent('section_opened', { section: next, from_section: previous });
+  analyticsSectionOpenedAt = Date.now();
+}
+function openHomeAction(id) {
+  const cta = ({ spend: 'shop', 'match-summary': 'mvp' })[id] || id;
+  recordFanEvent('cta_clicked', { cta, placement: ['profile', 'wallet'].includes(id) ? 'topbar' : 'home_grid' });
+  if (id === 'profile') return openProfile();
+  if (id === 'leaderboard') return openLeaderboard();
+  return openSheet(id);
+}
+function recordGameExit(reason) {
+  const gameId = activeGameId.value;
+  if (!gameId) return;
+  if (reason !== 'completed') {
+    for (const [key, round] of reportRoundTimes) {
+      if (round.gameId !== gameId || reportRoundsCompleted.has(key) || reportRoundsAbandoned.has(key)) continue;
+      reportRoundsAbandoned.add(key);
+      recordFanEvent('game_abandoned', { game_id: gameId, round_id: round.roundId, mode: round.mode, duration_ms: Math.max(0, Date.now() - round.startedAt), reason });
+    }
+  }
+  recordFanEvent('game_closed', { game_id: gameId, duration_ms: Math.max(0, Date.now() - analyticsGameOpenedAt), outcome: reason === 'completed' ? 'completed' : 'abandoned', reason: reason === 'completed' ? undefined : reason });
+}
 function resetReportTelemetry() {
   const organizationSlug = props.organizationSlug;
+  const eventId = props.eventId;
   const scope = `${organizationSlug}:${props.eventId}`;
   if (scope === reportTelemetryScope && reportTelemetry) return;
   reportTelemetry?.stop();
   reportTelemetryScope = scope;
   reportRoundsStarted.clear(); reportRoundsCompleted.clear();
+  reportRoundTimes.clear(); reportRoundsAbandoned.clear();
+  analyticsSectionOpenedAt = Date.now();
   const deviceHeaders = getDeviceHeaders();
   reportTelemetry = props.eventId ? createEventReportTelemetry({
     eventId: props.eventId,
@@ -1854,12 +1995,32 @@ function resetReportTelemetry() {
       return { ...deviceHeaders, ...fanHeaders, 'X-Organization-Slug': organizationSlug };
     },
     send: createReportSignalSender({ apiClient, resolveApiUrl }),
+    context: () => ({
+      organization_slug: organizationSlug, ...reportBrowserContext(),
+      ...reportPageAvailability(), registered: isRegistered.value, has_voted: hasVoted.value,
+      votes_closed: eventState.value?.votes_closed === true, is_concluded: matchConcluded.value,
+      sport: organizationSport.value, section: activeSheet.value || 'home',
+      game_id: activeGameId.value || undefined, has_ticket: showLotteryShortcut.value,
+    }),
+    mirror: event => captureFanAnalytics(event, { organization_slug: organizationSlug, event_id: eventId }),
+    canPersistVisits: () => isFanAnalyticsAllowed(),
   }) : null;
+}
+function observeLotteryShortcut(element) {
+  reportTelemetry?.observeVisibility?.(element, 'lottery_shortcut_view', { placement: 'lottery_shortcut', has_ticket: true });
+}
+function observeFeedbackInvitation(element) {
+  reportTelemetry?.observeVisibility?.(element, 'cta_viewed', { cta: 'feedback', placement: 'feedback_home' });
+}
+function bindLotteryTicket(element) {
+  lotteryTicketEl.value = element;
+  reportTelemetry?.observeVisibility?.(element, 'lottery_qr_view', { placement: 'profile_ticket', has_ticket: true });
 }
 function observeReportSponsor(element, sponsor) {
   reportTelemetry?.observeSponsor(element, { sponsor_id: sponsor.id, name: sponsor.name, placement: 'home_partner' });
 }
 function observeReportMission(element, mission) {
+  reportTelemetry?.observeVisibility?.(element, 'cta_viewed', { cta: mission.opensMvp ? 'mvp' : 'earn', game_id: mission.game, placement: 'game_catalog' }, { onceKey: `game_catalog:${mission.key}` });
   const sponsor = sponsors.value[0];
   if (mission.key === 'sponsor-rush' && sponsor) reportTelemetry?.observeSponsor(element, { sponsor_id: sponsor.id, name: sponsor.name, placement: 'sponsor_rush_entry' }, 'sponsored_game_view');
 }
@@ -1871,7 +2032,13 @@ function reportGameRound(name, payload = {}) {
   const recorded = name === 'game_started' ? reportRoundsStarted : reportRoundsCompleted;
   if (recorded.has(key) || (name === 'game_completed' && !reportRoundsStarted.has(key))) return;
   recorded.add(key);
-  reportTelemetry?.record(name, { game_id: gameId, round_id: roundId, ...(payload.sponsorId ? { sponsor_id: payload.sponsorId, name: payload.sponsorName || '' } : {}) });
+  const mode = payload.mode === 'live' ? 'live' : 'singleplayer';
+  if (name === 'game_started') reportRoundTimes.set(key, { gameId, roundId, mode, startedAt: Date.now() });
+  const round = reportRoundTimes.get(key);
+  recordFanEvent(name, { game_id: gameId, round_id: roundId, mode: round?.mode || mode,
+    ...(name === 'game_completed' ? { duration_ms: Math.max(0, Date.now() - (round?.startedAt || Date.now())), score: payload.score, taps: payload.taps, success: payload.success } : {}),
+    ...(payload.sponsorId ? { sponsor_id: payload.sponsorId } : {}),
+  });
 }
 function onReportGameStarted(payload) { reportGameRound('game_started', payload); }
 function onReportGameCompleted(payload) { reportGameRound('game_completed', payload); }
@@ -1885,6 +2052,8 @@ watch([canVote, matchConcluded, hasFeedbackSurvey], () => {
 async function bootstrap() {
   resetReportTelemetry();
   const revision = ++bootstrapRevision;
+  const loadingStartedAt = Date.now();
+  recordFanEvent('home_loading_started', { phase: 'loading' });
   assetController?.abort();
   isHomeLoading.value = true;
   if (!props.initialDataReady) return;
@@ -1895,6 +2064,8 @@ async function bootstrap() {
     voteRequestRevision += 1;
     journeyRewardRevision += 1;
     isVoting.value = false;
+    analyticsNicknameRevision += 1;
+    isSavingNickname.value = false;
     pendingVotePlayerId.value = null;
     voteBonusCoins.value = 0;
     isSavingCoins.value = false;
@@ -1965,6 +2136,7 @@ async function bootstrap() {
   ], { signal });
   if (revision !== bootstrapRevision || signal.aborted) return;
   isHomeLoading.value = false;
+  recordFanEvent('home_ready', { phase: 'ready', duration_ms: Math.max(0, Date.now() - loadingStartedAt) });
   reportTelemetry?.start(reportPageAvailability());
   startCoinsStream();
   loadWallet({ collectionOnly: true });
@@ -1997,6 +2169,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (activeGameId.value) recordGameExit('navigation');
   reportTelemetry?.stop();
   isDisposed = true;
   voteRequestRevision += 1;

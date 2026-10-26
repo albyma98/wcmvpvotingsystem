@@ -54,7 +54,7 @@
           </div>
 
           <footer class="feedback-modal__footer">
-            <button v-if="step > 0" type="button" class="feedback-modal__back" :disabled="isSubmitting" @click="step -= 1">Indietro</button>
+            <button v-if="step > 0" type="button" class="feedback-modal__back" :disabled="isSubmitting" @click="goBack">Indietro</button>
             <div class="feedback-modal__actions">
               <button v-if="isOptionalStep" type="button" class="feedback-modal__skip" :disabled="isSubmitting" @click="skipOptional">Salta</button>
               <button type="button" class="feedback-modal__submit" :disabled="isSubmitting" @click="onContinue">
@@ -95,7 +95,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['update:modelValue', 'submitted']);
+const emit = defineEmits(['update:modelValue', 'submitted', 'telemetry']);
 
 const defaultSurvey = {
   questions: [
@@ -196,6 +196,17 @@ const step = ref(0);
 const isSubmitting = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
+let flowStartedAt = Date.now();
+let dismissed = false;
+function telemetry(name, metadata = {}) {
+  emit('telemetry', { name, metadata: { count: step.value + 1, ...metadata } });
+}
+function feedbackFailure(reason) { telemetry('feedback_failed', { reason, outcome: 'failure' }); }
+function goBack() {
+  if (isSubmitting.value || step.value <= 0) return;
+  telemetry('feedback_step', { outcome: 'back' });
+  step.value -= 1;
+}
 
 const hasOptionalStep = computed(() => Boolean(normalizedSurvey.value.suggestionPrompt));
 const activeQuestion = computed(() => {
@@ -215,6 +226,10 @@ const stepLabel = computed(() => {
 
 function close() {
   if (isSubmitting.value) return;
+  if (!dismissed && !successMessage.value) {
+    dismissed = true;
+    telemetry('feedback_dismissed', { reason: 'user_closed', duration_ms: Math.min(86400000, Math.max(0, Date.now() - flowStartedAt)) });
+  }
   emit('update:modelValue', false);
 }
 
@@ -235,6 +250,7 @@ function onSelectOption(value) {
   const question = activeQuestion.value;
   if (!question?.answerKey) return;
   answers[question.answerKey] = value;
+  telemetry('feedback_step', { outcome: 'selected' });
   errorMessage.value = '';
   if (step.value < normalizedSurvey.value.questions.length - 1) {
     step.value += 1;
@@ -248,15 +264,18 @@ function onContinue() {
     const question = activeQuestion.value;
     if (!question?.answerKey || !answers[question.answerKey]) {
       errorMessage.value = 'Rispondi per continuare.';
+      feedbackFailure('validation');
       return;
     }
 
     if (step.value < normalizedSurvey.value.questions.length - 1) {
+      telemetry('feedback_step', { outcome: 'advanced' });
       step.value += 1;
       return;
     }
 
     if (hasOptionalStep.value && step.value >= normalizedSurvey.value.questions.length - 1) {
+      telemetry('feedback_step', { outcome: 'advanced' });
       step.value = normalizedSurvey.value.questions.length;
       return;
     }
@@ -266,19 +285,24 @@ function onContinue() {
 }
 
 function skipOptional() {
+  if (isSubmitting.value) return;
+  telemetry('feedback_step', { outcome: 'skipped' });
   answers.suggestion = '';
   submit();
 }
 
 async function submit() {
+  if (isSubmitting.value) return;
   if (!props.eventId) {
     errorMessage.value = 'Evento non disponibile.';
+    feedbackFailure('unavailable');
     return;
   }
   const requiredKeys = props.reportExperienceEnabled ? [...mandatoryKeys, 'report_experience'] : mandatoryKeys;
   for (const key of requiredKeys) {
     if (!answers[key]) {
       errorMessage.value = 'Rispondi a tutte le domande prima di inviare.';
+      feedbackFailure('validation');
       return;
     }
   }
@@ -286,6 +310,8 @@ async function submit() {
   isSubmitting.value = true;
   errorMessage.value = '';
   const eventId = props.eventId;
+  const requestStartedAt = Date.now();
+  telemetry('feedback_step', { outcome: 'details_submitted' });
   const reportAnswers = { experience: answers.experience, perks_interest: answers.perks_interest };
   if (props.reportExperienceEnabled) reportAnswers.report_experience = answers.report_experience;
 
@@ -301,6 +327,7 @@ async function submit() {
 
     if (!result?.ok) {
       errorMessage.value = 'Non siamo riusciti a salvare il feedback. Riprova tra poco.';
+      feedbackFailure('save_failed');
       return;
     }
 
@@ -312,6 +339,8 @@ async function submit() {
       resetFlow();
     }, 550);
   } catch (error) {
+    if (eventId !== props.eventId) return;
+    telemetry('feedback_failed', { reason: 'network', outcome: 'failure', latency_ms: Math.min(86400000, Math.max(0, Date.now() - requestStartedAt)) });
     errorMessage.value = 'Non siamo riusciti a salvare il feedback. Riprova tra poco.';
   } finally {
     isSubmitting.value = false;
@@ -321,7 +350,10 @@ async function submit() {
 watch(
   () => props.modelValue,
   (isOpen) => {
-    if (!isOpen) {
+    if (isOpen) {
+      flowStartedAt = Date.now();
+      dismissed = false;
+    } else {
       resetFlow();
     }
   },

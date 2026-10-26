@@ -6,6 +6,7 @@ import "fmt"
 // back into engagement_report_signals. Both sources use the same event-local
 // identity and round keys, so one action is not counted twice.
 func calculateCombinedReportMetrics(signals, previous []reportSignal, operational, previousOperational reportOperationalData) (map[string]*float64, reportDetails, string) {
+	signals, previous = reportMetricSignals(signals), reportMetricSignals(previous)
 	all := append(append([]reportSignal{}, signals...), operational.Signals...)
 	prior := append(append([]reportSignal{}, previous...), previousOperational.Signals...)
 	facts, details, started := calculateReportMetrics(all, prior)
@@ -78,6 +79,7 @@ func calculateCombinedReportMetrics(signals, previous []reportSignal, operationa
 }
 
 func buildCombinedReportKPIs(facts map[string]*float64, details reportDetails, signals, previous []reportSignal, operational, previousOperational reportOperationalData) []reportKPI {
+	signals, previous = reportMetricSignals(signals), reportMetricSignals(previous)
 	kpis := buildReportKPIs(facts)
 	contains := func(items []reportSignal, names ...string) bool {
 		for _, item := range items {

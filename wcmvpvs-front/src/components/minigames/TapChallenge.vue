@@ -414,7 +414,7 @@ function onPrimaryAction() {
 }
 async function startGame() {
   roundId = newMinigameRoundId();
-  emit('round-started', { roundId });
+  emit('round-started', { roundId, mode: isLiveFlow.value ? 'live' : 'singleplayer' });
   stopTimer();
   stopBallMovement();
   errorMessage.value = '';
@@ -467,7 +467,7 @@ function onTap() {
 }
 async function finishGame() {
   if (status.value !== 'playing') return;
-  emit('round-completed', { roundId });
+  emit('round-completed', { roundId, mode: isLiveFlow.value ? 'live' : 'singleplayer', taps: tapCount.value });
   stopTimer();
   stopBallMovement();
   status.value = 'finished';

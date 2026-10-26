@@ -1,5 +1,5 @@
 // Bump together with database.FanLegalVersion whenever the published texts change.
-export const FAN_LEGAL_VERSION = '2026-10-21.1';
+export const FAN_LEGAL_VERSION = '2026-10-25.1';
 export const FAN_MINIMUM_AGE = 14;
 
 export function fanRegistrationAcceptance(form) {

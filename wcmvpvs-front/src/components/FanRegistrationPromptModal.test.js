@@ -234,3 +234,53 @@ test('an expired verification returns to the SMS step while retaining accepted t
   await state.submit();
   assert.equal(calls.starts.length, 2);
 });
+
+test('login telemetry measures confirmed OTP and authentication without private form data', async (t) => {
+  let verified = false;
+  const { state, events } = fixture(t, { verifyPhoneAuth: async () => verified ? { ok: true } : { ok: false, code: 'INVALID_OTP', message: 'private failure payload' } });
+  state.startLogin();
+  state.form.phone = '3331234567';
+  await flush();
+  await state.submit();
+  state.resendSeconds.value = 0;
+  await state.sendOtp(true);
+  state.otpCode.value = '123456';
+  await state.verifyOtpAndSubmit();
+  let signals = events.filter(([name]) => name === 'telemetry').map(([, signal]) => signal);
+  assert.equal(signals.some(({ name }) => name === 'login_completed'), false);
+  assert.ok(signals.some(({ name, metadata }) => name === 'login_failed' && metadata.reason === 'otp_invalid'));
+  verified = true;
+  await state.verifyOtpAndSubmit();
+  signals = events.filter(([name]) => name === 'telemetry').map(([, signal]) => signal);
+  assert.equal(signals.filter(({ name }) => name === 'login_completed').length, 1);
+  for (const outcome of ['otp_requested', 'otp_resent', 'otp_verified', 'details_submitted']) assert.ok(signals.some(({ metadata }) => metadata.outcome === outcome));
+  assert.equal(signals.some(({ name }) => name === 'registration_completed'), false);
+  for (const value of ['3331234567', '123456', 'private failure payload', 'phone', 'otpCode', 'nickname', 'acceptedTerms']) assert.equal(JSON.stringify(signals).includes(value), false);
+});
+
+test('registration telemetry excludes typed details and deduplicates dismissal', async (t) => {
+  const { state, events } = fixture(t);
+  state.startForm();
+  state.form.nickname = 'PrivateNickname';
+  await state.goStep2();
+  state.closeAsLater(); state.closeAsLater();
+  const signals = events.filter(([name]) => name === 'telemetry').map(([, signal]) => signal);
+  assert.ok(signals.some(({ name, metadata }) => name === 'registration_step' && metadata.outcome === 'advanced'));
+  assert.equal(signals.filter(({ name }) => name === 'registration_dismissed').length, 1);
+  assert.equal(JSON.stringify(signals).includes('PrivateNickname'), false);
+});
+
+test('late OTP responses cannot emit analytics for a different society', async (t) => {
+  let resolveOtp;
+  const { state, props, events } = fixture(t, { startPhoneAuth: () => new Promise((resolve) => { resolveOtp = resolve; }) });
+  state.startLogin();
+  state.form.phone = '3331234567';
+  await flush();
+  const request = state.submit();
+  props.organizationSlug = 'new-club';
+  await flush();
+  const count = events.length;
+  resolveOtp({ ok: true });
+  await request;
+  assert.equal(events.length, count);
+});

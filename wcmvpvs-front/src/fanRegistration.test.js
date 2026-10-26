@@ -25,7 +25,7 @@ test('registration never infers acceptance or gadget consent from a truthy value
   assert.equal('enter_lottery' in payload, false);
 });
 
-test('the new experience never initializes PostHog or creates an analytics device identifier', () => {
+test('the new experience never initializes PostHog or creates an analytics device identifier without analytics opt-in', () => {
   const source = readFileSync(new URL('./lib/posthog.js', import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '')
     .replaceAll('import.meta.env', '({ VITE_POSTHOG_KEY: "test" })');

@@ -9,6 +9,7 @@ import * as brand from '../organizationTheme.js';
 import * as assets from '../fanHomeAssets.js';
 import * as gameArtwork from '../fanGameArtwork.js';
 import * as registration from '../fanRegistration.js';
+import * as fanAnalytics from '../fanAnalytics.js';
 import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
@@ -30,6 +31,7 @@ const homeRender = new Function(...Object.keys(homeHelpers), homeRenderCode)(...
 function renderHome({ state, props }) {
   const app = Vue.createSSRApp({ setup: () => ({ ...Vue.proxyRefs(state), ...props }), ssrRender: homeRender });
   app.component('FanPlayerCard', { render: () => null });
+  app.component('FanAnalyticsPreferences', { render: () => null });
   return VueSSR.renderToString(app);
 }
 
@@ -324,6 +326,9 @@ function fixture(overrides = {}, options = {}) {
   const saves = [];
   const reportSignals = [];
   const reportContexts = [];
+  const posthogSignals = [];
+  const reportObservations = [];
+  const reportConsentChanges = [];
   let serverWallet = 0;
   const serverAwards = new Set();
   const window = testWindow(options.storage);
@@ -355,9 +360,17 @@ function fixture(overrides = {}, options = {}) {
     '../fanGameArtwork': gameArtwork,
     '../eventReportTelemetry': { createEventReportTelemetry: (configuration) => {
       reportContexts.push(configuration);
-      return { record(name, metadata) { reportSignals.push({ eventId: configuration.eventId, name, metadata }); }, start() {}, observeSponsor() {}, stop() {} };
+      return { record(name, metadata = {}) {
+        const event = { id: `signal-${reportSignals.length + 1}`, name, session_id: 'session-for-test', occurred_at: new Date().toISOString(), metadata: fanAnalytics.sanitizeFanAnalyticsMetadata({ ...configuration.context?.(), ...metadata }) };
+        reportSignals.push({ ...event, eventId: configuration.eventId });
+        configuration.mirror?.(event);
+        return event;
+      }, start() {}, setMirrorConsent(enabled, metadata) { reportConsentChanges.push({ enabled, metadata }); }, observeSponsor() {}, observeVisibility(element, name, metadata) { reportObservations.push({ element, name, metadata }); }, stop() {} };
     }, createReportSignalSender: () => async () => {}, reportSource: () => 'unknown' },
     '../fanRegistration': registration,
+    '../fanAnalytics': fanAnalytics,
+    '../lib/posthog': { captureFanAnalytics(event, context) { posthogSignals.push({ event, context }); }, isFanAnalyticsAllowed: () => options.analyticsAllowed === true, prepareFanAnalytics() {} },
+    '../components/FanAnalyticsPreferences.vue': {},
     '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
     '../components/FanMvpRoster.vue': {},
@@ -366,25 +379,37 @@ function fixture(overrides = {}, options = {}) {
     '../components/FanAvatar.vue': {},
     '../components/FanMatchCard.vue': {},
   }, { eventId: 42, organizationSlug: 'club', initialDataReady: true, activeEvent: { is_active: true, votes_closed: false }, ...options.props }, { window });
-  return { ...setup, saves, window, api, reportSignals, reportContexts };
+  return { ...setup, saves, window, api, reportSignals, reportContexts, posthogSignals, reportObservations, reportConsentChanges };
 }
+
+test('changing analytics consent never adds a second page view to the internal report', t => {
+  const { state, scope, reportSignals, reportConsentChanges } = fixture({}, { analyticsAllowed: true });
+  t.after(() => scope.stop());
+  state.resetReportTelemetry();
+  state.onAnalyticsConsentChanged(true);
+  state.onAnalyticsConsentChanged(false);
+  assert.deepEqual(reportConsentChanges.map(change => change.enabled), [true, false]);
+  assert.equal(reportSignals.length, 0);
+  assert.deepEqual(reportConsentChanges[0].metadata, state.reportPageAvailability());
+});
 
 test('report games count actual unique started and finished rounds, including zero-score losses and replay', (t) => {
   const { state, scope, reportSignals } = fixture();
   t.after(() => scope.stop());
   state.resetReportTelemetry();
   state.openGame('memory-flash');
-  assert.equal(reportSignals.length, 0, 'opening the intro is not a played round');
+  assert.equal(reportSignals.filter(({ name }) => name === 'game_started').length, 0, 'opening the intro is not a played round');
   state.onReportGameCompleted({ roundId: 'unstarted' });
-  state.onReportGameStarted({ roundId: 'loss-1' });
-  state.onReportGameStarted({ roundId: 'loss-1' });
-  state.onReportGameCompleted({ roundId: 'loss-1' });
-  state.onReportGameCompleted({ roundId: 'loss-1' });
-  state.onReportGameStarted({ roundId: 'loss-2' });
-  state.onReportGameCompleted({ roundId: 'loss-2' });
-  assert.deepEqual(reportSignals.map(({ name }) => name), ['game_started', 'game_completed', 'game_started', 'game_completed']);
-  assert.equal(reportSignals[1].metadata.round_id, 'loss-1');
-  assert.equal(reportSignals[1].metadata.game_id, 'memory-flash');
+  state.onReportGameStarted({ roundId: 'loss-round-1' });
+  state.onReportGameStarted({ roundId: 'loss-round-1' });
+  state.onReportGameCompleted({ roundId: 'loss-round-1' });
+  state.onReportGameCompleted({ roundId: 'loss-round-1' });
+  state.onReportGameStarted({ roundId: 'loss-round-2' });
+  state.onReportGameCompleted({ roundId: 'loss-round-2' });
+  const rounds = reportSignals.filter(({ name }) => ['game_started', 'game_completed'].includes(name));
+  assert.deepEqual(rounds.map(({ name }) => name), ['game_started', 'game_completed', 'game_started', 'game_completed']);
+  assert.equal(rounds[1].metadata.round_id, 'loss-round-1');
+  assert.equal(rounds[1].metadata.game_id, 'memory-flash');
 });
 
 test('report signals follow successful MVP and feedback actions without personal data', async (t) => {
@@ -393,13 +418,17 @@ test('report signals follow successful MVP and feedback actions without personal
   state.resetReportTelemetry();
   await state.castVote(player);
   state.handleFeedbackSubmitted({ experience: 'very_easy', report_experience: 'awesome', perks_interest: 'yes', suggestion: 'Private text' });
-  assert.deepEqual(reportSignals.map(({ name }) => name), ['vote_completed', 'feedback_completed']);
-  assert.deepEqual(reportSignals[1].metadata, { experience: 'awesome', perks_interest: 'yes' });
+  assert.deepEqual(reportSignals.filter(({ name }) => ['vote_completed', 'feedback_completed'].includes(name)).map(({ name }) => name), ['vote_completed', 'feedback_completed']);
+  const feedback = reportSignals.find(({ name }) => name === 'feedback_completed').metadata;
+  assert.equal(feedback.experience, 'awesome');
+  assert.equal(feedback.perks_interest, 'yes');
+  assert.equal(JSON.stringify(reportSignals).includes('Private text'), false);
   const failed = fixture({ vote: async () => ({ ok: false }) });
   t.after(() => failed.scope.stop());
   failed.state.resetReportTelemetry();
   await failed.state.castVote(player);
-  assert.equal(failed.reportSignals.length, 0);
+  assert.equal(failed.reportSignals.some(({ name }) => name === 'vote_completed'), false);
+  assert.equal(failed.reportSignals.some(({ name }) => name === 'vote_failed'), true);
 });
 
 test('report identity keeps its original organization and one device header when fan storage is blocked', (t) => {
@@ -415,6 +444,105 @@ test('report identity keeps its original organization and one device header when
   assert.deepEqual(oldIdentity(), { 'X-Device-ID': 'fallback-1', 'X-Organization-Slug': 'club' });
   assert.deepEqual(oldIdentity(), { 'X-Device-ID': 'fallback-1', 'X-Organization-Slug': 'club' });
   assert.equal(deviceReads, 1);
+});
+
+test('extended analytics mirrors confirmed MVP changes and form progress with no private data or credentials', async t => {
+  const { state, scope, reportSignals, posthogSignals, reportContexts } = fixture({
+    getFanSessionHeaders: () => ({ 'X-Fan-Session': 'secret-session-value' }),
+    vote: async () => ({ ok: true, vote: { code: '0142', qr_data: 'https://private.test/ticket?signature=secret-signature' } }),
+  });
+  t.after(() => scope.stop());
+  state.resetReportTelemetry();
+  state.isRegistered.value = true;
+  state.fanNickname.value = 'PrivateFanName';
+  state.openHomeAction('mvp');
+  await state.castVote(player);
+  await state.castVote({ ...player, id: 8 });
+  state.onFormTelemetry({ name: 'registration_step', metadata: { count: 2, mode: 'register', outcome: 'otp_verified', phone: '+393339999999', otp: '123456', nickname: 'PrivateFanName', token: 'secret-session-value', name: 'PrivateFanName' } });
+  state.onFormTelemetry({ name: 'arbitrary_private_event', metadata: { count: 2 } });
+  const changes = reportSignals.filter(event => event.name === 'vote_changed');
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].metadata.player_id, 8);
+  assert.equal(changes[0].metadata.previous_player_id, 7);
+  assert.equal(reportSignals.filter(event => event.name === 'vote_reward_claimed').length, 1);
+  assert.equal(posthogSignals.length, reportSignals.length);
+  assert.deepEqual(posthogSignals[0].context, { organization_slug: 'club', event_id: 42 });
+  assert.equal(reportContexts[0].identity()['X-Fan-Session'], 'secret-session-value');
+  const serialized = JSON.stringify(posthogSignals);
+  for (const privateValue of ['PrivateFanName', '+393339999999', '123456', 'secret-session-value', 'secret-signature', '0142', 'arbitrary_private_event']) assert.equal(serialized.includes(privateValue), false, privateValue);
+  const step = reportSignals.find(event => event.name === 'registration_step');
+  assert.equal(step.metadata.outcome, 'otp_verified');
+  assert.equal(step.metadata.count, 2);
+});
+
+test('game openings, live starts and actual abandonment remain distinct from completed rounds', t => {
+  const { state, scope, reportSignals } = fixture();
+  t.after(() => scope.stop());
+  state.resetReportTelemetry();
+  state.openGame('tap-volley');
+  state.closeGame();
+  assert.equal(reportSignals.filter(event => event.name === 'game_abandoned').length, 0);
+  state.openGame('tap-volley');
+  state.onReportGameStarted({ roundId: 'live-round-123', mode: 'live' });
+  state.closeGame();
+  state.closeGame();
+  const abandoned = reportSignals.filter(event => event.name === 'game_abandoned');
+  assert.equal(abandoned.length, 1);
+  assert.equal(abandoned[0].metadata.mode, 'live');
+  assert.equal(abandoned[0].metadata.round_id, 'live-round-123');
+  state.openGame('tap-volley');
+  state.onReportGameStarted({ roundId: 'completed-round-123' });
+  state.onReportGameCompleted({ roundId: 'completed-round-123', taps: 10 });
+  state.closeGame();
+  assert.equal(reportSignals.filter(event => event.name === 'game_abandoned').length, 1);
+  assert.equal(reportSignals.find(event => event.name === 'game_completed').metadata.taps, 10);
+});
+
+test('QR and feedback exposures register visibility observers without exposing the ticket', t => {
+  const { state, scope, reportObservations } = fixture();
+  t.after(() => scope.stop());
+  state.resetReportTelemetry();
+  state.fanLotteryTicket.value = { ticket_code: '0142', qr_data: 'https://private.test/ticket' };
+  const element = { tag: 'section' };
+  state.observeLotteryShortcut(element);
+  state.observeFeedbackInvitation(element);
+  state.bindLotteryTicket(element);
+  assert.deepEqual(reportObservations.map(item => item.name), ['lottery_shortcut_view', 'cta_viewed', 'lottery_qr_view']);
+  assert.equal(JSON.stringify(reportObservations).includes('0142'), false);
+  assert.equal(JSON.stringify(reportObservations).includes('private.test'), false);
+  assert.deepEqual(state.lotteryTicketEl.value, element);
+});
+
+test('a late game claim cannot report into or close a newly launched game', async t => {
+  const pending = deferred();
+  const { state, scope, reportSignals } = fixture({ fetchFanProfile: () => pending.promise });
+  t.after(() => scope.stop());
+  state.resetReportTelemetry();
+  state.openGame('tap');
+  const claim = state.onGameClaim({ coins: 30, source: 'tap_challenge_live', keepOpen: true });
+  state.closeGame();
+  state.openGame('memory-flash');
+  pending.resolve({ ok: true, data: { registered: true, wallet: 30, journey_rewards: { tap: 30 } } });
+  await claim;
+  assert.equal(state.activeGameId.value, 'memory-flash');
+  assert.equal(reportSignals.filter(event => ['game_reward_claimed', 'game_reward_failed'].includes(event.name)).length, 0);
+});
+
+test('a nickname saved for a former club cannot update or report the current profile', async t => {
+  const pending = deferred();
+  const { state, props, scope, reportSignals } = fixture({ updateFanNickname: () => pending.promise });
+  t.after(() => scope.stop());
+  state.resetReportTelemetry();
+  state.fanNickname.value = 'OriginalFan';
+  state.nicknameDraft.value = 'PrivateNewNickname';
+  const saving = state.submitNickname();
+  props.organizationSlug = 'other-club';
+  await state.bootstrap();
+  pending.resolve({ ok: true, data: { user: { nickname: 'PrivateNewNickname' } } });
+  await saving;
+  assert.equal(state.fanNickname.value, '');
+  assert.equal(state.isSavingNickname.value, false);
+  assert.equal(reportSignals.some(event => event.name === 'profile_updated'), false);
 });
 
 test('registration saves no gender and leaves the success screen open until completion', async (t) => {

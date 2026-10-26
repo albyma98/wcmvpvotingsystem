@@ -1,6 +1,6 @@
 # Termini del profilo tifoso
 
-Versione 2026-10-21.1 — 21 ottobre 2026
+Versione 2026-10-25.1 — 25 ottobre 2026
 
 ## Chi gestisce il servizio
 
