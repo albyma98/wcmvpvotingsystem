@@ -375,7 +375,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
             </div>
           </fieldset>
           <fieldset class="form-section"><legend>Identità e homepage</legend>
-          <div class="form-grid"><label>Nome del club *<input v-model="settings.name" required maxlength="200" /></label><label>Città<input v-model="settings.city" placeholder="Es. Bologna" /></label><label class="wide">Claim<input v-model="settings.tagline" placeholder="Il messaggio che racconta il tuo club" /></label><label>Stagione<input v-model="settings.seasonLabel" placeholder="Es. 2026 / 2027" /></label><label>Colore primario<input v-model="settings.primaryColor" type="color" /></label><label>Colore accento<input v-model="settings.secondaryColor" type="color" /></label><label class="check"><input v-model="settings.active" type="checkbox" /> Sito pubblico attivo</label>
+          <div class="form-grid"><label>Nome del club *<input v-model="settings.name" required maxlength="200" /></label><label>Città<input v-model="settings.city" placeholder="Es. Bologna" /></label><label class="wide">Claim<input v-model="settings.tagline" placeholder="Il messaggio che racconta il tuo club" /></label><label>Stagione<input v-model="settings.seasonLabel" placeholder="Es. 2026 / 2027" /></label><label>Colore primario<input v-model="settings.primaryColor" type="color" /></label><label>Colore accento<input v-model="settings.secondaryColor" type="color" /></label><label class="check"><input v-model="settings.active" type="checkbox" /><span class="checkbox-box" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="m3 8 3 3 7-7" /></svg></span><span class="checkbox-text">Sito pubblico attivo</span></label>
             <ClubMediaField v-model="settings.logoUrl" class="wide" label="Logo del club" :max-side="512" @uploading="trackImageUpload" />
             <ClubMediaField v-model="settings.heroImageUrl" class="wide" label="Copertina della homepage" @uploading="trackImageUpload" />
           </div>
@@ -434,7 +434,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
                   <ClubMediaField v-model="teamForm.logoUrl" class="wide" label="Logo della squadra" :max-side="512" @uploading="trackImageUpload" />
                   <ClubMediaField v-model="teamForm.heroImageUrl" class="wide" label="Copertina della squadra" @uploading="trackImageUpload" />
                   <label>Ordine di visualizzazione<input v-model.number="teamForm.position" type="number" min="0" step="1" required /></label>
-                  <label class="check"><input v-model="teamForm.active" type="checkbox" /> Visibile sul sito pubblico</label>
+                  <label class="check"><input v-model="teamForm.active" type="checkbox" /><span class="checkbox-box" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="m3 8 3 3 7-7" /></svg></span><span class="checkbox-text">Visibile sul sito pubblico</span></label>
                 </div></fieldset>
               </fieldset>
               <footer class="editor-footer"><button type="button" :disabled="processing" @click="clearEditor('team')">{{ teamForm.id ? 'Annulla modifica' : 'Svuota campi' }}</button><button class="primary" :disabled="processing">{{ busy ? 'Salvataggio…' : 'Salva squadra' }}</button></footer>
@@ -485,7 +485,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
               <fieldset class="form-section"><legend><span>02</span> Presentazione e pubblicazione</legend><div class="form-grid">
                 <ClubMediaField v-model="postForm.imageUrl" class="wide" label="Immagine del contenuto" @uploading="trackImageUpload" />
                 <label>Data di pubblicazione<input v-model="postForm.publishedAt" type="date" /><small>Se vuota, viene usata la data corrente. Non programma la pubblicazione.</small></label>
-                <div class="toggle-group"><label class="check"><input v-model="postForm.pinned" type="checkbox" /> In evidenza</label><label class="check"><input v-model="postForm.active" type="checkbox" /> Visibile sul sito pubblico</label></div>
+                <div class="toggle-group"><label class="check"><input v-model="postForm.pinned" type="checkbox" /><span class="checkbox-box" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="m3 8 3 3 7-7" /></svg></span><span class="checkbox-text">In evidenza</span></label><label class="check"><input v-model="postForm.active" type="checkbox" /><span class="checkbox-box" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="m3 8 3 3 7-7" /></svg></span><span class="checkbox-text">Visibile sul sito pubblico</span></label></div>
               </div></fieldset>
             </fieldset>
             <footer class="editor-footer"><button type="button" :disabled="processing" @click="clearEditor('post')">{{ postForm.id ? 'Annulla modifica' : 'Svuota campi' }}</button><button class="primary" :disabled="processing">{{ busy ? 'Salvataggio…' : 'Salva contenuto' }}</button></footer>
@@ -514,7 +514,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
                 <label>Squadra<select v-model.number="galleryForm.teamId"><option :value="0">Tutta la società</option><option v-for="team in teams" :key="team.id" :value="team.id">{{team.name}}</option></select></label>
                 <label>Data dell’evento<input v-model="galleryForm.eventDate" type="date" /></label>
                 <label>Ordine di visualizzazione<input v-model.number="galleryForm.position" type="number" min="0" step="1" required /></label>
-                <label class="check"><input v-model="galleryForm.active" type="checkbox" /> Visibile sul sito pubblico</label>
+                <label class="check"><input v-model="galleryForm.active" type="checkbox" /><span class="checkbox-box" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="m3 8 3 3 7-7" /></svg></span><span class="checkbox-text">Visibile sul sito pubblico</span></label>
               </div></fieldset>
             </fieldset>
             <footer class="editor-footer"><button type="button" :disabled="processing" @click="clearEditor('gallery')">{{ galleryForm.id ? 'Annulla modifica' : 'Svuota campi' }}</button><button class="primary" :disabled="processing">{{ busy ? 'Salvataggio…' : 'Salva fotografia' }}</button></footer>
@@ -543,7 +543,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
               </div></fieldset>
               <fieldset class="form-section"><legend><span>02</span> Ordine e pubblicazione</legend><div class="form-grid">
                 <label>Ordine di visualizzazione<input v-model.number="sponsorForm.position" type="number" min="0" max="1000000" step="1" required /><small>I valori più bassi compaiono per primi.</small></label>
-                <label class="check"><input v-model="sponsorForm.active" type="checkbox" /> Pubblicato sul sito pubblico</label>
+                <label class="check"><input v-model="sponsorForm.active" type="checkbox" /><span class="checkbox-box" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="m3 8 3 3 7-7" /></svg></span><span class="checkbox-text">Pubblicato sul sito pubblico</span></label>
               </div></fieldset>
             </fieldset>
             <footer class="editor-footer"><button type="button" :disabled="processing" @click="clearEditor('sponsor')">{{ sponsorForm.id ? 'Annulla modifica' : 'Svuota campi' }}</button><button class="primary" :disabled="processing">{{ busy ? 'Salvataggio…' : 'Salva sponsor' }}</button></footer>
@@ -672,28 +672,36 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
 .club-admin label{min-width:0;max-width:100%;overflow-wrap:anywhere}
 .club-admin input,.club-admin select,.club-admin textarea{box-sizing:border-box;min-width:0;max-width:100%}
 .club-admin legend{max-width:100%;overflow-wrap:anywhere}
-.form-grid .check{display:grid;grid-template-columns:18px minmax(0,1fr);align-content:center;cursor:pointer}
-.toggle-group{min-width:0}
+.form-grid .check{position:relative;grid-column:1/-1;display:grid;grid-template-columns:22px minmax(0,1fr);align-items:center;align-content:center;gap:12px;width:100%;min-height:48px;padding:12px;border:1px solid #40516b;border-radius:8px;background:#091322;color:#e2e8f0;cursor:pointer}
+.check .checkbox-text{min-width:0;overflow-wrap:anywhere}
+.toggle-group{grid-column:1/-1;min-width:0;display:grid;gap:12px}
 .editor-heading,.editor-footer,.dialog-actions{flex-wrap:wrap}
 .editor-footer button{flex-shrink:1;max-width:100%;white-space:normal;overflow-wrap:anywhere}
 
-/* Native checkboxes must not inherit the size, padding or background of text fields. */
-.club-admin input[type=checkbox]{
-  appearance:auto;
-  display:inline-block;
-  width:18px;
-  height:18px;
-  min-width:18px;
-  min-height:18px;
+/* Draw the box and checkmark explicitly; retain the real input for labels and keyboard access. */
+.club-admin .check input[type=checkbox]{
+  position:absolute;
+  display:block;
+  left:12px;
+  top:50%;
+  transform:translateY(-50%);
+  width:22px;
+  height:22px;
+  min-width:22px;
+  min-height:22px;
   margin:0;
   padding:0;
-  border:revert;
-  border-radius:revert;
-  background:revert;
-  accent-color:#fbbf24;
-  color-scheme:light;
+  border:0;
+  opacity:0;
   cursor:pointer;
 }
-.club-admin input[type=checkbox]:disabled{cursor:not-allowed;opacity:.6}
+.check .checkbox-box{display:grid;place-items:center;width:22px;height:22px;border:2px solid #cbd5e1;border-radius:4px;background:#091322;color:#172033;pointer-events:none}
+.checkbox-box svg{display:block;width:16px;height:16px;visibility:hidden;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.check input:checked+.checkbox-box{border-color:#fbbf24;background:#fbbf24}
+.check input:checked+.checkbox-box svg{visibility:visible}
+.check input:focus-visible+.checkbox-box{outline:3px solid #fbbf24;outline-offset:4px}
+.club-admin .check input:disabled{cursor:not-allowed}
+.check:has(input:disabled){cursor:not-allowed;opacity:.6}
+@media(forced-colors:active){.check .checkbox-box{forced-color-adjust:none;border-color:CanvasText;background:Canvas;color:CanvasText}.check input:checked+.checkbox-box{border-color:Highlight;background:Highlight;color:HighlightText}.check input:focus-visible+.checkbox-box{outline-color:Highlight}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 </style>
