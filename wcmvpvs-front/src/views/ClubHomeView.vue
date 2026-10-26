@@ -4,6 +4,7 @@ import { clubHomeTiles, clubInitials as initials, clubScoreLabel as scoreLabel, 
 import { organizationThemeStyle } from '../organizationTheme'
 import { clubTypography } from '../clubTypography'
 import ClubContentModal from '../components/ClubContentModal.vue'
+import ClubGalleryLightbox from '../components/ClubGalleryLightbox.vue'
 import { clubHomePath } from '../clubDomain'
 
 const props = defineProps({ slug: { type: String, required: true }, teamSlug: { type: String, default: '' }, customDomain: Boolean })
@@ -11,6 +12,7 @@ const homePath = computed(() => clubHomePath(props.slug, props.customDomain))
 const data = ref(null)
 const loading = ref(true)
 const error = ref('')
+const selectedPhoto = ref(null)
 
 const club = computed(() => data.value?.club ?? {})
 const typography = computed(() => clubTypography(club.value))
@@ -103,7 +105,7 @@ function closePanel() {
   teamModalLoading.value = false
   teamModalError.value = ''
 }
-watch(() => [props.slug, props.teamSlug], () => { teamModalCache.clear(); closePanel(); load() })
+watch(() => [props.slug, props.teamSlug], () => { selectedPhoto.value = null; teamModalCache.clear(); closePanel(); load() })
 onMounted(load)
 </script>
 
@@ -167,11 +169,12 @@ onMounted(load)
           <section class="section compact"><div class="section-heading"><div><p class="kicker">STAGIONE</p><h2>Calendario e risultati</h2></div></div><div class="fixture-list"><article v-for="match in data.matches" :key="match.id" class="fixture"><div><time>{{ formatDate(match.scheduledAt) }}</time><small>{{ match.competition }} · {{ match.roundLabel }}</small></div><div class="fixture-teams"><strong>{{ match.home ? data.team.name : match.opponent }}</strong><b :class="{ completed: match.status === 'completed' }">{{ match.status === 'completed' ? scoreLabel(match) : 'VS' }}</b><strong>{{ match.home ? match.opponent : data.team.name }}</strong></div><span :class="['status', match.status]">{{ match.status === 'completed' ? 'Conclusa' : match.status === 'live' ? 'Live' : 'Programmata' }}</span></article><p v-if="!data.matches?.length" class="empty">Il calendario sarà pubblicato a breve.</p></div></section>
           <section class="section compact"><div class="section-heading"><div><p class="kicker">LA SQUADRA</p><h2>Roster</h2></div></div><div class="roster-grid"><article v-for="player in data.players" :key="player.id" class="player"><div class="player-photo"><img v-if="player.imageUrl" :src="player.imageUrl" :alt="`${player.firstName} ${player.lastName}`" /><span v-else>{{ player.jerseyNumber || initials(`${player.firstName} ${player.lastName}`) }}</span></div><div><small>{{ player.role }}</small><h3>{{ player.firstName }} {{ player.lastName }}</h3><b v-if="player.jerseyNumber">#{{ player.jerseyNumber }}</b></div></article><p v-if="!data.players?.length" class="empty">Roster in aggiornamento.</p></div></section>
           <section v-if="data.posts?.length" class="section compact"><div class="section-heading"><div><p class="kicker">NOTIZIE</p><h2>Dalla squadra</h2></div></div><div class="news-grid"><article v-for="post in data.posts.slice(0,6)" :key="post.id" class="news-card"><div v-if="post.imageUrl" class="news-image" :style="{ backgroundImage: `url('${post.imageUrl}')` }"></div><div class="news-body"><h3>{{ post.title }}</h3><p>{{ post.excerpt || post.body }}</p></div></article></div></section>
-          <section v-if="data.gallery?.length" class="section compact"><div class="section-heading"><div><p class="kicker">GALLERY</p><h2>Momenti della squadra</h2></div></div><div class="gallery-grid team-gallery"><figure v-for="photo in data.gallery" :key="photo.id"><img :src="photo.imageUrl" :alt="photo.title" loading="lazy" /></figure></div></section>
+          <section v-if="data.gallery?.length" class="section compact"><div class="section-heading"><div><p class="kicker">GALLERY</p><h2>Momenti della squadra</h2></div></div><div class="gallery-grid team-gallery"><figure v-for="photo in data.gallery" :key="photo.id"><button type="button" class="gallery-open" :aria-label="`Ingrandisci immagine: ${photo.title || photo.caption || 'Foto del club'}`" aria-haspopup="dialog" @click="selectedPhoto = photo"><img :src="photo.imageUrl" :alt="photo.title || photo.caption || 'Foto del club'" loading="lazy" /></button></figure></div></section>
         </div>
       </template>
 
       <footer v-if="isTeam"><div class="brand"><img v-if="club.logoUrl" :src="club.logoUrl" alt="" /><span><strong>{{ club.name }}</strong><small>{{ club.city }}</small></span></div><p>Club Hub powered by ArenaBoostX</p></footer>
+      <ClubGalleryLightbox v-if="selectedPhoto" :photo="selectedPhoto" @close="selectedPhoto = null" />
     </template>
   </main>
 </template>
@@ -371,4 +374,5 @@ onMounted(load)
   .cd-tile-copy{flex:none;width:100%;margin-top:auto}
   .cd-tile-copy>small,.cd-match>small{display:none}
 }
+.gallery-open{display:block;width:100%;height:100%;padding:0;border:0;background:#e2e8f0;cursor:zoom-in}.gallery-open:focus-visible{outline:3px solid var(--club-accent);outline-offset:-4px}.gallery-open img{display:block}
 </style>

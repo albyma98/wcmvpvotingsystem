@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { clubContactPhoneLink, clubInitials, formatClubDate } from '../clubHub'
 import ClubMatchCard from './ClubMatchCard.vue'
+import ClubGalleryLightbox from './ClubGalleryLightbox.vue'
 
 const props = defineProps({
   panel: { type: String, required: true },
@@ -15,9 +16,11 @@ const props = defineProps({
 })
 const emit = defineEmits(['close', 'update:section'])
 const dialog = ref(null)
+const selectedPhoto = ref(null)
 const isTeam = computed(() => props.panel === 'team')
 const payload = computed(() => isTeam.value ? (props.teamData || {}) : props.data)
 const currentView = computed(() => isTeam.value ? props.section : props.panel)
+watch(currentView, () => { selectedPhoto.value = null })
 const panelTitle = computed(() => isTeam.value
   ? (props.teamData?.team?.name || props.teamTitle || 'Squadra')
   : ({ matches: 'Partite', announcements: 'Annunci', contacts: 'Contatti', sponsors: 'I nostri Sponsor', news: 'News', gallery: 'Photo gallery' }[props.panel] || 'Club'))
@@ -110,7 +113,7 @@ onBeforeUnmount(() => dialog.value?.close())
         </section>
 
         <section v-else-if="currentView === 'gallery'" class="club-gallery" aria-label="Foto del club">
-          <figure v-for="photo in gallery" :key="photo.id"><div><img :src="photo.imageUrl" :alt="photo.title || photo.caption || 'Foto del club'" loading="lazy" /></div><figcaption v-if="photo.title || photo.caption || photo.teamName"><strong v-if="photo.title">{{ photo.title }}</strong><span v-if="photo.caption || photo.teamName">{{ photo.caption || photo.teamName }}</span></figcaption></figure>
+          <figure v-for="photo in gallery" :key="photo.id"><button type="button" class="club-gallery-open" :aria-label="`Ingrandisci immagine: ${photo.title || photo.caption || 'Foto del club'}`" aria-haspopup="dialog" @click="selectedPhoto = photo"><img :src="photo.imageUrl" :alt="photo.title || photo.caption || 'Foto del club'" loading="lazy" /></button><figcaption v-if="photo.title || photo.caption || photo.teamName"><strong v-if="photo.title">{{ photo.title }}</strong><span v-if="photo.caption || photo.teamName">{{ photo.caption || photo.teamName }}</span></figcaption></figure>
           <div v-if="!gallery.length" class="club-state"><span class="club-state-icon" aria-hidden="true">▧</span><h3>I nostri momenti migliori</h3><p>Le foto della stagione saranno raccolte qui.</p></div>
         </section>
 
@@ -123,6 +126,7 @@ onBeforeUnmount(() => dialog.value?.close())
         </section>
       </template>
     </div>
+    <ClubGalleryLightbox v-if="selectedPhoto" :photo="selectedPhoto" @close="selectedPhoto = null" />
   </dialog>
 </template>
 
@@ -163,4 +167,5 @@ onBeforeUnmount(() => dialog.value?.close())
   .club-tab{min-height:44px;padding:9px 3px;border-radius:10px;font-size:clamp(10px,2.7vw,12px)}
 }
 @media(prefers-reduced-motion:reduce){.club-modal *{transition:none;animation:none}}
+.club-gallery .club-gallery-open{display:block;width:100%;aspect-ratio:4/3;padding:0;border:0;background:#e2e8f0;overflow:hidden;cursor:zoom-in}.club-gallery .club-gallery-open:focus-visible{outline-offset:-4px}
 </style>

@@ -5,8 +5,6 @@ import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc'
 import * as Vue from 'vue'
 import * as clubHub from '../clubHub.js'
 
-const { descriptor } = parse(readFileSync(new URL('./ClubContentModal.vue', import.meta.url), 'utf8'))
-const script = compileScript(descriptor, { id: 'club-content-modal-test' })
 const matchCard = {
   props: ['match'],
   setup: props => () => Vue.h('article', { 'data-match': props.match.id }, props.match.opponent),
@@ -18,26 +16,33 @@ const imports = {
   './ClubMatchCard': matchCard,
   './ClubMatchCard.vue': matchCard,
 }
-const source = script.content
-  .replace(/^import\s+([\s\S]*?)\s+from\s+(['"])([^'"]+)\2;?\r?\n/gm, (_, binding, quote, name) =>
-    `const ${binding.trim().replace(/\s+as\s+/g, ': ')} = imports[${JSON.stringify(name)}];\n`)
-  .replace('export default', 'return')
-const component = new Function('imports', source)(imports)
-const template = compileTemplate({
-  source: descriptor.template.content,
-  id: 'club-content-modal-test',
-  compilerOptions: { bindingMetadata: script.bindings },
-})
-assert.deepEqual(template.errors, [])
-const helpers = {}
-const renderSource = template.code.replace(/^import \{([^}]+)\} from "vue"\r?$/gm, (_, bindings) => {
-  for (const binding of bindings.split(',')) {
-    const [name, alias = name] = binding.trim().split(/\s+as\s+/)
-    helpers[alias] = Vue[name]
-  }
-  return ''
-}).replace('export function render', 'return function render')
-component.render = new Function(...Object.keys(helpers), renderSource)(...Object.values(helpers))
+function loadComponent(filename, id, imports) {
+  const { descriptor } = parse(readFileSync(new URL(filename, import.meta.url), 'utf8'))
+  const script = compileScript(descriptor, { id })
+  const source = script.content
+    .replace(/^import\s+([\s\S]*?)\s+from\s+(['"])([^'"]+)\2;?\r?\n/gm, (_, binding, quote, name) =>
+      `const ${binding.trim().replace(/\s+as\s+/g, ': ')} = imports[${JSON.stringify(name)}];\n`)
+    .replace('export default', 'return')
+  const component = new Function('imports', source)(imports)
+  const template = compileTemplate({
+    source: descriptor.template.content,
+    id,
+    compilerOptions: { bindingMetadata: script.bindings },
+  })
+  assert.deepEqual(template.errors, [])
+  const helpers = {}
+  const renderSource = template.code.replace(/^import \{([^}]+)\} from "vue"\r?$/gm, (_, bindings) => {
+    for (const binding of bindings.split(',')) {
+      const [name, alias = name] = binding.trim().split(/\s+as\s+/)
+      helpers[alias] = Vue[name]
+    }
+    return ''
+  }).replace('export function render', 'return function render')
+  component.render = new Function(...Object.keys(helpers), renderSource)(...Object.values(helpers))
+  return component
+}
+const lightbox = loadComponent('./ClubGalleryLightbox.vue', 'club-gallery-lightbox-test', { vue: Vue })
+const component = loadComponent('./ClubContentModal.vue', 'club-content-modal-test', { ...imports, './ClubGalleryLightbox.vue': lightbox })
 
 // A minimal Vue host exercises the real rendered labels, links and click handlers.
 // Native dialog methods are supplied because no browser DOM is required here.
@@ -281,4 +286,65 @@ test('sponsor modal updates from the empty state when the club payload changes',
   await Vue.nextTick()
   assert.ok(!textOf(root).includes('Nuovo sponsor'))
   assert.ok(textOf(root).includes('Segreteria'))
+})
+
+test('club and team gallery thumbnails open the complete image and close without dismissing the gallery', async t => {
+  for (const panel of ['gallery', 'team']) {
+    const { root, events } = fixture(t, { panel, section: 'gallery' })
+    const galleryDialog = find(root, node => node.tag === 'dialog')
+    const thumbnail = find(root, node => node.props['aria-haspopup'] === 'dialog')
+    assert.match(thumbnail.props['aria-label'], /Ingrandisci immagine:/)
+    const expectedSource = panel === 'team' ? '/team-photo.jpg' : '/club-photo.jpg'
+
+    for (const method of ['button', 'escape', 'backdrop']) {
+      click(thumbnail)
+      await Vue.nextTick()
+      const viewer = find(root, node => node.tag === 'dialog' && node !== galleryDialog)
+      assert.ok(viewer.open)
+      assert.match(viewer.props['aria-label'], /Immagine ingrandita:/)
+      assert.equal(find(viewer, node => node.tag === 'img').props.src, expectedSource)
+      if (panel === 'team') assert.equal(textOf(find(viewer, node => node.tag === 'figcaption')), 'In campo')
+      viewer.props.onClick({ target: viewer, clientX: 100, clientY: 100 })
+      viewer.props.onClick({ target: find(viewer, node => node.tag === 'img'), clientX: 100, clientY: 100 })
+      await Vue.nextTick()
+      assert.ok(viewer.open)
+
+      if (method === 'button') click(find(viewer, node => node.props['aria-label'] === 'Chiudi immagine ingrandita'))
+      if (method === 'escape') {
+        let prevented = false
+        viewer.props.onCancel({ preventDefault() { prevented = true } })
+        assert.equal(prevented, true)
+      }
+      if (method === 'backdrop') viewer.props.onClick({ target: viewer, clientX: 5, clientY: 100 })
+      await Vue.nextTick()
+      assert.equal(viewer.open, false)
+      assert.equal(nodes(root, node => node.tag === 'dialog').length, 1)
+      assert.equal(galleryDialog.open, true)
+      assert.deepEqual(events, [])
+    }
+  }
+})
+
+test('leaving the gallery clears the enlarged image, and reopening a different photo shows its own content', async t => {
+  const { root, props } = fixture(t, { section: 'gallery' })
+  click(find(root, node => node.props['aria-haspopup'] === 'dialog'))
+  await Vue.nextTick()
+  const viewer = nodes(root, node => node.tag === 'dialog')[1]
+  props.section = 'roster'
+  await Vue.nextTick()
+  assert.equal(viewer.open, false)
+  props.section = 'gallery'
+  props.teamData.gallery.push({ id: 15, imageUrl: '/second-photo.jpg', caption: 'La seconda foto' })
+  await Vue.nextTick()
+  assert.equal(nodes(root, node => node.tag === 'dialog').length, 1)
+  const thumbnails = nodes(root, node => node.props['aria-haspopup'] === 'dialog')
+  assert.match(thumbnails[1].props['aria-label'], /La seconda foto/)
+  click(thumbnails[1])
+  await Vue.nextTick()
+  const secondViewer = nodes(root, node => node.tag === 'dialog')[1]
+  assert.equal(find(secondViewer, node => node.tag === 'img').props.src, '/second-photo.jpg')
+  find(secondViewer, node => node.tag === 'img').props.onError()
+  await Vue.nextTick()
+  assert.match(textOf(secondViewer), /Impossibile caricare/)
+  assert.ok(find(secondViewer, node => node.props['aria-label'] === 'Chiudi immagine ingrandita'))
 })
