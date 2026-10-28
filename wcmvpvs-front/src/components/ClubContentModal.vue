@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { clubContactPhoneLink, clubInitials, formatClubDate } from '../clubHub'
+import { clubContactPhoneLink, clubInitials, formatClubDate, sortClubMatches } from '../clubHub'
 import ClubMatchCard from './ClubMatchCard.vue'
 import ClubGalleryLightbox from './ClubGalleryLightbox.vue'
 
@@ -28,7 +28,7 @@ const sections = [
   { id: 'overview', label: 'Panoramica' }, { id: 'matches', label: 'Partite' },
   { id: 'roster', label: 'Roster' }, { id: 'news', label: 'News' }, { id: 'gallery', label: 'Gallery' },
 ]
-const matches = computed(() => payload.value.matches || [])
+const matches = computed(() => sortClubMatches(payload.value.matches || []))
 const players = computed(() => payload.value.players || [])
 const posts = computed(() => payload.value.posts || [])
 const announcements = computed(() => posts.value.filter(post => post.kind === 'announcement'))
@@ -38,8 +38,8 @@ const contacts = computed(() => props.club.contacts || [])
 const sponsors = computed(() => props.data.sponsors || [])
 const matchClubName = computed(() => props.club.name || props.data.club?.name || props.teamData?.club?.name || 'Società')
 const featuredMatch = computed(() => matches.value.find(match => match.status === 'live')
-  || [...matches.value].filter(match => match.status === 'scheduled').sort((a, b) => String(a.scheduledAt || '').localeCompare(String(b.scheduledAt || '')))[0]
-  || matches.value.find(match => match.status === 'completed') || null)
+  || matches.value.find(match => match.status === 'scheduled')
+  || matches.value.filter(match => match.status === 'completed').at(-1) || null)
 const stats = computed(() => [
   { section: 'matches', label: 'Partite', count: matches.value.length },
   { section: 'roster', label: 'Atleti', count: players.value.length },
@@ -96,7 +96,7 @@ onBeforeUnmount(() => dialog.value?.close())
         </section>
 
         <section v-else-if="currentView === 'announcements'" class="club-post-list" aria-label="Annunci del club">
-          <article v-for="post in announcements" :key="post.id" class="club-post" :class="{ 'is-pinned': post.pinned }"><div class="club-post-meta"><span class="club-badge">{{ post.pinned ? 'In evidenza' : post.teamName || 'Società' }}</span><time v-if="post.publishedAt" :datetime="post.publishedAt">{{ formatClubDate(post.publishedAt) }}</time></div><h3>{{ post.title }}</h3><p>{{ post.body || post.excerpt }}</p></article>
+          <article v-for="post in announcements" :key="post.id" class="club-post" :class="{ 'is-pinned': post.pinned }"><div class="club-post-meta"><span class="club-badge">{{ post.pinned ? 'In evidenza' : post.teamName || 'Società' }}</span><time v-if="post.publishedAt" :datetime="post.publishedAt">{{ formatClubDate(post.publishedAt) }}</time></div><img v-if="post.imageUrl" class="club-post-image" :src="post.imageUrl" :alt="post.title" loading="lazy" /><h3>{{ post.title }}</h3><p>{{ post.body || post.excerpt }}</p></article>
           <div v-if="!announcements.length" class="club-state"><span class="club-state-icon" aria-hidden="true">✦</span><h3>Tutte le novità, qui</h3><p>Gli annunci del club saranno pubblicati in questa sezione.</p></div>
         </section>
 
@@ -145,6 +145,7 @@ onBeforeUnmount(() => dialog.value?.close())
 .club-post,.club-news-card,.club-contact,.club-player,.club-gallery figure{min-width:0;border:1px solid #dbe2ec;border-radius:22px;background:#fff;box-shadow:inset 0 2px 0 #fff,0 4px 0 #dce2eb,0 10px 22px rgba(15,23,42,.05)}
 .club-post{padding:24px}.club-post.is-pinned{border-top:4px solid var(--modal-accent)}.club-post-meta{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}.club-post-meta time{color:#64748b;font-size:11px;line-height:1.5}.club-badge{display:inline-flex;align-items:center;max-width:100%;padding:6px 9px;border-radius:8px;background:var(--modal-primary);color:var(--modal-on-primary);font-size:10px;font-weight:850;line-height:1.2;overflow-wrap:anywhere}.is-pinned .club-badge{background:var(--modal-accent);color:var(--modal-on-accent)}
 .club-post h3,.club-news-copy h3{margin:16px 0 10px;font-size:22px;line-height:1.25;letter-spacing:-.025em;overflow-wrap:anywhere}.club-post>p,.club-news-copy>p{margin:0;color:#475569;font-size:14px;line-height:1.75;white-space:pre-line;overflow-wrap:anywhere}
+.club-post-image{display:block;width:100%;max-height:420px;margin-top:18px;border-radius:14px;object-fit:contain;background:#f3f5f9}
 .club-roster,.club-news,.club-contacts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:18px}
 .club-player{display:grid;grid-template-columns:72px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px;border-radius:18px}.club-player-photo{display:grid;place-items:center;width:72px;height:88px;overflow:hidden;border-radius:13px;background:var(--modal-primary);color:var(--modal-on-primary);font-family:var(--club-font-title,inherit);font-size:24px;font-weight:850;box-shadow:inset 0 2px 2px rgba(255,255,255,.3),0 3px 0 color-mix(in srgb,var(--modal-primary) 62%,#030712)}.club-player-photo img{width:100%;height:100%;object-fit:cover}.club-player-copy{min-width:0}.club-player-copy small{color:#64748b;font-size:10px;line-height:1.5;text-transform:uppercase;letter-spacing:.06em}.club-player-copy h3{margin:6px 0 0;font-size:17px;line-height:1.3;overflow-wrap:anywhere}.club-player-number{align-self:start;display:grid;place-items:center;min-width:34px;min-height:30px;padding:5px;border-radius:8px;background:var(--modal-accent);color:var(--modal-on-accent);font-size:12px;line-height:1.1}
 .club-news-card{overflow:hidden}.club-news-card>img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}.club-news-copy{padding:22px}

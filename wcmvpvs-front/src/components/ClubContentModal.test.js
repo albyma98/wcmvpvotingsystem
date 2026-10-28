@@ -263,6 +263,67 @@ test('club panels render their own content and useful contact links', async t =>
   }
 })
 
+test('club and category calendars show nearer dates before later dates and react to edits', async t => {
+  for (const panel of ['matches', 'team']) {
+    const { root, props } = fixture(t, { panel, section: 'matches' })
+    const payload = panel === 'team' ? props.teamData : props.data
+    payload.matches = [
+      { id: 3, scheduledAt: '2026-11-15T18:00:00Z', opponent: 'Terza', status: 'scheduled' },
+      { id: 1, scheduledAt: '2026-10-28T18:00:00Z', opponent: 'Prima', status: 'completed' },
+      { id: 2, scheduledAt: '2026-10-31T18:00:00Z', opponent: 'Seconda', status: 'scheduled' },
+    ]
+    await Vue.nextTick()
+    const dates = () => nodes(root, node => node.tag === 'time').map(node => node.props.datetime)
+    assert.deepEqual(dates(), ['2026-10-28T18:00:00Z', '2026-10-31T18:00:00Z', '2026-11-15T18:00:00Z'])
+    assert.deepEqual(payload.matches.map(match => match.id), [3, 1, 2])
+    payload.matches[0].scheduledAt = '2026-10-30T18:00:00Z'
+    await Vue.nextTick()
+    assert.deepEqual(dates(), ['2026-10-28T18:00:00Z', '2026-10-30T18:00:00Z', '2026-10-31T18:00:00Z'])
+  }
+})
+
+test('category overview prioritizes live games, then the next fixture, then the latest result', async t => {
+  const { root, props } = fixture(t)
+  props.teamData.matches = [
+    { id: 3, scheduledAt: '2026-11-15T18:00:00Z', status: 'scheduled' },
+    { id: 1, scheduledAt: '2026-10-20T18:00:00Z', status: 'completed' },
+    { id: 2, scheduledAt: '2026-10-31T18:00:00Z', status: 'scheduled' },
+  ]
+  const featuredDate = () => find(root, node => node.tag === 'time').props.datetime
+  await Vue.nextTick()
+  assert.equal(featuredDate(), '2026-10-31T18:00:00Z')
+  props.teamData.matches[0].status = 'live'
+  await Vue.nextTick()
+  assert.equal(featuredDate(), '2026-11-15T18:00:00Z')
+  props.teamData.matches.forEach(match => { match.status = 'completed' })
+  await Vue.nextTick()
+  assert.equal(featuredDate(), '2026-11-15T18:00:00Z')
+})
+
+test('announcements display attached photos and retain text-only posts', async t => {
+  const { root, props } = fixture(t, { panel: 'announcements' })
+  props.data.posts = [
+    { id: 1, kind: 'announcement', title: 'Avviso con foto', body: 'Dettagli della comunicazione', imageUrl: '/announcement.jpg', pinned: true },
+    { id: 2, kind: 'announcement', title: 'Avviso senza foto', excerpt: 'Comunicazione testuale' },
+    { id: 3, kind: 'news', title: 'Notizia separata', imageUrl: '/news.jpg' },
+  ]
+  await Vue.nextTick()
+  const section = find(root, node => node.props['aria-label'] === 'Annunci del club')
+  const posts = nodes(section, node => node.tag === 'article')
+  assert.equal(posts.length, 2)
+  const photo = find(posts[0], node => node.tag === 'img')
+  assert.equal(photo.props.src, '/announcement.jpg')
+  assert.equal(photo.props.alt, 'Avviso con foto')
+  assert.equal(photo.props.loading, 'lazy')
+  assert.match(textOf(posts[0]), /In evidenza.*Dettagli della comunicazione/)
+  assert.ok(!find(posts[1], node => node.tag === 'img'))
+  assert.match(textOf(posts[1]), /Comunicazione testuale/)
+  props.data.posts[0].imageUrl = ''
+  await Vue.nextTick()
+  assert.equal(nodes(section, node => node.tag === 'img').length, 0)
+  assert.match(textOf(posts[0]), /Avviso con foto/)
+})
+
 test('sponsor cards display logos and optional descriptions with one external link per sponsor', t => {
   const sponsors = [
     { id: 21, name: 'Sport e Passione', logoUrl: '/sport-logo.png', website: 'https://sport.example', description: 'Al fianco del club.\nDa oltre venti anni.' },

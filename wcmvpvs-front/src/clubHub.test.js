@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { clubContactPhoneLink, clubHomeTiles } from './clubHub.js'
+import { clubContactPhoneLink, clubHomeTiles, sortClubMatches } from './clubHub.js'
 
 test('home and CMS share eight tiles, with contacts and sponsors side by side', () => {
   const teams = Array.from({ length: 5 }, (_, i) => ({ id: i + 1, name: `Squadra ${i + 1}`, logoUrl: `/logo-${i + 1}.png` }))
@@ -26,4 +26,18 @@ test('home and CMS share eight tiles, with contacts and sponsors side by side', 
 test('telephone links retain international dialing and remove formatting', () => {
   assert.equal(clubContactPhoneLink('+39 (012) 345-6789'), 'tel:+390123456789')
   assert.equal(clubContactPhoneLink('Numero in aggiornamento'), '')
+})
+
+test('match calendars sort by actual date with undated matches last without changing the payload', () => {
+  const matches = Object.freeze([
+    { id: 4, scheduledAt: '2026-11-10T18:00:00Z' },
+    { id: 5, scheduledAt: '' },
+    { id: 2, scheduledAt: '2026-10-29T20:00:00+02:00' },
+    { id: 3, scheduledAt: '2026-10-29T19:00:00Z' },
+    { id: 1, scheduledAt: '2026-10-20T18:00:00Z' },
+    { id: 6, scheduledAt: 'Data da definire' },
+  ])
+  assert.deepEqual(sortClubMatches(matches).map(match => match.id), [1, 2, 3, 4, 5, 6])
+  assert.deepEqual(matches.map(match => match.id), [4, 5, 2, 3, 1, 6])
+  assert.deepEqual(sortClubMatches(), [])
 })

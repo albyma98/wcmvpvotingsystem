@@ -20,6 +20,16 @@ export function clubContactPhoneLink(phone = '') {
   return /\d/.test(number) ? `tel:${number}` : ''
 }
 
+export function sortClubMatches(matches = []) {
+  return [...matches].sort((a, b) => {
+    const first = Date.parse(a.scheduledAt)
+    const second = Date.parse(b.scheduledAt)
+    if (!Number.isFinite(first)) return Number.isFinite(second) ? 1 : 0
+    if (!Number.isFinite(second)) return -1
+    return first - second
+  })
+}
+
 export function formatClubDate(value) {
   if (!value) return 'Data da definire'
   const date = new Date(value)
