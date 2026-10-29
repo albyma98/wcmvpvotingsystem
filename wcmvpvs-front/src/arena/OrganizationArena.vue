@@ -5,11 +5,12 @@ import {
   onMounted,
   onBeforeUnmount,
   defineAsyncComponent,
+  watch,
 } from "vue";
-import { apiClient, getFanSessionHeaders } from "../api";
 import { getOrCreateDeviceId } from "../deviceId";
 import { createArena } from "./scene/createArena.js";
 import { organizationCrowd } from "./organizationCrowd.js";
+import { createFillers } from "./seating/seatMap.js";
 import { FAN_ACTIONS } from "./actions/demoSession.js";
 import { presets } from "./camera/cameraSystem.js";
 import Icon from "./ArenaIcon.vue";
@@ -34,6 +35,21 @@ const votedPlayer = computed(() =>
   DEMO_PLAYERS.find((p) => p.id === activityState.value?.voted),
 );
 let adapter;
+function renderCrowd(crowd) {
+  return props.demo
+    ? {
+        ...crowd,
+        actors: [
+          ...crowd.actors,
+          ...createFillers(
+            Object.fromEntries(crowd.actors.map((a) => [a.id, a.seat.id])),
+          ),
+        ],
+      }
+    : crowd;
+}
+let noticeTimer;
+let waveTimer;
 const viewport = ref(null),
   loading = ref(true),
   error = ref(""),
@@ -70,6 +86,10 @@ let arena,
 function reload() {
   window.location.reload();
 }
+watch(notice, (value) => {
+  clearTimeout(noticeTimer);
+  if (value) noticeTimer = setTimeout(() => (notice.value = ""), 6000);
+});
 function focus(actor) {
   inspected.value = actor;
   panel.value = false;
@@ -86,10 +106,38 @@ function act(kind) {
   if (kind === "wave")
     adapter
       .command({ action: "wave" })
-      .then((state) => applyState(state))
+      .then(async (state) => {
+        await applyState(state);
+        clearTimeout(waveTimer);
+        waveTimer = setTimeout(
+          () =>
+            adapter
+              .command({ action: "wave-complete" })
+              .then(applyState)
+              .catch(() => {}),
+          8200,
+        );
+      })
       .catch(() => {});
 }
 async function applyState(state) {
+  const previous = activityState.value;
+  if (previous) {
+    const trophy = state.trophies.find(
+      (t) =>
+        t.unlocked &&
+        !previous.trophies.find((old) => old.key === t.key)?.unlocked,
+    );
+    const reward = state.matches.find(
+      (m) =>
+        m.settled &&
+        m.reward > 0 &&
+        !previous.matches.find((old) => old.id === m.id)?.settled,
+    );
+    if (trophy) notice.value = "Nuovo trofeo: " + trophy.title;
+    if (reward)
+      notice.value = "Pronostico premiato: +" + reward.reward + " punti ABX!";
+  }
   activityState.value = state;
   await arena?.setActivities(state);
   for (const actor of actors.value) {
@@ -111,7 +159,7 @@ async function refreshFans() {
   actors.value = crowd.actors;
   total.value = crowd.total;
   me.value = actors.value.find((a) => a.id === crowd.selectedId) || null;
-  if (changed) arena?.replaceCrowd(crowd);
+  if (changed) arena?.replaceCrowd(renderCrowd(crowd));
   for (const a of actors.value) arena?.setEquipment(a.id, a.equipment);
   return crowd;
 }
@@ -186,7 +234,10 @@ async function command(cmd) {
   }
 }
 async function collect() {
-  if(!me.value){notice.value='Accedi per raccogliere il tesoro e ricevere le monetine.';return}
+  if (!me.value) {
+    notice.value = "Accedi per raccogliere il tesoro e ricevere le monetine.";
+    return;
+  }
   if (!activityState.value || activityState.value.treasure.claimed) return;
   arena?.collectTreasure();
   await command({
@@ -205,6 +256,8 @@ async function debug(action, value) {
     await applyState(await adapter.debug(action, value));
     await refreshFans();
     if (action === "friend" && me.value) {
+      const friend = actors.value.find((a) => Number(a.id) >= 1000);
+      if (friend) arena?.fanAction("wave", friend.id);
       arena?.focusFan(me.value.id);
       notice.value = "Amico demo arrivato nel tuo settore.";
     } else notice.value = "Simulazione demo aggiornata.";
@@ -212,12 +265,12 @@ async function debug(action, value) {
     notice.value = e.message;
   }
 }
-function focusActivity(kind,index) {
+function focusActivity(kind, index) {
   if (kind === "general") {
     closeActivities();
     arena?.view("general");
   } else {
-    arena?.focusActivity(kind,index);
+    arena?.focusActivity(kind, index);
     if (kind === "treasure") closeActivities();
   }
 }
@@ -232,6 +285,9 @@ async function vote(key) {
 const pendingInvite = ref("");
 onMounted(async () => {
   try {
+    let apiClient, getFanSessionHeaders;
+    if (!props.demo)
+      ({ apiClient, getFanSessionHeaders } = await import("../api"));
     const requestOptions = {
       timeout: 15000,
       headers: {
@@ -273,15 +329,17 @@ onMounted(async () => {
         onSelectProfile: (id) => {
           const actor = actors.value.find((a) => a.id === id);
           if (id === me.value?.id) openActivity("wardrobe");
-          else if (actor&&actor.public) {
+          else if (actor && actor.public) {
             closeActivities();
             focus(actor);
-          }else notice.value='Questo tifoso ha scelto di mantenere privata la propria scheda.';
+          } else
+            notice.value =
+              "Questo tifoso ha scelto di mantenere privata la propria scheda.";
         },
         onActivity: (kind) => openActivity(kind),
         onTreasure: collect,
       },
-      crowd,
+      renderCrowd(crowd),
     );
     arena.setChairs(false);
     await applyState(state);
@@ -311,6 +369,8 @@ onBeforeUnmount(() => {
   disposed = true;
   abort.abort();
   clearInterval(ticker);
+  clearTimeout(noticeTimer);
+  clearTimeout(waveTimer);
   arena?.dispose();
 });
 </script>
@@ -335,7 +395,10 @@ onBeforeUnmount(() => {
         <Icon name="trophy" /><span>Attività</span></button
       ><button
         class="plate"
-        @click="panel = !panel"
+        @click="
+          closeActivities();
+          panel = !panel;
+        "
         :aria-expanded="panel"
         aria-label="Viste e ricerca tifosi"
       >

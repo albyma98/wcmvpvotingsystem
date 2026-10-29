@@ -269,8 +269,14 @@ export function createActivityWorld(
     collect() {
       collecting = performance.now();
     },
-    focus(kind,index) {
-      if (kind === "museum") return { x: -14, y: 1, z: Number.isInteger(index)?-5+index*2:0, side: -1 };
+    focus(kind, index) {
+      if (kind === "museum")
+        return {
+          x: -14,
+          y: 1,
+          z: Number.isInteger(index) ? -5 + index * 2 : 0,
+          side: -1,
+        };
       if (kind === "treasure") {
         const p = TREASURE_SPOTS[state.treasure.location].position;
         return { x: p[0], y: p[1], z: p[2], side: p[2] < 0 ? -1 : 1 };

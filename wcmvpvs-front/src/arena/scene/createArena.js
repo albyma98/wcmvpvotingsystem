@@ -213,8 +213,8 @@ export function createArena(container, callbacks, initialCrowd) {
       }
       activities.update(state);
     },
-    focusActivity(kind,index) {
-      if (activities) cameras.focus(activities.focus(kind,index));
+    focusActivity(kind, index) {
+      if (activities) cameras.focus(activities.focus(kind, index));
     },
     collectTreasure() {
       activities?.collect();

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 	_ "time/tzdata"
 )
@@ -117,12 +118,15 @@ func ensureArenaTables(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS arena_predictions(org INTEGER NOT NULL,fan INTEGER NOT NULL,event INTEGER NOT NULL,choice TEXT NOT NULL,reward INTEGER,PRIMARY KEY(org,fan,event))`,
 		`CREATE TABLE IF NOT EXISTS arena_results(org INTEGER NOT NULL,event INTEGER NOT NULL,score TEXT NOT NULL,confirmed_at TEXT NOT NULL,PRIMARY KEY(org,event))`,
 		`CREATE TABLE IF NOT EXISTS arena_invites(code TEXT PRIMARY KEY,org INTEGER NOT NULL,inviter INTEGER NOT NULL,created_at TEXT NOT NULL,accepted_by INTEGER,accepted_at TEXT)`,
-		`CREATE TABLE IF NOT EXISTS arena_actions(org INTEGER NOT NULL,fan INTEGER NOT NULL,kind TEXT NOT NULL,day TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(org,fan,kind,day))`,
+		`CREATE TABLE IF NOT EXISTS arena_actions(org INTEGER NOT NULL,fan INTEGER NOT NULL,kind TEXT NOT NULL,day TEXT NOT NULL,at INTEGER NOT NULL,completed INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(org,fan,kind,day))`,
 		`CREATE TABLE IF NOT EXISTS arena_trophies(org INTEGER NOT NULL,key TEXT NOT NULL,title TEXT NOT NULL,description TEXT NOT NULL,unlocked TEXT NOT NULL,value INTEGER NOT NULL,PRIMARY KEY(org,key))`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			return err
 		}
+	}
+	if _, err := db.Exec(`ALTER TABLE arena_actions ADD COLUMN completed INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return err
 	}
 	return nil
 }
@@ -208,7 +212,7 @@ func (db *appdbimpl) ArenaActivities(org, fan int, cmd ArenaCommand, now time.Ti
 	state.Config = config
 	state.Treasure = arenaTreasure(org, now, config.Treasure)
 	// Persist assignments once; deleted profiles never compact another fan's seat.
-	rows, err := tx.Query(`SELECT id FROM fan_profiles WHERE organization_id=? AND registration_pending=0 AND accepted_terms=1 ORDER BY id`, org)
+	rows, err := tx.Query(`SELECT id FROM fan_profiles p WHERE organization_id=? AND registration_pending=0 AND accepted_terms=1 AND NOT EXISTS(SELECT 1 FROM arena_members m WHERE m.org=p.organization_id AND m.fan=p.id) ORDER BY id`, org)
 	if err != nil {
 		return state, err
 	}
@@ -283,7 +287,13 @@ func (db *appdbimpl) ArenaActivities(org, fan int, cmd ArenaCommand, now time.Ti
 				return state, err
 			}
 			available := item.Availability != "weekly"
-   if item.Availability=="event"{var count int;if err=tx.QueryRow(`SELECT COUNT(*) FROM events WHERE organization_id=? AND is_concluded=0 AND (is_active=1 OR datetime(start_datetime) BETWEEN datetime(?) AND datetime(?))`,org,now.Format(time.RFC3339),now.AddDate(0,0,7).Format(time.RFC3339)).Scan(&count);err!=nil{return state,err};available=count>0}
+			if item.Availability == "event" {
+				var count int
+				if err = tx.QueryRow(`SELECT COUNT(*) FROM events WHERE organization_id=? AND is_concluded=0 AND (is_active=1 OR datetime(start_datetime) BETWEEN datetime(?) AND datetime(?))`, org, now.Format(time.RFC3339), now.AddDate(0, 0, 7).Format(time.RFC3339)).Scan(&count); err != nil {
+					return state, err
+				}
+				available = count > 0
+			}
 			for _, key := range state.Featured {
 				if key == item.Key {
 					available = true
@@ -408,7 +418,8 @@ func (db *appdbimpl) ArenaActivities(org, fan int, cmd ArenaCommand, now time.Ti
 			if used[s] {
 				continue
 			}
-			d := absArena(s%665/35-host.Slot%665/35)*40 + absArena(s%35-host.Slot%35)
+			dr, dc := s%665/35-host.Slot%665/35, s%35-host.Slot%35
+			d := dr*dr*80 + dc*dc*100 // approximately .49 m row rise/depth versus .55 m column spacing
 			if d < distance {
 				distance = d
 				best = s
@@ -422,7 +433,9 @@ func (db *appdbimpl) ArenaActivities(org, fan int, cmd ArenaCommand, now time.Ti
 			_, err = tx.Exec(`UPDATE arena_invites SET accepted_by=?,accepted_at=? WHERE code=? AND accepted_by IS NULL`, fan, now.Format(time.RFC3339), cmd.Code)
 		}
 	case "wave", "clap":
-		_, err = tx.Exec(`INSERT INTO arena_actions(org,fan,kind,day,at) VALUES(?,?,?,?,?) ON CONFLICT(org,fan,kind,day) DO UPDATE SET at=excluded.at WHERE arena_actions.at<=excluded.at-12`, org, fan, cmd.Action, arenaDay(now), now.Unix())
+		_, err = tx.Exec(`INSERT INTO arena_actions(org,fan,kind,day,at) VALUES(?,?,?,?,?) ON CONFLICT(org,fan,kind,day) DO UPDATE SET at=excluded.at,completed=0 WHERE arena_actions.at<=excluded.at-12`, org, fan, cmd.Action, arenaDay(now), now.Unix())
+	case "wave-complete":
+		_, err = tx.Exec(`UPDATE arena_actions SET completed=1 WHERE org=? AND fan=? AND kind='wave' AND at<=? AND at>=?`, org, fan, now.Unix()-8, now.Unix()-20)
 	case "config":
 		if cmd.Config == nil {
 			return state, ErrArena
@@ -463,8 +476,8 @@ func (db *appdbimpl) ArenaActivities(org, fan int, cmd ArenaCommand, now time.Ti
 		return state, err
 	}
 	// Settle only confirmed official results, once per fan/event. Points share the
- state.Config=config
- state.Treasure.Reward=config.Treasure
+	state.Config = config
+	state.Treasure.Reward = config.Treasure
 	// existing leaderboard account; predictions never create a second wallet.
 	rs, err := tx.Query(`SELECT p.fan,p.event,p.choice,r.score FROM arena_predictions p JOIN arena_results r ON r.org=p.org AND r.event=p.event WHERE p.org=? AND p.reward IS NULL`, org)
 	if err != nil {
@@ -615,7 +628,7 @@ func arenaTrophies(tx *sql.Tx, org int, c ArenaConfig, now time.Time) error {
 	if err := tx.QueryRow(`SELECT COALESCE(MAX(n),0) FROM (SELECT COUNT(*) n FROM arena_claims WHERE org=? GROUP BY day)`, org).Scan(&record); err != nil {
 		return err
 	}
-	if err := tx.QueryRow(`SELECT COUNT(DISTINCT fan) FROM arena_actions WHERE org=? AND kind='wave' AND at>=?`, org, now.Unix()-10).Scan(&ola); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(DISTINCT fan) FROM arena_actions WHERE org=? AND kind='wave' AND completed=1 AND at>=?`, org, now.Unix()-20).Scan(&ola); err != nil {
 		return err
 	}
 	monday := now.In(rome).AddDate(0, 0, -(int(now.In(rome).Weekday())+6)%7)

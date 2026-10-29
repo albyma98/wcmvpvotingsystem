@@ -1,10 +1,73 @@
 # Joy Volley · Arena Tifosi
 
+## Arena Tifosi 3.0 — cinque attività nello stesso palazzetto
+
+La demo 3.0 si apre su **`/arena-demo/`**. La versione collegata ai profili reali rimane su **`/<slug>/arena`**. Apri il pulsante con la coppa **Attività Arena** in alto: le cinque attività condividono scena, avatar, wallet e progressi. La demo architettonica precedente, con il selettore di profili, rimane su `/arena-demo/?classic=1`.
+
+### Come provare le attività
+
+1. **Caccia al tesoro.** Apri la missione, leggi l’indizio e premi **Cerca il tesoro**. Ruota/avvicina la camera e tocca il bagliore 3D. I quattro modelli sono pallone dorato, monetina, mini coppa e sciarpa luminosa; ruotano fra dieci posizioni. Una raccolta dà inizialmente 20 monetine ABX. Riaprire o ricaricare non paga di nuovo. Nel laboratorio di sviluppo puoi mostrare la posizione, simulare il ritrovamento, ripristinare la missione o cambiare giorno/posizione.
+2. **Guardaroba.** La camera raggiunge il tuo avatar e puoi ruotargli intorno trascinando la scena. Tocca un accessorio per provarlo; **Acquista** e poi **Equipaggia** lo rendono permanente. Con le 20 monetine del primo tesoro puoi comprare subito maglia, cappellino o sciarpa. Il catalogo contiene 12 accessori visibili: abiti, pantaloni, sciarpa, cappellino, occhiali, bandierina, scarpe, capelli, colore maglia ed esultanza. La rotazione settimanale è stabile per settimana ISO in Europe/Rome; la maglia alternativa è legata alla settimana di gara, due oggetti richiedono livello 2. I posseduti restano utilizzabili anche dopo la fine della disponibilità.
+3. **Pronostici.** Tocca il tabellone a bordo campo oppure apri l’attività. Il primo numero indica sempre la prima squadra mostrata. Conferma uno dei sei risultati in set; puoi modificarlo prima del cutoff. Nella demo, scegli lo stesso risultato nel laboratorio e premi **Conferma risultato e verifica**: ricevi 50 punti ABX per l’esatto o 15 per il solo vincitore. Ripetere non assegna altri punti. Sono punti della classifica, non monetine spendibili né una nuova valuta. La versione reale legge gli eventi della società e aspetta la conferma amministrativa del risultato ufficiale.
+4. **I miei vicini.** La camera raggiunge il tuo posto ed evidenzia gli avatar vicini. La ricerca e le schede rispettano l’opzione di pubblicità del profilo. Genera e copia il link d’invito: il destinatario accede con la propria sessione e conferma la richiesta di posto. È una richiesta esplicita di ricollocazione del solo destinatario; nessun altro tifoso viene spostato. Se i posti immediatamente vicini sono occupati viene scelto un posto libero nella stessa tribuna. Il laboratorio può aggiungere un amico demo senza cambiare i posti esistenti.
+5. **Museo.** Le sei vetrine sul fondo del campo sono oggetti 3D selezionabili. Le coppe dorate sono sbloccate, quelle chiare restano da conquistare; targhe e pannello mostrano descrizione e data. La demo contiene due esempi dichiarati dimostrativi e permette di sbloccarne altri. La versione reale registra esclusivamente traguardi misurati e conserva data e valore del primo sblocco.
+
+MVP, applauso, sciarpa, ola, ricerca tifosi, inquadrature e navigazione touch restano disponibili. Nell’arena reale MVP rimanda alla votazione esistente della società; nella demo il voto resta dimostrativo e persistente. Il laboratorio si trova in fondo al pannello attività, soltanto con `import.meta.env.DEV` e nell’adapter demo. Non esiste un endpoint pubblico per assegnare monetine, alterare il giorno o sbloccare trofei.
+
+### Economia e persistenza server
+
+Le migrazioni additive vengono eseguite all’avvio del backend. `arena_members` rende persistenti posto, opt-in pubblico ed equipaggiamento, con unicità `(org,fan)` e `(org,slot)`. Gli avatar dei profili riservati restano visibili, ma nickname e scheda pubblica sono nascosti; il proprietario vede sempre la propria identità. Le vecchie assegnazioni calcolate solo nel browser vengono inizializzate una volta e da quel momento non si compattano dopo cancellazioni.
+
+`arena_claims` ha unicità club/tifoso/giorno; il server sceglie tesoro e posizione da club e giorno **Europe/Rome**, usando il proprio orologio e dati timezone inclusi nel binario. `arena_predictions` ha unicità club/tifoso/partita e una ricompensa liquidata una sola volta, anche se il risultato viene confermato ripetutamente. `arena_invites` usa codici casuali opachi, validi 30 giorni e utilizzabili da un solo destinatario. Un link non contiene credenziali e non seleziona l’identità dell’invitante.
+
+Acquisti e premi usano **`fan_wallets`, `fan_economy_accounts`, `fan_wallet_movements`, `fan_shop_items`** e i trigger economici già esistenti. Gli articoli avatar sono oggetti non consumabili `arena:<key>` nella collezione ABX, con scope club. Nessun saldo parallelo: la transazione prende il lock di scrittura della società prima di leggere e aggiorna insieme proprietà, saldo e registro. I punti da pronostico aumentano esclusivamente il contatore punti ABX. I client non forniscono prezzi, premi, identità del proprietario o orari attendibili.
+
+### API e configurazione amministrativa
+
+- `GET /api/fan/arena/activities`: stato, missione giornaliera, catalogo, saldo del proprietario, eventi, membri e trofei.
+- `POST /api/fan/arena/activities`: azioni `claim`, `buy`, `equip`, `remove`, `predict`, `privacy`, `invite`, `accept`, `wave`, `clap`. Ogni mutazione richiede una sessione tifoso valida della medesima organizzazione.
+- `GET /api/fan/arena`: roster pubblico, posto persistente, equipaggiamento e `is_me` verificato dal server.
+- `POST /api/admin/arena/activities`: soltanto amministratori autorizzati della società; azioni `config` e `result`, protette dal middleware admin esistente. I tifosi non possono chiamarle tramite il percorso pubblico.
+
+Tutte le richieste reali usano `X-Organization-Slug`, `X-Device-ID` e, quando autenticati, `X-Fan-Session`. Gli aggiornamenti restituiscono lo stato effettivo e sono `no-store`. Il completamento dell’ola viene confermato con `wave-complete` dopo almeno 8 secondi misurati dal server; le conferme anticipate non contano. Esempi di body amministrativi (usare la sessione admin esistente):
+
+```json
+{"action":"config","config":{"treasure":20,"exact":50,"winner":15,"growth":100,"growth_big":500,"challenge":100,"collective":3,"record":10,"cutoff_minutes":0}}
+```
+
+```json
+{"action":"result","event_id":123,"score":"3-1","confirm":true}
+```
+
+Il cutoff è l’inizio ufficiale meno `cutoff_minutes` (0 per la chiusura all’inizio). La conferma del risultato è accettata solo dopo l’inizio; dopo una prima conferma non è possibile cambiare il risultato e riassegnare i premi. Non sono inventati risultati sportivi reali. Per una correzione ufficiale successiva serve una procedura amministrativa di storno, fuori dal flusso corrente.
+
+I traguardi reali sono: soglie di profili completati (100/500 di default); prima ola con almeno 3 identità distinte entro 10 secondi; 100 partecipanti unici alla caccia; tribuna vincitrice della settimana precedente per cacciatori unici, con partecipazione di entrambi i settori e almeno `collective` partecipanti totali; record giornaliero di partecipazione sopra la soglia configurata. Non esiste una competizione precedente da riutilizzare nel modulo Arena: queste misure sono definite sulle attività realmente registrate. I trofei non possono essere sbloccati arbitrariamente attraverso le API pubbliche.
+
+### Demo, test e limiti
+
+L’adapter demo usa una sola chiave locale, **`abx.arena.activities.demo.v3`**, con saldo dimostrativo e progressi separati dai profili reali. Giorno simulato, premi manuali e risultati demo non hanno valore nel backend ABX. LocalStorage non è una barriera antifrode: tutte le garanzie economiche reali appartengono alle transazioni server. **Ripristina dati demo** cancella soltanto questa simulazione. La vecchia demo conserva la sua chiave separata.
+
+```powershell
+cd wcmvpvs-front
+npm run dev
+# aprire /arena-demo/ sulla porta stampata da Vite
+npm run test:arena
+npm run build
+```
+
+Backend: `CGO_ENABLED=1 go test ./service/database ./service/api` con GCC/SQLite disponibili. Sul PC di sviluppo è disponibile anche Ubuntu tramite WSL; i test sono stati avviati lì per usare SQLite reale. I test specifici `-run Arena` coprono giorno/DST, transazioni, richieste ripetute e concorrenti, fondi insufficienti, inventario, cutoff, liquidazione unica, inviti, privacy e confini admin. Il frontend verifica anche trasformazioni 3D degli accessori, posti e regressioni delle animazioni.
+
+Il museo e gli hotspot condividono il renderer dell’arena, con geometrie semplici, texture generate localmente e materiali condivisi. Il guardaroba riusa gli avatar instanziati. Il pannello e gli oggetti delle attività sono moduli caricati su richiesta; il DPR resta limitato. Nessuna nuova dipendenza, servizio esterno o acquisto con denaro reale.
+
+Verifica 3.0 completata: build di produzione e **23 test frontend superati**; suite database completa, suite API completa e test Arena aggiornati superati con SQLite reale su Ubuntu/WSL. La fixture del test CRUD torneo è stata allineata alle migrazioni P1 già usate dal router. Controllato anche che il modulo del laboratorio non sia presente nei bundle di produzione. Nel browser sono stati provati ritrovamento del tesoro tramite tap 3D, acquisto/equipaggiamento del cappellino, persistenza dopo refresh, pronostico premiato e chiuso, invito e amico demo, museo e MVP. Layout controllato a 390 × 844 e 1280 × 900; console pulita nella sessione finale. Screenshot: [attività desktop](screenshots/activities-desktop.jpg), [guardaroba mobile](screenshots/activities-wardrobe-mobile.jpg), [museo mobile](screenshots/activities-museum-mobile.jpg). I dati usati per la prova demo sono stati ripristinati dal solo laboratorio locale.
+
+Le reazioni visive restano locali; l’ola viene registrata sul server per misurare il traguardo ma non è ancora trasmessa agli altri browser. Il risultato ufficiale va confermato dall’API amministrativa: un eventuale feed sportivo futuro dovrà alimentare quel passaggio. La capienza è 1330 posti; oltre la capienza serve un’estensione della mappa. Non è stato eseguito un collaudo su iPhone/Android fisici. La build richiede il rilascio coordinato di frontend e backend, con fallback SPA per `/<slug>/arena`.
+
 ## Arena delle società
 
-L’app principale espone ora **`/<slug>/arena`**, caricata su richiesta. Usa `GET /api/fan/arena` con lo slug della società e la sessione tifoso già esistente. Il server risolve l’`organization_id`, estrae esclusivamente i profili con registrazione completata e termini accettati, e restituisce solo ID, nickname e indicazione del proprio profilo. Telefono, sessioni e altri dati personali non sono inclusi.
+L’app principale espone ora **`/<slug>/arena`**, caricata su richiesta. Usa `GET /api/fan/arena` con lo slug della società e la sessione tifoso già esistente. Il server risolve l’`organization_id`, estrae esclusivamente i profili con registrazione completata e termini accettati, e restituisce ID, nickname autorizzato, posto, equipaggiamento e indicazione del proprio profilo. Telefono, sessioni e altri dati personali non sono inclusi.
 
-La tribuna contiene soltanto avatar associati a profili reali della società. L’ordinamento per ID e il seed dell’organizzazione rendono i posti ripetibili fra browser; nuove registrazioni si aggiungono in coda. Una cancellazione può compattare i posti. La mappa ha 1330 posti: oltre questa capienza viene mostrato un avviso e il conteggio totale. I profili si caricano all’apertura; ricaricare la pagina aggiorna le iscrizioni. Non viene simulato uno stato online.
+La tribuna contiene soltanto avatar associati a profili reali della società, con posti persistenti sul server. La mappa ha 1330 posti; i profili si aggiornano all’apertura e dopo le azioni. Non viene simulato uno stato online. La ricerca pubblica richiede il consenso del tifoso.
 
 Gli ospiti possono esplorare e cercare nickname. La sessione valida della stessa società abilita il proprio avatar e le reazioni locali; selezionare un altro tifoso ne mostra il posto senza impersonarlo. Il pulsante MVP porta al percorso tifoso esistente `/<slug>/new`, dove resta gestita la votazione ufficiale. Le reazioni non sono ancora sincronizzate fra utenti. Gli stili della pagina sono isolati e la scena viene rilasciata all’uscita. Il percorso `/arena-demo/` conserva la demo indipendente.
 
@@ -12,7 +75,7 @@ L’integrazione richiede il rilascio sia del frontend sia del backend aggiornat
 
 MVP di tribuna digitale popolata, costruito sul palazzetto esistente di Gioia del Colle. Usa Vue 3, Vite e Three.js. È una **pagina autonoma** in `/arena-demo/`, con entry point, stili e bundle propri: non richiede backend, login, API o dati degli eventi. L’app principale continua a essere servita da `/`.
 
-## Come usare Arena Tifosi
+## Come usare la demo classica (`?classic=1`)
 
 1. All’apertura sono presenti **60 profili tifoso demo e 280 comparse**, distribuiti sui due lati lunghi. Il tuo profilo iniziale è **GioiaFan**, posto **B-08-24**. I dati sono dimostrativi.
 2. Tocca il **profilo in basso a sinistra** per cambiare tifoso dal selettore oppure cercare un nickname (per esempio `MarcoGioia`). I risultati della ricerca sono selezionabili anche da tastiera. Toccare un avatar di un profilo demo consente a sua volta di impersonarlo; le comparse non sono selezionabili. La scelta chiude il pannello e avvicina la camera al nuovo posto.

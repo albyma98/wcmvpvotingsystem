@@ -119,8 +119,24 @@ export function closestNeighbors(actors, me) {
 export function itemAvailable(item, state) {
   return (
     state.level >= item.level &&
-    (item.availability!=='event'||state.matches.some(m=>new Date(m.starts)>=new Date(state.now)&&new Date(m.starts)<=new Date(new Date(state.now).getTime()+7*86400000)))&&
+    (item.availability !== "event" ||
+      state.matches.some(
+        (m) =>
+          new Date(m.starts) >= new Date(state.now) &&
+          new Date(m.starts) <=
+            new Date(new Date(state.now).getTime() + 7 * 86400000),
+      )) &&
     (item.availability !== "weekly" || state.featured.includes(item.key))
   );
 }
-export function weeklyFeatured(now){const d=new Date(dayInRome(now)+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const year=d.getUTCFullYear();const week=Math.ceil((((d-new Date(Date.UTC(year,0,1)))/86400000)+1)/7);return (year+week)%2===0?['hoodie','scarf','shoes']:['flag','cap','away-shirt']}
+export function weeklyFeatured(now) {
+  const d = new Date(dayInRome(now) + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const year = d.getUTCFullYear();
+  const week = Math.ceil(
+    ((d - new Date(Date.UTC(year, 0, 1))) / 86400000 + 1) / 7,
+  );
+  return (year + week) % 2 === 0
+    ? ["hoodie", "scarf", "shoes"]
+    : ["flag", "cap", "away-shirt"];
+}

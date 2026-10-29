@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, defineAsyncComponent } from "vue";
 import Icon from "../ArenaIcon.vue";
 import {
   ACTIVITIES,
@@ -29,10 +29,10 @@ const emit = defineEmits([
 const category = ref("all"),
   preview = ref(null),
   choice = ref("3-0"),
-  inviteMessage = ref(""),
-  debugOpen = ref(false),
-  result = ref("3-0");
-const dev = import.meta.env.DEV;
+  inviteMessage = ref("");
+const DebugPanel = import.meta.env.DEV
+  ? defineAsyncComponent(() => import("./DebugPanel.vue"))
+  : null;
 const match = computed(
   () =>
     [...props.state.matches]
@@ -208,7 +208,9 @@ async function copy() {
               ><small v-if="!owns(item.key) && !itemAvailable(item, state)">{{
                 state.level < item.level
                   ? "Sblocco al livello " + item.level
-                  : "Torna nella settimana dedicata"
+                  : item.availability === "event"
+                    ? "Disponibile nella settimana di gara"
+                    : "Torna nella settimana dedicata"
               }}</small></button
             ><button
               v-if="owns(item.key)"
@@ -345,6 +347,7 @@ async function copy() {
           <button
             v-for="actor in neighbors"
             :key="actor.id"
+            :disabled="actor.public === false"
             @click="emit('neighbor', actor)"
           >
             <Icon name="fans" /><span
@@ -407,47 +410,12 @@ async function copy() {
           Torna alla panoramica dell’arena
         </button>
       </template>
-      <details
-        v-if="demo && dev"
-        :open="debugOpen"
-        class="debug"
-        @toggle="debugOpen = $event.target.open"
-      >
-        <summary>Laboratorio demo · solo sviluppo</summary>
-        <p>Nessuna operazione modifica profili o monetine reali.</p>
-        <div>
-          <button @click="emit('debug', 'day')">Giorno successivo</button
-          ><button @click="emit('debug', 'location')">Cambia posizione</button
-          ><button @click="emit('focus', 'treasure')">Mostra il tesoro</button
-          ><button @click="emit('debug', 'collect')">Simula ritrovamento</button
-          ><button @click="emit('debug', 'reset-claim')">
-            Ripristina missione</button
-          ><button @click="emit('debug', 'coins')">+100 monetine demo</button
-          ><button @click="emit('debug', 'unlock', 'celebration')">
-            Sblocca esultanza</button
-          ><button @click="emit('debug', 'match')">Nuova partita demo</button
-          ><select v-model="result" aria-label="Risultato demo">
-            <option
-              v-for="score in ['3-0', '3-1', '3-2', '2-3', '1-3', '0-3']"
-              :key="score"
-            >
-              {{ score }}
-            </option></select
-          ><button @click="emit('debug', 'result', result)">
-            Conferma risultato e verifica</button
-          ><button @click="emit('debug', 'friend')">
-            Simula amico accettato</button
-          ><select
-            aria-label="Trofeo demo"
-            @change="emit('debug', 'trophy', $event.target.value)"
-          >
-            <option value="">Sblocca un trofeo demo…</option>
-            <option v-for="t in state.trophies" :value="t.key" :key="t.key">
-              {{ t.title }}
-            </option></select
-          ><button @click="emit('debug', 'reset')">Ripristina dati demo</button>
-        </div>
-      </details>
+      <DebugPanel
+        v-if="demo && DebugPanel"
+        :state="state"
+        @debug="(action, value) => emit('debug', action, value)"
+        @focus="(kind) => emit('focus', kind)"
+      />
     </div>
   </section>
 </template>

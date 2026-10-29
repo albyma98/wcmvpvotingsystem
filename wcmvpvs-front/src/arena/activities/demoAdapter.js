@@ -1,4 +1,4 @@
-import { CATALOG, dayInRome,weeklyFeatured } from "./model.js";
+import { CATALOG, dayInRome, weeklyFeatured } from "./model.js";
 import { createDemoProfiles } from "../crowd/demoProfiles.js";
 export const DEMO_ACTIVITY_KEY = "abx.arena.activities.demo.v3";
 const config = {
@@ -36,7 +36,7 @@ export function createDemoActivityAdapter(
     claims: [],
     votes: null,
     predictions: {},
-    trophies: {ola:now().toISOString(),record:now().toISOString()},
+    trophies: { ola: now().toISOString(), record: now().toISOString() },
     offset: 0,
     location: null,
     public: true,
@@ -54,6 +54,7 @@ export function createDemoActivityAdapter(
   const save = () => {
     storage.setItem(DEMO_ACTIVITY_KEY, JSON.stringify(data));
   };
+  save();
   const date = () => new Date(now().getTime() + data.offset * 86400000);
   function snapshot() {
     const time = date(),
@@ -71,7 +72,7 @@ export function createDemoActivityAdapter(
         claimed: data.claims.includes(day),
       },
       catalog: CATALOG,
-      featured:weeklyFeatured(time),
+      featured: weeklyFeatured(time),
       owned: [...data.owned],
       equipment: { ...data.equipment },
       wallet: data.wallet,
@@ -172,6 +173,7 @@ export function createDemoActivityAdapter(
         if (!data.votes) data.votes = cmd.key;
         break;
       case "wave":
+      case "wave-complete":
       case "clap":
         break;
       default:

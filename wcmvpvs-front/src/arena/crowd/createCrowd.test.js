@@ -3,7 +3,34 @@ import assert from "node:assert/strict";
 import { Group, PerspectiveCamera, Matrix4 } from "three";
 import { createCrowd } from "./createCrowd.js";
 import { createDemoSession } from "../actions/demoSession.js";
-test('wardrobe equipment changes the shared 3D avatar and can be removed',()=>{globalThis.window={matchMedia:()=>({matches:false})};const actor=createDemoSession().actors[0],root=new Group();const crowd=createCrowd(root,[actor],{selectedId:actor.id});crowd.setEquipment(actor.id,{shirt:'shirt-color',flag:'flag',hat:'cap',glasses:'glasses',shoes:'shoes'});const accessories=root.getObjectByName('fan-equipped-accessories');assert.ok(new Matrix4().fromArray(accessories.instanceMatrix.array,5*16).determinant()>0);const colors=root.getObjectByName('fan-shirts').instanceColor.array;assert.ok(colors.every(Number.isFinite));crowd.setEquipment(actor.id,{});assert.equal(new Matrix4().fromArray(accessories.instanceMatrix.array,5*16).determinant(),0)});
+test("wardrobe equipment changes the shared 3D avatar and can be removed", () => {
+  globalThis.window = { matchMedia: () => ({ matches: false }) };
+  const actor = createDemoSession().actors[0],
+    root = new Group();
+  const crowd = createCrowd(root, [actor], { selectedId: actor.id });
+  crowd.setEquipment(actor.id, {
+    shirt: "shirt-color",
+    flag: "flag",
+    hat: "cap",
+    glasses: "glasses",
+    shoes: "shoes",
+  });
+  const accessories = root.getObjectByName("fan-equipped-accessories");
+  assert.ok(
+    new Matrix4()
+      .fromArray(accessories.instanceMatrix.array, 5 * 16)
+      .determinant() > 0,
+  );
+  const colors = root.getObjectByName("fan-shirts").instanceColor.array;
+  assert.ok(colors.every(Number.isFinite));
+  crowd.setEquipment(actor.id, {});
+  assert.equal(
+    new Matrix4()
+      .fromArray(accessories.instanceMatrix.array, 5 * 16)
+      .determinant(),
+    0,
+  );
+});
 
 test("empty club and guest crowd do not select a fan implicitly", () => {
   globalThis.window = { matchMedia: () => ({ matches: false }) };

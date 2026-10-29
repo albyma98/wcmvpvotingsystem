@@ -34,6 +34,10 @@ func TestTournamentCRUD_ForeignKeysEnabled(t *testing.T) {
 	if err := store.EnsureTournamentAdminTables(); err != nil {
 		t.Fatalf("EnsureTournamentAdminTables: %v", err)
 	}
+	// Match the router startup: score actions also read the bracket columns.
+	if err := store.EnsureTournamentP1Tables(); err != nil {
+		t.Fatalf("EnsureTournamentP1Tables: %v", err)
+	}
 
 	ctx := context.Background()
 
