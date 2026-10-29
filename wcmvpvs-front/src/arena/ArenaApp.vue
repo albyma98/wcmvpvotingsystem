@@ -638,7 +638,7 @@ onBeforeUnmount(() => {
           <label
             ><span
               ><strong>Sedie sul parquet</strong
-              ><small>Allestimento della fotografia</small></span
+              ><small>Fotografia, al posto della partita</small></span
             ><input v-model="chairs" type="checkbox" role="switch" /><i></i
           ></label>
         </div>

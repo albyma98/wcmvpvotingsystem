@@ -14,6 +14,8 @@ MVP di tribuna digitale popolata, costruito sul palazzetto esistente di Gioia de
 
 Il 3D occupa automaticamente tutta la finestra, senza sidebar o scorrimento della pagina. Profilo, impostazioni e voto si aprono sopra la scena; su mobile i pannelli di profilo e impostazioni sono ancorati al bordo inferiore e scorrono internamente. La barra delle azioni lascia il posto ai comandi del tour durante la visita automatica.
 
+Sul campo si svolge uno **scambio automatico di pallavolo 6 contro 6**: squadra blu e squadra gialla, ricezioni, alzate, schiacciate e muri sincronizzati con il pallone. La rete è sulla linea centrale, con nastro a 2.43 m, pali imbottiti blu e antenne. Lo scambio coreografato si ripete senza aggiungere comandi alla barra. **Viste → Campo centrale** offre un’inquadratura ravvicinata.
+
 Profili, assegnazioni, voto, cooldown e azione recente usano soltanto la chiave `abx.arena-tifosi.demo.v1` in localStorage. Il salvataggio vale per origine e browser: `localhost` e `127.0.0.1` hanno archivi distinti. Se lo storage è bloccato, la demo continua in memoria e lo segnala. Le presenze attive sono simulate; impersonare un profilo lo rende attivo nella demo.
 
 ## Avvio dal repository
@@ -44,7 +46,7 @@ Apri `/arena-demo/` sull’indirizzo stampato dall’anteprima (normalmente `htt
 - Mouse sinistro / un dito: rotazione con inerzia.
 - Rotella / pinch: zoom limitato; tasto destro / due dita: pan limitato.
 - Cinque preset animati: vista generale, tribuna destra, tribuna sinistra, campo, angolo alto.
-- All’avvio il campo è libero per Arena Tifosi. La scheda **Scena** permette di riattivare le 36 sedie della fotografia, la copertura e le barriere perimetrali.
+- All’avvio sono visibili rete, pallone e dodici giocatori. La scheda **Scena** permette di riattivare le 36 sedie della fotografia, la copertura e le barriere perimetrali. L’allestimento con le sedie sostituisce temporaneamente la partita; disattivandolo riappaiono rete e squadre.
 - **Avvia tour cinematico**: percorso automatico di 18 secondi, panoramica, tribuna principale, campo, sedute gialle e vista finale. I pulsanti Interrompi e i preset interrompono il tour. Il cambio scheda del browser lo ferma.
 - Scorciatoie desktop: **1** MVP, **2** applauso, **3** sciarpa, **4** ola, **F** trova il mio posto. Sono sospese mentre è aperta una finestra o si scrive nei campi.
 - **Formato 9:16** nel menu: viewport in rapporto verticale. La scena usa già tutta la finestra per impostazione predefinita; **Schermo intero** nasconde anche l’interfaccia del browser quando la Fullscreen API è disponibile. Tutti i pannelli rimangono accessibili anche in questa modalità.
@@ -99,6 +101,9 @@ src/arena/
     environment.js          pareti, porte, tetto, bandiere e luci
     stands.js               due tribune e corrimano
     field.js                parquet e segnaletica su texture canvas
+    volleyballMatch.js      rete, atleti instanziati, pallone e ombre leggere
+    volleyballRally.js      traiettoria continua e pose dei dodici giocatori
+    volleyballRally.test.js continuità, passaggio sopra la rete e limiti del campo
     props.js                sedie opzionali, tavoli e barriere
 ```
 
@@ -106,7 +111,7 @@ Le geometrie ripetute sono `InstancedMesh`, aggregate per materiale: sedie, sedu
 
 La mappa astratta contiene 1330 posti: 665 per tribuna, senza occupare le scale. Profili e seggiolini leggono la stessa mappa. Un seed stabile e un campionamento pesato favoriscono zone centrali e cluster; le comparse privilegiano i dintorni dei profili e lasciano vuoti irregolari. I 340 avatar condividono cinque mesh instanziate per corpi, teste, capelli, arti/dettagli e sciarpe, più indicatori semplici. Nessun rig, GLB o texture esterna per i tifosi. Le pose vengono aggiornate al massimo a 30 Hz, soltanto per avatar idle selezionati e soggetti coinvolti nelle azioni; le comparse lontane ricevono aggiornamenti meno frequenti. Il rendering della camera mantiene il proprio ciclo fluido. `prefers-reduced-motion` disattiva i piccoli movimenti automatici; le azioni esplicite restano disponibili.
 
-Nella build verificata, il bundle JavaScript dell’arena è circa **162 kB gzip** e il CSS circa **12 kB gzip**, esclusi runtime Vue condiviso, foto, font esterni e overhead HTTP. L’arena non è importata dalla pagina principale, che mantiene il suo bundle separato. Queste misure riguardano gli asset compilati, non un tempo di caricamento o una garanzia di FPS su telefono.
+Nella build verificata, il bundle JavaScript dell’arena è circa **165 kB gzip** e il CSS circa **12 kB gzip**, esclusi runtime Vue condiviso, foto, font esterni e overhead HTTP. L’arena non è importata dalla pagina principale, che mantiene il suo bundle separato. Queste misure riguardano gli asset compilati, non un tempo di caricamento o una garanzia di FPS su telefono.
 
 ## Verifica e prossimi sviluppi ABX
 
@@ -114,7 +119,9 @@ Nella build verificata, il bundle JavaScript dell’arena è circa **162 kB gzip
 npm run test:arena
 ```
 
-I 13 test coprono posti validi/univoci e riparazione dei salvataggi, persistenza, voto unico, cooldown, storage bloccato, reset, reazioni di vicinato, propagazione dell’ola, matrici delle pose e traiettoria cinematica.
+I 16 test coprono posti validi/univoci e riparazione dei salvataggi, persistenza, voto unico, cooldown, storage bloccato, reset, reazioni di vicinato, propagazione dell’ola, matrici delle pose, traiettoria cinematica e scambio sul campo. I tre test della partita controllano sei atleti per metà campo, pose finite, continuità di tutti i contatti e del ciclo, passaggio del pallone sopra il nastro e pose ferme con movimento ridotto.
+
+Gli atleti condividono una mesh instanziata per corpi e arti e una per le teste. Ombre morbide precalcolate, pallone e rete usano geometrie/materiali condivisi, senza modelli o texture scaricati. Le pose e il pallone si aggiornano al massimo a 30 Hz; il ciclo si sospende con la scena nascosta. Con `prefers-reduced-motion` la partita resta in posa statica. Verificati panoramica, vista Campo centrale e viewport mobile nel browser. Screenshot: [campo con rete e squadre](screenshots/volleyball-desktop.jpg), [partita su mobile](screenshots/volleyball-mobile.jpg).
 
 Verifiche eseguite per Arena Tifosi: build di produzione dell’intero frontend e **13 test superati**; ricerca di `MarcoGioia`, richiamo camera e posto A-12-23; voto per Luca Rinaldi e conferma della persistenza dopo ricarica, con secondo voto bloccato; applauso, sciarpa e ola; filtri con contatori 340 → 60 → 46; rotazione, zoom e tour completo; nessun errore o warning nella console nel controllo finale. Layout e finestra MVP verificati a 390 × 844 senza overflow orizzontale. Il formato 9:16 mantiene l’implementazione già collaudata nella versione architettonica. Non è stato effettuato un collaudo su telefoni fisici.
 

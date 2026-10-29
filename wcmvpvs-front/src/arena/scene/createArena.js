@@ -5,6 +5,7 @@ import { createField } from "./field";
 import { createChairs, createProps } from "./props";
 import { createCameraSystem } from "../camera/cameraSystem";
 import { createCrowd } from "../crowd/createCrowd.js";
+import { createVolleyballMatch } from "./volleyballMatch.js";
 
 export function createArena(container, callbacks, initialCrowd) {
   const scene = new THREE.Scene();
@@ -19,7 +20,7 @@ export function createArena(container, callbacks, initialCrowd) {
   renderer.toneMappingExposure = 1.15;
   renderer.domElement.setAttribute(
     "aria-label",
-    "Palazzetto 3D interattivo: trascina per ruotare, usa la rotella o due dita per lo zoom. I pulsanti consentono di scegliere le viste anche da tastiera.",
+    "Palazzetto 3D con rete e due squadre da sei giocatori in uno scambio animato di pallavolo. Trascina per ruotare, usa la rotella o due dita per lo zoom. I pulsanti consentono di scegliere le viste anche da tastiera.",
   );
   renderer.domElement.setAttribute("role", "img");
   container.appendChild(renderer.domElement);
@@ -50,6 +51,7 @@ export function createArena(container, callbacks, initialCrowd) {
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
+  const match = createVolleyballMatch(scene, { reducedMotion });
   const cameras = createCameraSystem(
     camera,
     renderer.domElement,
@@ -135,6 +137,7 @@ export function createArena(container, callbacks, initialCrowd) {
     if (disposed || hidden || contextLost) return;
     cameras.update(now);
     crowd?.update(now, camera);
+    if (match.group.visible) match.update(now);
     if (flags && !reducedMotion)
       flags.rotation.x = Math.sin(now / 1600) * 0.008;
     // Exterior views open the entire near wall, including its frames and doors.
@@ -192,6 +195,7 @@ export function createArena(container, callbacks, initialCrowd) {
     resetCrowd: () => crowd?.reset(),
     setChairs: (value) => {
       chairs.visible = value;
+      match.setVisible(!value);
     },
     setRoof: (value) => {
       roofEnabled = value;
