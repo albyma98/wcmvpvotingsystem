@@ -8,6 +8,7 @@ import { createCrowd } from "../crowd/createCrowd.js";
 import { createVolleyballMatch } from "./volleyballMatch.js";
 
 export function createArena(container, callbacks, initialCrowd) {
+  let activities = null;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#e9e8e0");
   const renderer = new THREE.WebGLRenderer({
@@ -41,7 +42,7 @@ export function createArena(container, callbacks, initialCrowd) {
     layer.name = name;
     scene.add(layer);
   }
-  const crowd = initialCrowd
+  let crowd = initialCrowd
     ? createCrowd(scene, initialCrowd.actors, {
         selectedId: initialCrowd.selectedId,
         onSelect: callbacks.onSelectProfile,
@@ -111,7 +112,16 @@ export function createArena(container, callbacks, initialCrowd) {
         event.clientY - pointerStart.y,
       ) < 6
     )
-      crowd?.pick(event.clientX, event.clientY, camera, renderer.domElement);
+      if (
+        !activities?.pick(
+          event.clientX,
+          event.clientY,
+          camera,
+          renderer.domElement,
+          architecture,
+        )
+      )
+        crowd?.pick(event.clientX, event.clientY, camera, renderer.domElement);
     pointerStart = null;
     pointers.delete(event.pointerId);
   };
@@ -137,6 +147,7 @@ export function createArena(container, callbacks, initialCrowd) {
     if (disposed || hidden || contextLost) return;
     cameras.update(now);
     crowd?.update(now, camera);
+    activities?.animate(now);
     if (match.group.visible) match.update(now);
     if (flags && !reducedMotion)
       flags.rotation.x = Math.sin(now / 1600) * 0.008;
@@ -172,14 +183,56 @@ export function createArena(container, callbacks, initialCrowd) {
     }
   });
   return {
+    replaceCrowd(data) {
+      if (crowd) {
+        scene.remove(crowd.group);
+        const gs = new Set(),
+          ms = new Set();
+        crowd.group.traverse((o) => {
+          if (o.geometry) gs.add(o.geometry);
+          if (o.material) ms.add(o.material);
+          if (o.isInstancedMesh) o.dispose();
+        });
+        gs.forEach((g) => g.dispose());
+        ms.forEach((m) => m.dispose());
+      }
+      crowd = createCrowd(scene, data.actors, {
+        selectedId: data.selectedId,
+        onSelect: callbacks.onSelectProfile,
+      });
+    },
+    async setActivities(state) {
+      if (!activities) {
+        const { createActivityWorld } = await import("../activities/world.js");
+        if (disposed) return;
+        activities = createActivityWorld(scene, {
+          onActivity: callbacks.onActivity,
+          onTreasure: callbacks.onTreasure,
+          reducedMotion,
+        });
+      }
+      activities.update(state);
+    },
+    focusActivity(kind,index) {
+      if (activities) cameras.focus(activities.focus(kind,index));
+    },
+    collectTreasure() {
+      activities?.collect();
+    },
+    setEquipment(id, equipment) {
+      crowd?.setEquipment(id, equipment);
+    },
+    setNeighbors(ids) {
+      crowd?.setNeighbors(ids);
+    },
     view: (id) => cameras.go(id),
     startTour: cameras.startTour,
     stopTour: cameras.stopTour,
-    focusFan(id) {
+    focusFan(id, close = false) {
       const actor = crowd?.actor(id);
       if (actor) {
         crowd.select(id);
-        cameras.focus(actor.seat);
+        cameras.focus(actor.seat, close);
       }
     },
     selectFan: (id) => crowd?.select(id),
@@ -205,6 +258,7 @@ export function createArena(container, callbacks, initialCrowd) {
     },
     dispose() {
       disposed = true;
+      activities?.dispose();
       renderer.setAnimationLoop(null);
       observer.disconnect();
       cameras.dispose();

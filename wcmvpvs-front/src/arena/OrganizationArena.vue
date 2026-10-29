@@ -1,5 +1,11 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import {
+  ref,
+  computed,
+  onMounted,
+  onBeforeUnmount,
+  defineAsyncComponent,
+} from "vue";
 import { apiClient, getFanSessionHeaders } from "../api";
 import { getOrCreateDeviceId } from "../deviceId";
 import { createArena } from "./scene/createArena.js";
@@ -7,7 +13,27 @@ import { organizationCrowd } from "./organizationCrowd.js";
 import { FAN_ACTIONS } from "./actions/demoSession.js";
 import { presets } from "./camera/cameraSystem.js";
 import Icon from "./ArenaIcon.vue";
-const props = defineProps({ slug: { type: String, required: true } });
+import { closestNeighbors } from "./activities/model.js";
+import MvpDialog from "./ui/MvpDialog.vue";
+import { DEMO_PLAYERS } from "./mvp/players.js";
+const ActivitiesPanel = defineAsyncComponent(
+  () => import("./activities/ActivitiesPanel.vue"),
+);
+const props = defineProps({
+  slug: { type: String, required: true },
+  demo: Boolean,
+});
+const activityState = ref(null),
+  activitiesOpen = ref(false),
+  activeActivity = ref(""),
+  busy = ref(false),
+  mvpDialog = ref(null),
+  invitation = ref("");
+const neighbors = computed(() => closestNeighbors(actors.value, me.value));
+const votedPlayer = computed(() =>
+  DEMO_PLAYERS.find((p) => p.id === activityState.value?.voted),
+);
+let adapter;
 const viewport = ref(null),
   loading = ref(true),
   error = ref(""),
@@ -24,15 +50,19 @@ const viewport = ref(null),
 const results = computed(() =>
   query.value.trim()
     ? actors.value
-        .filter((a) =>
-          a.profile.nickname
-            .toLowerCase()
-            .includes(query.value.trim().toLowerCase()),
+        .filter(
+          (a) =>
+            (a.public || a.id === me.value?.id) &&
+            a.profile.nickname
+              .toLowerCase()
+              .includes(query.value.trim().toLowerCase()),
         )
         .slice(0, 20)
     : [],
 );
-const home = computed(() => "/" + encodeURIComponent(props.slug) + "/new");
+const home = computed(() =>
+  props.demo ? "/" : "/" + encodeURIComponent(props.slug) + "/new",
+);
 let arena,
   ticker,
   abort = new AbortController(),
@@ -53,17 +83,183 @@ function act(kind) {
     [kind]: Date.now() + FAN_ACTIONS[kind].cooldown,
   };
   notice.value = FAN_ACTIONS[kind].recent;
+  if (kind === "wave")
+    adapter
+      .command({ action: "wave" })
+      .then((state) => applyState(state))
+      .catch(() => {});
 }
+async function applyState(state) {
+  activityState.value = state;
+  await arena?.setActivities(state);
+  for (const actor of actors.value) {
+    const member = state.members.find((m) => String(m.fan_id) === actor.id);
+    if (member) {
+      actor.equipment = member.equipment || {};
+      arena?.setEquipment(actor.id, actor.equipment);
+    }
+  }
+  if (me.value) arena?.setEquipment(me.value.id, state.equipment);
+}
+async function refreshFans() {
+  const data = await adapter.getFans();
+  if (disposed) return;
+  const crowd = organizationCrowd(data.fans || [], data.organization_id);
+  const changed =
+    actors.value.map((a) => a.id + ":" + a.seat.id).join() !==
+    crowd.actors.map((a) => a.id + ":" + a.seat.id).join();
+  actors.value = crowd.actors;
+  total.value = crowd.total;
+  me.value = actors.value.find((a) => a.id === crowd.selectedId) || null;
+  if (changed) arena?.replaceCrowd(crowd);
+  for (const a of actors.value) arena?.setEquipment(a.id, a.equipment);
+  return crowd;
+}
+function closeActivities() {
+  activitiesOpen.value = false;
+  if (me.value) arena?.setEquipment(me.value.id, activityState.value.equipment);
+  arena?.setNeighbors([]);
+}
+function openActivity(kind = "") {
+  if (activeActivity.value === "wardrobe" && me.value)
+    arena?.setEquipment(me.value.id, activityState.value.equipment);
+  activitiesOpen.value = true;
+  activeActivity.value = kind;
+  panel.value = false;
+  inspected.value = null;
+  if (kind === "wardrobe" && me.value) arena?.focusFan(me.value.id, true);
+  if (kind === "neighbors" && me.value) {
+    arena?.focusFan(me.value.id);
+    arena?.setNeighbors(neighbors.value.map((a) => a.id));
+  } else arena?.setNeighbors([]);
+  if (kind === "predictions" || kind === "museum") arena?.focusActivity(kind);
+}
+async function command(cmd) {
+  if (busy.value) return;
+  if (!me.value) {
+    notice.value = "Accedi con il profilo della società per partecipare.";
+    return;
+  }
+  if (cmd.action === "celebrate") {
+    arena?.fanAction("vote", me.value.id);
+    return;
+  }
+  busy.value = true;
+  try {
+    const next = await adapter.command(cmd);
+    await applyState(next);
+    await refreshFans();
+    if (cmd.action === "invite") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("invite", next.invitation);
+      invitation.value = url.href;
+      notice.value = "Il link è pronto: copialo e condividilo.";
+    } else if (cmd.action === "claim") {
+      arena?.fanAction("vote", me.value.id);
+      notice.value =
+        "Tesoro trovato! +" + next.treasure.reward + " monetine ABX.";
+    } else if (cmd.action === "predict") {
+      arena?.fanAction("clap", me.value.id);
+      notice.value = "Pronostico salvato.";
+    } else if (cmd.action === "accept") {
+      arena?.focusFan(me.value.id);
+      arena?.fanAction("wave", me.value.id);
+      notice.value = "Benvenuto nel settore del tuo amico!";
+      pendingInvite.value = "";
+      try {
+        sessionStorage.removeItem("abx.arena.invite." + props.slug);
+      } catch {}
+    } else
+      notice.value =
+        cmd.action === "buy"
+          ? "Accessorio acquistato. Ora puoi equipaggiarlo."
+          : "Modifiche salvate.";
+  } catch (e) {
+    notice.value =
+      e.response?.data?.message || e.message || "Operazione non riuscita.";
+    await adapter
+      .getState()
+      .then(applyState)
+      .catch(() => {});
+  } finally {
+    busy.value = false;
+  }
+}
+async function collect() {
+  if(!me.value){notice.value='Accedi per raccogliere il tesoro e ricevere le monetine.';return}
+  if (!activityState.value || activityState.value.treasure.claimed) return;
+  arena?.collectTreasure();
+  await command({
+    action: "claim",
+    day: activityState.value.treasure.day,
+    location: activityState.value.treasure.location,
+  });
+}
+async function debug(action, value) {
+  if (!import.meta.env.DEV || !props.demo) return;
+  if (action === "collect") {
+    await collect();
+    return;
+  }
+  try {
+    await applyState(await adapter.debug(action, value));
+    await refreshFans();
+    if (action === "friend" && me.value) {
+      arena?.focusFan(me.value.id);
+      notice.value = "Amico demo arrivato nel tuo settore.";
+    } else notice.value = "Simulazione demo aggiornata.";
+  } catch (e) {
+    notice.value = e.message;
+  }
+}
+function focusActivity(kind,index) {
+  if (kind === "general") {
+    closeActivities();
+    arena?.view("general");
+  } else {
+    arena?.focusActivity(kind,index);
+    if (kind === "treasure") closeActivities();
+  }
+}
+function openVote() {
+  if (props.demo) mvpDialog.value?.open();
+  else window.location.assign(home.value);
+}
+async function vote(key) {
+  await command({ action: "vote", key });
+  arena?.fanAction("vote", me.value.id);
+}
+const pendingInvite = ref("");
 onMounted(async () => {
   try {
-    const { data } = await apiClient.get("/fan/arena", {
+    const requestOptions = {
+      timeout: 15000,
       headers: {
         "X-Organization-Slug": props.slug,
         "X-Device-ID": getOrCreateDeviceId(),
-        ...getFanSessionHeaders(props.slug),
+        ...(props.demo ? {} : getFanSessionHeaders(props.slug)),
       },
       signal: abort.signal,
-    });
+    };
+    if (props.demo) {
+      const { createDemoActivityAdapter } =
+        await import("./activities/demoAdapter.js");
+      adapter = createDemoActivityAdapter(window.localStorage, {
+        dev: import.meta.env.DEV,
+      });
+    } else {
+      adapter = {
+        getState: async () =>
+          (await apiClient.get("/fan/arena/activities", requestOptions)).data,
+        getFans: async () =>
+          (await apiClient.get("/fan/arena", requestOptions)).data,
+        command: async (cmd) =>
+          (await apiClient.post("/fan/arena/activities", cmd, requestOptions))
+            .data,
+      };
+    }
+    const state = await adapter.getState();
+    const data = await adapter.getFans();
     if (disposed) return;
     const crowd = organizationCrowd(data.fans || [], data.organization_id);
     actors.value = crowd.actors;
@@ -76,12 +272,30 @@ onMounted(async () => {
         onError: (message) => (error.value = message),
         onSelectProfile: (id) => {
           const actor = actors.value.find((a) => a.id === id);
-          if (actor) focus(actor);
+          if (id === me.value?.id) openActivity("wardrobe");
+          else if (actor&&actor.public) {
+            closeActivities();
+            focus(actor);
+          }else notice.value='Questo tifoso ha scelto di mantenere privata la propria scheda.';
         },
+        onActivity: (kind) => openActivity(kind),
+        onTreasure: collect,
       },
       crowd,
     );
     arena.setChairs(false);
+    await applyState(state);
+    try {
+      pendingInvite.value =
+        new URLSearchParams(window.location.search).get("invite") ||
+        sessionStorage.getItem("abx.arena.invite." + props.slug) ||
+        "";
+      if (pendingInvite.value)
+        sessionStorage.setItem(
+          "abx.arena.invite." + props.slug,
+          pendingInvite.value,
+        );
+    } catch {}
     ticker = setInterval(() => (clock.value = Date.now()), 250);
   } catch (e) {
     if (!disposed)
@@ -107,7 +321,18 @@ onBeforeUnmount(() => {
     <header>
       <a :href="home" class="plate">← {{ slug }}</a
       ><strong class="brand"
-        >Arena Tifosi <small>{{ total }} profili della società</small></strong
+        >Arena Tifosi
+        <small
+          >{{ total }}
+          {{ demo ? "profili demo" : "profili della società" }}</small
+        ></strong
+      ><button
+        class="plate activities-trigger"
+        aria-label="Attività Arena"
+        :disabled="!activityState"
+        @click="activitiesOpen ? closeActivities() : openActivity()"
+      >
+        <Icon name="trophy" /><span>Attività</span></button
       ><button
         class="plate"
         @click="panel = !panel"
@@ -117,6 +342,50 @@ onBeforeUnmount(() => {
         <Icon name="settings" />
       </button>
     </header>
+    <ActivitiesPanel
+      v-if="activitiesOpen && activityState"
+      :state="activityState"
+      :me="me"
+      :neighbors="neighbors"
+      :busy="busy"
+      :demo="demo"
+      :active="activeActivity"
+      :invitation="invitation"
+      @close="closeActivities"
+      @open="openActivity"
+      @command="command"
+      @preview="(equipment) => arena?.setEquipment(me.id, equipment)"
+      @focus="focusActivity"
+      @debug="debug"
+      @find="closeActivities"
+      @neighbor="
+        (actor) => {
+          closeActivities();
+          focus(actor);
+        }
+      "
+    />
+    <div
+      v-if="pendingInvite && !loading && !activitiesOpen"
+      class="arena-invitation plate"
+    >
+      <strong>Un posto vicino a un amico ti aspetta</strong>
+      <p>
+        {{
+          me
+            ? "Conferma la richiesta: sposterai soltanto il tuo posto virtuale, se c’è disponibilità."
+            : "Accedi o crea il tuo profilo, poi torna qui per richiedere un posto vicino."
+        }}
+      </p>
+      <button
+        v-if="me"
+        :disabled="busy"
+        @click="command({ action: 'accept', code: pendingInvite })"
+      >
+        Richiedi posto vicino</button
+      ><a v-else :href="home">Accedi alla società</a
+      ><button @click="pendingInvite = ''" aria-label="Chiudi invito">×</button>
+    </div>
     <section
       v-if="panel"
       class="arena-menu plate"
@@ -178,7 +447,7 @@ onBeforeUnmount(() => {
         >Accedi o crea il tuo profilo</a
       >
       <nav class="plate" aria-label="Azioni del tifoso">
-        <a :href="home"><Icon name="trophy" /><span>MVP</span></a
+        <button @click="openVote"><Icon name="trophy" /><span>MVP</span></button
         ><button
           v-for="(action, kind) in FAN_ACTIONS"
           :key="kind"
@@ -199,6 +468,13 @@ onBeforeUnmount(() => {
         </button>
       </nav>
     </footer>
+    <MvpDialog
+      v-if="demo && me"
+      ref="mvpDialog"
+      :fan="me.profile"
+      :voted-player="votedPlayer"
+      @vote="vote"
+    />
     <p
       v-if="notice"
       role="status"
@@ -218,6 +494,57 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.activities-trigger {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+.arena-invitation {
+  position: absolute;
+  left: 16px;
+  top: 155px;
+  width: 300px;
+  max-width: calc(100% - 32px);
+  z-index: 6;
+  font-size: 12px;
+}
+.arena-invitation p {
+  line-height: 1.6;
+}
+.arena-invitation button {
+  padding: 10px;
+  border-radius: 8px;
+  background: #d5e99f;
+}
+.arena-invitation button:last-child {
+  float: right;
+  background: transparent;
+}
+.arena-status {
+  z-index: 10;
+  max-width: calc(100% - 24px);
+}
+@media (max-width: 650px) {
+  .activities-trigger span {
+    display: none;
+  }
+  header > a {
+    max-width: 90px !important;
+    font-size: 11px;
+  }
+  .brand {
+    min-width: 0;
+  }
+  header {
+    gap: 7px !important;
+  }
+  .brand small {
+    font-size: 8px !important;
+  }
+  .activities-trigger {
+    padding: 12px !important;
+  }
+}
 .organization-arena {
   position: fixed;
   inset: 0;

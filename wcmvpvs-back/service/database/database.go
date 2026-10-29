@@ -1198,6 +1198,7 @@ type QRRedirect struct {
 
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
+	ArenaActivities(org, fan int, cmd ArenaCommand, now time.Time) (ArenaActivityState, error)
 	GetArenaFans(organizationID int) ([]ArenaFan, error)
 	CreateVolleyballRound(eventID, organizationID, fanID int, deviceID, gameID string, now time.Time) (VolleyballRound, error)
 	ResolveVolleyballRound(eventID, organizationID, fanID int, deviceID, gameID, roundID string, aimX, aimY, timing float64, now time.Time) (VolleyballResult, error)
@@ -7788,7 +7789,10 @@ func ensureFanProfileTables(db *sql.DB) error {
 	if err := ensureVolleyballTables(db); err != nil {
 		return err
 	}
-	return ensureFanEconomyTables(db)
+	if err := ensureFanEconomyTables(db); err != nil {
+		return err
+	}
+	return ensureArenaTables(db)
 }
 
 func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, error) {

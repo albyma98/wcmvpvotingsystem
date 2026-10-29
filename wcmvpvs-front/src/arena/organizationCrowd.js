@@ -9,8 +9,14 @@ export function organizationCrowd(fans, organizationID) {
     id: String(fan.id),
     kind: "profile",
     seed: fan.id * 71 + Number(organizationID),
-    seat: seats[index],
-    profile: { id: String(fan.id), nickname: fan.nickname, active: false },
+    seat: Number.isInteger(fan.slot) ? SEATS[fan.slot] : seats[index],
+    equipment: fan.equipment || {},
+    public: fan.public !== false,
+    profile: {
+      id: String(fan.id),
+      nickname: fan.nickname || "Tifoso riservato",
+      active: false,
+    },
   }));
   const me = ordered.find((fan) => fan.is_me);
   return {

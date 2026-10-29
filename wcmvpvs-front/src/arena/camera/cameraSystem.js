@@ -111,14 +111,15 @@ export function createCameraSystem(camera, element, onTour, onView) {
     onTour(true, 0);
     onView("reel");
   }
-  function focus(seat) {
+  function focus(seat, close = false) {
+    controls.minDistance = close ? 1.5 : 5;
     stopTour();
     active = "fan";
     const target = vector([seat.x, seat.y + 0.6, seat.z]);
     const position = vector([
-      seat.x + 3.2,
-      seat.y + 2.35,
-      seat.z - seat.side * 5.2,
+      seat.x + (close ? 1.2 : 3.2),
+      seat.y + (close ? 1.1 : 2.35),
+      seat.z - seat.side * (close ? 1.7 : 5.2),
     ]);
     position
       .sub(target)

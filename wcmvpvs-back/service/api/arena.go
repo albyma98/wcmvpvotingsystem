@@ -18,13 +18,20 @@ func (rt *_router) getArenaFans(w http.ResponseWriter, r *http.Request, ctx reqc
 		return
 	}
 	meID := 0
+	meNickname := ""
 	if token := rt.fanSessionTokenFromRequest(r); token != "" {
 		if me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r)); err == nil && me.Profile.OrganizationID == ctx.OrganizationID && !me.Profile.RegistrationPending {
 			meID = me.Profile.ID
+			meNickname = me.Profile.Nickname
 		}
 	}
 	for i := range fans {
 		fans[i].IsMe = meID > 0 && fans[i].ID == meID
+		if fans[i].IsMe {
+			fans[i].Nickname = meNickname
+		} else if !fans[i].Public {
+			fans[i].Nickname = ""
+		}
 	}
 	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"organization_id": ctx.OrganizationID, "slug": ctx.OrganizationSlug, "fans": fans})
 }

@@ -42,6 +42,12 @@ export function createCrowd(parent, actors, { selectedId, onSelect } = {}) {
     "fan-limbs-and-details",
   );
   const scarves = mesh(boxGeometry, actors.length * 3, "fan-scarves");
+  const accessories = mesh(
+    boxGeometry,
+    actors.length * 8,
+    "fan-equipped-accessories",
+  );
+  let neighbors = new Set();
   const activeMaterial = new THREE.MeshBasicMaterial({
     color: "#b4d96b",
     transparent: true,
@@ -183,9 +189,12 @@ export function createCrowd(parent, actors, { selectedId, onSelect } = {}) {
         limbs.setMatrixAt(i * LIMBS + part, dummy.matrix);
       for (let part = 0; part < 3; part++)
         scarves.setMatrixAt(i * 3 + part, dummy.matrix);
+      for (let part = 0; part < 8; part++)
+        accessories.setMatrixAt(i * 8 + part, dummy.matrix);
       return;
     }
     const reaction = director.sample(actor, now);
+    const equipment = actor.equipment || {};
     const t = now / 1000 + seed * 0.117,
       cycle = t % 24,
       animated = seed % 8 === 0 || actor.id === selected;
@@ -224,9 +233,9 @@ export function createCrowd(parent, actors, { selectedId, onSelect } = {}) {
       i,
       0,
       hip + 0.585,
-      seed % 5 === 0 ? -0.018 : 0.014,
+      equipment.hat ? -0.018 : seed % 5 === 0 ? -0.018 : 0.014,
       0.21,
-      0.06,
+      equipment.hair ? 0.15 : 0.06,
       seed % 5 === 0 ? 0.25 : 0.17,
       turn,
     );
@@ -290,8 +299,8 @@ export function createCrowd(parent, actors, { selectedId, onSelect } = {}) {
         eye === 0 ? -0.045 : 0.045,
         hip + 0.52,
         -0.112,
-        0.018,
-        0.018,
+        equipment.glasses ? 0.065 : 0.018,
+        equipment.glasses ? 0.043 : 0.018,
         0.016,
       );
     box(limbs, i * LIMBS + 13, i, 0, hip + 0.23, -0.101, 0.24, 0.036, 0.018);
@@ -318,7 +327,47 @@ export function createCrowd(parent, actors, { selectedId, onSelect } = {}) {
         0.2 * scarf,
         0.05 * scarf,
       );
-    const active = actor.kind === "profile" && actor.profile.active;
+    const extra = (part, x, y, z, sx, sy, sz, enabled) =>
+      box(
+        accessories,
+        i * 8 + part,
+        i,
+        x,
+        y,
+        z,
+        enabled ? sx : 0,
+        enabled ? sy : 0,
+        enabled ? sz : 0,
+      );
+    extra(0, 0, hip + 0.37, -0.04, 0.34, 0.065, 0.22, equipment.scarf);
+    extra(1, -0.12, hip + 0.22, -0.13, 0.09, 0.27, 0.04, equipment.scarf);
+    extra(2, 0, hip + 0.52, -0.13, 0.12, 0.024, 0.02, equipment.glasses);
+    extra(3, 0, hip + 0.57, -0.13, 0.23, 0.035, 0.13, equipment.hat);
+    extra(4, 0.3, hip + 0.42, -0.12, 0.023, 0.65, 0.023, equipment.flag);
+    extra(5, 0.41, hip + 0.65, -0.12, 0.25, 0.19, 0.03, equipment.flag);
+    extra(
+      6,
+      0,
+      hip + 0.42,
+      0.08,
+      0.23,
+      0.21,
+      0.15,
+      equipment.shirt === "hoodie",
+    );
+    extra(
+      7,
+      0,
+      hip + 0.4,
+      -0.1,
+      0.2,
+      0.03,
+      0.03,
+      equipment.shirt === "club-shirt",
+    );
+    const active =
+      actor.kind === "profile" &&
+      (actor.profile.active || neighbors.has(actor.id));
     box(
       dots,
       i,
@@ -332,7 +381,15 @@ export function createCrowd(parent, actors, { selectedId, onSelect } = {}) {
     );
   }
   function dirty() {
-    for (const object of [torso, heads, hats, limbs, scarves, dots])
+    for (const object of [
+      torso,
+      heads,
+      hats,
+      limbs,
+      scarves,
+      dots,
+      accessories,
+    ])
       object.instanceMatrix.needsUpdate = true;
   }
   function filters(options = {}) {
@@ -426,8 +483,64 @@ export function createCrowd(parent, actors, { selectedId, onSelect } = {}) {
     return false;
   }
   actors.forEach((actor, i) => pose(i, 0, true));
+  function applyEquipment(id, equipment) {
+    const i = byId.get(id);
+    if (i === undefined) return;
+    const actor = actors[i];
+    actor.equipment = { ...equipment };
+    const e = actor.equipment;
+    const shirt =
+      {
+        "club-shirt": "#304e92",
+        "away-shirt": "#edcf38",
+        hoodie: "#465c69",
+        "shirt-color": "#a2c861",
+      }[e.shirt] || shirts[actor.seed % shirts.length];
+    torso.setColorAt(i, color.set(shirt));
+    hats.setColorAt(
+      i,
+      color.set(e.hat ? "#e8c83e" : hair[actor.seed % hair.length]),
+    );
+    for (let j = 0; j < LIMBS; j++) {
+      let tint =
+        j < 4
+          ? j % 2 === 0
+            ? shirt
+            : skin[actor.seed % skin.length]
+          : j < 8
+            ? e.pants
+              ? "#243b6c"
+              : trousers[actor.seed % trousers.length]
+            : j < 10
+              ? e.shoes
+                ? "#c2e96c"
+                : "#eee8d6"
+              : j > 10 && j < 13
+                ? "#253534"
+                : shirt;
+      limbs.setColorAt(i * LIMBS + j, color.set(tint));
+    }
+    for (let j = 0; j < 8; j++)
+      accessories.setColorAt(
+        i * 8 + j,
+        color.set(
+          [0, 1, 5, 7].includes(j) ? "#f3ce27" : j === 2 ? "#263b2d" : shirt,
+        ),
+      );
+    for (const m of [torso, hats, limbs, accessories])
+      m.instanceColor.needsUpdate = true;
+    pose(i, performance.now(), true);
+    dirty();
+  }
+  actors.forEach((actor) => applyEquipment(actor.id, actor.equipment || {}));
   dirty();
   return {
+    setEquipment: applyEquipment,
+    setNeighbors(ids) {
+      neighbors = new Set(ids);
+      actors.forEach((_, i) => pose(i, performance.now(), true));
+      dirty();
+    },
     update,
     pick,
     group,
