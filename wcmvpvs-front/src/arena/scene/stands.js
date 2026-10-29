@@ -1,6 +1,7 @@
 import { Group } from "three";
 import { createBuilder, palette as p } from "./primitives.js";
 import { arenaLayout } from "./layout.js";
+import { seatColumns } from "../seating/seatMap.js";
 
 export function createStands(parent) {
   const stand = arenaLayout.stand;
@@ -35,9 +36,7 @@ export function createStands(parent) {
       }
 
       if (side > 0) {
-        for (let col = 0; col < 41; col++) {
-          const x = -11 + col * 0.55;
-          if (stand.aisles.some((aisle) => Math.abs(x - aisle) < 0.7)) continue;
+        for (const { column: col, x } of seatColumns()) {
           const color =
             (Math.floor(col / 6) + Math.floor(row / 4)) % 2 ? p.blue : p.yellow;
           b.box(color, [x, y + 0.1, z], [0.47, 0.1, 0.29]);

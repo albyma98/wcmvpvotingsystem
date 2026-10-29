@@ -4,8 +4,9 @@ import { createStands } from "./stands";
 import { createField } from "./field";
 import { createChairs, createProps } from "./props";
 import { createCameraSystem } from "../camera/cameraSystem";
+import { createCrowd } from "../crowd/createCrowd.js";
 
-export function createArena(container, callbacks) {
+export function createArena(container, callbacks, initialCrowd) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#e9e8e0");
   const renderer = new THREE.WebGLRenderer({
@@ -40,11 +41,21 @@ export function createArena(container, callbacks) {
   const railings = createProps(architecture);
   const chairs = createChairs(architecture);
   // Stable extension anchors for GLB seats, sponsor signage and a future crowd.
-  for (const name of ["crowd", "sponsors", "interaction-zones"]) {
+  for (const name of ["sponsors", "interaction-zones"]) {
     const layer = new THREE.Group();
     layer.name = name;
     scene.add(layer);
   }
+  const crowd = initialCrowd
+    ? createCrowd(scene, initialCrowd.actors, {
+        selectedId: initialCrowd.selectedId,
+        onSelect: callbacks.onSelectProfile,
+      })
+    : null;
+  const flags = scene.getObjectByName("flags-above-bare-stand");
+  const reducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
   const cameras = createCameraSystem(
     camera,
     renderer.domElement,
@@ -72,6 +83,43 @@ export function createArena(container, callbacks) {
     hidden = document.hidden;
     if (hidden) cameras.stopTour();
   };
+  let pointerStart = null;
+  const pointers = new Set();
+  const pointerDown = (event) => {
+    pointers.add(event.pointerId);
+    if (pointers.size !== 1 || event.button > 0) {
+      pointerStart = null;
+      return;
+    }
+    pointerStart = {
+      x: event.clientX,
+      y: event.clientY,
+      time: performance.now(),
+    };
+  };
+  const pointerUp = (event) => {
+    if (
+      pointers.size === 1 &&
+      pointerStart &&
+      performance.now() - pointerStart.time < 500 &&
+      Math.hypot(
+        event.clientX - pointerStart.x,
+        event.clientY - pointerStart.y,
+      ) < 6
+    )
+      crowd?.pick(event.clientX, event.clientY, camera, renderer.domElement);
+    pointerStart = null;
+    pointers.delete(event.pointerId);
+  };
+  const pointerCancel = (event) => {
+    pointers.delete(event.pointerId);
+    pointerStart = null;
+  };
+  renderer.domElement.addEventListener("pointerdown", pointerDown);
+  renderer.domElement.addEventListener("pointerup", pointerUp);
+  renderer.domElement.addEventListener("pointercancel", pointerCancel);
+  const marker = new THREE.Vector3();
+  let lastMarker = 0;
   document.addEventListener("visibilitychange", visibility);
   const lost = (event) => {
     event.preventDefault();
@@ -84,6 +132,9 @@ export function createArena(container, callbacks) {
   renderer.setAnimationLoop((now) => {
     if (disposed || hidden || contextLost) return;
     cameras.update(now);
+    crowd?.update(now, camera);
+    if (flags && !reducedMotion)
+      flags.rotation.x = Math.sin(now / 1600) * 0.008;
     // Exterior views open the entire near wall, including its frames and doors.
     for (const { group, axis, side, limit } of walls) {
       group.visible = side * camera.position[axis] <= limit + 0.05;
@@ -91,6 +142,22 @@ export function createArena(container, callbacks) {
     const roofHeight = 16.7 - (Math.abs(camera.position.z) * 4.3) / 18;
     roof.visible = roofEnabled && camera.position.y < roofHeight;
     renderer.render(scene, camera);
+    if (crowd && now - lastMarker > 100) {
+      const position = crowd.selectedPosition();
+      if (position) {
+        marker.copy(position).project(camera);
+        callbacks.onMarker?.({
+          x: (marker.x + 1) * 50,
+          y: (1 - marker.y) * 50,
+          visible:
+            marker.z > -1 &&
+            marker.z < 1 &&
+            Math.abs(marker.x) < 0.76 &&
+            Math.abs(marker.y) < 0.8,
+        });
+      }
+      lastMarker = now;
+    }
     if (now - last > 1000) {
       callbacks.onStats({
         calls: renderer.info.render.calls,
@@ -103,6 +170,24 @@ export function createArena(container, callbacks) {
     view: (id) => cameras.go(id),
     startTour: cameras.startTour,
     stopTour: cameras.stopTour,
+    focusFan(id) {
+      const actor = crowd?.actor(id);
+      if (actor) {
+        crowd.select(id);
+        cameras.focus(actor.seat);
+      }
+    },
+    selectFan: (id) => crowd?.select(id),
+    fanAction(kind, id) {
+      if (kind === "wave") cameras.go("general");
+      else {
+        const actor = crowd?.actor(id);
+        if (actor) cameras.focus(actor.seat);
+      }
+      return crowd?.trigger(kind, id);
+    },
+    setCrowdFilters: (options) => crowd?.setFilters(options),
+    resetCrowd: () => crowd?.reset(),
     setChairs: (value) => {
       chairs.visible = value;
     },
@@ -119,6 +204,9 @@ export function createArena(container, callbacks) {
       cameras.dispose();
       document.removeEventListener("visibilitychange", visibility);
       renderer.domElement.removeEventListener("webglcontextlost", lost);
+      renderer.domElement.removeEventListener("pointerdown", pointerDown);
+      renderer.domElement.removeEventListener("pointerup", pointerUp);
+      renderer.domElement.removeEventListener("pointercancel", pointerCancel);
       const geometries = new Set(),
         materials = new Set(),
         textures = new Set();

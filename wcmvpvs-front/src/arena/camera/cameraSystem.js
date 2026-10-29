@@ -111,6 +111,29 @@ export function createCameraSystem(camera, element, onTour, onView) {
     onTour(true, 0);
     onView("reel");
   }
+  function focus(seat) {
+    stopTour();
+    active = "fan";
+    const target = vector([seat.x, seat.y + 0.6, seat.z]);
+    const position = vector([
+      seat.x + 3.2,
+      seat.y + 2.35,
+      seat.z - seat.side * 5.2,
+    ]);
+    position
+      .sub(target)
+      .multiplyScalar(Math.max(1, Math.pow(0.75 / camera.aspect, 0.35)))
+      .add(target);
+    transition = {
+      start: performance.now(),
+      from: camera.position.clone(),
+      targetFrom: controls.target.clone(),
+      to: position,
+      targetTo: target,
+      duration: reducedMotion ? 0 : 1100,
+    };
+    onView("fan");
+  }
   function interaction() {
     transition = null;
     stopTour();
@@ -153,14 +176,15 @@ export function createCameraSystem(camera, element, onTour, onView) {
     }
     if (!tour) {
       controls.target.x = THREE.MathUtils.clamp(controls.target.x, -14, 16);
-      controls.target.z = THREE.MathUtils.clamp(controls.target.z, -15, 15);
-      controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0.5, 6);
+      controls.target.z = THREE.MathUtils.clamp(controls.target.z, -16.5, 16.5);
+      controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0.5, 8.5);
       controls.update();
       if (camera.position.y < 1.3) camera.position.y = 1.3;
     }
   }
   return {
     go,
+    focus,
     startTour,
     stopTour,
     update,

@@ -8,7 +8,45 @@
     stroke-linejoin="round"
     aria-hidden="true"
   >
-    <path v-if="name === 'arena'" d="m3 18 9-13 9 13M7 13h10M12 5v13M3 20h18" />
+    <template v-if="name === 'fans'">
+      <circle cx="9" cy="7" r="3" />
+      <path
+        d="M3 21v-4a6 6 0 0 1 12 0v4M16 4a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 5v3"
+      />
+    </template>
+    <template v-else-if="name === 'trophy'">
+      <path
+        d="M8 3h8v6a4 4 0 0 1-8 0zM8 5H4v3a4 4 0 0 0 4 4m8-7h4v3a4 4 0 0 1-4 4M12 13v5m-4 3h8m-9-3h10"
+      />
+    </template>
+    <template v-else-if="name === 'clap'">
+      <path
+        d="m8 13-2-4a2 2 0 0 0-3 2l3 7c2 4 6 4 8 1l4-6a2 2 0 0 0-3-2l-3 3-2-6a2 2 0 0 0-3 1l1 4M16 3l1 3m4 0-2 2M12 2v3"
+      />
+    </template>
+    <template v-else-if="name === 'scarf'">
+      <path
+        d="M3 7h18v5H3zM4 12v7h4v-7m8 0v7h4v-7M6 7v5m12-5v5M4 21v-2m4 2v-2m8 2v-2m4 2v-2"
+      />
+    </template>
+    <template v-else-if="name === 'wave'">
+      <path
+        d="M2 15c3 0 3-8 6-8s3 10 6 10 3-8 8-8M2 21c3 0 3-8 6-8s3 10 6 10 3-8 8-8"
+      />
+    </template>
+    <template v-else-if="name === 'search'">
+      <circle cx="10" cy="10" r="6" />
+      <path d="m15 15 6 6" />
+    </template>
+    <template v-else-if="name === 'pin'">
+      <path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0z" />
+      <circle cx="12" cy="10" r="2" />
+    </template>
+    <path v-else-if="name === 'check'" d="m5 12 4 4L19 6" />
+    <path
+      v-else-if="name === 'arena'"
+      d="m3 18 9-13 9 13M7 13h10M12 5v13M3 20h18"
+    />
     <template v-else-if="name === 'cube'">
       <path d="m12 3 9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8" />
     </template>

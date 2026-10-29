@@ -1,8 +1,8 @@
 # Vue 3 + Vite
 
-## Joy Volley · Arena Lab
+## Joy Volley · Arena Tifosi
 
-La demo 3D del palazzetto è disponibile in `/arena-demo/`, come pagina autonoma senza backend.
+L’Arena Tifosi 3D è disponibile in `/arena-demo/`, come pagina autonoma senza backend: 60 profili demo, 280 comparse, ricerca avatar, voto MVP e azioni animate.
 Avvio: `npm install`, `npm run dev`, poi aprire `http://localhost:5173/arena-demo/`.
 Vedere [istruzioni, controlli e architettura](arena-demo/README.md).
 

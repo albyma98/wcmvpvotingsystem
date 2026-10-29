@@ -1,9 +1,10 @@
 # wcmvpvotingsystem
 
-## Joy Volley · Arena Lab 3D
+## Joy Volley · Arena Tifosi 3D
 
 Demo navigabile ispirata alla fotografia del palazzetto di Gioia del Colle, con
-tribune, parquet, sedie opzionali, preset camera e tour cinematico di 18 secondi.
+60 profili tifoso, 280 comparse, ricerca del posto, voto MVP locale, applausi,
+sciarpe e ola. Restano disponibili preset camera e tour di 18 secondi.
 È una pagina autonoma del frontend, senza dipendenze dal backend.
 
 ```powershell
