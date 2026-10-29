@@ -26,6 +26,12 @@ const votedPlayer = computed(
       (player) => player.id === state.value.votes[state.value.selectedId],
     ) || null,
 );
+const initials = computed(
+  () =>
+    selectedFan.value.nickname[0] +
+    (selectedFan.value.nickname.match(/[A-Z]/g)?.[1] ||
+      selectedFan.value.nickname[1]),
+);
 const fillers = ref(true),
   onlyActive = ref(false);
 const visibleFans = computed(
@@ -36,6 +42,8 @@ const visibleFans = computed(
 );
 const viewport = ref(null),
   sceneFrame = ref(null),
+  profileDialog = ref(null),
+  prefsDialog = ref(null),
   photoDialog = ref(null),
   mvpDialog = ref(null);
 const ready = ref(false),
@@ -48,28 +56,14 @@ const tour = ref(false),
   view = ref("general"),
   portrait = ref(false),
   fullscreen = ref(false);
-const stats = ref({ calls: 0, chairs: 36 }),
-  activeTab = ref("fans"),
-  photo = ref(false),
-  marker = ref({ visible: false });
+const activePanel = ref(""),
+  prefsTab = ref("views"),
+  marker = ref({ visible: false }),
+  hint = ref(true);
 const now = ref(Date.now()),
   notice = ref(null),
   lastAction = ref("");
 const photoUrl = import.meta.env.BASE_URL + "arena/reference.jpg";
-const tabs = [
-  { id: "fans", label: "Tifosi", icon: "fans" },
-  { id: "views", label: "Viste", icon: "view" },
-  { id: "scene", label: "Scena", icon: "cube" },
-];
-const currentView = computed(
-  () =>
-    presets.find((preset) => preset.id === view.value)?.label ||
-    (view.value === "fan"
-      ? "Il tuo posto"
-      : tour.value
-        ? "Reel orbit"
-        : "Esplorazione libera"),
-);
 const cooldowns = computed(() => {
   now.value;
   state.value;
@@ -80,10 +74,16 @@ const cooldowns = computed(() => {
     ]),
   );
 });
+const actions = [
+  { id: "clap", label: "Applauso", icon: "clap", key: "2" },
+  { id: "scarf", label: "Sciarpa", icon: "scarf", key: "3" },
+  { id: "wave", label: "Ola", icon: "wave", key: "4" },
+];
 let arena,
   ticker,
   noticeTimer,
   actionTimer,
+  hintTimer,
   alive = true;
 
 function refresh() {
@@ -98,39 +98,60 @@ function notify(text, kind = "check") {
   notice.value = { text, kind };
   noticeTimer = setTimeout(() => {
     notice.value = null;
-  }, 6000);
+  }, 4200);
 }
-function revealScene() {
-  const bounds = sceneFrame.value?.getBoundingClientRect();
-  if (window.innerWidth < 801 || (bounds && bounds.bottom < 220))
-    sceneFrame.value?.scrollIntoView({
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-      block: "start",
-    });
+function closePanels() {
+  for (const dialog of [
+    profileDialog.value,
+    prefsDialog.value,
+    photoDialog.value,
+  ])
+    if (dialog?.open) dialog.close();
+  activePanel.value = "";
+}
+function panelClosed(kind) {
+  if (activePanel.value === kind) activePanel.value = "";
+}
+function openPanel(kind) {
+  closePanels();
+  arena?.stopTour();
+  hint.value = false;
+  activePanel.value = kind;
+  (kind === "profile" ? profileDialog.value : prefsDialog.value)?.showModal();
+}
+function backdrop(event, kind) {
+  if (event.target === event.currentTarget) {
+    event.currentTarget.close();
+    panelClosed(kind);
+  }
 }
 function selectFan(id) {
   if (session.select(id)) {
     refresh();
+    closePanels();
+    hint.value = false;
     arena?.selectFan(id);
     arena?.focusFan(id);
-    revealScene();
   }
 }
 function findFan() {
+  closePanels();
+  hint.value = false;
   arena?.focusFan(state.value.selectedId);
-  revealScene();
-  notify("Ecco il posto di " + selectedFan.value.nickname + ".", "pin");
 }
 function choose(id) {
+  closePanels();
+  hint.value = false;
   arena?.view(id);
 }
 function play() {
+  closePanels();
+  hint.value = false;
   if (tour.value) arena?.stopTour();
   else arena?.startTour();
 }
 function showAction(kind) {
+  hint.value = false;
   lastAction.value = kind;
   clearTimeout(actionTimer);
   actionTimer = setTimeout(() => {
@@ -144,21 +165,23 @@ function act(kind) {
     notify(result.reason, "info");
     return;
   }
+  closePanels();
   refresh();
   arena?.fanAction(kind, result.fanId);
   showAction(kind);
-  revealScene();
   notify(
     kind === "clap"
-      ? "Il tuo applauso ha coinvolto i tifosi vicini."
+      ? "Il tuo settore applaude con te."
       : kind === "scarf"
-        ? "Sciarpe in alto, insieme al tuo settore."
-        : "L’ola sta attraversando le tribune.",
+        ? "Sciarpe in alto!"
+        : "L’ola è partita.",
     kind,
   );
 }
 function openVote() {
   if (!ready.value) return;
+  closePanels();
+  hint.value = false;
   arena?.focusFan(state.value.selectedId);
   mvpDialog.value?.open();
 }
@@ -171,9 +194,8 @@ function vote(playerId) {
   refresh();
   arena?.fanAction("vote", result.fanId);
   showAction("vote");
-  revealScene();
   notify(
-    "Hai votato l’MVP: " +
+    "Hai votato " +
       DEMO_PLAYERS.find((player) => player.id === playerId).name +
       ".",
     "trophy",
@@ -182,7 +204,7 @@ function vote(playerId) {
 function resetDemo() {
   if (
     !window.confirm(
-      "Ricominciare la demo? Saranno cancellati solo i voti e le interazioni demo salvati su questo dispositivo. I posti rimarranno gli stessi.",
+      "Ricominciare la demo? Saranno cancellati solo i voti e le interazioni demo su questo dispositivo. I posti rimarranno gli stessi.",
     )
   )
     return;
@@ -193,17 +215,65 @@ function resetDemo() {
   chairs.value = false;
   arena?.resetCrowd();
   arena?.selectFan(state.value.selectedId);
-  arena?.view("general");
+  choose("general");
   lastAction.value = "";
   notify("Arena demo ripristinata.");
 }
-function moveTab(event, index, delta) {
-  const next = (index + delta + tabs.length) % tabs.length;
-  activeTab.value = tabs[next].id;
-  event.currentTarget.parentElement
-    .querySelectorAll("[role=tab]")
-    [next]?.focus();
+function openPhoto() {
+  closePanels();
+  photoDialog.value?.showModal();
 }
+function showHelp() {
+  closePanels();
+  hint.value = true;
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => {
+    hint.value = false;
+  }, 9000);
+}
+function moveTab(event) {
+  prefsTab.value = prefsTab.value === "views" ? "scene" : "views";
+  const buttons =
+    event.currentTarget.parentElement.querySelectorAll("[role=tab]");
+  buttons[prefsTab.value === "views" ? 0 : 1]?.focus();
+}
+async function toggleFullscreen() {
+  closePanels();
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else if (sceneFrame.value?.requestFullscreen)
+      await sceneFrame.value.requestFullscreen();
+    else notify("La scena occupa già tutto lo spazio disponibile.", "info");
+  } catch {
+    notify("Schermo intero non disponibile in questo browser.", "info");
+  }
+}
+function shortcut(event) {
+  if (
+    event.repeat ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    document.querySelector("dialog[open]") ||
+    event.target?.closest?.("input,select,textarea,[contenteditable=true]")
+  )
+    return;
+  const key = event.key.toLowerCase(),
+    commands = {
+      1: openVote,
+      2: () => act("clap"),
+      3: () => act("scarf"),
+      4: () => act("wave"),
+      f: findFan,
+    };
+  if (ready.value && commands[key]) {
+    event.preventDefault();
+    commands[key]();
+  }
+}
+const syncFullscreen = () => {
+  fullscreen.value = Boolean(document.fullscreenElement);
+};
 watch(chairs, (value) => arena?.setChairs(value));
 watch(roof, (value) => arena?.setRoof(value));
 watch(railings, (value) => arena?.setRailings(value));
@@ -213,30 +283,15 @@ watch([fillers, onlyActive], () =>
     onlyActive: onlyActive.value,
   }),
 );
-watch(photo, (value) => {
-  if (value) {
-    arena?.stopTour();
-    photoDialog.value?.showModal();
-  } else photoDialog.value?.close();
-});
-async function toggleFullscreen() {
-  try {
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else if (sceneFrame.value?.requestFullscreen)
-      await sceneFrame.value.requestFullscreen();
-    else portrait.value = !portrait.value;
-  } catch {
-    notify("Schermo intero non disponibile in questo browser.", "info");
-  }
-}
-const syncFullscreen = () => {
-  fullscreen.value = Boolean(document.fullscreenElement);
-};
 onMounted(async () => {
   document.addEventListener("fullscreenchange", syncFullscreen);
+  window.addEventListener("keydown", shortcut);
   ticker = setInterval(() => {
     now.value = Date.now();
   }, 250);
+  hintTimer = setTimeout(() => {
+    hint.value = false;
+  }, 9000);
   await new Promise((resolve) => requestAnimationFrame(resolve));
   if (!alive) return;
   try {
@@ -249,9 +304,7 @@ onMounted(async () => {
         },
         onView: (value) => {
           view.value = value;
-        },
-        onStats: (value) => {
-          stats.value = value;
+          if (value === "custom") hint.value = false;
         },
         onError: (value) => {
           error.value = value;
@@ -270,7 +323,7 @@ onMounted(async () => {
     ready.value = true;
   } catch {
     error.value =
-      "Il browser non riesce ad avviare la scena WebGL. Prova un browser con accelerazione grafica attiva.";
+      "Non riesco ad avviare la scena 3D. Riprova con l’accelerazione grafica attiva nel browser.";
   }
 });
 onBeforeUnmount(() => {
@@ -279,115 +332,137 @@ onBeforeUnmount(() => {
   clearInterval(ticker);
   clearTimeout(noticeTimer);
   clearTimeout(actionTimer);
+  clearTimeout(hintTimer);
   document.removeEventListener("fullscreenchange", syncFullscreen);
+  window.removeEventListener("keydown", shortcut);
 });
 </script>
 
 <template>
-  <div class="arena-lab arena-fans">
-    <header class="lab-header">
-      <a class="lab-brand" href="/arena-demo/" aria-label="Arena Tifosi, inizio"
-        ><span class="brand-symbol"><Icon name="arena" /></span
-        ><span
-          >ARENA<span class="brand-light">BOOST</span><b>X</b
-          ><small>SPATIAL EXPERIENCES</small></span
-        ></a
+  <main
+    ref="sceneFrame"
+    class="arena-play"
+    :class="{ 'is-portrait': portrait, 'is-fullscreen': fullscreen }"
+    aria-label="Arena Tifosi a tutto schermo"
+  >
+    <div class="play-canvas">
+      <div ref="viewport" class="arena-viewport"></div>
+      <button
+        v-if="ready && marker.visible"
+        class="fan-world-label play-world-label"
+        :style="{ left: marker.x + '%', top: marker.y + '%' }"
+        @click="findFan"
+        :aria-label="'Il mio avatar: ' + selectedFan.nickname"
       >
-      <div class="header-divider"></div>
-      <span class="header-label"
-        >Joy Volley <span>/</span> <strong>Arena Tifosi</strong></span
-      >
-      <span class="prototype-badge"><i></i> ESPERIENZA DEMO</span
-      ><a class="header-link" href="/">Torna ad ABX <Icon name="arrow" /></a>
-    </header>
-    <main class="lab-main">
-      <section class="scene-column" aria-label="Arena Tifosi interattiva">
-        <div class="scene-intro">
-          <div>
-            <p class="eyebrow">
-              JOY VOLLEY · GIOIA DEL COLLE
-              <span>LA COMMUNITY PRENDE POSTO</span>
-            </p>
-            <h1>La tua gente.<br /><em>La tua arena.</em></h1>
-          </div>
-          <span class="edition">02 <span>/ FAN EXPERIENCE</span></span>
+        <i></i>{{ selectedFan.nickname }}<small>TU SEI QUI</small>
+      </button>
+    </div>
+    <div class="play-vignette" aria-hidden="true"></div>
+    <header class="play-top">
+      <div class="play-brand">
+        <span class="play-brand-mark"><Icon name="arena" /></span>
+        <div>
+          <small>JOY VOLLEY <i>·</i> DEMO</small>
+          <h1>Arena Tifosi</h1>
         </div>
+      </div>
+      <div class="play-top-tools">
         <div
-          ref="sceneFrame"
-          class="scene-frame"
-          :class="{ 'is-portrait': portrait, 'is-fullscreen': fullscreen }"
+          class="play-population"
+          :aria-label="
+            visibleFans +
+            ' tifosi in arena, ' +
+            activeFans +
+            ' profili demo attivi'
+          "
+          title="Presenze demo in arena e profili attivi"
         >
-          <div class="scene-topbar">
-            <span class="scene-live"
-              ><i :class="{ loading: !ready }"></i
-              >{{ ready ? "ARENA TIFOSI" : "CARICAMENTO 3D" }}</span
-            ><span class="scene-view-name">{{ currentView }}</span
-            ><span class="scene-dimension">{{
-              portrait ? "9:16" : "JOY VOLLEY"
-            }}</span>
-          </div>
-          <div class="canvas-wrap">
-            <div ref="viewport" class="arena-viewport"></div>
-            <button
-              v-if="ready && marker.visible"
-              class="fan-world-label"
-              :style="{ left: marker.x + '%', top: marker.y + '%' }"
-              @click="findFan"
-              :aria-label="'Il mio avatar: ' + selectedFan.nickname"
+          <Icon name="fans" /><strong>{{ visibleFans }}</strong
+          ><span></span><i></i><b>{{ activeFans }}</b>
+        </div>
+        <button
+          class="play-icon-button"
+          :class="{ selected: activePanel === 'prefs' }"
+          aria-label="Apri impostazioni arena"
+          title="Viste e impostazioni"
+          :aria-expanded="activePanel === 'prefs'"
+          aria-controls="play-preferences"
+          @click="openPanel('prefs')"
+        >
+          <Icon name="settings" />
+        </button>
+      </div>
+    </header>
+    <Transition name="play-toast"
+      ><div v-if="notice" class="play-notice" role="status">
+        <Icon :name="notice.kind" />
+        <p>{{ notice.text }}</p>
+        <button aria-label="Chiudi messaggio" @click="notice = null">
+          <Icon name="close" />
+        </button></div
+    ></Transition>
+    <div class="play-bottom">
+      <button
+        class="play-identity"
+        aria-label="Cambia profilo tifoso"
+        :aria-expanded="activePanel === 'profile'"
+        aria-controls="play-profile"
+        @click="openPanel('profile')"
+      >
+        <span class="play-avatar">{{ initials }}<i></i></span
+        ><span
+          ><strong>{{ selectedFan.nickname }}</strong
+          ><small
+            >{{ selectedFan.seatId }} <i>·</i> L{{ selectedFan.level }}</small
+          ></span
+        ><Icon name="chevron" />
+      </button>
+      <div class="play-action-zone">
+        <Transition name="play-toast"
+          ><p v-if="hint && ready && !tour" class="play-hint">
+            <span>Trascina per esplorare · Tocca un tifoso</span
+            ><small
+              >Desktop: 1 MVP · 2 Applauso · 3 Sciarpa · 4 Ola · F Posto</small
             >
-              <i></i>{{ selectedFan.nickname }}<small>TU SEI QUI</small>
-            </button>
-          </div>
-          <div v-if="error" class="scene-error" role="alert">
-            <Icon name="info" />
-            <p>{{ error }}</p>
-            <button @click="reload">Ricarica demo</button>
-          </div>
-          <div v-else-if="!ready" class="scene-loading">
-            <span></span>
-            <p>La tua tribuna sta prendendo vita…</p>
-          </div>
-          <div class="scene-caption">
-            <span class="caption-index"><Icon name="fans" /></span>
-            <div>
-              <strong>{{ visibleFans }} tifosi in arena</strong
-              ><span>{{
-                onlyActive
-                  ? "Solo profili demo attivi"
-                  : fillers
-                    ? "60 profili demo · 280 comparse"
-                    : "60 profili demo · comparse nascoste"
-              }}</span>
-            </div>
-          </div>
-          <div class="viewport-toolbar">
-            <button
-              :class="{ selected: portrait }"
-              :aria-pressed="portrait"
-              aria-label="Formato verticale 9:16"
-              title="Formato verticale 9:16"
-              @click="portrait = !portrait"
-            >
-              <Icon name="portrait" /></button
-            ><button
-              aria-label="Ripristina vista generale"
-              title="Ripristina vista generale"
-              @click="choose('general')"
-            >
-              <Icon name="reset" /></button
-            ><span></span
-            ><button
-              :aria-label="
-                fullscreen ? 'Esci da schermo intero' : 'Schermo intero'
-              "
-              title="Schermo intero"
-              @click="toggleFullscreen"
-            >
-              <Icon name="expand" />
-            </button>
-          </div>
-          <div v-if="tour" class="tour-overlay">
-            <span><i></i> REEL ORBIT</span
+          </p></Transition
+        >
+        <nav v-if="!tour" class="play-actions" aria-label="Azioni del tifoso">
+          <button
+            class="play-action play-mvp"
+            :class="{ reacting: lastAction === 'vote' }"
+            :disabled="!ready"
+            aria-label="Vota MVP"
+            title="Vota MVP · 1"
+            @click="openVote"
+          >
+            <Icon name="trophy" /><span>MVP</span
+            ><i v-if="votedPlayer" class="play-voted"><Icon name="check" /></i>
+          </button>
+          <button
+            v-for="action in actions"
+            :key="action.id"
+            class="play-action"
+            :class="{ reacting: lastAction === action.id }"
+            :disabled="!ready || cooldowns[action.id] > 0"
+            :aria-label="FAN_ACTIONS[action.id].label"
+            :aria-description="
+              cooldowns[action.id]
+                ? 'Disponibile tra ' + cooldowns[action.id] + ' secondi'
+                : undefined
+            "
+            :title="FAN_ACTIONS[action.id].label + ' · ' + action.key"
+            @click="act(action.id)"
+          >
+            <Icon :name="action.icon" /><span>{{ action.label }}</span
+            ><b v-if="cooldowns[action.id]" class="play-cooldown">{{
+              cooldowns[action.id]
+            }}</b>
+          </button>
+        </nav>
+        <div v-else class="play-tour">
+          <Icon name="view" />
+          <div>
+            <strong>Un giro in tribuna</strong
             ><span
               >{{
                 Math.min(TOUR_SECONDS, Math.floor(progress * TOUR_SECONDS))
@@ -395,264 +470,226 @@ onBeforeUnmount(() => {
                   .padStart(2, "0")
               }}
               / {{ TOUR_SECONDS }} s</span
-            >
-            <div><i :style="{ width: progress * 100 + '%' }"></i></div>
-            <button @click="play">Interrompi tour</button>
+            ><i><b :style="{ width: progress * 100 + '%' }"></b></i>
           </div>
-          <Transition name="fan-notice"
-            ><div v-if="notice" class="arena-notice" role="status">
-              <span><Icon :name="notice.kind" /></span>
-              <p>{{ notice.text }}</p>
-              <button aria-label="Chiudi messaggio" @click="notice = null">
-                <Icon name="close" />
-              </button></div
-          ></Transition>
-        </div>
-        <div class="scene-footer">
-          <span><Icon name="mouse" /><b>Trascina</b> per ruotare</span
-          ><span><Icon name="zoom" /><b>Scroll / pinch</b> per zoomare</span
-          ><span class="footer-engine fan-active-legend"
-            ><i></i> PROFILI DEMO ATTIVI</span
+          <button
+            aria-label="Interrompi tour"
+            title="Interrompi tour"
+            @click="play"
           >
-        </div>
-        <div class="arena-quick-actions" aria-label="Azioni rapide in arena">
-          <button class="quick-mvp" :disabled="!ready" @click="openVote">
-            <Icon name="trophy" /><span>Vota MVP</span></button
-          ><button
-            v-for="(action, kind) in FAN_ACTIONS"
-            :key="kind"
-            :disabled="!ready || cooldowns[kind] > 0"
-            @click="act(kind)"
-            :aria-label="action.label"
-          >
-            <Icon
-              :name="
-                kind === 'clap' ? 'clap' : kind === 'scarf' ? 'scarf' : 'wave'
-              "
-            /><span>{{
-              kind === "clap"
-                ? "Applaudi"
-                : kind === "scarf"
-                  ? "Alza la sciarpa"
-                  : "Coreografia / Ola"
-            }}</span
-            ><small v-if="cooldowns[kind]">{{ cooldowns[kind] }}s</small>
+            <Icon name="stop" />
           </button>
         </div>
-        <div class="study-note">
-          <span>UN POSTO TUTTO TUO.<br />UNA TRIBUNA DA VIVERE.</span>
-          <p>
-            I punti verdi indicano i profili demo attivi. Trova il tuo avatar,
-            scegli il tuo MVP e coinvolgi i tifosi intorno a te.
-          </p>
+      </div>
+      <button
+        class="play-find play-icon-button"
+        :disabled="!ready"
+        aria-label="Trova il mio posto"
+        title="Trova il mio posto · F"
+        @click="findFan"
+      >
+        <Icon name="pin" /><span>Il mio posto</span>
+      </button>
+    </div>
+    <div v-if="error" class="play-loading play-error" role="alert">
+      <Icon name="info" />
+      <h2>La tribuna ti aspetta.</h2>
+      <p>{{ error }}</p>
+      <button @click="reload">Riprova</button><a href="/">Torna ad ABX</a>
+    </div>
+    <div v-else-if="!ready" class="play-loading">
+      <span class="play-loader"><Icon name="arena" /></span>
+      <h2>Entra in tribuna.</h2>
+      <p>Il tuo posto sta prendendo vita…</p>
+    </div>
+
+    <dialog
+      ref="profileDialog"
+      id="play-profile"
+      class="play-sheet play-profile-sheet"
+      aria-labelledby="play-profile-title"
+      @close="panelClosed('profile')"
+      @click="backdrop($event, 'profile')"
+    >
+      <div class="play-sheet-heading">
+        <div>
+          <p>IL TUO POSTO NELLA COMMUNITY</p>
+          <h2 id="play-profile-title">Il tuo tifoso</h2>
         </div>
-      </section>
-      <aside class="control-panel" aria-label="Pannello Arena Tifosi">
-        <div class="panel-heading">
-          <span class="eyebrow">BENVENUTO SUGLI SPALTI</span
-          ><Icon name="fans" />
-          <h2>Arena Tifosi<span>Joy Volley · Gioia del Colle</span></h2>
+        <button aria-label="Chiudi profilo" @click="profileDialog.close()">
+          <Icon name="close" />
+        </button>
+      </div>
+      <div class="play-sheet-body">
+        <FanPanel
+          :profiles="state.profiles"
+          :fan="selectedFan"
+          :ready="ready"
+          @select="selectFan"
+          @find="findFan"
+        />
+        <p v-if="!state.persistent" class="storage-warning" role="status">
+          Salvataggio locale non disponibile: i dati resteranno in questa
+          sessione.
+        </p>
+      </div>
+    </dialog>
+
+    <dialog
+      ref="prefsDialog"
+      id="play-preferences"
+      class="play-sheet"
+      aria-labelledby="play-preferences-title"
+      @close="panelClosed('prefs')"
+      @click="backdrop($event, 'prefs')"
+    >
+      <div class="play-sheet-heading">
+        <div>
+          <p>JOY VOLLEY · ARENA TIFOSI</p>
+          <h2 id="play-preferences-title">La tua prospettiva</h2>
         </div>
-        <div class="fan-presence">
-          <div>
-            <strong>{{ visibleFans }}</strong
-            ><span>in arena</span>
-          </div>
-          <div>
-            <strong><i></i>{{ activeFans }}</strong
-            ><span>profili attivi demo</span>
-          </div>
-        </div>
+        <button aria-label="Chiudi impostazioni" @click="prefsDialog.close()">
+          <Icon name="close" />
+        </button>
+      </div>
+      <div class="play-sheet-body">
         <div
-          class="panel-tabs"
+          class="play-tabs"
           role="tablist"
-          aria-label="Arena Tifosi e impostazioni"
+          aria-label="Viste e dettagli arena"
         >
           <button
-            v-for="(tab, index) in tabs"
-            :key="tab.id"
-            :id="tab.id + '-tab'"
+            id="play-views-tab"
             role="tab"
-            :aria-selected="activeTab === tab.id"
-            :aria-controls="tab.id + '-panel'"
-            :tabindex="activeTab === tab.id ? 0 : -1"
-            @click="activeTab = tab.id"
-            @keydown.right.prevent="moveTab($event, index, 1)"
-            @keydown.left.prevent="moveTab($event, index, -1)"
+            :aria-selected="prefsTab === 'views'"
+            aria-controls="play-views-panel"
+            :tabindex="prefsTab === 'views' ? 0 : -1"
+            @click="prefsTab = 'views'"
+            @keydown.right.prevent="moveTab($event)"
+            @keydown.left.prevent="moveTab($event)"
           >
-            <Icon :name="tab.icon" />{{ tab.label }}
+            <Icon name="view" />Viste</button
+          ><button
+            id="play-scene-tab"
+            role="tab"
+            :aria-selected="prefsTab === 'scene'"
+            aria-controls="play-scene-panel"
+            :tabindex="prefsTab === 'scene' ? 0 : -1"
+            @click="prefsTab = 'scene'"
+            @keydown.right.prevent="moveTab($event)"
+            @keydown.left.prevent="moveTab($event)"
+          >
+            <Icon name="cube" />Scena
           </button>
         </div>
         <div
-          v-show="activeTab === 'fans'"
-          id="fans-panel"
+          v-show="prefsTab === 'views'"
+          id="play-views-panel"
           role="tabpanel"
-          aria-labelledby="fans-tab"
-        >
-          <FanPanel
-            :profiles="state.profiles"
-            :fan="selectedFan"
-            :ready="ready"
-            :cooldowns="cooldowns"
-            :voted="Boolean(votedPlayer)"
-            :last-action="lastAction"
-            @select="selectFan"
-            @find="findFan"
-            @action="act"
-            @vote="openVote"
-          />
-          <p v-if="!state.persistent" class="storage-warning" role="status">
-            Salvataggio locale non disponibile: i dati resteranno in questa
-            sessione.
-          </p>
-        </div>
-        <div
-          v-show="activeTab === 'views'"
-          id="views-panel"
-          class="views-panel"
-          role="tabpanel"
-          aria-labelledby="views-tab"
+          aria-labelledby="play-views-tab"
+          class="play-view-list"
         >
           <button
             v-for="(preset, index) in presets"
             :key="preset.id"
-            :class="{ active: view === preset.id }"
             :aria-pressed="view === preset.id"
             :disabled="!ready"
             @click="choose(preset.id)"
           >
-            <span class="view-number">0{{ index + 1 }}</span
-            ><span
-              ><strong>{{ preset.label }}</strong
-              ><small>{{ preset.subtitle }}</small></span
+            <small>0{{ index + 1 }}</small
+            ><span>{{ preset.label }}</span
             ><Icon name="chevron" /></button
-          ><button class="find-view" :disabled="!ready" @click="findFan">
-            <span class="view-number"><Icon name="pin" /></span
-            ><span
-              ><strong>Il mio avatar</strong
-              ><small
-                >{{ selectedFan.nickname }} · {{ selectedFan.seatId }}</small
-              ></span
-            ><Icon name="chevron" />
+          ><button class="play-tour-launch" :disabled="!ready" @click="play">
+            <Icon name="play" /><span>Avvia tour cinematico</span
+            ><small>18s</small>
           </button>
-          <div class="reel-card">
-            <div>
-              <span class="eyebrow">LA TRIBUNA SI RACCONTA</span
-              ><span class="reel-duration">{{ TOUR_SECONDS }} SEC</span>
-            </div>
-            <h3>Un giro nell’Arena Tifosi.</h3>
-            <p>Una sequenza tra campo, tifosi e tribune.</p>
-            <button class="tour-button" :disabled="!ready" @click="play">
-              <Icon :name="tour ? 'stop' : 'play'" /><span>{{
-                tour ? "Interrompi tour" : "Avvia tour cinematico"
-              }}</span
-              ><Icon name="arrow" /></button
-            ><span class="reel-hint"
-              >Disponibile anche con inquadratura 9:16.</span
-            >
-          </div>
         </div>
         <div
-          v-show="activeTab === 'scene'"
-          id="scene-panel"
-          class="settings-panel"
+          v-show="prefsTab === 'scene'"
+          id="play-scene-panel"
           role="tabpanel"
-          aria-labelledby="scene-tab"
+          aria-labelledby="play-scene-tab"
+          class="settings-panel play-settings"
         >
-          <p class="setting-hint">
-            Scegli chi vedere sugli spalti e i dettagli del palazzetto.
-          </p>
           <label
             ><span
               ><strong>Comparse sugli spalti</strong
-              ><small>280 avatar di riempimento</small></span
-            ><input type="checkbox" v-model="fillers" role="switch" /><i></i
+              ><small>280 tifosi di riempimento</small></span
+            ><input v-model="fillers" type="checkbox" role="switch" /><i></i
           ></label>
           <label
             ><span
               ><strong>Solo profili attivi</strong
               ><small>Mostra i tifosi con il punto verde</small></span
-            ><input type="checkbox" v-model="onlyActive" role="switch" /><i></i
-          ></label>
-          <label
-            ><span
-              ><strong>Sedie sul parquet</strong
-              ><small
-                >{{ stats.chairs }} sedie della foto originale</small
-              ></span
-            ><input type="checkbox" v-model="chairs" role="switch" /><i></i
+            ><input v-model="onlyActive" type="checkbox" role="switch" /><i></i
           ></label>
           <label
             ><span
               ><strong>Tetto in legno</strong
-              ><small>Travi e copertura a falde</small></span
-            ><input type="checkbox" v-model="roof" role="switch" /><i></i
+              ><small>Copertura e travi del palazzetto</small></span
+            ><input v-model="roof" type="checkbox" role="switch" /><i></i
           ></label>
           <label
             ><span
               ><strong>Barriere del campo</strong
               ><small>Ringhiere perimetrali blu</small></span
-            ><input type="checkbox" v-model="railings" role="switch" /><i></i
+            ><input v-model="railings" type="checkbox" role="switch" /><i></i
           ></label>
-          <button class="reference-card" @click="photo = true">
-            <img
-              :src="photoUrl"
-              alt="Foto originale del palazzetto di Gioia del Colle"
-            /><span
-              ><Icon name="photo" />La foto di partenza<Icon name="expand"
-            /></span>
-          </button>
-          <div class="cutaway-note">
-            <Icon name="info" />
-            <p>
-              Le superfici esterne si aprono alla vista per lasciarti esplorare
-              l’interno.
-            </p>
-          </div>
-          <button class="reset-fan-demo" @click="resetDemo">
-            <Icon name="reset" />Reset dati demo
+          <label
+            ><span
+              ><strong>Sedie sul parquet</strong
+              ><small>Allestimento della fotografia</small></span
+            ><input v-model="chairs" type="checkbox" role="switch" /><i></i
+          ></label>
+        </div>
+        <div class="play-utilities">
+          <button :aria-pressed="portrait" @click="portrait = !portrait">
+            <Icon name="portrait" />Formato 9:16</button
+          ><button @click="toggleFullscreen">
+            <Icon name="expand" />{{
+              fullscreen ? "Esci da schermo intero" : "Schermo intero"
+            }}</button
+          ><button @click="showHelp"><Icon name="info" />Come giocare</button
+          ><button @click="openPhoto">
+            <Icon name="photo" />Foto originale
           </button>
         </div>
-        <div class="panel-footnote">
-          <span class="small-cross">+</span>Profili e giocatori dimostrativi. Un
-          primo passo verso la community ABX.
+        <div class="play-menu-footer">
+          <a href="/">Torna ad ABX<Icon name="arrow" /></a
+          ><button
+            @click="resetDemo"
+            title="Cancella soltanto i dati della demo"
+          >
+            Reset demo
+          </button>
         </div>
-      </aside>
-    </main>
-    <footer class="lab-footer">
-      <span>ARENA TIFOSI <b>—</b> IL TUO POSTO NELLA COMMUNITY.</span
-      ><span>Esperienza demo locale <i>© ABX 2026</i></span>
-    </footer>
+      </div>
+    </dialog>
     <MvpDialog
       ref="mvpDialog"
       :fan="selectedFan"
       :voted-player="votedPlayer"
+      :persistent="state.persistent"
       @vote="vote"
-      @open="arena?.stopTour()"
     />
     <dialog
       ref="photoDialog"
       class="photo-dialog"
       aria-label="Foto del palazzetto"
-      @close="photo = false"
-      @click="
-        (event) => {
-          if (event.target === photoDialog) photo = false;
-        }
-      "
+      @click="backdrop($event, 'photo')"
     >
       <div>
-        <button aria-label="Chiudi foto" @click="photo = false">
+        <button aria-label="Chiudi foto" @click="photoDialog.close()">
           <Icon name="close" /></button
         ><img
           :src="photoUrl"
-          alt="Foto di riferimento del palazzetto Joy Volley"
+          alt="Fotografia del palazzetto Joy Volley a Gioia del Colle"
         />
         <p>
-          <span>01 / LA FOTO DI PARTENZA</span>La geometria del palazzetto è
-          ispirata a questa fotografia e alle indicazioni ricevute.
+          <span>LA FOTO DI PARTENZA</span>La geometria del palazzetto è ispirata
+          a questa fotografia e alle indicazioni ricevute.
         </p>
       </div>
     </dialog>
-  </div>
+  </main>
 </template>

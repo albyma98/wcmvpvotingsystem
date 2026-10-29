@@ -2,7 +2,11 @@
 import { ref } from "vue";
 import Icon from "../ArenaIcon.vue";
 import { DEMO_PLAYERS } from "../mvp/players.js";
-const props = defineProps({ fan: Object, votedPlayer: Object });
+const props = defineProps({
+  fan: Object,
+  votedPlayer: Object,
+  persistent: { type: Boolean, default: true },
+});
 const emit = defineEmits(["vote", "open"]);
 const dialog = ref(null),
   candidate = ref(null);
@@ -72,8 +76,11 @@ defineExpose({ open, close });
         <Icon name="trophy" />Conferma voto MVP<Icon name="arrow" />
       </button>
       <p class="mvp-local-note">
-        Voto dimostrativo salvato su questo dispositivo.<br />Non partecipa alle
-        votazioni delle partite reali.
+        {{
+          persistent
+            ? "Voto dimostrativo salvato su questo dispositivo."
+            : "Storage non disponibile: voto valido solo in questa sessione."
+        }}<br />Non partecipa alle votazioni delle partite reali.
       </p>
     </div>
   </dialog>

@@ -5,12 +5,14 @@ MVP di tribuna digitale popolata, costruito sul palazzetto esistente di Gioia de
 ## Come usare Arena Tifosi
 
 1. All’apertura sono presenti **60 profili tifoso demo e 280 comparse**, distribuiti sui due lati lunghi. Il tuo profilo iniziale è **GioiaFan**, posto **B-08-24**. I dati sono dimostrativi.
-2. In **Tifosi**, cambia il profilo dal selettore oppure cerca un nickname (per esempio `MarcoGioia`). I risultati della ricerca sono selezionabili anche da tastiera. Toccare un avatar di un profilo demo consente a sua volta di impersonarlo; le comparse non sono selezionabili.
+2. Tocca il **profilo in basso a sinistra** per cambiare tifoso dal selettore oppure cercare un nickname (per esempio `MarcoGioia`). I risultati della ricerca sono selezionabili anche da tastiera. Toccare un avatar di un profilo demo consente a sua volta di impersonarlo; le comparse non sono selezionabili. La scelta chiude il pannello e avvicina la camera al nuovo posto.
 3. **Trova il mio posto** avvicina dolcemente la camera all’avatar. Nome, settore, fila, posto, livello, partite e interazioni sono mostrati nel pannello; indicatore e badge segnalano il tuo posto nella scena.
 4. **Vota MVP** apre tre giocatori inventati. Scegli un giocatore e conferma: il profilo vota una sola volta, il suo avatar si alza e applaude insieme ai vicini. Il voto resta salvato dopo una ricarica e il pulsante consente di consultarlo. È un voto locale di prova, senza effetto sulle partite reali.
-5. **Applaudi**, **Alza la sciarpa**, **Coreografia / Ola** attivano reazioni di settore o una propagazione sulle due tribune. Cooldown di 4.5, 7 e 12 secondi per profilo limitano le ripetizioni. Le stesse azioni sono disponibili sotto la scena, anche su mobile.
-6. **Scena** contiene i filtri per comparse e soli profili attivi, i dettagli del palazzetto e **Reset dati demo**. Il reset, con conferma, cancella esclusivamente voti/interazioni della demo e mantiene gli stessi posti.
-7. **Viste** mantiene i cinque preset architettonici, aggiunge il richiamo al proprio avatar e conserva il tour cinematico di 18 secondi. Rotazione, zoom, formato 9:16 e schermo intero rimangono disponibili.
+5. La **barra di gioco sovrapposta al 3D** raccoglie una sola volta le quattro azioni: MVP, applauso, sciarpa e ola. Le ultime tre attivano reazioni di settore o una propagazione sulle due tribune. Cooldown di 4.5, 7 e 12 secondi per profilo limitano le ripetizioni e sono visibili sui pulsanti.
+6. L’**icona impostazioni in alto a destra** apre un pannello a comparsa. **Scena** contiene i filtri per comparse e soli profili attivi e i dettagli del palazzetto. **Reset demo**, nel fondo del menu, cancella con conferma esclusivamente voti/interazioni della demo e mantiene gli stessi posti.
+7. Nello stesso menu, **Viste** contiene i cinque preset architettonici e il tour cinematico di 18 secondi. Sono disponibili anche formato 9:16, schermo intero del browser, guida e fotografia originale.
+
+Il 3D occupa automaticamente tutta la finestra, senza sidebar o scorrimento della pagina. Profilo, impostazioni e voto si aprono sopra la scena; su mobile i pannelli di profilo e impostazioni sono ancorati al bordo inferiore e scorrono internamente. La barra delle azioni lascia il posto ai comandi del tour durante la visita automatica.
 
 Profili, assegnazioni, voto, cooldown e azione recente usano soltanto la chiave `abx.arena-tifosi.demo.v1` in localStorage. Il salvataggio vale per origine e browser: `localhost` e `127.0.0.1` hanno archivi distinti. Se lo storage è bloccato, la demo continua in memoria e lo segnala. Le presenze attive sono simulate; impersonare un profilo lo rende attivo nella demo.
 
@@ -44,7 +46,8 @@ Apri `/arena-demo/` sull’indirizzo stampato dall’anteprima (normalmente `htt
 - Cinque preset animati: vista generale, tribuna destra, tribuna sinistra, campo, angolo alto.
 - All’avvio il campo è libero per Arena Tifosi. La scheda **Scena** permette di riattivare le 36 sedie della fotografia, la copertura e le barriere perimetrali.
 - **Avvia tour cinematico**: percorso automatico di 18 secondi, panoramica, tribuna principale, campo, sedute gialle e vista finale. I pulsanti Interrompi e i preset interrompono il tour. Il cambio scheda del browser lo ferma.
-- Icona telefono: viewport realmente in rapporto 9:16. Reset e schermo intero nella stessa toolbar; dove la Fullscreen API non è disponibile, il pulsante propone il formato verticale.
+- Scorciatoie desktop: **1** MVP, **2** applauso, **3** sciarpa, **4** ola, **F** trova il mio posto. Sono sospese mentre è aperta una finestra o si scrive nei campi.
+- **Formato 9:16** nel menu: viewport in rapporto verticale. La scena usa già tutta la finestra per impostazione predefinita; **Schermo intero** nasconde anche l’interfaccia del browser quando la Fullscreen API è disponibile. Tutti i pannelli rimangono accessibili anche in questa modalità.
 - Foto di partenza ingrandibile in una finestra, chiudibile anche con Esc.
 - Preset, tab, toggle e pulsanti sono utilizzabili da tastiera. Le transizioni tra preset rispettano `prefers-reduced-motion`; il tour parte solo su richiesta.
 
@@ -71,6 +74,7 @@ src/arena/
   ArenaIcon.vue             icone SVG
   arena.css                 stili responsive isolati dall’app principale
   fans.css                  estensione UI Arena Tifosi
+  immersive.css             scena a schermo pieno, HUD e pannelli a comparsa
   seating/seatMap.js        posti, scale escluse, seed e cluster pesati
   crowd/
     demoProfiles.js         60 identità demo e metadati
@@ -82,7 +86,7 @@ src/arena/
     demoSession.test.js     seating, persistenza, voto e azioni
   mvp/players.js            tre giocatori fittizi
   ui/
-    FanPanel.vue            ricerca, identità, posto e azioni
+    FanPanel.vue            ricerca, identità e posto
     MvpDialog.vue           selezione e conferma del voto
   camera/
     cameraSystem.js         controlli, limiti e preset
@@ -98,11 +102,11 @@ src/arena/
     props.js                sedie opzionali, tavoli e barriere
 ```
 
-Le geometrie ripetute sono `InstancedMesh`, aggregate per materiale: sedie, sedute gialle, gradoni, ringhiere e travi non generano una draw call per pezzo. DPR limitato a 1.75 desktop / 1.25 smartphone, tre luci, niente ombre dinamiche o postprocessing. Texture principali generate localmente; la foto è servita da `public/arena/reference.jpg`. I font Google sono opzionali: senza rete vengono usati i fallback di sistema. Il rendering si sospende quando la scheda non è visibile; lo smontaggio rilascia controlli, observer, materiali, texture e geometrie.
+Le geometrie ripetute sono `InstancedMesh`, aggregate per materiale: sedie, sedute gialle, gradoni, ringhiere e travi non generano una draw call per pezzo. DPR limitato a 1.5 desktop / 1.25 smartphone, con un budget massimo di circa 2.2 milioni di pixel per il canvas a schermo pieno. Tre luci, niente ombre dinamiche o postprocessing. Texture principali generate localmente; la foto è servita da `public/arena/reference.jpg`. I font Google sono opzionali: senza rete vengono usati i fallback di sistema. Il rendering si sospende quando la scheda non è visibile; lo smontaggio rilascia controlli, observer, materiali, texture e geometrie.
 
 La mappa astratta contiene 1330 posti: 665 per tribuna, senza occupare le scale. Profili e seggiolini leggono la stessa mappa. Un seed stabile e un campionamento pesato favoriscono zone centrali e cluster; le comparse privilegiano i dintorni dei profili e lasciano vuoti irregolari. I 340 avatar condividono cinque mesh instanziate per corpi, teste, capelli, arti/dettagli e sciarpe, più indicatori semplici. Nessun rig, GLB o texture esterna per i tifosi. Le pose vengono aggiornate al massimo a 30 Hz, soltanto per avatar idle selezionati e soggetti coinvolti nelle azioni; le comparse lontane ricevono aggiornamenti meno frequenti. Il rendering della camera mantiene il proprio ciclo fluido. `prefers-reduced-motion` disattiva i piccoli movimenti automatici; le azioni esplicite restano disponibili.
 
-Nella build verificata, HTML, JavaScript, CSS e foto iniziale pesano complessivamente circa **246 kB con gzip**, esclusi font esterni e overhead HTTP. Il bundle dell’arena è circa 163 kB gzip; non è importato dalla pagina principale, che mantiene il suo bundle separato. Queste misure riguardano gli asset compilati, non un tempo di caricamento o una garanzia di FPS su telefono.
+Nella build verificata, il bundle JavaScript dell’arena è circa **162 kB gzip** e il CSS circa **12 kB gzip**, esclusi runtime Vue condiviso, foto, font esterni e overhead HTTP. L’arena non è importata dalla pagina principale, che mantiene il suo bundle separato. Queste misure riguardano gli asset compilati, non un tempo di caricamento o una garanzia di FPS su telefono.
 
 ## Verifica e prossimi sviluppi ABX
 
@@ -116,7 +120,7 @@ Verifiche eseguite per Arena Tifosi: build di produzione dell’intero frontend 
 
 La disposizione aggiornata è stata verificata anche sulle geometrie generate: due tribune con 19 gradoni e dimensioni identiche, entrambe parallele al lato lungo, nessuna tribuna sui lati corti, due porte per ciascuna parete di fondo e bandiere sopra la tribuna senza seggiolini. Tour e build sono stati ricontrollati dopo lo spostamento.
 
-Screenshot Arena Tifosi: [panoramica desktop](screenshots/fans-desktop.jpg), [il proprio posto](screenshots/fans-seat.jpg), [voto MVP](screenshots/fans-vote.jpg), [layout mobile](screenshots/fans-mobile.jpg) e [MVP su mobile](screenshots/fans-vote-mobile.jpg). Restano conservati anche gli screenshot della precedente ricostruzione architettonica.
+Interfaccia immersiva verificata nel browser a **1280 × 900** e **390 × 844**: canvas a tutta finestra, pagina senza scorrimento, profilo e ricerca a comparsa, accesso al voto dalla barra e voto precedente conservato. Screenshot aggiornati: [desktop a tutto schermo](screenshots/immersive-desktop.jpg), [mobile a tutto schermo](screenshots/immersive-mobile.jpg) e [MVP su mobile](screenshots/immersive-vote-mobile.jpg). Restano conservati anche gli screenshot delle precedenti versioni.
 
 `createArena.js` mantiene i gruppi `crowd` (ora popolato), `sponsors` e `interaction-zones`. Il picking della folla avviene soltanto su click/tap breve, non su ogni frame; drag e gesture a più dita non selezionano avatar.
 

@@ -14,12 +14,6 @@ export function createArena(container, callbacks, initialCrowd) {
     alpha: false,
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(
-    Math.min(
-      window.devicePixelRatio || 1,
-      window.innerWidth < 700 ? 1.25 : 1.75,
-    ),
-  );
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
@@ -72,6 +66,14 @@ export function createArena(container, callbacks, initialCrowd) {
     if (!width || !height) return;
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    // Keep the full-screen canvas within a predictable fill-rate budget.
+    const pixelRatio = Math.min(
+      window.devicePixelRatio || 1,
+      window.innerWidth < 700 ? 1.25 : 1.5,
+      Math.sqrt(2200000 / (width * height)),
+    );
+    if (Math.abs(renderer.getPixelRatio() - pixelRatio) > 0.01)
+      renderer.setPixelRatio(pixelRatio);
     renderer.setSize(width, height, false);
     cameras.reframe();
   }
@@ -159,7 +161,7 @@ export function createArena(container, callbacks, initialCrowd) {
       lastMarker = now;
     }
     if (now - last > 1000) {
-      callbacks.onStats({
+      callbacks.onStats?.({
         calls: renderer.info.render.calls,
         chairs: chairs.userData.count,
       });

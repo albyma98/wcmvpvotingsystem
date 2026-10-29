@@ -1,16 +1,12 @@
 <script setup>
 import { computed, ref } from "vue";
 import Icon from "../ArenaIcon.vue";
-import { FAN_ACTIONS } from "../actions/demoSession.js";
 const props = defineProps({
   profiles: Array,
   fan: Object,
   ready: Boolean,
-  cooldowns: Object,
-  voted: Boolean,
-  lastAction: String,
 });
-const emit = defineEmits(["select", "find", "action", "vote"]);
+const emit = defineEmits(["select", "find"]);
 const query = ref(""),
   searchError = ref("");
 const results = computed(() =>
@@ -115,39 +111,6 @@ const initials = computed(
     <button class="find-fan-button" :disabled="!ready" @click="emit('find')">
       <Icon name="pin" />Trova il mio posto<Icon name="arrow" />
     </button>
-    <div class="fan-actions-heading">
-      <span class="eyebrow">FAI SENTIRE LA TUA PRESENZA</span
-      ><span class="action-live-dot"></span>
-    </div>
-    <button class="mvp-entry" :disabled="!ready" @click="emit('vote')">
-      <span class="mvp-entry-icon"><Icon name="trophy" /></span
-      ><span
-        ><strong>Vota MVP</strong
-        ><small>{{
-          voted ? "Il tuo voto è registrato" : "Il tuo voto accende la tribuna"
-        }}</small></span
-      ><Icon :name="voted ? 'check' : 'arrow'" />
-    </button>
-    <div class="fan-actions-grid">
-      <button
-        v-for="(action, kind) in FAN_ACTIONS"
-        :key="kind"
-        :disabled="!ready || cooldowns[kind] > 0"
-        :class="{ reacting: lastAction === kind }"
-        @click="emit('action', kind)"
-      >
-        <Icon
-          :name="kind === 'clap' ? 'clap' : kind === 'scarf' ? 'scarf' : 'wave'"
-        /><strong>{{ action.label }}</strong
-        ><span>{{
-          cooldowns[kind] > 0
-            ? `Tra ${cooldowns[kind]} s`
-            : kind === "wave"
-              ? "Tutta l’arena"
-              : "Insieme al tuo settore"
-        }}</span>
-      </button>
-    </div>
     <div class="fan-history">
       <span>{{ fan.matches }} partite demo</span
       ><span>{{ fan.interactions }} interazioni</span>

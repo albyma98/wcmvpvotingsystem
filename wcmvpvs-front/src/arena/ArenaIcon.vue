@@ -8,7 +8,13 @@
     stroke-linejoin="round"
     aria-hidden="true"
   >
-    <template v-if="name === 'fans'">
+    <template v-if="name === 'settings'">
+      <path d="M3 6h4m4 0h10M3 12h10m4 0h4M3 18h4m4 0h10" />
+      <circle cx="9" cy="6" r="2" />
+      <circle cx="15" cy="12" r="2" />
+      <circle cx="9" cy="18" r="2" />
+    </template>
+    <template v-else-if="name === 'fans'">
       <circle cx="9" cy="7" r="3" />
       <path
         d="M3 21v-4a6 6 0 0 1 12 0v4M16 4a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 5v3"
