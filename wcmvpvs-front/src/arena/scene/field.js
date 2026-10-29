@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { canvasTexture } from "./primitives";
+import { arenaLayout } from "./layout";
 
 export function createField(parent) {
   const texture = canvasTexture(2048, 1536, (ctx, w, h) => {
@@ -25,8 +26,8 @@ export function createField(parent) {
         ctx.stroke();
       }
     }
-    const px = (x) => (x / 36 + 0.5) * w,
-      pz = (z) => (z / 27 + 0.5) * h;
+    const px = (x) => (x / arenaLayout.length + 0.5) * w,
+      pz = (z) => (z / arenaLayout.width + 0.5) * h;
     const line = (points, color = "#fcf7de", width = 4) => {
       ctx.strokeStyle = color;
       ctx.lineWidth = width;
@@ -65,8 +66,8 @@ export function createField(parent) {
     ctx.ellipse(
       px(0),
       pz(0),
-      (w * 1.8) / 36,
-      (h * 1.8) / 27,
+      (w * 1.8) / arenaLayout.length,
+      (h * 1.8) / arenaLayout.width,
       0,
       0,
       Math.PI * 2,
@@ -91,7 +92,7 @@ export function createField(parent) {
     ctx.restore();
   });
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(36, 27),
+    new THREE.PlaneGeometry(arenaLayout.length, arenaLayout.width),
     new THREE.MeshStandardMaterial({
       map: texture,
       roughness: 0.29,

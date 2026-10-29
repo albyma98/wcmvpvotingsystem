@@ -6,7 +6,7 @@ test("queued frame before the start of the tour has a valid, clamped camera pose
   const sample = createTourSampler()(-16);
   assert.equal(sample.progress, 0);
   assert.equal(sample.ease, 0);
-  assert.deepEqual(sample.position.toArray(), [-22, 13, 23]);
+  assert.deepEqual(sample.position.toArray(), [25, 17, 27]);
 });
 
 test("the complete 18-second path stays above the court and has finite camera poses", () => {
@@ -29,7 +29,5 @@ test("a delayed frame ends at the final view instead of overshooting the spline"
   assert.equal(sample.ease, 1);
   sample.position
     .toArray()
-    .forEach((value, i) =>
-      assert.ok(Math.abs(value - [-19, 10, 17][i]) < 1e-9),
-    );
+    .forEach((value, i) => assert.ok(Math.abs(value - [22, 12, 23][i]) < 1e-9));
 });

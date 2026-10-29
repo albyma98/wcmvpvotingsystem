@@ -36,7 +36,7 @@ export function createArena(container, callbacks) {
   scene.add(architecture);
   createField(architecture);
   createStands(architecture);
-  const roof = createEnvironment(architecture);
+  const { roof, walls } = createEnvironment(architecture);
   const railings = createProps(architecture);
   const chairs = createChairs(architecture);
   // Stable extension anchors for GLB seats, sponsor signage and a future crowd.
@@ -54,7 +54,8 @@ export function createArena(container, callbacks) {
   let disposed = false,
     hidden = document.hidden,
     last = 0,
-    contextLost = false;
+    contextLost = false,
+    roofEnabled = true;
   function resize() {
     const { width, height } = container.getBoundingClientRect();
     if (!width || !height) return;
@@ -83,6 +84,12 @@ export function createArena(container, callbacks) {
   renderer.setAnimationLoop((now) => {
     if (disposed || hidden || contextLost) return;
     cameras.update(now);
+    // Exterior views open the entire near wall, including its frames and doors.
+    for (const { group, axis, side, limit } of walls) {
+      group.visible = side * camera.position[axis] <= limit + 0.05;
+    }
+    const roofHeight = 16.7 - (Math.abs(camera.position.z) * 4.3) / 18;
+    roof.visible = roofEnabled && camera.position.y < roofHeight;
     renderer.render(scene, camera);
     if (now - last > 1000) {
       callbacks.onStats({
@@ -100,7 +107,7 @@ export function createArena(container, callbacks) {
       chairs.visible = value;
     },
     setRoof: (value) => {
-      roof.visible = value;
+      roofEnabled = value;
     },
     setRailings: (value) => {
       railings.visible = value;

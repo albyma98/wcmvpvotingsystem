@@ -39,9 +39,15 @@ Apri `/arena-demo/` sull’indirizzo stampato dall’anteprima (normalmente `htt
 
 ## Fedeltà e limiti
 
-I riferimenti principali sono la tribuna alta chiara con due scale arancioni, la tribuna bassa gialla, le ringhiere blu, le pareti a pannelli beige, le porte blu, il tetto scuro in legno con travi, la fascia di finestre alte, le luci e le bandiere. Il parquet include linee sportive e un logo centrale stilizzato. La vista iniziale cerca la composizione della foto, con campo e sedie in primo piano, gradinata grigia a destra e sedute gialle in basso.
+I riferimenti principali restano la gradinata chiara con due scale arancioni, le ringhiere blu, le pareti a pannelli beige, il parquet, le porte blu e il tetto scuro in legno con travi. La disposizione è stata aggiornata secondo le indicazioni successive alla prima demo:
 
-È una ricostruzione interpretativa da **una sola fotografia**, senza misure certificate. Dimensioni, lati non visibili, sequenza delle porte, bandiere e numero di sedie sono plausibili e semplificati. Il marchio sul parquet non è un logo ufficiale. Le pareti e le falde sono visibili dall’interno e aperte dall’esterno per consentire viste a spaccato; non si tratta di un simulatore con collisioni architettoniche. Le luci sul parquet sono sfumature precalcolate, non riflessi fisici.
+- Due tribune speculari sui **lati lunghi** del campo da pallavolo, con la stessa struttura di 19 gradoni della tribuna grigia originale.
+- Una tribuna senza seggiolini; quella opposta con molti seggiolini gialli e blu, mantenendo libere le scale arancioni.
+- Nessuna tribuna sui **lati corti**, con **due porte blu su ciascuna parete di fondo**, quattro in totale.
+- Bandiere e barra delle luci sopra la tribuna senza seggiolini.
+- Preset e tour riposizionati sulle due nuove tribune. Pareti vicine e tetto si aprono nelle viste esterne per consentire lo spaccato.
+
+È una ricostruzione interpretativa da **una sola fotografia**, corretta con le indicazioni del committente, senza misure certificate. Dimensioni e dettagli non specificati restano plausibili e semplificati. Il marchio sul parquet non è un logo ufficiale. Non si tratta di un simulatore con collisioni architettoniche. Le luci sul parquet sono sfumature precalcolate, non riflessi fisici.
 
 Il formato verticale prepara l’inquadratura: **non esporta un video**. Per un reel si può registrare lo schermo durante il tour. La compatibilità touch è implementata tramite OrbitControls; le prestazioni su iPhone e Android reali richiedono verifica sui dispositivi di destinazione.
 
@@ -59,6 +65,7 @@ src/arena/
     cinematic.test.js       regressione del clock e validità del percorso
   scene/
     createArena.js          lifecycle, renderer, resize e cleanup GPU
+    layout.js               dimensioni, lati lunghi/corti, gradoni e porte
     primitives.js           batching instanziato e materiali
     environment.js          pareti, porte, tetto, bandiere e luci
     stands.js               due tribune e corrimano
@@ -78,7 +85,9 @@ Il test copre il primo frame che precede il click, la validità delle pose duran
 
 Verifiche eseguite: build di produzione dell’intero frontend, 3 test cinematici superati, risposta HTTP 200, cinque preset, rotazione e zoom, cambio di allestimento, layer opzionali, tour completo fino al termine e assenza di errori nella console durante il collaudo finale. Il layout è stato controllato anche con viewport 390 × 844; il rapporto della viewport verticale misurato nel DOM è 0.5625 (9:16). Non è stato effettuato un collaudo su telefoni fisici.
 
-Screenshot della demo: [desktop](screenshots/desktop.jpg) e [viewport mobile](screenshots/mobile.jpg).
+La disposizione aggiornata è stata verificata anche sulle geometrie generate: due tribune con 19 gradoni e dimensioni identiche, entrambe parallele al lato lungo, nessuna tribuna sui lati corti, due porte per ciascuna parete di fondo e bandiere sopra la tribuna senza seggiolini. Tour e build sono stati ricontrollati dopo lo spostamento.
+
+Screenshot della demo: [desktop](screenshots/desktop.jpg), [pianta dall’alto](screenshots/layout.jpg) e [viewport mobile](screenshots/mobile.jpg).
 
 `createArena.js` espone gruppi nominati `crowd`, `sponsors`, `interaction-zones`. Per aggiungere avatar o sponsor, popolare questi gruppi senza cambiare il campo o la camera. Per aree cliccabili, collegare un `Raycaster` agli oggetti di `interaction-zones`. Coreografie ed effetti MVP possono essere layer aggiuntivi, controllati dal futuro stato ABX.
 

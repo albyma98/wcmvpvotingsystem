@@ -6,20 +6,22 @@ export function createProps(parent) {
   railings.name = "court-railings";
   parent.add(railings);
   const b = createBuilder(railings);
-  b.rail([-16, -10.5], [9.6, -10.5]);
-  b.rail([-16, -10.5], [-16, 8.5]);
-  b.rail([9.7, -11.8], [9.7, 9.2]);
+  for (const z of [-8.3, 8.3]) b.rail([-12, z], [12, z]);
+  for (const x of [-15, 15]) {
+    b.rail([x, -8.3], [x, -2]);
+    b.rail([x, 2], [x, 8.3]);
+  }
   b.flush();
   const tech = createBuilder(parent);
-  for (const x of [-11, 5]) {
-    tech.box(p.white, [x, 0.8, 8.55], [1.9, 0.1, 0.85]);
+  for (const x of [-7, 7]) {
+    tech.box(p.white, [x, 0.8, 7.3], [1.9, 0.1, 0.85]);
     for (const dx of [-0.78, 0.78])
       for (const dz of [-0.3, 0.3])
-        tech.box(p.white, [x + dx, 0.4, 8.55 + dz], [0.065, 0.8, 0.065]);
+        tech.box(p.white, [x + dx, 0.4, 7.3 + dz], [0.065, 0.8, 0.065]);
   }
-  for (const x of [-13, -8, -3, 2, 7]) {
-    tech.box(p.white, [x, 0.8, -11.6], [1.6, 1.6, 0.1]);
-    tech.box("#9a9b8b", [x, 0.12, -11.6], [1.7, 0.24, 0.6]);
+  for (const z of [-3, 0, 3]) {
+    tech.box(p.white, [-16.7, 0.8, z], [0.1, 1.6, 1.6]);
+    tech.box("#9a9b8b", [-16.7, 0.12, z], [0.6, 0.24, 1.7]);
   }
   tech.flush();
   return railings;

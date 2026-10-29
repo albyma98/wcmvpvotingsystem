@@ -7,23 +7,23 @@ export const presets = [
   {
     id: "general",
     label: "Vista generale",
-    subtitle: "L’inquadratura della fotografia",
-    position: [4, 8.5, 20],
-    target: [2, 3.5, -2],
+    subtitle: "Le due tribune lungo il campo",
+    position: [17, 10.5, 18],
+    target: [0, 3, 0],
   },
   {
     id: "right",
     label: "Tribuna destra",
     subtitle: "Gradoni e scale arancioni",
-    position: [-2, 7, 6],
-    target: [14.2, 3.7, -2],
+    position: [-7, 8, 6],
+    target: [0, 3.2, -12.5],
   },
   {
     id: "left",
     label: "Tribuna sinistra",
-    subtitle: "Giallo, blu e bordo campo",
-    position: [-12, 6, -1],
-    target: [-3, 1.5, 12],
+    subtitle: "Seggiolini gialli e blu",
+    position: [8, 8, -5],
+    target: [0, 3.2, 12.5],
   },
   {
     id: "court",
@@ -36,7 +36,7 @@ export const presets = [
     id: "high",
     label: "Angolo alto",
     subtitle: "La geometria del palazzetto",
-    position: [-24, 24, 26],
+    position: [27, 25, 28],
     target: [0, 1, 0],
   },
 ];
@@ -153,7 +153,7 @@ export function createCameraSystem(camera, element, onTour, onView) {
     }
     if (!tour) {
       controls.target.x = THREE.MathUtils.clamp(controls.target.x, -14, 16);
-      controls.target.z = THREE.MathUtils.clamp(controls.target.z, -12, 13);
+      controls.target.z = THREE.MathUtils.clamp(controls.target.z, -15, 15);
       controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0.5, 6);
       controls.update();
       if (camera.position.y < 1.3) camera.position.y = 1.3;
