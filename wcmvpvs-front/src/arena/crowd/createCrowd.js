@@ -125,7 +125,9 @@ export function createCrowd(parent, actors, { selectedId, onSelect } = {}) {
   const visible = new Uint8Array(actors.length).fill(1);
   const wasActing = new Set();
   let selected =
-    selectedId || actors.find((actor) => actor.kind === "profile")?.id;
+    selectedId === undefined
+      ? actors.find((actor) => actor.kind === "profile")?.id
+      : selectedId;
   let showFillers = true,
     onlyActive = false,
     lastUpdate = -Infinity,
@@ -350,6 +352,7 @@ export function createCrowd(parent, actors, { selectedId, onSelect } = {}) {
   function update(now, camera) {
     const selectedIndex = byId.get(selected),
       actor = actors[selectedIndex];
+    ring.visible = pin.visible = Boolean(actor);
     if (actor) {
       ring.position.set(actor.seat.x, actor.seat.y + 0.2, actor.seat.z);
       ring.scale.setScalar(

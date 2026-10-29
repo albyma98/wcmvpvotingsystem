@@ -1,6 +1,7 @@
 <template>
   <div class="app-shell">
     <section v-if="appView === 'club-not-found'" class="club-domain-not-found"><h1>Pagina non trovata</h1><a href="/">Torna alla home del club</a></section>
+    <OrganizationArena v-else-if="appView === 'arena'" :key="organizationSlug" :slug="organizationSlug" />
     <AdminLottery v-else-if="appView === 'lottery'" />
     <MasterPortal v-else-if="appView === 'master'" />
     <AdminPortal v-else-if="appView === 'portal'" :organization-slug="organizationSlug" />
@@ -122,6 +123,7 @@ import FanHomeSplash from './components/FanHomeSplash.vue';
 
 // Dev playground components
 const DevStackItDemo = defineAsyncComponent(() => import('./views/DevStackItDemo.vue'));
+const OrganizationArena = defineAsyncComponent(() => import('./arena/OrganizationArena.vue'));
 
 // Layout fan alternativo (/:slug/new), caricato solo quando serve.
 const FanLiveCento = defineAsyncComponent(() => import('./views/FanLiveCento.vue'));
@@ -260,6 +262,7 @@ const tournamentSection = computed(() =>
 );
 
 const appView = computed(() => {
+  if (pathSegments.value.length === 2 && pathSegments.value[1] === 'arena' && !['admin', 't', 'ta', 'club', 'club-admin', 'operator', 'proietta', 'partner'].includes(pathSegments.value[0])) return 'arena';
   if (domainRoute.value) return domainRoute.value.view;
   if (currentPath.value === '/dev/stack-it-demo') {
     return 'dev-stack-it';

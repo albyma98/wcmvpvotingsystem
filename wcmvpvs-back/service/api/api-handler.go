@@ -79,6 +79,7 @@ func (rt *_router) Handler() chi.Router {
 
 	rt.router.Post("/fan/register", rt.wrap(rt.postRegisterFan))
 	rt.router.Get("/fan/me", rt.wrap(rt.getFanMe))
+	rt.router.Get("/fan/arena", rt.wrap(rt.getArenaFans))
 	rt.router.Put("/fan/nickname", rt.wrap(rt.putFanNickname))
 	rt.router.Get("/fan/nickname", rt.wrap(rt.getFanNicknameAvailability))
 	rt.router.Post("/events/{eventId}/guest-coins", rt.wrap(rt.postGuestCoins))

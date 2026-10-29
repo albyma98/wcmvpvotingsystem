@@ -1198,6 +1198,7 @@ type QRRedirect struct {
 
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
+	GetArenaFans(organizationID int) ([]ArenaFan, error)
 	CreateVolleyballRound(eventID, organizationID, fanID int, deviceID, gameID string, now time.Time) (VolleyballRound, error)
 	ResolveVolleyballRound(eventID, organizationID, fanID int, deviceID, gameID, roundID string, aimX, aimY, timing float64, now time.Time) (VolleyballResult, error)
 	ListMinigames() ([]Minigame, error)

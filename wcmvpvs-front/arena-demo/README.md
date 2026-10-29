@@ -1,5 +1,15 @@
 # Joy Volley · Arena Tifosi
 
+## Arena delle società
+
+L’app principale espone ora **`/<slug>/arena`**, caricata su richiesta. Usa `GET /api/fan/arena` con lo slug della società e la sessione tifoso già esistente. Il server risolve l’`organization_id`, estrae esclusivamente i profili con registrazione completata e termini accettati, e restituisce solo ID, nickname e indicazione del proprio profilo. Telefono, sessioni e altri dati personali non sono inclusi.
+
+La tribuna contiene soltanto avatar associati a profili reali della società. L’ordinamento per ID e il seed dell’organizzazione rendono i posti ripetibili fra browser; nuove registrazioni si aggiungono in coda. Una cancellazione può compattare i posti. La mappa ha 1330 posti: oltre questa capienza viene mostrato un avviso e il conteggio totale. I profili si caricano all’apertura; ricaricare la pagina aggiorna le iscrizioni. Non viene simulato uno stato online.
+
+Gli ospiti possono esplorare e cercare nickname. La sessione valida della stessa società abilita il proprio avatar e le reazioni locali; selezionare un altro tifoso ne mostra il posto senza impersonarlo. Il pulsante MVP porta al percorso tifoso esistente `/<slug>/new`, dove resta gestita la votazione ufficiale. Le reazioni non sono ancora sincronizzate fra utenti. Gli stili della pagina sono isolati e la scena viene rilasciata all’uscita. Il percorso `/arena-demo/` conserva la demo indipendente.
+
+L’integrazione richiede il rilascio sia del frontend sia del backend aggiornati e il normale fallback del server SPA a `index.html` per `/<slug>/arena`.
+
 MVP di tribuna digitale popolata, costruito sul palazzetto esistente di Gioia del Colle. Usa Vue 3, Vite e Three.js. È una **pagina autonoma** in `/arena-demo/`, con entry point, stili e bundle propri: non richiede backend, login, API o dati degli eventi. L’app principale continua a essere servita da `/`.
 
 ## Come usare Arena Tifosi

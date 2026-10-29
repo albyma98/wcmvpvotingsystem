@@ -4,6 +4,15 @@ import { Group, PerspectiveCamera, Matrix4 } from "three";
 import { createCrowd } from "./createCrowd.js";
 import { createDemoSession } from "../actions/demoSession.js";
 
+test("empty club and guest crowd do not select a fan implicitly", () => {
+  globalThis.window = { matchMedia: () => ({ matches: false }) };
+  for (const actors of [[], createDemoSession().actors.slice(0, 2)]) {
+    const crowd = createCrowd(new Group(), actors, { selectedId: null });
+    crowd.update(100, new PerspectiveCamera());
+    assert.equal(crowd.selectedPosition(), null);
+  }
+});
+
 test("crowd poses stay finite through actions, filtering and an elapsed background interval", () => {
   globalThis.window = { matchMedia: () => ({ matches: false }) };
   const session = createDemoSession(),
