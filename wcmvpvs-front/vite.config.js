@@ -26,6 +26,12 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
+      rollupOptions: {
+        input: {
+          main: fileURLToPath(new URL('./index.html', import.meta.url)),
+          arena: fileURLToPath(new URL('./arena-demo/index.html', import.meta.url)),
+        },
+      },
       // defineAsyncComponent already splits admin chunks via dynamic import.
       // manualChunks is intentionally omitted to avoid Vite adding
       // <link rel="modulepreload"> for admin files in the user-facing HTML.

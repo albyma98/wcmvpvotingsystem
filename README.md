@@ -1,5 +1,20 @@
 # wcmvpvotingsystem
 
+## Joy Volley · Arena Lab 3D
+
+Demo navigabile ispirata alla fotografia del palazzetto di Gioia del Colle, con
+tribune, parquet, sedie opzionali, preset camera e tour cinematico di 18 secondi.
+È una pagina autonoma del frontend, senza dipendenze dal backend.
+
+```powershell
+cd wcmvpvs-front
+npm install
+npm run dev
+```
+
+Aprire `http://localhost:5173/arena-demo/`.
+[Guida completa, smartphone, build e sviluppi ABX](wcmvpvs-front/arena-demo/README.md).
+
 ## Report di engagement della home /new
 
 Nel portale della società, **Storico eventi → Prepara report** apre la revisione
