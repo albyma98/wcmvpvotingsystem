@@ -59,7 +59,9 @@ test("crowd poses stay finite through actions, filtering and an elapsed backgrou
       crowd.update(time, camera);
     if (kind === "scarf")
       assert.ok(
-        root.getObjectByName("fan-scarves").instanceMatrix.array[0] > 0.1,
+        root.getObjectByName(
+          crowd.stats().detailed ? "fan-detail-scarves" : "fan-scarves",
+        ).instanceMatrix.array[0] > 0.1,
       );
     crowd.update(start + 15000, camera);
   }
@@ -73,9 +75,9 @@ test("crowd poses stay finite through actions, filtering and an elapsed backgrou
   );
   crowd.setFilters({ fillers: true, onlyActive: false });
   crowd.update(91000, camera);
-  for (const object of crowd.group.children.filter(
-    (object) => object.isInstancedMesh,
-  ))
-    assert.ok(object.instanceMatrix.array.every(Number.isFinite));
+  crowd.group.traverse((object) => {
+    if (object.isInstancedMesh)
+      assert.ok(object.instanceMatrix.array.every(Number.isFinite));
+  });
   assert.equal(crowd.selectedPosition().x, session.actors[0].seat.x);
 });

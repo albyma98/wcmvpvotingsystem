@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata"
@@ -48,16 +49,17 @@ type ArenaConfig struct {
 func defaultArenaConfig() ArenaConfig { return ArenaConfig{20, 50, 15, 100, 500, 100, 3, 10, 0} }
 
 type ArenaCommand struct {
-	Action   string       `json:"action"`
-	Key      string       `json:"key"`
-	EventID  int          `json:"event_id"`
-	Score    string       `json:"score"`
-	Day      string       `json:"day"`
-	Location int          `json:"location"`
-	Code     string       `json:"code"`
-	Public   bool         `json:"public"`
-	Confirm  bool         `json:"confirm"`
-	Config   *ArenaConfig `json:"config,omitempty"`
+	Appearance map[string]int `json:"appearance,omitempty"`
+	Action     string         `json:"action"`
+	Key        string         `json:"key"`
+	EventID    int            `json:"event_id"`
+	Score      string         `json:"score"`
+	Day        string         `json:"day"`
+	Location   int            `json:"location"`
+	Code       string         `json:"code"`
+	Public     bool           `json:"public"`
+	Confirm    bool           `json:"confirm"`
+	Config     *ArenaConfig   `json:"config,omitempty"`
 }
 type ArenaTreasure struct {
 	Day      string `json:"day"`
@@ -357,7 +359,30 @@ func (db *appdbimpl) ArenaActivities(org, fan int, cmd ArenaCommand, now time.Ti
 			return state, ErrArena
 		}
 		_, err = tx.Exec(`INSERT INTO arena_predictions(org,fan,event,choice) VALUES(?,?,?,?) ON CONFLICT(org,fan,event) DO UPDATE SET choice=excluded.choice WHERE arena_predictions.reward IS NULL`, org, fan, cmd.EventID, cmd.Score)
-	case "privacy":
+	case "privacy", "appearance":
+		if cmd.Action == "appearance" {
+			limits := map[string]int{"hair": 4, "body": 3, "skin": 6, "hairColor": 6, "shirt": 6, "expression": 3}
+			if len(cmd.Appearance) == 0 || len(cmd.Appearance) > 6 {
+				return state, ErrArena
+			}
+			m, e := arenaMember(tx, org, fan)
+			if e != nil {
+				return state, e
+			}
+			for key, value := range cmd.Appearance {
+				max, ok := limits[key]
+				if !ok || value < 0 || value >= max {
+					return state, ErrArena
+				}
+				m.Equipment["look-"+key] = strconv.Itoa(value)
+			}
+			raw, e := json.Marshal(m.Equipment)
+			if e != nil {
+				return state, e
+			}
+			_, err = tx.Exec(`UPDATE arena_members SET equipment=? WHERE org=? AND fan=?`, string(raw), org, fan)
+			break
+		}
 		_, err = tx.Exec(`UPDATE arena_members SET public=? WHERE org=? AND fan=?`, cmd.Public, org, fan)
 	case "invite":
 		// Reuse a pending invitation; codes contain no identity or credentials.

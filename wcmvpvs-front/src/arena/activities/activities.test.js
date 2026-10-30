@@ -10,6 +10,37 @@ const storage = () => {
     setItem: (k, v) => values.set(k, v),
   };
 };
+test("appearance persists without changing wardrobe ownership, balance or the fan seat", async () => {
+  const disk = storage();
+  let adapter = createDemoActivityAdapter(disk, { dev: true });
+  const before = await adapter.getState(),
+    fans = await adapter.getFans();
+  await adapter.command({
+    action: "appearance",
+    appearance: { hair: 3, body: 2, skin: 1 },
+  });
+  await assert.rejects(
+    adapter.command({
+      action: "appearance",
+      appearance: { hair: 0, skin: 99 },
+    }),
+  );
+  await assert.rejects(
+    adapter.command({ action: "appearance", appearance: { wallet: 500 } }),
+  );
+  adapter = createDemoActivityAdapter(disk, { dev: true });
+  const after = await adapter.getState();
+  assert.equal(after.equipment["look-hair"], "3");
+  assert.equal(after.equipment["look-body"], "2");
+  assert.equal(after.equipment["look-skin"], "1");
+  assert.equal(after.wallet, before.wallet);
+  assert.equal(after.points, before.points);
+  assert.deepEqual(after.owned, before.owned);
+  assert.deepEqual(
+    (await adapter.getFans()).fans.map((f) => f.slot),
+    fans.fans.map((f) => f.slot),
+  );
+});
 test("daily claim, purchase and equipment persist with no duplicate payments or negative balances", async () => {
   const disk = storage();
   let adapter = createDemoActivityAdapter(disk, {

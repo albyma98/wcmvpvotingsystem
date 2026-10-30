@@ -161,6 +161,33 @@ export function createDemoActivityAdapter(
         data.predictions[data.match.id] = { choice: cmd.score };
         break;
       case "privacy":
+      case "appearance":
+        if (cmd.action === "appearance") {
+          const ranges = {
+            hair: 4,
+            body: 3,
+            skin: 6,
+            hairColor: 6,
+            shirt: 6,
+            expression: 3,
+          };
+          const entries = Object.entries(cmd.appearance || {});
+          if (
+            !entries.length ||
+            entries.some(
+              ([key, value]) =>
+                !Object.hasOwn(ranges, key) ||
+                !Number.isInteger(value) ||
+                value < 0 ||
+                value >= ranges[key],
+            )
+          )
+            throw Error("Aspetto non valido");
+          for (const [key, value] of entries) {
+            data.equipment["look-" + key] = String(value);
+          }
+          break;
+        }
         data.public = cmd.public;
         break;
       case "invite":

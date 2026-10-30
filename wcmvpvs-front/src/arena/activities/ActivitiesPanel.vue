@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, defineAsyncComponent } from "vue";
 import Icon from "../ArenaIcon.vue";
+import AppearanceControls from "../crowd/AppearanceControls.vue";
 import {
   ACTIVITIES,
   TREASURE_NAMES,
@@ -157,6 +158,18 @@ async function copy() {
         </button>
       </template>
       <template v-if="active === 'wardrobe'">
+        <details class="appearance-section">
+          <summary>Aspetto del mio avatar</summary>
+          <AppearanceControls
+            :equipment="state.equipment"
+            :seed="me?.seed || 1"
+            :disabled="busy || !me"
+            @change="
+              (appearance) =>
+                emit('command', { action: 'appearance', appearance })
+            "
+          />
+        </details>
         <p class="note">
           Trascina nello spazio 3D per ruotare intorno al tuo avatar.
           L’anteprima non acquista l’oggetto.
