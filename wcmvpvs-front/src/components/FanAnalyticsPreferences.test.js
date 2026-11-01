@@ -17,10 +17,12 @@ function fixture(t, initial = null, navigator = {}) {
   return { ...setup, writes, setExternalPreference(value) { preference = value; } };
 }
 
-test('external analytics needs a positive choice and the complete notice is available before choosing', t => {
+test('analytics preferences stay closed on arrival and the complete notice opens on request', async t => {
   const setup = fixture(t);
-  assert.equal(setup.state.isOpen.value, true);
+  assert.equal(setup.state.isOpen.value, false);
   assert.deepEqual(setup.writes, []);
+  await setup.state.openPreferences();
+  assert.equal(setup.state.isOpen.value, true);
   assert.ok(setup.state.legalBlocks.value.some(block => block.text.includes('PostHog')));
   setup.state.closePreferences();
   assert.deepEqual(setup.writes, []);

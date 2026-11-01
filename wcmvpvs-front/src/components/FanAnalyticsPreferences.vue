@@ -23,7 +23,7 @@ import privacyText from '../legal/fan-privacy.md?raw';
 const props = defineProps({ themeStyle: { type: Object, default: () => ({}) }, clubName: { type: String, default: '' } });
 const emit = defineEmits(['changed']);
 const consent = ref(getFanAnalyticsConsent());
-const isOpen = ref(consent.value === null);
+const isOpen = ref(false);
 const triggerEl = ref(null);
 const noticeEl = ref(null);
 const legalBlocks = computed(() => legalTextBlocks(privacyText, props.clubName));
