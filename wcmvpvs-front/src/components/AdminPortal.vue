@@ -637,10 +637,11 @@
                     </div>
 
                     <div class="ev-tab-save-row">
-                      <button class="ev-btn-save" type="button" @click="saveEventPrizes(event)" :disabled="isSavingPrizesFor(event.id)">
+                      <button class="ev-btn-save" type="button" @click="saveEventSettings(event)" :disabled="isSavingPrizesFor(event.id)">
                         {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva impostazioni' }}
                       </button>
                     </div>
+                    <p v-if="eventSettingsErrors[event.id]" class="ev-tab-error">{{ eventSettingsErrors[event.id] }}</p>
                   </div>
 
                   <!-- ── TAB: Premi ── -->
@@ -653,11 +654,11 @@
                         <span v-if="prize.winner" class="ev-prize-winner">🏆 {{ prize.winner.ticketCode }}</span>
                         <button class="ev-btn-icon ev-btn-icon--danger" type="button"
                           :disabled="!!prize.winner || eventPrizeDrafts[event.id].length <= 1 || isSavingPrizesFor(event.id)"
-                          @click="removeEventPrize(event.id, i)" title="Rimuovi">✕</button>
+                          @click="removePrizeDraft(event.id, i)" title="Rimuovi">✕</button>
                       </div>
                     </div>
                     <div class="ev-tab-save-row">
-                      <button class="ev-btn-ghost" type="button" @click="addEventPrize(event.id)" :disabled="isSavingPrizesFor(event.id)">＋ Aggiungi premio</button>
+                      <button class="ev-btn-ghost" type="button" @click="addPrizeDraft(event.id)" :disabled="isSavingPrizesFor(event.id)">＋ Aggiungi premio</button>
                       <button class="ev-btn-save" type="button" @click="saveEventPrizes(event)" :disabled="isSavingPrizesFor(event.id)">
                         {{ isSavingPrizesFor(event.id) ? 'Salvataggio…' : 'Salva premi' }}
                       </button>
@@ -2505,6 +2506,8 @@ const eventStoriesLoading = reactive({});
 const eventStoriesSaving = reactive({});
 const eventStoriesUploading = reactive({});
 const eventPrizeDrafts = reactive({});
+const eventSettingsErrors = reactive({});
+const eventDraftSnapshots = new Map();
 const eventPrizeErrors = reactive({});
 const eventFeedbackDrafts = reactive({});
 const eventFeedbackErrors = reactive({});
@@ -2512,7 +2515,7 @@ const eventActiveTab = reactive({});
 const createFormOpen = ref(true);
 function setEventTab(eventId, tab) { eventActiveTab[eventId] = tab; }
 function getEventTab(eventId) { return eventActiveTab[eventId] || 'settings'; }
-const savingEventPrizes = ref(0);
+const savingEventPrizes = reactive({});
 const portalRef = ref(null);
 const toolbarRef = ref(null);
 
@@ -3357,14 +3360,9 @@ watch(hasEnoughTeams, (enough) => {
   }
 });
 
-watch(events, (value) => {
+watch(events, () => {
   ensureResultsSelection();
   ensureSelfieSelection();
-  const editableEvents = Array.isArray(value)
-    ? value.filter((event) => !event.is_concluded)
-    : [];
-  syncEventPrizeDrafts(editableEvents);
-  syncEventFeedbackDrafts(editableEvents);
   if (section.value === "results" && selectedResultsEventId.value) {
     fetchEventResults();
   }
@@ -3406,6 +3404,7 @@ function clearCollections() {
   teams.value = [];
   players.value = [];
   events.value = [];
+  syncEventDrafts([]);
   admins.value = [];
   partners.value = [];
   sponsors.value = [];
@@ -3423,12 +3422,6 @@ function clearCollections() {
   playerOverflow.value = [];
   playerSaveError.value = "";
   playerSaveMessage.value = "";
-  Object.keys(eventPrizeDrafts).forEach((key) => {
-    delete eventPrizeDrafts[key];
-  });
-  Object.keys(eventPrizeErrors).forEach((key) => {
-    delete eventPrizeErrors[key];
-  });
   Object.keys(eventStoriesById).forEach((key) => {
     delete eventStoriesById[key];
   });
@@ -4320,7 +4313,7 @@ function removePrizeDraft(eventId, index) {
 }
 
 function isSavingPrizesFor(eventId) {
-  return savingEventPrizes.value === eventId;
+  return Boolean(savingEventPrizes[eventId]);
 }
 
 function prizeWinnerLabel(prize) {
@@ -4330,13 +4323,8 @@ function prizeWinnerLabel(prize) {
   return prize.winner.ticketCode || "";
 }
 
-async function saveEventPrizes(event) {
-  if (!event || !event.id || isSavingPrizesFor(event.id)) {
-    return;
-  }
-
-  const drafts = prizeDraftsFor(event.id);
-  const sanitized = drafts
+function toApiPrizesPayload(drafts) {
+  return drafts
     .map((prize, index) => ({
       id: Number(prize.id) || 0,
       name: (prize.name || "").trim(),
@@ -4344,12 +4332,10 @@ async function saveEventPrizes(event) {
       win_sms_text: (prize.winSmsText || '').trim(),
     }))
     .filter((prize) => prize.name);
+}
 
-  eventPrizeErrors[event.id] = "";
-  eventFeedbackErrors[event.id] = "";
-  const surveyDraft = feedbackDraftFor(event.id);
-
-  const payload = {
+function eventSettingsPayload(event) {
+  return {
     team1_id: event.team1_id,
     team2_id: event.team2_id,
     start_datetime: event.start_datetime,
@@ -4367,132 +4353,131 @@ async function saveEventPrizes(event) {
     branded_game_config: event.show_branded_game
       ? JSON.stringify(event.brandedGameConfigDraft ?? defaultBrandedGameConfig())
       : "",
-    feedback_survey: toApiSurveyPayload(surveyDraft),
-    prizes: sanitized,
   };
-
-  savingEventPrizes.value = event.id;
-  try {
-    await secureRequest(() =>
-      apiClient.put(`/events/${event.id}`, payload, authHeaders.value),
-    );
-    await loadEvents();
-  } catch (error) {
-    if (error?.response?.status === 409) {
-      eventPrizeErrors[event.id] =
-        "Non puoi rimuovere un premio già assegnato. Annulla l'assegnazione dalla lotteria prima di modificarlo.";
-    } else if (error?.response?.status === 400) {
-      const message =
-        "Controlla i nomi dei premi e le domande del sondaggio e riprova.";
-      eventPrizeErrors[event.id] = message;
-      eventFeedbackErrors[event.id] = message;
-    } else if (error?.response?.status !== 401) {
-      const message = "Impossibile salvare le impostazioni. Riprova più tardi.";
-      eventPrizeErrors[event.id] = message;
-      eventFeedbackErrors[event.id] = message;
-    }
-  } finally {
-    savingEventPrizes.value = 0;
-  }
 }
 
-async function saveEventFeedbackSurvey(event) {
+function saveEventSettings(event) {
+  return saveEventSection(event, "settings");
+}
+
+function saveEventPrizes(event) {
+  return saveEventSection(event, "prizes");
+}
+
+function saveEventFeedbackSurvey(event) {
+  return saveEventSection(event, "feedback");
+}
+
+async function saveEventSection(event, section) {
   if (!event || !event.id || isSavingPrizesFor(event.id)) {
     return;
   }
 
-  eventFeedbackErrors[event.id] = "";
-  const surveyDraft = feedbackDraftFor(event.id);
+  const errors = section === "prizes" ? eventPrizeErrors
+    : section === "feedback" ? eventFeedbackErrors : eventSettingsErrors;
+  errors[event.id] = "";
+  const payload = section === "prizes"
+    ? { prizes: toApiPrizesPayload(prizeDraftsFor(event.id)) }
+    : section === "feedback"
+      ? { feedback_survey: toApiSurveyPayload(feedbackDraftFor(event.id)) }
+      : eventSettingsPayload(event);
 
-  const payload = {
-    team1_id: event.team1_id,
-    team2_id: event.team2_id,
-    start_datetime: event.start_datetime,
-    location: event.location,
-    show_pre_vote_sponsors: Boolean(event.show_pre_vote_sponsors),
-    show_pre_vote_bottom_sponsors: Boolean(event.show_pre_vote_bottom_sponsors),
-    show_vote_counter: Boolean(event.show_vote_counter),
-    show_reaction_test: Boolean(event.show_reaction_test),
-    show_selfie: Boolean(event.show_selfie),
-    show_vote_trend: Boolean(event.show_vote_trend),
-    show_feedback_survey: Boolean(event.show_feedback_survey),
-    show_branded_game: Boolean(event.show_branded_game),
-    branded_game_config: event.show_branded_game
-      ? JSON.stringify(event.brandedGameConfigDraft ?? defaultBrandedGameConfig())
-      : "",
-    feedback_survey: toApiSurveyPayload(surveyDraft),
-  };
+  if (section === "settings" && event.show_branded_game) {
+    const message = validateBrandedGameConfigClient(event.brandedGameConfigDraft ?? {});
+    if (message) {
+      errors[event.id] = `Branded Game: ${message}`;
+      return;
+    }
+  }
 
-  savingEventPrizes.value = event.id;
+  savingEventPrizes[event.id] = section;
   try {
     await secureRequest(() =>
       apiClient.put(`/events/${event.id}`, payload, authHeaders.value),
     );
-    await loadEvents();
+    await loadEvents({ eventId: event.id, section });
   } catch (error) {
-    if (error?.response?.status === 400) {
-      eventFeedbackErrors[event.id] =
-        "Controlla le domande del sondaggio e riprova.";
+    if (error?.response?.status === 409 && section === "prizes") {
+      errors[event.id] =
+        "Non puoi rimuovere un premio già assegnato. Annulla l'assegnazione dalla lotteria prima di modificarlo.";
+    } else if (error?.response?.status === 400) {
+      errors[event.id] = section === "feedback"
+        ? "Controlla le domande del sondaggio e riprova."
+        : section === "prizes" ? "Controlla i nomi dei premi e riprova."
+          : "Controlla le impostazioni e riprova.";
     } else if (error?.response?.status !== 401) {
-      eventFeedbackErrors[event.id] =
-        "Impossibile salvare il sondaggio. Riprova più tardi.";
+      errors[event.id] = "Impossibile salvare. Riprova più tardi.";
     }
   } finally {
-    savingEventPrizes.value = 0;
+    delete savingEventPrizes[event.id];
   }
 }
 
-function syncEventPrizeDrafts(eventList) {
-  const ids = new Set(eventList.map((event) => event.id));
-  Object.keys(eventPrizeDrafts).forEach((key) => {
-    if (!ids.has(Number(key))) {
-      delete eventPrizeDrafts[key];
-    }
-  });
-  Object.keys(eventPrizeErrors).forEach((key) => {
-    if (!ids.has(Number(key))) {
-      delete eventPrizeErrors[key];
-    }
-  });
-  eventList.forEach((event) => {
-    const drafts =
-      Array.isArray(event.prizes) && event.prizes.length
-        ? event.prizes.map((prize, index) => ({
-            id: prize.id,
-            name: prize.name || "",
-            position: prize.position || index + 1,
-            winSmsText: prize.winSmsText || '',
-            winner: prize.winner
-              ? {
-                  voteId: prize.winner.voteId,
-                  ticketCode: prize.winner.ticketCode,
-                  playerFirstName: prize.winner.playerFirstName,
-                  playerLastName: prize.winner.playerLastName,
-                }
-              : null,
-          }))
-        : [{ id: 0, name: "", position: 1, winSmsText: "", winner: null }];
-    eventPrizeDrafts[event.id] = drafts;
-  });
+function createEventPrizeDrafts(event) {
+  return Array.isArray(event.prizes) && event.prizes.length
+    ? event.prizes.map((prize, index) => ({
+        id: prize.id,
+        name: prize.name || "",
+        position: prize.position || index + 1,
+        winSmsText: prize.winSmsText || '',
+        winner: prize.winner
+          ? {
+              voteId: prize.winner.voteId,
+              ticketCode: prize.winner.ticketCode,
+              playerFirstName: prize.winner.playerFirstName,
+              playerLastName: prize.winner.playerLastName,
+            }
+          : null,
+      }))
+    : [{ id: 0, name: "", position: 1, winSmsText: "", winner: null }];
 }
 
-function syncEventFeedbackDrafts(eventList) {
+function syncEventDrafts(eventList, saved = {}) {
   const ids = new Set(eventList.map((event) => event.id));
-  Object.keys(eventFeedbackDrafts).forEach((key) => {
-    if (!ids.has(Number(key))) {
-      delete eventFeedbackDrafts[key];
-      delete eventFeedbackErrors[key];
-    }
+  for (const collection of [eventPrizeDrafts, eventFeedbackDrafts,
+    eventPrizeErrors, eventFeedbackErrors, eventSettingsErrors]) {
+    Object.keys(collection).forEach((key) => {
+      if (!ids.has(Number(key))) delete collection[key];
+    });
+  }
+  eventDraftSnapshots.forEach((_, id) => {
+    if (!ids.has(id)) eventDraftSnapshots.delete(id);
   });
+
+  const previousEvents = new Map(events.value.map((event) => [event.id, event]));
   eventList.forEach((event) => {
-    if (!event || !event.id) {
-      return;
+    const previous = eventDraftSnapshots.get(event.id);
+    const prizes = createEventPrizeDrafts(event);
+    const feedback = normalizeFeedbackSurveyInput(event.feedbackSurvey ?? event.feedback_survey);
+    const settings = eventSettingsPayload(event);
+    const snapshot = {
+      prizes: JSON.stringify(prizes),
+      feedback: JSON.stringify(feedback),
+      settings: JSON.stringify(settings),
+    };
+    const shouldRefresh = (section, draft) => !previous || draft == null
+      || JSON.stringify(draft) === previous[section]
+      || (saved.eventId === event.id && saved.section === section);
+
+    // Refresh clean/saved sections while retaining edits in all other tabs/events.
+    if (shouldRefresh("prizes", eventPrizeDrafts[event.id])) {
+      eventPrizeDrafts[event.id] = prizes;
+    } else {
+      const winners = new Map(prizes.filter(prize => prize.id).map(prize => [prize.id, prize.winner]));
+      eventPrizeDrafts[event.id].forEach(prize => {
+        if (winners.has(prize.id)) prize.winner = winners.get(prize.id);
+      });
     }
-    if (!eventFeedbackDrafts[event.id]) {
-      eventFeedbackDrafts[event.id] = normalizeFeedbackSurveyInput(
-        event.feedbackSurvey ?? event.feedback_survey,
-      );
+    if (shouldRefresh("feedback", eventFeedbackDrafts[event.id])) {
+      eventFeedbackDrafts[event.id] = feedback;
     }
+    const previousEvent = previousEvents.get(event.id);
+    if (previousEvent && !shouldRefresh("settings", eventSettingsPayload(previousEvent))) {
+      Object.assign(event, eventSettingsPayload(previousEvent), {
+        brandedGameConfigDraft: previousEvent.brandedGameConfigDraft,
+      });
+    }
+    eventDraftSnapshots.set(event.id, snapshot);
   });
 }
 
@@ -4692,13 +4677,14 @@ async function loadPlayers() {
   applyPlayersToSlots();
 }
 
-async function loadEvents() {
+async function loadEvents(saved = {}) {
   const { data } = await secureRequest(() =>
     apiClient.get("/events", authHeaders.value),
   );
   const normalized = Array.isArray(data)
     ? data.map((event) => normalizeEventResponse(event)).filter(Boolean)
     : [];
+  syncEventDrafts(normalized.filter(event => !event.is_concluded), saved);
   events.value = normalized;
   for (const event of isStaff.value ? [] : normalized) {
     quizDraftFor(event.id);
@@ -6284,14 +6270,7 @@ async function createEvent() {
     return;
   }
 
-  const prizesPayload = newEventPrizes.value
-    .map((prize, index) => ({
-      id: Number(prize.id) || 0,
-      name: (prize.name || "").trim(),
-      position: index + 1,
-      win_sms_text: (prize.winSmsText || '').trim(),
-    }))
-    .filter((prize) => prize.name);
+  const prizesPayload = toApiPrizesPayload(newEventPrizes.value);
 
   const payload = {
     team1_id: newEvent.team1_id,

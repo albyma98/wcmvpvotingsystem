@@ -3766,13 +3766,17 @@ func (db *appdbimpl) CreateEvent(e Event) (int, error) {
 }
 
 func (db *appdbimpl) ListEvents() ([]Event, error) {
+	return db.listEvents("")
+}
+
+func (db *appdbimpl) listEvents(filter string, args ...interface{}) ([]Event, error) {
 	rows, err := db.c.Query(`
 SELECT e.id,
        e.organization_id,
        e.team1_id,
        e.team2_id,
        e.start_datetime,
-       e.location,
+       COALESCE(e.location, ''),
        e.is_active,
        e.votes_closed,
        e.is_concluded,
@@ -3790,7 +3794,7 @@ SELECT e.id,
        IFNULL(t2.name, '')
 FROM events e
 LEFT JOIN teams t1 ON t1.id = e.team1_id
-LEFT JOIN teams t2 ON t2.id = e.team2_id`)
+LEFT JOIN teams t2 ON t2.id = e.team2_id`+filter, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -3840,7 +3844,7 @@ LEFT JOIN teams t2 ON t2.id = e.team2_id`)
 }
 
 func (db *appdbimpl) GetEventByID(id int) (Event, error) {
-	events, err := db.ListEvents()
+	events, err := db.listEvents(" WHERE e.id = ?", id)
 	if err != nil {
 		return Event{}, err
 	}
@@ -3935,16 +3939,22 @@ func (db *appdbimpl) UpdateEvent(e Event) error {
 	}
 	defer tx.Rollback()
 
-	survey := NormalizeEventFeedbackSurveyConfig(e.FeedbackSurvey)
-	e.FeedbackSurvey = &survey
-	surveyJSON := encodeEventFeedbackSurveyConfig(survey)
+	// Nil means the survey was not edited; an explicit config is normalized.
+	var surveyJSON interface{}
+	if e.FeedbackSurvey != nil {
+		survey := NormalizeEventFeedbackSurveyConfig(e.FeedbackSurvey)
+		surveyJSON = encodeEventFeedbackSurveyConfig(survey)
+	}
 
-	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=?, show_reaction_test=?, show_selfie=?, show_vote_trend=?, show_feedback_survey=?, show_pre_vote_sponsors=?, show_pre_vote_bottom_sponsors=?, show_vote_counter=?, feedback_survey_config=?, show_branded_game=?, branded_game_config=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowPreVoteBottomSponsors), boolToInt(e.ShowVoteCounter), surveyJSON, boolToInt(e.ShowBrandedGame), e.BrandedGameConfig, e.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE events SET team1_id=?, team2_id=?, start_datetime=?, location=?, show_reaction_test=?, show_selfie=?, show_vote_trend=?, show_feedback_survey=?, show_pre_vote_sponsors=?, show_pre_vote_bottom_sponsors=?, show_vote_counter=?, feedback_survey_config=COALESCE(?, feedback_survey_config), show_branded_game=?, branded_game_config=? WHERE id=?`, e.Team1ID, e.Team2ID, e.StartDateTime, e.Location, boolToInt(e.ShowReactionTest), boolToInt(e.ShowSelfie), boolToInt(e.ShowVoteTrend), boolToInt(e.ShowFeedbackSurvey), boolToInt(e.ShowPreVoteSponsors), boolToInt(e.ShowPreVoteBottomSponsors), boolToInt(e.ShowVoteCounter), surveyJSON, boolToInt(e.ShowBrandedGame), e.BrandedGameConfig, e.ID); err != nil {
 		return err
 	}
 
-	if err := db.syncEventPrizesTx(tx, e.ID, e.Prizes); err != nil {
-		return err
+	// An explicit empty list removes prizes; omission must leave them intact.
+	if e.Prizes != nil {
+		if err := db.syncEventPrizesTx(tx, e.ID, e.Prizes); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit()

@@ -398,21 +398,6 @@ func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 		return
 	}
 
-	var e database.Event
-	if err := json.Unmarshal(body, &e); err != nil {
-		ctx.Logger.WithError(err).Warn("invalid payload while updating event")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(body, &raw); err == nil {
-		applyEventPostVoteDefaults(&e, raw)
-	} else {
-		applyEventPostVoteDefaults(&e, nil)
-	}
-	e.ID = id
-	e.OrganizationID = ctx.OrganizationID
 	if ctx.OrganizationID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -420,6 +405,25 @@ func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 	if !rt.ensureEventInOrganization(w, ctx, id) {
 		return
 	}
+
+	e, err := rt.db.GetEventByID(id)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot load event for update")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	// Each admin tab sends only its own fields. Leave omitted collections nil
+	// so the database preserves them, including prizes assigned to a winner.
+	e.Prizes = nil
+	e.FeedbackSurvey = nil
+	if err := json.Unmarshal(body, &e); err != nil {
+		ctx.Logger.WithError(err).Warn("invalid payload while updating event")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	e.ID = id
+	e.OrganizationID = ctx.OrganizationID
 
 	if err := rt.db.UpdateEvent(e); err != nil {
 		if errors.Is(err, database.ErrPrizeLockedByWinner) {
