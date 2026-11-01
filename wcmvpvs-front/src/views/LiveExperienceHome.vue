@@ -351,8 +351,8 @@
 
     <FansLeaderboardModal
       v-model="isLeaderboardModalOpen"
+      :event-id="eventId"
       :top-list="leaderboardTop3"
-      :user-rank="leaderboardUser"
     />
 
     <FanRegistrationPromptModal

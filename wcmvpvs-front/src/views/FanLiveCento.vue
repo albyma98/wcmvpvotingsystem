@@ -365,12 +365,17 @@
           <button class="close" type="button" aria-label="Chiudi classifica tifosi" @click="closeSheets">✕</button>
         </div>
         <div class="sheet-body">
+          <div class="leaderboard-periods" role="group" aria-label="Periodo classifica">
+            <button type="button" :class="{ active: leaderboardPeriod === 'general' }" :aria-pressed="leaderboardPeriod === 'general'" @click="selectLeaderboardPeriod('general')">Generale</button>
+            <button type="button" :class="{ active: leaderboardPeriod === 'event' }" :aria-pressed="leaderboardPeriod === 'event'" @click="selectLeaderboardPeriod('event')">Questa giornata</button>
+          </div>
+          <p class="sheet-sub leaderboard-period-description">{{ leaderboardPeriod === 'event' ? 'Punti guadagnati in questa partita' : 'Punti totali guadagnati nella società' }}</p>
           <div v-if="isLoadingLeaderboard && !leaderboardRows.length" class="sheet-empty">Caricamento classifica…</div>
           <div v-else-if="leaderboardError" class="sheet-empty error" role="status">{{ leaderboardError }}</div>
           <div v-else-if="!leaderboardRows.length" class="sheet-empty">
             {{ eventId ? 'Gioca e vota per popolare la classifica.' : 'La classifica sarà disponibile con un evento attivo.' }}
           </div>
-          <ol v-if="leaderboardRows.length && !leaderboardError" class="leaderboard-list" aria-label="Classifica tifosi della società">
+          <ol v-if="leaderboardRows.length && !leaderboardError" class="leaderboard-list" :aria-label="leaderboardPeriod === 'event' ? 'Classifica tifosi di questa giornata' : 'Classifica generale tifosi della società'" :aria-busy="isLoadingLeaderboard">
             <li v-for="row in leaderboardRows" :key="row.rank" class="row-item leaderboard-row" :class="{ 'leaderboard-self': row.is_me }" :aria-current="row.is_me ? 'true' : undefined">
               <span class="rank leaderboard-rank" :class="row.rank <= 3 ? `r${row.rank}` : ''">{{ row.rank }}</span>
               <FanAvatar :name="row.name" :framed="row.equipped_frame === 'club_frame'" :size="36" />
@@ -743,6 +748,7 @@ const hasVoted = ref(false);
 const votedPlayerId = ref(null);
 const localVoted = ref(null); // giocatore votato in questa sessione (feedback immediato)
 const leaderboardRows = ref([]);
+const leaderboardPeriod = ref('event');
 const leaderboardUser = ref(null);
 const liveEvent = ref(null);
 const isRegistrationOpen = ref(false);
@@ -1656,10 +1662,12 @@ async function castVote(player) {
 async function refreshLeaderboard() {
   const request = ++leaderboardRequestRevision;
   const scope = walletScope();
+  const period = activeSheet.value === 'leaderboard' ? leaderboardPeriod.value : 'general';
   if (!props.eventId) {
     leaderboardRows.value = [];
     leaderboardUser.value = null;
     leaderboardError.value = '';
+    isLoadingLeaderboard.value = false;
     return;
   }
   isLoadingLeaderboard.value = true;
@@ -1668,11 +1676,11 @@ async function refreshLeaderboard() {
     const { data } = await apiClient.get(`/events/${props.eventId}/coins-leaderboard`, {
       headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
       // Fetch all rows only while the list is open, including live updates.
-      params: activeSheet.value === 'leaderboard' ? { view: 'list' } : {},
+      params: activeSheet.value === 'leaderboard' ? { view: 'list', period } : {},
     });
     if (isDisposed || request !== leaderboardRequestRevision || scope !== walletScope()) return;
     const rank = data?.userRank || data?.user_rank;
-    leaderboardUser.value = rank ? { ...rank, points: Number(rank.points ?? rank.coins ?? 0) } : null;
+    if (period === 'general') leaderboardUser.value = rank ? { ...rank, points: Number(rank.points ?? rank.coins ?? 0) } : null;
     const top = Array.isArray(data?.top3) ? data.top3 : Array.isArray(data?.top) ? data.top : [];
     // Older backend responses remain a single list with no repeated positions.
     const ranking = Array.isArray(data?.ranking) ? data.ranking : [
@@ -1704,8 +1712,16 @@ async function refreshLeaderboard() {
   }
 }
 function openLeaderboard() {
+  leaderboardPeriod.value = 'event';
+  leaderboardRows.value = [];
   openSheet('leaderboard');
   refreshLeaderboard();
+}
+function selectLeaderboardPeriod(period) {
+  if (!['general', 'event'].includes(period) || leaderboardPeriod.value === period) return;
+  leaderboardPeriod.value = period;
+  leaderboardRows.value = [];
+  return refreshLeaderboard();
 }
 
 /* ---------- Profilo ---------- */
@@ -3067,6 +3083,11 @@ main {
   box-shadow: none;
 }
 .leaderboard-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.leaderboard-periods { display: flex; gap: 6px; padding: 4px; border-radius: 12px; background: var(--red-soft); }
+.leaderboard-periods button { flex: 1; padding: 10px 8px; border: 0; border-radius: 9px; background: transparent; color: inherit; font: inherit; font-weight: 800; cursor: pointer; }
+.leaderboard-periods button.active { background: var(--red); color: #fff; }
+.leaderboard-periods button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.leaderboard-period-description { margin: 10px 0 14px; }
 .leaderboard-row { cursor: default; }
 .leaderboard-row:active { transform: none; box-shadow: var(--shadow); }
 .leaderboard-self { background: var(--red-soft); }

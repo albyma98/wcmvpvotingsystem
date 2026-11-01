@@ -352,15 +352,26 @@ func (rt *_router) getCoinsLeaderboard(w http.ResponseWriter, r *http.Request, c
 		return
 	}
 	listView := r.URL.Query().Get("view") == "list"
+	period := r.URL.Query().Get("period")
+	if period != "" && period != "general" && period != "event" {
+		_ = writeJSONMessage(w, http.StatusBadRequest, "Periodo classifica non valido")
+		return
+	}
+	eventView := period == "event"
 	limit := 3
-	if listView {
+	if listView || eventView {
 		limit = -1
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	rows, err := rt.db.GetFanLeaderboard(eventID, ctx.OrganizationID, limit)
+	var rows []database.FanLeaderboardEntry
+	if eventView {
+		rows, err = rt.db.GetFanEventLeaderboard(eventID, ctx.OrganizationID, limit)
+	} else {
+		rows, err = rt.db.GetFanLeaderboard(eventID, ctx.OrganizationID, limit)
+	}
 	if err != nil {
 		ctx.Logger.WithError(err).Error("fan leaderboard")
-		if listView {
+		if listView || eventView {
 			_ = writeJSONMessage(w, http.StatusInternalServerError, "Impossibile caricare la classifica")
 			return
 		}
@@ -375,7 +386,7 @@ func (rt *_router) getCoinsLeaderboard(w http.ResponseWriter, r *http.Request, c
 		top = append(top, map[string]interface{}{"name": e.Nickname, "coins": e.Coins, "points": e.Coins, "equipped_frame": e.EquippedFrame})
 	}
 	resp := map[string]interface{}{"top3": top}
-	if listView {
+	if listView || eventView {
 		fanID := 0
 		if token := rt.fanSessionTokenFromRequest(r); token != "" {
 			if me, err := rt.db.GetFanBySessionToken(token, rt.deviceIDFromRequest(r)); err == nil && me.Profile.OrganizationID == ctx.OrganizationID && !me.Profile.RegistrationPending {

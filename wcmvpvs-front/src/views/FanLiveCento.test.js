@@ -1440,13 +1440,64 @@ test('the open leaderboard requests the complete list and highlights the fan onc
   t.after(() => scope.stop());
   state.openLeaderboard();
   await flush();
-  assert.deepEqual(requests[0].params, { view: 'list' });
+  assert.deepEqual(requests[0].params, { view: 'list', period: 'event' });
   assert.equal(state.leaderboardRows.value.length, 8);
   assert.deepEqual(state.leaderboardRows.value.filter((row) => row.is_me).map((row) => row.rank), [7]);
   assert.equal(state.leaderboardRows.value[6].equipped_frame, 'club_frame');
   state.closeSheets();
   await state.refreshLeaderboard();
   assert.deepEqual(requests.at(-1).params, {});
+});
+
+test('leaderboard periods switch scores and reopen on the event without replacing the home total', async t => {
+  const requests = [];
+  const { state, scope } = fixture({ apiClient: { get: async (path, config) => {
+    if (!path.includes('coins-leaderboard')) return { data: {} };
+    requests.push({ path, ...config.params });
+    const points = config.params?.period === 'event' ? 12 : 120;
+    return { data: { ranking: [{ rank: 1, name: 'Io', points, is_me: true }], userRank: { rank: 1, points } } };
+  } } });
+  t.after(() => scope.stop());
+  await state.refreshLeaderboard();
+  assert.equal(state.leaderboardUser.value.points, 120);
+  state.openLeaderboard();
+  assert.deepEqual(state.leaderboardRows.value, []);
+  await flush();
+  assert.equal(state.leaderboardPeriod.value, 'event');
+  assert.equal(state.leaderboardRows.value[0].points, 12);
+  assert.equal(state.leaderboardUser.value.points, 120);
+  await state.selectLeaderboardPeriod('general');
+  assert.equal(state.leaderboardRows.value[0].points, 120);
+  assert.equal(requests.at(-1).period, 'general');
+  await state.selectLeaderboardPeriod('event');
+  assert.equal(state.leaderboardRows.value[0].points, 12);
+  await state.selectLeaderboardPeriod('general');
+  state.closeSheets();
+  state.openLeaderboard();
+  await flush();
+  assert.equal(state.leaderboardPeriod.value, 'event');
+  assert.equal(state.leaderboardRows.value[0].points, 12);
+  assert.equal(requests.at(-1).path, '/events/42/coins-leaderboard');
+});
+
+test('a late response from the other leaderboard period cannot overwrite the selected period', async t => {
+  const pending = deferred();
+  const { state, props, scope } = fixture({ apiClient: { get: async (path, config) => {
+    if (config.params?.period === 'event') return pending.promise;
+    return { data: { ranking: [{ rank: 1, name: 'Generale', points: 100 }] } };
+  } } });
+  t.after(() => scope.stop());
+  state.openLeaderboard();
+  await state.selectLeaderboardPeriod('general');
+  pending.resolve({ data: { ranking: [{ rank: 1, name: 'Giornata', points: 10 }] } });
+  await flush();
+  assert.equal(state.leaderboardRows.value[0].name, 'Generale');
+  // The event/club guard also covers navigation during an in-flight request.
+  state.leaderboardPeriod.value = 'event';
+  const loading = state.refreshLeaderboard();
+  props.eventId = 43;
+  await loading;
+  assert.equal(state.leaderboardRows.value[0].name, 'Generale');
 });
 
 test('an empty complete ranking does not reuse an old podium or invent a current fan row', async (t) => {

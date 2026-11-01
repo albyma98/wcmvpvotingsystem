@@ -23,6 +23,10 @@ All three routes require the organization scope and device headers; authenticate
 
 Mutation responses have the same state shape as the GET. The client never changes ownership or subtracts a purchase price before acknowledgement. Reads and mutations from a previous event or club are discarded by the home.
 
+The leaderboard sheet offers **Generale** and **Questa giornata**, selecting the event view on every opening. `GET /events/{eventId}/coins-leaderboard?view=list&period=event` returns all registered profiles with points earned in that event and club; `period=general` returns the complete club ranking. Omitting `period` keeps the general ranking for older clients. Both views preserve points after spending and use profile ID to order tied scores consistently.
+
+Event scores sum positive, event-attributed wallet movements and finalized live Tap payouts. Guest earnings keep their original event when adopted by a profile. Opening balances and club-only earnings without an event are excluded from event scores; historical balances cannot be assigned to a match without recorded attribution.
+
 The purchase route and legacy `rewards/redeem` require a fan session for a completed profile. Missing or incomplete profiles receive `401` with code `PROFILE_REQUIRED`; invalid sessions receive `401`. Wallet/catalog reads remain available to guests.
 
 ## Persistence and migration

@@ -1343,6 +1343,7 @@ type AppDatabase interface {
 	GetGuestCoins(eventID int, organizationID int, deviceID string) (int, error)
 	UpsertGuestCoins(eventID int, organizationID int, deviceID string, coins int) error
 	GetFanLeaderboard(eventID int, organizationID int, limit int) ([]FanLeaderboardEntry, error)
+	GetFanEventLeaderboard(eventID int, organizationID int, limit int) ([]FanLeaderboardEntry, error)
 	GetFanRank(eventID int, organizationID int, fanID int) (FanLeaderboardEntry, error)
 	GetFanNearbyRanks(organizationID int, fanID int) ([]FanLeaderboardEntry, error)
 	GetFanLiveEvent(eventID int, organizationID int) (Event, error)
