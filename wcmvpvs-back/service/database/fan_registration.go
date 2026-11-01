@@ -3,7 +3,7 @@ package database
 import "errors"
 
 // Version of the terms, privacy notice and gadget rules presented by the client.
-const FanLegalVersion = "2026-10-25.1"
+const FanLegalVersion = "2026-11-01.1"
 const FanMinimumAge = 14
 
 var (

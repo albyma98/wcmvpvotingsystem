@@ -164,7 +164,7 @@ componente reale `FanRegistrationPromptModal.vue`, utilizzato da `/:slug/new`.
 
 I testi visualizzati sono `wcmvpvs-front/src/legal/fan-terms.md` e
 `wcmvpvs-front/src/legal/fan-privacy.md`. La versione dell'intero fascicolo è
-`2026-10-21.1`, condivisa fra `src/fanRegistration.js` e
+`2026-11-01.1`, condivisa fra `src/fanRegistration.js` e
 `service/database/fan_registration.go`; modificarla su entrambi i lati quando
 cambiano i documenti. Il campo `legal_version` identifica insieme termini,
 informativa e sezione delle regole dei gadget.

@@ -1,6 +1,6 @@
 import { FAN_ANALYTICS_EVENTS, FAN_ANALYTICS_SCHEMA_VERSION, sanitizeFanAnalyticsMetadata } from './fanAnalytics.js';
 
-// Dedicated measurement for /:slug/new. Optional PostHog mirroring happens once at observation time.
+// Dedicated measurement for /:slug/new, queued for the internal report endpoint.
 const SESSION_KEY = 'arenaboostx:report-session:v1';
 const MAX_QUEUE = 120;
 const BATCH_SIZE = 20;

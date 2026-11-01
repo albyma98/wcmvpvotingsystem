@@ -619,7 +619,7 @@ import { normalizeOrganizationColors, organizationThemeStyle } from '../organiza
 import { preloadFanHomeImages } from '../fanHomeAssets';
 import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
 import { createEventReportTelemetry, createReportSignalSender, reportSource } from '../eventReportTelemetry';
-import { captureFanAnalytics, isFanAnalyticsAllowed, prepareFanAnalytics } from '../lib/posthog';
+import { stopPostHogForNewExperience } from '../lib/posthog';
 import { sanitizeFanAnalyticsMetadata } from '../fanAnalytics';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
@@ -665,7 +665,7 @@ const FAN_NICKNAME_MIN_LEN = 3;
 const FAN_NICKNAME_MAX_LEN = 24;
 const FAN_NICKNAME_PATTERN = /^[A-Za-z0-9._ -]+$/;
 
-prepareFanAnalytics();
+stopPostHogForNewExperience();
 
 const props = defineProps({
   initialDataReady: { type: Boolean, default: true },
@@ -1957,9 +1957,6 @@ function onFormTelemetry(event) {
   if (!['feedback_step', 'feedback_dismissed', 'feedback_failed', 'registration_step', 'registration_failed', 'registration_dismissed', 'login_started', 'login_completed', 'login_failed'].includes(event?.name)) return;
   recordFanEvent(event.name, { ...sanitizeFanAnalyticsMetadata(event.metadata), trigger: event.name.startsWith('feedback_') ? 'feedback' : registrationTrigger.value });
 }
-function onAnalyticsConsentChanged(consent) {
-  reportTelemetry?.setMirrorConsent?.(consent === true && isFanAnalyticsAllowed(), reportPageAvailability());
-}
 function analyticsFailureReason(response) {
   const status = Number(response?.status ?? response?.error?.response?.status);
   return ({ 400: 'validation', 401: 'session_expired', 403: 'not_allowed', 404: 'not_found', 409: 'conflict', 429: 'rate_limited' })[status] || (status >= 500 ? 'server_error' : 'request_failed');
@@ -1992,7 +1989,6 @@ function recordGameExit(reason) {
 }
 function resetReportTelemetry() {
   const organizationSlug = props.organizationSlug;
-  const eventId = props.eventId;
   const scope = `${organizationSlug}:${props.eventId}`;
   if (scope === reportTelemetryScope && reportTelemetry) return;
   reportTelemetry?.stop();
@@ -2016,8 +2012,6 @@ function resetReportTelemetry() {
       sport: organizationSport.value, section: activeSheet.value || 'home',
       game_id: activeGameId.value || undefined, has_ticket: showLotteryShortcut.value,
     }),
-    mirror: event => captureFanAnalytics(event, { organization_slug: organizationSlug, event_id: eventId }),
-    canPersistVisits: () => isFanAnalyticsAllowed(),
   }) : null;
 }
 function observeLotteryShortcut(element) {

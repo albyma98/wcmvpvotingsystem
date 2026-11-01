@@ -325,9 +325,7 @@ function fixture(overrides = {}, options = {}) {
   const saves = [];
   const reportSignals = [];
   const reportContexts = [];
-  const posthogSignals = [];
   const reportObservations = [];
-  const reportConsentChanges = [];
   let serverWallet = 0;
   const serverAwards = new Set();
   const window = testWindow(options.storage);
@@ -364,11 +362,11 @@ function fixture(overrides = {}, options = {}) {
         reportSignals.push({ ...event, eventId: configuration.eventId });
         configuration.mirror?.(event);
         return event;
-      }, start() {}, setMirrorConsent(enabled, metadata) { reportConsentChanges.push({ enabled, metadata }); }, observeSponsor() {}, observeVisibility(element, name, metadata) { reportObservations.push({ element, name, metadata }); }, stop() {} };
+      }, start() {}, observeSponsor() {}, observeVisibility(element, name, metadata) { reportObservations.push({ element, name, metadata }); }, stop() {} };
     }, createReportSignalSender: () => async () => {}, reportSource: () => 'unknown' },
     '../fanRegistration': registration,
     '../fanAnalytics': fanAnalytics,
-    '../lib/posthog': { captureFanAnalytics(event, context) { posthogSignals.push({ event, context }); }, isFanAnalyticsAllowed: () => options.analyticsAllowed === true, prepareFanAnalytics() {} },
+    '../lib/posthog': { stopPostHogForNewExperience() {} },
     '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
     '../components/FanMvpRoster.vue': {},
@@ -377,18 +375,18 @@ function fixture(overrides = {}, options = {}) {
     '../components/FanAvatar.vue': {},
     '../components/FanMatchCard.vue': {},
   }, { eventId: 42, organizationSlug: 'club', initialDataReady: true, activeEvent: { is_active: true, votes_closed: false }, ...options.props }, { window });
-  return { ...setup, saves, window, api, reportSignals, reportContexts, posthogSignals, reportObservations, reportConsentChanges };
+  return { ...setup, saves, window, api, reportSignals, reportContexts, reportObservations };
 }
 
-test('changing analytics consent never adds a second page view to the internal report', t => {
-  const { state, scope, reportSignals, reportConsentChanges } = fixture({}, { analyticsAllowed: true });
+test('the new experience keeps internal reports without external mirroring or persistent analytics visits', t => {
+  const { state, scope, reportSignals, reportContexts } = fixture();
   t.after(() => scope.stop());
   state.resetReportTelemetry();
-  state.onAnalyticsConsentChanged(true);
-  state.onAnalyticsConsentChanged(false);
-  assert.deepEqual(reportConsentChanges.map(change => change.enabled), [true, false]);
-  assert.equal(reportSignals.length, 0);
-  assert.deepEqual(reportConsentChanges[0].metadata, state.reportPageAvailability());
+  state.openHomeAction('mvp');
+  assert.ok(reportSignals.some(event => event.name === 'cta_clicked'));
+  assert.equal(reportContexts[0].mirror, undefined);
+  assert.equal(reportContexts[0].canPersistVisits, undefined);
+  assert.doesNotMatch(descriptor.template.content, /FanAnalyticsPreferences|Preferenze analisi|Accetta analisi|Continua senza analisi/);
 });
 
 test('report games count actual unique started and finished rounds, including zero-score losses and replay', (t) => {
@@ -444,8 +442,8 @@ test('report identity keeps its original organization and one device header when
   assert.equal(deviceReads, 1);
 });
 
-test('extended analytics mirrors confirmed MVP changes and form progress with no private data or credentials', async t => {
-  const { state, scope, reportSignals, posthogSignals, reportContexts } = fixture({
+test('internal reports record confirmed MVP changes and form progress with no private data in metadata', async t => {
+  const { state, scope, reportSignals, reportContexts } = fixture({
     getFanSessionHeaders: () => ({ 'X-Fan-Session': 'secret-session-value' }),
     vote: async () => ({ ok: true, vote: { code: '0142', qr_data: 'https://private.test/ticket?signature=secret-signature' } }),
   });
@@ -463,10 +461,8 @@ test('extended analytics mirrors confirmed MVP changes and form progress with no
   assert.equal(changes[0].metadata.player_id, 8);
   assert.equal(changes[0].metadata.previous_player_id, 7);
   assert.equal(reportSignals.filter(event => event.name === 'vote_reward_claimed').length, 1);
-  assert.equal(posthogSignals.length, reportSignals.length);
-  assert.deepEqual(posthogSignals[0].context, { organization_slug: 'club', event_id: 42 });
   assert.equal(reportContexts[0].identity()['X-Fan-Session'], 'secret-session-value');
-  const serialized = JSON.stringify(posthogSignals);
+  const serialized = JSON.stringify(reportSignals);
   for (const privateValue of ['PrivateFanName', '+393339999999', '123456', 'secret-session-value', 'secret-signature', '0142', 'arbitrary_private_event']) assert.equal(serialized.includes(privateValue), false, privateValue);
   const step = reportSignals.find(event => event.name === 'registration_step');
   assert.equal(step.metadata.outcome, 'otp_verified');
