@@ -31,7 +31,6 @@ const homeRender = new Function(...Object.keys(homeHelpers), homeRenderCode)(...
 function renderHome({ state, props }) {
   const app = Vue.createSSRApp({ setup: () => ({ ...Vue.proxyRefs(state), ...props }), ssrRender: homeRender });
   app.component('FanPlayerCard', { render: () => null });
-  app.component('FanAnalyticsPreferences', { render: () => null });
   return VueSSR.renderToString(app);
 }
 
@@ -370,7 +369,6 @@ function fixture(overrides = {}, options = {}) {
     '../fanRegistration': registration,
     '../fanAnalytics': fanAnalytics,
     '../lib/posthog': { captureFanAnalytics(event, context) { posthogSignals.push({ event, context }); }, isFanAnalyticsAllowed: () => options.analyticsAllowed === true, prepareFanAnalytics() {} },
-    '../components/FanAnalyticsPreferences.vue': {},
     '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
     '../components/FanMvpRoster.vue': {},

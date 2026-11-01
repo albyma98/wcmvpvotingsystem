@@ -137,7 +137,6 @@
             </button>
           </div>
         </section>
-        <FanAnalyticsPreferences :theme-style="themeStyle" :club-name="homeName" @changed="onAnalyticsConsentChanged" />
       </main>
 
       <!-- Overlay condiviso dai pannelli della home -->
@@ -622,7 +621,6 @@ import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
 import { createEventReportTelemetry, createReportSignalSender, reportSource } from '../eventReportTelemetry';
 import { captureFanAnalytics, isFanAnalyticsAllowed, prepareFanAnalytics } from '../lib/posthog';
 import { sanitizeFanAnalyticsMetadata } from '../fanAnalytics';
-import FanAnalyticsPreferences from '../components/FanAnalyticsPreferences.vue';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
 import FanMvpRoster from '../components/FanMvpRoster.vue';
