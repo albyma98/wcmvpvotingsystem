@@ -39,7 +39,7 @@ async function fixture(t, teamSlug = '', fetcher) {
     ],
   }
   const component = createComponent({
-    vue: { ...Vue, onMounted() {} },
+    vue: { ...Vue, onMounted() {}, onUnmounted() {} },
     '../clubHub': clubHub,
     '../organizationTheme': organizationTheme,
     '../clubTypography': clubTypography,

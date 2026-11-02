@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { clubHomeTiles, clubInitials as initials, clubScoreLabel as scoreLabel, formatClubDate as formatDate, sortClubMatches } from '../clubHub'
 import { organizationThemeStyle } from '../organizationTheme'
 import { clubTypography } from '../clubTypography'
@@ -17,6 +17,39 @@ const selectedPhoto = ref(null)
 
 const club = computed(() => data.value?.club ?? {})
 const typography = computed(() => clubTypography(club.value))
+let restorePageHead = () => {}
+
+onMounted(() => {
+  const originalTitle = document.title
+  const existingIcon = document.head.querySelector('link[rel="icon"]')
+  const icon = existingIcon || document.createElement('link')
+  const originalAttributes = new Map(['href', 'type', 'sizes'].map(name => [name, icon.getAttribute(name)]))
+  const restoreIcon = () => {
+    for (const [name, value] of originalAttributes) {
+      if (value === null) icon.removeAttribute(name)
+      else icon.setAttribute(name, value)
+    }
+  }
+  icon.setAttribute('rel', 'icon')
+  if (!existingIcon) document.head.appendChild(icon)
+  const stop = watch(() => [club.value.name, club.value.logoUrl], ([name, logo]) => {
+    document.title = name || originalTitle
+    if (logo) {
+      icon.setAttribute('href', logo)
+      // Let the browser detect the logo format, including PNG, WebP and SVG.
+      icon.removeAttribute('type')
+      icon.removeAttribute('sizes')
+    } else restoreIcon()
+  }, { immediate: true })
+  restorePageHead = () => {
+    stop()
+    document.title = originalTitle
+    if (existingIcon) restoreIcon()
+    else icon.remove()
+  }
+})
+onUnmounted(() => restorePageHead())
+
 const isTeam = computed(() => Boolean(props.teamSlug))
 const matchClubName = computed(() => club.value.name || 'Società')
 const announcements = computed(() => (data.value?.posts ?? []).filter(post => post.kind === 'announcement'))
