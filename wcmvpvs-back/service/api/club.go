@@ -32,6 +32,7 @@ func registerClubRoutes(rt *_router) {
 	// Sito pubblico annuale.
 	rt.router.Get("/v1/clubs/{slug}/home", rt.clubPublicHome)
 	rt.router.Get("/v1/clubs/{slug}/teams/{teamSlug}", rt.clubPublicTeam)
+	rt.router.Post("/v1/clubs/{slug}/visits", rt.clubPublicVisit)
 
 	// CMS Club, completamente separato dall'admin Live.
 	rt.router.Post("/v1/club-admin/{slug}/login", rt.clubAdminLogin)
@@ -62,6 +63,7 @@ func registerClubRoutes(rt *_router) {
 }
 
 func (rt *_router) listMasterClubs(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	w.Header().Set("Cache-Control", "no-store")
 	if !rt.ensureSuperAdmin(w, ctx) {
 		return
 	}

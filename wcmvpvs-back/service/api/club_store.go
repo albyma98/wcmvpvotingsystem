@@ -233,6 +233,14 @@ func (s *Store) EnsureClubTables() error {
 			active INTEGER NOT NULL DEFAULT 1
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_club_sponsors_site ON club_sponsors(site_id, position, id);`,
+		`CREATE TABLE IF NOT EXISTS club_visits (
+			site_id INTEGER NOT NULL,
+			visit_id TEXT NOT NULL,
+			visitor_key TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (site_id, visit_id)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_club_visits_visitor ON club_visits(site_id, visitor_key);`,
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(q); err != nil {
@@ -301,8 +309,11 @@ func scanClubSite(row rowScanner) (ClubSite, error) {
 
 func (s *Store) ListClubSites(ctx context.Context) ([]map[string]interface{}, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.organization_id,c.slug,c.name,c.city,c.active,c.created_at,
-		COALESCE(a.username,''),(SELECT COUNT(*) FROM club_teams t WHERE t.site_id=c.id),(SELECT COUNT(*) FROM club_posts p WHERE p.site_id=c.id)
-		FROM club_sites c LEFT JOIN club_admins a ON a.site_id=c.id ORDER BY c.name COLLATE NOCASE`)
+		COALESCE(a.username,''),(SELECT COUNT(*) FROM club_teams t WHERE t.site_id=c.id),(SELECT COUNT(*) FROM club_posts p WHERE p.site_id=c.id),
+		COALESCE(v.total_visits,0),COALESCE(v.unique_visits,0)
+		FROM club_sites c LEFT JOIN club_admins a ON a.site_id=c.id
+		LEFT JOIN (SELECT site_id,COUNT(*) AS total_visits,COUNT(DISTINCT visitor_key) AS unique_visits FROM club_visits GROUP BY site_id) v ON v.site_id=c.id
+		ORDER BY c.name COLLATE NOCASE`)
 	if err != nil {
 		return nil, err
 	}
@@ -312,10 +323,11 @@ func (s *Store) ListClubSites(ctx context.Context) ([]map[string]interface{}, er
 		var id, orgID int64
 		var slug, name, city, created, username string
 		var active, teams, posts int
-		if err := rows.Scan(&id, &orgID, &slug, &name, &city, &active, &created, &username, &teams, &posts); err != nil {
+		var totalVisits, uniqueVisits int64
+		if err := rows.Scan(&id, &orgID, &slug, &name, &city, &active, &created, &username, &teams, &posts, &totalVisits, &uniqueVisits); err != nil {
 			return nil, err
 		}
-		out = append(out, map[string]interface{}{"id": id, "organizationId": orgID, "slug": slug, "name": name, "city": city, "active": active != 0, "createdAt": created, "adminUsername": username, "teamsCount": teams, "postsCount": posts})
+		out = append(out, map[string]interface{}{"id": id, "organizationId": orgID, "slug": slug, "name": name, "city": city, "active": active != 0, "createdAt": created, "adminUsername": username, "teamsCount": teams, "postsCount": posts, "totalVisits": totalVisits, "uniqueVisits": uniqueVisits})
 	}
 	return out, rows.Err()
 }
@@ -396,7 +408,7 @@ func (s *Store) DeleteClubSite(ctx context.Context, siteID int64) error {
 			return err
 		}
 	}
-	for _, table := range []string{"club_admin_sessions", "club_admins", "club_players", "club_posts", "club_gallery", "club_matches", "club_teams", "club_sponsors"} {
+	for _, table := range []string{"club_admin_sessions", "club_admins", "club_players", "club_posts", "club_gallery", "club_matches", "club_teams", "club_sponsors", "club_visits"} {
 		if _, err = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE site_id=?", siteID); err != nil {
 			return err
 		}

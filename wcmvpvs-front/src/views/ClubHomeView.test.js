@@ -27,7 +27,8 @@ const renderCode = template.code.replace(/^import \{([^}]+)\} from "([^"]+)"\r?$
 }).replace('export function ssrRender', 'return function ssrRender')
 const ssrRender = new Function(...Object.keys(helpers), renderCode)(...Object.values(helpers))
 
-async function fixture(t, teamSlug = '') {
+async function fixture(t, teamSlug = '', fetcher) {
+  const visits = []
   const payload = {
     club: { name: 'Club Aurora', titleFont: 'Arial', bodyFont: 'Arial' },
     team: { name: 'Under 18' },
@@ -43,9 +44,10 @@ async function fixture(t, teamSlug = '') {
     '../organizationTheme': organizationTheme,
     '../clubTypography': clubTypography,
     '../clubDomain': clubDomain,
+    '../clubVisits': { recordClubVisit: slug => { visits.push(slug) } },
     '../components/ClubContentModal.vue': { render: () => null },
     '../components/ClubGalleryLightbox.vue': { render: () => null },
-  }, async () => ({ ok: true, json: async () => payload }))
+  }, fetcher || (async () => ({ ok: true, json: async () => payload })))
   const props = Vue.reactive({ slug: 'aurora', teamSlug, customDomain: false })
   const scope = Vue.effectScope()
   t.after(() => scope.stop())
@@ -56,8 +58,25 @@ async function fixture(t, teamSlug = '') {
     setup: () => ({ ...Vue.proxyRefs(state), ...props }),
     ssrRender,
   }))
-  return { state, html }
+  return { state, html, visits }
 }
+
+test('tracks successful home and direct team openings, without counting modal requests', async t => {
+  const home = await fixture(t)
+  assert.deepEqual(home.visits, ['aurora'])
+  await home.state.openTeam({ slug: 'under-18', name: 'Under 18' })
+  assert.deepEqual(home.visits, ['aurora'])
+  await home.state.load()
+  assert.deepEqual(home.visits, ['aurora', 'aurora'])
+  const team = await fixture(t, 'under-18')
+  assert.deepEqual(team.visits, ['aurora'])
+})
+
+test('does not track unavailable pages', async t => {
+  const { state, visits } = await fixture(t, '', async () => ({ ok: false, status: 404 }))
+  assert.deepEqual(visits, [])
+  assert.ok(state.error.value)
+})
 
 test('category page renders fixtures chronologically even when the server returns unordered dates', async t => {
   const { state, html } = await fixture(t, 'under-18')

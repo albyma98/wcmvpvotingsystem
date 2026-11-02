@@ -122,12 +122,13 @@ onMounted(load)
 
     <section class="panel">
       <div class="heading"><div><p class="eyebrow">Portafoglio</p><h2>Club attivi</h2></div><button class="ghost" @click="load">Aggiorna</button></div>
+      <p class="hint">Visite dall’attivazione del tracciamento: ogni apertura della home o di una pagina squadra conta nel totale. Le visite uniche identificano i browser per ciascun club. Dati riservati al master.</p>
       <p v-if="loading" class="hint">Caricamento…</p>
       <p v-else-if="!clubs.length" class="hint">Nessun Club Hub creato.</p>
       <div v-else class="club-list">
         <article v-for="club in clubs" :key="club.id" class="club-row">
           <div><strong>{{ club.name }}</strong><small>{{ club.city || 'Città non indicata' }} · {{ club.slug }}</small></div>
-          <div class="metrics"><span>{{ club.teamsCount }} squadre</span><span>{{ club.postsCount }} contenuti</span></div>
+          <div class="metrics"><span>{{ club.teamsCount }} squadre</span><span>{{ club.postsCount }} contenuti</span><span>{{ (club.totalVisits ?? 0).toLocaleString('it-IT') }} visite totali</span><span>{{ (club.uniqueVisits ?? 0).toLocaleString('it-IT') }} visite uniche</span></div>
           <div class="links"><a :href="`/club/${club.slug}`" target="_blank">Sito</a><a :href="`/club-admin/${club.slug}`" target="_blank">CMS</a></div>
           <div class="actions"><button @click="domainsOpen = domainsOpen === club.id ? null : club.id">Domini</button><button @click="passwordOpen = passwordOpen === club.id ? null : club.id">Password</button><button class="danger" :disabled="deleting === club.id" @click="remove(club)">Elimina</button></div>
           <MasterClubDomains v-if="domainsOpen === club.id" :key="club.id" :club="club" />

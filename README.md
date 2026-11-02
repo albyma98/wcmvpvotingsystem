@@ -94,6 +94,28 @@ va inserita in `wcmvpvs-front/.env.local`. Il font resta disabilitato finché
 la sorgente non è configurata; la home e l’anteprima caricano il CSS quando
 ENDURA è selezionato. I file del kit non sono inclusi nel repository.
 
+## Visite ClubHub
+
+In **Admin master → Club Hub**, ogni club mostra le **visite totali** e le
+**visite uniche**, cumulative dall'attivazione del tracciamento. Ogni apertura
+riuscita della home o di una pagina squadra aggiunge una visita totale, compresi
+i ricaricamenti. Le richieste dei contenuti delle modali e le pagine CMS non
+aggiungono visite. Il pulsante **Aggiorna** ricarica anche i contatori.
+
+Un identificativo casuale persistente nel browser distingue le visite uniche
+per club; non identifica persone. Browser, dispositivi o domini diversi,
+navigazione privata e cancellazione dei dati possono produrre nuovi unici.
+Se il browser blocca lo storage, l'identificativo dura solo nella pagina aperta.
+Il server conserva solo un hash dell'identificativo specifico del club, senza
+IP o user agent, e deduplica gli invii della stessa apertura tramite `visitId`.
+
+La raccolta usa `POST /v1/clubs/{slug}/visits` e non restituisce statistiche.
+I contatori sono esposti esclusivamente in `GET /admin/master/clubs`, protetto
+dal ruolo superadmin; non compaiono nelle API pubbliche né nel CMS Club.
+La tabella `club_visits` viene creata automaticamente all'avvio del backend e
+i suoi dati vengono eliminati insieme al relativo ClubHub. I dati precedenti
+all'aggiornamento non vengono ricostruiti. Occorre aggiornare backend e frontend.
+
 ## Domini personalizzati ClubHub
 
 Dal Master → Club Hub → **Domini**, associare un dominio alla società. L'opzione

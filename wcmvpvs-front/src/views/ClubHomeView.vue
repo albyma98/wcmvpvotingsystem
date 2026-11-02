@@ -6,6 +6,7 @@ import { clubTypography } from '../clubTypography'
 import ClubContentModal from '../components/ClubContentModal.vue'
 import ClubGalleryLightbox from '../components/ClubGalleryLightbox.vue'
 import { clubHomePath } from '../clubDomain'
+import { recordClubVisit } from '../clubVisits'
 
 const props = defineProps({ slug: { type: String, required: true }, teamSlug: { type: String, default: '' }, customDomain: Boolean })
 const homePath = computed(() => clubHomePath(props.slug, props.customDomain))
@@ -50,12 +51,14 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
+    const slug = props.slug
     const endpoint = props.teamSlug
-      ? `/api/v1/clubs/${encodeURIComponent(props.slug)}/teams/${encodeURIComponent(props.teamSlug)}`
-      : `/api/v1/clubs/${encodeURIComponent(props.slug)}/home`
+      ? `/api/v1/clubs/${encodeURIComponent(slug)}/teams/${encodeURIComponent(props.teamSlug)}`
+      : `/api/v1/clubs/${encodeURIComponent(slug)}/home`
     const response = await fetch(endpoint)
     if (!response.ok) throw new Error(response.status)
     data.value = await response.json()
+    void recordClubVisit(slug)
   } catch { error.value = 'Questa pagina non è ancora disponibile.' }
   finally { loading.value = false }
 }
