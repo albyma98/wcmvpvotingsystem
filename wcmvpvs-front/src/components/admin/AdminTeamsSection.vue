@@ -1,10 +1,11 @@
 <template>
   <section class="card">
     <header class="section-header">
-      <h2>Squadre</h2>
+      <h2>Elenco squadre</h2>
+      <p>Aggiungi le squadre da associare alle partite e ai giocatori.</p>
     </header>
     <form @submit.prevent="createTeam" class="form-inline">
-      <input v-model.trim="newTeamName" type="text" placeholder="Nome squadra" required />
+      <label class="admin-team-name">Nome della squadra<input v-model.trim="newTeamName" type="text" placeholder="Es. Prima squadra" required /></label>
       <button class="btn primary" type="submit">Aggiungi</button>
     </form>
     <ul class="item-list compact">
@@ -13,6 +14,7 @@
         <button class="btn danger" type="button" @click="deleteTeam(team.id)">Elimina</button>
       </li>
     </ul>
+    <p v-if="!teams.length" class="admin-empty-state">Non ci sono ancora squadre. Aggiungi la prima per iniziare a organizzare le tue partite.</p>
   </section>
 </template>
 
@@ -62,3 +64,9 @@ async function deleteTeam(id) {
 
 onMounted(loadTeams);
 </script>
+
+<style scoped>
+.admin-team-name { display: grid; gap: 8px; flex: 1; min-width: min(100%, 220px); font-size: 13px; font-weight: 600; }
+.form-inline { align-items: flex-end; }
+.admin-empty-state { margin: 0; padding: 32px 20px; text-align: center; color: var(--text-muted); font-size: 13px; border: 1px dashed var(--border); border-radius: 10px; }
+</style>

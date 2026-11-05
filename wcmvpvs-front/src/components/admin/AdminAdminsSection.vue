@@ -2,11 +2,12 @@
   <section class="card">
     <header class="section-header">
       <h2>Utenti amministratori</h2>
+      <p>Aggiungi un amministratore o gestisci gli account della società.</p>
     </header>
     <form @submit.prevent="createAdmin" class="form-grid">
-      <input v-model.trim="newAdmin.username" type="text" placeholder="Username" required />
-      <input v-model="newAdmin.password" type="password" placeholder="Password" required />
-      <input v-model.trim="newAdmin.role" type="text" placeholder="Ruolo (es. staff)" />
+      <label>Nome utente<input v-model.trim="newAdmin.username" type="text" placeholder="Username" autocomplete="off" required /></label>
+      <label>Password<input v-model="newAdmin.password" type="password" placeholder="Password" autocomplete="new-password" required /></label>
+      <label>Ruolo<input v-model.trim="newAdmin.role" type="text" placeholder="Ruolo (es. staff)" /></label>
       <button class="btn primary" type="submit">Aggiungi</button>
     </form>
     <ul class="item-list compact">
@@ -18,6 +19,7 @@
         <button class="btn danger" type="button" @click="deleteAdmin(admin.id)">Elimina</button>
       </li>
     </ul>
+    <p v-if="!admins.length" class="muted">Nessun amministratore presente nell’elenco.</p>
   </section>
 </template>
 

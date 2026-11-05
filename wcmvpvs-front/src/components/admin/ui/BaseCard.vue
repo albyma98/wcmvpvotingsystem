@@ -7,14 +7,7 @@
 defineProps({ dark: { type: Boolean, default: false } });
 </script>
 <style scoped>
-.base-card {
-  background: #ffffff;
-  border: 1px solid rgba(56, 189, 248, 0.08);
-  border-radius: 16px;
-  padding: 1.5rem;
-  box-shadow: 0 8px 32px rgba(15,23,42,0.1);
-}
-.base-card--dark {
-  background: #ffffff;
-}
+.base-card { min-width: 0; padding: 24px; background: var(--bg-card,#fff); border: 1px solid var(--border,#e3e7ef); border-radius: var(--radius-lg,14px); box-shadow: var(--shadow-card,0 2px 5px rgba(24,34,56,.025)); }
+.base-card--dark { background: var(--bg-card,#fff); }
+@media(max-width:640px) { .base-card { padding: 18px; } }
 </style>

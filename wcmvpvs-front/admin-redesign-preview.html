@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ArenaBoostX · Verifica redesign locale</title></head><body><div id="app"></div>
+<script type="module">
+import { createApp } from 'vue';
+import './src/style.css';
+import './src/assets/admin-theme.css';
+import AdminPortal from './src/components/AdminPortal.vue';
+import ClubAdminPortal from './src/views/ClubAdminPortal.vue';
+import AdminLottery from './src/components/AdminLottery.vue';
+import { apiClient } from './src/api.js';
+// Temporary, isolated UI fixture. All requests stay in memory; never uses a backend.
+const view = new URLSearchParams(location.search).get('view');
+const teams = [{ id: 1, name: 'Aurora Volley' }, { id: 2, name: 'Volley Milano' }, { id: 3, name: 'Under 19' }];
+const events = [
+  { id: 9, team1_id: 1, team2_id: 2, team1_name: 'Aurora Volley', team2_name: 'Volley Milano', start_datetime: '2026-11-05T20:30:00', location: 'Pala Aurora', is_active: true, votes_closed: false, is_concluded: false, prizes: [{ id: 10, name: 'Maglia ufficiale', position: 1 }] },
+  { id: 10, team1_id: 1, team2_id: 3, team1_name: 'Aurora Volley', team2_name: 'Under 19', start_datetime: '2026-11-12T18:30:00', location: 'Arena Centrale', is_active: false, votes_closed: false, is_concluded: false, prizes: [] },
+];
+const players = [{ id: 1, first_name: 'Andrea', last_name: 'Rossi', role: 'Palleggiatore', jersey_number: 7, team_id: 1, is_called_up: true }, { id: 2, first_name: 'Marco', last_name: 'Bianchi', role: 'Libero', jersey_number: 4, team_id: 1, is_called_up: true }];
+const sponsors = [{ id: 1, name: 'Aurora Sport', position: 1, is_active: true, logo_url: '' }];
+const votingSettings = { template_sid: '', draw_mode: 'random', show_lottery_ticket: false, recipients: [{ name: 'Segreteria', phone: '+39000000000', enabled: true }] };
+window.EventSource = class { addEventListener() {} close() {} };
+if (view === 'login') { localStorage.removeItem('adminUsername'); localStorage.removeItem('adminRole'); }
+else { localStorage.setItem('adminUsername', 'Andrea Rossi'); localStorage.setItem('adminRole', 'superadmin'); }
+apiClient.defaults.adapter = async config => {
+  const path = config.url; let data = [];
+  if (path === '/admin/me') data = { username: 'Andrea Rossi', role: 'superadmin', organization_name: 'Aurora Volley' };
+  else if (path === '/admin/login') data = { username: 'Andrea Rossi', role: 'superadmin' };
+  else if (path === '/events') data = events;
+  else if (path === '/teams') data = teams;
+  else if (path === '/players') data = { roster_schema: 13, bar_enabled: true, players };
+  else if (path === '/admin/sponsors') data = sponsors;
+  else if (path === '/admins') data = [{ id: 1, username: 'Andrea Rossi', role: 'superadmin' }];
+  else if (path === '/admin/partners') data = [{ id: 1, username: 'Aurora Sport' }];
+  else if (path === '/admin/voting-settings') data = votingSettings;
+  else if (path === '/admin/events/history') data = [{id: 8,title:'Aurora Volley vs Club Torino',home_team:'Aurora Volley',away_team:'Club Torino',start_datetime:'2026-10-29T20:30:00',total_votes:145,prizes:[]}];
+  else if (path.endsWith('/quiz')) data = { config: {} };
+  else if (path.includes('results')) data = [{ player_id: 1, first_name: 'Andrea', last_name: 'Rossi', votes: 12 }];
+  else if (path.includes('/marketing/billing')) data = { sms_cost: .08, free_sms_remaining: 50, total_messages: 0, total_cost_charged: 0 };
+  else if (path.includes('/marketing/logs')) data = { items: [], summary: { sms_cost: .08, free_sms_remaining: 50, total_messages: 0, total_cost_charged: 0 } };
+  else if (path.includes('/marketing/audience')) data = [{ fan_id: 1, nickname: 'AuroraFan', phone: '+39000000000', created_at: '2026-11-05', coins: 35, marketing_consent: true }];
+  return { data: structuredClone(data), status: 200, statusText: 'OK', headers: {}, config };
+};
+const club = { name: 'Aurora Volley', active: true, shortDescription: 'La nostra passione, la tua squadra.', contacts: [{ name: 'Segreteria', email: 'info@example.test' }], tileIcons: {}, titleFont: 'Inter', bodyFont: 'Inter' };
+window.fetch = async (input, options = {}) => {
+  const path = String(input); let data = {};
+  if (path.includes('/overview')) data = { club, teams: teams.map((t, i) => ({ ...t, slug: `team-${i}`, active: true })), posts: [{ id: 1, title: 'Benvenuti nella nuova stagione', body: 'Tutti insieme per la nostra squadra.', active: true }], gallery: [], matches: [], sponsors: [{ id: 1, name: 'Aurora Sport', active: true }], counts: { teams: 3, posts: 1, gallery: 0, matches: 0, sponsors: 1 } };
+  else if (path.endsWith('/teams')) data = { teams, players: {} };
+  return { ok: true, status: 200, json: async () => structuredClone(data) };
+};
+createApp(view === 'club' ? ClubAdminPortal : view === 'lottery' ? AdminLottery : AdminPortal, view === 'club' ? { slug: 'aurora' } : { organizationSlug: 'aurora' }).mount('#app');
+</script></body></html>

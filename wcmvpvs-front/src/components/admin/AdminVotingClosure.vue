@@ -87,17 +87,17 @@ onUnmounted(() => { generation++; clearTimeout(timer); });
 </script>
 
 <style scoped>
-.voting-closure { margin-top: 1.5rem; border-top: 1px solid #334155; padding-top: 1.25rem; }
+.voting-closure { margin-top: 1.5rem; border-top: 1px solid var(--border, #e3e7ef); padding-top: 1.25rem; }
 h3, h4 { margin: .5rem 0 .8rem; }
-.muted, small { color: #94a3b8; }
+.muted, small { color: var(--text-secondary, #526078); }
 .prizes, .notifications { padding: 0; list-style: none; }
 .prizes li { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; margin: .65rem 0; }
 .prizes strong { font-family: monospace; font-size: 1.2rem; letter-spacing: .08em; }
-.notifications li { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; border-bottom: 1px solid #334155; padding: .8rem 0; }
+.notifications li { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; border-bottom: 1px solid var(--border, #e3e7ef); padding: .8rem 0; }
 .notifications small { flex-basis: 100%; }
-.notification-status { font-size: .8rem; color: #c4b5fd; }
-.notification-status.submitted { color: #86efac; }
-.notification-status.failed, .error { color: #fca5a5; }
-.notice, .notification-status.unknown, .notification-status.skipped { color: #fcd34d; }
+.notification-status { font-size: .8rem; color: var(--accent, #4f46e5); }
+.notification-status.submitted { color: var(--abx-success, #087a55); }
+.notification-status.failed, .error { color: var(--abx-danger, #b42335); }
+.notice, .notification-status.unknown, .notification-status.skipped { color: var(--abx-warning, #92400e); }
 .closure-note { font-size: .8rem; line-height: 1.5; }
 </style>

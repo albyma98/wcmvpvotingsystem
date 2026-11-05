@@ -13,33 +13,9 @@
 defineProps({ title: String, description: String });
 </script>
 <style scoped>
-.section-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1.25rem;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-}
-.section-header__title {
-  margin: 0 0 0.25rem;
-  font-family: 'Barlow Condensed', 'Impact', sans-serif;
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #0f172a;
-}
-.section-header__desc {
-  margin: 0;
-  font-size: 0.875rem;
-  color: rgba(148, 163, 184, 0.7);
-  line-height: 1.5;
-}
-.section-header__actions {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-}
+.section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 24px; flex-wrap: wrap; }
+.section-header__text { min-width: 0; flex: 1 1 240px; }
+.section-header__title { margin: 0 0 6px; color: var(--text-primary,#182238); font: 650 20px/1.3 var(--font-body,'Segoe UI',sans-serif); letter-spacing: -.025em; }
+.section-header__desc { margin: 0; font-size: 14px; color: var(--text-secondary,#526078); line-height: 1.6; }
+.section-header__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 </style>

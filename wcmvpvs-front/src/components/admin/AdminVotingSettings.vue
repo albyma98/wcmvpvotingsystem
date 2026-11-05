@@ -190,29 +190,29 @@ onUnmounted(() => { generation++; });
 .voting-settings header p, .muted, small { color: var(--admin-text-secondary, #94a3b8); }
 .voting-settings fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .field { display: grid; gap: .5rem; font-size: .9rem; }
-.field input { width: 100%; min-width: 0; box-sizing: border-box; padding: .75rem; border-radius: .6rem; border: 1px solid #334155; background: #0f172a; color: #f1f5f9; }
+.field input { width: 100%; min-width: 0; box-sizing: border-box; padding: .75rem; border-radius: .6rem; border: 1px solid var(--border, #e3e7ef); background: #fff; color: var(--text-primary, #182238); }
 small { display: block; font-size: .8rem; line-height: 1.5; font-weight: 400; }
 .template-test { margin-top: 1rem; padding: 1rem; border: 1px solid #cbd5e1; border-radius: .65rem; }
 .template-test-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .75rem; margin-bottom: .65rem; }
 .voting-settings .draw-modes, .voting-settings .ticket-visibility { margin: 1.5rem 0; }
 .draw-modes legend, .ticket-visibility legend { margin-bottom: .75rem; font-weight: 600; }
 .ticket-visibility small { margin-top: .65rem; }
-.radio-option { display: flex; align-items: flex-start; gap: .65rem; padding: .85rem; margin-top: .5rem; background: rgba(148,163,184,.06); border: 1px solid #334155; border-radius: .65rem; cursor: pointer; }
-.radio-option input { width: auto; accent-color: #8b5cf6; }
+.radio-option { display: flex; align-items: flex-start; gap: .65rem; padding: .85rem; margin-top: .5rem; background: rgba(148,163,184,.06); border: 1px solid var(--border, #e3e7ef); border-radius: .65rem; cursor: pointer; }
+.radio-option input { width: auto; accent-color: var(--accent, #4f46e5); }
 .recipients-heading, .settings-actions { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
-.recipients-heading span { font-size: .8rem; color: #94a3b8; }
+.recipients-heading span { font-size: .8rem; color: var(--text-secondary, #526078); }
 .recipient-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: .75rem; margin-top: 1rem; }
 .recipient-controls { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding-bottom: .5rem; }
 .recipient-status { display: flex; flex-wrap: wrap; gap: .75rem; }
-.enabled { display: flex; align-items: center; gap: .6rem; min-height: 44px; box-sizing: border-box; padding: .5rem .75rem; border: 1px solid #cbd5e1; border-radius: .6rem; background: #fff; color: #334155; font-size: .85rem; white-space: nowrap; cursor: pointer; }
-.enabled:has(input:checked) { border-color: #0284c7; background: #f0f9ff; color: #075985; }
+.enabled { display: flex; align-items: center; gap: .6rem; min-height: 44px; box-sizing: border-box; padding: .5rem .75rem; border: 1px solid #cbd5e1; border-radius: .6rem; background: #fff; color: var(--text-primary, #182238); font-size: .85rem; white-space: nowrap; cursor: pointer; }
+.enabled:has(input:checked) { border-color: var(--accent, #4f46e5); background: #f3f2ff; color: #4338ca; }
 .recipient-status input[type="radio"] { appearance: none; display: inline-block; flex: 0 0 20px; width: 20px; height: 20px; min-width: 20px; min-height: 20px; padding: 0; margin: 0; box-sizing: border-box; border: 2px solid #64748b; border-radius: 50%; background: #fff; cursor: pointer; }
-.recipient-status input[type="radio"]:checked { border-color: #0284c7; background: radial-gradient(circle, #0284c7 0 42%, #fff 45%); }
-.recipient-status input[type="radio"]:focus-visible { outline: 2px solid #0284c7; outline-offset: 3px; }
+.recipient-status input[type="radio"]:checked { border-color: var(--accent, #4f46e5); background: radial-gradient(circle, var(--accent, #4f46e5) 0 42%, #fff 45%); }
+.recipient-status input[type="radio"]:focus-visible { outline: 2px solid var(--accent, #4f46e5); outline-offset: 3px; }
 .enabled:has(input:disabled) { opacity: .55; cursor: not-allowed; }
 .recipient-status input[type="radio"]:disabled { cursor: not-allowed; }
 .settings-actions { margin-top: 1.25rem; }
-.error { color: #fca5a5; }
-.success-message { color: #86efac; }
+.error { color: var(--abx-danger, #b42335); }
+.success-message { color: var(--abx-success, #087a55); }
 @media (max-width: 440px) { .recipient-row, .template-test-controls { grid-template-columns: 1fr; } }
 </style>

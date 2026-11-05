@@ -13,6 +13,44 @@ const busy = ref(false)
 const error = ref('')
 const notice = ref('')
 const activeTab = ref('dashboard')
+const sidebarCollapsed = ref(false)
+const mobileMenuOpen = ref(false)
+const mobileMenuTrigger = ref(null)
+const navAside = ref(null)
+const navGroups = [
+  { label: 'Workspace', ids: ['dashboard'] },
+  { label: 'Contenuti', ids: ['settings', 'posts', 'gallery', 'matches'] },
+  { label: 'Società', ids: ['teams', 'sponsors', 'contacts'] },
+]
+const navIcons = {
+  dashboard: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
+  settings: 'M3 10l9-7 9 7 M5 9v12h14V9 M9 21v-8h6v8',
+  teams: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75',
+  posts: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h8 M8 17h6',
+  gallery: 'M3 3h18v18H3z M3 16l6-6 5 5 3-3 4 4 M16 7h.01',
+  matches: 'M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2 M8 14h.01 M12 14h.01 M16 14h.01 M8 18h.01 M12 18h.01',
+  sponsors: 'M3 8h18v13H3z M8 8V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3 M3 13a22 22 0 0 0 18 0 M12 12v4',
+  contacts: 'M21 16.5v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 1.1 3.8 2 2 0 0 1 3.1 1.6h3a2 2 0 0 1 2 1.7c.1.9.4 1.7.7 2.5a2 2 0 0 1-.5 2.1L7 9.2a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.8.3 1.6.6 2.5.7a2 2 0 0 1 2.1 2.4z',
+}
+async function openMobileMenu() {
+  mobileMenuOpen.value = true
+  await nextTick()
+  navAside.value?.querySelector('button:not(:disabled), a')?.focus()
+}
+function closeMobileMenu() {
+  mobileMenuOpen.value = false
+  nextTick(() => { if (!mobileMenuOpen.value) mobileMenuTrigger.value?.focus() })
+}
+function selectTab(id) { activeTab.value = id; if (mobileMenuOpen.value) closeMobileMenu() }
+function navigationKeydown(event) {
+  if (!mobileMenuOpen.value) return
+  if (event.key === 'Escape') { event.preventDefault(); closeMobileMenu(); return }
+  if (event.key !== 'Tab') return
+  const focusable = [...navAside.value.querySelectorAll('button:not(:disabled), a[href]')].filter(item => item.getClientRects().length)
+  const first = focusable[0], last = focusable[focusable.length - 1]
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+}
 const overview = ref({ club: {}, teams: [], posts: [], gallery: [], matches: [], sponsors: [], counts: {} })
 const playersByTeam = ref({})
 const login = reactive({ username: `club-${props.slug}`, password: '' })
@@ -322,25 +360,29 @@ function teamName(id){return teams.value.find(team=>team.id===id)?.name||'Tutta 
 function formatDate(value){if(!value)return '—';const d=new Date(value);return Number.isNaN(d.getTime())?value:new Intl.DateTimeFormat('it-IT',{dateStyle:'medium',timeStyle:value.includes('T')?'short':undefined}).format(d)}
 
 function beforeUnload(event) { if (hasUnsavedChanges.value) { event.preventDefault(); event.returnValue = '' } }
-onMounted(() => { loadOverview(); window.addEventListener('beforeunload', beforeUnload) })
-onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
+function navigationResize() { if (window.innerWidth > 900) mobileMenuOpen.value = false }
+onMounted(() => { loadOverview(); window.addEventListener('beforeunload', beforeUnload); window.addEventListener('resize', navigationResize) })
+onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('resize', navigationResize) })
 </script>
 
 <template>
-  <main class="club-admin">
+  <main class="club-admin" :class="{ 'club-admin--collapsed': sidebarCollapsed, 'club-admin--menu-open': authenticated && !checking && mobileMenuOpen }">
     <link v-for="stylesheet in typography.stylesheets" :key="stylesheet" rel="stylesheet" :href="stylesheet" />
-    <section v-if="checking" class="center">Caricamento CMS Club…</section>
+    <section v-if="checking" class="center" role="status"><span class="loading-ring" aria-hidden="true" />Caricamento del workspace…</section>
     <section v-else-if="!authenticated" class="login-shell">
       <div class="login-card"><p class="eyebrow">ARENABOOSTX CLUB</p><h1>Gestisci il tuo Club Hub</h1><p>Homepage, squadre, roster, annunci, fotografie, calendario e sponsor.</p><form @submit.prevent="loginSubmit"><label>Username<input v-model="login.username" autocomplete="username" /></label><label>Password<input v-model="login.password" type="password" autocomplete="current-password" /></label><button :disabled="processing">{{busy?'Accesso…':'Entra nel CMS'}}</button></form><p v-if="error" class="error">{{error}}</p></div>
     </section>
     <template v-else>
-      <aside>
-        <a class="admin-brand" :href="publicPath" target="_blank"><span>AX</span><div><strong>Club CMS</strong><small>{{overview.club.name}}</small></div></a>
-        <nav aria-label="Sezioni CMS"><button v-for="tab in tabs" :key="tab[0]" :disabled="processing" :class="{active:activeTab===tab[0]}" :aria-current="activeTab===tab[0] ? 'page' : undefined" @click="activeTab=tab[0]">{{tab[1]}}</button></nav>
-        <div class="aside-bottom"><p v-if="hasUnsavedChanges" class="draft-indicator">● Modifiche da salvare</p><a :href="publicPath" target="_blank" rel="noopener">Apri sito pubblico ↗</a><button :disabled="processing" @click="logout">Esci</button></div>
+      <aside id="club-cms-navigation" ref="navAside" :role="mobileMenuOpen ? 'dialog' : undefined" :aria-modal="mobileMenuOpen || undefined" aria-label="Navigazione Club CMS" @keydown="navigationKeydown">
+        <div class="sidebar-top"><a class="admin-brand" :href="publicPath" target="_blank" rel="noopener"><span>AX</span><div><strong>ArenaBoost<span>X</span></strong><small>Club workspace</small></div></a><button class="mobile-close icon-button" type="button" aria-label="Chiudi navigazione" @click="closeMobileMenu">×</button></div>
+        <div class="club-identity"><span class="club-avatar">{{ (overview.club.name || 'C').slice(0, 2).toUpperCase() }}</span><div><strong>{{overview.club.name || 'La tua società'}}</strong><small>{{overview.club.seasonLabel || 'Club Hub'}}</small></div><span class="identity-dot" aria-hidden="true" /></div>
+        <nav aria-label="Sezioni CMS"><div v-for="group in navGroups" :key="group.label" class="nav-group"><p class="nav-group-label">{{ group.label }}</p><button v-for="tab in tabs.filter(item => group.ids.includes(item[0]))" :key="tab[0]" type="button" :disabled="processing" :class="{active:activeTab===tab[0]}" :title="tab[1]" :aria-current="activeTab===tab[0] ? 'page' : undefined" @click="selectTab(tab[0])"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[tab[0]]" /></svg><span class="nav-label">{{tab[1]}}</span><span v-if="activeTab===tab[0]" class="nav-active-dot" aria-hidden="true" /></button></div></nav>
+        <div class="aside-bottom"><p v-if="hasUnsavedChanges" class="draft-indicator" role="status"><span aria-hidden="true">●</span> <span class="footer-label">Modifiche da salvare</span></p><a :href="publicPath" target="_blank" rel="noopener" title="Apri sito pubblico"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M15 3h6v6 M21 3l-9 9 M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></svg><span class="footer-label">Apri sito pubblico</span></a><button type="button" :disabled="processing" title="Esci dal CMS" @click="logout"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9" /></svg><span class="footer-label">Esci dal CMS</span></button><button class="collapse-button" type="button" :aria-expanded="!sidebarCollapsed" :title="sidebarCollapsed ? 'Espandi menu' : 'Comprimi menu'" @click="sidebarCollapsed = !sidebarCollapsed"><svg class="nav-icon" :class="{ flipped: sidebarCollapsed }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m14 7-5 5 5 5 M20 3v18" /></svg><span class="footer-label">Comprimi menu</span></button></div>
       </aside>
-      <section class="workspace">
-        <header><div><p class="eyebrow">CLUB WORKSPACE · {{overview.club.seasonLabel || 'Gestione contenuti'}}</p><h1>{{tabs.find(tab=>tab[0]===activeTab)?.[1]}}</h1><p class="page-description">{{ descriptions[activeTab] }}</p></div><a class="public-link" :href="publicPath" target="_blank" rel="noopener">Apri Club Hub ↗</a></header>
+      <button v-if="mobileMenuOpen" class="mobile-backdrop" type="button" aria-label="Chiudi navigazione" tabindex="-1" @click="closeMobileMenu" />
+      <section class="workspace" :inert="mobileMenuOpen || undefined">
+        <div class="workspace-topbar"><div><button ref="mobileMenuTrigger" class="mobile-menu icon-button" type="button" aria-controls="club-cms-navigation" :aria-expanded="mobileMenuOpen" aria-label="Apri navigazione" @click="openMobileMenu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 6h16 M4 12h16 M4 18h16" /></svg></button><span>Workspace</span><span aria-hidden="true">/</span><strong>{{tabs.find(tab=>tab[0]===activeTab)?.[1]}}</strong></div><span class="workspace-context">Club CMS</span></div>
+        <header><div><p class="eyebrow">{{overview.club.seasonLabel || 'Gestione della società'}}</p><h1>{{tabs.find(tab=>tab[0]===activeTab)?.[1]}}</h1><p class="page-description">{{ descriptions[activeTab] }}</p></div><a class="public-link" :href="publicPath" target="_blank" rel="noopener">Apri Club Hub <span aria-hidden="true">↗</span></a></header>
         <p v-if="notice" class="notice" role="status">{{notice}}</p><p v-if="error" class="error error-banner" role="alert">{{error}}<button type="button" aria-label="Chiudi messaggio di errore" @click="error=''">×</button></p>
         <p v-if="imageUploads" class="processing-banner" role="status">Ottimizzazione dell’immagine in corso. Attendi prima di salvare.</p>
 
@@ -351,10 +393,12 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
           <div class="filter-summary"><span aria-live="polite">{{ resultCount }} risultati</span><button v-if="filters[activeTab].query || filters[activeTab].teamId || filters[activeTab].state" type="button" @click="resetFilters">Azzera filtri</button></div>
         </section>
 
-        <div v-if="activeTab==='dashboard'">
-          <div class="stats"><article v-for="entry in [['Squadre',overview.counts.teams],['Atleti',overview.counts.players],['Contenuti',overview.counts.posts],['Foto',overview.counts.photos],['Partite',overview.counts.matches],['Sponsor',overview.counts.sponsors]]" :key="entry[0]"><span>{{entry[0]}}</span><strong>{{entry[1]||0}}</strong></article></div>
-          <section class="card welcome"><div><p class="eyebrow">IL TUO HUB ANNUALE</p><h2>{{overview.club.name}}</h2><p>{{overview.club.tagline||'Completa la homepage e inizia a pubblicare contenuti.'}}</p></div><a :href="publicPath" target="_blank">Visualizza sito</a></section>
-          <section class="card"><h2>Avvio rapido</h2><div class="quick"><button @click="activeTab='settings'">1. Personalizza homepage</button><button @click="activeTab='teams'">2. Completa squadre e roster</button><button @click="activeTab='matches'">3. Inserisci calendario</button><button @click="activeTab='posts'">4. Pubblica un annuncio</button></div></section>
+        <div v-if="activeTab==='dashboard'" class="club-dashboard">
+          <section class="card welcome"><div><span class="welcome-kicker"><span aria-hidden="true">●</span> Il tuo Club Hub</span><h2>{{overview.club.name || 'Il tuo club, al centro.'}}</h2><p>{{overview.club.tagline||'Dai spazio alla tua società. Squadre, storie e appuntamenti, in un solo workspace.'}}</p><button class="welcome-action" type="button" @click="activeTab='posts'">Crea un contenuto <span aria-hidden="true">↗</span></button></div><div class="welcome-side"><span class="welcome-mark" aria-hidden="true">AX</span><a :href="publicPath" target="_blank" rel="noopener">Visualizza sito <span aria-hidden="true">↗</span></a></div></section>
+          <div class="dashboard-section-heading"><div><h2>La società in numeri</h2><p>I contenuti e le risorse presenti nel tuo workspace.</p></div><span class="badge" :class="{ muted: !overview.club.active }">{{ overview.club.active ? 'Sito pubblico attivo' : 'Sito pubblico disattivato' }}</span></div>
+          <div class="stats"><article v-for="entry in [['Squadre',overview.counts.teams,'teams'],['Atleti',overview.counts.players,'teams'],['Contenuti',overview.counts.posts,'posts'],['Foto',overview.counts.photos,'gallery'],['Partite',overview.counts.matches,'matches'],['Sponsor',overview.counts.sponsors,'sponsors']]" :key="entry[0]"><div><span>{{entry[0]}}</span><svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[entry[2]]" /></svg></div><strong>{{entry[1]||0}}</strong><small>Nel Club Hub</small></article></div>
+          <section class="card quick-panel"><div class="panel-heading"><div><h2>Azioni rapide</h2><p class="form-hint">Dalla gestione alla pubblicazione, un passo alla volta.</p></div><span class="panel-kicker">Il tuo workspace</span></div><div class="quick"><button v-for="action in [['settings','Personalizza homepage','Identità, stile e immagini del club'],['teams','Squadre e roster','Tutti gli atleti, sempre aggiornati'],['matches','Gestisci il calendario','Incontri, risultati e parziali'],['posts','Pubblica un annuncio','Le novità da condividere con i tifosi']]" :key="action[0]" type="button" @click="activeTab=action[0]"><span class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="navIcons[action[0]]" /></svg></span><strong>{{action[1]}}</strong><small>{{action[2]}}</small><span class="quick-arrow" aria-hidden="true">↗</span></button></div></section>
+          <div class="dashboard-detail-grid"><section class="card dashboard-list"><div class="panel-heading"><h2>Dal calendario</h2><button type="button" class="text-button" @click="activeTab='matches'">Vedi tutto <span aria-hidden="true">→</span></button></div><p v-if="!overview.matches?.length" class="empty-state">Il calendario è pronto per la tua stagione. Inserisci il primo incontro.</p><article v-for="match in (overview.matches || []).slice(0, 3)" :key="match.id"><span class="dashboard-list-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path :d="navIcons.matches" /></svg></span><div><strong>{{matchClubName}} · {{match.opponent}}</strong><small>{{formatDate(match.scheduledAt)}}</small></div><span class="badge" :class="match.status">{{statusLabels[match.status] || match.status}}</span></article></section><section class="card dashboard-list"><div class="panel-heading"><h2>Le comunicazioni</h2><button type="button" class="text-button" @click="activeTab='posts'">Vedi tutto <span aria-hidden="true">→</span></button></div><p v-if="!overview.posts?.length" class="empty-state">Le tue storie iniziano qui. Crea la prima comunicazione per il club.</p><article v-for="post in (overview.posts || []).slice(0, 3)" :key="post.id"><span class="dashboard-list-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path :d="navIcons.posts" /></svg></span><div><strong>{{post.title}}</strong><small>{{formatDate(post.publishedAt)}}</small></div><span class="badge" :class="{muted:!post.active}">{{post.active ? 'Visibile' : 'Bozza'}}</span></article></section></div>
         </div>
 
         <form v-else-if="activeTab==='settings'" class="card settings-editor" :aria-busy="busy" @submit.prevent="saveSettings">
@@ -625,83 +669,332 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload) })
 </template>
 
 <style scoped>
-*{box-sizing:border-box}.club-admin{min-height:100vh;background:#07101f;color:#e5e7eb;font-family:Inter,ui-sans-serif,system-ui,sans-serif}.center,.login-shell{min-height:100vh;display:grid;place-items:center}.login-shell{background:radial-gradient(circle at 20% 20%,#172554,#07101f 55%)}.login-card{width:min(460px,calc(100% - 32px));padding:38px;background:rgba(15,23,42,.88);border:1px solid #263449;border-radius:24px;box-shadow:0 30px 80px rgba(0,0,0,.35)}.login-card h1{font-size:38px;letter-spacing:-.05em;margin:8px 0}.login-card>p{color:#94a3b8}.login-card form{display:grid;gap:14px;margin-top:24px}.login-card label,.form-grid label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#94a3b8}.login-card input,.form-grid input:not([type=checkbox]),.form-grid textarea,.form-grid select,.roster-editor textarea{width:100%;background:#060d19;border:1px solid #293548;border-radius:9px;padding:10px 11px;color:#f8fafc;font:inherit}.login-card button,.primary{border:0;border-radius:9px;padding:11px 16px;background:#f59e0b;color:#111827;font-weight:900;cursor:pointer}.eyebrow{margin:0;color:#f59e0b;font-size:10px;font-weight:950;letter-spacing:.16em}.error{color:#f87171}.notice{position:fixed;right:24px;top:22px;background:#dcfce7;color:#166534;padding:11px 16px;border-radius:10px;z-index:10}aside{position:fixed;inset:0 auto 0 0;width:245px;background:#030712;border-right:1px solid #172033;padding:24px 18px;display:flex;flex-direction:column}.admin-brand{display:flex;align-items:center;gap:11px;color:#fff;text-decoration:none;margin-bottom:34px}.admin-brand>span{width:43px;height:43px;display:grid;place-items:center;border-radius:11px;background:#f59e0b;color:#111827;font-weight:950}.admin-brand div{display:flex;flex-direction:column}.admin-brand small{color:#64748b}.club-admin nav{display:grid;gap:6px}.club-admin nav button{border:0;border-radius:9px;padding:11px 13px;text-align:left;background:transparent;color:#94a3b8;font-weight:700;cursor:pointer}.club-admin nav button.active{background:#172554;color:#fff}.aside-bottom{margin-top:auto;display:grid;gap:10px}.aside-bottom a,.aside-bottom button{color:#94a3b8;background:transparent;border:0;text-align:left;text-decoration:none;cursor:pointer}.workspace{margin-left:245px;min-height:100vh;padding:34px max(28px,calc((100vw - 1220px)/2))}.workspace>header{display:flex;align-items:center;justify-content:space-between;margin-bottom:30px}.workspace h1{font-size:36px;letter-spacing:-.04em;margin:4px 0}.status{font-size:10px;font-weight:900;padding:7px 10px;border-radius:999px;background:#052e16;color:#4ade80}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}.stats article,.card{background:#0e1727;border:1px solid #233047;border-radius:16px;padding:20px}.stats span{display:block;color:#64748b;font-size:12px}.stats strong{font-size:34px}.card{margin-bottom:16px}.card h2{margin:0 0 18px}.welcome{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(120deg,#172554,#111827)}.welcome h2{font-size:30px;margin:6px 0}.welcome p{color:#94a3b8}.welcome a{background:#f59e0b;color:#111827;padding:11px 16px;border-radius:9px;text-decoration:none;font-weight:900}.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.quick button,.buttons button,.list button{background:#111d31;border:1px solid #2b3a52;border-radius:9px;color:#cbd5e1;padding:10px;cursor:pointer}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:13px}.form-grid.single{grid-template-columns:1fr}.form-grid .wide{grid-column:1/-1}.form-grid .check{flex-direction:row;align-items:center}.form-grid .check input{width:auto}.card>.primary{margin-top:18px}.split{display:grid;grid-template-columns:minmax(290px,.75fr) minmax(420px,1.25fr);gap:16px;align-items:start}.roster-editor{grid-column:1/-1}.roster-editor>p{color:#94a3b8}.roster-editor textarea{resize:vertical}.buttons{display:flex;gap:8px;margin-top:14px}.list{display:grid;gap:8px}.list article{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;background:#091221;border:1px solid #1c2940;border-radius:10px}.list small{display:block;color:#64748b;margin-top:3px}.list .danger,.actions .danger{color:#f87171}.photo-admin{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.photo-admin figure{margin:0;background:#091221;border-radius:10px;overflow:hidden}.photo-admin img{width:100%;aspect-ratio:1;object-fit:cover}.photo-admin figcaption{display:flex;justify-content:space-between;padding:8px;font-size:11px}.photo-admin button{border:0;background:transparent;color:#f87171;cursor:pointer}@media(max-width:900px){aside{position:static;width:100%;height:auto}.club-admin nav{display:flex;overflow:auto}.aside-bottom{display:none}.workspace{margin-left:0;padding:22px 16px}.stats{grid-template-columns:repeat(2,1fr)}.split,.form-grid{grid-template-columns:1fr}.quick{grid-template-columns:1fr 1fr}.welcome{align-items:flex-start;gap:20px;flex-direction:column}.photo-admin{grid-template-columns:repeat(2,1fr)}}
-.form-hint{color:#94a3b8;font-size:13px;line-height:1.5}.tile-icons-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0 24px}.contact-editor{position:relative;min-width:0;border:1px solid #263449;border-radius:16px;padding:18px;margin:20px 0}.contact-editor legend{padding:0 8px;color:#f8fafc;font-size:14px;font-weight:800}.contact-actions{display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px}.contact-actions button,.contacts-editor .buttons>button:not(.primary){border:1px solid #334155;background:#172238;color:#cbd5e1;border-radius:8px;padding:8px 12px;cursor:pointer}.contact-actions button.danger{color:#fca5a5}.club-admin button:disabled{opacity:.5;cursor:not-allowed}
-.form-grid+h2{margin-top:32px}.contacts-editor .buttons>.primary{background:#f59e0b;color:#111827;border-color:#f59e0b}
-@media(max-width:1100px){.tile-icons-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.tile-icons-grid{grid-template-columns:1fr}.contact-editor{padding:12px}.contacts-editor .buttons{flex-wrap:wrap}}
-.typography-preview{margin:18px 0 28px;padding:22px;border:1px solid #334155;border-radius:12px;background:#f8fafc;color:#0f172a;font-family:var(--club-font-body)}
-.typography-preview small{color:#475569;font-size:12px}.typography-preview h3{margin:12px 0;font-family:var(--club-font-title);font-size:clamp(22px,3vw,32px);line-height:1.2}.typography-preview p{margin:0;font-size:15px;line-height:1.6}
-.typography-editor{min-width:0;margin:0 0 28px;padding:18px;border:1px solid #475569;border-radius:14px;background:#111d31}
-.typography-editor legend{padding:0 8px;color:#f8fafc;font-size:20px;font-weight:800}.typography-editor .typography-preview{margin-bottom:0}
-.club-admin select{display:block;min-height:46px;appearance:auto;color-scheme:dark}
-.club-admin select option{background:#060d19;color:#f8fafc}
-.club-admin .font-select{min-width:0;min-height:48px;padding:10px 12px;border:2px solid #94a3b8;border-radius:10px;background:#fff;color:#0f172a;color-scheme:light;font-size:16px;line-height:1.5;cursor:pointer}
-.club-admin .font-select option{background:#fff;color:#0f172a}.club-admin .font-select option:disabled{color:#64748b}
-.club-admin select:focus-visible{outline:3px solid #f59e0b;outline-offset:3px}
-.club-admin{color:#e2e8f0;background:#080f1b;font-size:14px;line-height:1.5}
-.workspace{padding:32px clamp(20px,3vw,48px);max-width:1800px}
-.workspace>header{gap:24px;align-items:flex-start;margin-bottom:26px}.workspace h1{font-size:clamp(28px,3vw,36px);line-height:1.2;margin:9px 0}.page-description{margin:0;color:#9aabc1;font-size:14px;max-width:680px}
-.public-link{flex-shrink:0;border:1px solid #3c4b62;border-radius:9px;padding:10px 14px;text-decoration:none;color:#e2e8f0;font-weight:650;font-size:13px}.public-link:hover{background:#18263b}
-.draft-indicator{font-size:12px;color:#fbbf24}.aside-bottom{padding-top:24px}.admin-brand small{max-width:140px;overflow-wrap:anywhere;color:#94a3b8}
-.processing-banner{padding:12px 16px;border:1px solid #345174;border-radius:9px;background:#132842;color:#bfdbfe;font-size:13px;margin-bottom:20px}
-.club-admin button{font:inherit;font-size:13px;font-weight:650;line-height:1.4}.club-admin button:not(.primary):not(.danger-filled){border:1px solid #35445b;border-radius:8px;background:#142238;color:#dbe5f3;padding:9px 12px;cursor:pointer}
-.club-admin nav button:not(.primary){border-color:transparent;background:transparent;color:#a5b4c9;padding:12px}.club-admin nav button.active{border-color:#344d77;background:#172c4b;color:#fff}.club-admin .aside-bottom button{background:transparent;text-align:left;border:0;padding:0;color:#a5b4c9}
-.club-admin button.primary{background:#fbbf24;color:#172033;border:1px solid #fbbf24;border-radius:9px;padding:11px 18px;font-weight:800}.club-admin button.primary:hover:not(:disabled){background:#fcd34d}.club-admin button.danger{color:#fca5a5}.club-admin button.danger:hover:not(:disabled){background:#431e2b;border-color:#9f4b59}
-.club-admin button:focus-visible,.club-admin a:focus-visible,.club-admin input:focus-visible,.club-admin textarea:focus-visible{outline:3px solid #fbbf24;outline-offset:3px}.club-admin input,.club-admin select,.club-admin textarea{color-scheme:dark}
-.card{padding:24px;border-color:#29384e;border-radius:14px;min-width:0;margin:0 0 20px;background:#101b2c;box-shadow:0 4px 16px #00000012}.card h2{font-size:20px;line-height:1.35;margin:0}.card h3{font-size:15px}
-.collection-toolbar{display:flex;align-items:flex-end;flex-wrap:wrap;gap:14px;border:1px solid #29384e;border-radius:12px;background:#101b2c;padding:16px 18px;margin-bottom:24px}.collection-toolbar label{flex:1 1 160px}.collection-toolbar .search-field{flex:2 1 240px}
-.collection-toolbar label,.form-grid label{font-size:13px;font-weight:600;color:#bdcbdd;display:flex;flex-direction:column;gap:8px}.collection-toolbar input,.collection-toolbar select,.form-grid input:not([type=checkbox]),.form-grid textarea,.form-grid select{width:100%;min-width:0;min-height:44px;border:1px solid #40516b;border-radius:8px;padding:11px 12px;background:#091322;color:#f1f5f9;font:inherit;font-size:14px;font-weight:400;line-height:1.5;transition:border-color .15s}
-.form-grid textarea{resize:vertical}.form-grid input::placeholder,.form-grid textarea::placeholder,.collection-toolbar input::placeholder{color:#7c90ac;opacity:1}.form-grid input[type=color]{padding:5px}.form-grid label small{font-size:12px;font-weight:400;color:#9aabc1;line-height:1.5}
-.filter-summary{display:flex;flex:1 1 150px;align-items:center;justify-content:flex-end;gap:12px;min-height:44px;color:#a5b4c9;font-size:12px}.club-admin .filter-summary button{border:0;background:transparent;padding:6px;color:#fcd34d;white-space:nowrap}
-.editor-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.85fr);gap:24px;align-items:start}.editor-layout.roster-open{grid-template-columns:1fr}
-.editor-heading,.panel-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.editor-heading .eyebrow{font-size:10px;margin-bottom:8px}.editor-heading>div{min-width:0}.editor-heading h2{overflow-wrap:anywhere}.required-hint{font-size:12px;margin:14px 0 26px}
-.form-body{border:0;padding:0;margin:0;min-width:0}.form-section{min-width:0;border:0;border-top:1px solid #2d3b51;padding:22px 0 0;margin:0 0 28px}.form-section legend{padding:0 12px 0 0;color:#f1f5f9;font-size:14px;font-weight:750}.form-section legend>span{color:#fbbf24;font-size:11px;padding-right:8px;font-variant-numeric:tabular-nums}.form-section .form-grid{gap:18px 16px}.form-grid>*{min-width:0}
-.form-grid .check{gap:9px;font-weight:500;line-height:1.6}.toggle-group{display:flex;flex-direction:column;gap:14px;justify-content:center}.editor-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid #2d3b51;padding-top:20px;margin-top:4px}.editor-footer>span{color:#9aabc1;font-size:12px;max-width:65%}.editor-footer button{flex-shrink:0}
-.records-panel>.panel-heading{align-items:center;margin-bottom:20px}.records-panel h2{font-size:18px}.badge{display:inline-flex;align-items:center;justify-content:center;gap:5px;background:#1f3654;border:1px solid #345174;color:#bfdbfe;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:650;white-space:nowrap}.badge.muted{background:#222e41;color:#a9b6c8;border-color:#39475e}.badge.completed{background:#103b31;color:#86efac;border-color:#21634d}.badge.live{background:#491f2c;color:#fda4af;border-color:#89364a}.badge.scheduled{background:#1f3654;color:#bfdbfe}
-.records-list{display:grid;gap:14px}.record-card{min-width:0;padding:18px;border:1px solid #2b3c55;border-radius:10px;background:#0c1626}.record-card.selected{border-color:#d5a238;box-shadow:inset 3px 0 #fbbf24}.record-meta{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:11px;color:#9aabc1}.record-card h3{font-size:16px;margin:14px 0 6px;line-height:1.45;overflow-wrap:anywhere;color:#f1f5f9}.record-card>p{font-size:12px;line-height:1.6;color:#a5b4c9;margin:5px 0;overflow-wrap:anywhere}.record-excerpt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.record-actions{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid #22324a;padding-top:14px;margin-top:16px}.record-actions button{flex:1 0 auto}.club-admin .record-actions .danger{flex:0 0 auto;border-color:transparent;background:transparent}
-.empty-state{border:1px dashed #3e506b;border-radius:10px;background:#0b1525;padding:28px 20px;text-align:center;font-size:13px;line-height:1.8;color:#a9bad0;margin:16px 0}.error-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #9d4355;background:#401e2c;color:#fecdd3;border-radius:10px;padding:14px 18px;font-size:14px;position:sticky;top:12px;z-index:5}.club-admin .error-banner button{padding:0 6px;background:transparent;border:0;color:inherit;font-size:22px}.notice{box-shadow:0 8px 30px #0004;max-width:calc(100vw - 32px)}
-.roster-editor{grid-column:1/-1}.roster-summary{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:24px 0;color:#a5b4c9;font-size:12px}.player-editor{min-width:0;position:relative;margin:20px 0;padding:20px;border:1px solid #344660;border-radius:12px;background:#0c1626}.player-editor legend{color:#e2e8f0;font-size:14px;font-weight:750;padding:0 8px;max-width:100%;overflow-wrap:anywhere}.row-actions{display:flex;justify-content:flex-end;gap:8px;margin:0 0 18px}.player-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr))}.add-row{padding:16px 0 24px}.club-admin .add-row button,.club-admin .add-set{border-style:dashed;color:#fcd34d;background:#19263a}
-.set-editor{padding:18px;background:#0a1424;border:1px solid #30415b;border-radius:10px}.set-editor h3{margin:0;font-size:14px}.set-row{display:grid;grid-template-columns:28px minmax(0,1fr) 8px minmax(0,1fr) 30px;align-items:end;gap:8px;margin:18px 0}.set-row>label{font-size:11px}.set-number{align-self:end;line-height:44px;color:#94a3b8;font-weight:700}.set-row>span:not(.set-number){line-height:44px;text-align:center}.club-admin .set-row button{padding:8px 0;height:44px;font-size:20px;border-color:transparent;background:transparent}.set-row input{text-align:center;font-variant-numeric:tabular-nums}.add-set{margin-top:8px;width:100%}.match-result{margin-top:16px;font-size:26px;font-weight:800;color:#f8fafc;font-variant-numeric:tabular-nums}.match-result>span{color:#64748b;margin:0 6px}.match-result small{display:block;font-size:11px;font-weight:500;color:#9aabc1}.versus{font-size:11px;color:#94a3b8;font-weight:500}
-.media-preview{display:grid;justify-items:center;gap:10px;padding:14px;border:1px dashed #3e506b;border-radius:10px;background:#091322}.media-preview img{width:100%;max-height:220px;object-fit:contain;border-radius:6px}.media-preview span{font-size:11px;color:#9aabc1;text-align:center}.photo-record>img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#17243a;margin-bottom:14px}.sponsor-record>img{display:block;width:100%;height:130px;object-fit:contain;border-radius:6px;background:#f8fafc;padding:14px;margin-bottom:14px}.stats{grid-template-columns:repeat(6,minmax(0,1fr))}.typography-editor{background:#0c1626;border-color:#344660}.typography-editor legend{font-size:16px}.settings-editor .form-section{margin-top:28px}
-.delete-dialog{width:min(480px,calc(100vw - 32px));border:1px solid #485a74;border-radius:16px;padding:28px;background:#101b2c;color:#e2e8f0;box-shadow:0 24px 80px #0008}.delete-dialog::backdrop{background:#020817b8;backdrop-filter:blur(3px)}.delete-dialog h2{font-size:22px;line-height:1.3;margin:12px 0}.delete-dialog p{font-size:14px;line-height:1.7;color:#afbed2}.delete-dialog .eyebrow{font-size:10px;color:#fca5a5}.delete-dialog .delete-name{color:#fff;font-weight:700;overflow-wrap:anywhere}.dialog-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}.club-admin .danger-filled{border:1px solid #dc4c67;border-radius:8px;padding:10px 14px;background:#b42342;color:#fff;cursor:pointer}
-@media(min-width:1600px){.editor-layout{grid-template-columns:minmax(0,1.3fr) minmax(340px,.85fr)}}
-@media(max-width:1200px){.editor-layout{grid-template-columns:minmax(0,1fr)}.records-list{grid-template-columns:repeat(2,minmax(0,1fr))}.player-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:900px){.workspace{margin-left:0;padding:24px 20px}.stats{grid-template-columns:repeat(3,minmax(0,1fr))}.admin-brand{margin-bottom:20px}.club-admin nav{padding-bottom:4px}.club-admin nav button:not(.primary){white-space:nowrap}.workspace>header{margin-bottom:24px}.collection-toolbar{gap:12px}.aside-bottom{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-top:18px}.draft-indicator{margin:0}}
-@media(max-width:600px){.workspace{padding:22px 14px}.workspace>header{flex-direction:column;gap:16px}.workspace h1{font-size:28px}.public-link{align-self:flex-start}.card{padding:18px}.form-grid,.player-grid{grid-template-columns:minmax(0,1fr)}.records-list{grid-template-columns:minmax(0,1fr)}.collection-toolbar{padding:14px}.collection-toolbar label,.collection-toolbar .search-field{flex-basis:100%}.filter-summary{justify-content:space-between}.editor-heading{flex-wrap:wrap}.editor-footer{flex-wrap:wrap}.editor-footer>span{max-width:100%;flex-basis:100%}.editor-footer button.primary{flex:1}.player-editor{padding:14px}.set-editor{padding:12px}.set-row{grid-template-columns:24px minmax(0,1fr) 5px minmax(0,1fr) 26px;gap:5px}.set-row label{font-size:10px}.set-row input{padding:10px 6px}.dialog-actions{flex-direction:column-reverse}.dialog-actions button{width:100%}}
-/* Keep every field inside its column, including nested score and media editors. */
-.club-admin label{min-width:0;max-width:100%;overflow-wrap:anywhere}
-.club-admin input,.club-admin select,.club-admin textarea{box-sizing:border-box;min-width:0;max-width:100%}
-.club-admin legend{max-width:100%;overflow-wrap:anywhere}
-.form-grid .check{position:relative;grid-column:1/-1;display:grid;grid-template-columns:22px minmax(0,1fr);align-items:center;align-content:center;gap:12px;width:100%;min-height:48px;padding:12px;border:1px solid #40516b;border-radius:8px;background:#091322;color:#e2e8f0;cursor:pointer}
-.check .checkbox-text{min-width:0;overflow-wrap:anywhere}
-.toggle-group{grid-column:1/-1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;gap:12px}
-.editor-heading,.editor-footer,.dialog-actions{flex-wrap:wrap}
-.editor-footer button{flex-shrink:1;max-width:100%;white-space:normal;overflow-wrap:anywhere}
-
-/* Draw the box and checkmark explicitly; retain the real input for labels and keyboard access. */
-.club-admin .check input[type=checkbox]{
-  position:absolute;
-  display:block;
-  left:12px;
-  top:50%;
-  transform:translateY(-50%);
-  width:22px;
-  height:22px;
-  min-width:22px;
-  min-height:22px;
-  margin:0;
-  padding:0;
-  border:0;
-  opacity:0;
-  cursor:pointer;
+* { box-sizing: border-box; }
+.club-admin { --club-admin-canvas: #f6f7fb; --club-admin-surface: #fff; --club-admin-ink: #182238; --club-admin-secondary: #526078; --club-admin-border: #e1e5ee; --club-admin-accent: #4f46e5; min-height: 100vh; background: var(--club-admin-canvas); color: var(--club-admin-ink); font-family: Inter, 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.5; color-scheme: light; }
+.club-admin h1, .club-admin h2, .club-admin h3 { color: var(--club-admin-ink); font-family: inherit; text-transform: none; letter-spacing: -.025em; }
+.club-admin button, .club-admin input, .club-admin select, .club-admin textarea { font: inherit; }
+.club-admin button { min-height: 40px; border: 1px solid #d6dce8; border-radius: 8px; padding: 9px 14px; background: #fff; color: #34415a; font-size: 13px; font-weight: 600; line-height: 1.45; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+.club-admin button:hover:not(:disabled) { background: #f3f4fc; border-color: #a5a8e7; }
+.club-admin button:disabled { opacity: .55; cursor: not-allowed; }
+.club-admin button.primary, .login-card button { background: #4f46e5; border-color: #4f46e5; color: #fff; padding: 11px 18px; box-shadow: 0 2px 3px #312e8112; }
+.club-admin button.primary:hover:not(:disabled), .login-card button:hover:not(:disabled) { background: #4338ca; border-color: #4338ca; }
+.club-admin button.danger { color: #b42338; }
+.club-admin button.danger:hover:not(:disabled) { background: #fff1f2; border-color: #f2a9b2; }
+.club-admin button.danger-filled { background: #bd2541; color: #fff; border-color: #bd2541; }
+.club-admin button.danger-filled:hover:not(:disabled) { background: #a61d36; }
+.club-admin button:focus-visible, .club-admin a:focus-visible, .club-admin summary:focus-visible, .club-admin input:focus-visible, .club-admin select:focus-visible, .club-admin textarea:focus-visible { outline: 3px solid #818cf8; outline-offset: 3px; }
+.club-admin label, .club-admin legend { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.club-admin input, .club-admin select, .club-admin textarea { min-width: 0; max-width: 100%; color-scheme: light; }
+.club-admin input::placeholder, .club-admin textarea::placeholder { color: #69758b; opacity: 1; }
+.club-admin input:disabled, .club-admin textarea:disabled, .club-admin select:disabled { background: #f1f3f7; color: #64748b; cursor: not-allowed; }
+.club-admin select option { background: #fff; color: #182238; }
+.club-admin select option:disabled { color: #69758b; }
+.center, .login-shell { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 18px; }
+.center { color: #526078; }
+.loading-ring { width: 32px; height: 32px; border: 3px solid #e0e3f4; border-top-color: #4f46e5; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.login-shell { padding: 24px; background: radial-gradient(ellipse at 20% 0%, #e8e7ff, transparent 55%), #f6f7fb; }
+.login-card { width: min(460px, calc(100vw - 48px)); padding: 40px; border: 1px solid #dfe3ef; border-radius: 20px; background: #fff; box-shadow: 0 20px 70px #27244d0d; }
+.login-card h1 { margin: 12px 0; font-size: 32px; line-height: 1.18; }
+.login-card > p { color: #526078; }
+.login-card form { display: grid; gap: 18px; margin-top: 28px; }
+.login-card label { display: grid; gap: 7px; color: #34415a; font-size: 13px; font-weight: 600; }
+.login-card input { width: 100%; min-height: 46px; border: 1px solid #cbd2e0; border-radius: 8px; padding: 10px 12px; color: #182238; background: #fff; }
+.eyebrow { color: #6359bd; margin: 0; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.club-admin > aside { position: fixed; z-index: 60; inset: 0 auto 0 0; width: 252px; height: 100vh; height: 100dvh; padding: 22px 16px 14px; display: flex; flex-direction: column; background: #111827; color: #e5e7ef; border-right: 1px solid #202b40; }
+.sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 26px; }
+.admin-brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; min-width: 0; }
+.admin-brand > span { display: grid; place-items: center; flex: none; width: 37px; height: 37px; border-radius: 10px; background: #6155e9; color: #fff; font-weight: 800; font-size: 15px; letter-spacing: -.08em; }
+.admin-brand > div { display: grid; gap: 1px; min-width: 0; }
+.admin-brand strong { font-size: 16px; font-weight: 650; letter-spacing: -.04em; }
+.admin-brand strong > span { color: #a69dfa; }
+.admin-brand small { color: #a8b3c6; font-size: 10px; letter-spacing: .04em; }
+.club-identity { display: flex; align-items: center; gap: 10px; padding: 12px 10px; border: 1px solid #2c374c; border-radius: 10px; margin-bottom: 26px; background: #192234; }
+.club-avatar { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 8px; background: #353255; color: #d6ceff; font-size: 11px; font-weight: 750; }
+.club-identity > div { min-width: 0; display: grid; gap: 2px; flex: 1; }
+.club-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.club-identity small { color: #b0bbcd; font-size: 10px; }
+.identity-dot { width: 6px; height: 6px; border-radius: 50%; background: #7b82ac; }
+.club-admin nav { min-height: 0; flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3b465e transparent; }
+.nav-group + .nav-group { margin-top: 24px; }
+.nav-group-label { margin: 0 12px 10px; color: #9aa8c0; text-transform: uppercase; font-size: 9px; font-weight: 650; letter-spacing: .14em; }
+.club-admin nav button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 12px; margin: 3px 0; min-height: 43px; border: 1px solid transparent; background: transparent; color: #b8c2d4; text-align: left; font-size: 12px; font-weight: 500; }
+.club-admin nav button:hover:not(:disabled) { color: #fff; background: #202b40; border-color: transparent; }
+.club-admin nav button.active { color: #fff; background: #4f46e5; border-color: #635be7; box-shadow: 0 4px 12px #00000015; }
+.nav-icon { flex: none; width: 18px; height: 18px; }
+.nav-label { flex: 1; }
+.nav-active-dot { flex: none; width: 5px; height: 5px; border-radius: 50%; background: #d3ceff; }
+.aside-bottom { display: grid; gap: 4px; padding-top: 14px; margin-top: 18px; border-top: 1px solid #2b3549; }
+.aside-bottom > a, .club-admin .aside-bottom > button { display: flex; align-items: center; gap: 12px; min-height: 40px; background: transparent; border: 1px solid transparent; color: #b8c2d4; border-radius: 8px; padding: 10px 12px; text-decoration: none; font-size: 12px; font-weight: 500; text-align: left; }
+.aside-bottom > a:hover, .club-admin .aside-bottom > button:hover:not(:disabled) { background: #202b40; color: #fff; border-color: transparent; }
+.club-admin .aside-bottom .collapse-button { min-height: 34px; padding-top: 7px; padding-bottom: 7px; margin-top: 7px; color: #9aa8c0; }
+.flipped { transform: rotate(180deg); }
+.draft-indicator { display: flex; align-items: center; gap: 9px; color: #f7d788; padding: 0 12px; font-size: 11px; }
+.workspace { margin-left: 252px; min-width: 0; min-height: 100vh; padding: 0 clamp(22px, 3vw, 48px) 48px; }
+.workspace-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; margin: 0 calc(-1 * clamp(22px, 3vw, 48px)) 32px; padding: 12px clamp(22px, 3vw, 48px); border-bottom: 1px solid #e3e7ef; background: #fff; color: #647087; font-size: 11px; }
+.workspace-topbar > div { display: flex; gap: 14px; align-items: center; min-width: 0; }
+.workspace-topbar strong { font-size: 11px; font-weight: 550; color: #34415a; }
+.workspace-context { border: 1px solid #e0e5ed; border-radius: 6px; padding: 5px 8px; font-size: 10px; white-space: nowrap; }
+.workspace > header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.workspace > header > div { min-width: 0; }
+.workspace h1 { font-size: clamp(26px, 2.6vw, 34px); line-height: 1.22; font-weight: 650; margin: 5px 0 8px; }
+.page-description { margin: 0; color: #606d82; font-size: 13px; max-width: 660px; line-height: 1.65; }
+.public-link { display: inline-flex; align-items: center; gap: 12px; flex-shrink: 0; border: 1px solid #d5dce8; border-radius: 8px; background: #fff; padding: 10px 14px; color: #34415a; text-decoration: none; font-size: 12px; font-weight: 600; }
+.public-link:hover { color: #4338ca; border-color: #a5a8e7; background: #f9f9ff; }
+.card { min-width: 0; margin: 0 0 22px; padding: 25px; background: #fff; border: 1px solid #e0e5ee; border-radius: 13px; box-shadow: 0 2px 3px #10182803; }
+.card h2 { margin: 0; font-size: 18px; font-weight: 650; line-height: 1.4; }
+.card h3 { font-size: 15px; font-weight: 600; }
+.welcome { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 30px 34px; overflow: hidden; background: linear-gradient(112deg, #29295c, #4542a6); border: 0; color: #fff; }
+.welcome::after { position: absolute; content: ''; pointer-events: none; right: -90px; top: -190px; width: 380px; height: 380px; border: 1px solid #ffffff14; border-radius: 50%; box-shadow: 0 0 0 42px #ffffff04, 0 0 0 84px #ffffff04; }
+.welcome > div { position: relative; z-index: 1; }
+.welcome-kicker { display: inline-flex; align-items: center; gap: 8px; color: #e0dfff; border: 1px solid #ffffff30; background: #ffffff0b; border-radius: 20px; padding: 4px 10px; font-size: 10px; }
+.welcome-kicker > span { color: #b9afff; font-size: 8px; }
+.welcome h2 { color: #fff; font-size: clamp(24px, 2.7vw, 32px); font-weight: 600; margin: 13px 0 9px; }
+.welcome p { max-width: 520px; color: #e0dff5; font-size: 12px; line-height: 1.8; margin: 0 0 18px; }
+.club-admin .welcome-action { background: #fff; color: #373191; border: 1px solid #fff; min-height: 39px; padding: 9px 13px; font-size: 11px; }
+.club-admin .welcome-action:hover { background: #eeedff; border-color: #eeedff; }
+.welcome-action > span { margin-left: 16px; }
+.welcome-side { display: grid; justify-items: center; gap: 12px; min-width: 135px; }
+.welcome-mark { display: grid; place-items: center; width: 94px; height: 94px; border: 1px solid #ffffff25; border-radius: 26px; background: #ffffff0a; transform: rotate(-7deg); color: #e4e0ff; font-size: 36px; letter-spacing: -.1em; font-weight: 750; }
+.welcome-side a { color: #ecebff; font-size: 11px; text-decoration: none; }
+.welcome-side a > span { margin-left: 10px; }
+.dashboard-section-heading, .panel-heading, .editor-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+.dashboard-section-heading { margin: 30px 0 16px; }
+.dashboard-section-heading h2 { margin: 0 0 4px; font-size: 17px; font-weight: 650; }
+.dashboard-section-heading p { margin: 0; font-size: 12px; color: #647087; }
+.stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 13px; margin-bottom: 24px; }
+.stats article { min-width: 0; padding: 18px; background: #fff; border: 1px solid #e0e5ee; border-radius: 11px; }
+.stats article > div { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.stats span { color: #526078; font-size: 11px; font-weight: 550; }
+.stat-icon { width: 16px; height: 16px; color: #7b74bb; }
+.stats strong { display: block; font-size: 29px; letter-spacing: -.045em; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.3; margin: 13px 0 4px; }
+.stats small { color: #69758b; font-size: 9px; }
+.quick-panel .panel-heading { margin-bottom: 20px; }
+.quick-panel .form-hint { margin: 5px 0 0; font-size: 12px; }
+.panel-kicker { color: #69758b; font-size: 10px; }
+.quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.club-admin .quick > button { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px; background: #fff; border: 1px solid #e0e5ee; border-radius: 9px; text-align: left; }
+.club-admin .quick > button:hover { border-color: #a8a2f1; background: #fafaff; box-shadow: 0 4px 16px #4f46e508; }
+.quick-icon { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid #e3e0fc; background: #f1efff; border-radius: 9px; color: #6256c3; margin-bottom: 4px; }
+.quick-icon svg { width: 18px; height: 18px; }
+.quick strong { font-size: 11px; font-weight: 600; color: #26334b; }
+.quick small { font-size: 10px; font-weight: 400; color: #647087; line-height: 1.6; }
+.quick-arrow { position: absolute; top: 17px; right: 17px; color: #8a94a8; font-size: 15px; }
+.dashboard-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+.dashboard-list { margin-bottom: 0; }
+.dashboard-list .panel-heading { margin-bottom: 18px; gap: 10px; }
+.dashboard-list h2 { font-size: 15px; }
+.club-admin .text-button { border: 0; background: transparent; color: #5144bb; padding: 5px 0; font-size: 10px; min-height: 30px; }
+.club-admin .text-button:hover { background: transparent; color: #3730a3; }
+.dashboard-list > article { display: flex; align-items: center; gap: 12px; padding: 15px 0; border-top: 1px solid #eef0f5; }
+.dashboard-list > article > div { flex: 1; min-width: 0; }
+.dashboard-list > article strong { display: block; overflow-wrap: anywhere; color: #34415a; font-size: 11px; font-weight: 600; }
+.dashboard-list > article small { display: block; margin-top: 4px; color: #69758b; font-size: 10px; }
+.dashboard-list-icon { width: 34px; height: 34px; flex: none; display: grid; place-items: center; background: #f4f5fa; color: #737f98; border-radius: 8px; }
+.dashboard-list-icon svg { width: 16px; height: 16px; }
+.dashboard-list .empty-state { font-size: 12px; padding: 25px 16px; }
+.collection-toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 16px; padding: 18px 20px; margin-bottom: 24px; border: 1px solid #e0e5ee; border-radius: 11px; background: #fff; }
+.collection-toolbar label { flex: 1 1 145px; }
+.collection-toolbar .search-field { flex: 2 1 230px; }
+.collection-toolbar label, .form-grid label { min-width: 0; display: flex; flex-direction: column; gap: 8px; color: #34415a; font-size: 12px; font-weight: 600; }
+.collection-toolbar input, .collection-toolbar select, .form-grid input:not([type=checkbox]), .form-grid textarea, .form-grid select { display: block; width: 100%; min-width: 0; min-height: 44px; border: 1px solid #cbd2df; border-radius: 8px; padding: 10px 12px; color: #182238; background: #fff; font: inherit; font-size: 13px; font-weight: 400; line-height: 1.5; transition: border-color .15s, box-shadow .15s; }
+.collection-toolbar input:hover, .collection-toolbar select:hover, .form-grid input:hover:not(:disabled), .form-grid textarea:hover:not(:disabled), .form-grid select:hover:not(:disabled) { border-color: #9aa6bd; }
+.collection-toolbar input:focus, .collection-toolbar select:focus, .form-grid input:focus, .form-grid textarea:focus, .form-grid select:focus { border-color: #7062df; box-shadow: 0 0 0 3px #6155e912; }
+.form-grid input[readonly] { background: #f4f5f9; color: #526078; }
+.form-grid textarea { resize: vertical; }
+.form-grid input[type=color] { padding: 5px; cursor: pointer; }
+.form-grid label small { font-size: 11px; font-weight: 400; line-height: 1.6; color: #647087; }
+.filter-summary { display: flex; align-items: center; justify-content: flex-end; flex: 1 1 140px; gap: 10px; min-height: 44px; color: #647087; font-size: 11px; }
+.club-admin .filter-summary button { border: 0; background: transparent; color: #5144bb; font-size: 11px; padding: 6px; white-space: nowrap; }
+.editor-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(300px, .85fr); align-items: start; gap: 24px; }
+.editor-layout.roster-open { grid-template-columns: minmax(0, 1fr); }
+.editor-heading { align-items: flex-start; }
+.editor-heading > div { min-width: 0; }
+.editor-heading h2 { overflow-wrap: anywhere; }
+.editor-heading .eyebrow { margin-bottom: 8px; }
+.required-hint { font-size: 11px; margin: 13px 0 26px; }
+.form-hint { color: #647087; font-size: 12px; line-height: 1.7; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 18px 16px; }
+.form-grid > * { min-width: 0; }
+.form-grid.single { grid-template-columns: minmax(0, 1fr); }
+.form-grid .wide { grid-column: 1 / -1; }
+.form-body { min-width: 0; border: 0; padding: 0; margin: 0; }
+.form-section { min-width: 0; border: 0; border-top: 1px solid #e2e6ef; padding: 22px 0 0; margin: 0 0 28px; }
+.form-section legend { color: #34415a; padding: 0 12px 0 0; font-size: 13px; font-weight: 600; }
+.form-section legend > span { color: #7566c9; font-size: 10px; font-weight: 600; padding-right: 8px; }
+.settings-editor .form-section { margin-top: 28px; }
+.typography-editor { min-width: 0; border: 1px solid #e0e5ee; border-radius: 10px; padding: 20px; margin: 24px 0 28px; background: #fbfbfe; }
+.typography-editor legend { padding: 0 8px; font-size: 15px; color: #34415a; font-weight: 600; }
+.typography-preview { margin-top: 20px; padding: 24px; border: 1px solid #e0e5ee; border-radius: 9px; color: #182238; background: #fff; font-family: var(--club-font-body); }
+.typography-preview small { color: #647087; font-size: 10px; }
+.typography-preview h3 { margin: 12px 0; font-family: var(--club-font-title); font-size: clamp(22px, 3vw, 32px); line-height: 1.25; }
+.typography-preview p { margin: 0; font-size: 14px; line-height: 1.7; }
+.club-admin .font-select { appearance: auto; font-size: 14px; }
+.tile-icons-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 20px 0 24px; }
+.contact-editor, .player-editor { min-width: 0; border: 1px solid #dce2ec; border-radius: 11px; padding: 20px; margin: 24px 0; background: #fbfcfe; }
+.contact-editor legend, .player-editor legend { padding: 0 8px; font-size: 13px; font-weight: 600; color: #34415a; }
+.contact-actions, .row-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-bottom: 18px; }
+.editor-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; border-top: 1px solid #e2e6ef; padding-top: 20px; margin-top: 5px; }
+.editor-footer > span { max-width: 65%; color: #647087; font-size: 11px; }
+.editor-footer button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.badge { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 8px; border: 1px solid #dedbf8; border-radius: 6px; background: #f0edff; color: #5d46a6; font-size: 10px; font-weight: 600; white-space: nowrap; line-height: 1.5; }
+.badge.muted { background: #f2f4f8; border-color: #e0e5ee; color: #606d82; }
+.badge.completed { background: #ecf8f1; border-color: #c5e9d6; color: #21734b; }
+.badge.live { background: #fff0f2; border-color: #f5c4ce; color: #b42348; }
+.badge.scheduled { background: #eef3ff; border-color: #d4e0ff; color: #3d5aa8; }
+.records-panel > .panel-heading { margin-bottom: 20px; }
+.records-panel h2 { font-size: 16px; }
+.records-list { display: grid; gap: 14px; }
+.record-card { min-width: 0; border: 1px solid #e1e6ef; border-radius: 10px; padding: 18px; background: #fff; transition: border-color .15s; }
+.record-card:hover { border-color: #bcc4d6; }
+.record-card.selected { border-color: #8c7ee9; box-shadow: inset 3px 0 #6b5cdd; background: #fdfcff; }
+.record-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; color: #647087; font-size: 10px; }
+.record-card h3 { margin: 14px 0 6px; color: #26334b; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.record-card > p { margin: 5px 0; color: #606d82; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.record-excerpt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.record-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #edf0f5; }
+.record-actions button { flex: 1 0 auto; font-size: 11px; padding: 8px 10px; }
+.club-admin .record-actions .danger { flex: 0 0 auto; background: transparent; border-color: transparent; }
+.empty-state { margin: 16px 0; padding: 28px 20px; border: 1px dashed #cdd5e4; border-radius: 9px; background: #fafbfe; color: #606d82; font-size: 12px; line-height: 1.8; text-align: center; }
+.error { color: #b42338; }
+.error-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 20px; border: 1px solid #f1bcc7; border-radius: 9px; padding: 13px 16px; background: #fff0f3; color: #a51d38; font-size: 13px; }
+.club-admin .error-banner button { min-height: 32px; padding: 0 7px; border: 0; background: transparent; color: inherit; font-size: 24px; }
+.notice { position: fixed; z-index: 80; right: 24px; top: 20px; max-width: calc(100vw - 48px); padding: 12px 18px; border: 1px solid #b9dfce; border-radius: 9px; color: #1c6b47; background: #eefaf3; box-shadow: 0 8px 30px #18223814; font-size: 13px; }
+.processing-banner { padding: 13px 16px; margin-bottom: 20px; border: 1px solid #ccd9f9; border-radius: 9px; color: #355395; background: #eff4ff; font-size: 12px; }
+.roster-editor { grid-column: 1 / -1; }
+.roster-summary { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 24px 0; color: #647087; font-size: 11px; }
+.player-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.add-row { padding: 12px 0 24px; }
+.club-admin .add-row button, .club-admin .add-set { border-style: dashed; border-color: #c3bbed; background: #f8f6ff; color: #5943b4; }
+.set-editor { padding: 18px; border: 1px solid #dce2ec; border-radius: 9px; background: #f8f9fc; }
+.set-editor h3 { margin: 0; font-size: 13px; }
+.set-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 8px minmax(0, 1fr) 30px; align-items: end; gap: 8px; margin: 18px 0; }
+.set-row > label { font-size: 11px; }
+.set-number { line-height: 44px; color: #647087; font-weight: 600; }
+.set-row > span:not(.set-number) { line-height: 44px; text-align: center; }
+.club-admin .set-row button { height: 44px; padding: 8px 0; font-size: 20px; border-color: transparent; background: transparent; }
+.set-row input { text-align: center; font-variant-numeric: tabular-nums; }
+.add-set { margin-top: 8px; width: 100%; }
+.match-result { margin-top: 16px; color: #26334b; font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.match-result > span { color: #8b96aa; margin: 0 6px; }
+.match-result small { display: block; color: #647087; font-size: 10px; font-weight: 400; }
+.versus { color: #778298; font-size: 11px; font-weight: 400; }
+.photo-record > img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 7px; background: #f1f3f8; margin-bottom: 14px; }
+.sponsor-record > img { display: block; width: 100%; height: 130px; object-fit: contain; border-radius: 7px; background: #f7f8fb; padding: 14px; margin-bottom: 14px; }
+.form-grid .check { position: relative; display: grid; grid-column: 1 / -1; grid-template-columns: 20px minmax(0, 1fr); gap: 11px; align-items: center; align-content: center; width: 100%; min-height: 48px; padding: 12px; border: 1px solid #d7ddea; border-radius: 8px; color: #34415a; background: #fafbfe; cursor: pointer; font-weight: 500; }
+.check:has(input:checked) { border-color: #b7adee; background: #f7f5ff; }
+.check .checkbox-text { min-width: 0; overflow-wrap: anywhere; }
+.toggle-group { grid-column: 1 / -1; min-width: 0; display: grid; gap: 12px; }
+.club-admin .check input[type=checkbox] { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: block; width: 20px; height: 20px; min-width: 20px; min-height: 20px; padding: 0; margin: 0; opacity: 0; cursor: pointer; }
+.check .checkbox-box { display: grid; place-items: center; width: 20px; height: 20px; border: 1.5px solid #99a5bb; border-radius: 5px; background: #fff; color: #fff; pointer-events: none; }
+.checkbox-box svg { display: block; width: 15px; height: 15px; visibility: hidden; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.check input:checked + .checkbox-box { border-color: #5f50cb; background: #5f50cb; }
+.check input:checked + .checkbox-box svg { visibility: visible; }
+.check input:focus-visible + .checkbox-box { outline: 3px solid #818cf8; outline-offset: 4px; }
+.check:has(input:disabled) { opacity: .6; cursor: not-allowed; }
+.delete-dialog { width: min(490px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 30px; border: 1px solid #d6dce8; border-radius: 16px; background: #fff; color: #182238; box-shadow: 0 24px 80px #0f172a33; }
+.delete-dialog::backdrop { background: #1118278c; backdrop-filter: blur(3px); }
+.delete-dialog h2 { margin: 12px 0; font-size: 23px; line-height: 1.3; }
+.delete-dialog p { color: #606d82; font-size: 13px; line-height: 1.8; }
+.delete-dialog .eyebrow { color: #b42338; font-size: 10px; }
+.delete-dialog .delete-name { color: #26334b; font-weight: 600; overflow-wrap: anywhere; }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.club-admin .icon-button { display: grid; place-items: center; width: 38px; height: 38px; min-height: 38px; padding: 8px; }
+.icon-button svg { width: 19px; height: 19px; }
+.club-admin .mobile-menu, .club-admin .mobile-close, .club-admin .mobile-backdrop { display: none; }
+/* Media controls retain upload behavior while inheriting the workspace palette. */
+.club-admin :deep(.media-field) { color: #34415a; font-size: 12px; }
+.club-admin :deep(.media-dropzone) { border-color: #cbd4e5; background: #fafbfe; }
+.club-admin :deep(.media-thumbnail) { background: #edf0f8; }
+.club-admin :deep(.media-controls > span), .club-admin :deep(.media-link summary) { color: #647087; }
+.club-admin :deep(.media-field button) { background: #fff; border-color: #cbd2e0; color: #34415a; }
+.club-admin :deep(.media-field .remove-media) { color: #b42338; border: 0; background: none; }
+.club-admin :deep(.media-link input) { background: #fff; border-color: #cbd2e0; color: #182238; }
+.club-admin :deep(.media-error), .club-admin :deep(.media-thumbnail > span) { color: #b42338; }
+.club-admin :deep(.media-ready) { color: #21734b; }
+.club-admin :deep(.tile-icon-editor) { background: #fafbfe; border-color: #dce2ed; }
+.club-admin :deep(.icon-controls strong) { color: #34415a; font-size: 13px; }
+.club-admin :deep(.upload-label) { background: #eeebff; color: #5943b4; }
+.club-admin :deep(.icon-controls button) { color: #647087; }
+.club-admin :deep(.icon-controls p) { color: #b42338; }
+.club-admin :deep(.media-field button:focus-visible), .club-admin :deep(.media-link summary:focus-visible), .club-admin :deep(.media-link input:focus-visible), .club-admin :deep(.upload-label:focus-within) { outline: 3px solid #818cf8; outline-offset: 3px; }
+@media (min-width: 901px) {
+  .club-admin--collapsed > aside { width: 80px; padding-inline: 12px; }
+  .club-admin--collapsed .workspace { margin-left: 80px; }
+  .club-admin--collapsed .admin-brand > div, .club-admin--collapsed .club-identity > div, .club-admin--collapsed .identity-dot, .club-admin--collapsed .nav-active-dot { display: none; }
+  .club-admin--collapsed .sidebar-top { justify-content: center; }
+  .club-admin--collapsed .club-identity { justify-content: center; padding: 10px 0; border-color: transparent; background: transparent; }
+  .club-admin--collapsed .nav-label, .club-admin--collapsed .footer-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .club-admin--collapsed .nav-group-label { height: 10px; margin: 0 0 10px; font-size: 0; border-bottom: 1px solid #293349; }
+  .club-admin--collapsed nav button, .club-admin--collapsed .aside-bottom > a, .club-admin--collapsed .aside-bottom > button { justify-content: center; padding-inline: 10px; }
+  .club-admin--collapsed .draft-indicator { justify-content: center; padding: 0; }
 }
-.check .checkbox-box{display:grid;place-items:center;width:22px;height:22px;border:2px solid #cbd5e1;border-radius:4px;background:#091322;color:#172033;pointer-events:none}
-.checkbox-box svg{display:block;width:16px;height:16px;visibility:hidden;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
-.check input:checked+.checkbox-box{border-color:#fbbf24;background:#fbbf24}
-.check input:checked+.checkbox-box svg{visibility:visible}
-.check input:focus-visible+.checkbox-box{outline:3px solid #fbbf24;outline-offset:4px}
-.club-admin .check input:disabled{cursor:not-allowed}
-.check:has(input:disabled){cursor:not-allowed;opacity:.6}
-@media(forced-colors:active){.check .checkbox-box{forced-color-adjust:none;border-color:CanvasText;background:Canvas;color:CanvasText}.check input:checked+.checkbox-box{border-color:Highlight;background:Highlight;color:HighlightText}.check input:focus-visible+.checkbox-box{outline-color:Highlight}}
-@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+@media (min-width: 1600px) { .editor-layout { grid-template-columns: minmax(0, 1.3fr) minmax(340px, .85fr); } }
+@media (max-width: 1320px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .quick { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1200px) { .editor-layout { grid-template-columns: minmax(0, 1fr); } .records-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tile-icons-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dashboard-detail-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) {
+  .club-admin > aside { width: min(300px, calc(100vw - 52px)); padding-top: 20px; visibility: hidden; transform: translateX(-101%); transition: transform .2s ease, visibility .2s; }
+  .club-admin--menu-open > aside { visibility: visible; transform: translateX(0); }
+  .club-admin .mobile-close { display: grid; border-color: #35415b; background: #1c263a; color: #dfe5f2; font-size: 23px; }
+  .club-admin .mobile-menu { display: grid; }
+  .club-admin .collapse-button { display: none; }
+  .club-admin .mobile-backdrop { display: block; position: fixed; z-index: 55; inset: 0; width: 100%; height: 100dvh; min-height: 100vh; border: 0; border-radius: 0; padding: 0; background: #11182788; backdrop-filter: blur(2px); }
+  .club-admin .mobile-backdrop:hover { background: #11182788; }
+  :global(body:has(.club-admin--menu-open)) { overflow: hidden; }
+  .workspace { margin-left: 0; padding: 0 22px 36px; }
+  .workspace-topbar { margin-inline: -22px; padding-inline: 22px; margin-bottom: 26px; }
+  .club-identity { margin-bottom: 22px; }
+}
+@media (max-width: 600px) {
+  .club-admin button { min-height: 44px; }
+  .workspace { padding: 0 16px 30px; }
+  .workspace-topbar { min-height: 64px; padding-inline: 16px; margin-inline: -16px; gap: 8px; }
+  .workspace-topbar > div { gap: 9px; font-size: 10px; }
+  .workspace-context { display: none; }
+  .workspace > header { align-items: flex-start; flex-direction: column; gap: 15px; margin-bottom: 22px; }
+  .workspace h1 { font-size: 28px; }
+  .public-link { min-height: 44px; }
+  .card { padding: 19px; border-radius: 11px; }
+  .welcome { padding: 25px; align-items: flex-start; }
+  .welcome-side { display: none; }
+  .welcome h2 { font-size: 26px; }
+  .welcome p { font-size: 12px; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+  .stats article { padding: 16px; }
+  .stats strong { font-size: 28px; margin-top: 12px; }
+  .stats small { font-size: 10px; }
+  .stats span { font-size: 12px; }
+  .quick { grid-template-columns: minmax(0, 1fr); gap: 11px; }
+  .club-admin .quick > button { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 4px 13px; padding: 16px; }
+  .quick-icon { grid-row: span 2; margin: 0; }
+  .quick strong { font-size: 12px; padding-right: 14px; }
+  .quick small { font-size: 11px; grid-column: 2; }
+  .quick-arrow { top: 15px; right: 14px; }
+  .panel-kicker { display: none; }
+  .dashboard-section-heading { margin-top: 26px; }
+  .dashboard-detail-grid { gap: 18px; }
+  .dashboard-list .badge { font-size: 9px; padding: 3px 5px; }
+  .dashboard-list > article { gap: 9px; }
+  .dashboard-list > article strong { font-size: 11px; }
+  .form-grid, .player-grid, .records-list, .tile-icons-grid { grid-template-columns: minmax(0, 1fr); }
+  .collection-toolbar { padding: 16px; gap: 13px; }
+  .collection-toolbar label, .collection-toolbar .search-field { flex-basis: 100%; }
+  .filter-summary { justify-content: space-between; }
+  .editor-heading { gap: 12px; }
+  .editor-footer > span { max-width: 100%; flex-basis: 100%; }
+  .editor-footer button.primary { flex: 1; }
+  .player-editor, .contact-editor { padding: 15px; }
+  .typography-editor { padding: 15px; }
+  .typography-preview { padding: 18px; }
+  .set-editor { padding: 12px; }
+  .set-row { grid-template-columns: 23px minmax(0, 1fr) 5px minmax(0, 1fr) 26px; gap: 5px; }
+  .set-row label { font-size: 10px; }
+  .set-row input { padding: 10px 6px; }
+  .dialog-actions { flex-direction: column-reverse; }
+  .dialog-actions button { width: 100%; }
+  .delete-dialog { padding: 24px; }
+  .login-card { padding: 28px; }
+}
+@media (forced-colors: active) { .check .checkbox-box { forced-color-adjust: none; border-color: CanvasText; background: Canvas; color: CanvasText; } .check input:checked + .checkbox-box { background: Highlight; border-color: Highlight; color: HighlightText; } .check input:focus-visible + .checkbox-box { outline-color: Highlight; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 </style>

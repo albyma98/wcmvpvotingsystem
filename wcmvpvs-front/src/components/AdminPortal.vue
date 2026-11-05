@@ -1,27 +1,35 @@
 <template>
   <div class="admin-portal">
-    <section v-if="!isAuthenticated" class="card login-card">
-      <header class="admin-header login-header">
-        <h1>Area amministratore</h1>
-        <p class="subtitle">Gestisci eventi, squadre e votazioni MVP</p>
+    <div v-if="!isAuthenticated" class="admin-login">
+      <aside class="admin-login__story">
+        <a class="admin-login__brand" :href="basePath || '/'" aria-label="ArenaBoostX, torna alla home"><span class="admin-login__mark">a<span>×</span></span>ArenaBoost<span>X</span></a>
+        <div class="admin-login__message"><span>IL TUO CLUB. LA TUA ARENA.</span><h1>Grandi partite.<br />Esperienze<br /><em>straordinarie.</em></h1><p>Il centro di controllo per connettere la tua società, i tuoi partner e la passione dei tuoi fan.</p><div class="admin-login__features"><span><AdminIcon name="calendar" :size="18" /> Eventi e votazioni</span><span><AdminIcon name="users" :size="18" /> Squadra e community</span><span><AdminIcon name="chart" :size="18" /> Risultati e insight</span></div></div>
+        <p class="admin-login__signature">ArenaBoostX · Fan engagement platform</p>
+      </aside>
+      <section class="card login-card">
+      <header class="login-header">
+        <span class="admin-login__welcome">BENVENUTO NELLA TUA ARENA</span>
+        <h2>Accedi al tuo workspace</h2>
+        <p class="subtitle">Tutto pronto per la prossima grande esperienza.</p>
         <p v-if="organizationSlug" class="context-badge">Società: {{ organizationSlug }}</p>
       </header>
-      <h2>Accedi</h2>
       <form @submit.prevent="login" class="form-grid">
         <label>
           Username
-          <input v-model.trim="loginForm.username" type="text" autocomplete="username" required />
+          <input v-model.trim="loginForm.username" type="text" autocomplete="username" placeholder="Il tuo nome utente" required />
         </label>
         <label>
           Password
-          <input v-model="loginForm.password" type="password" autocomplete="current-password" required />
+          <input v-model="loginForm.password" type="password" autocomplete="current-password" placeholder="Inserisci la tua password" required />
         </label>
-        <button class="btn primary" type="submit" :disabled="isLoggingIn">{{ isLoggingIn ? "Accesso in corso…" : "Entra" }}</button>
+        <button class="btn primary" type="submit" :disabled="isLoggingIn" :aria-busy="isLoggingIn">{{ isLoggingIn ? "Accesso in corso…" : "Accedi al workspace" }}<AdminIcon v-if="!isLoggingIn" name="arrow-right" :size="18" /></button>
       </form>
-      <p v-if="loginError" class="error">{{ loginError }}</p>
-    </section>
+      <p v-if="loginError" class="error" role="alert">{{ loginError }}</p>
+      <p class="admin-login__help"><AdminIcon name="shield" :size="16" /> Area riservata agli amministratori della società</p>
+      </section>
+    </div>
 
-    <AdminLayout v-else :mobile-open="isSidebarOpen" @close-mobile="isSidebarOpen = false">
+    <AdminLayout v-else :mobile-open="isSidebarOpen" :collapsed="isSidebarCollapsed" @close-mobile="isSidebarOpen = false">
       <template #sidebar>
         <AdminSidebar
           :groups="navigationGroups"
@@ -29,28 +37,32 @@
           :organization-slug="organizationSlug"
           :organization-name="organizationName"
           :show-lottery="!isStaff"
+          :collapsed="isSidebarCollapsed"
+          @toggle-collapse="isSidebarCollapsed = !isSidebarCollapsed"
+          @close-mobile="isSidebarOpen = false"
           @select="selectSection"
           @lottery="goToLottery"
           @logout="logout"
         />
       </template>
       <template #header>
-        <AdminHeader :title="currentSectionTitle" :section-group="currentSectionGroup" @toggle-menu="isSidebarOpen = !isSidebarOpen">
+        <AdminHeader :title="currentSectionTitle" :section-group="currentSectionGroup" :menu-open="isSidebarOpen" @toggle-menu="isSidebarOpen = !isSidebarOpen">
           <template #actions>
-            <span class="header-user">{{ activeUsername }}</span>
+            <div class="admin-account"><span class="admin-account__avatar" aria-hidden="true">{{ activeUsername.slice(0, 2).toUpperCase() }}</span><span class="admin-account__identity"><strong>{{ activeUsername }}</strong><span>{{ isSuperAdmin ? 'Amministratore' : isBarAdmin ? 'Operatore bar' : 'Staff società' }}</span></span></div>
           </template>
         </AdminHeader>
       </template>
 
       <div class="portal-content">
-        <p v-if="globalError" class="error">{{ globalError }}</p>
+        <p v-if="globalError" class="error" role="alert">{{ globalError }}</p>
 
-        <section v-if="section === 'dashboard'" class="card dashboard-grid">
-          <article class="dashboard-card" v-for="action in dashboardActions" :key="action.id">
-            <h3>{{ action.label }}</h3>
-            <p>{{ action.description }}</p>
-            <button class="btn primary" type="button" @click="selectSection(action.id)">Apri</button>
-          </article>
+        <header v-if="section !== 'dashboard'" class="workspace-heading">
+          <div><p class="workspace-heading__eyebrow">{{ organizationName || organizationSlug || 'ArenaBoostX' }} / Workspace</p><h2>{{ currentSectionTitle }}</h2><p>{{ currentSectionDescription }}</p></div>
+          <span class="workspace-heading__icon" aria-hidden="true"><AdminIcon :name="section" :size="26" /></span>
+        </header>
+
+        <section v-if="section === 'dashboard'" class="admin-home">
+          <AdminOverview :actions="dashboardActions" :allowed-sections="availableTabs" :events="events" :teams="teams" :players="players" :sponsors="sponsors" :get-event-label="eventLabel" :get-event-date="formatEventDate" @select="selectSection" />
           <AdminVotingSettings v-if="isSuperAdmin" :auth-headers="authHeaders" :organization-slug="organizationSlug" @unauthorized="handleUnauthorized" />
         </section>
 
@@ -58,7 +70,7 @@
 
           <!-- ══ CREATE PANEL ══════════════════════════════════════════ -->
           <div class="ev-create-panel">
-            <div class="ev-create-panel__hd" @click="createFormOpen = !createFormOpen">
+            <button type="button" class="ev-create-panel__hd" :aria-expanded="createFormOpen" aria-controls="event-create-panel-body" @click="createFormOpen = !createFormOpen">
               <div class="ev-create-panel__title">
                 <span class="ev-create-panel__icon">＋</span>
                 <span>Crea nuovo evento</span>
@@ -67,10 +79,10 @@
                 <span v-if="!hasEnoughTeams" class="ev-badge-warn">Aggiungi squadre prima</span>
                 <span class="ev-chevron" :class="{ open: createFormOpen }">›</span>
               </div>
-            </div>
+            </button>
 
             <transition name="ev-slide">
-              <div v-if="createFormOpen" class="ev-create-panel__body">
+              <div v-if="createFormOpen" id="event-create-panel-body" class="ev-create-panel__body">
                 <p v-if="!hasEnoughTeams" class="ev-alert-info">
                   Aggiungi almeno due squadre dalla sezione "Squadre" per abilitare la creazione di un evento.
                 </p>
@@ -79,13 +91,13 @@
                   <!-- Teams + match info -->
                   <div class="ev-cform__teams">
                     <div class="ev-field">
-                      <label class="ev-label">Squadra di casa</label>
-                      <input v-model="teamInputs.home" type="text" list="admin-team-options" :disabled="!hasEnoughTeams" placeholder="Digita o seleziona…" required class="ev-input" @change="handleTeamInput('home')" @blur="handleTeamInput('home')" />
+                      <label class="ev-label" for="event-create-home">Squadra di casa</label>
+                      <input id="event-create-home" v-model="teamInputs.home" type="text" list="admin-team-options" :disabled="!hasEnoughTeams" placeholder="Digita o seleziona…" required class="ev-input" @change="handleTeamInput('home')" @blur="handleTeamInput('home')" />
                     </div>
                     <div class="ev-vs">VS</div>
                     <div class="ev-field">
-                      <label class="ev-label">Squadra ospite</label>
-                      <input v-model="teamInputs.away" type="text" list="admin-team-options" :disabled="!hasEnoughTeams" placeholder="Digita o seleziona…" required class="ev-input" @change="handleTeamInput('away')" @blur="handleTeamInput('away')" />
+                      <label class="ev-label" for="event-create-away">Squadra ospite</label>
+                      <input id="event-create-away" v-model="teamInputs.away" type="text" list="admin-team-options" :disabled="!hasEnoughTeams" placeholder="Digita o seleziona…" required class="ev-input" @change="handleTeamInput('away')" @blur="handleTeamInput('away')" />
                     </div>
                     <datalist id="admin-team-options">
                       <option v-for="team in teams" :key="team.id" :value="teamOptionValue(team)" />
@@ -94,12 +106,12 @@
 
                   <div class="ev-cform__row2">
                     <div class="ev-field">
-                      <label class="ev-label">Data e ora</label>
-                      <input v-model="newEvent.start_datetime" type="datetime-local" :disabled="!hasEnoughTeams" required class="ev-input" />
+                      <label class="ev-label" for="event-create-date">Data e ora</label>
+                      <input id="event-create-date" v-model="newEvent.start_datetime" type="datetime-local" :disabled="!hasEnoughTeams" required class="ev-input" />
                     </div>
                     <div class="ev-field">
-                      <label class="ev-label">Location</label>
-                      <input v-model.trim="newEvent.location" type="text" placeholder="Es. Palazzetto dello Sport" :disabled="!hasEnoughTeams" class="ev-input" />
+                      <label class="ev-label" for="event-create-location">Location</label>
+                      <input id="event-create-location" v-model.trim="newEvent.location" type="text" placeholder="Es. Palazzetto dello Sport" :disabled="!hasEnoughTeams" class="ev-input" />
                     </div>
                   </div>
 
@@ -370,12 +382,17 @@
           </div>
 
           <!-- ══ EVENTS LIST ══════════════════════════════════════════ -->
+          <div class="admin-event-toolbar">
+            <div><h3>I tuoi eventi <span>{{ visibleEvents.length }}</span></h3><p>Configura ogni dettaglio e gestisci il giorno della partita.</p></div>
+            <div class="admin-event-toolbar__filters"><label class="admin-event-search"><AdminIcon name="search" :size="18" /><input v-model="eventSearch" type="search" aria-label="Cerca eventi" placeholder="Cerca squadra o luogo…" /></label><select v-model="eventStatusFilter" aria-label="Filtra eventi per stato"><option value="all">Tutti gli stati</option><option value="active">Attivi</option><option value="inactive">Inattivi</option><option value="closed">Votazioni chiuse</option></select></div>
+          </div>
           <div class="ev-list">
-            <p v-if="!visibleEvents.length" class="ev-empty">
-              Nessun evento. Creane uno qui sopra.
+            <p v-if="!filteredVisibleEvents.length" class="ev-empty" role="status">
+              {{ visibleEvents.length ? 'Nessun evento corrisponde ai filtri selezionati.' : 'Nessun evento. Creane uno qui sopra.' }}
+              <button v-if="visibleEvents.length" type="button" class="btn outline" @click="eventSearch = ''; eventStatusFilter = 'all'">Azzera filtri</button>
             </p>
 
-            <div v-for="event in visibleEvents" :key="event.id" class="ev-card"
+            <div v-for="event in filteredVisibleEvents" :key="event.id" class="ev-card"
               :class="{ 'ev-card--active': event.is_active, 'ev-card--closed': event.is_active && event.votes_closed }">
 
               <!-- Card header -->
@@ -418,11 +435,12 @@
 
               <!-- ── Tab bar ── -->
               <div class="ev-tabs">
-                <div class="ev-tabs__bar">
-                  <button v-for="tab in [{id:'settings',icon:'⚙',label:'Impostazioni'},{id:'prizes',icon:'🎁',label:'Premi'},{id:'feedback',icon:'📋',label:'Sondaggio'},{id:'quiz',icon:'🧩',label:'Quiz'},{id:'stories',icon:'▶',label:'Stories'}]"
+                <div class="ev-tabs__bar" role="group" :aria-label="`Configurazione ${eventLabel(event)}`">
+                  <button v-for="tab in [{id:'settings',icon:'settings',label:'Impostazioni'},{id:'prizes',icon:'trophy',label:'Premi'},{id:'feedback',icon:'file',label:'Sondaggio'},{id:'quiz',icon:'check',label:'Quiz'},{id:'stories',icon:'image',label:'Stories'}]"
                     :key="tab.id" type="button" class="ev-tabs__btn" :class="{ active: getEventTab(event.id) === tab.id }"
+                    :aria-pressed="getEventTab(event.id) === tab.id"
                     @click="setEventTab(event.id, tab.id)">
-                    <span>{{ tab.icon }}</span>{{ tab.label }}
+                    <AdminIcon :name="tab.icon" :size="16" />{{ tab.label }}
                   </button>
                 </div>
 
@@ -1947,16 +1965,15 @@
           @unauthorized="handleUnauthorized"
           @generated="onEngagementReportGenerated"
         />
-        <div
-          v-if="purgeDialog.visible"
-          class="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          :aria-label="
+        <AdminDialog
+          :open="purgeDialog.visible"
+          :busy="purgeDialog.isSubmitting"
+          :label="
             purgeDialog.event
               ? `Conferma eliminazione per ${purgeDialog.event.title}`
               : 'Conferma eliminazione evento'
           "
+          @close="closePurgeDialog"
         >
           <div class="modal-card">
             <h3>Elimina evento</h3>
@@ -2000,7 +2017,7 @@
               </button>
             </div>
           </div>
-        </div>
+        </AdminDialog>
       </div>
     </AdminLayout>
   </div>
@@ -2023,6 +2040,9 @@ import VoteTrendChart from "./VoteTrendChart.vue";
 import AdminLayout from "./admin/AdminLayout.vue";
 import AdminSidebar from "./admin/AdminSidebar.vue";
 import AdminHeader from "./admin/AdminHeader.vue";
+import AdminIcon from "./admin/ui/AdminIcon.vue";
+import AdminOverview from "./admin/AdminOverview.vue";
+import AdminDialog from "./admin/ui/AdminDialog.vue";
 import AdminBarSection from "./AdminBarSection.vue";
 import SectionHeader from "./admin/ui/SectionHeader.vue";
 import BaseSearchInput from "./admin/ui/BaseSearchInput.vue";
@@ -2283,6 +2303,9 @@ function toApiSurveyPayload(survey) {
 let resultsSseSource = null;
 
 const isSidebarOpen = ref(false);
+const isSidebarCollapsed = ref(false);
+const eventSearch = ref("");
+const eventStatusFilter = ref("all");
 const section = ref("dashboard");
 const tabs = [
   { id: "dashboard", label: "Dashboard" },
@@ -2947,6 +2970,17 @@ const availableEvents = computed(() =>
   events.value.filter((event) => !event.is_concluded),
 );
 const visibleEvents = computed(() => availableEvents.value);
+const filteredVisibleEvents = computed(() => {
+  const query = eventSearch.value.trim().toLocaleLowerCase('it-IT');
+  return visibleEvents.value.filter(event => {
+    const matchesQuery = !query || `${eventLabel(event)} ${event.location || ''}`.toLocaleLowerCase('it-IT').includes(query);
+    const matchesStatus = eventStatusFilter.value === 'all'
+      || (eventStatusFilter.value === 'active' && event.is_active)
+      || (eventStatusFilter.value === 'inactive' && !event.is_active)
+      || (eventStatusFilter.value === 'closed' && event.votes_closed);
+    return matchesQuery && matchesStatus;
+  });
+});
 
 const activeEventId = computed(() => {
   const activeEvent = events.value.find((event) => event.is_active);
@@ -3249,6 +3283,21 @@ const sectionMetaMap = {
 const currentSectionMeta = computed(() => sectionMetaMap[section.value] || sectionMetaMap.dashboard);
 const currentSectionTitle = computed(() => currentSectionMeta.value.title);
 const currentSectionGroup = computed(() => currentSectionMeta.value.group);
+const currentSectionDescription = computed(() => ({
+  events: 'Dalla prima configurazione all’ultimo voto: ogni partita, sotto controllo.',
+  closing: 'Concludi le votazioni e gestisci tutti i passaggi di fine partita.',
+  results: 'Segui le votazioni e scopri come il tuo pubblico vive la partita.',
+  selfies: 'Rivedi, approva e valorizza i momenti condivisi dai tuoi fan.',
+  history: 'Ritrova risultati, report e insight degli eventi della tua società.',
+  teams: 'Le squadre della tua società, pronte a entrare in arena.',
+  players: 'Gestisci roster, convocazioni e immagini dei protagonisti in campo.',
+  sponsors: 'Dai visibilità ai partner che sostengono la tua società.',
+  coupons: 'Crea vantaggi per i fan e collega le promozioni alle tue partite.',
+  bar: 'Ordini, prodotti e servizio: tutto il tuo bar in un unico spazio.',
+  partners: 'Gestisci gli account e gli accessi dei tuoi partner.',
+  admins: 'Gestisci gli amministratori e i ruoli già previsti dalla piattaforma.',
+  marketing: 'Conosci il tuo pubblico e gestisci campagne, messaggi e template.',
+}[section.value] || 'Gestisci la tua società con ArenaBoostX.'));
 
 const dashboardActions = computed(() =>
   availableTabs.value
@@ -6853,8 +6902,8 @@ onBeforeUnmount(() => {
   --control-height: 44px;
   --ui-border: rgba(148, 163, 184, 0.35);
   min-height: 100vh;
-  color: #0f172a;
-  background: #f1f5f9;
+  color: var(--text-primary);
+  background: var(--bg-base);
 }
 
 .admin-header {
@@ -6879,7 +6928,7 @@ onBeforeUnmount(() => {
   padding: 0.35rem 0.75rem;
   border-radius: 999px;
   background: rgba(59, 130, 246, 0.15);
-  color: #bfdbfe;
+  color: var(--accent);
   font-weight: 600;
   font-size: 0.95rem;
 }
@@ -7368,7 +7417,7 @@ onBeforeUnmount(() => {
   border-top: 1px dashed rgba(148, 163, 184, 0.5);
 }
 
-input,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 select,
 textarea {
   border-radius: var(--radius);
@@ -7382,7 +7431,7 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .field-hint {
@@ -8222,16 +8271,16 @@ textarea:focus {
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  z-index: 20;
+  z-index: 1000;
 }
 
 .modal-card {
   background: #f8fafc;
   border-radius: 1rem;
   padding: 2rem;
-  max-width: 420px;
+  max-width: none;
   width: 100%;
-  box-shadow: 0 32px 48px rgba(15, 23, 42, 0.35);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -8523,13 +8572,10 @@ textarea:focus {
   align-items: center;
   padding: 0.85rem 1rem;
   border-radius: 1rem;
-  background: linear-gradient(
-    135deg,
-    rgba(15, 23, 42, 0.85),
-    rgba(30, 64, 175, 0.9)
-  );
-  color: #f8fafc;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.3);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow: none;
 }
 
 .leaderboard-item .rank {
@@ -8586,21 +8632,17 @@ textarea:focus {
   margin-top: 1.5rem;
   padding: 1.5rem;
   border-radius: 1.5rem;
-  background: linear-gradient(
-    145deg,
-    rgba(15, 23, 42, 0.9),
-    rgba(30, 64, 175, 0.75)
-  );
+  background: var(--bg-card);
   border: 1px solid rgba(148, 163, 184, 0.25);
-  color: #e2e8f0;
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.35);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-card);
 }
 
 .sponsor-analytics h3 {
   margin: 0 0 1rem;
   font-size: 1.25rem;
   font-weight: 600;
-  color: #f8fafc;
+  color: var(--text-primary);
 }
 
 .sponsor-analytics__content {
@@ -8618,7 +8660,7 @@ textarea:focus {
 .sponsor-analytics__card {
   padding: 1rem 1.25rem;
   border-radius: 1rem;
-  background: rgba(15, 23, 42, 0.65);
+  background: var(--bg-card-hover);
   border: 1px solid rgba(148, 163, 184, 0.25);
   display: flex;
   flex-direction: column;
@@ -8633,18 +8675,18 @@ textarea:focus {
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(226, 232, 240, 0.75);
+  color: var(--text-secondary);
 }
 
 .sponsor-analytics__value {
   font-size: 1.4rem;
   font-weight: 700;
-  color: #facc15;
+  color: var(--accent);
 }
 
 .sponsor-analytics__hint {
   font-size: 0.8rem;
-  color: rgba(226, 232, 240, 0.8);
+  color: var(--text-muted);
 }
 
 .sponsor-analytics__chart h4 {
@@ -8671,7 +8713,7 @@ textarea:focus {
 
 .sponsor-chart__label {
   font-size: 0.85rem;
-  color: rgba(226, 232, 240, 0.8);
+  color: var(--text-secondary);
 }
 
 .sponsor-chart__bars {
@@ -8897,4 +8939,58 @@ textarea:focus {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Workspace composition. Shared controls and tokens live in admin-theme.css. */
+.admin-home { display: grid; gap: 28px; }
+.admin-home > :deep(.voting-settings) { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+.workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 3px 0 12px; }
+.workspace-heading__eyebrow { font-size: 11px; color: var(--text-muted); margin: 0 0 10px; }
+.workspace-heading h2 { font-size: clamp(26px, 2.5vw, 32px); font-weight: 700; letter-spacing: -.035em; line-height: 1.2; color: var(--text-primary); margin: 0; }
+.workspace-heading p:last-child { font-size: 13px; line-height: 1.7; color: var(--text-secondary); margin: 10px 0 0; max-width: 650px; }
+.workspace-heading__icon { display: grid; place-items: center; width: 56px; height: 56px; flex-shrink: 0; border-radius: 14px; border: 1px solid #e2dffc; color: var(--accent); background: #efedff; }
+.admin-account { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.admin-account__avatar { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border: 1px solid #e1def6; background: #efedfc; color: #5849a3; border-radius: 50%; font-weight: 650; font-size: 11px; }
+.admin-account__identity { display: grid; gap: 3px; min-width: 0; }
+.admin-account__identity strong { font-size: 12px; font-weight: 600; color: var(--text-primary); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-account__identity > span { font-size: 10px; color: var(--text-muted); }
+.admin-event-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 12px 0 4px; }
+.admin-event-toolbar h3 { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 650; margin: 0; color: var(--text-primary); }
+.admin-event-toolbar h3 > span { display: grid; place-items: center; min-width: 23px; height: 23px; padding: 0 5px; background: #eceafc; color: var(--accent); font-size: 11px; border-radius: 6px; }
+.admin-event-toolbar p { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; }
+.admin-event-toolbar__filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.admin-event-toolbar__filters select { width: auto; font-size: 12px; border-radius: 8px; min-height: 42px; }
+.admin-event-search { display: flex; position: relative; align-items: center; color: var(--text-muted); }
+.admin-event-search > svg { position: absolute; left: 12px; pointer-events: none; }
+.admin-portal .admin-event-search input[type="search"] { padding-left: 38px; max-width: 260px; min-height: 42px; font-size: 12px; border-radius: 8px; }
+.ev-create-panel__hd { width: 100%; text-align: left; font-family: inherit; }
+.sponsor-chart__values { color: var(--text-secondary); }
+.admin-login { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(0, 1fr); min-height: 100dvh; background: #fff; }
+.admin-login__story { display: flex; flex-direction: column; padding: 42px clamp(32px, 5vw, 85px); background: radial-gradient(ellipse at 0% 100%, #39346d55, transparent 65%), #151b2e; color: #fff; position: relative; overflow: hidden; }
+.admin-login__story::after { position: absolute; content: ''; width: 500px; height: 500px; border: 1px solid #ffffff09; border-radius: 50%; bottom: -350px; right: -120px; box-shadow: 0 0 0 65px #ffffff02, 0 0 0 130px #ffffff02; pointer-events: none; }
+.admin-login__brand { display: inline-flex; align-items: center; gap: 2px; font-size: 21px; font-weight: 650; color: #fff; letter-spacing: -.04em; }
+.admin-login__brand > span:last-child { color: #a7a0ff; }
+.admin-login__mark { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; background: #6555e8; border-radius: 9px; font-weight: 750; font-size: 23px; margin-right: 10px; letter-spacing: -.12em; }
+.admin-login__mark > span { font-size: 16px; margin-left: 1px; }
+.admin-login__message { position: relative; z-index: 1; margin: auto 0; padding: 75px 0; }
+.admin-login__message > span { display: block; color: #b5b0ed; font-size: 10px; font-weight: 600; letter-spacing: .16em; margin-bottom: 22px; }
+.admin-login__message h1 { font-size: clamp(40px, 4.3vw, 64px); letter-spacing: -.05em; line-height: 1.12; color: #fff; font-weight: 650; margin: 0; }
+.admin-login__message em { font-style: normal; color: #b4a9ff; }
+.admin-login__message > p { color: #b9c0d1; font-size: 14px; line-height: 1.9; max-width: 390px; margin: 25px 0 30px; }
+.admin-login__features { display: grid; gap: 15px; color: #d7d9e6; font-size: 12px; }
+.admin-login__features > span { display: flex; align-items: center; gap: 12px; }
+.admin-login__features svg { color: #a99ff8; }
+.admin-login__signature { color: #abb3c9; font-size: 10px; margin: 0; position: relative; z-index: 1; }
+.admin-login .login-card { width: min(100%, 440px); max-width: 440px; margin: auto; padding: 48px 34px; background: transparent; box-shadow: none; border: 0; }
+.admin-login .login-header { text-align: left; margin-bottom: 30px; }
+.admin-login__welcome { display: block; font-size: 9px; color: var(--accent); letter-spacing: .1em; font-weight: 700; margin-bottom: 14px; }
+.admin-login .login-header h2 { font-size: 27px; letter-spacing: -.035em; line-height: 1.2; margin: 0; color: var(--text-primary); font-weight: 650; }
+.admin-login .subtitle { font-size: 12px; line-height: 1.8; margin-top: 12px; }
+.admin-login .context-badge { font-size: 10px; letter-spacing: 0; text-transform: none; padding: 5px 9px; border-radius: 6px; margin-top: 16px; background: #f0effc; color: #5146b4; }
+.admin-login .form-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.admin-login .form-grid label { font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--text-primary); }
+.admin-login .form-grid input { min-height: 46px; font-size: 13px; border-radius: 8px; }
+.admin-login .form-grid > button { min-height: 46px; justify-content: space-between; margin-top: 5px; padding: 0 16px; border-radius: 8px; font-size: 13px; }
+.admin-login__help { display: flex; align-items: center; gap: 7px; font-size: 10px; line-height: 1.6; color: var(--text-muted); margin: 24px 0 0; }
+@media (max-width: 760px) { .workspace-heading { align-items: flex-start; gap: 14px; } .workspace-heading__icon { width: 44px; height: 44px; border-radius: 10px; } .workspace-heading p:last-child { font-size: 12px; } .admin-event-toolbar__filters { width: 100%; } .admin-event-search { flex: 1; min-width: 140px; } .admin-event-search > input { width: 100%; max-width: none; } .admin-home > :deep(.voting-settings) { padding: 18px; } .admin-login { grid-template-columns: minmax(0, 1fr); } .admin-login__story { padding: 22px 25px; } .admin-login__message { padding: 30px 0; } .admin-login__message h1 { font-size: 34px; } .admin-login__message h1 br { display: none; } .admin-login__message > span { margin-bottom: 12px; } .admin-login__message > p { margin: 17px 0 0; font-size: 12px; max-width: none; } .admin-login__features, .admin-login__signature { display: none; } .admin-login .login-card { padding: 35px 25px 45px; } }
+@media (max-width: 480px) { .admin-account__identity { display: none; } .admin-event-toolbar__filters > select { width: 100%; } .form-grid { grid-template-columns: minmax(0, 1fr); } .leaderboard-item { grid-template-columns: 32px minmax(0, 1fr) 72px; gap: 10px; padding: 14px; } .modal-actions { flex-wrap: wrap; } }
 </style>

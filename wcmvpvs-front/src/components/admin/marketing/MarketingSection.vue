@@ -1,7 +1,7 @@
 <template>
   <div class="marketing">
-    <div class="tabs">
-      <button v-for="t in tabs" :key="t.id" class="btn outline" :class="{ active: tab === t.id }" @click="tab = t.id">
+    <div class="tabs" role="group" aria-label="Sezioni marketing">
+      <button v-for="t in tabs" :key="t.id" type="button" class="btn outline" :class="{ active: tab === t.id }" :aria-pressed="tab === t.id" @click="tab = t.id">
         {{ t.label }}
       </button>
     </div>
@@ -15,7 +15,7 @@
           </thead>
           <tbody>
             <tr v-for="a in audience" :key="a.fan_id" @click="selectedFan = a">
-              <td>{{ a.nickname }}</td>
+              <td><button type="button" class="audience-open" :aria-label="`Apri dettagli di ${a.nickname}`" @click.stop="selectedFan = a">{{ a.nickname }}</button></td>
               <td>{{ maskPhone(a.phone) }}</td>
               <td>{{ a.created_at }}</td>
               <td>{{ a.last_seen_at || '-' }}</td>
@@ -26,9 +26,9 @@
         </table>
       </BaseTable>
       <aside v-if="selectedFan" class="drawer">
-        <h4>{{ selectedFan.nickname }}</h4>
+        <div class="drawer-heading"><h4>{{ selectedFan.nickname }}</h4><button class="btn outline" type="button" aria-label="Chiudi dettaglio fan" @click="selectedFan = null">Chiudi</button></div>
         <p>{{ selectedFan.phone }}</p>
-        <BaseTextarea><textarea v-model="singleMessage" rows="4" /></BaseTextarea>
+        <BaseTextarea><textarea v-model="singleMessage" rows="4" aria-label="Messaggio per il fan" placeholder="Scrivi il tuo messaggio…" /></BaseTextarea>
         <BaseButton :disabled="!selectedFan.marketing_consent" @click="sendSingle">Invia SMS</BaseButton>
       </aside>
     </section>
@@ -36,8 +36,8 @@
     <section v-else-if="tab === 'campaigns'" class="card">
       <p class="billing-line">Costo per SMS: <strong>€ {{ billing.sms_cost.toFixed(2) }}</strong></p>
       <p class="billing-line">SMS gratuiti disponibili: <strong>{{ billing.free_sms_remaining }}</strong></p>
-      <BaseInput><input v-model="campaign.name" placeholder="Nome campagna" /></BaseInput>
-      <BaseTextarea><textarea v-model="campaign.message" rows="4" placeholder="Messaggio" /></BaseTextarea>
+      <label class="marketing-field">Nome campagna<BaseInput><input v-model="campaign.name" placeholder="Nome campagna" /></BaseInput></label>
+      <label class="marketing-field">Messaggio<BaseTextarea><textarea v-model="campaign.message" rows="4" placeholder="Messaggio" /></BaseTextarea></label>
       <div class="campaign-filters">
         <p class="filters-title">Filtri audience (cumulabili)</p>
         <label><input v-model="campaignFilters.male" type="checkbox" /> Uomo</label>
@@ -60,9 +60,9 @@
     </section>
 
     <section v-else-if="tab === 'templates'" class="card">
-      <BaseInput><input v-model="templateDraft.name" placeholder="Nome" /></BaseInput>
-      <BaseSelect><select v-model="templateDraft.category"><option v-for="c in categories" :key="c" :value="c">{{ c }}</option></select></BaseSelect>
-      <BaseTextarea><textarea v-model="templateDraft.body" rows="4" placeholder="Body" /></BaseTextarea>
+      <label class="marketing-field">Nome template<BaseInput><input v-model="templateDraft.name" placeholder="Nome" /></BaseInput></label>
+      <label class="marketing-field">Categoria<BaseSelect><select v-model="templateDraft.category"><option v-for="c in categories" :key="c" :value="c">{{ c }}</option></select></BaseSelect></label>
+      <label class="marketing-field">Testo del messaggio<BaseTextarea><textarea v-model="templateDraft.body" rows="4" placeholder="Scrivi il testo del template…" /></BaseTextarea></label>
       <BaseButton @click="saveTemplate">Salva template</BaseButton>
       <ul><li v-for="t in templates" :key="t.id">{{ t.name }} <button class="btn danger" @click="removeTemplate(t.id)">Elimina</button></li></ul>
     </section>
@@ -143,4 +143,33 @@ watch(selectedCampaignAudience, (fans) => {
 }, { immediate: true });
 onMounted(async () => { await Promise.all([loadAudience(), loadTemplates(), loadBilling(), loadLogs()]); });
 </script>
-<style scoped>.marketing-table{width:100%;border-collapse:collapse}.marketing-table th,.marketing-table td{padding:.5rem;border-bottom:1px solid #e2e8f0}.drawer{margin-top:1rem;padding:1rem;border:1px solid #e2e8f0;border-radius:.8rem}.badge.ok{color:#166534}.badge.no{color:#991b1b}.tabs{display:flex;gap:.5rem;margin-bottom:1rem}.tabs .active{background:#e2e8f0}.billing-box{margin-bottom:1rem;padding:.75rem;border:1px solid #e2e8f0;border-radius:.75rem}.billing-line{margin:.2rem 0}.campaign-filters{display:grid;grid-template-columns:1fr;gap:.35rem;margin:.75rem 0}.filters-title{font-weight:600;margin:0 0 .25rem}.selected-audience-list{max-height:220px;overflow:auto;border:1px solid #e2e8f0;border-radius:.75rem;padding:.5rem .75rem;margin-bottom:.75rem}.selected-audience-list ul{margin:0;padding-left:1rem}.empty-list{margin:0;color:#64748b}</style>
+<style scoped>
+.marketing { display: grid; gap: 20px; min-width: 0; }
+.marketing > .card { display: grid; gap: 16px; box-shadow: none; padding: 0; border: 0; }
+.marketing-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+.marketing-table th, .marketing-table td { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.marketing-table th { font-size: 11px; font-weight: 650; color: var(--text-secondary); background: var(--bg-card-hover); white-space: nowrap; }
+.marketing-table tbody tr:hover { background: var(--bg-card-hover); }
+.audience-open { color: var(--accent); font-weight: 600; text-align: left; min-height: 32px; }
+.drawer { display: grid; gap: 14px; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card-hover); }
+.drawer-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.drawer-heading h4 { font-size: 16px; margin: 0; font-weight: 650; }
+.drawer p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.badge.ok { color: #166534; background: #ecfdf5; }
+.badge.no { color: #991b1b; background: #fff1f2; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 5px; background: var(--bg-card-hover); border: 1px solid var(--border); border-radius: 10px; width: fit-content; }
+.tabs .btn { color: var(--text-secondary); border: 1px solid transparent; background: transparent; font-size: 12px; min-height: 36px; box-shadow: none; }
+.tabs .btn.active { background: #fff; color: var(--accent); border-color: var(--border); box-shadow: 0 1px 3px #1822380a; }
+.billing-box { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card-hover); font-size: 13px; }
+.billing-box p { margin: 0; }
+.billing-line { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.marketing-field { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
+.campaign-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 20px; margin: 0; border: 1px solid var(--border); border-radius: 12px; }
+.campaign-filters label { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.filters-title { font-weight: 650; font-size: 13px; margin: 0 0 5px; grid-column: 1 / -1; }
+.selected-audience-list { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; font-size: 12px; line-height: 1.8; }
+.selected-audience-list ul { margin: 0; padding-left: 16px; }
+.empty-list { margin: 0; color: var(--text-muted); }
+.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 600px) { .billing-box, .campaign-filters { grid-template-columns: minmax(0, 1fr); } .tabs { width: 100%; } .tabs .btn { flex: 1 1 auto; } }
+</style>
