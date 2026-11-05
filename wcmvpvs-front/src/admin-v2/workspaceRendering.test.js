@@ -36,7 +36,7 @@ function fixture(overrides = {}) {
       return () => Vue.h('div', { 'data-view': name, 'data-key': key, 'data-settings': String(props.settings === true) });
     },
   });
-  const children = Object.fromEntries(['EventsView', 'EntitiesView', 'InsightsView', 'BarView', 'MarketingView', 'VotingView'].map(name => [name, view(name)]));
+  const children = Object.fromEntries(['EventsView', 'EntitiesView', 'InsightsView', 'BarView', 'MarketingView', 'VotingView', 'LotteryView'].map(name => [name, view(name)]));
   const Workspace = { setup: (_, { slots }) => () => Vue.h('main', { 'data-workspace': 'verified' }, slots.default?.()) };
   const Panel = { props: ['title'], setup: (props, { slots }) => () => Vue.h('section', [Vue.h('h2', props.title), slots.default?.()]) };
   const Dialog = { props: ['open'], setup: (props, { slots }) => () => props.open ? Vue.h('aside', slots.default?.()) : null };
@@ -127,6 +127,14 @@ test('unknown section displays an explicit missing-page state', async () => {
   const { html, mounted } = await render('/test-club/admin/new/nonexistent');
   assert.match(html, /Pagina non trovata/);
   assert.deepEqual(mounted, []);
+});
+
+test('lottery stays inside V2 and retains the existing staff exclusion', async () => {
+  const admin = await render('/test-club/admin/new/lottery');
+  assert.ok(admin.mounted.some(item => item.name === 'LotteryView'));
+  const staff = await render('/test-club/admin/new/lottery', { isSuperAdmin: false, isStaff: true, availableTabs: [{ id: 'closing' }] });
+  assert.match(staff.html, /Accesso non disponibile/);
+  assert.ok(!staff.mounted.some(item => item.name === 'LotteryView'));
 });
 
 function editForm(context, { connected = true } = {}) {

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, inject, ref } from 'vue';
 import VoteTrendChart from '../../components/VoteTrendChart.vue';
-import EngagementReportModal from '../../components/EngagementReportModal.vue';
+import EngagementReportModal from '../components/reports/V2EngagementReportModal.vue';
 import V2Dialog from '../components/shared/V2Dialog.vue';
 const props = defineProps({ section: { type: String, required: true } });
 const c = inject('admin-v2');

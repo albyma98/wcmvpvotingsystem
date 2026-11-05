@@ -8,6 +8,7 @@ import { createServer } from 'vite';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { calculateReportKpis } from '../src/engagementReport.js';
+import { recipientReportFixture } from './recipientReportFixture.js';
 
 const frontRoot = fileURLToPath(new URL('..', import.meta.url));
 const now = () => new Date().toISOString();
@@ -50,7 +51,7 @@ export function createQaApi() {
   return result(res, { message: 'Metodo non previsto per questa fixture' }, 405);
  }
  function closure(eventId) { return { summary: { event_id: eventId, draw_mode: voting.draw_mode, mvp_name: 'Giocatrice Test Uno', percentage: '60,00', total_votes: 10, prizes: [{ id: 1, name: 'Premio di test', ticket_code: 'TEST-0001', nickname: 'Tifoso di test' }], warnings: ['Ambiente QA: nessun premio o messaggio reale.'] }, notifications: [{ id: 1, name: 'Organizzatore di test', phone: '+39******0000', status: 'skipped', error: 'Invio disabilitato nell’ambiente QA locale.' }] }; }
- function report(eventId) { return { calculation_id: `qa-${eventId}`, event: { id: eventId, title: 'Società di test - Avversari di test', start_datetime: '2026-10-29T19:30:00Z' }, branding: { company_name: 'Società di test' }, calculated_at: now(), facts: { visitors: 12, engagement_eligible_visitors: 12, active_visitors: 8 }, kpis: [{ id: 'visitors', value: 12, display_description: 'Dati di test per QA locale' }, { id: 'active_participation', value: 66.67, display_description: 'Dati di test per QA locale' }], latest_report: reports.get(eventId) || null }; }
+ function report(eventId, recipient='executive') { const snapshot=recipientReportFixture(recipient); snapshot.calculation_id='qa-'+eventId; snapshot.event={...snapshot.event,id:eventId,title:'Società di test - Avversari di test'}; snapshot.branding={company_name:'Società di test'}; snapshot.latest_report=reports.get(eventId)||null; return snapshot; }
  return async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1'); const route = url.pathname; const method = req.method;
   console.log(`[QA memoria] ${method} /api${route}`);
@@ -83,7 +84,7 @@ export function createQaApi() {
    if ((match = route.match(/^\/admin\/selfies\/(\d+)$/))) return collection(req, res, 'selfies', match[1], body);
    if ((match = route.match(/^\/admin\/events\/(\d+)\/purge$/)) && method === 'POST') { if (body.password !== 'qa') return result(res, { message: 'Password QA non valida' }, 403); return collection({ method: 'DELETE' }, res, 'events', match[1], {}); }
    if ((match = route.match(/^\/admin\/events\/(\d+)\/ai-report$/)) && method === 'POST') return result(res, { source: 'qa-fixture', executive_summary: 'Report di test, nessun servizio AI chiamato.', full_report: 'Questi contenuti sono fixture per controllare l’interfaccia.', strengths: ['Navigazione di prova'], criticalities: [], insights: [], suggestions: [], generated_at: now(), metrics: {} });
-   if ((match = route.match(/^\/admin\/events\/(\d+)\/engagement-report$/))) { const id = Number(match[1]); const snapshot = report(id); if (method === 'GET') return result(res, snapshot); if (method === 'POST') { const approved = { ...snapshot, ...body, id: nextId++, approved_at: now(), kpis: calculateReportKpis(body.facts, snapshot.kpis, body.overrides, snapshot.facts, body.descriptions) }; reports.set(id, approved); return result(res, approved); } }
+   if ((match = route.match(/^\/admin\/events\/(\d+)\/engagement-report$/))) { const id = Number(match[1]); const snapshot = report(id, url.searchParams.get('recipient') || body.recipient || 'executive'); if (method === 'GET') return result(res, snapshot); if (method === 'POST') { const approved = { ...snapshot, ...body, id: nextId++, approved_at: now(), recipient: snapshot.profiles.find(profile=>profile.id===(body.recipient||'executive')), kpis: body.facts ? calculateReportKpis(body.facts, snapshot.kpis, body.overrides, snapshot.facts, body.descriptions) : snapshot.kpis }; reports.set(id, approved); return result(res, approved); } }
    if (route === '/admin/voting-settings') { if (method === 'PUT') voting = body; return result(res, voting); }
    if (route === '/admin/voting-settings/test' && method === 'POST') return result(res, { message: 'QA locale: nessun WhatsApp inviato.', status: 'skipped' });
    if ((match = route.match(/^\/admin\/events\/(\d+)\/quiz(?:\/questions(?:\/(\d+))?)?$/))) {

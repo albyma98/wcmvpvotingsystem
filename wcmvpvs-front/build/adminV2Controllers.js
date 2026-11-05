@@ -22,9 +22,21 @@ export function compileAdminV2Controller(source, filename) {
   const removedBindings = new Set();
   const portal = path.basename(filename) === 'AdminPortal.vue';
   const bar = path.basename(filename) === 'AdminBarSection.vue';
+  const lottery = path.basename(filename) === 'AdminLottery.vue';
   const guards = new Set();
   const replace = (node, value) => edits.push({ start: node.start, end: node.end, value });
   const text = node => script.slice(node.start, node.end);
+  function resolveDynamicImports(node) {
+    if (!node || typeof node !== 'object') return;
+    const argument = node.type === 'ImportExpression' ? node.source : node.type === 'CallExpression' && node.callee?.type === 'Import' ? node.arguments[0] : null;
+    if (argument?.type === 'StringLiteral' && argument.value.startsWith('.')) replace(argument, JSON.stringify(path.resolve(path.dirname(filename), argument.value).replaceAll('\\', '/')));
+    for (const [key, value] of Object.entries(node)) {
+      if (['loc','start','end','extra'].includes(key)) continue;
+      if (Array.isArray(value)) value.forEach(resolveDynamicImports);
+      else if (value && typeof value === 'object') resolveDynamicImports(value);
+    }
+  }
+  if (!portal && !bar && !lottery) compiled.scriptSetupAst.forEach(resolveDynamicImports);
 
   for (const node of compiled.scriptSetupAst) {
     if (node.type === 'ImportDeclaration') {
@@ -59,6 +71,10 @@ export function compileAdminV2Controller(source, filename) {
       const callback = node.expression.arguments[0];
       if (callback && ['ArrowFunctionExpression', 'FunctionExpression'].includes(callback.type)) {
         let callbackSource = text(callback);
+        if (lottery) {
+          if (!callbackSource.includes('loadInitialData();')) throw new Error('Admin V2: lottery initialization contract changed');
+          callbackSource = 'async () => { if (isAuthenticated.value) await loadInitialData(); }';
+        }
         if (bar) {
           const firstAwait = callback.body.body.find(statement => statement.type === 'ExpressionStatement' && statement.expression.type === 'AwaitExpression');
           if (!firstAwait || !text(firstAwait).includes('Promise.all')) throw new Error('Admin V2: BAR lifecycle contract changed');
@@ -71,6 +87,11 @@ export function compileAdminV2Controller(source, filename) {
       }
     }
 
+    if (lottery && node.type === 'FunctionDeclaration') {
+      if (node.id.name === 'handleUnauthorized') replace(node.body, `{ if (__adapter.onUnauthorized) return __adapter.onUnauthorized(); ${text(node.body).slice(1, -1)} }`);
+      if (node.id.name === 'goToPortal') replace(node.body, `{ if (__adapter.onReturn) return __adapter.onReturn(); ${text(node.body).slice(1, -1)} }`);
+      if (['loadTickets', 'finalizePrizeDraw'].includes(node.id.name)) replace(node.body, `{ try { ${text(node.body).slice(1, -1)} } catch (error) { __adapter.onLifecycleError?.(error); } }`);
+    }
     if (!portal) continue;
     if (node.type === 'FunctionDeclaration' && node.id.name === 'loadOrganizationName') {
       const attempt = node.body.body.find(item => item.type === 'TryStatement');

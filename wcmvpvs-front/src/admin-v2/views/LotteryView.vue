@@ -9,6 +9,8 @@ const c = inject('admin-v2');
 const initializing = ref(true);
 let disposed = false;
 const l = proxyRefs(useController({}, () => {}, {
+ onUnauthorized() { c.handleUnauthorized(); },
+ onReturn() { c.navigate('closing'); },
  onLifecycleStart() { if (!disposed) initializing.value = true; },
  onLifecycleComplete() { if (!disposed) initializing.value = false; },
  onLifecycleError(error) { if (!disposed) { initializing.value = false; c.notify(error?.response?.data?.message || 'Impossibile caricare la lotteria. Riprova.', 'error'); } },
@@ -45,7 +47,7 @@ onBeforeUnmount(() => { disposed = true; l.clearTimers(); });
     <div v-if="l.selectedEvent" class="v2-lottery-context"><span class="v2-badge">{{ l.eventLabel(l.selectedEvent) }}</span><span class="v2-muted">{{ c.formatEventDate(l.selectedEvent.start_datetime) }}<template v-if="l.selectedEvent.location"> · {{ l.selectedEvent.location }}</template></span><button v-if="c.isSuperAdmin" class="v2-link" @click="c.navigate('events',`${l.selectedEventId}/prizes`)">Configura premi</button></div>
    </V2Panel>
    <template v-if="l.selectedEventId">
-    <div class="v2-grid-3"><article class="v2-metric"><span>Ticket ammessi</span><strong>{{ l.allowedCodesCount }}</strong><small>Codici validi per la prossima estrazione.</small></article><article class="v2-metric"><span>Ticket totali</span><strong>{{ l.totalCodesCount }}</strong><small>Totale comunicato dall’API della lotteria.</small></article><article class="v2-metric"><span>Premi configurati</span><strong>{{ l.selectedPrizes.length }}</strong><small>Premi associati all’evento selezionato.</small></article></div>
+    <div class="v2-grid-3"><article class="v2-metric"><span>Ticket ammessi</span><strong>{{ l.allowedCodesCount }}</strong><small>Codici validi per la prossima estrazione.</small></article><article class="v2-metric"><span>Ticket totali</span><strong>{{ l.totalCodesCount }}</strong><small>Tutti i codici registrati per questo evento.</small></article><article class="v2-metric"><span>Premi configurati</span><strong>{{ l.selectedPrizes.length }}</strong><small>Premi associati all’evento selezionato.</small></article></div>
     <V2Panel v-if="!l.selectedPrizes.length" title="Nessun premio configurato"><p class="v2-muted">Aggiungi i premi dalla configurazione dell’evento prima di eseguire un’estrazione.</p><button v-if="c.isSuperAdmin" class="v2-button v2-primary" @click="c.navigate('events',`${l.selectedEventId}/prizes`)">Configura premi evento</button></V2Panel>
     <template v-else>
      <section class="v2-lottery-display" :aria-busy="l.isDrawing"><span class="v2-eyebrow">{{ l.isDrawing ? 'ESTRAZIONE IN CORSO' : 'IL TABELLONE DELLA LOTTERIA' }}</span><h2 v-if="l.currentPrizeLabel">{{ l.currentPrizeLabel }}</h2><p class="v2-lottery-code" :aria-live="l.isDrawing ? 'off' : 'polite'">{{ l.currentDisplay }}</p><p v-if="l.isDrawing" role="status" class="v2-muted">Estrazione in corso. Attendi la conferma dell’assegnazione.</p><p v-else-if="l.lastWinner" class="v2-success" role="status">Ultimo vincitore: <strong>{{ l.lastWinnerDisplay }}</strong></p><p v-else class="v2-muted">Scegli un premio dall’elenco per iniziare.</p></section>

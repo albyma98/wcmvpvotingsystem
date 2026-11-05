@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parse as parseJavaScript } from '@babel/parser';
 import * as Vue from 'vue';
+import * as Report from '../engagementReport.js';
+import * as Recipient from '../recipientReport.js';
 import { compileAdminV2Controller } from '../../build/adminV2Controllers.js';
 import { adminV2Path, readAdminV2Route } from './router/routes.js';
 
@@ -21,7 +23,7 @@ test('V2 routes preserve slug, nested detail and legacy route boundaries', () =>
 });
 
 test('headless compiler supports every reused controller and removes their presentation', () => {
-  for (const filename of ['AdminPortal.vue', 'AdminBarSection.vue', 'admin/marketing/MarketingSection.vue', 'admin/AdminVotingSettings.vue', 'admin/AdminVotingClosure.vue']) {
+  for (const filename of ['AdminPortal.vue', 'AdminLottery.vue', 'AdminBarSection.vue', 'admin/marketing/MarketingSection.vue', 'admin/AdminVotingSettings.vue', 'admin/AdminVotingClosure.vue', 'EngagementReportModal.vue', 'RecipientReportBuilder.vue', 'ReportKpiCard.vue', 'ReportAnalysisView.vue']) {
     const url = new URL(`../components/${filename}`, import.meta.url);
     const output = compileAdminV2Controller(readFileSync(url, 'utf8'), fileURLToPath(url));
     assert.doesNotThrow(() => parseJavaScript(output, { sourceType: 'module' }), filename);
@@ -33,8 +35,60 @@ test('headless compiler supports every reused controller and removes their prese
   assert.equal(readFileSync(sourceFile, 'utf8'), legacySource);
 });
 
+test('V2 report approval keeps selections, facts and descriptions and resolves the existing PDF module', async t => {
+  const url = new URL('../components/EngagementReportModal.vue', import.meta.url);
+  const generated = compileAdminV2Controller(readFileSync(url, 'utf8'), fileURLToPath(url));
+  assert.doesNotMatch(generated, /import\(['"]\.\.\/engagementReportPdf/);
+  assert.match(generated, /import\("[^"]+\/src\/engagementReportPdf\.js"\)/);
+  const source = generated.replace(/await import\("[^"]+engagementReportPdf\.js"\)/g, 'await Promise.resolve({createEngagementReportPdf:()=>({save(){}})})');
+  const measured = {calculation_id:'calc-v2',event:{id:42,title:'Finale'},facts:{visitors:100,engagement_eligible_visitors:100,active_visitors:40},kpis:[{id:'visitors',value:100,display_description:'Pubblico digitale'},{id:'active_participation',value:40,display_description:'Partecipazione'}]};
+  const calls = [];
+  const api = {post:async(path,body)=>{calls.push([path,body]);return {data:{...measured,id:73,approved_at:'2026-11-05T10:00:00Z',kpis:Report.calculateReportKpis(body.facts,measured.kpis,body.overrides,measured.facts,body.descriptions)}};}};
+  const {state} = controllerFixture(t,api,'superadmin',source,{modelValue:false,eventId:42,authHeaders:{headers:{'X-Organization-Slug':'club'}}});
+  state.snapshot.value=structuredClone(measured);state.resetReview();state.facts.visitors=200;state.descriptions.visitors='Descrizione approvata';state.format.value='extended';
+  await state.approveAndDownload();
+  assert.equal(calls[0][0],'/admin/events/42/engagement-report');
+  assert.equal(calls[0][1].calculation_id,'calc-v2');assert.equal(calls[0][1].facts.visitors,200);assert.equal(calls[0][1].descriptions.visitors,'Descrizione approvata');
+  assert.deepEqual(calls[0][1].selected_kpi_ids,['visitors','active_participation']);
+  assert.equal(state.approved.value.id,73);assert.equal(state.error.value,'');
+  await state.approveAndDownload();assert.equal(calls.length,1,'Download retry must not approve a second snapshot');
+});
+
 test('headless compiler fails closed when the session integration contract changes', () => {
   assert.throws(() => compileAdminV2Controller(legacySource.replace('async function loadOrganizationName()', 'async function changedSessionFunction()'), fileURLToPath(sourceFile)), /missing controller integration/);
+});
+
+test('lottery lifecycle and prize operations retain the existing API contracts', async t => {
+  const url = new URL('../components/AdminLottery.vue', import.meta.url);
+  const source = compileAdminV2Controller(readFileSync(url, 'utf8'), fileURLToPath(url));
+  const calls = [];
+  let prize = { id: 3, event_id: 9, name: 'Premio di prova', position: 1 };
+  const api = {
+    get: async path => {
+      calls.push(['GET', path]);
+      if (path === '/admin/me') return { data: { role: 'superadmin' } };
+      if (path === '/teams') return { data: [{ id: 1, name: 'Casa' }, { id: 2, name: 'Ospiti' }] };
+      if (path === '/events') return { data: [{ id: 9, team1_id: 1, team2_id: 2, start_datetime: '2026-11-01T18:00:00Z', prizes: [prize] }] };
+      if (path === '/events/9/tickets') return { data: [{ vote_id: 77, ticket_code: 'TEST77', player_id: 1 }], headers: { 'x-lottery-total-codes': '12' } };
+      throw new Error(`Unexpected lottery request ${path}`);
+    },
+    post: async (path, body) => { calls.push(['POST', path, body]); prize = { ...prize, winner: { vote_id: body.vote_id, ticket_code: 'TEST77', status: 'assigned' } }; return { data: prize }; },
+    delete: async path => { calls.push(['DELETE', path]); prize = { ...prize, winner: null }; return { data: {} }; },
+  };
+  const { state, mounts, observations } = controllerFixture(t, api, 'superadmin', source);
+  await mounts[0](); await Vue.nextTick(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(observations.mounted, true);
+  assert.equal(state.selectedEventId.value, 9);
+  assert.equal(state.totalCodesCount.value, 12);
+  assert.equal(state.allowedCodesCount.value, 1);
+  assert.equal(state.canDrawPrize(state.selectedPrizes.value[0]), true);
+  const assigned = await state.assignPrizeWinner(state.selectedPrizes.value[0], state.tickets.value[0]);
+  state.updateEventPrize(assigned);
+  assert.deepEqual(calls.find(call => call[0] === 'POST'), ['POST', '/events/9/prizes/3/assign', { vote_id: 77 }]);
+  assert.equal(state.canDrawPrize(state.selectedPrizes.value[0]), false);
+  await state.resetPrize(state.selectedPrizes.value[0]);
+  assert.ok(calls.some(call => call[0] === 'DELETE' && call[1] === '/events/9/prizes/3/winner'));
+  assert.equal(state.selectedPrizes.value[0].winner, null);
 });
 
 function controllerFixture(t, apiClient, cachedRole = 'superadmin', compiledSource = compiledPortal, extraProps = {}) {
@@ -46,7 +100,7 @@ function controllerFixture(t, apiClient, cachedRole = 'superadmin', compiledSour
   const api = { apiClient, resolveApiUrl: value => value, getOrganizationSlug: () => 'club' };
   const code = compiledSource.replace(/^import (.+) from (".+");$/gm, (_, bindings, moduleJSON) => {
     const module = JSON.parse(moduleJSON);
-    const provider = module === 'vue' ? runtime : module.endsWith('/api') ? api : { DEFAULT_ROSTER_SCHEMA: 13, MAX_PLAYER_SLOTS: 14 };
+    const provider = module === 'vue' ? runtime : module.endsWith('/api') ? api : module.endsWith('/engagementReport.js') ? Report : module.endsWith('/recipientReport.js') ? Recipient : { DEFAULT_ROSTER_SCHEMA: 13, MAX_PLAYER_SLOTS: 14 };
     for (const binding of bindings.replace(/[{}]/g, '').split(',')) {
       const [name, alias = name] = binding.trim().split(/\s+as\s+/);
       args.push(alias); values.push(provider[name]);

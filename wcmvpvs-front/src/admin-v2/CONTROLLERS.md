@@ -51,3 +51,11 @@ Eseguire dalla directory frontend:
 node --test src/admin-v2/adminV2.test.js
 npm run build
 ```
+
+La presentazione V2 del report usa anche gli script di `EngagementReportModal`,
+`RecipientReportBuilder`, `ReportKpiCard` e `ReportAnalysisView`. Gli import
+dinamici del generatore PDF vengono risolti rispetto al file originale a build
+time. Calcoli, selezioni KPI, approvazione, versioni e download conservano i
+controller esistenti; i template e il foglio `styles/report.css` sono locali alla V2.
+Un test dell’adapter verifica il payload di approvazione e che il download di
+uno snapshot già approvato non crei una seconda versione.
