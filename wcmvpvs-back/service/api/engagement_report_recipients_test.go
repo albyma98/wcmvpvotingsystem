@@ -472,3 +472,122 @@ func TestRecipientPurgeCleansNewTablesWithoutCascades(t *testing.T) {
 		}
 	}
 }
+
+func TestRecipientProviderDiagnosticsDoNotLeakRawErrors(t *testing.T) {
+	p, _ := findReportProfile("executive")
+	s := engagementReportSnapshot{Recipient: &p, KPIs: []reportKPI{{ID: "visitors", Value: reportMetricFloat(1)}}}
+	for _, tc := range []struct {
+		name               string
+		status             int
+		body, reason, code string
+	}{
+		{"key", 401, `{"error":{"code":"invalid_api_key","message":"SECRET-KEY private source"}}`, "provider_http_error", "invalid_api_key"},
+		{"quota", 429, `{"error":{"code":"insufficient_quota","message":"SECRET-KEY"}}`, "provider_http_error", "insufficient_quota"},
+		{"schema", 400, `{"error":{"code":"invalid_json_schema","message":"SECRET-KEY"}}`, "provider_http_error", "invalid_json_schema"},
+		{"incomplete", 200, `{"status":"incomplete","output":[]}`, "response_incomplete", ""},
+		{"invalid_output", 200, `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"{}"}]}]}`, "invalid_output", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &http.Client{Transport: recipientTestTransport(func(r *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(tc.body)), Header: http.Header{"X-Request-Id": []string{"req_test-report"}}}, nil
+			})}
+			_, err := callRecipientOpenAI(context.Background(), client, recipientOpenAIURL, "SECRET-KEY", "test-model", s)
+			if err == nil {
+				t.Fatal("expected failure")
+			}
+			d := recipientErrorDiagnostic(err)
+			if d.Reason != tc.reason || d.ProviderCode != tc.code {
+				t.Fatalf("%+v", d)
+			}
+			if tc.status != 200 && (d.HTTPStatus != tc.status || d.RequestID != "req_test-report") {
+				t.Fatalf("missing provider identifiers %+v", d)
+			}
+			raw, _ := json.Marshal(d)
+			if strings.Contains(string(raw), "SECRET") || strings.Contains(string(raw), "private source") {
+				t.Fatal("raw provider error leaked", string(raw))
+			}
+		})
+	}
+	if d := recipientErrorDiagnostic(context.DeadlineExceeded); d.Reason != "request_timeout" {
+		t.Fatal(d)
+	}
+	if d := recipientErrorDiagnostic(fmt.Errorf("SECRET-KEY")); d.Reason != "network_error" || strings.Contains(d.Message, "SECRET") {
+		t.Fatal(d)
+	}
+}
+
+func TestRecipientMissingConfigurationDiagnosticsPersistAndRegenerate(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	recipientPageSignal(t, f)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "test-model")
+	s := recipientDraft(t, f, "executive", 0)
+	input := map[string]interface{}{"calculation_id": s.CalculationID, "recipient": "executive", "compare_previous": true}
+	for i := 0; i < 2; i++ {
+		r := engagementReportRequest(t, f.router.generateRecipientReportAnalysis, "POST", f.event, input, f.ctx, nil)
+		engagementReportRequireStatus(t, r, 200)
+		var response struct {
+			Status     string                 `json:"status"`
+			Cached     bool                   `json:"cached"`
+			Diagnostic *recipientAIDiagnostic `json:"diagnostic"`
+		}
+		_ = json.Unmarshal(r.Body.Bytes(), &response)
+		if response.Status != "fallback" || response.Cached != (i == 1) || response.Diagnostic == nil || response.Diagnostic.Reason != "missing_api_key" {
+			t.Fatal(r.Body.String())
+		}
+	}
+	prepared, _ := recipientSnapshot(s, "executive", true, false)
+	f.router.attachCachedRecipientAnalysis(&prepared)
+	if prepared.AnalysisDiagnostic == nil || prepared.AnalysisDiagnostic.Reason != "missing_api_key" {
+		t.Fatal("snapshot diagnostic lost")
+	}
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	old := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = old })
+	valid, _ := json.Marshal(recipientAIExample())
+	http.DefaultTransport = recipientTestTransport(func(r *http.Request) (*http.Response, error) {
+		raw, _ := json.Marshal(map[string]interface{}{"status": "completed", "output": []interface{}{map[string]interface{}{"type": "message", "content": []interface{}{map[string]interface{}{"type": "output_text", "text": string(valid)}}}}})
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(raw))), Header: make(http.Header)}, nil
+	})
+	input["regenerate"] = true
+	r := engagementReportRequest(t, f.router.generateRecipientReportAnalysis, "POST", f.event, input, f.ctx, nil)
+	engagementReportRequireStatus(t, r, 200)
+	if !strings.Contains(r.Body.String(), `"status":"ready"`) || !strings.Contains(r.Body.String(), `"diagnostic":null`) {
+		t.Fatal(r.Body.String())
+	}
+	prepared, _ = recipientSnapshot(s, "executive", true, false)
+	f.router.attachCachedRecipientAnalysis(&prepared)
+	if prepared.AnalysisStatus != "ready" || prepared.AnalysisDiagnostic != nil {
+		t.Fatal("old failure survived success")
+	}
+}
+
+func TestRecipientConfigurationAndUnrequestedAnalysisReasons(t *testing.T) {
+	for _, tc := range []struct {
+		name, key, model, reason string
+		page                     bool
+	}{
+		{"model", "test-key", "", "missing_model", true},
+		{"data", "test-key", "test-model", "no_available_kpis", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newEngagementReportFixture(t)
+			if tc.page {
+				recipientPageSignal(t, f)
+			}
+			t.Setenv("OPENAI_API_KEY", tc.key)
+			t.Setenv("OPENAI_MODEL", tc.model)
+			s := recipientDraft(t, f, "executive", 0)
+			prepared, _ := recipientSnapshot(s, "executive", true, false)
+			f.router.attachCachedRecipientAnalysis(&prepared)
+			if prepared.AnalysisDiagnostic.Reason != "analysis_not_generated" {
+				t.Fatal(prepared.AnalysisDiagnostic)
+			}
+			r := engagementReportRequest(t, f.router.generateRecipientReportAnalysis, "POST", f.event, map[string]interface{}{"calculation_id": s.CalculationID, "recipient": "executive", "compare_previous": true}, f.ctx, nil)
+			engagementReportRequireStatus(t, r, 200)
+			if !strings.Contains(r.Body.String(), `"reason":"`+tc.reason+`"`) {
+				t.Fatal(r.Body.String())
+			}
+		})
+	}
+}

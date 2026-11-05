@@ -135,6 +135,37 @@ La cache SQLite identifica evento, profilo e sua configurazione, evento preceden
 
 La prenotazione atomica `pending` accorpa richieste identiche concorrenti, anche tra processi che condividono SQLite, con confronto sul timestamp per evitare una corsa tra lettura e prenotazione. Le lease scadono dopo tre minuti in caso di crash. I fallback vengono riutilizzati per cinque minuti; `regenerate` rinnova esplicitamente il risultato, senza sottrarre una prenotazione in corso. Approvare o esportare un PDF non effettua chiamate OpenAI: usa il risultato valido in cache oppure la sintesi deterministica.
 
+### Diagnosi di un fallback in produzione
+
+La presenza delle variabili nel file `.env` va verificata nel processo del container, senza stampare la chiave:
+
+```sh
+docker compose exec -T backend sh -c 'test -n "$OPENAI_API_KEY" && echo OPENAI_API_KEY=presente || echo OPENAI_API_KEY=assente; printf "OPENAI_MODEL=%s\nOPENAI_REPORT_TIMEOUT=%s\n" "$OPENAI_MODEL" "$OPENAI_REPORT_TIMEOUT"'
+```
+
+Per tentare una chiamata effettiva premere **Genera analisi** o **Rigenera analisi**. Il solo controllo **Includi analisi AI** richiede l'inclusione del risultato disponibile nell'esportazione; non avvia una chiamata a pagamento.
+
+La risposta di `POST .../engagement-report/analysis` espone `diagnostic` quando viene usata una sintesi deterministica. Lo snapshot approvato conserva lo stesso oggetto in `analysis_diagnostic`. `diagnostic.reason` distingue:
+
+| Motivo | Significato |
+| --- | --- |
+| `missing_api_key`, `missing_model` | Configurazione assente nel processo backend |
+| `no_available_kpis` | Il destinatario non ha valori disponibili da analizzare |
+| `analysis_not_generated`, `analysis_pending` | Nessuna analisi richiesta o richiesta ancora in corso |
+| `provider_http_error` | OpenAI ha risposto con errore: consultare `http_status`, `provider_code` e `request_id` |
+| `request_timeout`, `network_error` | Timeout oppure problema di connessione dal backend |
+| `invalid_output` | Risposta rifiutata dai controlli locali; `validation_error` contiene il motivo senza includere il testo prodotto |
+| `response_incomplete`, `invalid_response`, `provider_refusal` | Risposta incompleta, non leggibile o rifiuto del provider |
+| `cached_fallback` | Fallback prodotto prima dell'introduzione della diagnostica: rigenerare per conoscere la causa |
+
+La diagnostica viene mantenuta anche nella cache, senza modifiche allo schema SQLite. Il JSON in cache conserva i campi dell'analisi e un campo separato `diagnostic`; i payload precedenti restano leggibili. Il JSON Schema richiesto al modello resta invariato. Il retry di una risposta non valida comunica il codice della violazione al modello, mantenendo gli stessi controlli e il limite di un retry.
+
+I log del backend riportano `recipient report OpenAI attempt failed` con codici, stato HTTP, tentativo e ID richiesta. Le chiavi, i corpi delle richieste e i messaggi grezzi del provider non sono registrati né restituiti, perché possono contenere informazioni sensibili.
+
+Il timeout HTTP del server copre il maggiore tra il budget AI precedente e `OPENAI_REPORT_TIMEOUT`, con cinque secondi aggiuntivi per consegnare la risposta. Con `OPENAI_REPORT_TIMEOUT=45s` il server concede almeno cinquanta secondi. In precedenza il budget HTTP dipendeva soltanto dal vecchio servizio AI e poteva interrompere la risposta prima del completamento del report.
+
+Verifica della correzione: tutti i quattordici test `TestRecipient*` superati, inclusi errori HTTP del provider, assenza di configurazione, cache, rigenerazione e protezione dei messaggi sensibili. Superata anche la suite API completa e il test del server che verifica i budget HTTP di cinquanta e novantacinque secondi. Le chiamate OpenAI dei test sono simulate; la causa specifica del fallback in produzione va letta dalla nuova diagnostica dopo il deployment e una rigenerazione esplicita.
+
 ## Verifica ed esempi
 
 Da `wcmvpvs-front`:

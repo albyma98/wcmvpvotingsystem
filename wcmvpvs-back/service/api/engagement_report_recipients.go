@@ -515,7 +515,8 @@ func (rt *_router) approveRecipientReport(w http.ResponseWriter, r *http.Request
 		AIStatus    string
 		Model       string
 		Prompt      string
-	}{calculationID, profileID, compare, s.IncludeAppendix, s.Analysis, s.Notes, s.AnalysisStatus, s.AnalysisModel, s.PromptVersion})
+		Diagnostic  *recipientAIDiagnostic
+	}{calculationID, profileID, compare, s.IncludeAppendix, s.Analysis, s.Notes, s.AnalysisStatus, s.AnalysisModel, s.PromptVersion, s.AnalysisDiagnostic})
 	s.ID = newReportID()
 	s.ApprovedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	s.ApprovedBy = ctx.AdminUsername

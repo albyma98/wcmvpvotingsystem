@@ -71,6 +71,7 @@ type engagementReportSnapshot struct {
 	DataHash             string                    `json:"data_hash,omitempty"`
 	Analysis             *recipientAnalysis        `json:"analysis,omitempty"`
 	AnalysisStatus       string                    `json:"analysis_status,omitempty"`
+	AnalysisDiagnostic   *recipientAIDiagnostic    `json:"analysis_diagnostic,omitempty"`
 	AnalysisModel        string                    `json:"analysis_model,omitempty"`
 	PromptVersion        string                    `json:"prompt_version,omitempty"`
 	ID                   string                    `json:"id,omitempty"`

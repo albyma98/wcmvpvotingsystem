@@ -35,7 +35,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api"
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
@@ -213,17 +212,7 @@ func run() error {
 	// Apply security headers (X-Frame-Options, HSTS, etc.)
 	handler = applySecurityHeaders(handler)
 
-	serverReadTimeout := cfg.Web.ReadTimeout
-	serverWriteTimeout := cfg.Web.WriteTimeout
-	if cfg.AI.RequestTimeout > 0 {
-		minimumAITimeout := cfg.AI.RequestTimeout + 5*time.Second
-		if serverReadTimeout < minimumAITimeout {
-			serverReadTimeout = minimumAITimeout
-		}
-		if serverWriteTimeout < minimumAITimeout {
-			serverWriteTimeout = minimumAITimeout
-		}
-	}
+	serverReadTimeout, serverWriteTimeout := apiServerTimeouts(cfg)
 
 	// Create the API server
 	apiserver := http.Server{
