@@ -191,6 +191,49 @@ onBeforeUnmount(releaseDialog);
 .eng-report__coverage{margin:20px 0;padding:16px;border:1px solid #dce5ed;border-radius:12px;background:#f8fafc}.eng-report__coverage h3{font-size:14px;margin:0 0 10px}.eng-report__coverage-notes{font-size:12px;line-height:1.6;padding-left:18px;margin:0 0 14px;color:#516378}.eng-report__operational{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:0}.eng-report__operational>div{padding:10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px}.eng-report__operational dt{font-size:11px;color:#657389;line-height:1.4}.eng-report__operational dd{font-size:18px;font-weight:700;color:#0f6659;margin:6px 0 0}.eng-report__coverage-caption{font-size:11px;line-height:1.6;color:#657389;margin:12px 0 0}.eng-report__sources{font-size:11px;margin-top:12px;color:#516378}.eng-report__sources summary{cursor:pointer;font-weight:600}.eng-report__sources ul{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:6px 20px}.eng-report__sources li{display:flex;justify-content:space-between;gap:10px;overflow-wrap:anywhere}.eng-report__sources code{font-size:10px;min-width:0}.eng-report__sources li span{white-space:nowrap}
 .eng-report__override-fields{grid-template-columns:minmax(0,320px)}.eng-report__description{grid-column:1 / -1;display:block;margin-top:2px}.eng-report__description small{display:block;text-align:right;font-size:10px;color:#657389;margin-top:4px}
 .eng-report__selection{border:1px solid #dce5ed;border-radius:12px;padding:16px;margin:20px 0;background:#f8fafc}.eng-report__selection h3{font-size:14px;margin:0 0 8px}.eng-report__selection p{font-size:12px;line-height:1.5;margin:0;color:#516378}.eng-report__selection-actions{display:flex;flex-wrap:wrap;gap:10px 20px;margin-top:10px}.eng-report__selection .eng-report__selection-warning{color:#9a2929;margin-top:10px}.eng-report__include{display:flex;gap:7px;align-items:center;margin-top:8px;color:#516378}.eng-report__include input{accent-color:#11826e;width:15px;height:15px}.eng-report__time-method,.eng-report__time-coverage{font-size:12px;line-height:1.6;color:#516378;margin:8px 0}
+/* Share visible checkbox controls with the recipient builder inside this dialog. */
+.eng-report :deep(input[type="checkbox"]) {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-block;
+  box-sizing: border-box;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+  margin: 0 6px 0 0;
+  vertical-align: middle;
+  border: 2px solid #64748b;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+.eng-report :deep(input[type="checkbox"]:checked) {
+  border-color: #087562;
+  background-color: #087562;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 8 3 3 7-7' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+}
+.eng-report :deep(input[type="checkbox"]:focus-visible) {
+  outline: 3px solid #23a98e;
+  outline-offset: 3px;
+  box-shadow: none;
+}
+.eng-report :deep(input[type="checkbox"]:disabled) {
+  opacity: .6;
+  cursor: not-allowed;
+}
+@media (forced-colors: active) {
+  .eng-report :deep(input[type="checkbox"]) {
+    -webkit-appearance: auto;
+    appearance: auto;
+    background-image: none;
+  }
+}
 @media(max-width:760px){.eng-report-backdrop{padding:8px}.eng-report{max-height:calc(100dvh - 16px);border-radius:12px}.eng-report__header{padding:20px}.eng-report__header h2{font-size:20px}.eng-report__body{padding:18px}.eng-report__badge{display:none}.eng-report__table-head{display:none}.eng-report__kpi{grid-template-columns:1fr 1fr;gap:10px;padding:14px 4px}.eng-report__kpi-name{grid-column:1 / -1}.eng-report__override{grid-column:1 / -1}.eng-report__mobile-label{display:block;text-transform:uppercase;font-size:9px;color:#657389;margin-bottom:5px}.eng-report__facts-grid{grid-template-columns:1fr 1fr}.eng-report__override-fields{grid-template-columns:1fr}.eng-report__formats{flex-direction:column}.eng-report__footer{padding:12px;flex-wrap:wrap}.eng-report__footer>div{margin-left:auto;flex-wrap:wrap}.eng-report__button{padding:10px;font-size:11px}.eng-report__previous{align-items:flex-start;flex-direction:column}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
