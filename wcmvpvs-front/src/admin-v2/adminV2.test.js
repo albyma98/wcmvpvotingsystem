@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parse as parseJavaScript } from '@babel/parser';
+import { parse as parseSfc } from '@vue/compiler-sfc';
+import { baseParse } from '@vue/compiler-dom';
 import * as Vue from 'vue';
 import * as Report from '../engagementReport.js';
 import * as Recipient from '../recipientReport.js';
@@ -52,6 +54,28 @@ test('V2 report approval keeps selections, facts and descriptions and resolves t
   assert.deepEqual(calls[0][1].selected_kpi_ids,['visitors','active_participation']);
   assert.equal(state.approved.value.id,73);assert.equal(state.error.value,'');
   await state.approveAndDownload();assert.equal(calls.length,1,'Download retry must not approve a second snapshot');
+});
+
+test('V2 report exposes the editable analysis and connects every review action to its shared controller', () => {
+  const read = name => parseSfc(readFileSync(new URL(`./components/reports/${name}.vue`, import.meta.url), 'utf8')).descriptor;
+  const nodes = node => [node, ...(node.children || []).flatMap(nodes)];
+  const builder = nodes(baseParse(read('V2RecipientReportBuilder').template.content)).filter(n => n.type === 1);
+  const editor = builder.find(n => n.tag === 'ReportAnalysisView');
+  const directive = (node, kind, name) => node.props.find(p => p.type === 7 && p.name === kind && p.arg?.content === name);
+  for (const prop of ['analysis', 'review', 'dirty', 'busy', 'warnings']) assert.ok(directive(editor, 'bind', prop), prop);
+  for (const event of ['update:analysis', 'save', 'approve', 'discard']) assert.ok(directive(editor, 'on', event), event);
+  for (const button of builder.filter(n => n.tag === 'button' && directive(n, 'on', 'click')?.exp.content.startsWith('renderReport('))) assert.match(directive(button, 'bind', 'disabled').exp.content, /analysisApproved/);
+  const view = read('V2ReportAnalysisView');
+  const definition = parseJavaScript(view.script.content, { sourceType: 'module' }).program.body.find(n => n.type === 'ExportDefaultDeclaration').declaration;
+  const props = definition.properties.find(p => p.key.name === 'props').value.properties.map(p => p.key.name);
+  const emits = definition.properties.find(p => p.key.name === 'emits').value.elements.map(n => n.value);
+  for (const prop of ['review', 'dirty', 'busy', 'warnings']) assert.ok(props.includes(prop), prop);
+  for (const event of ['update:analysis', 'save', 'approve', 'discard']) assert.ok(emits.includes(event), event);
+  const fields = nodes(baseParse(view.template.content)).filter(n => n.type === 1 && ['input', 'textarea'].includes(n.tag));
+  for (const value of ['analysis.headline', 'analysis.summary', 'item.title', 'item.description', 'item.action', 'item.reason', 'limit']) {
+    const field = fields.find(n => directive(n, 'bind', 'value')?.exp.content === value);
+    assert.ok(field && directive(field, 'on', 'input'), `${value} must be an editable field`);
+  }
 });
 
 test('headless compiler fails closed when the session integration contract changes', () => {
