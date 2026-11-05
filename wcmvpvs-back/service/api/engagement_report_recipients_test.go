@@ -405,7 +405,7 @@ func TestRecipientAICacheRetryFallbackInvalidationAndSnapshots(t *testing.T) {
 		if count == 1 {
 			text = `{"invalid":true}`
 		}
-		raw, _ := json.Marshal(map[string]interface{}{"status": "completed", "output": []interface{}{map[string]interface{}{"type": "message", "content": []interface{}{map[string]interface{}{"type": "output_text", "text": text}}}}})
+		raw, _ := json.Marshal(map[string]interface{}{"status": "completed", "usage": map[string]interface{}{"input_tokens": 1000 + count, "input_tokens_details": map[string]int{"cached_tokens": 250}, "output_tokens": 100 + count, "total_tokens": 1100 + 2*count}, "output": []interface{}{map[string]interface{}{"type": "message", "content": []interface{}{map[string]interface{}{"type": "output_text", "text": text}}}}})
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(raw))), Header: make(http.Header)}, nil
 	})
 	s := recipientDraft(t, f, "executive", 0)
@@ -415,10 +415,22 @@ func TestRecipientAICacheRetryFallbackInvalidationAndSnapshots(t *testing.T) {
 	if atomic.LoadInt32(&calls) != 2 || !strings.Contains(r.Body.String(), `"status":"ready"`) {
 		t.Fatal(calls, r.Body.String())
 	}
+	var first struct {
+		Usage *recipientAIUsage `json:"usage"`
+	}
+	if err := json.Unmarshal(r.Body.Bytes(), &first); err != nil || first.Usage == nil || first.Usage.Requests != 2 || first.Usage.ReportedRequests != 2 || first.Usage.InputTokens != 2003 || first.Usage.OutputTokens != 203 || first.Usage.CachedInputTokens != 500 || first.Usage.TotalTokens != 2206 || first.Usage.RequestBytes > recipientAIRequestMaxBytes {
+		t.Fatal("usage must include both attempts, including rejected output", r.Body.String(), err)
+	}
 	r = engagementReportRequest(t, f.router.generateRecipientReportAnalysis, "POST", f.event, analysisInput, f.ctx, nil)
 	engagementReportRequireStatus(t, r, 200)
 	if atomic.LoadInt32(&calls) != 2 || !strings.Contains(r.Body.String(), `"cached":true`) {
 		t.Fatal("cache missed", calls, r.Body.String())
+	}
+	var cached struct {
+		Usage *recipientAIUsage `json:"usage"`
+	}
+	if err := json.Unmarshal(r.Body.Bytes(), &cached); err != nil || cached.Usage == nil || *cached.Usage != *first.Usage {
+		t.Fatal("cached usage changed or triggered a new request", r.Body.String(), err)
 	}
 	approve := map[string]interface{}{"calculation_id": s.CalculationID, "recipient": "executive", "compare_previous": true, "include_appendix": true, "include_ai": true}
 	r = engagementReportRequest(t, f.router.approveEngagementReport, "POST", f.event, approve, f.ctx, nil)
@@ -466,7 +478,7 @@ func TestRecipientAICacheRetryFallbackInvalidationAndSnapshots(t *testing.T) {
 	analysisInput["calculation_id"] = updated.CalculationID
 	r = engagementReportRequest(t, f.router.generateRecipientReportAnalysis, "POST", f.event, analysisInput, f.ctx, nil)
 	engagementReportRequireStatus(t, r, 200)
-	if atomic.LoadInt32(&calls) != 4 || !strings.Contains(r.Body.String(), `"status":"fallback"`) {
+	if atomic.LoadInt32(&calls) != 3 || !strings.Contains(r.Body.String(), `"status":"fallback"`) {
 		t.Fatal("fallback or retry count", calls, r.Body.String())
 	}
 	for _, profile := range reportRecipientProfiles() {
@@ -532,6 +544,78 @@ func TestRecipientConcurrentAIRequestsShareReservation(t *testing.T) {
 	}
 	if atomic.LoadInt32(&calls) != 1 {
 		t.Fatal("duplicate provider calls", calls)
+	}
+}
+
+func TestRecipientAIInputExcludesLogosFromProviderRequests(t *testing.T) {
+	logo := "data:image/png;base64," + strings.Repeat("BASE64-LOGO", 64*1024)
+	for _, profile := range reportRecipientProfiles() {
+		for _, compare := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/compare=%t", profile.ID, compare), func(t *testing.T) {
+				s := engagementReportSnapshot{
+					Recipient: &profile, ComparePrevious: compare,
+					Event: reportEvent{ID: 2, Title: "Partita attuale", StartDateTime: "2026-11-05T18:00:00Z", Location: "Arena", OrganizationName: "Club"},
+					KPIs:  []reportKPI{{ID: "visitors", Label: "Partecipanti", Value: reportMetricFloat(5)}},
+				}
+				if compare {
+					s.PreviousEvent = &reportEvent{ID: 1, Title: "Partita precedente", StartDateTime: "2026-10-29T18:00:00Z", Location: "Arena", OrganizationName: "Club"}
+				}
+				baseline, err := json.Marshal(recipientAIInput(s))
+				if err != nil {
+					t.Fatal(err)
+				}
+				s.Event.OrganizationLogoURL = logo
+				if compare {
+					s.PreviousEvent.OrganizationLogoURL = logo
+				}
+				s.Branding = reportBranding{CompanyName: "PDF-ONLY-BRAND", LogoData: logo}
+				client := &http.Client{Transport: recipientTestTransport(func(r *http.Request) (*http.Response, error) {
+					var request struct {
+						Input string `json:"input"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+						t.Fatal(err)
+					}
+					if request.Input != string(baseline) {
+						t.Fatalf("branding changed provider input: baseline=%d bytes, actual=%d bytes", len(baseline), len(request.Input))
+					}
+					for _, forbidden := range []string{"organization_logo_url", "data:image", "BASE64-LOGO", "PDF-ONLY-BRAND"} {
+						if strings.Contains(request.Input, forbidden) {
+							t.Fatalf("provider input contains branding: %s", forbidden)
+						}
+					}
+					var sent struct {
+						Event         recipientAIEvent  `json:"event"`
+						PreviousEvent *recipientAIEvent `json:"previous_event"`
+					}
+					if err := json.Unmarshal([]byte(request.Input), &sent); err != nil {
+						t.Fatal(err)
+					}
+					expected := recipientAIEvent{Title: "Partita attuale", Date: "2026-11-05"}
+					if sent.Event != expected {
+						t.Fatal("current event context changed")
+					}
+					if compare {
+						expectedPrevious := recipientAIEvent{Title: "Partita precedente", Date: "2026-10-29"}
+						if sent.PreviousEvent == nil || *sent.PreviousEvent != expectedPrevious {
+							t.Fatal("previous event context changed")
+						}
+					} else if sent.PreviousEvent != nil {
+						t.Fatal("previous event context manufactured")
+					}
+					t.Logf("AI input excludes logos: %d bytes", len(request.Input))
+					provided, _ := json.Marshal(recipientAIProviderExample())
+					raw, _ := json.Marshal(map[string]interface{}{"status": "completed", "output": []interface{}{map[string]interface{}{"type": "message", "content": []interface{}{map[string]interface{}{"type": "output_text", "text": string(provided)}}}}})
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(raw))), Header: make(http.Header)}, nil
+				})}
+				if _, err := callRecipientOpenAI(context.Background(), client, recipientOpenAIURL, "test-key", "test-model", s); err != nil {
+					t.Fatal(err)
+				}
+				if s.Event.OrganizationLogoURL != logo || compare && s.PreviousEvent.OrganizationLogoURL != logo || s.Branding.LogoData != logo {
+					t.Fatal("provider sanitization changed PDF branding in the snapshot")
+				}
+			})
+		}
 	}
 }
 

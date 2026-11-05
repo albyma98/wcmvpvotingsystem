@@ -138,9 +138,9 @@ OPENAI_REPORT_TIMEOUT=45s
 
 Il modello è configurabile e deve supportare Responses e Structured Outputs. Se chiave o modello mancano, si usa la sintesi deterministica. Non è necessaria una chiave per eseguire i test o generare gli esempi. Il timeout accetta durate Go da un secondo a due minuti; default 45 secondi. La chiave non viene esportata al frontend. L'integrazione usa HTTPS verso `/v1/responses`, `store: false`, `text.format.type: json_schema`, `strict: true`, proprietà obbligatorie e `additionalProperties: false` su tutti gli oggetti. Riferimento: [documentazione ufficiale Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses).
 
-L'input include profilo, società, eventi, valori selezionati, denominatori, definizioni, confronti già calcolati, origine, stato di verifica e limiti. Esclude segnali grezzi, ID tifoso/dispositivo/sessione, note manuali, descrizioni libere delle fonti e autore della sorgente. Le etichette sono trattate dal prompt come dati non affidabili, non come istruzioni.
+L'input include società, titolo e data degli eventi, valori selezionati, denominatori, definizioni, confronti già calcolati, origine, stato di verifica e limiti. Il profilo fornisce obiettivo, tono e istruzioni una sola volta nel prompt. Esclude segnali grezzi, ID tifoso/dispositivo/sessione, note manuali, descrizioni libere delle fonti, autore della sorgente e branding. `organization_logo_url` non viene inviato: può contenere un intero logo Base64 che sarebbe elaborato come testo a pagamento. I loghi rimangono nello snapshot per il PDF. La regressione verifica la richiesta HTTP simulata nei quattro profili con e senza confronto, mantenendo identico il payload anche con grandi loghi Base64. Le etichette sono trattate dal prompt come dati non affidabili, non come istruzioni.
 
-Go valida lo stesso schema inviato al modello, campi obbligatori e sconosciuti, tipi, dimensioni, priorità `high/medium/low`, riferimenti a KPI selezionati **disponibili** e massimo tre insight complessivi e tre raccomandazioni. Il testo AI non può contenere numeri Unicode, simboli percentuali/monetari o i termini numerici esplicitamente vietati: i riferimenti numerici degli insight vengono inseriti dal renderer dai valori verificati. Non vengono accettati rifiuti, risposte incomplete o payload eccessivi. È previsto al massimo un retry nell'unico timeout totale, poi sintesi deterministica specifica del destinatario.
+Go valida lo stesso schema inviato al modello, campi obbligatori e sconosciuti, tipi, dimensioni, priorità `high/medium/low`, riferimenti a KPI selezionati **disponibili** e massimo tre insight complessivi e tre raccomandazioni. Il testo AI non può contenere numeri Unicode, simboli percentuali/monetari o i termini numerici esplicitamente vietati: i riferimenti numerici degli insight vengono inseriti dal renderer dai valori verificati. Non vengono accettati rifiuti, risposte incomplete o payload eccessivi. È previsto al massimo un retry per `invalid_output` nell'unico timeout totale, poi sintesi deterministica specifica del destinatario. Errori HTTP, rete, input e risposte incomplete non provocano un secondo invio identico.
 
 La cache SQLite identifica evento, profilo e sua configurazione, evento precedente, confronto attivo, hash dati, versione prompt e modello. L'hash include sorgenti manuali con revisione, denominatori, valori precedenti, limiti e ambito sponsor. Non include ID e timestamp volatili del calcolo. Modificare i dati, il profilo, il prompt o il modello produce una chiave differente. Le vecchie analisi possono rimanere archiviate senza essere riutilizzate con dati nuovi.
 
@@ -166,6 +166,7 @@ La risposta di `POST .../engagement-report/analysis` espone `diagnostic` quando 
 | `provider_http_error` | OpenAI ha risposto con errore: consultare `http_status`, `provider_code` e `request_id` |
 | `request_timeout`, `network_error` | Timeout oppure problema di connessione dal backend |
 | `invalid_output` | Risposta rifiutata dai controlli locali; `validation_error` contiene il motivo senza includere il testo prodotto |
+| `input_too_large`, `invalid_input` | Richiesta oltre il budget di dimensione o dati non serializzabili: nessuna chiamata OpenAI eseguita |
 | `response_incomplete`, `invalid_response`, `provider_refusal` | Risposta incompleta, non leggibile o rifiuto del provider |
 | `cached_fallback` | Fallback prodotto prima dell'introduzione della diagnostica: rigenerare per conoscere la causa |
 
@@ -183,9 +184,32 @@ La diagnostica `invalid_output / insight limit exceeded` identifica un difetto d
 
 Da `recipient-report-v2`, lo schema interno inviato a Responses usa un unico array `insights` con `maxItems` uguale a `MaxInsights` del profilo. Ogni elemento contiene titolo, descrizione, KPI e `kind` con enum `positive/critical`. Dopo la validazione di questo schema il backend separa le categorie nei campi pubblici `positive_insights` e `critical_insights`, conservando integralmente gli elementi e applicando tutti i controlli già esistenti. Interfaccia, cache, snapshot e renderer PDF continuano a usare il formato pubblico originario. Non viene aumentato il limite né vengono troncati gli insight per aggirare una violazione.
 
-La nuova versione prompt produce una chiave cache differente dai precedenti fallback. Gli snapshot già approvati restano invariati. Per attivare la correzione aggiornare il codice, ricostruire il backend e premere **Rigenera analisi**: nella risposta compare `prompt_version: "recipient-report-v2"`. L'uso di `maxItems` per l'unico array segue la [documentazione ufficiale OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
+La versione prompt produce una chiave cache differente dai precedenti fallback. Gli snapshot già approvati restano invariati. La successiva ottimizzazione dell'input usa oggi `prompt_version: "recipient-report-v3"`, mantenendo lo stesso vincolo complessivo sugli insight. L'uso di `maxItems` per l'unico array segue la [documentazione ufficiale OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
 
 I test di regressione coprono tutte le combinazioni tra zero e quattro insight per categoria nei quattro profili, i limiti personalizzati, i KPI inesistenti, i numeri non consentiti, le categorie sconosciute e la compatibilità del JSON pubblico. Il caso originario di tre insight positivi più tre critici rimane rifiutato dalla validazione pubblica.
+
+### Ottimizzazione input e misure di consumo — prompt v3
+
+`engagement_report_recipient_input.go` definisce DTO dedicati al provider: nessuna serializzazione delle strutture UI complete. Vengono inviati soltanto i KPI del destinatario. I KPI disponibili conservano integralmente etichetta, definizione, valore, unità, numeratore, denominatore e fonte; quelli N/D diventano una lista compatta con ID, etichetta e motivo. Zero resta un valore disponibile. Le note sostanziali vengono raggruppate per testo con i relativi `metric_ids`; le note generiche duplicate e i limiti su funzionalità estranee al profilo vengono omessi. Il confronto contiene solo valori, variazioni già calcolate, motivo e provenienza sintetica precedente; è assente quando disabilitato.
+
+Il tipo di fonte manuale e lo stato di verifica restano distinti sia per il dato corrente sia per quello precedente, senza inviare testo libero o identificativi dell'autore. L'ambito `event_total`/`selected_partner` impedisce di confondere i totali sponsor dell'evento con quelli del partner. Titoli e nomi decorativi hanno limiti espliciti, mantenendo intatto lo snapshot originale. Le definizioni e i numeri dei KPI non vengono troncati per rientrare nel budget.
+
+L'intera richiesta HTTP, incluse istruzioni e schema di risposta, ha un limite di **24 KiB**. Se viene superato, il provider non viene chiamato: si restituiscono sintesi deterministica e `diagnostic.reason: "input_too_large"`. Questo è un limite di byte, non un limite esatto di token. Valori non serializzabili producono `invalid_input` prima dell'HTTP.
+
+La verifica locale copre **24 casi sintetici**: quattro profili, dati automatici/parziali/manuali, con e senza confronto. Con il tokenizer `o200k_base` di `gpt-4.1-mini`, la somma locale di dati, istruzioni e JSON Schema va da **999 a 3.431 token**, con richieste complete fino a **15.924 byte**. Rispetto allo stesso input già privo di loghi, la riduzione stimata va dal **23,2% al 59,5%**. Esempi con tutti i KPI disponibili e confronto attivo:
+
+| Profilo | Prima, senza loghi | Dopo | Riduzione |
+| --- | ---: | ---: | ---: |
+| Dirigenza | 1.720 | 1.289 | 25,1% |
+| Marketing | 2.537 | 1.774 | 30,1% |
+| Sponsor | 1.786 | 1.301 | 27,2% |
+| Analitico | 4.122 | 2.810 | 31,8% |
+
+Sono stime locali su fixture, non consumi di produzione né conteggi comprensivi della formattazione interna del provider. Il conteggio effettivo è quello restituito da OpenAI. Le misure non richiedono una chiave API; tiktoken è stato installato solo in una cartella temporanea e non è una nuova dipendenza del backend. Per esportare localmente le sole fixture sintetiche impostare `REPORT_AI_TEST_EXPORT_DIR` ed eseguire `go test ./service/api -run '^TestRecipientAIRequestBudgets$' -count=1`.
+
+La risposta `POST .../engagement-report/analysis` espone ora `usage` con `input_tokens`, `cached_input_tokens`, `output_tokens`, `total_tokens`, `requests`, `reported_requests` e `max_request_bytes`. I token sommano tutti i tentativi, anche una risposta rifiutata dalla validazione locale. `cached_input_tokens` è un sottoinsieme di `input_tokens`. Se `reported_requests < requests`, alcuni tentativi non hanno restituito contatori e il consumo noto è parziale; zero non prova che quei tentativi non abbiano avuto costi. Con `cached: true`, `usage` descrive la generazione originale archiviata e **non** nuove chiamate o nuovi addebiti. Le vecchie cache senza contatori rimangono leggibili. I log `recipient report OpenAI usage` contengono contatori e dimensioni, senza prompt o segreti.
+
+Superata la suite API completa con CGO e SQLite in memoria. Le regressioni verificano integrità dei denominatori e dei valori decimali, N/D e zero, esclusione di loghi e campi UI, provenienza manuale corrente/precedente, deduplicazione delle note, ambito sponsor, blocco degli input eccessivi, cache dei contatori, contabilizzazione dei retry e assenza di retry inutili. Nessuna chiamata OpenAI a pagamento è stata effettuata.
 
 ## Verifica ed esempi
 
