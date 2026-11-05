@@ -4,6 +4,7 @@
     <OrganizationArena v-else-if="appView === 'arena'" :key="organizationSlug" :slug="organizationSlug" />
     <AdminLottery v-else-if="appView === 'lottery'" />
     <MasterPortal v-else-if="appView === 'master'" />
+    <AdminV2App v-else-if="appView === 'admin-v2'" :key="organizationSlug" :organization-slug="organizationSlug" :current-path="currentPath" />
     <AdminPortal v-else-if="appView === 'portal'" :organization-slug="organizationSlug" />
     <TicketValidationView v-else-if="appView === 'ticket-validation'" />
     <CashLanding v-else-if="appView === 'landing'" />
@@ -142,6 +143,7 @@ const ClubAdminPortal = defineAsyncComponent(() => import('./views/ClubAdminPort
 
 // Admin components loaded only when the URL matches an admin route
 const AdminPortal = defineAsyncComponent(() => import('./components/AdminPortal.vue'));
+const AdminV2App = defineAsyncComponent(() => import('./admin-v2/AdminV2App.vue'));
 const MasterPortal = defineAsyncComponent(() => import('./components/MasterPortal.vue'));
 const AdminLottery = defineAsyncComponent(() => import('./components/AdminLottery.vue'));
 const PartnerPortal = defineAsyncComponent(() => import('./components/PartnerPortal.vue'));
@@ -149,6 +151,7 @@ const TicketValidationView = defineAsyncComponent(() => import('./components/Tic
 const CashLanding = defineAsyncComponent(() => import('./components/CashLanding.vue'));
 import { apiClient, fetchVoteStatus } from './api';
 import { clubDomainRoute } from './clubDomain';
+import { readAdminV2Route } from './admin-v2/router/routes';
 
 function readEventId(search) {
   const params = new URLSearchParams(search || '');
@@ -290,6 +293,7 @@ const appView = computed(() => {
   if (currentPath.value.startsWith('/admin/master')) {
     return 'master';
   }
+  if (readAdminV2Route(currentPath.value)) return 'admin-v2';
   const hasOrganizationLotteryRoute =
     pathSegments.value.length >= 3 &&
     pathSegments.value[1] === 'admin' &&

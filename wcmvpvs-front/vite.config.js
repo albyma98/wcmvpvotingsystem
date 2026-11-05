@@ -1,6 +1,7 @@
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { adminV2Controllers } from './build/adminV2Controllers.js'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -9,7 +10,7 @@ export default defineConfig(({ mode }) => {
     .replace(/\/$/, '')
 
   return {
-    plugins: [vue()],
+    plugins: [adminV2Controllers(), vue()],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
