@@ -72,6 +72,7 @@ type engagementReportSnapshot struct {
 	Analysis             *recipientAnalysis        `json:"analysis,omitempty"`
 	AnalysisStatus       string                    `json:"analysis_status,omitempty"`
 	AnalysisDiagnostic   *recipientAIDiagnostic    `json:"analysis_diagnostic,omitempty"`
+	AnalysisReview       *recipientAnalysisReview  `json:"analysis_review,omitempty"`
 	AnalysisModel        string                    `json:"analysis_model,omitempty"`
 	PromptVersion        string                    `json:"prompt_version,omitempty"`
 	ID                   string                    `json:"id,omitempty"`
@@ -122,6 +123,8 @@ func registerEngagementReportRoutes(rt *_router) {
 	rt.router.Put("/admin/events/{eventId}/engagement-report/sources", rt.wrapAdmin(rt.saveRecipientReportSources))
 	rt.router.Get("/admin/events/{eventId}/engagement-report/sources", rt.wrapAdmin(rt.getRecipientReportSources))
 	rt.router.Post("/admin/events/{eventId}/engagement-report/analysis", rt.wrapAdmin(rt.generateRecipientReportAnalysis))
+	rt.router.Get("/admin/events/{eventId}/engagement-report/analysis/review", rt.wrapAdmin(rt.getRecipientAnalysisReview))
+	rt.router.Put("/admin/events/{eventId}/engagement-report/analysis/review", rt.wrapAdmin(rt.saveRecipientAnalysisReview))
 	rt.router.Get("/admin/events/{eventId}/engagement-report/snapshots", rt.wrapAdmin(rt.listRecipientReportSnapshots))
 	rt.router.Get("/admin/events/{eventId}/engagement-report/snapshots/{reportId}", rt.wrapAdmin(rt.getRecipientReportSnapshot))
 	rt.router.Get("/admin/master/report-branding", rt.wrapAdmin(rt.getReportBranding))
@@ -574,17 +577,18 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var input struct {
-		Recipient       string                    `json:"recipient"`
-		ComparePrevious bool                      `json:"compare_previous"`
-		IncludeAppendix bool                      `json:"include_appendix"`
-		IncludeAI       bool                      `json:"include_ai"`
-		CalculationID   string                    `json:"calculation_id"`
-		Format          string                    `json:"format"`
-		Facts           map[string]*float64       `json:"facts"`
-		Overrides       map[string]reportOverride `json:"overrides"`
-		Descriptions    map[string]string         `json:"descriptions"`
-		SelectedKPIIDs  *[]string                 `json:"selected_kpi_ids"`
-		Notes           string                    `json:"notes"`
+		Recipient              string                    `json:"recipient"`
+		ComparePrevious        bool                      `json:"compare_previous"`
+		IncludeAppendix        bool                      `json:"include_appendix"`
+		IncludeAI              bool                      `json:"include_ai"`
+		AnalysisReviewRevision *int                      `json:"analysis_review_revision"`
+		CalculationID          string                    `json:"calculation_id"`
+		Format                 string                    `json:"format"`
+		Facts                  map[string]*float64       `json:"facts"`
+		Overrides              map[string]reportOverride `json:"overrides"`
+		Descriptions           map[string]string         `json:"descriptions"`
+		SelectedKPIIDs         *[]string                 `json:"selected_kpi_ids"`
+		Notes                  string                    `json:"notes"`
 	}
 	if !decodeReportBody(w, r, 128*1024, &input) {
 		return
@@ -594,7 +598,7 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 			reportError(w, 400, "Il report destinatario accetta solo sorgenti persistenti, non sostituzioni di KPI.")
 			return
 		}
-		rt.approveRecipientReport(w, r, ctx, eventID, input.CalculationID, input.Recipient, input.ComparePrevious, input.IncludeAppendix, input.IncludeAI, input.Notes)
+		rt.approveRecipientReport(w, r, ctx, eventID, input.CalculationID, input.Recipient, input.ComparePrevious, input.IncludeAppendix, input.IncludeAI, input.Notes, input.AnalysisReviewRevision)
 		return
 	}
 	if (input.Format != "one_page" && input.Format != "extended") || len(input.CalculationID) != 36 || utf8.RuneCountInString(input.Notes) > 4000 {

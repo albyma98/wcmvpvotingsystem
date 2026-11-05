@@ -8,7 +8,7 @@ const WIDTH = 210, HEIGHT = 297, M = 16;
 // Helvetica provides crisp selectable text and supports Italian WinAnsi glyphs.
 // Unsupported code points (including emojis in user-supplied names) are removed.
 export function pdfText(value) {
-  return String(value ?? '').normalize('NFC').replace(/[\u2010-\u2015]/g, '-').replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"').replace(/\u2026/g, '...').replace(/\u00a0/g, ' ').replace(/[^\x20-\x7e\xa0-\xff\n]/g, '').replace(/[ \t]+/g, ' ').trim();
+  return String(value ?? '').normalize('NFC').replace(/[\u2010-\u2015]/g, '-').replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"').replace(/\u2026/g, '...').replace(/\u20ac/g, 'EUR').replace(/\u00a0/g, ' ').replace(/[^\x20-\x7e\xa0-\xff\n]/g, '').replace(/[ \t]+/g, ' ').trim();
 }
 
 function date(value) { const parsed = new Date(value); return value && Number.isFinite(parsed.getTime()) ? new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Rome' }).format(parsed) : 'N/D'; }
@@ -394,30 +394,46 @@ function recipientPages(doc, p, report) {
   if (profile === 'analytics') {
     kpis.forEach((k, i) => metric(k, i, true));
   } else {
-    // Five or ten compact rows leave stable room for synthesis. Texts in the
-    // one-page formats are explicitly abbreviated, never drawn over the footer.
+    // Compact KPI rows leave room for synthesis; approved editorial text flows
+    // to additional pages rather than being abbreviated.
     kpis.forEach((k, i) => metric(k, i));
   }
 
-  const a = report.analysis;
+  // Historical snapshots predate editorial review. New snapshots only render
+  // text whose exact revision has been approved by the administrator.
+  const a = !report.analysis_review || report.analysis_review.state === 'approved' ? report.analysis : null;
+  const analysisTitle = report.analysis_review
+    ? `${report.analysis_status === 'ready' ? 'Analisi OpenAI' : 'Sintesi locale'} ${report.analysis_review.edited ? 'riveduta e ' : ''}approvata`
+    : report.analysis_status === 'ready' ? 'Analisi OpenAI' : 'Sintesi deterministica';
+  const reviewAttribution = () => {
+    if (report.analysis_review?.state === 'approved') wrapped(`Testi approvati da ${report.analysis_review.reviewed_by || 'amministratore'} · ${date(report.analysis_review.reviewed_at)}`, { size: 6.5, color: C.muted });
+  };
   if (profile === 'executive' || profile === 'sponsor') {
     if (a) {
-      p.text(report.analysis_status === 'ready' ? 'LETTURA E INDICAZIONE STRATEGICA | OPENAI' : 'LETTURA E INDICAZIONE STRATEGICA | SINTESI', M, y, 7.5, C.teal, true); y += 5;
-      p.lines(a.headline, M, y, 178, 1, 9, C.navy, true); y += 5;
-      p.lines(a.summary, M, y, 178, 3, 8, C.ink, false, 3.5); y += 13;
-      [...(a.positive_insights || []), ...(a.critical_insights || [])].slice(0, report.recipient.max_insights).forEach(item => {
-        p.lines(`${item.title}: ${item.description}`, M, y, 178, 2, 7.2, C.ink, false, 3.2); y += 7;
-        p.lines(analysisMetricReferences(item, kpis), M, y, 178, 1, 6.5, C.muted); y += 6;
+      room(15); wrapped(analysisTitle.toUpperCase(), { size: 7.5, bold: true, color: C.teal });
+      wrapped(a.headline, { size: 9, bold: true, color: C.navy });
+      wrapped(a.summary);
+      [...(a.positive_insights || []), ...(a.critical_insights || [])].forEach(item => {
+        wrapped(`${item.title}: ${item.description}`, { size: 7.2 });
+        wrapped(analysisMetricReferences(item, kpis), { size: 6.5, color: C.muted });
       });
-      if (a.recommendations?.length) { p.lines(`Indicazione: ${a.recommendations[0].action}`, M, y, 178, 2, 7.5, C.navy, true, 3.3); y += 9; }
+      for (const rec of a.recommendations || []) {
+        wrapped(`Indicazione: ${rec.action}`, { size: 7.5, bold: true, color: C.navy });
+        wrapped(rec.reason, { size: 7.2 });
+        wrapped(analysisMetricReferences(rec, kpis), { size: 6.5, color: C.muted });
+      }
+      for (const limit of a.limitations || []) wrapped(limit, { size: 6.5, color: C.muted });
+      reviewAttribution();
     }
-    p.lines('N/D non equivale a zero. Manuale verificata / NON verificata: provenienza della sorgente. Variazioni senza giudizio automatico. Testi sintetizzati; versione integrale nello snapshot approvato.', M, 259, 178, 2, 6.5, C.muted, false, 3);
-    p.lines([...(report.conflicts || []), ...(a?.limitations || []).slice(0, 1), report.notes || (report.details?.coverage_notes || [])[0] || 'Consultare definizioni e copertura prima di interpretare i risultati.'].join(' '), M, 268, 178, 2, 6.3, C.muted, false, 2.8);
+    wrapped('N/D non equivale a zero. Manuale verificata / NON verificata: provenienza della sorgente. Le variazioni non indicano automaticamente un miglioramento.', { size: 6.3, color: C.muted });
+    for (const conflict of report.conflicts || []) wrapped(conflict, { size: 6.3, color: C.muted });
+    wrapped(report.notes || (report.details?.coverage_notes || [])[0] || 'Consultare definizioni e copertura prima di interpretare i risultati.', { size: 6.3, color: C.muted });
   } else {
     if (profile === 'marketing') newPage('Lettura e prossimi passi');
     if (a) {
-      section(report.analysis_status === 'ready' ? 'Analisi OpenAI validata' : 'Sintesi deterministica');
+      section(analysisTitle);
       wrapped(a.headline, { size: 11, bold: true }); wrapped(a.summary);
+      reviewAttribution();
       for (const [title, items] of [['Evidenze positive', a.positive_insights], ['Criticità', a.critical_insights]]) {
         if (items?.length) { section(title); for (const item of items) { wrapped(`${item.title}: ${item.description}`); wrapped(analysisMetricReferences(item, kpis), { size: 7, color: C.muted }); } }
       }

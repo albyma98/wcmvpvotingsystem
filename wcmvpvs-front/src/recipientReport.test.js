@@ -83,3 +83,31 @@ test('the same recipient snapshot generates byte identical PDFs and keeps unavai
   const second = createEngagementReportPdf(structuredClone(r)).output('arraybuffer');
   assert.deepEqual(new Uint8Array(first), new Uint8Array(second));
 });
+
+test('approved edited analysis retains every text through pagination in all four report profiles', () => {
+  for (const profile of ['executive', 'sponsor', 'marketing', 'analytics']) {
+    const r = recipientReportFixture(profile);
+    r.analysis_review = { state: 'approved', reviewed_by: 'Responsabile report', reviewed_at: '2026-11-05T10:00:00Z', revision: 2, edited: true };
+    r.analysis.headline = 'TITOLO REVISIONATO 42% e € 10';
+    r.analysis.summary = 'Sintesi estesa revisionata dal responsabile sulla base delle evidenze disponibili. '.repeat(65) + 'FINE_SINTESI_APPROVATA';
+    r.analysis.positive_insights[0].description = 'Descrizione modificata e verificata. '.repeat(35) + 'FINE_EVIDENZA';
+    r.analysis.critical_insights = [{ title: 'CRITICITA APPROVATA', description: 'FINE CRITICITA', metric_ids: ['visitors'] }];
+    r.analysis.recommendations = [1, 2, 3].map(n => ({ action: `AZIONE APPROVATA ${n}`, reason: `MOTIVAZIONE APPROVATA ${n}`, priority: 'medium', metric_ids: ['visitors'] }));
+    r.analysis.limitations = ['LIMITE APPROVATO A', 'LIMITE APPROVATO B', 'LIMITE APPROVATO C'];
+    const doc = createEngagementReportPdf(r);
+    assert.ok(doc.getNumberOfPages() > 1, profile);
+    const text = doc.internal.pages.flat().join('\n');
+    for (const marker of ['TITOLO REVISIONATO 42%', 'EUR 10', 'FINE_SINTESI_APPROVATA', 'FINE_EVIDENZA', 'FINE CRITICITA', 'AZIONE APPROVATA 3', 'MOTIVAZIONE APPROVATA 3', 'LIMITE APPROVATO C', 'Responsabile report']) assert.ok(text.includes(marker), `${profile}: ${marker}`);
+  }
+});
+
+test('PDF renderer excludes new drafts and discarded analyses while preserving historical approved snapshots', () => {
+  for (const state of ['draft', 'discarded']) {
+    const r = recipientReportFixture();
+    r.analysis.summary = 'TESTO NON APPROVATO DA ESCLUDERE';
+    r.analysis_review = { state };
+    assert.ok(!createEngagementReportPdf(r).internal.pages.flat().join('\n').includes('TESTO NON APPROVATO DA ESCLUDERE'));
+    delete r.analysis_review;
+    assert.ok(createEngagementReportPdf(r).internal.pages.flat().join('\n').includes('TESTO NON APPROVATO DA ESCLUDERE'));
+  }
+});

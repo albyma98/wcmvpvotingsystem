@@ -327,7 +327,6 @@ func TestRecipientProviderInsightValidationAndConfiguredLimit(t *testing.T) {
 		strings.Replace(string(valid), `"kind":"positive"`, `"kind":"unknown"`, 1),
 		strings.Replace(string(valid), `"kind":"positive"`, `"unexpected":true,"kind":"positive"`, 1),
 		strings.Replace(string(valid), `"metric_ids":["visitors"]`, `"metric_ids":["sponsor_reach"]`, 1),
-		strings.Replace(string(valid), `"headline":"Partecipazione osservata"`, `"headline":"Crescita 99%"`, 1),
 	} {
 		if _, err := validateRecipientProviderAnalysis([]byte(raw), s); err == nil {
 			t.Fatal("invalid insight accepted", raw)
@@ -351,16 +350,23 @@ func TestRecipientProviderInsightValidationAndConfiguredLimit(t *testing.T) {
 	}
 }
 
-func TestRecipientAIValidatesStrictSchemaAndNumericReferences(t *testing.T) {
+func TestRecipientAIValidatesStrictSchemaAndAllowsNumericProseForReview(t *testing.T) {
 	p, _ := findReportProfile("executive")
 	s := engagementReportSnapshot{Recipient: &p, KPIs: []reportKPI{{ID: "visitors", Value: reportMetricFloat(5)}}}
 	valid, _ := json.Marshal(recipientAIExample())
 	if _, err := validateRecipientAnalysis(valid, s); err != nil {
 		t.Fatal(err)
 	}
-	for _, bad := range []string{strings.Replace(string(valid), `"medium"`, `"urgent"`, 1), strings.Replace(string(valid), `"metric_ids":["visitors"]`, `"metric_ids":["sponsor_reach"]`, 1), strings.Replace(string(valid), `"headline":"Partecipazione osservata"`, `"headline":"Crescita 99%"`, 1), strings.Replace(string(valid), `"headline":"Partecipazione osservata"`, `"headline":"Crescita cento"`, 1), strings.Replace(string(valid), `"positive_insights":[`, `"unexpected":true,"positive_insights":[`, 1), strings.Replace(string(valid), `"critical_insights":[]`, `"critical_insights":null`, 1), `{"headline":"missing fields"}`} {
+	for _, bad := range []string{strings.Replace(string(valid), `"medium"`, `"urgent"`, 1), strings.Replace(string(valid), `"metric_ids":["visitors"]`, `"metric_ids":["sponsor_reach"]`, 1), strings.Replace(string(valid), `"positive_insights":[`, `"unexpected":true,"positive_insights":[`, 1), strings.Replace(string(valid), `"critical_insights":[]`, `"critical_insights":null`, 1), `{"headline":"missing fields"}`} {
 		if _, err := validateRecipientAnalysis([]byte(bad), s); err == nil {
 			t.Fatalf("accepted %s", bad)
+		}
+	}
+	for _, headline := range []string{"Crescita 99%", "Crescita cento", "Due opportunità", "Valore € 10"} {
+		raw := strings.Replace(string(valid), `"headline":"Partecipazione osservata"`, `"headline":"`+headline+`"`, 1)
+		analysis, err := validateRecipientAnalysis([]byte(raw), s)
+		if err != nil || len(recipientAnalysisWarnings(analysis)) != 1 {
+			t.Fatal("numeric prose must reach human review", headline, err)
 		}
 	}
 	client := &http.Client{Transport: recipientTestTransport(func(r *http.Request) (*http.Response, error) {
@@ -432,7 +438,8 @@ func TestRecipientAICacheRetryFallbackInvalidationAndSnapshots(t *testing.T) {
 	if err := json.Unmarshal(r.Body.Bytes(), &cached); err != nil || cached.Usage == nil || *cached.Usage != *first.Usage {
 		t.Fatal("cached usage changed or triggered a new request", r.Body.String(), err)
 	}
-	approve := map[string]interface{}{"calculation_id": s.CalculationID, "recipient": "executive", "compare_previous": true, "include_appendix": true, "include_ai": true}
+	reviewRevision := recipientApproveAnalysis(t, f, s, "executive", true)
+	approve := map[string]interface{}{"calculation_id": s.CalculationID, "recipient": "executive", "compare_previous": true, "include_appendix": true, "include_ai": true, "analysis_review_revision": reviewRevision}
 	r = engagementReportRequest(t, f.router.approveEngagementReport, "POST", f.event, approve, f.ctx, nil)
 	engagementReportRequireStatus(t, r, 200)
 	var frozen engagementReportSnapshot
@@ -484,6 +491,7 @@ func TestRecipientAICacheRetryFallbackInvalidationAndSnapshots(t *testing.T) {
 	for _, profile := range reportRecipientProfiles() {
 		approve["recipient"] = profile.ID
 		approve["calculation_id"] = updated.CalculationID
+		approve["analysis_review_revision"] = recipientApproveAnalysis(t, f, updated, profile.ID, true)
 		r = engagementReportRequest(t, f.router.approveEngagementReport, "POST", f.event, approve, f.ctx, nil)
 		engagementReportRequireStatus(t, r, 200)
 		var v engagementReportSnapshot

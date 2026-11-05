@@ -3992,7 +3992,7 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	defer tx.Rollback()
 	// The /new reporting subsystem is installed by the API. Explicit cleanup
 	// also works on SQLite connections where foreign-key cascades are disabled.
-	for _, table := range []string{"engagement_report_signals", "engagement_report_calculations", "engagement_report_snapshots", "engagement_report_manual_sources", "engagement_report_source_history", "engagement_report_analysis_cache", "voting_notifications", "event_voting_closures"} {
+	for _, table := range []string{"engagement_report_signals", "engagement_report_calculations", "engagement_report_snapshots", "engagement_report_manual_sources", "engagement_report_source_history", "engagement_report_analysis_reviews", "engagement_report_analysis_cache", "voting_notifications", "event_voting_closures"} {
 		var exists int
 		if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&exists); err != nil {
 			return err

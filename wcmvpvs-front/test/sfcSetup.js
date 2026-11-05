@@ -8,6 +8,7 @@ export function setupSfc(url, imports, initialProps, globals = {}) {
   const source = compileScript(descriptor, { id: 'sfc-behavior-test' }).content
     .replace(/^import\s+([\s\S]*?)\s+from\s+(['"])([^'"]+)\2;?\r?\n/gm, (_, binding, quote, name) =>
       `const ${binding.trim()} = imports[${JSON.stringify(name)}];\n`)
+    .replace(/\bimport\((['"])(\.{1,2}\/[^'"]+)\1\)/g, (_, quote, name) => `import(${JSON.stringify(new URL(name, url).href)})`)
     .replace('export default', 'return');
   const component = new Function('imports', ...Object.keys(globals), source)(imports, ...Object.values(globals));
   const props = Vue.reactive(initialProps);

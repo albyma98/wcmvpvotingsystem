@@ -93,6 +93,9 @@ var recipientReportMigration string
 //go:embed report_migrations/002_manual_kpis.sql
 var recipientManualKPIMigration string
 
+//go:embed report_migrations/003_analysis_reviews.sql
+var recipientAnalysisReviewMigration string
+
 func (rt *_router) ensureRecipientReportTables() error {
 	tx, err := rt.db.SQLConn().Begin()
 	if err != nil {
@@ -126,6 +129,9 @@ func (rt *_router) ensureRecipientReportTables() error {
 		if _, err = tx.Exec(recipientManualKPIMigration); err != nil {
 			return err
 		}
+	}
+	if _, err = tx.Exec(recipientAnalysisReviewMigration); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -543,7 +549,7 @@ func recipientSnapshot(s engagementReportSnapshot, profileID string, compare, ap
 	return s, nil
 }
 
-func (rt *_router) approveRecipientReport(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext, eventID int, calculationID, profileID string, compare, appendix, includeAI bool, notes string) {
+func (rt *_router) approveRecipientReport(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext, eventID int, calculationID, profileID string, compare, appendix, includeAI bool, notes string, reviewRevision *int) {
 	if utf8.RuneCountInString(notes) > 4000 {
 		reportError(w, 400, "Note troppo lunghe.")
 		return
@@ -560,9 +566,26 @@ func (rt *_router) approveRecipientReport(w http.ResponseWriter, r *http.Request
 	}
 	// Frozen draft approval is intentional: edits after calculation create a new
 	// version rather than rewriting the data used by an existing PDF.
+	tx, err := rt.db.SQLConn().Begin()
+	if err != nil {
+		reportError(w, 503, "Impossibile preparare la versione del report.")
+		return
+	}
+	defer tx.Rollback()
 	s.Notes = strings.TrimSpace(notes)
 	if includeAI {
-		rt.attachCachedRecipientAnalysis(&s)
+		review, err := loadRecipientAnalysisReview(tx, s, ctx.AdminID)
+		if err != nil {
+			recipientReviewError(w, err)
+			return
+		}
+		if review.Review.State != "approved" || reviewRevision == nil || *reviewRevision != review.Review.Revision {
+			reportError(w, 409, "Approva la versione corrente dell’analisi prima di includerla nel PDF, oppure deseleziona Includi analisi / sintesi.")
+			return
+		}
+		s.Analysis, s.AnalysisReview = &review.Analysis, &review.Review
+		s.AnalysisStatus, s.AnalysisModel, s.PromptVersion = review.Status, review.Model, review.PromptVersion
+		s.AnalysisDiagnostic = review.Diagnostic
 	}
 	key := reportDigest(struct {
 		Calculation string
@@ -575,19 +598,24 @@ func (rt *_router) approveRecipientReport(w http.ResponseWriter, r *http.Request
 		Model       string
 		Prompt      string
 		Diagnostic  *recipientAIDiagnostic
-	}{calculationID, profileID, compare, s.IncludeAppendix, s.Analysis, s.Notes, s.AnalysisStatus, s.AnalysisModel, s.PromptVersion, s.AnalysisDiagnostic})
+		Review      *recipientAnalysisReview
+	}{calculationID, profileID, compare, s.IncludeAppendix, s.Analysis, s.Notes, s.AnalysisStatus, s.AnalysisModel, s.PromptVersion, s.AnalysisDiagnostic, s.AnalysisReview})
 	s.ID = newReportID()
 	s.ApprovedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	s.ApprovedBy = ctx.AdminUsername
 	raw, _ := json.Marshal(s)
-	_, err = rt.db.SQLConn().Exec(`INSERT INTO engagement_report_snapshots(id,calculation_id,approval_key,event_id,admin_id,payload,approved_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(approval_key) DO NOTHING`, s.ID, s.CalculationID, key, eventID, ctx.AdminID, string(raw), s.ApprovedAt)
+	_, err = tx.Exec(`INSERT INTO engagement_report_snapshots(id,calculation_id,approval_key,event_id,admin_id,payload,approved_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(approval_key) DO NOTHING`, s.ID, s.CalculationID, key, eventID, ctx.AdminID, string(raw), s.ApprovedAt)
 	if err != nil {
 		reportError(w, 500, "Impossibile salvare lo snapshot.")
 		return
 	}
 	var saved string
-	if rt.db.SQLConn().QueryRow(`SELECT payload FROM engagement_report_snapshots WHERE approval_key=? AND event_id=?`, key, eventID).Scan(&saved) != nil {
+	if tx.QueryRow(`SELECT payload FROM engagement_report_snapshots WHERE approval_key=? AND event_id=?`, key, eventID).Scan(&saved) != nil {
 		reportError(w, 500, "Impossibile caricare lo snapshot.")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		reportError(w, 503, "Impossibile salvare la versione approvata del report.")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")

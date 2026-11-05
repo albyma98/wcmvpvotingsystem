@@ -20,7 +20,7 @@ import (
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 )
 
-const recipientPromptVersion = "recipient-report-v3"
+const recipientPromptVersion = "recipient-report-v4"
 const recipientOpenAIURL = "https://api.openai.com/v1/responses"
 
 type recipientInsight struct {
@@ -110,7 +110,7 @@ func recipientDiagnostic(reason string) *recipientAIDiagnostic {
 		"response_too_large":     "La risposta OpenAI supera la dimensione consentita.",
 		"response_incomplete":    "OpenAI ha restituito una risposta incompleta, per esempio per limite di output.",
 		"provider_refusal":       "OpenAI non ha prodotto l'analisi richiesta.",
-		"invalid_output":         "L'analisi OpenAI non ha superato i controlli su struttura, KPI o riferimenti numerici.",
+		"invalid_output":         "L'analisi OpenAI non ha superato i controlli sulla struttura o sui riferimenti ai KPI disponibili.",
 		"invalid_input":          "I dati del report non possono essere inviati al modello. Verifica i KPI del calcolo.",
 		"input_too_large":        "La richiesta supera il budget di input del report. Nessuna chiamata OpenAI eseguita.",
 	}
@@ -266,8 +266,8 @@ func validateRecipientProviderAnalysis(raw []byte, s engagementReportSnapshot) (
 			analysis.CriticalInsights = append(analysis.CriticalInsights, insight.recipientInsight)
 		}
 	}
-	// Retain all public validation: total budget, references, lengths and numeric
-	// claims. No insight is silently dropped to make the response fit the budget.
+	// Retain public validation of budget, references and lengths. Numeric prose
+	// is retained as an editable draft requiring administrator approval.
 	normalized, err := json.Marshal(analysis)
 	if err != nil {
 		return recipientAnalysis{}, err
@@ -355,6 +355,11 @@ func validateRecipientAnalysis(raw []byte, s engagementReportSnapshot) (recipien
 	if len(a.PositiveInsights)+len(a.CriticalInsights) > s.Recipient.MaxInsights {
 		return a, fmt.Errorf("insight limit exceeded")
 	}
+	return a, nil
+}
+
+// Numeric prose is retained for human review, rather than rejected and retried.
+func recipientAnalysisWarnings(a recipientAnalysis) []string {
 	texts := []string{a.Headline, a.Summary}
 	texts = append(texts, a.Limitations...)
 	for _, i := range append(append([]recipientInsight{}, a.PositiveInsights...), a.CriticalInsights...) {
@@ -365,10 +370,10 @@ func validateRecipientAnalysis(raw []byte, s engagementReportSnapshot) (recipien
 	}
 	for _, t := range texts {
 		if strings.IndexFunc(t, unicode.IsNumber) >= 0 || recipientNumberWords.MatchString(t) || strings.ContainsAny(t, "%€$") {
-			return a, fmt.Errorf("free numeric claims forbidden; values belong to renderer")
+			return []string{"Il testo contiene riferimenti numerici: confrontali con i KPI prima di approvare l’analisi."}
 		}
 	}
-	return a, nil
+	return []string{}
 }
 
 func callRecipientOpenAI(ctx context.Context, client *http.Client, url, key, model string, s engagementReportSnapshot, options ...recipientAIAttemptOptions) (recipientAnalysis, error) {
@@ -555,10 +560,7 @@ func (rt *_router) generateRecipientReportAnalysis(w http.ResponseWriter, r *htt
 			return
 		}
 		if err == nil && !input.Regenerate && (status == "ready" || status == "fallback" && time.Since(reportMetricTime(updated)) < 5*time.Minute) {
-			rt.attachCachedRecipientAnalysis(&s)
-			var cached recipientCachedAnalysis
-			_ = json.Unmarshal([]byte(raw), &cached)
-			_ = writeJSON(w, 200, map[string]interface{}{"analysis": s.Analysis, "status": s.AnalysisStatus, "cached": true, "model": model, "prompt_version": recipientPromptVersion, "diagnostic": s.AnalysisDiagnostic, "usage": cached.Usage})
+			rt.writeRecipientAnalysisGeneration(w, s, ctx.AdminID, true)
 			return
 		}
 		now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -633,5 +635,18 @@ func (rt *_router) generateRecipientReportAnalysis(w http.ResponseWriter, r *htt
 		reportError(w, 503, "Analisi prodotta ma non salvata. Riprova.")
 		return
 	}
-	_ = writeJSON(w, 200, map[string]interface{}{"analysis": a, "status": status, "cached": false, "model": model, "prompt_version": recipientPromptVersion, "diagnostic": diagnostic, "usage": usage})
+	rt.writeRecipientAnalysisGeneration(w, s, ctx.AdminID, false)
+}
+
+func (rt *_router) writeRecipientAnalysisGeneration(w http.ResponseWriter, s engagementReportSnapshot, adminID int, cached bool) {
+	response, err := loadRecipientAnalysisReview(rt.db.SQLConn(), s, adminID)
+	if err != nil {
+		recipientReviewError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	_ = writeJSON(w, 200, struct {
+		recipientAnalysisReviewResponse
+		Cached bool `json:"cached"`
+	}{response, cached})
 }

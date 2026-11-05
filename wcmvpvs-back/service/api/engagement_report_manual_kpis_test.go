@@ -42,7 +42,8 @@ func TestManualKPICompletesEveryMissingIndicatorWithAuditAndFrozenValues(t *test
 	if after.Facts["visitors"] != nil {
 		t.Fatal("direct KPI value manufactured underlying telemetry facts")
 	}
-	approval := engagementReportRequest(t, f.router.approveEngagementReport, "POST", f.event, map[string]interface{}{"calculation_id": after.CalculationID, "recipient": "analytics", "include_ai": true, "include_appendix": true}, f.ctx, nil)
+	reviewRevision := recipientApproveAnalysis(t, f, after, "analytics", false)
+	approval := engagementReportRequest(t, f.router.approveEngagementReport, "POST", f.event, map[string]interface{}{"calculation_id": after.CalculationID, "recipient": "analytics", "include_ai": true, "include_appendix": true, "analysis_review_revision": reviewRevision}, f.ctx, nil)
 	engagementReportRequireStatus(t, approval, 200)
 	var frozen engagementReportSnapshot
 	_ = json.Unmarshal(approval.Body.Bytes(), &frozen)
