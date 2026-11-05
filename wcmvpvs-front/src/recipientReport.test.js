@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { recipientKpis, comparisonLabel, manualSourceErrors, recipientSourceLabel, analysisMetricReferences } from './recipientReport.js';
+import { recipientKpis, comparisonLabel, manualReportFields, manualSourceErrors, recipientSourceLabel, analysisMetricReferences } from './recipientReport.js';
 import { recipientReportFixture } from '../test/recipientReportFixture.js';
 import { createEngagementReportPdf } from './engagementReportPdf.js';
 
@@ -25,6 +25,35 @@ test('attendance requires integer source, confirmation and preserves verificatio
   assert.match(recipientSourceLabel({ source: 'manual_unverified' }), /NON verificata/);
   const r = recipientReportFixture();
   assert.equal(analysisMetricReferences({ metric_ids: ['visitors', 'unknown'] }, r.kpis).split(' · ').length, 1);
+});
+
+test('every missing KPI supports its unit and numeric bounds, including zero denominators', () => {
+  const r = recipientReportFixture('analytics');
+  r.kpis.forEach(k => { k.value = null; k.availability = { reason: 'zero_denominator', manual_allowed: true }; });
+  const fields = manualReportFields(r, r.kpis);
+  for (const k of r.kpis) {
+    const field = fields.find(f => f.key === `kpi:${k.id}`);
+    assert.ok(field, k.id);
+    const form = { value: k.unit === 'count' ? 5 : 12.5, source_description: 'Registro verificabile', confirmed: true };
+    assert.deepEqual(manualSourceErrors(form, field), []);
+    if (k.unit === 'count') assert.ok(manualSourceErrors({ ...form, value: 1.5 }, field).length);
+    if (k.unit === 'percent') assert.ok(manualSourceErrors({ ...form, value: 100.1 }, field).length);
+  }
+  const report = recipientReportFixture('sponsor'); report.sponsor_id = 7;
+  report.kpis.forEach(k => { k.value = null; });
+  const scoped = manualReportFields(report, recipientKpis(report, 'sponsor'));
+  assert.equal(scoped.find(f => f.key === 'kpi:sponsor_reach').sponsor_id, 7);
+  assert.equal(scoped.find(f => f.key === 'kpi:visitors').sponsor_id, 0);
+});
+
+test('PDF identifies direct manual rates and omits nonexistent calculated fractions', () => {
+  const r = recipientReportFixture('sponsor');
+  const k = r.kpis.find(k => k.id === 'sponsor_ctr');
+  Object.assign(k, { value: 12.5, numerator: null, denominator: null, source: 'manual_unverified', provenance: [{ field_key: 'kpi:sponsor_ctr', value: 12.5, unit: 'percent', source_type: 'manual_kpi', source_description: 'Registro partner verificabile', verification_status: 'unverified', revision: 1 }] });
+  assert.equal(recipientSourceLabel(k), 'Valore KPI manuale NON verificato');
+  const text = createEngagementReportPdf(r).internal.pages.flat().join('\n');
+  assert.match(text, /KPI manuale NON verificato/);
+  assert.match(text, /Registro partner verificabile/);
 });
 test('four PDF formats include recipient and frozen metrics with correct main page counts', () => {
   for (const id of ['executive', 'marketing', 'sponsor', 'analytics']) {

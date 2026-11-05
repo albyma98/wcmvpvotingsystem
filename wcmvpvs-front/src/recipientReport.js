@@ -7,6 +7,9 @@ export function recipientKpis(snapshot, recipient) {
 }
 
 export function recipientSourceLabel(kpi) {
+  const direct = (kpi.provenance || []).some(m => m.source_type === 'manual_kpi');
+  if (direct && kpi.source === 'manual_verified') return 'Valore KPI manuale verificato';
+  if (direct && kpi.source === 'manual_unverified') return 'Valore KPI manuale NON verificato';
   if (kpi.source === 'manual_verified') return 'Sorgente manuale verificata';
   if (kpi.source === 'manual_unverified') return 'Sorgente manuale NON verificata';
   return reportSourceLabel(kpi.source);
@@ -21,13 +24,26 @@ export function comparisonLabel(kpi) {
   return `${absolute}${c.percent != null ? ` (${signed(c.percent)}%)` : c.reason ? ` · ${c.reason}` : ''}`;
 }
 
-export function manualSourceErrors(form) {
+export function manualReportFields(snapshot, kpis) {
+  const options = [];
+  if (kpis.some(k => k.id === 'venue_adoption' && k.value == null) || snapshot?.manual_sources?.some(m => m.field_key === 'attendees')) {
+    options.push({ key: 'attendees', label: 'Presenze ufficiali (sorgente per l’adozione)', type: 'integer', unit: 'people', min: 0, max: 10000000, sponsor_id: 0 });
+  }
+  for (const k of kpis) {
+    if (k.value != null && !(k.provenance || []).some(m => m.source_type === 'manual_kpi')) continue;
+    const configured = k.availability?.fields?.find(f => f.key === `kpi:${k.id}`);
+    options.push({ key: `kpi:${k.id}`, label: k.label, type: k.unit === 'count' ? 'integer' : 'number', unit: k.unit, min: 0, max: k.unit === 'percent' ? 100 : 1e12, ...configured, sponsor_id: k.group === 'Sponsor' ? snapshot?.sponsor_id || 0 : 0, kpi: k });
+  }
+  return options;
+}
+
+export function manualSourceErrors(form, field = { type: 'integer', min: 0, max: 10000000 }) {
   const errors = [];
   const n = form.value === '' || form.value == null ? NaN : Number(form.value);
-  if (!Number.isInteger(n) || n < 0 || n > 10000000) errors.push('Inserisci presenze intere tra 0 e 10.000.000.');
+  if (!Number.isFinite(n) || n < field.min || n > field.max || field.type === 'integer' && !Number.isInteger(n)) errors.push(`Inserisci ${field.type === 'integer' ? 'un valore intero' : 'un valore numerico'} tra ${field.min} e ${field.max}.`);
   if (String(form.source_description || '').trim().length < 3 || String(form.source_description).length > 500) errors.push('Indica una fonte verificabile da 3 a 500 caratteri.');
   if (String(form.note || '').length > 1000) errors.push('La nota può contenere al massimo 1.000 caratteri.');
-  if (!form.confirmed) errors.push('Conferma che le presenze si riferiscono a questa partita e al pubblico presente.');
+  if (!form.confirmed) errors.push('Conferma che il valore si riferisce a questa partita e alla definizione del KPI selezionato.');
   return errors;
 }
 

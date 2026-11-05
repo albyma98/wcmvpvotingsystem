@@ -90,6 +90,9 @@ type reportComparison struct {
 //go:embed report_migrations/001_recipient_reports.sql
 var recipientReportMigration string
 
+//go:embed report_migrations/002_manual_kpis.sql
+var recipientManualKPIMigration string
+
 func (rt *_router) ensureRecipientReportTables() error {
 	tx, err := rt.db.SQLConn().Begin()
 	if err != nil {
@@ -98,6 +101,31 @@ func (rt *_router) ensureRecipientReportTables() error {
 	defer tx.Rollback()
 	if _, err = tx.Exec(recipientReportMigration); err != nil {
 		return err
+	}
+	rows, err := tx.Query(`PRAGMA table_info(engagement_report_manual_sources)`)
+	if err != nil {
+		return err
+	}
+	migrated := false
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, kind string
+		var defaultValue interface{}
+		if err = rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		migrated = migrated || name == "sponsor_id"
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if !migrated {
+		if _, err = tx.Exec(recipientManualKPIMigration); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -214,6 +242,7 @@ func (rt *_router) buildRecipientEvent(eventID, orgID, sponsorID, previousID int
 	if err != nil {
 		return s, nil, err
 	}
+	s.ManualSources = filterReportManualSources(s.ManualSources, sponsorID)
 	automatic := s.Facts["attendees"]
 	s.OriginalFacts = map[string]*float64{}
 	for key, value := range s.Facts {
@@ -224,7 +253,11 @@ func (rt *_router) buildRecipientEvent(eventID, orgID, sponsorID, previousID int
 	for i := range s.KPIs {
 		k := &s.KPIs[i]
 		if k.ID == "venue_adoption" && automatic == nil {
-			k.Provenance = s.ManualSources
+			for _, m := range s.ManualSources {
+				if m.FieldKey == "attendees" {
+					k.Provenance = append(k.Provenance, m)
+				}
+			}
 			if k.Value != nil && len(k.Provenance) > 0 {
 				k.Source = "manual_" + k.Provenance[0].VerificationStatus
 				k.Note = "Presenze da fonte manuale; numeratore limitato alla provenienza arena esplicita. Tale provenienza non certifica la presenza fisica."
@@ -235,6 +268,25 @@ func (rt *_router) buildRecipientEvent(eventID, orgID, sponsorID, previousID int
 			k.Value = nil
 			k.Source = "unavailable"
 		}
+		for _, m := range s.ManualSources {
+			if m.FieldKey != "kpi:"+k.ID {
+				continue
+			}
+			if k.Value != nil {
+				if *k.Value != m.Value {
+					s.Conflicts = append(s.Conflicts, fmt.Sprintf("%s: il valore da sorgenti calcolabili (%g) differisce dal completamento manuale (%g). Viene mantenuto il valore calcolabile.", k.Label, *k.Value, m.Value))
+				}
+				continue
+			}
+			missingReason := k.Availability.Message
+			k.Value = reportMetricFloat(m.Value)
+			k.Numerator, k.Denominator = nil, nil
+			k.Source = "manual_" + m.VerificationStatus
+			k.Corrected = true
+			k.Provenance = []reportManualSource{m}
+			k.Note = "Valore KPI completato manualmente, non ricostruito dal tracciamento. Motivo originario: " + missingReason
+			k.Availability = &reportAvailability{Reason: "available", Message: "Valore KPI manuale; consultare fonte e stato di verifica.", ManualAllowed: true, Fields: []reportSourceField{manualKPIField(*k)}, Dependencies: []string{}}
+		}
 	}
 	return s, signals, nil
 }
@@ -242,6 +294,9 @@ func (rt *_router) buildRecipientEvent(eventID, orgID, sponsorID, previousID int
 func resolveReportManualSources(facts map[string]*float64, sources []reportManualSource) []string {
 	conflicts := []string{}
 	for _, m := range sources {
+		if m.FieldKey != "attendees" {
+			continue
+		}
 		if automatic := facts[m.FieldKey]; automatic != nil {
 			if *automatic != m.Value {
 				conflicts = append(conflicts, "Presenze: il dato automatico differisce dalla sorgente manuale. Il dato automatico resta prioritario; verificare la fonte.")
@@ -261,20 +316,24 @@ func recipientKPIAvailability(k reportKPI, facts map[string]*float64, signals []
 		}
 	}
 	if k.ID == "venue_adoption" && k.Numerator != nil && k.Denominator != nil && *k.Denominator > 0 && *k.Numerator > *k.Denominator {
+		a.ManualAllowed = true
+		a.Fields = []reportSourceField{manualKPIField(k)}
 		a.Reason, a.Message = "incompatible_population", "Il pubblico con provenienza arena supera le presenze: popolazioni incompatibili, verificare la fonte."
 		return a
 	}
 	if k.Value != nil {
 		return a
 	}
-	a.Reason, a.Message = "tracking_missing", "Dati di tracciamento insufficienti e non ricostruibili manualmente."
+	a.ManualAllowed = true
+	a.Fields = []reportSourceField{manualKPIField(k)}
+	a.Reason, a.Message = "tracking_missing", "Dati automatici insufficienti. Puoi completare il valore KPI manualmente indicando la fonte."
 	if k.ID == "event_retention" && previousID == 0 {
 		a.Reason, a.Message = "not_applicable", "Nessuna partita precedente conclusa della stessa società."
 		return a
 	}
 	if k.ID == "venue_adoption" && facts["attendees"] == nil {
 		a.Reason, a.Message, a.ManualAllowed = "manual_source_missing", "Per calcolare questo indicatore mancano le presenze ufficiali. Il numeratore richiede provenienza arena esplicita.", true
-		a.Fields = []reportSourceField{{"attendees", "Numero spettatori ufficiali", "integer", "people", 0, 10000000, "Intero, fonte obbligatoria, stessa partita e popolazione; revisione contro modifiche concorrenti."}}
+		a.Fields = append(a.Fields, reportSourceField{"attendees", "Numero spettatori ufficiali", "integer", "people", 0, 10000000, "Intero, fonte obbligatoria, stessa partita e popolazione; revisione contro modifiche concorrenti."})
 		if facts["onsite_visitors"] == nil {
 			a.Message += " Manca anche il tracciamento arena: le presenze da sole non rendono calcolabile il KPI."
 		}

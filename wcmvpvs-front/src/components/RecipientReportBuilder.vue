@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
 import { reportDownloadFilename } from '../engagementReport.js';
-import { manualSourceErrors, recipientKpis } from '../recipientReport.js';
+import { manualReportFields, manualSourceErrors, recipientKpis } from '../recipientReport.js';
 import ReportKpiCard from './ReportKpiCard.vue';
 import ReportAnalysisView from './ReportAnalysisView.vue';
 
@@ -12,18 +12,22 @@ const snapshot = ref(null), recipient = ref('executive'), compare = ref(true), a
 const loading = ref(false), working = ref(false), aiLoading = ref(false), sourceSaving = ref(false), error = ref(''), approved = ref(null), previewUrl = ref('');
 const sponsors = ref([]), sponsorID = ref(0), sponsorMode = ref('aggregate'), sourceOpen = ref(false), sourceErrors = ref([]), sourceMessage = ref(''), history = ref(null);
 const sourceForm = reactive({ value: '', source_description: '', note: '', verified: false, confirmed: false, revision: 0 });
+const sourceTarget = ref('attendees');
 const analyses = reactive(new Map());
 const versions = ref(null);
 let controller, aiController;
 const profile = computed(() => snapshot.value?.profiles?.find(p => p.id === recipient.value));
 const kpis = computed(() => recipientKpis(snapshot.value, recipient.value));
 const missing = computed(() => kpis.value.filter(k => k.value == null));
-const recoverable = computed(() => missing.value.filter(k => k.availability?.manual_allowed));
+const recoverable = computed(() => missing.value);
+const sourceOptions = computed(() => manualReportFields(snapshot.value, kpis.value));
+const selectedSource = computed(() => sourceOptions.value.find(f => f.key === sourceTarget.value));
+const hasSavedSources = computed(() => sourceOptions.value.some(f => snapshot.value?.manual_sources?.some(m => m.field_key === f.key && (m.sponsor_id || 0) === f.sponsor_id)));
 const groups = computed(() => (profile.value?.groups || []).map(name => ({ name, kpis: kpis.value.filter(k => k.group === name) })).filter(g => g.kpis.length));
 const analysisKey = computed(() => `${snapshot.value?.data_hash}|${recipient.value}|${compare.value}`);
 const analysis = computed(() => analyses.get(analysisKey.value));
 const busy = computed(() => loading.value || working.value || aiLoading.value || sourceSaving.value);
-const sourceValidation = computed(() => manualSourceErrors(sourceForm));
+const sourceValidation = computed(() => selectedSource.value ? manualSourceErrors(sourceForm, selectedSource.value) : ['Seleziona un KPI da completare.']);
 const endpoint = computed(() => `/admin/events/${props.eventId}/engagement-report`);
 
 function invalidatePreview() { approved.value = null; if (previewUrl.value) URL.revokeObjectURL(previewUrl.value); previewUrl.value = ''; }
@@ -53,20 +57,25 @@ async function loadSponsors() {
   catch (cause) { fail(cause, 'Impossibile caricare gli sponsor.'); }
 }
 function changeSponsor() { load(); }
+function historyFieldLabel(key) { return key === 'attendees' ? 'Presenze ufficiali' : snapshot.value?.kpis?.find(k => `kpi:${k.id}` === key)?.label || 'Indicatore'; }
 
-function openSources() {
-  const source = snapshot.value?.manual_sources?.find(m => m.field_key === 'attendees');
+function populateSource() {
+  const source = snapshot.value?.manual_sources?.find(m => m.field_key === sourceTarget.value && (m.sponsor_id || 0) === (selectedSource.value?.sponsor_id || 0));
   Object.assign(sourceForm, { value: source?.value ?? '', source_description: source?.source_description || '', note: source?.note || '', verified: source?.verification_status === 'verified', confirmed: false, revision: source?.revision || 0 });
   sourceErrors.value = []; sourceOpen.value = true; history.value = null;
+}
+function openSources(kpi) {
+  sourceTarget.value = kpi?.id ? `kpi:${kpi.id}` : sourceOptions.value[0]?.key;
+  populateSource();
 }
 async function saveSources() {
   sourceErrors.value = sourceValidation.value; if (sourceErrors.value.length) return;
   sourceSaving.value = true; error.value = '';
   try {
-    await apiClient.put(`${endpoint.value}/sources`, { sources: [{ field_key: 'attendees', value: Number(sourceForm.value), unit: 'people', source_type: 'official_attendance', source_description: sourceForm.source_description.trim(), note: sourceForm.note.trim(), verification_status: sourceForm.verified ? 'verified' : 'unverified', revision: sourceForm.revision }] }, props.authHeaders);
+    await apiClient.put(`${endpoint.value}/sources`, { sources: [{ field_key: selectedSource.value.key, sponsor_id: selectedSource.value.sponsor_id, value: Number(sourceForm.value), unit: selectedSource.value.unit, source_type: selectedSource.value.key === 'attendees' ? 'official_attendance' : 'manual_kpi', source_description: sourceForm.source_description.trim(), note: sourceForm.note.trim(), verification_status: sourceForm.verified ? 'verified' : 'unverified', revision: sourceForm.revision }] }, props.authHeaders);
     sourceOpen.value = false; await load();
-    sourceMessage.value = 'Presenze salvate per l’evento. KPI e confronti ricalcolati; i dati rimangono disponibili tra destinatari.';
-  } catch (cause) { fail(cause, 'Impossibile salvare le presenze.'); }
+    sourceMessage.value = 'Completamento salvato per l’evento. KPI e confronti aggiornati; i dati rimangono disponibili tra destinatari. Genera nuovamente l’analisi per usare i valori aggiornati.';
+  } catch (cause) { fail(cause, 'Impossibile salvare il completamento.'); }
   finally { sourceSaving.value = false; }
 }
 async function showHistory() {
@@ -137,13 +146,17 @@ onBeforeUnmount(() => { controller?.abort(); aiController?.abort(); if (previewU
       <p class="recipient-builder__caption">Sezioni PDF: {{ profile?.id === 'analytics' ? '20 indicatori, valori, denominatori e metodologia' : `${kpis.length} indicatori, confronto e sintesi` }}{{ appendix && profile?.allow_appendix ? ' + appendice dei 20 KPI' : '' }}. {{ profile?.id === 'analytics' ? 'Il corpo comprende già l’appendice.' : '' }}</p>
       <p v-if="compare" class="recipient-builder__caption">{{ snapshot.previous_event ? `Partita precedente: ${snapshot.previous_event.title} · ${snapshot.previous_event.start_datetime}` : 'Nessuna partita precedente conclusa disponibile.' }} La direzione della variazione non indica automaticamente un miglioramento.</p>
       <p v-for="conflict in snapshot.conflicts || []" :key="conflict" role="alert" class="recipient-builder__error">{{ conflict }}</p>
-      <div v-if="missing.length" class="recipient-builder__notice"><strong>{{ missing.length }} indicatori N/D; {{ recoverable.length }} richiedono dati aggiuntivi recuperabili.</strong><p>Il completamento è facoltativo. {{ missing.length - recoverable.length }} indicatori restano N/D per dati non recuperabili manualmente.</p><button v-if="recoverable.length" type="button" :disabled="busy" @click="openSources">Completa dati mancanti</button></div>
+      <div v-if="missing.length" class="recipient-builder__notice"><strong>{{ missing.length }} indicatori N/D completabili manualmente.</strong><p>Il completamento è facoltativo. Ogni valore inserito mantiene fonte, stato di verifica e storico delle modifiche.</p><button type="button" :disabled="busy" @click="openSources">Completa dati mancanti</button></div>
       <p v-if="sourceMessage" role="status">{{ sourceMessage }}</p>
-      <button v-if="snapshot.manual_sources?.length && !sourceOpen" type="button" :disabled="busy" @click="openSources">Verifica sorgente presenze salvata</button>
+      <button v-if="hasSavedSources && !sourceOpen" type="button" :disabled="busy" @click="openSources">Gestisci completamenti manuali</button>
       <section v-if="sourceOpen" class="recipient-builder__source" aria-label="Completa sorgenti mancanti">
-        <h3>Presenze ufficiali · Adozione del pubblico presente</h3><p>Si integra il denominatore. Il numeratore rimane il pubblico con provenienza arena rilevato automaticamente, che non certifica la presenza fisica. Senza tracciamento compatibile il KPI resta N/D.</p>
-        <form @submit.prevent="saveSources"><div class="recipient-builder__source-fields"><label>Numero spettatori ufficiali<input v-model="sourceForm.value" type="number" min="0" max="10000000" step="1" required :disabled="busy" /></label><label>Fonte del dato<input v-model="sourceForm.source_description" type="text" minlength="3" maxlength="500" required placeholder="Es. distinta ufficiale / sistema biglietteria, riferimento" :disabled="busy" /></label><label>Nota facoltativa<textarea v-model="sourceForm.note" maxlength="1000" :disabled="busy"></textarea></label></div><label><input v-model="sourceForm.verified" type="checkbox" :disabled="busy" /> Ho verificato la fonte (altrimenti il report indica NON verificata)</label><label><input v-model="sourceForm.confirmed" type="checkbox" :disabled="busy" /> Confermo partita e popolazione di riferimento e il salvataggio delle presenze</label><ul v-if="sourceErrors.length || sourceForm.confirmed && sourceValidation.length" role="alert"><li v-for="message in sourceValidation" :key="message">{{ message }}</li></ul><div class="recipient-builder__actions"><button type="submit" :disabled="busy">Salva e ricalcola</button><button type="button" :disabled="busy" @click="sourceOpen = false">Salta completamento</button><button type="button" :disabled="busy" @click="showHistory">Storico modifiche</button></div></form>
-        <ol v-if="history"><li v-for="(change, i) in history" :key="i">{{ change.changed_at }} · amministratore {{ change.changed_by }} · {{ change.previous?.value ?? 'N/D' }} → {{ change.current.value }} · {{ change.current.source_description }} · {{ change.current.verification_status }}</li></ol>
+        <h3>Completa o modifica un valore manuale</h3>
+        <label>KPI o sorgente da completare<select v-model="sourceTarget" :disabled="busy" @change="populateSource"><option v-for="field in sourceOptions" :key="field.key" :value="field.key">{{ field.label }}</option></select></label>
+        <p v-if="sourceTarget === 'attendees'">Le presenze completano il denominatore dell’adozione; il numeratore rimane il pubblico con provenienza arena misurata. Per inserire direttamente la percentuale seleziona il KPI Adozione del pubblico presente.</p>
+        <p v-else>Il valore verrà identificato come KPI manuale: non ricostruisce il tracciamento mancante e non modifica gli altri indicatori. {{ selectedSource?.kpi?.description }}</p>
+        <p v-if="selectedSource?.sponsor_id">Valore attribuito esclusivamente a {{ snapshot.sponsor_name }}.</p>
+        <form @submit.prevent="saveSources"><div class="recipient-builder__source-fields"><label>Valore ({{ { people: 'persone', count: 'conteggio', percent: '%', seconds: 'secondi' }[selectedSource?.unit] }})<input v-model="sourceForm.value" type="number" :min="selectedSource?.min" :max="selectedSource?.max" :step="selectedSource?.type === 'integer' ? 1 : 'any'" required :disabled="busy" /></label><label>Fonte del dato<input v-model="sourceForm.source_description" type="text" minlength="3" maxlength="500" required placeholder="Es. distinta ufficiale / sistema biglietteria, riferimento" :disabled="busy" /></label><label>Nota facoltativa<textarea v-model="sourceForm.note" maxlength="1000" :disabled="busy"></textarea></label></div><label><input v-model="sourceForm.verified" type="checkbox" :disabled="busy" /> Ho verificato la fonte (altrimenti il report indica NON verificata)</label><label><input v-model="sourceForm.confirmed" type="checkbox" :disabled="busy" /> Confermo la partita, la definizione del KPI e il salvataggio del valore</label><ul v-if="sourceErrors.length || sourceForm.confirmed && sourceValidation.length" role="alert"><li v-for="message in sourceValidation" :key="message">{{ message }}</li></ul><div class="recipient-builder__actions"><button type="submit" :disabled="busy">Salva e aggiorna</button><button type="button" :disabled="busy" @click="sourceOpen = false">Salta completamento</button><button type="button" :disabled="busy" @click="showHistory">Storico modifiche</button></div></form>
+        <ol v-if="history"><li v-for="(change, i) in history" :key="i">{{ historyFieldLabel(change.field_key) }}{{ change.sponsor_id ? ` · Sponsor #${change.sponsor_id}` : '' }} · {{ change.changed_at }} · amministratore {{ change.changed_by }} · {{ change.previous?.value ?? 'N/D' }} → {{ change.current.value }} · {{ change.current.source_description }} · {{ change.current.verification_status }}</li></ol>
       </section>
       <section v-for="group in groups" :key="group.name"><h3>{{ group.name }}</h3><div class="recipient-builder__grid"><ReportKpiCard v-for="kpi in group.kpis" :key="kpi.id" :kpi="kpi" :compare="compare" :busy="busy" :event-context="!!snapshot.sponsor_id && kpi.id === 'visitors'" @complete="openSources" /></div></section>
       <section class="recipient-builder__ai"><div class="recipient-builder__actions"><button type="button" :disabled="busy || !includeAI" @click="generateAnalysis(false)">{{ aiLoading ? 'Analisi in corso…' : 'Genera analisi' }}</button><button type="button" :disabled="busy || !includeAI" @click="generateAnalysis(true)">Rigenera analisi</button></div><p class="recipient-builder__caption">L’AI si attiva solo su richiesta. I risultati identici usano la cache; in assenza dell’API il PDF include una sintesi deterministica.</p><ReportAnalysisView v-if="includeAI && analysis" :analysis="analysis.analysis" :status="analysis.status" :kpis="kpis" /></section>

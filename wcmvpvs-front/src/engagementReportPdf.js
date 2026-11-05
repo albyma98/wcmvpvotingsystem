@@ -366,7 +366,10 @@ function recipientPages(doc, p, report) {
   };
   const section = title => { room(15); y += 3; wrapped(title, { size: 10, bold: true, color: C.teal }); };
   const sourceText = k => {
-    const manual = (k.provenance || []).map(m => `${m.verification_status === 'verified' ? 'Manuale verificata' : 'Manuale NON verificata'}: ${m.source_description} (rev. ${m.revision})`).join('; ');
+    const manual = (k.provenance || []).map(m => {
+      const direct = m.source_type === 'manual_kpi';
+      return `${direct ? 'KPI manuale' : 'Sorgente manuale'} ${m.verification_status === 'verified' ? (direct ? 'verificato' : 'verificata') : (direct ? 'NON verificato' : 'NON verificata')}: ${m.source_description} (rev. ${m.revision})`;
+    }).join('; ');
     return manual || recipientSourceLabel(k);
   };
   const metric = (k, index, detailed = false) => {
@@ -422,7 +425,7 @@ function recipientPages(doc, p, report) {
       if (a.limitations?.length) { section('Limiti dell’analisi'); a.limitations.forEach(t => wrapped(t, { size: 7.2, color: C.muted })); }
     }
     section('Metodo e provenienza');
-    wrapped('N/D non equivale a zero. Precedenza: automatico, manuale verificato, manuale NON verificato, non disponibile. I valori manuali sono sorgenti, non sostituzioni di indicatori derivati. Le variazioni non implicano benefici o relazioni causali.', { size: 7.4 });
+    wrapped('N/D non equivale a zero. Precedenza: calcolabile, manuale verificato, manuale NON verificato, non disponibile. I completamenti diretti sono indicati come KPI manuali e non ricostruiscono il tracciamento. Le variazioni non implicano benefici o relazioni causali.', { size: 7.4 });
     (report.conflicts || []).forEach(t => wrapped(`Conflitto: ${t}`, { size: 7.4 }));
     (report.details?.coverage_notes || []).forEach(t => wrapped(t, { size: 7.2, color: C.muted }));
     if (report.notes) { section('Note della società'); wrapped(report.notes, { size: 7.5 }); }

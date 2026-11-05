@@ -139,8 +139,8 @@ func TestRecipientSourcesRejectDerivedDataInvalidInputAndUnauthorized(t *testing
 		engagementReportRequireStatus(t, r, 400)
 	}
 	s := recipientDraft(t, f, "executive", 0)
-	if recipientTestKPI(t, s, "sponsored_participation").Availability.ManualAllowed {
-		t.Fatal("tracking cannot be edited")
+	if !recipientTestKPI(t, s, "sponsored_participation").Availability.ManualAllowed {
+		t.Fatal("missing KPI must allow an explicit manual value")
 	}
 }
 
@@ -152,7 +152,7 @@ func TestRecipientAvailabilityAndAutomaticConflict(t *testing.T) {
 	}
 	facts = map[string]*float64{"onsite_visitors": reportMetricFloat(0), "attendees": reportMetricFloat(0)}
 	k := buildReportKPIs(facts)[1]
-	if a := recipientKPIAvailability(k, facts, nil, 0, reportEvent{}); a.Reason != "zero_denominator" || a.ManualAllowed {
+	if a := recipientKPIAvailability(k, facts, nil, 0, reportEvent{}); a.Reason != "zero_denominator" || !a.ManualAllowed {
 		t.Fatalf("%+v", a)
 	}
 	k.Numerator = reportMetricFloat(200)

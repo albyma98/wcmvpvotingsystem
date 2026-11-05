@@ -22,9 +22,10 @@ Il catalogo Go è già composto da **30 KPI**: i primi venti sono quelli elencat
 | File | Responsabilità |
 | --- | --- |
 | `service/api/engagement_report_recipients.go` | Configurazioni dei quattro profili, orchestrazione del calcolo esistente, confronto Go, indisponibilità, snapshot e archivio |
-| `service/api/engagement_report_manual_sources.go` | Validazione presenze, autorizzazione amministrativa, transazione e storico |
+| `service/api/engagement_report_manual_sources.go` | Validazione presenze e completamenti di tutti i KPI N/D, ambito sponsor, autorizzazione, transazione e storico |
 | `service/api/engagement_report_recipient_ai.go` | Responses API, schema rigoroso, validazione, cache e sintesi deterministica |
 | `service/api/report_migrations/001_recipient_reports.sql` | Migrazione idempotente incorporata nel binario con `go:embed` |
+| `service/api/report_migrations/002_manual_kpis.sql` | Estensione transazionale delle sorgenti manuali a tutti i KPI, conservazione delle presenze e introduzione dello scope sponsor |
 | `service/api/engagement_report_recipients_test.go` | Test calcolo, SQLite in memoria, sicurezza e AI simulata |
 | `src/components/RecipientReportBuilder.vue` | Stato reattivo, destinatario, completamento, analisi esplicita, anteprima PDF e archivio |
 | `src/components/ReportKpiCard.vue` | Valore, N/D, azione contestuale, confronto e provenienza |
@@ -93,7 +94,11 @@ Esempio di sorgente:
 
 La migrazione crea `engagement_report_manual_sources`, `engagement_report_source_history` e `engagement_report_analysis_cache`, con indici, vincoli e riferimenti all'evento. Viene applicata transazionalmente all'avvio nel punto già usato dai report; non richiede file SQL sul server di runtime. Le tabelle operative preesistenti e i segnali non vengono alterati. La cancellazione esplicita di un evento include le nuove tabelle anche quando le cascade SQLite sono disabilitate.
 
-La sola integrazione manuale ammessa è **`attendees`**, intero da zero a dieci milioni, unità `people`, fonte obbligatoria. La raccolta attuale non offre altre sorgenti mancanti ricostruibili con sufficiente garanzia. Non sono ammessi tassi inseriti direttamente né conteggi inventati per sostituire esposizioni o utenti unici. Ogni KPI espone dipendenze e una configurazione `availability` con motivo, spiegazione, possibilità di input e campi con tipo, unità, limiti e validazioni.
+Tutti i KPI **N/D** sono completabili manualmente, come richiesto nell'estensione successiva. Il pulsante **Inserisci valore** apre il pannello sul KPI selezionato; un menu consente di scegliere un altro indicatore mancante. Sono conservati fonte obbligatoria, nota facoltativa, stato di verifica, autore, timestamp e revisioni. Dopo il salvataggio è disponibile **Modifica valore manuale**. Il completamento è individuale nell'interfaccia; l'endpoint accetta anche batch transazionali fino a trentuno elementi.
+
+Per un completamento diretto usare `field_key: "kpi:<id_catalogo>"`, `source_type: "manual_kpi"` e l'unità effettiva del catalogo (`count`, `percent`, `seconds`). I conteggi devono essere interi non negativi; percentuali tra zero e cento; tempi non negativi, anche decimali. Conteggi e tempi hanno limite massimo di mille miliardi. Il backend valida ID, unità, ambito, fonte e revisione. Un KPI già disponibile da sorgenti calcolabili non può essere sostituito tramite il completamento N/D.
+
+La sorgente **`attendees`** rimane disponibile separatamente, con interi da zero a dieci milioni e unità `people`. Il suo inserimento ricalcola l'adozione secondo la formula originale; un valore KPI diretto è invece presentato come **KPI manuale verificato / NON verificato**, senza inventare tracciamento o numeratori e denominatori. Gli altri KPI non vengono ricalcolati a partire da un valore derivato inserito direttamente. Ogni KPI N/D espone il motivo originario e il campo manuale con tipo, unità e limiti.
 
 L'adozione conserva la formula effettiva:
 
@@ -103,7 +108,13 @@ onsite_visitors / attendees × 100
 
 Non usa il totale dei partecipanti digitali come sostituto degli osservati con provenienza arena. Se il tracciamento arena manca, l'inserimento delle presenze non rende il KPI calcolabile. Se il numeratore supera le presenze, il valore resta N/D e viene segnalata l'incompatibilità. La provenienza arena, da sola, non certifica la presenza fisica.
 
-Precedenza: **automatico > manuale verificato > manuale non verificato > N/D**. I record attivi hanno una revisione e uno stato, quindi non competono tra loro due record manuali per lo stesso campo. In presenza di una futura sorgente automatica in conflitto, il valore automatico viene mantenuto e il conflitto è esposto all'amministratore e nel report; il salvataggio non sovrascrive la sorgente automatica. I valori manuali non verificati possono completare il denominatore, ma sono marcati **NON verificati** in UI e PDF. Lo storico conserva i JSON prima e dopo ogni modifica, autore e timestamp nella stessa transazione.
+Precedenza: **valore calcolabile > completamento manuale verificato > completamento manuale non verificato > N/D**. I record attivi hanno una revisione e uno stato. Se arrivano dati calcolabili in conflitto con un completamento diretto, il valore calcolabile viene mantenuto e il conflitto è esposto all'amministratore e nel report. I valori non verificati sono marcati **NON verificati** in UI e PDF. Lo storico conserva i JSON prima e dopo ogni modifica, autore, timestamp, campo e ambito sponsor nella stessa transazione. Un batch con una revisione obsoleta viene annullato integralmente.
+
+La migrazione `002_manual_kpis.sql` ricrea la tabella delle sorgenti con una chiave `(event_id, field_key, sponsor_id)`, copiando prima tutte le presenze precedenti con scope zero. Aggiunge lo scope anche allo storico, conservando le vecchie righe. L'avvio controlla la presenza della nuova colonna per applicare la migrazione una sola volta. Non è necessario eseguire SQL manualmente sul server.
+
+Per i KPI del gruppo Sponsor, `sponsor_id: 0` identifica il totale evento; un ID positivo identifica esclusivamente quel partner, verificato nella stessa società. I dati manuali aggregati non vengono usati nei report dedicati e viceversa. Gli altri KPI, inclusi i partecipanti digitali di contesto, restano associati all'evento con scope zero. I valori salvati entrano nell'hash dati, nei confronti e negli snapshot: modificandoli cambia la cache AI utilizzabile. L'AI riceve il tipo di provenienza e il limite di misurazione originario, senza ricevere il testo libero della fonte o delle note.
+
+Verifica dell'estensione: **74 test frontend superati**, suite API/database/server e build di produzione superate. Tre nuovi test backend coprono tutti i trenta KPI mancanti, revisioni e rollback dei batch, precedenza dei dati calcolabili, separazione degli sponsor, validazione e migrazione delle presenze precedenti. Verificato anche il pannello Vue reale in Edge con API simulate: selezione del KPI, inserimento di una percentuale decimale, conferma, salvataggio e riapertura del valore.
 
 Motivi N/D: `manual_source_missing`, `tracking_missing`, `zero_denominator`, `feature_unavailable`, `not_applicable`, `not_synchronized`; aggiunto `incompatible_population`. L'indisponibilità di una funzionalità richiede evidenza delle osservazioni. Non si promette che dati storici arriveranno in futuro: `not_synchronized` è usato quando l'evento non è ancora iniziato, non per attribuire arbitrariamente un ritardo a un dato assente.
 
@@ -215,7 +226,7 @@ Sul computer di verifica è stato usato un compilatore C portabile temporaneo pe
 
 - Lo schema eventi non contiene uno stato di annullamento distinto. Il nuovo confronto esclude gli eventi non conclusi; distinguere un evento annullato erroneamente marcato concluso richiederebbe un nuovo stato nel dominio eventi, che non viene inventato in questa modifica.
 - Nessuna certificazione automatica della presenza fisica: è conservata la semantica della provenienza arena già adottata.
-- Solo le presenze dispongono di una sorgente manuale compatibile; esposizioni, votanti unici e tracciamento mancante non vengono ricostruiti arbitrariamente.
+- Tutti i KPI N/D sono completabili direttamente dall'amministratore, con provenienza esplicita. Un valore manuale non certifica né ricostruisce il tracciamento mancante; le definizioni e i motivi originari di indisponibilità rimangono consultabili.
 - La validazione strutturale e dei riferimenti numerici è automatica. La veridicità semantica di ogni interpretazione libera, incluse formulazioni causali, non è dimostrabile con un JSON Schema: rimangono le istruzioni conservative e la revisione amministrativa dell'anteprima.
 - Executive e Sponsor mantengono una pagina principale e abbreviano testi lunghi; analisi integrale e provenienza completa sono nello snapshot. Marketing privilegia la completezza con eventuali pagine di approfondimento oltre alle due principali.
 - Le verifiche OpenAI usano risposte simulate: disponibilità, crediti e accesso al modello dell'account vanno verificati con le credenziali del deployment. Non sono state eseguite chiamate a pagamento.

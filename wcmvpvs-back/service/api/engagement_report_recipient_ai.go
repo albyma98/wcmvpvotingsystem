@@ -360,12 +360,16 @@ func recipientAIInput(s engagementReportSnapshot) interface{} {
 		Comparison                          *reportComparison
 		Availability                        *reportAvailability
 		Verification                        []string
+		SourceTypes                         []string
+		ManualMeasurementLimit              string
 	}
 	kpis := []metric{}
 	for _, k := range recipientSelectedKPIs(s) {
 		verification := []string{}
+		sourceTypes := []string{}
 		for _, p := range k.Provenance {
 			verification = append(verification, p.VerificationStatus)
+			sourceTypes = append(sourceTypes, p.SourceType)
 		}
 		var comparison *reportComparison
 		if k.Comparison != nil {
@@ -373,7 +377,11 @@ func recipientAIInput(s engagementReportSnapshot) interface{} {
 			c.PreviousProvenance = nil
 			comparison = &c
 		}
-		kpis = append(kpis, metric{k.ID, k.Label, k.Description, k.Unit, k.Source, k.Value, k.Numerator, k.Denominator, comparison, k.Availability, verification})
+		manualLimit := ""
+		if isManualKPI(k) {
+			manualLimit = k.Note
+		}
+		kpis = append(kpis, metric{k.ID, k.Label, k.Description, k.Unit, k.Source, k.Value, k.Numerator, k.Denominator, comparison, k.Availability, verification, sourceTypes, manualLimit})
 	}
 	return map[string]interface{}{"profile": s.Recipient, "organization": s.Event.OrganizationName, "event": s.Event, "previous_event": s.PreviousEvent, "kpis": kpis, "sponsor_id": s.SponsorID, "sponsor_name": s.SponsorName, "limitations": s.Details.CoverageNotes, "conflicts": s.Conflicts}
 }
