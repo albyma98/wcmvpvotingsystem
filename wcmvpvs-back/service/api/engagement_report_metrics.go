@@ -10,21 +10,24 @@ import (
 )
 
 type reportKPI struct {
-	ID                 string   `json:"id"`
-	Label              string   `json:"label"`
-	Group              string   `json:"group"`
-	Unit               string   `json:"unit"`
-	Value              *float64 `json:"value"`
-	Source             string   `json:"source"`
-	Note               string   `json:"note"`
-	Description        string   `json:"description"`
-	DisplayDescription string   `json:"display_description,omitempty"`
-	FactKey            string   `json:"fact_key,omitempty"`
-	NumeratorKey       string   `json:"numerator_key,omitempty"`
-	DenominatorKey     string   `json:"denominator_key,omitempty"`
-	Numerator          *float64 `json:"numerator,omitempty"`
-	Denominator        *float64 `json:"denominator,omitempty"`
-	Corrected          bool     `json:"corrected,omitempty"`
+	Availability       *reportAvailability  `json:"availability,omitempty"`
+	Comparison         *reportComparison    `json:"comparison,omitempty"`
+	Provenance         []reportManualSource `json:"provenance,omitempty"`
+	ID                 string               `json:"id"`
+	Label              string               `json:"label"`
+	Group              string               `json:"group"`
+	Unit               string               `json:"unit"`
+	Value              *float64             `json:"value"`
+	Source             string               `json:"source"`
+	Note               string               `json:"note"`
+	Description        string               `json:"description"`
+	DisplayDescription string               `json:"display_description,omitempty"`
+	FactKey            string               `json:"fact_key,omitempty"`
+	NumeratorKey       string               `json:"numerator_key,omitempty"`
+	DenominatorKey     string               `json:"denominator_key,omitempty"`
+	Numerator          *float64             `json:"numerator,omitempty"`
+	Denominator        *float64             `json:"denominator,omitempty"`
+	Corrected          bool                 `json:"corrected,omitempty"`
 }
 
 type reportGame struct {

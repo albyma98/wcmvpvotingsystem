@@ -1,0 +1,474 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
+	"github.com/go-chi/chi/v5"
+)
+
+func recipientDraft(t *testing.T, f engagementReportFixture, profile string, sponsor int) engagementReportSnapshot {
+	t.Helper()
+	h := func(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+		r.URL.RawQuery = fmt.Sprintf("recipient=%s&sponsor_id=%d", profile, sponsor)
+		f.router.prepareEngagementReport(w, r, ctx)
+	}
+	r := engagementReportRequest(t, h, "GET", f.event, nil, f.ctx, nil)
+	engagementReportRequireStatus(t, r, 200)
+	var s engagementReportSnapshot
+	if err := json.Unmarshal(r.Body.Bytes(), &s); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+func recipientTestKPI(t *testing.T, s engagementReportSnapshot, id string) reportKPI {
+	t.Helper()
+	for _, k := range s.KPIs {
+		if k.ID == id {
+			return k
+		}
+	}
+	t.Fatalf("missing %s", id)
+	return reportKPI{}
+}
+func recipientPageSignal(t *testing.T, f engagementReportFixture) {
+	t.Helper()
+	m := map[string]interface{}{"source": "arena", "vote_available": true, "games_available": true, "feedback_available": true}
+	raw, _ := json.Marshal(m)
+	_, err := f.conn.Exec(`INSERT INTO engagement_report_signals(event_id,signal_id,name,session_id,device_key,fan_id,occurred_at,metadata) VALUES(?,?,?,?,?,?,?,?)`, f.event, "visit-reports", "page_view", "session-reports", "device-reports", 0, "2026-10-21T19:00:00Z", string(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+func recipientSourcePayload(value float64, revision int, verified bool) interface{} {
+	status := "unverified"
+	if verified {
+		status = "verified"
+	}
+	return map[string]interface{}{"sources": []reportManualSource{{FieldKey: "attendees", Value: value, Unit: "people", SourceType: "official_attendance", SourceDescription: "Distinta ufficiale biglietteria", VerificationStatus: status, Revision: revision}}}
+}
+
+func TestRecipientProfilesUseOriginalCatalog(t *testing.T) {
+	counts := map[string]int{"executive": 5, "marketing": 10, "sponsor": 5, "analytics": 20}
+	known := map[string]bool{}
+	for _, k := range buildReportKPIs(nil) {
+		known[k.ID] = true
+	}
+	for _, p := range reportRecipientProfiles() {
+		if len(p.KPIIDs) != counts[p.ID] {
+			t.Fatal(p.ID, len(p.KPIIDs))
+		}
+		seen := map[string]bool{}
+		for _, id := range p.KPIIDs {
+			if !known[id] || seen[id] {
+				t.Fatal(id)
+			}
+			seen[id] = true
+		}
+		if p.Objective == "" || p.AIInstructions == "" || p.Layout == "" {
+			t.Fatal("incomplete profile")
+		}
+	}
+}
+
+func TestRecipientManualAttendancePersistsRecalculatesAndAudits(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	recipientPageSignal(t, f)
+	before := recipientDraft(t, f, "executive", 0)
+	k := recipientTestKPI(t, before, "venue_adoption")
+	if k.Value != nil || !k.Availability.ManualAllowed || k.Availability.Reason != "manual_source_missing" {
+		t.Fatalf("%+v", k)
+	}
+	saved := engagementReportRequest(t, f.router.saveRecipientReportSources, "PUT", f.event, recipientSourcePayload(100, 0, true), f.ctx, nil)
+	engagementReportRequireStatus(t, saved, 200)
+	after := recipientDraft(t, f, "marketing", 0)
+	k = recipientTestKPI(t, after, "venue_adoption")
+	if k.Value == nil || *k.Value != 1 || k.Source != "manual_verified" || len(k.Provenance) != 1 || k.Provenance[0].EnteredBy != f.ctx.AdminID {
+		t.Fatalf("bad adoption %+v", k)
+	}
+	if before.DataHash == after.DataHash {
+		t.Fatal("manual edit did not invalidate hash")
+	}
+	executive := recipientDraft(t, f, "executive", 0)
+	if *recipientTestKPI(t, executive, "venue_adoption").Value != 1 {
+		t.Fatal("source lost between profiles")
+	}
+	engagementReportRequireStatus(t, engagementReportRequest(t, f.router.saveRecipientReportSources, "PUT", f.event, recipientSourcePayload(200, 0, true), f.ctx, nil), 409)
+	engagementReportRequireStatus(t, engagementReportRequest(t, f.router.saveRecipientReportSources, "PUT", f.event, recipientSourcePayload(200, 1, false), f.ctx, nil), 200)
+	history := engagementReportRequest(t, f.router.getRecipientReportSources, "GET", f.event, nil, f.ctx, nil)
+	engagementReportRequireStatus(t, history, 200)
+	var h struct {
+		History []json.RawMessage `json:"history"`
+	}
+	_ = json.Unmarshal(history.Body.Bytes(), &h)
+	if len(h.History) != 2 {
+		t.Fatal(history.Body.String())
+	}
+	updated := recipientDraft(t, f, "executive", 0)
+	if recipientTestKPI(t, updated, "venue_adoption").Source != "manual_unverified" {
+		t.Fatal("verification lost")
+	}
+}
+
+func TestRecipientSourcesRejectDerivedDataInvalidInputAndUnauthorized(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	for _, role := range []string{"staff", "partner", "bar", ""} {
+		ctx := f.ctx
+		ctx.AdminRole = role
+		engagementReportRequireStatus(t, engagementReportRequest(t, f.router.saveRecipientReportSources, "PUT", f.event, recipientSourcePayload(100, 0, true), ctx, nil), 403)
+	}
+	ctx := f.ctx
+	ctx.OrganizationID = f.other.ID
+	engagementReportRequireStatus(t, engagementReportRequest(t, f.router.saveRecipientReportSources, "PUT", f.event, recipientSourcePayload(100, 0, true), ctx, nil), 404)
+	for _, m := range []reportManualSource{
+		{FieldKey: "sponsored_participation", Value: 12, Unit: "percent", SourceType: "official_attendance", SourceDescription: "invented", VerificationStatus: "verified"},
+		{FieldKey: "attendees", Value: -1, Unit: "people", SourceType: "official_attendance", SourceDescription: "official", VerificationStatus: "verified"},
+		{FieldKey: "attendees", Value: 1.5, Unit: "people", SourceType: "official_attendance", SourceDescription: "official", VerificationStatus: "verified"},
+		{FieldKey: "attendees", Value: 100, Unit: "people", SourceType: "official_attendance", SourceDescription: "", VerificationStatus: "verified"},
+	} {
+		r := engagementReportRequest(t, f.router.saveRecipientReportSources, "PUT", f.event, map[string]interface{}{"sources": []reportManualSource{m}}, f.ctx, nil)
+		engagementReportRequireStatus(t, r, 400)
+	}
+	s := recipientDraft(t, f, "executive", 0)
+	if recipientTestKPI(t, s, "sponsored_participation").Availability.ManualAllowed {
+		t.Fatal("tracking cannot be edited")
+	}
+}
+
+func TestRecipientAvailabilityAndAutomaticConflict(t *testing.T) {
+	facts := map[string]*float64{"attendees": reportMetricFloat(200)}
+	conflicts := resolveReportManualSources(facts, []reportManualSource{{FieldKey: "attendees", Value: 100, VerificationStatus: "verified"}})
+	if len(conflicts) != 1 || *facts["attendees"] != 200 {
+		t.Fatal("automatic evidence overwritten")
+	}
+	facts = map[string]*float64{"onsite_visitors": reportMetricFloat(0), "attendees": reportMetricFloat(0)}
+	k := buildReportKPIs(facts)[1]
+	if a := recipientKPIAvailability(k, facts, nil, 0, reportEvent{}); a.Reason != "zero_denominator" || a.ManualAllowed {
+		t.Fatalf("%+v", a)
+	}
+	k.Numerator = reportMetricFloat(200)
+	k.Denominator = reportMetricFloat(100)
+	if a := recipientKPIAvailability(k, facts, nil, 0, reportEvent{}); a.Reason != "incompatible_population" {
+		t.Fatal(a)
+	}
+	for _, tc := range []struct {
+		k       reportKPI
+		signals []reportSignal
+		event   reportEvent
+		reason  string
+	}{
+		{reportKPI{ID: "event_retention"}, nil, reportEvent{}, "not_applicable"},
+		{reportKPI{ID: "mvp_participation"}, []reportSignal{{Metadata: map[string]interface{}{"vote_available": false}}}, reportEvent{}, "feature_unavailable"},
+		{reportKPI{ID: "visitors"}, nil, reportEvent{StartDateTime: time.Now().Add(time.Hour).Format(time.RFC3339)}, "not_synchronized"},
+		{reportKPI{ID: "sponsored_participation"}, nil, reportEvent{}, "tracking_missing"},
+	} {
+		if got := recipientKPIAvailability(tc.k, nil, tc.signals, 0, tc.event); got.Reason != tc.reason {
+			t.Fatalf("%s: %+v", tc.reason, got)
+		}
+	}
+}
+
+func TestRecipientComparisonUsesConcludedSameOrganization(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	recipientPageSignal(t, f)
+	create := func(org int, date string, concluded bool) int {
+		id, err := f.router.db.CreateEvent(database.Event{OrganizationID: org, Team1ID: f.org.TeamID, Team2ID: f.other.TeamID, StartDateTime: date})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if concluded {
+			_, err = f.conn.Exec(`UPDATE events SET is_concluded=1 WHERE id=?`, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		return id
+	}
+	prev := create(f.org.ID, "2026-10-10T10:00:00Z", true)
+	create(f.org.ID, "2026-10-20T10:00:00Z", false)
+	create(f.other.ID, "2026-10-20T10:00:00Z", true)
+	s := recipientDraft(t, f, "marketing", 0)
+	if s.PreviousEvent == nil || s.PreviousEvent.ID != prev {
+		t.Fatal("wrong preceding event", s.PreviousEvent)
+	}
+	current := reportKPI{Unit: "count", Value: reportMetricFloat(15)}
+	previous := reportKPI{Unit: "count", Value: reportMetricFloat(10)}
+	c := compareRecipientKPI(current, previous, true)
+	if *c.Absolute != 5 || *c.Percent != 50 || c.Direction != "up" {
+		t.Fatal(c)
+	}
+	previous.Value = reportMetricFloat(0)
+	c = compareRecipientKPI(current, previous, true)
+	if c.Percent != nil || c.Absolute == nil {
+		t.Fatal("zero baseline", c)
+	}
+	current.Unit = "percent"
+	previous.Unit = "percent"
+	previous.Value = reportMetricFloat(10)
+	c = compareRecipientKPI(current, previous, true)
+	if *c.PercentagePoints != 5 || c.Percent != nil {
+		t.Fatal(c)
+	}
+	previous.Description = "different population"
+	if compareRecipientKPI(current, previous, true).Absolute != nil {
+		t.Fatal("inhomogeneous comparison")
+	}
+}
+
+func TestRecipientSponsorNeverUsesOtherPartnerExposure(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	recipientPageSignal(t, f)
+	a, err := f.router.db.CreateSponsor(database.Sponsor{OrganizationID: f.org.ID, Position: 1, Name: "Partner A", LogoData: "logo", LinkURL: "https://example.com", IsActive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := f.router.db.CreateSponsor(database.Sponsor{OrganizationID: f.org.ID, Position: 2, Name: "Partner B", LogoData: "logo", LinkURL: "https://example.com", IsActive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, name := range []string{"sponsor_view", "sponsor_click"} {
+		raw := fmt.Sprintf(`{"sponsor_id":%d,"name":"Partner A","placement":"home_partner"}`, a)
+		_, err = f.conn.Exec(`INSERT INTO engagement_report_signals(event_id,signal_id,name,session_id,device_key,occurred_at,metadata) VALUES(?,?,?,?,?,?,?)`, f.event, fmt.Sprint("sponsor", i), name, "session-reports", "device-reports", "2026-10-21T19:01:00Z", raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := recipientDraft(t, f, "sponsor", a)
+	if k := recipientTestKPI(t, s, "sponsor_reach"); k.Value == nil || *k.Value != 1 {
+		t.Fatalf("%+v", k)
+	}
+	s = recipientDraft(t, f, "sponsor", b)
+	for _, id := range []string{"sponsor_reach", "sponsor_impressions", "sponsor_ctr", "sponsored_participation"} {
+		if recipientTestKPI(t, s, id).Value != nil {
+			t.Fatal("attributed other sponsor", id)
+		}
+	}
+	if *recipientTestKPI(t, s, "visitors").Value != 1 {
+		t.Fatal("event audience context lost")
+	}
+}
+
+func recipientAIExample() recipientAnalysis {
+	return recipientAnalysis{Headline: "Partecipazione osservata", Summary: "Le fonti descrivono il pubblico digitale misurabile.", PositiveInsights: []recipientInsight{{Title: "Pubblico misurabile", Description: "La partecipazione offre una base osservabile per la società.", MetricIDs: []string{"visitors"}}}, CriticalInsights: []recipientInsight{}, Recommendations: []recipientRecommendation{{Action: "Consolidare la raccolta", Reason: "La continuità aiuta a leggere gli eventi.", MetricIDs: []string{"visitors"}, Priority: "medium"}}, Limitations: []string{"La copertura osservata può essere incompleta."}}
+}
+
+func TestRecipientAIValidatesStrictSchemaAndNumericReferences(t *testing.T) {
+	p, _ := findReportProfile("executive")
+	s := engagementReportSnapshot{Recipient: &p, KPIs: []reportKPI{{ID: "visitors", Value: reportMetricFloat(5)}}}
+	valid, _ := json.Marshal(recipientAIExample())
+	if _, err := validateRecipientAnalysis(valid, s); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{strings.Replace(string(valid), `"medium"`, `"urgent"`, 1), strings.Replace(string(valid), `"metric_ids":["visitors"]`, `"metric_ids":["sponsor_reach"]`, 1), strings.Replace(string(valid), `"headline":"Partecipazione osservata"`, `"headline":"Crescita 99%"`, 1), strings.Replace(string(valid), `"headline":"Partecipazione osservata"`, `"headline":"Crescita cento"`, 1), strings.Replace(string(valid), `"positive_insights":[`, `"unexpected":true,"positive_insights":[`, 1), strings.Replace(string(valid), `"critical_insights":[]`, `"critical_insights":null`, 1), `{"headline":"missing fields"}`} {
+		if _, err := validateRecipientAnalysis([]byte(bad), s); err == nil {
+			t.Fatalf("accepted %s", bad)
+		}
+	}
+	client := &http.Client{Transport: recipientTestTransport(func(r *http.Request) (*http.Response, error) {
+		var request map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&request)
+		format := request["text"].(map[string]interface{})["format"].(map[string]interface{})
+		if format["strict"] != true || format["type"] != "json_schema" || request["store"] != false {
+			t.Error("Responses schema missing", request)
+		}
+		raw, _ := json.Marshal(map[string]interface{}{"status": "completed", "output": []interface{}{map[string]interface{}{"type": "message", "content": []interface{}{map[string]interface{}{"type": "output_text", "text": string(valid)}}}}})
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(raw))), Header: make(http.Header)}, nil
+	})}
+	if _, err := callRecipientOpenAI(context.Background(), client, recipientOpenAIURL, "test-key", "test-model", s); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type recipientTestTransport func(*http.Request) (*http.Response, error)
+
+func (f recipientTestTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestRecipientAICacheRetryFallbackInvalidationAndSnapshots(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	recipientPageSignal(t, f)
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("OPENAI_MODEL", "test-model")
+	old := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = old })
+	var calls int32
+	valid, _ := json.Marshal(recipientAIExample())
+	http.DefaultTransport = recipientTestTransport(func(r *http.Request) (*http.Response, error) {
+		count := atomic.AddInt32(&calls, 1)
+		text := string(valid)
+		if count == 1 {
+			text = `{"invalid":true}`
+		}
+		raw, _ := json.Marshal(map[string]interface{}{"status": "completed", "output": []interface{}{map[string]interface{}{"type": "message", "content": []interface{}{map[string]interface{}{"type": "output_text", "text": text}}}}})
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(raw))), Header: make(http.Header)}, nil
+	})
+	s := recipientDraft(t, f, "executive", 0)
+	analysisInput := map[string]interface{}{"calculation_id": s.CalculationID, "recipient": "executive", "compare_previous": true}
+	r := engagementReportRequest(t, f.router.generateRecipientReportAnalysis, "POST", f.event, analysisInput, f.ctx, nil)
+	engagementReportRequireStatus(t, r, 200)
+	if atomic.LoadInt32(&calls) != 2 || !strings.Contains(r.Body.String(), `"status":"ready"`) {
+		t.Fatal(calls, r.Body.String())
+	}
+	r = engagementReportRequest(t, f.router.generateRecipientReportAnalysis, "POST", f.event, analysisInput, f.ctx, nil)
+	engagementReportRequireStatus(t, r, 200)
+	if atomic.LoadInt32(&calls) != 2 || !strings.Contains(r.Body.String(), `"cached":true`) {
+		t.Fatal("cache missed", calls, r.Body.String())
+	}
+	approve := map[string]interface{}{"calculation_id": s.CalculationID, "recipient": "executive", "compare_previous": true, "include_appendix": true, "include_ai": true}
+	r = engagementReportRequest(t, f.router.approveEngagementReport, "POST", f.event, approve, f.ctx, nil)
+	engagementReportRequireStatus(t, r, 200)
+	var frozen engagementReportSnapshot
+	_ = json.Unmarshal(r.Body.Bytes(), &frozen)
+	if frozen.ID == "" || frozen.AnalysisStatus != "ready" || !frozen.IncludeAppendix || len(frozen.SelectedKPIIDs) != 5 {
+		t.Fatal(r.Body.String())
+	}
+	retry := engagementReportRequest(t, f.router.approveEngagementReport, "POST", f.event, approve, f.ctx, nil)
+	if retry.Body.String() != r.Body.String() {
+		t.Fatal("snapshot not idempotent")
+	}
+	archive := engagementReportRequest(t, f.router.listRecipientReportSnapshots, "GET", f.event, nil, f.ctx, nil)
+	engagementReportRequireStatus(t, archive, 200)
+	if !strings.Contains(archive.Body.String(), frozen.ID) {
+		t.Fatal("approved version not archived")
+	}
+	getVersion := func(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+		mux := chi.NewRouter()
+		mux.Get("/{eventId}/{reportId}", func(w http.ResponseWriter, r *http.Request) { f.router.getRecipientReportSnapshot(w, r, ctx) })
+		r.URL.Path = fmt.Sprintf("/%d/%s", f.event, frozen.ID)
+		mux.ServeHTTP(w, r)
+	}
+	version := engagementReportRequest(t, getVersion, "GET", f.event, nil, f.ctx, nil)
+	engagementReportRequireStatus(t, version, 200)
+	if version.Body.String() != retry.Body.String() {
+		t.Fatal("archive changed frozen data")
+	}
+	foreign := f.ctx
+	foreign.OrganizationID = f.other.ID
+	engagementReportRequireStatus(t, engagementReportRequest(t, getVersion, "GET", f.event, nil, foreign, nil), 404)
+	engagementReportRequireStatus(t, engagementReportRequest(t, f.router.saveRecipientReportSources, "PUT", f.event, recipientSourcePayload(100, 0, true), f.ctx, nil), 200)
+	updated := recipientDraft(t, f, "executive", 0)
+	if updated.DataHash == s.DataHash {
+		t.Fatal("data hash unchanged")
+	}
+	if recipientTestKPI(t, frozen, "venue_adoption").Value != nil {
+		t.Fatal("frozen snapshot modified")
+	}
+	http.DefaultTransport = recipientTestTransport(func(r *http.Request) (*http.Response, error) {
+		atomic.AddInt32(&calls, 1)
+		return nil, fmt.Errorf("API unavailable")
+	})
+	analysisInput["calculation_id"] = updated.CalculationID
+	r = engagementReportRequest(t, f.router.generateRecipientReportAnalysis, "POST", f.event, analysisInput, f.ctx, nil)
+	engagementReportRequireStatus(t, r, 200)
+	if atomic.LoadInt32(&calls) != 4 || !strings.Contains(r.Body.String(), `"status":"fallback"`) {
+		t.Fatal("fallback or retry count", calls, r.Body.String())
+	}
+	for _, profile := range reportRecipientProfiles() {
+		approve["recipient"] = profile.ID
+		approve["calculation_id"] = updated.CalculationID
+		r = engagementReportRequest(t, f.router.approveEngagementReport, "POST", f.event, approve, f.ctx, nil)
+		engagementReportRequireStatus(t, r, 200)
+		var v engagementReportSnapshot
+		_ = json.Unmarshal(r.Body.Bytes(), &v)
+		if v.Analysis == nil || v.Recipient.ID != profile.ID || profile.ID == "analytics" && v.IncludeAppendix {
+			t.Fatal("invalid recipient snapshot", r.Body.String())
+		}
+	}
+}
+
+func TestRecipientConcurrentAIRequestsShareReservation(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	recipientPageSignal(t, f)
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("OPENAI_MODEL", "test-model")
+	old := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = old })
+	entered, release := make(chan struct{}, 2), make(chan struct{})
+	var calls int32
+	valid, _ := json.Marshal(recipientAIExample())
+	http.DefaultTransport = recipientTestTransport(func(r *http.Request) (*http.Response, error) {
+		atomic.AddInt32(&calls, 1)
+		entered <- struct{}{}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return nil, r.Context().Err()
+		}
+		raw, _ := json.Marshal(map[string]interface{}{"status": "completed", "output": []interface{}{map[string]interface{}{"type": "message", "content": []interface{}{map[string]interface{}{"type": "output_text", "text": string(valid)}}}}})
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(raw))), Header: make(http.Header)}, nil
+	})
+	s := recipientDraft(t, f, "executive", 0)
+	input := map[string]interface{}{"calculation_id": s.CalculationID, "recipient": "executive", "compare_previous": true}
+	responses := make(chan int, 2)
+	request := func() {
+		r := engagementReportRequest(t, f.router.generateRecipientReportAnalysis, "POST", f.event, input, f.ctx, nil)
+		responses <- r.Code
+	}
+	go request()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("provider not invoked")
+	}
+	go request()
+	// Let the second reader observe pending before completing the first call.
+	time.Sleep(30 * time.Millisecond)
+	close(release)
+	for i := 0; i < 2; i++ {
+		select {
+		case code := <-responses:
+			if code != 200 {
+				t.Fatal(code)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("duplicate request hung")
+		}
+	}
+	if atomic.LoadInt32(&calls) != 1 {
+		t.Fatal("duplicate provider calls", calls)
+	}
+}
+
+func TestRecipientAIInputOmitsPrivateProvenanceAndCacheKeysVary(t *testing.T) {
+	p, _ := findReportProfile("executive")
+	s := engagementReportSnapshot{Event: reportEvent{ID: 1}, Recipient: &p, DataHash: "data-a", ComparePrevious: true, KPIs: []reportKPI{{ID: "visitors", Value: reportMetricFloat(1), Provenance: []reportManualSource{{SourceDescription: "PRIVATE-SOURCE", Note: "PRIVATE-NOTE", EnteredBy: 12345}}, Comparison: &reportComparison{PreviousProvenance: []reportManualSource{{Note: "PRIVATE-PREVIOUS"}}}}}}
+	raw, _ := json.Marshal(recipientAIInput(s))
+	if strings.Contains(string(raw), "PRIVATE") || strings.Contains(string(raw), "12345") {
+		t.Fatal("private provenance sent to provider", string(raw))
+	}
+	key := recipientAnalysisKey(s, "model-a")
+	if key == recipientAnalysisKey(s, "model-b") {
+		t.Fatal("model ignored")
+	}
+	s.DataHash = "data-b"
+	if key == recipientAnalysisKey(s, "model-a") {
+		t.Fatal("source hash ignored")
+	}
+	s.DataHash = "data-a"
+	s.ComparePrevious = false
+	if key == recipientAnalysisKey(s, "model-a") {
+		t.Fatal("comparison ignored")
+	}
+}
+
+func TestRecipientPurgeCleansNewTablesWithoutCascades(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	engagementReportRequireStatus(t, engagementReportRequest(t, f.router.saveRecipientReportSources, "PUT", f.event, recipientSourcePayload(100, 0, true), f.ctx, nil), 200)
+	if err := f.router.db.PurgeEventData(f.event); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"engagement_report_manual_sources", "engagement_report_source_history", "engagement_report_analysis_cache"} {
+		var count int
+		if err := f.conn.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE event_id=?`, f.event).Scan(&count); err != nil || count != 0 {
+			t.Fatal(table, count, err)
+		}
+	}
+}

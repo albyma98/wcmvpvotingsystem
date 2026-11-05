@@ -4,13 +4,15 @@
       <section ref="panel" class="eng-report" role="dialog" aria-modal="true" aria-labelledby="eng-report-title" tabindex="-1" :aria-busy="loading || saving">
         <header class="eng-report__header">
           <div><p class="eng-report__eyebrow">ARENA ENGAGEMENT INTELLIGENCE</p><h2 id="eng-report-title">Verifica e genera il report</h2><p class="eng-report__event">{{ snapshot?.event?.title || eventTitle }}</p></div>
-          <button class="eng-report__close" type="button" aria-label="Chiudi report" :disabled="saving" @click="close">×</button>
+          <button class="eng-report__close" type="button" aria-label="Chiudi report" :disabled="saving || recipientBusy" @click="close">×</button>
         </header>
 
         <div class="eng-report__body">
           <p v-if="loading" role="status" class="eng-report__loading">Calcolo dei KPI dell’esperienza /new…</p>
           <div v-if="error" class="eng-report__error" role="alert">{{ error }}<button v-if="!snapshot && !loading" type="button" class="eng-report__link" @click="loadReport">Riprova</button></div>
-          <template v-if="snapshot && !loading">
+          <div v-if="snapshot?.profiles?.length && !loading" class="eng-report__previous"><span>{{ legacyMode ? 'Generatore originale' : 'Generatore per destinatario' }}</span><button type="button" class="eng-report__link" :disabled="saving || recipientBusy" @click="legacyMode = !legacyMode">{{ legacyMode ? 'Report per destinatario' : 'Apri generatore originale' }}</button></div>
+          <RecipientReportBuilder v-if="snapshot?.profiles?.length && !loading && !legacyMode" :event-id="eventId" :auth-headers="authHeaders" @generated="emit('generated', $event)" @unauthorized="emit('unauthorized')" @busy="recipientBusy = $event" />
+          <template v-if="snapshot && !loading && (!snapshot.profiles?.length || legacyMode)">
             <div class="eng-report__intro"><div><strong>Una fotografia verificabile dell’evento</strong><p>Il report riconcilia la misurazione dedicata alla home /new con voti, giochi, premi, wallet e feedback salvati per l’evento. Le tracce operative ricostruiscono una partecipazione minima verificabile; non misurano tutte le visite. N/D indica una misura assente o un pubblico di riferimento non disponibile.</p></div><span class="eng-report__badge">{{ kpis.length }} KPI disponibili</span></div>
             <p class="eng-report__meta">Calcolato il {{ dateLabel(snapshot.calculated_at) }}<template v-if="snapshot.measurement_started_at"> · Primo dato disponibile: {{ dateLabel(snapshot.measurement_started_at) }}</template></p>
             <div v-if="snapshot.latest_report" class="eng-report__previous"><span>Ultimo report approvato: {{ dateLabel(snapshot.latest_report.approved_at) }}</span><button type="button" class="eng-report__link" :disabled="saving" @click="downloadPrevious">Scarica versione approvata</button></div>
@@ -58,7 +60,7 @@
           </template>
         </div>
 
-        <footer class="eng-report__footer"><button type="button" class="eng-report__button eng-report__button--light" :disabled="saving || loading || !snapshot" @click="resetReview">Ripristina dati rilevati</button><div><button type="button" class="eng-report__button eng-report__button--light" :disabled="saving" @click="close">Chiudi</button><button type="button" class="eng-report__button eng-report__button--primary" :disabled="loading || saving || !snapshot" @click="approveAndDownload">{{ saving ? 'Generazione in corso…' : approved ? 'Scarica PDF approvato' : 'Conferma e genera PDF' }}</button></div></footer>
+        <footer v-if="!snapshot?.profiles?.length || legacyMode" class="eng-report__footer"><button type="button" class="eng-report__button eng-report__button--light" :disabled="saving || loading || !snapshot" @click="resetReview">Ripristina dati rilevati</button><div><button type="button" class="eng-report__button eng-report__button--light" :disabled="saving" @click="close">Chiudi</button><button type="button" class="eng-report__button eng-report__button--primary" :disabled="loading || saving || !snapshot" @click="approveAndDownload">{{ saving ? 'Generazione in corso…' : approved ? 'Scarica PDF approvato' : 'Conferma e genera PDF' }}</button></div></footer>
       </section>
     </div>
   </Teleport>
@@ -67,6 +69,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
+import RecipientReportBuilder from './RecipientReportBuilder.vue';
 import { REPORT_KPIS, REPORT_FACT_LABELS, calculateReportKpis, formatReportValue, numericReportValue, reportDownloadFilename, reportOperationalItems, reportSelectedKpiIds, reportSourceLabel, validateReportReview, validateReportSelection } from '../engagementReport.js';
 
 const props = defineProps({ modelValue: Boolean, eventId: { type: Number, default: 0 }, eventTitle: { type: String, default: '' }, authHeaders: { type: Object, default: () => ({}) } });
@@ -74,6 +77,7 @@ const emit = defineEmits(['update:modelValue', 'generated', 'unauthorized']);
 const panel = ref(null), snapshot = ref(null), loading = ref(false), saving = ref(false), error = ref(''), approved = ref(null);
 const facts = reactive({}), overrides = reactive({}), descriptions = reactive({}), notes = ref(''), format = ref('one_page'), validationErrors = ref([]);
 const selectedKpiIds = ref([]);
+const legacyMode = ref(false), recipientBusy = ref(false);
 let requestController, previousFocus, previousOverflow, dialogOpen = false;
 const kpis = computed(() => {
   const availableIds = new Set((snapshot.value?.kpis || []).map(kpi => kpi.id));
@@ -95,7 +99,7 @@ function factLabel(key) {
   return (definition && snapshot.value?.kpis.find(kpi => kpi.id === definition.id)?.label) || REPORT_FACT_LABELS[key] || key;
 }
 function formulaLabel(kpi) { return kpi.denominatorKey ? `${factLabel(kpi.numeratorKey)} / ${factLabel(kpi.denominatorKey)}${kpi.unit === 'percent' ? ' × 100' : ''}.` : factLabel(kpi.numeratorKey); }
-function close() { if (!saving.value) emit('update:modelValue', false); }
+function close() { if (!saving.value && !recipientBusy.value) emit('update:modelValue', false); }
 function resetReview() {
   Object.keys(facts).forEach(key => delete facts[key]);
   factKeys.value.forEach(key => { facts[key] = snapshot.value?.facts?.[key] ?? null; });
@@ -160,7 +164,7 @@ async function approveAndDownload() {
 function keyHandler(event) {
   if (event.key === 'Escape') { event.preventDefault(); close(); return; }
   if (event.key !== 'Tab' || !panel.value) return;
-  const focusables = [...panel.value.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]')].filter(node => node.getClientRects().length);
+  const focusables = [...panel.value.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]')].filter(node => node.getClientRects().length);
   if (!focusables.length) { event.preventDefault(); panel.value.focus(); return; }
   const first = focusables[0], last = focusables[focusables.length - 1];
   if (event.shiftKey && (document.activeElement === first || !panel.value.contains(document.activeElement) || document.activeElement === panel.value)) { event.preventDefault(); last.focus(); }

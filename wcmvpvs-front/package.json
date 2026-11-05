@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test:reports": "node --test src/engagementReport.test.js src/engagementReportPdf.test.js src/recipientReport.test.js src/components/EngagementReportModal.test.js src/components/RecipientReportBuilder.test.js src/eventReportTelemetry.test.js",
+    "reports:examples": "node test/generateRecipientReportExamples.mjs",
     "test:arena": "node --test src/arena/actions/demoSession.test.js src/arena/crowd/createCrowd.test.js src/arena/crowd/avatar.test.js src/arena/camera/cinematic.test.js src/arena/scene/volleyballRally.test.js src/arena/organizationCrowd.test.js src/arena/activities/activities.test.js"
   },
   "dependencies": {

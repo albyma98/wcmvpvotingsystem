@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { REPORT_KPIS, formatReportValue, reportOperationalItems, reportSourceLabel } from './engagementReport.js';
+import { analysisMetricReferences, comparisonLabel, recipientSourceLabel } from './recipientReport.js';
 
 const C = { navy: [14, 33, 57], teal: [12, 120, 101], ink: [28, 45, 65], muted: [99, 115, 133], pale: [242, 246, 249], line: [218, 227, 235] };
 const WIDTH = 210, HEIGHT = 297, M = 16;
@@ -327,6 +328,14 @@ export function createEngagementReportPdf(report) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true, putOnlyUsedFonts: true });
   const p = createPainter(doc), kpis = normalizedKpis(report), total = report.format === 'extended' ? 3 : 1;
   doc.setProperties({ title: pdfText(`Engagement - ${report.event?.title || 'Evento'}`), subject: pdfText(`${kpis.length} KPI - Report approvato ${report.id}`), author: pdfText(report.branding?.company_name || 'ArenaBoostX'), creator: 'ArenaBoostX Event Intelligence', keywords: 'engagement, evento, KPI, sponsor, report' });
+  if (report.recipient) {
+    recipientPages(doc, p, report);
+    // Stable metadata and file ID let a frozen version be regenerated exactly.
+    const approvedDate = new Date(report.approved_at);
+    if (Number.isFinite(approvedDate.getTime())) doc.setCreationDate(approvedDate);
+    doc.setFileId(String(report.id).replace(/[^a-f0-9]/gi, '').padEnd(32, '0').slice(0, 32));
+    return doc;
+  }
   if (kpis.length > 20) {
     indicatorPage(doc, p, report, kpis, 0, 1);
     indicatorPage(doc, p, report, kpis, 15, 2);
@@ -336,4 +345,94 @@ export function createEngagementReportPdf(report) {
     if (total === 3) { detailPage(doc, p, report, kpis); methodPage(doc, p, report, kpis); }
   }
   return doc;
+}
+
+function recipientPages(doc, p, report) {
+  const byId = new Map(report.kpis.map(k => [k.id, k]));
+  const kpis = report.recipient.kpi_ids.map(id => byId.get(id)).filter(Boolean);
+  const profile = report.recipient.id;
+  let y = 76;
+  const heading = title => {
+    header(doc, p, report, title, `${report.recipient.name}${report.sponsor_name ? ` | ${report.sponsor_name}` : ''} | ${report.recipient.objective}`);
+    y = 76;
+  };
+  const newPage = title => { doc.addPage(); heading(title); };
+  const room = (height, title = 'Approfondimento e metodo') => { if (y + height > 271) newPage(title); };
+  const wrapped = (text, { size = 8, bold = false, color = C.ink, width = 178, indent = 0 } = {}) => {
+    doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(size);
+    const lines = doc.splitTextToSize(pdfText(text), width);
+    for (const line of lines) { room(size * .43); p.text(line, M + indent, y, size, color, bold); y += size * .43; }
+    y += 2;
+  };
+  const section = title => { room(15); y += 3; wrapped(title, { size: 10, bold: true, color: C.teal }); };
+  const sourceText = k => {
+    const manual = (k.provenance || []).map(m => `${m.verification_status === 'verified' ? 'Manuale verificata' : 'Manuale NON verificata'}: ${m.source_description} (rev. ${m.revision})`).join('; ');
+    return manual || recipientSourceLabel(k);
+  };
+  const metric = (k, index, detailed = false) => {
+    room(detailed ? 33 : 18, detailed ? 'Indicatori e metodologia' : 'Performance');
+    if (index % 2 === 0) p.box(M, y - 4, 178, detailed ? 8 : 16.7, C.pale, 1);
+    p.lines(k.label, M + 3, y, 125, 1, 8.5, C.ink, true);
+    p.fit(formatReportValue(k.value, k.unit), WIDTH - M - 3, y, 41, 12, C.navy, true, 'right');
+    y += 4;
+    if (!detailed) {
+      p.lines(k.value == null ? `N/D: ${k.availability?.message || 'Dati insufficienti'}` : `${sourceText(k)}${report.sponsor_id && k.id === 'visitors' ? ' | Contesto evento, non copertura partner' : ''}`, M + 3, y, 172, 1, 6.5, C.muted); y += 3.4;
+      p.lines(report.compare_previous ? `Precedente: ${formatReportValue(k.comparison?.previous, k.unit)} | ${comparisonLabel(k)}${k.comparison?.previous_source?.startsWith('manual_') ? ` | ${k.comparison.previous_source === 'manual_verified' ? 'Precedente da fonte manuale verificata' : 'Precedente NON verificato'}` : ''}` : k.value == null ? k.availability?.message || 'Dato non disponibile' : k.display_description || '', M + 3, y, 172, 1, 6.5, C.muted); y += 10;
+    } else {
+      wrapped(sourceText(k), { size: 7, color: C.muted });
+      if (k.numerator != null && k.denominator != null) wrapped(`Base: ${formatReportValue(k.numerator)} / ${formatReportValue(k.denominator)}${k.unit === 'percent' ? ' x 100' : ''}`, { size: 7.5 });
+      wrapped(k.description, { size: 7.6 });
+      if (report.compare_previous) wrapped(`Confronto: precedente ${formatReportValue(k.comparison?.previous, k.unit)} | ${comparisonLabel(k)}`, { size: 7.2, color: C.muted });
+      if (k.value == null) wrapped(`N/D: ${k.availability?.message || 'Dati insufficienti.'}`, { size: 7.2, color: C.muted });
+    }
+  };
+
+  heading(profile === 'analytics' ? 'Indicatori e metodologia' : profile === 'sponsor' ? 'Il valore delle attivazioni' : profile === 'marketing' ? 'Comportamenti e opportunità' : 'Il valore per la società');
+  if (profile === 'analytics') {
+    kpis.forEach((k, i) => metric(k, i, true));
+  } else {
+    // Five or ten compact rows leave stable room for synthesis. Texts in the
+    // one-page formats are explicitly abbreviated, never drawn over the footer.
+    kpis.forEach((k, i) => metric(k, i));
+  }
+
+  const a = report.analysis;
+  if (profile === 'executive' || profile === 'sponsor') {
+    if (a) {
+      p.text(report.analysis_status === 'ready' ? 'LETTURA E INDICAZIONE STRATEGICA | OPENAI' : 'LETTURA E INDICAZIONE STRATEGICA | SINTESI', M, y, 7.5, C.teal, true); y += 5;
+      p.lines(a.headline, M, y, 178, 1, 9, C.navy, true); y += 5;
+      p.lines(a.summary, M, y, 178, 3, 8, C.ink, false, 3.5); y += 13;
+      [...(a.positive_insights || []), ...(a.critical_insights || [])].slice(0, report.recipient.max_insights).forEach(item => {
+        p.lines(`${item.title}: ${item.description}`, M, y, 178, 2, 7.2, C.ink, false, 3.2); y += 7;
+        p.lines(analysisMetricReferences(item, kpis), M, y, 178, 1, 6.5, C.muted); y += 6;
+      });
+      if (a.recommendations?.length) { p.lines(`Indicazione: ${a.recommendations[0].action}`, M, y, 178, 2, 7.5, C.navy, true, 3.3); y += 9; }
+    }
+    p.lines('N/D non equivale a zero. Manuale verificata / NON verificata: provenienza della sorgente. Variazioni senza giudizio automatico. Testi sintetizzati; versione integrale nello snapshot approvato.', M, 259, 178, 2, 6.5, C.muted, false, 3);
+    p.lines([...(report.conflicts || []), ...(a?.limitations || []).slice(0, 1), report.notes || (report.details?.coverage_notes || [])[0] || 'Consultare definizioni e copertura prima di interpretare i risultati.'].join(' '), M, 268, 178, 2, 6.3, C.muted, false, 2.8);
+  } else {
+    if (profile === 'marketing') newPage('Lettura e prossimi passi');
+    if (a) {
+      section(report.analysis_status === 'ready' ? 'Analisi OpenAI validata' : 'Sintesi deterministica');
+      wrapped(a.headline, { size: 11, bold: true }); wrapped(a.summary);
+      for (const [title, items] of [['Evidenze positive', a.positive_insights], ['Criticità', a.critical_insights]]) {
+        if (items?.length) { section(title); for (const item of items) { wrapped(`${item.title}: ${item.description}`); wrapped(analysisMetricReferences(item, kpis), { size: 7, color: C.muted }); } }
+      }
+      if (a.recommendations?.length) { section('Raccomandazioni operative'); for (const rec of a.recommendations) { wrapped(`[${rec.priority}] ${rec.action}: ${rec.reason}`); wrapped(analysisMetricReferences(rec, kpis), { size: 7, color: C.muted }); } }
+      if (a.limitations?.length) { section('Limiti dell’analisi'); a.limitations.forEach(t => wrapped(t, { size: 7.2, color: C.muted })); }
+    }
+    section('Metodo e provenienza');
+    wrapped('N/D non equivale a zero. Precedenza: automatico, manuale verificato, manuale NON verificato, non disponibile. I valori manuali sono sorgenti, non sostituzioni di indicatori derivati. Le variazioni non implicano benefici o relazioni causali.', { size: 7.4 });
+    (report.conflicts || []).forEach(t => wrapped(`Conflitto: ${t}`, { size: 7.4 }));
+    (report.details?.coverage_notes || []).forEach(t => wrapped(t, { size: 7.2, color: C.muted }));
+    if (report.notes) { section('Note della società'); wrapped(report.notes, { size: 7.5 }); }
+  }
+
+  if (report.include_appendix && profile !== 'analytics') {
+    newPage('Appendice | tutti i 20 KPI');
+    // First twenty are the original catalog, frozen in the snapshot.
+    report.kpis.slice(0, 20).forEach((k, i) => metric(k, i, true));
+  }
+  const total = doc.getNumberOfPages();
+  for (let page = 1; page <= total; page++) { doc.setPage(page); footer(doc, p, report, page, total); }
 }

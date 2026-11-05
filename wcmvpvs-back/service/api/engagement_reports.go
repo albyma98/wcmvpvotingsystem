@@ -59,6 +59,20 @@ type reportOverride struct {
 }
 
 type engagementReportSnapshot struct {
+	Profiles             []reportRecipientProfile  `json:"profiles,omitempty"`
+	Recipient            *reportRecipientProfile   `json:"recipient,omitempty"`
+	PreviousEvent        *reportEvent              `json:"previous_event,omitempty"`
+	ComparePrevious      bool                      `json:"compare_previous,omitempty"`
+	IncludeAppendix      bool                      `json:"include_appendix,omitempty"`
+	SponsorID            int                       `json:"sponsor_id,omitempty"`
+	SponsorName          string                    `json:"sponsor_name,omitempty"`
+	ManualSources        []reportManualSource      `json:"manual_sources,omitempty"`
+	Conflicts            []string                  `json:"conflicts,omitempty"`
+	DataHash             string                    `json:"data_hash,omitempty"`
+	Analysis             *recipientAnalysis        `json:"analysis,omitempty"`
+	AnalysisStatus       string                    `json:"analysis_status,omitempty"`
+	AnalysisModel        string                    `json:"analysis_model,omitempty"`
+	PromptVersion        string                    `json:"prompt_version,omitempty"`
 	ID                   string                    `json:"id,omitempty"`
 	CalculationID        string                    `json:"calculation_id"`
 	Event                reportEvent               `json:"event"`
@@ -94,7 +108,7 @@ func (rt *_router) ensureEngagementReportTables() error {
 			return err
 		}
 	}
-	return nil
+	return rt.ensureRecipientReportTables()
 }
 
 func registerEngagementReportRoutes(rt *_router) {
@@ -104,6 +118,11 @@ func registerEngagementReportRoutes(rt *_router) {
 	rt.router.Post("/events/{eventId}/report-signals", rt.wrap(rt.recordReportSignals))
 	rt.router.Get("/admin/events/{eventId}/engagement-report", rt.wrapAdmin(rt.prepareEngagementReport))
 	rt.router.Post("/admin/events/{eventId}/engagement-report", rt.wrapAdmin(rt.approveEngagementReport))
+	rt.router.Put("/admin/events/{eventId}/engagement-report/sources", rt.wrapAdmin(rt.saveRecipientReportSources))
+	rt.router.Get("/admin/events/{eventId}/engagement-report/sources", rt.wrapAdmin(rt.getRecipientReportSources))
+	rt.router.Post("/admin/events/{eventId}/engagement-report/analysis", rt.wrapAdmin(rt.generateRecipientReportAnalysis))
+	rt.router.Get("/admin/events/{eventId}/engagement-report/snapshots", rt.wrapAdmin(rt.listRecipientReportSnapshots))
+	rt.router.Get("/admin/events/{eventId}/engagement-report/snapshots/{reportId}", rt.wrapAdmin(rt.getRecipientReportSnapshot))
 	rt.router.Get("/admin/master/report-branding", rt.wrapAdmin(rt.getReportBranding))
 	rt.router.Put("/admin/master/report-branding", rt.wrapAdmin(rt.putReportBranding))
 }
@@ -445,6 +464,10 @@ func newReportID() string {
 }
 
 func (rt *_router) prepareEngagementReport(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
+	if r.URL.Query().Has("recipient") {
+		rt.prepareRecipientReport(w, r, ctx)
+		return
+	}
 	eventID, orgID, ok := rt.reportEventScope(w, r, ctx)
 	if !ok {
 		return
@@ -501,6 +524,7 @@ func (rt *_router) prepareEngagementReport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	snapshot := engagementReportSnapshot{CalculationID: newReportID(), Event: reportEvent{event.ID, title, event.StartDateTime, event.Location, org.Name, org.LogoURL}, Branding: brand, CalculatedAt: time.Now().UTC().Format(time.RFC3339Nano), MeasurementStartedAt: started, Facts: facts, KPIs: buildCombinedReportKPIs(facts, details, signals, previous, operational, previousOperational), Details: details, SchemaVersion: 1}
+	snapshot.Profiles = reportRecipientProfiles()
 	// Preserve the existing one-page default while exposing every available
 	// indicator in the review form. Additional KPIs can be selected explicitly.
 	for i, kpi := range snapshot.KPIs {
@@ -549,15 +573,27 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var input struct {
-		CalculationID  string                    `json:"calculation_id"`
-		Format         string                    `json:"format"`
-		Facts          map[string]*float64       `json:"facts"`
-		Overrides      map[string]reportOverride `json:"overrides"`
-		Descriptions   map[string]string         `json:"descriptions"`
-		SelectedKPIIDs *[]string                 `json:"selected_kpi_ids"`
-		Notes          string                    `json:"notes"`
+		Recipient       string                    `json:"recipient"`
+		ComparePrevious bool                      `json:"compare_previous"`
+		IncludeAppendix bool                      `json:"include_appendix"`
+		IncludeAI       bool                      `json:"include_ai"`
+		CalculationID   string                    `json:"calculation_id"`
+		Format          string                    `json:"format"`
+		Facts           map[string]*float64       `json:"facts"`
+		Overrides       map[string]reportOverride `json:"overrides"`
+		Descriptions    map[string]string         `json:"descriptions"`
+		SelectedKPIIDs  *[]string                 `json:"selected_kpi_ids"`
+		Notes           string                    `json:"notes"`
 	}
 	if !decodeReportBody(w, r, 128*1024, &input) {
+		return
+	}
+	if input.Recipient != "" {
+		if len(input.Facts) > 0 || len(input.Overrides) > 0 || len(input.Descriptions) > 0 || input.SelectedKPIIDs != nil {
+			reportError(w, 400, "Il report destinatario accetta solo sorgenti persistenti, non sostituzioni di KPI.")
+			return
+		}
+		rt.approveRecipientReport(w, r, ctx, eventID, input.CalculationID, input.Recipient, input.ComparePrevious, input.IncludeAppendix, input.IncludeAI, input.Notes)
 		return
 	}
 	if (input.Format != "one_page" && input.Format != "extended") || len(input.CalculationID) != 36 || utf8.RuneCountInString(input.Notes) > 4000 {
@@ -577,6 +613,10 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 	var snapshot engagementReportSnapshot
 	if err = json.Unmarshal([]byte(raw), &snapshot); err != nil {
 		reportError(w, 500, "Calcolo non valido.")
+		return
+	}
+	if snapshot.SchemaVersion >= 2 {
+		reportError(w, 400, "Seleziona il destinatario per approvare questo calcolo; non sono consentite sostituzioni dei KPI.")
 		return
 	}
 	original := snapshot.Facts
