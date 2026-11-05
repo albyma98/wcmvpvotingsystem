@@ -261,6 +261,96 @@ func recipientAIExample() recipientAnalysis {
 	return recipientAnalysis{Headline: "Partecipazione osservata", Summary: "Le fonti descrivono il pubblico digitale misurabile.", PositiveInsights: []recipientInsight{{Title: "Pubblico misurabile", Description: "La partecipazione offre una base osservabile per la società.", MetricIDs: []string{"visitors"}}}, CriticalInsights: []recipientInsight{}, Recommendations: []recipientRecommendation{{Action: "Consolidare la raccolta", Reason: "La continuità aiuta a leggere gli eventi.", MetricIDs: []string{"visitors"}, Priority: "medium"}}, Limitations: []string{"La copertura osservata può essere incompleta."}}
 }
 
+func recipientAIProviderExample() recipientProviderAnalysis {
+	a := recipientAIExample()
+	return recipientProviderAnalysis{Headline: a.Headline, Summary: a.Summary, Insights: []recipientProviderInsight{{recipientInsight: a.PositiveInsights[0], Kind: "positive"}}, Recommendations: a.Recommendations, Limitations: a.Limitations}
+}
+
+func TestRecipientSharedInsightBudgetAndPublicContract(t *testing.T) {
+	for _, profile := range reportRecipientProfiles() {
+		for positive := 0; positive <= profile.MaxInsights+1; positive++ {
+			for critical := 0; critical <= profile.MaxInsights+1; critical++ {
+				t.Run(fmt.Sprintf("%s/positive-%d/critical-%d", profile.ID, positive, critical), func(t *testing.T) {
+					s := engagementReportSnapshot{Recipient: &profile, KPIs: []reportKPI{{ID: "visitors", Value: reportMetricFloat(5)}}}
+					provided := recipientAIProviderExample()
+					provided.Insights = []recipientProviderInsight{}
+					insight := recipientAIExample().PositiveInsights[0]
+					for i := 0; i < positive; i++ {
+						provided.Insights = append(provided.Insights, recipientProviderInsight{recipientInsight: insight, Kind: "positive"})
+					}
+					for i := 0; i < critical; i++ {
+						provided.Insights = append(provided.Insights, recipientProviderInsight{recipientInsight: insight, Kind: "critical"})
+					}
+					raw, _ := json.Marshal(provided)
+					a, err := validateRecipientProviderAnalysis(raw, s)
+					if positive+critical > profile.MaxInsights {
+						if err == nil {
+							t.Fatal("combined budget exceeded without rejection")
+						}
+						return
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(a.PositiveInsights) != positive || len(a.CriticalInsights) != critical {
+						t.Fatal("insights lost or misclassified")
+					}
+					public, _ := json.Marshal(a)
+					var fields map[string]interface{}
+					_ = json.Unmarshal(public, &fields)
+					if _, wire := fields["insights"]; wire {
+						t.Fatal("provider contract leaked into public API")
+					}
+					if _, err := validateRecipientAnalysis(public, s); err != nil {
+						t.Fatal("public validation no longer holds", err)
+					}
+					publicProperties := recipientAnalysisSchema(s)["properties"].(map[string]interface{})
+					item := publicProperties["positive_insights"].(map[string]interface{})["items"].(map[string]interface{})["properties"].(map[string]interface{})
+					if _, leaked := item["kind"]; leaked {
+						t.Fatal("provider schema mutated public schema")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestRecipientProviderInsightValidationAndConfiguredLimit(t *testing.T) {
+	p, _ := findReportProfile("executive")
+	p.MaxInsights = 1
+	s := engagementReportSnapshot{Recipient: &p, KPIs: []reportKPI{{ID: "visitors", Value: reportMetricFloat(5)}}}
+	valid, _ := json.Marshal(recipientAIProviderExample())
+	if _, err := validateRecipientProviderAnalysis(valid, s); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		strings.Replace(string(valid), `"kind":"positive"`, `"kind":"unknown"`, 1),
+		strings.Replace(string(valid), `"kind":"positive"`, `"unexpected":true,"kind":"positive"`, 1),
+		strings.Replace(string(valid), `"metric_ids":["visitors"]`, `"metric_ids":["sponsor_reach"]`, 1),
+		strings.Replace(string(valid), `"headline":"Partecipazione osservata"`, `"headline":"Crescita 99%"`, 1),
+	} {
+		if _, err := validateRecipientProviderAnalysis([]byte(raw), s); err == nil {
+			t.Fatal("invalid insight accepted", raw)
+		}
+	}
+	provided := recipientAIProviderExample()
+	provided.Insights = append(provided.Insights, provided.Insights[0])
+	over, _ := json.Marshal(provided)
+	if _, err := validateRecipientProviderAnalysis(over, s); err == nil {
+		t.Fatal("profile-specific budget ignored")
+	}
+	// Previously accepted by each category's schema, but rejected by Go only:
+	// the public validator must still reject that original three-plus-three case.
+	p.MaxInsights = 3
+	a := recipientAIExample()
+	a.PositiveInsights = []recipientInsight{a.PositiveInsights[0], a.PositiveInsights[0], a.PositiveInsights[0]}
+	a.CriticalInsights = append([]recipientInsight{}, a.PositiveInsights...)
+	raw, _ := json.Marshal(a)
+	if _, err := validateRecipientAnalysis(raw, s); err == nil || err.Error() != "insight limit exceeded" {
+		t.Fatal("public combined-budget guard lost", err)
+	}
+}
+
 func TestRecipientAIValidatesStrictSchemaAndNumericReferences(t *testing.T) {
 	p, _ := findReportProfile("executive")
 	s := engagementReportSnapshot{Recipient: &p, KPIs: []reportKPI{{ID: "visitors", Value: reportMetricFloat(5)}}}
@@ -280,7 +370,15 @@ func TestRecipientAIValidatesStrictSchemaAndNumericReferences(t *testing.T) {
 		if format["strict"] != true || format["type"] != "json_schema" || request["store"] != false {
 			t.Error("Responses schema missing", request)
 		}
-		raw, _ := json.Marshal(map[string]interface{}{"status": "completed", "output": []interface{}{map[string]interface{}{"type": "message", "content": []interface{}{map[string]interface{}{"type": "output_text", "text": string(valid)}}}}})
+		properties := format["schema"].(map[string]interface{})["properties"].(map[string]interface{})
+		if _, old := properties["positive_insights"]; old {
+			t.Error("provider still has independent insight budgets")
+		}
+		if properties["insights"].(map[string]interface{})["maxItems"] != float64(p.MaxInsights) {
+			t.Error("shared insight budget missing")
+		}
+		provided, _ := json.Marshal(recipientAIProviderExample())
+		raw, _ := json.Marshal(map[string]interface{}{"status": "completed", "output": []interface{}{map[string]interface{}{"type": "message", "content": []interface{}{map[string]interface{}{"type": "output_text", "text": string(provided)}}}}})
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(raw))), Header: make(http.Header)}, nil
 	})}
 	if _, err := callRecipientOpenAI(context.Background(), client, recipientOpenAIURL, "test-key", "test-model", s); err != nil {
@@ -300,7 +398,7 @@ func TestRecipientAICacheRetryFallbackInvalidationAndSnapshots(t *testing.T) {
 	old := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = old })
 	var calls int32
-	valid, _ := json.Marshal(recipientAIExample())
+	valid, _ := json.Marshal(recipientAIProviderExample())
 	http.DefaultTransport = recipientTestTransport(func(r *http.Request) (*http.Response, error) {
 		count := atomic.AddInt32(&calls, 1)
 		text := string(valid)
@@ -393,7 +491,7 @@ func TestRecipientConcurrentAIRequestsShareReservation(t *testing.T) {
 	t.Cleanup(func() { http.DefaultTransport = old })
 	entered, release := make(chan struct{}, 2), make(chan struct{})
 	var calls int32
-	valid, _ := json.Marshal(recipientAIExample())
+	valid, _ := json.Marshal(recipientAIProviderExample())
 	http.DefaultTransport = recipientTestTransport(func(r *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&calls, 1)
 		entered <- struct{}{}
@@ -544,7 +642,7 @@ func TestRecipientMissingConfigurationDiagnosticsPersistAndRegenerate(t *testing
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	old := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = old })
-	valid, _ := json.Marshal(recipientAIExample())
+	valid, _ := json.Marshal(recipientAIProviderExample())
 	http.DefaultTransport = recipientTestTransport(func(r *http.Request) (*http.Response, error) {
 		raw, _ := json.Marshal(map[string]interface{}{"status": "completed", "output": []interface{}{map[string]interface{}{"type": "message", "content": []interface{}{map[string]interface{}{"type": "output_text", "text": string(valid)}}}}})
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(raw))), Header: make(http.Header)}, nil

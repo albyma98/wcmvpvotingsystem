@@ -158,13 +158,23 @@ La risposta di `POST .../engagement-report/analysis` espone `diagnostic` quando 
 | `response_incomplete`, `invalid_response`, `provider_refusal` | Risposta incompleta, non leggibile o rifiuto del provider |
 | `cached_fallback` | Fallback prodotto prima dell'introduzione della diagnostica: rigenerare per conoscere la causa |
 
-La diagnostica viene mantenuta anche nella cache, senza modifiche allo schema SQLite. Il JSON in cache conserva i campi dell'analisi e un campo separato `diagnostic`; i payload precedenti restano leggibili. Il JSON Schema richiesto al modello resta invariato. Il retry di una risposta non valida comunica il codice della violazione al modello, mantenendo gli stessi controlli e il limite di un retry.
+La diagnostica viene mantenuta anche nella cache, senza modifiche allo schema SQLite. Il JSON in cache conserva i campi dell'analisi e un campo separato `diagnostic`; i payload precedenti restano leggibili. La diagnostica non cambia la struttura pubblica dell'analisi. Il retry di una risposta non valida comunica il codice della violazione al modello, mantenendo gli stessi controlli e il limite di un retry.
 
 I log del backend riportano `recipient report OpenAI attempt failed` con codici, stato HTTP, tentativo e ID richiesta. Le chiavi, i corpi delle richieste e i messaggi grezzi del provider non sono registrati né restituiti, perché possono contenere informazioni sensibili.
 
 Il timeout HTTP del server copre il maggiore tra il budget AI precedente e `OPENAI_REPORT_TIMEOUT`, con cinque secondi aggiuntivi per consegnare la risposta. Con `OPENAI_REPORT_TIMEOUT=45s` il server concede almeno cinquanta secondi. In precedenza il budget HTTP dipendeva soltanto dal vecchio servizio AI e poteva interrompere la risposta prima del completamento del report.
 
 Verifica della correzione: tutti i quattordici test `TestRecipient*` superati, inclusi errori HTTP del provider, assenza di configurazione, cache, rigenerazione e protezione dei messaggi sensibili. Superata anche la suite API completa e il test del server che verifica i budget HTTP di cinquanta e novantacinque secondi. Le chiamate OpenAI dei test sono simulate; la causa specifica del fallback in produzione va letta dalla nuova diagnostica dopo il deployment e una rigenerazione esplicita.
+
+### Limite complessivo degli insight — prompt v2
+
+La diagnostica `invalid_output / insight limit exceeded` identifica un difetto del primo schema: `positive_insights` e `critical_insights` potevano contenere ciascuno tre elementi, mentre il vincolo applicativo era tre elementi complessivi. Il solo prompt non rendeva quel vincolo strutturale.
+
+Da `recipient-report-v2`, lo schema interno inviato a Responses usa un unico array `insights` con `maxItems` uguale a `MaxInsights` del profilo. Ogni elemento contiene titolo, descrizione, KPI e `kind` con enum `positive/critical`. Dopo la validazione di questo schema il backend separa le categorie nei campi pubblici `positive_insights` e `critical_insights`, conservando integralmente gli elementi e applicando tutti i controlli già esistenti. Interfaccia, cache, snapshot e renderer PDF continuano a usare il formato pubblico originario. Non viene aumentato il limite né vengono troncati gli insight per aggirare una violazione.
+
+La nuova versione prompt produce una chiave cache differente dai precedenti fallback. Gli snapshot già approvati restano invariati. Per attivare la correzione aggiornare il codice, ricostruire il backend e premere **Rigenera analisi**: nella risposta compare `prompt_version: "recipient-report-v2"`. L'uso di `maxItems` per l'unico array segue la [documentazione ufficiale OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
+
+I test di regressione coprono tutte le combinazioni tra zero e quattro insight per categoria nei quattro profili, i limiti personalizzati, i KPI inesistenti, i numeri non consentiti, le categorie sconosciute e la compatibilità del JSON pubblico. Il caso originario di tre insight positivi più tre critici rimane rifiutato dalla validazione pubblica.
 
 ## Verifica ed esempi
 
