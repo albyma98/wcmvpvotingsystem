@@ -1,25 +1,17 @@
 <template>
   <div class="container">
-    <h4 class="center-align" v-if="eventInfo">
+    <h4 class="text-center text-xl font-semibold" v-if="eventInfo">
       {{ eventInfo.team1 }} vs {{ eventInfo.team2 }}
     </h4>
-    <p class="center-align" v-if="eventInfo">{{ eventInfo.location }}</p>
-    <h5 class="center-align">Vota il tuo MVP</h5>
-    <div class="row">
-      <div class="col s12 m6 l4" v-for="player in players" :key="player.id">
-        <div class="card hoverable">
-          <div class="card-image center-align">
-            <img :src="player.image" :alt="player.name" class="player-image" />
-          </div>
-          <div class="card-content center-align">
-            <span class="player-name">{{ player.name }}</span>
-            <p class="player-info">{{ player.role }} - #{{ player.number }}</p>
-          </div>
-          <div class="card-action center-align">
-            <button class="btn waves-effect" @click="vote(player)">Vota</button>
-          </div>
-        </div>
-      </div>
+    <p class="text-center" v-if="eventInfo">{{ eventInfo.location }}</p>
+    <h5 class="my-4 text-center text-lg font-semibold">Vota il tuo MVP</h5>
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <article v-for="player in players" :key="player.id" class="rounded-xl bg-white p-5 text-center text-slate-900 shadow">
+        <img :src="player.image" :alt="player.name" class="player-image" />
+        <span class="player-name">{{ player.name }}</span>
+        <p class="player-info">{{ player.role }} - #{{ player.number }}</p>
+        <button class="vote-button mt-4" @click="vote(player)">Vota</button>
+      </article>
     </div>
     <!-- Conferma voto -->
     <div class="custom-modal-overlay" v-if="showConfirm">
@@ -27,22 +19,22 @@
         <div class="modal-content">
           <p>Confermi il voto per {{ selectedPlayer?.name }}?</p>
         </div>
-        <div class="modal-footer">
-          <button class="btn waves-effect" @click="confirmVote">Conferma</button>
-          <button class="btn-flat" @click="cancelVote">Annulla</button>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button class="vote-button" @click="confirmVote">Conferma</button>
+          <button class="vote-button secondary" @click="cancelVote">Annulla</button>
         </div>
       </div>
     </div>
     <!-- Codice e QR -->
     <div class="custom-modal-overlay" v-if="showCode">
       <div class="custom-modal">
-        <div class="modal-content center-align">
+        <div class="text-center">
           <h5>Voto registrato</h5>
           <p>Codice: {{ voteCode }}</p>
-          <img :src="qrUrl" alt="QR code" />
+          <img :src="qrUrl" alt="QR code" class="mx-auto" />
         </div>
-        <div class="modal-footer center-align">
-          <button class="btn waves-effect" @click="closeCode">Chiudi</button>
+        <div class="mt-4 text-center">
+          <button class="vote-button" @click="closeCode">Chiudi</button>
         </div>
       </div>
     </div>
@@ -152,10 +144,11 @@ function closeCode() {
   height: 150px;
   object-fit: cover;
   border-radius: 50%;
+  margin-inline: auto;
 }
-.card {
-  margin: 1rem 0;
-}
+.vote-button { border-radius: .5rem; padding: .5rem 1rem; background: #1d4ed8; color: white; font-weight: 600; }
+.vote-button:hover { background: #1e40af; }
+.vote-button.secondary { background: #e2e8f0; color: #0f172a; }
 
 .custom-modal-overlay {
   position: fixed;
@@ -179,7 +172,8 @@ function closeCode() {
   width: 90%;
 }
 .container {
-  margin-top: 2rem;
+  margin: 2rem auto 0;
+  padding-inline: 1rem;
 }
 .player-name {
   color: #000;

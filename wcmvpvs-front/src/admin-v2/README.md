@@ -34,7 +34,7 @@ Inventari di dettaglio: [Eventi](docs/events-inventory.md), [operazioni e analis
 - `config/navigation.js`, `router/routes.js`: metadati e percorsi con slug.
 - `components/shared`: pannelli, icone e dialog con focus trap/inert/ripristino focus.
 - `components/events`, `components/forms`, `components/dashboard`: presentazione specifica delle operazioni.
-- `styles/admin-v2.css`: token e controlli locali sotto `.admin-v2`, compresa la neutralizzazione degli stili Materialize del contenitore ospitante.
+- `styles/admin-v2.css` definisce i token e gli stili dei controlli locali sotto `.admin-v2`.
 - `composables`: sessione e notifiche. Il compilatore `build/adminV2Controllers.js` estrae a build time il solo script dei controller originali, senza importarne template o CSS e senza duplicare payload o regole. Dettagli e guardie in [CONTROLLERS.md](CONTROLLERS.md).
 
 La modale report e il generatore per destinatario hanno presentazioni V2 dedicate in `components/reports`, comprese schede KPI e analisi, con gli stessi controller e lo stesso generatore PDF esistenti. I grafici specializzati sono riutilizzati. Non vengono introdotti endpoint, statistiche simulate, dipendenze runtime o sistemi di autenticazione paralleli.

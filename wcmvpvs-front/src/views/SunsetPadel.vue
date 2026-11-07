@@ -1,5 +1,6 @@
 <template>
   <div class="sp-stage">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" />
     <div class="sp-phone">
       <!-- GLITTER -->
       <div class="sp-glitter">
@@ -633,8 +634,6 @@ const stars = [
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
-
 /* In-app: niente cornice-telefono da mockup. La pagina riempie il device. */
 .sp-stage {
   background: #0B0620;

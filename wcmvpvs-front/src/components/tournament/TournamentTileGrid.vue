@@ -19,9 +19,7 @@ const ICONS = {
 </script>
 
 <template>
-  <!-- div, NON <nav>: Materialize (caricato globalmente da index.html) colora
-       ogni <nav> con background #ee6e73 → si vedeva una banda rossa nei gap. -->
-  <div class="tile-grid" role="navigation" aria-label="Sezioni torneo">
+  <nav class="tile-grid" aria-label="Sezioni torneo">
     <button
       class="tile"
       v-for="tile in tiles"
@@ -33,12 +31,11 @@ const ICONS = {
       <span class="tile-label">{{ tile.label }}</span>
       <span class="tile-sub">{{ tile.sub }}</span>
     </button>
-  </div>
+  </nav>
 </template>
 
 <style scoped>
 .tile-grid { display: grid; grid-template-columns: repeat(4, var(--tm-tile)); grid-auto-rows: var(--tm-tile); gap: 9px; justify-content: space-between; }
-.tile-grid { background: transparent; } /* difesa extra contro stili globali su container */
 .tile {
   width: var(--tm-tile); height: var(--tm-tile);
   border: none; border-radius: 12px; color: #fff; cursor: pointer;

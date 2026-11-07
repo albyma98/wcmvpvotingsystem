@@ -23,9 +23,9 @@
         <div class="modal-content">
           <p>Confermi il voto per {{ selectedPlayer?.name }}?</p>
         </div>
-        <div class="modal-footer">
-          <button class="btn waves-effect" @click="confirmVote">Conferma</button>
-          <button class="btn-flat" @click="cancelVote">Annulla</button>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button class="vote-button" @click="confirmVote">Conferma</button>
+          <button class="vote-button secondary" @click="cancelVote">Annulla</button>
         </div>
       </div>
     </div>
@@ -33,14 +33,14 @@
     <!-- Codice e QR -->
     <div class="custom-modal-overlay" v-if="showCode">
       <div class="custom-modal">
-        <div class="modal-content center-align">
+        <div class="text-center">
           <h5>Voto registrato</h5>
           <p>Codice: {{ voteCode }}</p>
           <p>Firma HMAC: {{ signature }}</p>
-          <img :src="qrUrl" alt="QR code" />
+          <img :src="qrUrl" alt="QR code" class="mx-auto" />
         </div>
-        <div class="modal-footer center-align">
-          <button class="btn waves-effect" @click="closeCode">Chiudi</button>
+        <div class="mt-4 text-center">
+          <button class="vote-button" @click="closeCode">Chiudi</button>
         </div>
       </div>
     </div>
@@ -244,9 +244,9 @@ function closeCode() {
   display: flex;
   gap: 0.5rem;
 }
-.browser-bar .material-icons {
-  font-size: 1.2rem;
-}
+.vote-button { border-radius: .5rem; padding: .5rem 1rem; background: #1d4ed8; color: white; font-weight: 600; }
+.vote-button:hover { background: #1e40af; }
+.vote-button.secondary { background: #e2e8f0; color: #0f172a; }
 @media (min-width: 600px) {
   .title {
     font-size: 2rem;

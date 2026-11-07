@@ -317,12 +317,8 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .avatar-studio input[type="checkbox"] {
-  display: inline-block !important;
-  appearance: auto !important;
-  opacity: 1 !important;
-  position: static !important;
-  width: 16px !important;
-  height: 16px !important;
+  width: 16px;
+  height: 16px;
   min-width: 16px;
   vertical-align: middle;
   margin-right: 6px;

@@ -671,9 +671,6 @@ function triggerVideoPicker(eventId, index) {
 </script>
 
 <style scoped>
-/* ── Fonts (same as admin theme) ── */
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-
 .events-section {
   display: flex;
   flex-direction: column;

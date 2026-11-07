@@ -4,6 +4,7 @@ import cashLogo from '../assets/cash-logo.svg'
 
 <template>
   <main class="landing-page">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;display=swap" />
     <section class="hero" data-animate>
       <div class="hero__logo" data-animate>
         <h1 class="hero__title">Welcome to</h1>
@@ -109,8 +110,6 @@ import cashLogo from '../assets/cash-logo.svg'
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
-
 :global(body) {
   margin: 0;
   background-color: #0c0c0d;

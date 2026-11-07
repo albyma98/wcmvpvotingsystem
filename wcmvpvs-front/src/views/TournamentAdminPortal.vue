@@ -1421,10 +1421,6 @@ async function generateBracket () {
 button { cursor: pointer; }
 .form-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .form-row input, .form-row select, textarea { background: #15151b; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 9px 11px; color: #fff; flex: 1; min-width: 120px; font-size: 14px; }
-/* Materialize (CSS globale da index.html) nasconde i <select> nativi con
-   `select{display:none}` (+ background chiaro e height:3rem) e lascia le <option>
-   senza contrasto. Qui li ripristiniamo e li rendiamo leggibili (scoped → solo
-   il pannello torneo, non tocca il resto dell'app club). */
 select {
   display: block; height: auto;
   background: #15151b; color: #fff;
@@ -1458,7 +1454,7 @@ textarea { width: 100%; font-family: inherit; }
 .roster-grid { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
 .roster-row { display: flex; align-items: center; gap: 8px; }
 .roster-num { flex: none; width: 20px; text-align: center; color: #64748b; font-size: 13px; font-weight: 700; }
-.roster-row input { flex: 1; min-width: 0; background: #15151b; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 8px 10px; color: #fff; font-size: 14px; }
+.roster-row input:not([type="radio"]) { flex: 1; min-width: 0; background: #15151b; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 8px 10px; color: #fff; font-size: 14px; }
 .roster-gender { flex: none; display: flex; gap: 8px; }
 .roster-gender label { display: inline-flex; align-items: center; gap: 3px; font-size: 12.5px; color: #cbd5e1; cursor: pointer; }
 .roster-gender input[type="radio"] { flex: none; width: auto; margin: 0; accent-color: #f2b928; }

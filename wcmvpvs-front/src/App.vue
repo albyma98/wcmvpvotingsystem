@@ -594,11 +594,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('popstate', handlePopState);
 });
 
-watch(() => appView.value === 'master-v2' || appView.value === 'arena', (usesOwnStyles) => {
-  const materialize = typeof document === 'undefined' ? null : document.getElementById('materialize-styles');
-  if (materialize) materialize.media = usesOwnStyles ? 'not all' : '';
-}, { immediate: true });
-
 watch(appView, (view) => {
   isFanHomeLoading.value = true;
   hasSplashMinimumElapsed.value = false;

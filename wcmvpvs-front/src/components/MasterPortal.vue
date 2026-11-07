@@ -1739,7 +1739,12 @@ onMounted(() => {
 .master-header h1 {
   margin: 0.2rem 0;
   font-size: clamp(1.5rem, 4vw, 2.5rem);
+  font-weight: 700;
 }
+
+.master-portal h2 { font-size: 1.375rem; font-weight: 700; }
+.master-portal h3 { font-size: 1.125rem; font-weight: 650; }
+.master-portal :is(a, button, input, select):focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 
 .header-actions {
   display: flex;
@@ -2134,7 +2139,7 @@ onMounted(() => {
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 1rem;
 }
 
@@ -2145,7 +2150,7 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.form-grid input:not([type='radio']),
+.form-grid input:not([type='radio']):not([type='checkbox']),
 .form-grid select {
   padding: 0.65rem 0.8rem;
   border-radius: 0.65rem;
@@ -2177,8 +2182,13 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.sport-option input {
+.sport-option input,
+.switch-field input {
+  width: 1rem;
+  height: 1rem;
   margin: 0;
+  flex: none;
+  accent-color: #2563eb;
   cursor: pointer;
 }
 
@@ -2199,12 +2209,12 @@ onMounted(() => {
 .arena-assignment-form { display: grid; gap: 0.75rem; }
 .arena-assignment-form button[type='submit'] { justify-self: start; }
 .arena-assignment-form p { margin: 0; }
-.organization-color-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 0.75rem; }
+.organization-color-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 1rem; margin-top: 0.75rem; }
 .organization-color-inputs { display: flex; align-items: center; gap: 0.6rem; }
 .organization-color-inputs input[type='color'] { width: 48px; height: 42px; padding: 0.2rem; cursor: pointer; flex-shrink: 0; }
 .organization-color-inputs input[type='text'] { min-width: 0; width: 100%; font-family: monospace; }
 
-.switch-field {
+.form-grid .switch-field {
   flex-direction: row;
   align-items: center;
   gap: 0.5rem;
@@ -2214,6 +2224,7 @@ onMounted(() => {
   grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.75rem;
 }
 
