@@ -1,144 +1,118 @@
 <template>
-  <div class="cento-root" :class="{ 'reduce-motion': false }" :style="themeStyle">
+  <div class="cento-root" :style="themeStyle">
     <div class="phone" :inert="isHomeLoading" :aria-hidden="isHomeLoading || undefined" :aria-busy="isHomeLoading">
-      <!-- Top bar -->
-      <header class="topbar">
-        <div class="club">
-          <div class="club-logo" :class="{ 'has-logo': homeLogoUrl }">
-            <img v-if="homeLogoUrl" :src="homeLogoUrl" :alt="homeName" />
-            <template v-else>{{ homeBadge }}</template>
-          </div>
-          <div class="club-name">
-            <b>{{ homeName }}</b>
-            <span>{{ opponentLabel }}</span>
-          </div>
-        </div>
-        <div class="top-right">
-          <FanMerchLink class="merch-top-link" :slug="organizationSlug" />
-          <button ref="platformInfoTriggerRef" class="platform-info-button" type="button" aria-label="Informazioni e istruzioni" title="Come funziona ArenaBoostX" aria-haspopup="dialog" aria-controls="fan-platform-info" :aria-expanded="activeSheet === 'info'" @click="openPlatformInfo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
-          </button>
-          <button ref="walletEl" class="wallet" :class="{ 'wallet-pulse': walletPulse }" type="button" aria-label="Apri wallet e movimenti" @click="openHomeAction('wallet')">
-            <span class="coin"></span> <span>{{ totalCoins }}</span>
-          </button>
-          <button class="profile-btn" type="button" :aria-label="isRegistered ? 'Profilo tifoso' : 'Accedi o crea il profilo tifoso'" @click="openHomeAction('profile')">
-            <FanAvatar v-if="isRegistered" :name="profileNickname" :framed="equippedFrame === 'club_frame'" :size="40" />
-            <span v-else class="guest-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg></span>
-          </button>
-        </div>
-      </header>
-
-      <main>
-        <!-- Grid -->
-        <div class="grid">
-          <!-- MVP: sheet inline con giocatori reali + voto reale -->
-          <button class="tile tile-mvp" type="button" :disabled="!eventId" @click="openHomeAction(showMatchSummary ? 'match-summary' : 'mvp')">
-            <b>{{ hasVoted ? 'Il tuo MVP' : "Vota l'MVP del pubblico" }}</b>
-            <p>{{ hasVoted ? 'Grazie per il voto!' : canVote ? 'Il tuo voto vale +10 monete' : 'In attesa della prossima votazione' }}</p>
-            <div class="mvp-photo" :class="{ 'has-player': hasVoted }">
-              <FanPlayerCard v-if="hasVoted" class="mvp-home-card" :player="votedPlayerCard" :club-logo-url="homeLogoUrl" selected selected-label="Voto registrato" loading="eager" />
-              <template v-else>
-                <span class="status">{{ canVote ? 'Votazioni aperte' : 'Votazioni chiuse' }}</span>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--red-text)" stroke-width="1.5">
-                  <circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
-                </svg>
-              </template>
+      <div class="home-scroll">
+        <header class="topbar">
+          <div class="club">
+            <div class="club-logo" :class="{ 'has-logo': homeLogoUrl }">
+              <img v-if="homeLogoUrl" :src="homeLogoUrl" :alt="homeName" />
+              <template v-else>{{ homeBadge }}</template>
             </div>
-            <span class="btn-vote">{{ showMatchSummary ? 'Vedi il riepilogo' : hasVoted ? votedButtonLabel : canVote ? 'Vota ora' : 'Votazioni chiuse' }}</span>
-          </button>
-
-          <button class="tile" type="button" @click="openHomeAction('earn')">
-            <div class="tile-icon">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" /></svg>
+            <div class="club-name">
+              <b>{{ homeName }}</b>
+              <span v-if="opponentLabel">{{ opponentLabel }}</span>
             </div>
-            <b>Gioca e guadagna</b>
-            <p>Basket, quiz e nuove sfide</p>
-            <div class="spacer"></div>
-            <span class="tile-cta">Gioca →</span>
-          </button>
-
-          <button class="tile" type="button" @click="openHomeAction('spend')">
-            <div class="tile-icon">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 7v13" /></svg>
-            </div>
-            <b>Shop Tifoso</b>
-            <p>La tua collezione da tifoso</p>
-            <div class="spacer"></div>
-            <span class="tile-cta">Riscatta →</span>
-          </button>
-        </div>
-
-        <button v-if="showLotteryShortcut" :ref="observeLotteryShortcut" class="lottery-shortcut" type="button" :aria-label="`Apri il QR della lotteria, codice ${lotteryCode}`" @click="openLotteryTicket">
-          <span>Il tuo codice: <strong>{{ lotteryCode }}</strong></span>
-          <span class="lottery-shortcut-action">Apri QR <span aria-hidden="true">→</span></span>
-        </button>
-
-        <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" :ref="observeFeedbackInvitation" class="feedback-cta" type="button" @click="openFeedbackModal">
-          <span class="feedback-cta-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 3V11.5a10 10 0 0 1 20 0Z"/><path d="M7 10h8M7 14h5"/></svg>
-          </span>
-          <span class="feedback-cta-copy">
-            <span class="feedback-cta-kicker">La tua voce conta</span>
-            <b>Come stai vivendo la partita?</b>
-            <span>Dillo al tuo club: rispondi alle domande e lascia un suggerimento.</span>
-          </span>
-          <span class="feedback-cta-action">Lascia un feedback <span aria-hidden="true">→</span></span>
-        </button>
-        <button v-else-if="featuredMission" class="moment-card" type="button" @click="onMission(featuredMission, 'home_featured')">
-          <span class="avatar" aria-hidden="true">{{ featuredMission.emoji }}</span>
-          <span class="row-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
-          <span class="moment-action"><span class="row-pts">+{{ featuredMission.pts }} <span class="coin" aria-hidden="true"></span></span><span class="tile-cta">Gioca →</span></span>
-        </button>
-        <button v-else-if="showMatchSummary" class="moment-card" type="button" @click="openSheet('match-summary')">
-          <span class="avatar" aria-hidden="true">🏀</span>
-          <span class="row-copy"><b>La tua partita</b><span>{{ matchConcluded ? 'Risultato MVP e riepilogo della serata' : 'Votazioni chiuse · guarda il tuo riepilogo' }}</span></span>
-          <span class="tile-cta">Apri →</span>
-        </button>
-
-        <section v-if="eventId && !showMatchSummary && (!progress.unlocked || journey.pendingVoteBonus)" class="journey-card" aria-label="Il tuo primo traguardo">
-          <div class="journey-head">
-            <div>
-              <b>{{ progress.unlocked ? `Badge ${FAN_BADGE_NAME} sbloccato!` : 'Il tuo primo traguardo' }}</b>
-              <span>{{ progress.unlocked ? 'Il badge è nel tuo profilo' : `Mancano ${progress.remaining} monete al badge ${FAN_BADGE_NAME}` }}</span>
-            </div>
-            <strong>{{ progress.current }}/{{ FIRST_FAN_GOAL }} <span class="coin" aria-hidden="true"></span></strong>
           </div>
-          <div class="journey-bar" role="progressbar" aria-label="Monete guadagnate per il primo badge" :aria-valuenow="progress.current" :aria-valuemin="0" :aria-valuemax="FIRST_FAN_GOAL">
-            <span :style="{ width: `${progress.percent}%` }"></span>
-          </div>
-          <div class="journey-footer">
-            <small>Vota e gioca · le monete restano nel wallet</small>
-            <button type="button" class="journey-next" @click="openJourneyNext">{{ journeyNextLabel }}</button>
-          </div>
-          <button v-if="journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare il bonus voto' }}</button>
-        </section>
-
-        <button class="rank-link" type="button" @click="openHomeAction('leaderboard')">
-          <span class="rank-link-icon" aria-hidden="true">🏆</span>
-          <span><b>Classifica tifosi</b><small>{{ leaderboardUser ? `Sei al ${leaderboardUser.rank}° posto · ${leaderboardUser.points} punti` : 'Scopri i tifosi più attivi del club' }}</small></span>
-          <span class="tile-cta" aria-hidden="true">→</span>
-        </button>
-
-        <!-- Sponsors (spazio ampliato al posto dello scoreboard) -->
-        <section v-if="sponsors.length" class="sponsors">
-          <div class="sponsors-head">
-            <span class="label">PARTNER UFFICIALI</span>
-          </div>
-          <div class="sponsor-grid">
-            <button
-              v-for="sponsor in sponsors.slice(0, 6)"
-              :key="sponsor.id"
-              :ref="(element) => observeReportSponsor(element, sponsor)"
-              class="sponsor-chip"
-              type="button"
-              @click="onSponsorClick(sponsor)"
-            >
-              <img v-if="sponsor.imageUrl" :src="sponsor.imageUrl" :alt="sponsor.name || 'Sponsor'" />
-              <span v-else>{{ sponsor.name }}</span>
+          <div class="top-right">
+            <button ref="platformInfoTriggerRef" class="platform-info-button" type="button" aria-label="Informazioni e istruzioni" title="Come funziona ArenaBoostX" aria-haspopup="dialog" aria-controls="fan-platform-info" :aria-expanded="activeSheet === 'info'" @click="openPlatformInfo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
+            </button>
+            <button ref="walletEl" class="wallet" :class="{ 'wallet-pulse': walletPulse }" type="button" :aria-label="`Apri wallet e movimenti, ${totalCoins} monete`" @click="openHomeAction('wallet')">
+              <span class="coin" aria-hidden="true"></span> <span>{{ totalCoins }}</span>
+            </button>
+            <button class="profile-btn" type="button" :aria-label="isRegistered ? 'Profilo tifoso' : 'Accedi o crea il profilo tifoso'" @click="openHomeAction('profile')">
+              <FanAvatar v-if="isRegistered" :name="profileNickname" :framed="equippedFrame === 'club_frame'" :size="40" />
+              <span v-else class="guest-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg></span>
             </button>
           </div>
-        </section>
-      </main>
+        </header>
+
+        <main class="home-dashboard">
+          <section class="mvp-card" aria-labelledby="home-mvp-title">
+            <div class="mvp-heading">
+              <img v-if="hasVoted && displayVotedImage" class="mvp-thumbnail" :src="displayVotedImage" alt="" />
+              <h1 id="home-mvp-title">{{ hasVoted ? 'Il tuo MVP' : "Vota l'MVP del pubblico" }}</h1>
+              <span class="mvp-status" :class="{ 'is-open': canVote }">{{ canVote ? 'Votazioni aperte' : 'Votazioni chiuse' }}</span>
+            </div>
+            <p v-if="hasVoted">Voto registrato<span v-if="displayVotedName !== 'Il tuo MVP'"> · {{ displayVotedName }}</span></p>
+            <p v-else>{{ canVote ? `Il tuo voto vale +${VOTE_REWARD} monete` : 'In attesa della prossima votazione' }}</p>
+            <button class="mvp-action" :class="{ 'is-primary': canVote && !hasVoted }" type="button" :disabled="!eventId" @click="openHomeAction(showMatchSummary ? 'match-summary' : 'mvp')">
+              {{ showMatchSummary ? 'Vedi il riepilogo' : canVote ? (hasVoted ? 'Modifica voto' : 'Vota ora') : 'Votazioni chiuse' }}
+            </button>
+          </section>
+
+          <div class="home-shortcuts">
+            <button class="home-shortcut" type="button" @click="openHomeAction('earn')">
+              <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z"/></svg></span>
+              <span class="shortcut-copy"><b>Gioca</b><span>Sfide e quiz</span></span>
+            </button>
+            <FanMerchLink class="home-shortcut" :slug="organizationSlug">
+              <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l2 13H3L5 8Z"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+              <span class="shortcut-copy"><b>Shop</b><span>Merch ufficiale</span></span>
+            </FanMerchLink>
+          </div>
+
+          <Transition name="home-slot" mode="out-in">
+            <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" key="feedback" :ref="observeFeedbackInvitation" class="feedback-cta" type="button" @click="openFeedbackModal">
+              <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-8.5 8.5H4l1.5-4.5A8.5 8.5 0 1 1 20.5 11.5Z"/><path d="M8.5 10h7m-7 4h5"/></svg></span>
+              <span class="feedback-cta-copy"><b>La tua voce conta</b><span>Come stai vivendo la partita?</span></span>
+              <span class="feedback-cta-action">Lascia un feedback <span aria-hidden="true">→</span></span>
+            </button>
+            <button v-else-if="featuredMission" key="challenge" class="moment-card" type="button" @click="onMission(featuredMission, 'home_featured')">
+              <span class="home-icon" aria-hidden="true">{{ featuredMission.emoji }}</span>
+              <span class="moment-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
+              <span class="moment-action">
+                <span v-if="featuredMission.pts && (featuredMission.repeatable || !doneKeys.includes(featuredMission.key))" class="row-pts">
+                  +{{ featuredMission.pts }}<span class="sr-only"> monete</span><span class="coin" aria-hidden="true"></span>
+                </span>
+                <b>Gioca <span aria-hidden="true">→</span></b>
+              </span>
+            </button>
+          </Transition>
+
+          <section v-if="eventId" class="journey-card" aria-label="Progressione del badge">
+            <div class="journey-head">
+              <b>{{ FAN_BADGE_NAME }}<small v-if="progress.unlocked">Sbloccato</small></b>
+              <strong>{{ progress.current }}/{{ FIRST_FAN_GOAL }} <span class="coin" aria-hidden="true"></span></strong>
+            </div>
+            <div class="journey-bar" role="progressbar" :aria-label="`Monete guadagnate per il badge ${FAN_BADGE_NAME}`" :aria-valuenow="progress.current" :aria-valuemin="0" :aria-valuemax="FIRST_FAN_GOAL">
+              <span :style="{ width: `${progress.percent}%` }"></span>
+            </div>
+            <button v-if="journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare il bonus voto' }}</button>
+          </section>
+
+          <button class="rank-link" type="button" @click="openHomeAction('leaderboard')">
+            <svg class="rank-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8v6a4 4 0 0 1-8 0V3Zm0 2H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4m-4 2v4m-4 4h8m-7 0v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+            <b>Classifica tifosi</b>
+            <svg class="rank-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+
+          <button v-if="showLotteryShortcut" :ref="observeLotteryShortcut" class="lottery-shortcut" type="button" :aria-label="`Apri il QR della lotteria, codice ${lotteryCode}`" @click="openLotteryTicket">
+            <span>Il tuo codice: <strong>{{ lotteryCode }}</strong></span>
+            <span class="lottery-shortcut-action">Apri QR <span aria-hidden="true">→</span></span>
+          </button>
+
+          <!-- Sponsors (spazio ampliato al posto dello scoreboard) -->
+          <section v-if="sponsors.length" class="sponsors">
+            <div class="sponsors-head">
+              <span class="label">PARTNER UFFICIALI</span>
+            </div>
+            <div class="sponsor-grid">
+              <button
+                v-for="sponsor in sponsors.slice(0, 6)"
+                :key="sponsor.id"
+                :ref="(element) => observeReportSponsor(element, sponsor)"
+                class="sponsor-chip"
+                type="button"
+                @click="onSponsorClick(sponsor)"
+              >
+                <img v-if="sponsor.imageUrl" :src="sponsor.imageUrl" :alt="sponsor.name || 'Sponsor'" />
+                <span v-else>{{ sponsor.name }}</span>
+              </button>
+            </div>
+          </section>
+        </main>
+      </div>
 
       <!-- Overlay condiviso dai pannelli della home -->
       <div class="overlay" :class="{ open: activeSheet }" @click="closeSheets"></div>
@@ -251,6 +225,7 @@
           <button class="close" type="button" aria-label="Chiudi minigiochi" @click="closeSheets">✕</button>
         </div>
         <div class="sheet-body">
+          <button class="earn-collection-link" type="button" @click="openHomeAction('spend', 'game_catalog')">Shop Tifoso <span aria-hidden="true">→</span></button>
           <div class="mission-grid" :class="{ 'is-active': activeSheet === 'earn' }">
             <button
               v-for="(mission, index) in earnMissions"
@@ -389,7 +364,7 @@
 
       <div class="sheet" :class="{ open: activeSheet === 'match-summary' }" role="dialog" aria-label="La tua partita" :aria-hidden="activeSheet !== 'match-summary'" :inert="activeSheet !== 'match-summary'">
         <div class="grabber"></div>
-        <div class="sheet-head"><div><div class="sheet-title">La tua partita</div><div class="sheet-sub">{{ homeName }} · {{ opponentLabel }}</div></div><button class="close" type="button" aria-label="Chiudi riepilogo" @click="closeSheets">✕</button></div>
+        <div class="sheet-head"><div><div class="sheet-title">La tua partita</div><div class="sheet-sub">{{ homeName }} · {{ opponentLabel || 'Esperienza ufficiale' }}</div></div><button class="close" type="button" aria-label="Chiudi riepilogo" @click="closeSheets">✕</button></div>
         <div class="sheet-body">
           <div class="match-stats"><div><b>{{ hasVoted ? '✓' : '—' }}</b><span>Voto MVP</span></div><div><b>{{ completedGames }}</b><span>Sfide completate</span></div><div><b>{{ progress.earned }}</b><span>Monete guadagnate</span></div></div>
           <div class="row-item leaderboard-row"><span class="avatar" aria-hidden="true">🏆</span><span class="row-copy"><b>{{ finalMvpLabel }}</b><span>{{ matchConcluded ? finalMvpSubtitle : 'Il risultato finale sarà disponibile quando la partita sarà conclusa.' }}</span></span></div>
@@ -859,7 +834,11 @@ let walletRequestRevision = 0;
 let leaderboardRequestRevision = 0;
 let isDisposed = false;
 let coinsStream = null;
-const eventState = computed(() => liveEvent.value || (!props.activeEvent?.id || props.activeEvent.id === props.eventId ? props.activeEvent : null));
+const eventState = computed(() => {
+  if (Number(liveEvent.value?.event_id) === props.eventId) return liveEvent.value;
+  const activeEvent = props.activeEvent;
+  return !activeEvent?.id || activeEvent.id === props.eventId ? activeEvent : null;
+});
 const availableMinigames = computed(() => liveEvent.value?.available_minigames ?? props.activeEvent?.available_minigames);
 function isGameAvailable(id) {
   return !Array.isArray(availableMinigames.value) || availableMinigames.value.includes(id);
@@ -1048,7 +1027,7 @@ const homeName = computed(() =>
 const homeBadge = computed(() => initials(homeName.value));
 const opponentLabel = computed(() => {
   const opponent = String(eventState.value?.team2_name || '').trim();
-  return opponent ? `vs ${opponent}` : 'Esperienza ufficiale';
+  return opponent ? `vs ${opponent}` : '';
 });
 
 /* ---------- Feedback dell'evento ---------- */
@@ -1119,12 +1098,6 @@ const votedPlayerCard = computed(() => {
 });
 const displayVotedImage = computed(() => votedPlayerCard.value.image);
 const displayVotedName = computed(() => votedPlayerCard.value.name);
-const votedButtonLabel = computed(() => {
-  const number = votedPlayerCard.value.number;
-  const num = number === '' || number == null ? '' : `#${number} `;
-  const label = votedPlayerCard.value.lastName || (hasVoted.value ? votedPlayerCard.value.name : '');
-  return label ? `${num}${label}`.trim() : 'Modifica voto';
-});
 
 /* ---------- Profilo (come LiveExperienceHome) ---------- */
 const profileNickname = computed(() => {
@@ -1971,9 +1944,9 @@ function recordSectionChange(next) {
   recordFanEvent('section_opened', { section: next, from_section: previous });
   analyticsSectionOpenedAt = Date.now();
 }
-function openHomeAction(id) {
+function openHomeAction(id, placement = ['profile', 'wallet'].includes(id) ? 'topbar' : 'home_grid') {
   const cta = ({ spend: 'shop', 'match-summary': 'mvp' })[id] || id;
-  recordFanEvent('cta_clicked', { cta, placement: ['profile', 'wallet'].includes(id) ? 'topbar' : 'home_grid' });
+  recordFanEvent('cta_clicked', { cta, placement });
   if (id === 'profile') return openProfile();
   if (id === 'leaderboard') return openLeaderboard();
   return openSheet(id);
@@ -2218,6 +2191,7 @@ watch(
   display: flex;
   justify-content: center;
   overflow: hidden;
+  padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
   background: var(--outer-bg, #f3e9e4);
   --bg: #fff7f2;
   --card: #ffffff;
@@ -2244,27 +2218,45 @@ watch(
   width: 100%;
   max-width: 430px;
   height: 100dvh;
-  background:
-    radial-gradient(90% 40% at 50% -6%, var(--hero-glow), transparent 62%),
-    var(--bg);
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
 }
 
-/* Top bar */
+.home-scroll {
+  --home-gap: 8px;
+  --home-pad: 12px;
+  --home-radius: 16px;
+  --home-shadow: 0 1px 2px rgba(35, 22, 26, 0.07);
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  scroll-padding-top: calc(68px + env(safe-area-inset-top));
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 .topbar {
-  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  gap: 8px;
+  min-height: calc(60px + env(safe-area-inset-top));
+  padding: calc(7px + env(safe-area-inset-top)) var(--home-pad) 7px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
 }
 .club {
   display: flex;
+  flex: 1 1 7.5rem;
+  min-width: 0;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
 }
 .club-logo {
   flex-shrink: 0;
@@ -2279,12 +2271,11 @@ watch(
   font-weight: 900;
   font-size: 14px;
   color: var(--on-primary);
-  box-shadow: var(--shadow-red);
-  transform: rotate(-4deg);
   overflow: hidden;
 }
 .club-logo.has-logo {
-  transform: none;
+  background: var(--card);
+  border: 1px solid var(--line);
 }
 .club-logo img {
   width: 100%;
@@ -2292,20 +2283,20 @@ watch(
   object-fit: contain;
 }
 .club-name {
-  line-height: 1.15;
+  min-width: 0;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 .club-name b {
-  font-size: 13px;
+  font-size: .875rem;
   font-weight: 800;
   display: block;
   letter-spacing: -0.01em;
 }
 .club-name span {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10px;
+  margin-top: 2px;
+  font-size: .75rem;
   color: var(--muted);
   font-weight: 600;
 }
@@ -2314,16 +2305,17 @@ watch(
   align-items: center;
   gap: 6px;
   background: var(--gold-soft);
-  border: 2px solid var(--gold);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 6px 13px 6px 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 5px 9px;
   font-weight: 800;
-  font-size: 14px;
+  font-size: .875rem;
   font-family: inherit;
   font-variant-numeric: tabular-nums;
-  color: var(--gold-deep);
+  color: var(--ink);
   cursor: pointer;
-  box-shadow: 0 3px 0 rgba(209, 142, 0, 0.25);
 }
 .coin {
   width: 17px;
@@ -2335,10 +2327,13 @@ watch(
 }
 .top-right {
   display: flex;
+  flex: none;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  max-width: 100%;
 }
-.merch-top-link, .merch-orders-link {
+.merch-orders-link {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -2348,18 +2343,15 @@ watch(
   font-weight: 800;
   text-decoration: none;
 }
-.merch-top-link { padding-inline: 8px; font-size: 12px; }
 .merch-orders-link { justify-content: space-between; width: 100%; margin-bottom: 10px; padding-inline: 10px; }
-.merch-top-link:focus-visible, .merch-orders-link:focus-visible { outline: 2px solid var(--red-text); outline-offset: 2px; }
-.topbar:has(.merch-top-link) .club, .topbar:has(.merch-top-link) .club-name { min-width: 0; }
-.topbar:has(.merch-top-link) .club-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.platform-info-button { display: grid; place-items: center; flex: none; width: 30px; height: 38px; padding: 3px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.merch-orders-link:focus-visible { outline: 2px solid var(--red-text); outline-offset: 2px; }
+.platform-info-button { display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 3px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .platform-info-button svg { width: 22px; height: 22px; }
 .platform-info-button:hover, .platform-info-button[aria-expanded=true] { color: var(--red-text); background: var(--red-soft); }
 .platform-info-button:focus-visible, .platform-info-actions button:focus-visible, .platform-info-sheet .close:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
 .profile-btn {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   flex: none;
   background: transparent;
@@ -2384,148 +2376,148 @@ watch(
 .guest-avatar { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--red-line); border-radius: 50%; background: var(--red-soft); color: var(--red-text); }
 .guest-avatar svg { width: 24px; height: 24px; }
 
-main {
-  flex: 1;
-  min-height: 0;
-  padding: 6px 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  overflow-y: auto;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.75); }
-}
-
-/* Grid */
-.grid {
-  flex: 1 0 280px;
-  min-height: 0;
+.home-dashboard {
   display: grid;
-  grid-template-columns: 1.15fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--home-gap);
+  padding: var(--home-gap) var(--home-pad) var(--home-pad);
+  line-height: 1.35;
 }
-.tile {
+.mvp-card, .home-shortcut, .moment-card, .journey-card, .rank-link {
   background: var(--card);
-  border: 2px solid var(--line);
-  border-radius: 20px;
-  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--home-radius);
+  box-shadow: var(--home-shadow);
+}
+.mvp-card {
+  display: grid;
+  align-content: space-between;
+  gap: 6px;
+  min-height: 132px;
+  padding: 12px;
+  border-top: 3px solid var(--red);
+}
+.mvp-heading {
   display: flex;
-  flex-direction: column;
-  text-align: left;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+}
+.mvp-heading h1 {
+  flex: 1 1 7.5em;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -.025em;
+  overflow-wrap: anywhere;
+}
+.mvp-thumbnail {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: cover;
+  object-position: center top;
+  background: var(--red-soft);
+}
+.mvp-status {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--bg);
   color: var(--ink);
-  font-family: inherit;
+  font-size: .6875rem;
+  font-weight: 800;
+}
+.mvp-status.is-open {
+  background: var(--red-soft);
+}
+.mvp-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .8125rem;
+  overflow-wrap: anywhere;
+}
+.mvp-action {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--red-soft);
+  color: var(--ink);
+  font: inherit;
+  font-size: .875rem;
+  font-weight: 800;
   cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.15s ease;
-  min-height: 0;
-  overflow: hidden;
-  box-shadow: var(--shadow);
+  overflow-wrap: anywhere;
 }
-.tile:active {
-  transform: scale(0.98) translateY(2px);
-  box-shadow: none;
+.mvp-action.is-primary {
+  border-color: transparent;
+  background: var(--red);
+  color: var(--on-primary);
 }
-.tile:hover {
-  border-color: var(--red-line);
+.mvp-action:disabled {
+  background: var(--bg);
+  color: var(--muted);
+  cursor: default;
 }
-.tile-mvp {
-  grid-row: 1 / 3;
-  border-color: var(--red-line);
-  background: linear-gradient(175deg, var(--card) 55%, var(--red-soft));
-  position: relative;
+.home-shortcuts {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--home-gap);
 }
-.tile-icon {
+.home-shortcut, .moment-card, .rank-link {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 9px;
+  padding: 10px;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.home-shortcut { min-height: 72px; flex-wrap: wrap; }
+.shortcut-copy { flex: 1 1 4.5rem; }
+.home-shortcut:hover, .moment-card:hover, .rank-link:hover { border-color: var(--red-text); }
+.home-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
   width: 34px;
   height: 34px;
-  border-radius: 11px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: 10px;
   background: var(--red-soft);
-  color: var(--red-text);
-  margin-bottom: 9px;
-  transform: rotate(-4deg);
+  color: var(--ink);
+  font-size: 1.125rem;
 }
-.tile b {
-  font-size: 14px;
+.home-icon svg { width: 19px; height: 19px; }
+.shortcut-copy, .moment-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.shortcut-copy b, .moment-copy b {
+  display: block;
+  font-size: .875rem;
   font-weight: 800;
-  letter-spacing: -0.01em;
 }
-.tile p {
-  font-size: 11px;
+.shortcut-copy > span, .moment-copy > span {
+  display: block;
   color: var(--muted);
-  line-height: 1.4;
-  margin-top: 3px;
-  font-weight: 500;
+  font-size: .75rem;
 }
-.tile .spacer {
-  flex: 1;
-  min-height: 4px;
-}
-.tile-cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--red-text);
-}
-.mvp-photo {
-  flex: 1;
-  min-height: 0;
-  margin: 9px 0;
-  border-radius: 14px;
-  background:
-    radial-gradient(80% 80% at 50% 20%, var(--red-soft), var(--red-line)),
-    var(--red-soft);
-  border: 2px solid var(--red-line);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-}
-.mvp-photo svg {
-  opacity: 0.55;
-}
-.mvp-photo.has-player {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  overflow: visible;
-}
-.mvp-home-card {
-  height: 100%;
-  width: auto;
-  max-width: 100%;
-  max-height: 190px;
-  flex: none;
-}
-.status {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  font-size: 9.5px;
-  font-weight: 800;
-  color: var(--on-primary);
-  background: var(--red);
-  padding: 4px 9px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.status::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--card);
-  animation: pulse 1.5s ease-in-out infinite;
+.moment-card { min-height: 76px; }
+.moment-copy { flex: 1; }
+.moment-action { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 5px; }
+.moment-action .row-pts { color: var(--ink); font-size: .8125rem; }
+.moment-action > b { color: var(--red-text); font-size: .8125rem; }
+.topbar button:focus-visible, .home-dashboard :is(button, a):focus-visible {
+  outline: 2px solid var(--red-text);
+  outline-offset: 2px;
 }
 .btn-vote {
   border: none;
@@ -2633,28 +2625,19 @@ main {
 
 /* Traguardo e sfida in evidenza */
 .journey-card {
-  flex: none;
-  padding: 12px;
-  border: 2px solid var(--red-line);
-  background: var(--card);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
+  min-height: 62px;
+  padding: 10px 12px;
 }
 .journey-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.journey-head > div { min-width: 0; }
-.journey-head b { display: block; font-size: 13px; font-weight: 800; }
-.journey-head span:not(.coin) { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
-.journey-head strong { display: flex; align-items: center; gap: 5px; flex: none; font-size: 14px; }
+.journey-head b { min-width: 0; font-size: .875rem; font-weight: 800; overflow-wrap: anywhere; }
+.journey-head small { margin-inline-start: 6px; color: var(--muted); font-size: .75rem; font-weight: 600; }
+.journey-head strong { display: flex; align-items: center; gap: 7px; flex: none; font-size: .875rem; font-variant-numeric: tabular-nums; }
 .journey-bar { width: 100%; height: 8px; border-radius: 99px; background: var(--red-soft); margin-top: 10px; overflow: hidden; }
 .journey-bar > span { display: block; height: 100%; background: var(--red); border-radius: inherit; transition: width 0.4s ease; }
-.journey-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
-.journey-footer small { color: var(--muted); font-size: 10px; }
 .journey-next { color: var(--red-text); background: transparent; border: 0; padding: 6px 0; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.journey-card .journey-next { min-height: 44px; margin-top: 4px; font-size: .8125rem; text-align: left; }
 .journey-badge { border-color: var(--gold); }
 .journey-badge .row-copy span { white-space: normal; }
-.moment-card { display: flex; align-items: center; gap: 10px; flex: none; width: 100%; background: var(--card); border: 2px solid var(--line); border-radius: 18px; padding: 11px 12px; color: var(--ink); text-align: left; font-family: inherit; cursor: pointer; box-shadow: var(--shadow); }
-.moment-card .row-copy span { display: block; white-space: normal; }
-.moment-action { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 7px; }
 .match-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .match-stats > div { padding: 12px 7px; background: var(--card); border: 2px solid var(--line); border-radius: 14px; text-align: center; }
 .match-stats b { display: block; font-family: 'Fraunces', serif; font-size: 24px; }
@@ -2763,91 +2746,57 @@ main {
 @keyframes wallet-pop { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.17) rotate(-3deg); box-shadow: 0 0 0 7px #f5b32126, 0 3px 0 #d18e0040; } 65% { transform: scale(.97) rotate(1deg); } }
 
 .feedback-cta {
-  flex: none;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 14px;
-  width: 100%;
+  gap: 8px 10px;
+  min-height: 112px;
   background: var(--red);
-  border: 2px solid var(--red-deep);
-  border-radius: 20px;
-  padding: 18px;
+  border: 1px solid transparent;
+  border-radius: var(--home-radius);
+  padding: 11px;
   cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  font-family: inherit;
+  font: inherit;
   color: var(--on-primary);
   text-align: left;
-  transition: transform 0.12s ease;
-  box-shadow: 0 4px 0 var(--red-deep);
+  box-shadow: var(--home-shadow);
 }
-.feedback-cta:focus-visible { outline: 3px solid var(--red-text); outline-offset: 4px; }
-.feedback-cta:active {
-  transform: scale(0.98) translateY(2px);
-  box-shadow: none;
+.feedback-cta .home-icon {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
 }
-.feedback-cta::before {
-  content: '';
-  position: absolute;
-  right: -18px;
-  top: -22px;
-  width: 160px;
-  height: 160px;
-  border-radius: 50%;
-  background: var(--on-primary);
-  opacity: 0.08;
-}
-.feedback-cta-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  flex: none;
-  background: var(--card);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink);
-  transform: rotate(-4deg);
-}
-.feedback-cta-icon svg { width: 26px; height: 26px; }
 .feedback-cta-copy {
-  flex: 1;
   min-width: 0;
-  position: relative;
+  overflow-wrap: anywhere;
 }
 .feedback-cta-copy b {
-  font-size: 18px;
-  line-height: 1.2;
-  font-weight: 800;
   display: block;
-  margin: 5px 0 7px;
+  font-size: 1rem;
+  font-weight: 800;
 }
 .feedback-cta-copy span {
   display: block;
-  font-size: 12px;
-  line-height: 1.5;
-  color: inherit;
-  opacity: 0.85;
-  font-weight: 500;
+  font-size: .8125rem;
 }
-.feedback-cta-copy .feedback-cta-kicker { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; opacity: 1; }
 .feedback-cta-action {
   display: flex;
   align-items: center;
   grid-column: 1 / -1;
   justify-content: space-between;
-  gap: 12px;
-  flex: none;
+  gap: 8px;
+  min-height: 34px;
   background: var(--card);
-  padding: 11px 14px;
-  border-radius: 12px;
+  padding: 5px 10px;
+  border-radius: 10px;
   font-weight: 800;
-  font-size: 13px;
+  font-size: .8125rem;
   color: var(--red-text);
-  font-variant-numeric: tabular-nums;
-  position: relative;
+  overflow-wrap: anywhere;
 }
+.home-slot-enter-active { transition: opacity .15s ease, transform .15s ease; }
+.home-slot-leave-active { transition: opacity .1s ease, transform .1s ease; pointer-events: none; }
+.home-slot-enter-from, .home-slot-leave-to { opacity: 0; transform: translateY(4px); }
 
 /* Sponsors (blocco ampliato) */
 .sponsors {
@@ -3171,12 +3120,10 @@ main {
   box-shadow: none;
 }
 
-.rank-link { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-radius: 14px; padding: 11px 12px; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
-.rank-link-icon { font-size: 20px; }
-.rank-link > span:nth-child(2) { flex: 1; min-width: 0; }
-.rank-link b, .rank-link small { display: block; }
-.rank-link b { font-size: 12px; font-weight: 800; }
-.rank-link small { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.rank-link { min-height: 46px; padding: 8px 12px; }
+.rank-link-icon, .rank-chevron { width: 19px; height: 19px; flex: none; color: var(--red-text); }
+.rank-link b { flex: 1; min-width: 0; font-size: .875rem; font-weight: 800; overflow-wrap: anywhere; }
+.earn-collection-link { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--red-text); font: inherit; font-size: .875rem; font-weight: 800; cursor: pointer; }
 .wallet-total { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 22px 14px; border: 1px solid var(--gold); border-radius: 18px; background: var(--gold-soft); }
 .wallet-total strong { font-family: 'Fraunces', serif; font-size: 42px; line-height: 1; color: var(--gold-deep); }
 .wallet-total > span:last-child { flex-basis: 100%; text-align: center; font-size: 11px; color: var(--ink); }
@@ -3223,15 +3170,11 @@ main {
 .shop-artwork:focus-visible { outline: 3px solid var(--red-text); outline-offset: 4px; }
 .leaderboard-row { gap: 8px; }
 .leaderboard-row .row-copy b { font-size: 12px; }
-.club { min-width: 0; margin-right: 8px; }
-.club-name { min-width: 0; }
-.club-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.top-right { flex: none; }
 @keyframes collectible-reveal { 0% { opacity: 0; transform: translateY(20px) scale(.88) rotate(-4deg); } 65% { opacity: 1; transform: translateY(-3px) scale(1.015) rotate(1deg); } 100% { opacity: 1; transform: none; } }
 @keyframes collectible-glint { 0% { opacity: 0; transform: translateX(-60%); } 25% { opacity: .5; } 100% { opacity: 0; transform: translateX(60%); } }
 @media (max-width: 350px) { .shop-gallery { gap: 8px; } .shop-item { padding: 7px; } .shop-item-copy > b { font-size: 12px; } .shop-artwork.frame { min-height: 190px; } .shop-wear-preview { padding: 2px; gap: 2px; } .shop-wear-preview b { font-size: 8px; } }
 @media (prefers-reduced-motion: reduce) { .collectible-stage.is-new, .collectible-stage.is-new::after { animation: none; } .collectible-stage.is-new::after { display: none; } .shop-artwork.match_card > :deep(.fan-match-card) { transition: none; transform: none; } }
-.rank-link:focus-visible, .shop-buy:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
+.earn-collection-link:focus-visible, .shop-buy:focus-visible { outline: 3px solid var(--red-text); outline-offset: 3px; }
 
 /* Profilo */
 .profile-economy { flex: none; padding-bottom: 12px; }
@@ -3394,13 +3337,11 @@ main {
   .coin-flight { display: none; }
   .wallet-pulse { animation: none; }
   .journey-bar > span { transition: none; }
-  .status::before {
-    animation: none;
-  }
+  .home-slot-enter-from, .home-slot-leave-to { opacity: 1; transform: none; }
   .sheet,
   .overlay,
-  .tile,
-  .feedback-cta,
+  .home-slot-enter-active,
+  .home-slot-leave-active,
   .mvp-player,
   .row-item {
     transition: none;

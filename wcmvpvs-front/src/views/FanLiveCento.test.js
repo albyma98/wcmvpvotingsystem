@@ -16,7 +16,7 @@ const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: ''
 
 // Render the real home template so the badge, feedback and challenge priorities are tested together.
 const { descriptor } = parse(readFileSync(new URL('./FanLiveCento.vue', import.meta.url), 'utf8'));
-const homeTemplate = descriptor.template.content.match(/<main>[\s\S]*?<\/main>/)[0];
+const homeTemplate = descriptor.template.content.match(/<main class="home-dashboard">[\s\S]*?<\/main>/)[0];
 const compiledHome = compileTemplate({ source: homeTemplate, id: 'fan-home-test', ssr: true, ssrCssVars: [] });
 assert.deepEqual(compiledHome.errors, []);
 const homeHelpers = {};
@@ -30,7 +30,7 @@ const homeRenderCode = compiledHome.code.replace(/^import \{([^}]+)\} from "([^"
 const homeRender = new Function(...Object.keys(homeHelpers), homeRenderCode)(...Object.values(homeHelpers));
 function renderHome({ state, props }) {
   const app = Vue.createSSRApp({ setup: () => ({ ...Vue.proxyRefs(state), ...props }), ssrRender: homeRender });
-  app.component('FanPlayerCard', { render: () => null });
+  app.component('FanMerchLink', { render: () => null });
   return VueSSR.renderToString(app);
 }
 
@@ -96,7 +96,7 @@ test('a live response from a previous society cannot enable its lottery QR in th
   assert.equal(state.showLotteryTicket.value, false);
 });
 
-test('the home lottery shortcut requires registration, the society setting and a ticket, and precedes feedback or challenge', async t => {
+test('the home lottery shortcut requires registration, the society setting and a ticket, and follows the primary actions', async t => {
   const setup = fixture({}, { props: { activeEvent: { is_active: true, show_lottery_ticket: true, feedback_survey: { questions: [{ id: 'atmosphere' }] } } } });
   const { state, props, scope } = setup;
   t.after(() => scope.stop());
@@ -106,11 +106,11 @@ test('the home lottery shortcut requires registration, the society setting and a
   let html = await renderHome(setup);
   assert.match(html, /Il tuo codice: <strong>0042<\/strong>/);
   assert.match(html, /Apri QR/);
-  assert.ok(html.indexOf('class="lottery-shortcut"') > html.indexOf('Shop Tifoso'));
-  assert.ok(html.indexOf('class="lottery-shortcut"') < html.indexOf('class="feedback-cta"'));
+  assert.ok(html.indexOf('class="feedback-cta"') < html.indexOf('class="lottery-shortcut"'));
+  assert.ok(html.indexOf('class="rank-link"') < html.indexOf('class="lottery-shortcut"'));
   state.handleFeedbackSubmitted();
   html = await renderHome(setup);
-  assert.ok(html.indexOf('class="lottery-shortcut"') < html.indexOf('Sfida del momento'));
+  assert.ok(html.indexOf('Sfida del momento') < html.indexOf('class="lottery-shortcut"'));
   state.isRegistered.value = false;
   assert.doesNotMatch(await renderHome(setup), /class="lottery-shortcut"/);
   state.isRegistered.value = true;
@@ -1760,7 +1760,7 @@ test('feedback takes the featured slot until sent, then opens a game allowed for
     assert.doesNotMatch(html, /class="feedback-cta"|feedback-link/);
     assert.match(html, /Sfida del momento/);
     assert.ok(html.includes(title));
-    assert.match(html, /Gioca →/);
+    assert.match(html, /Gioca <span aria-hidden="true">→<\/span>/);
     state.onMission(state.featuredMission.value);
     assert.equal(state.activeGameId.value, game);
 
@@ -1786,6 +1786,20 @@ test('an absent or disabled feedback survey leaves the allowed challenge in the 
   }
 });
 
+test('a previous live snapshot cannot offer its feedback while the next match is loading', async (t) => {
+  const { props, state, scope } = fixture({}, { props: { activeEvent: { id: 42 } } });
+  t.after(() => scope.stop());
+  state.liveEvent.value = { event_id: 42, feedback_survey: { questions: [{ id: 'atmosphere' }] } };
+  assert.equal(state.hasFeedbackSurvey.value, true);
+
+  props.initialDataReady = false;
+  props.eventId = 43;
+  await Vue.nextTick();
+  assert.equal(state.hasFeedbackSurvey.value, false);
+  state.openFeedbackModal();
+  assert.equal(state.isFeedbackModalOpen.value, false);
+});
+
 test('after feedback the home offers only available games and preserves the concluded match summary', async t => {
   const setup = fixture({}, { props: { activeEvent: { is_active: true, votes_closed: true, available_minigames: ['basketball'], feedback_survey: { questions: [{ id: 'atmosphere' }] } } } });
   const { state, scope } = setup;
@@ -1796,11 +1810,11 @@ test('after feedback the home offers only available games and preserves the conc
   state.liveEvent.value = { event_id: 42, is_active: true, votes_closed: true, available_minigames: [] };
   let html = await renderHome(setup);
   assert.doesNotMatch(html, /Sfida del momento|class="feedback-cta"/);
-  assert.match(html, /La tua partita/);
+  assert.match(html, /Vedi il riepilogo/);
   state.liveEvent.value = { event_id: 42, is_active: true, is_concluded: true, available_minigames: ['basketball'] };
   html = await renderHome(setup);
   assert.doesNotMatch(html, /Sfida del momento/);
-  assert.match(html, /La tua partita/);
+  assert.match(html, /Vedi il riepilogo/);
 });
 
 test('feedback opens only when configured and submitting it prevents another opening for the match', (t) => {
