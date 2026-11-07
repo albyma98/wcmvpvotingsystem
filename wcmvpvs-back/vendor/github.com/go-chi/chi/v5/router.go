@@ -118,6 +118,11 @@ func (m *Mux) Put(pattern string, handler http.HandlerFunc) {
 	m.add(http.MethodPut, pattern, handler)
 }
 
+// Patch registers a handler for HTTP PATCH requests.
+func (m *Mux) Patch(pattern string, handler http.HandlerFunc) {
+	m.add(http.MethodPatch, pattern, handler)
+}
+
 // Delete registers a handler for HTTP DELETE requests.
 func (m *Mux) Delete(pattern string, handler http.HandlerFunc) {
 	m.add(http.MethodDelete, pattern, handler)
