@@ -14,6 +14,7 @@
           </div>
         </div>
         <div class="top-right">
+          <FanMerchLink class="merch-top-link" :slug="organizationSlug" />
           <button ref="platformInfoTriggerRef" class="platform-info-button" type="button" aria-label="Informazioni e istruzioni" title="Come funziona ArenaBoostX" aria-haspopup="dialog" aria-controls="fan-platform-info" :aria-expanded="activeSheet === 'info'" @click="openPlatformInfo">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
           </button>
@@ -428,6 +429,7 @@
           <p class="profile-economy-hint">1 moneta guadagnata = 1 punto. I punti restano anche se spendi.</p>
         </div>
         <div ref="profileBodyEl" class="sheet-body profile-body">
+          <a v-if="organizationSlug" class="merch-orders-link" :href="`/${encodeURIComponent(organizationSlug)}/new/orders`">I miei ordini e prenotazioni <span aria-hidden="true">→</span></a>
           <FanCollectionPanel v-if="activeSheet === 'profile'" :nickname="profileNickname" :club-name="homeName" :club-logo-url="homeLogoUrl" :sport="organizationSport" :registered="isRegistered" :collection="hasLoadedCollection ? collection : null" :loading="isLoadingWallet" :busy="shopBusy" :error="walletError" @equip="equipCollectionItem" @open-shop="openSheet('spend')" @inspect="inspectCollectible">
             <template #identity-action>
               <button class="profile-edit" type="button" :aria-expanded="isNicknameEditorOpen" aria-controls="profile-nickname-editor" @click="toggleNicknameEditor">{{ isNicknameEditorOpen ? 'Annulla' : 'Modifica nickname' }}</button>
@@ -628,6 +630,7 @@ import FanMvpCelebration from '../components/FanMvpCelebration.vue';
 import FanCollectionPanel from '../components/FanCollectionPanel.vue';
 import FanAvatar from '../components/FanAvatar.vue';
 import FanMatchCard from '../components/FanMatchCard.vue';
+import FanMerchLink from '../merch/FanMerchLink.vue';
 const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
 import { fanRegistrationAcceptance } from '../fanRegistration';
 import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorageKey, normalizeJourney, journeyProgress, recordJourneyReward, newMinigameRoundId } from '../fanJourney';
@@ -2335,6 +2338,21 @@ watch(
   align-items: center;
   gap: 8px;
 }
+.merch-top-link, .merch-orders-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  border-radius: 10px;
+  background: var(--red-soft);
+  color: var(--red-text);
+  font-weight: 800;
+  text-decoration: none;
+}
+.merch-top-link { padding-inline: 8px; font-size: 12px; }
+.merch-orders-link { justify-content: space-between; width: 100%; margin-bottom: 10px; padding-inline: 10px; }
+.merch-top-link:focus-visible, .merch-orders-link:focus-visible { outline: 2px solid var(--red-text); outline-offset: 2px; }
+.topbar:has(.merch-top-link) .club, .topbar:has(.merch-top-link) .club-name { min-width: 0; }
+.topbar:has(.merch-top-link) .club-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .platform-info-button { display: grid; place-items: center; flex: none; width: 30px; height: 38px; padding: 3px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .platform-info-button svg { width: 22px; height: 22px; }
 .platform-info-button:hover, .platform-info-button[aria-expanded=true] { color: var(--red-text); background: var(--red-soft); }

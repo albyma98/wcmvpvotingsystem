@@ -28,7 +28,7 @@ import V2Icon from '../components/shared/V2Icon.vue';
 const props = defineProps({ section: String, detail: String, meta: Object }); const c = inject('admin-v2');
 const collapsed = ref(false), mobileOpen=ref(false), isMobile=ref(false), accountOpen=ref(false), sidebar=ref(null), menuButton=ref(null), main=ref(null);
 let media; let overflow;
-const groups = computed(()=>navigation.map(g=>({...g,items:g.items.filter(i=>c.availableTabs.some(t=>t.id===i.id))})).filter(g=>g.items.length));
+const groups = computed(()=>navigation.map(g=>({...g,items:g.items.filter(i=>i.id==='merch'?c.isSuperAdmin:c.availableTabs.some(t=>t.id===i.id))})).filter(g=>g.items.length));
 const roleLabel = computed(()=>c.isSuperAdmin?'Amministratore':c.isBarAdmin?'Operatore bar':'Staff società');
 const path = section=>adminV2Path(c.organizationSlug,section);
 function go(section, detail=''){c.navigate(section,detail);mobileOpen.value=false;accountOpen.value=false;}

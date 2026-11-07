@@ -22,6 +22,7 @@ Frontend indipendente su `/:slug/admin/new`, aggiunto alla selezione delle viste
 | `/partners` | Account partner e aggiornamento password |
 | `/admins` | Account amministrativi e ruoli previsti dal sistema |
 | `/bar` | Tutte le 11 aree operative: dashboard, ordini live, storico, prodotti/menù, categorie, suggerimenti, disponibilità locale, statistiche, clienti, cassa, preferenze locali |
+| `/merch` | Catalogo, ordini e prenotazioni, impostazioni e analytics del [modulo merchandising](../../../docs/merchandising.md) |
 | `/marketing` | Audience, dettaglio fan/SMS singolo, filtri cumulativi, campagne, stima costi, invio/test, template e registro |
 | `/settings` | Template WhatsApp e test, destinatari, estrazione casuale/classifica e visibilità biglietto |
 

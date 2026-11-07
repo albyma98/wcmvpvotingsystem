@@ -14,6 +14,14 @@
       :current-path="currentPath"
       :current-search="currentSearch"
     />
+    <FanMerchShop
+      v-else-if="appView === 'fan-merch'"
+      :key="organizationSlug"
+      :slug="organizationSlug"
+      :route="fanMerchRoute"
+      :search="currentSearch"
+      @navigate="navigateTo"
+    />
     <template v-else-if="appView === 'newui'">
       <LiveExperienceHome
         :event-id="resolvedEventId"
@@ -129,6 +137,7 @@ const OrganizationArena = defineAsyncComponent(() => import('./arena/Organizatio
 
 // Layout fan alternativo (/:slug/new), caricato solo quando serve.
 const FanLiveCento = defineAsyncComponent(() => import('./views/FanLiveCento.vue'));
+const FanMerchShop = defineAsyncComponent(() => import('./merch/FanMerchShop.vue'));
 
 // Tournament Mode — caricato solo su /t/:slug, così il bundle del torneo
 // non pesa sul time-to-interactive dell'app club (deep-link da QR in arena).
@@ -155,6 +164,7 @@ import { apiClient, fetchVoteStatus } from './api';
 import { clubDomainRoute } from './clubDomain';
 import { readAdminV2Route } from './admin-v2/router/routes';
 import { isMasterWorkspacePath } from './master-v2/routes';
+import { readFanMerchRoute } from './merch/shopModel';
 
 function readEventId(search) {
   const params = new URLSearchParams(search || '');
@@ -166,6 +176,7 @@ function readEventId(search) {
 const currentPath = ref(typeof window !== 'undefined' ? window.location.pathname : '/');
 const currentSearch = ref(typeof window !== 'undefined' ? window.location.search : '');
 const currentEventId = ref(typeof window !== 'undefined' ? readEventId(window.location.search) : undefined);
+const fanMerchRoute = computed(() => readFanMerchRoute(currentPath.value));
 const domainClub = inject('clubDomain', null);
 const domainRoute = computed(() => clubDomainRoute(domainClub, currentPath.value));
 const activeEvent = ref(null);
@@ -319,6 +330,9 @@ const appView = computed(() => {
   }
   if (currentPath.value.includes('/partner')) {
     return 'partner';
+  }
+  if (fanMerchRoute.value) {
+    return 'fan-merch';
   }
   if (isNewUiCentoPath.value) {
     return 'newui-cento';

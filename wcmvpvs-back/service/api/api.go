@@ -63,13 +63,17 @@ type Config struct {
 	TwilioAccountSID                  string
 	TwilioAuthToken                   string
 	TwilioVerifySID                   string
+	MerchTwilioVerifySID              string
 	TwilioMessagingServiceSID         string
 	TwilioWhatsAppMessagingServiceSID string
 	TwilioWinnerContentTemplateSID    string
 
-	StripeSecretKey     string
-	StripeWebhookSecret string
-	StripeSuccessURL    string
+	StripeSecretKey            string
+	StripeWebhookSecret        string
+	StripeSuccessURL           string
+	MerchStripeWebhookSecret   string
+	MerchStripeConnectAccounts string
+	MerchPublicBaseURL         string
 
 	AIEnabled          bool
 	AIProviderBaseURL  string
@@ -137,6 +141,8 @@ func New(cfg Config) (Router, error) {
 		stripeSecretKey:     cfg.StripeSecretKey,
 		stripeWebhookSecret: cfg.StripeWebhookSecret,
 		stripeSuccessURL:    cfg.StripeSuccessURL,
+		merchStripe:         newMerchStripeClient(cfg),
+		merchVerify:         newMerchVerifyClient(cfg),
 		aiService: newAIService(aiServiceConfig{
 			Enabled:          cfg.AIEnabled,
 			ProviderBaseURL:  cfg.AIProviderBaseURL,
@@ -162,7 +168,11 @@ func New(cfg Config) (Router, error) {
 		liveCache:     NewTTLCache(),
 		tournamentHub: newSSEHub(),
 	}
+	if err := rt.ensureMerchMigration(); err != nil {
+		return nil, err
+	}
 	rt.votingNotifications = newVotingNotificationWorker(rt)
+	rt.merchWorker = rt.startMerchWorker()
 	return rt, nil
 }
 
@@ -213,6 +223,8 @@ type _router struct {
 	stripeSecretKey     string
 	stripeWebhookSecret string
 	stripeSuccessURL    string
+	merchStripe         *merchStripeClient
+	merchVerify         *twilioVerifyClient
 
 	aiService *aiService
 
@@ -228,6 +240,7 @@ type _router struct {
 	clubDomains   *clubDomainManager
 	liveCache     *TTLCache
 	tournamentHub *sseHub
+	merchWorker   *merchWorker
 }
 
 type adminSession struct {

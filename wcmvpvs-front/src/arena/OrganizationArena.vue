@@ -18,6 +18,8 @@ import { presets } from "./camera/cameraSystem.js";
 import Icon from "./ArenaIcon.vue";
 import { closestNeighbors } from "./activities/model.js";
 import MvpDialog from "./ui/MvpDialog.vue";
+import FanMerchLink from "../merch/FanMerchLink.vue";
+import { fetchMerchCatalog, trackMerchEvent } from "../merch/merchApi";
 import { DEMO_PLAYERS } from "./mvp/players.js";
 const ActivitiesPanel = defineAsyncComponent(
   () => import("./activities/ActivitiesPanel.vue"),
@@ -84,6 +86,27 @@ const results = computed(() =>
 const home = computed(() =>
   props.demo ? "/" : "/" + encodeURIComponent(props.slug) + "/new",
 );
+const wardrobeMerch = shallowRef(new Map());
+watch(activeActivity, async (activity, previous, onCleanup) => {
+  if (props.demo || activity !== "wardrobe") return;
+  const request = new AbortController();
+  onCleanup(() => request.abort());
+  try {
+    const catalog = await fetchMerchCatalog(props.slug, request.signal);
+    if (request.signal.aborted) return;
+    const linked = new Map();
+    if (catalog.settings?.enabled && catalog.settings.visible) {
+      for (const product of catalog.products || []) {
+        const key = product.digital_asset_id;
+        if (!key || linked.has(key)) continue;
+        linked.set(key, { id: product.id, href: home.value + "/shop/" + encodeURIComponent(product.id) });
+      }
+    }
+    wardrobeMerch.value = linked;
+  } catch {
+    if (!request.signal.aborted) wardrobeMerch.value = new Map();
+  }
+});
 let arena,
   ticker,
   abort = new AbortController(),
@@ -436,11 +459,14 @@ onBeforeUnmount(() => {
       :demo="demo"
       :active="activeActivity"
       :invitation="invitation"
+      :merch-products="wardrobeMerch"
       :treasure-spots="sceneConfig?.activityAnchors.treasure ?? undefined"
       @close="closeActivities"
       @open="openActivity"
       @command="command"
       @preview="(equipment) => arena?.setEquipment(me.id, equipment)"
+      @merch-try-on="(id) => trackMerchEvent(slug, 'merch_avatar_try_on', id)"
+      @merch-open="(id) => trackMerchEvent(slug, 'merch_outbound_click', id)"
       @focus="focusActivity"
       @debug="debug"
       @find="closeActivities"
@@ -533,6 +559,7 @@ onBeforeUnmount(() => {
         >Accedi o crea il tuo profilo</a
       >
       <nav class="plate" aria-label="Azioni del tifoso">
+        <FanMerchLink v-if="!demo" :slug="slug" source="arena"><Icon name="shop" /><span>Shop</span></FanMerchLink>
         <button @click="openVote"><Icon name="trophy" /><span>MVP</span></button
         ><button
           v-for="(action, kind) in FAN_ACTIONS"

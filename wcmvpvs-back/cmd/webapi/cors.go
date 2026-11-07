@@ -13,6 +13,8 @@ func applyCORSHandler(h http.Handler) http.Handler {
 			"Authorization",
 			"X-Organization-Slug",
 			"X-Device-Id",
+			"X-Fan-Session",
+			"X-Merch-Access",
 		}),
 		handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS", "DELETE", "PUT", "PATCH"}),
 		handlers.AllowedOrigins(allowedOrigins()),

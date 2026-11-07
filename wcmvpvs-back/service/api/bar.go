@@ -489,32 +489,38 @@ func (rt *_router) getStripeCheckoutSession(sessionID string) (stripeCheckoutSes
 }
 
 func verifyStripeWebhookSignature(payload []byte, signatureHeader string, secret string) bool {
-	parts := strings.Split(signatureHeader, ",")
-	var timestamp, sig string
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, "t=") {
-			timestamp = strings.TrimPrefix(part, "t=")
+	var timestamp string
+	var signatures []string
+	for _, part := range strings.Split(signatureHeader, ",") {
+		pair := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(pair) != 2 {
+			continue
 		}
-		if strings.HasPrefix(part, "v1=") {
-			sig = strings.TrimPrefix(part, "v1=")
+		switch pair[0] {
+		case "t":
+			timestamp = pair[1]
+		case "v1":
+			signatures = append(signatures, pair[1])
 		}
-	}
-	if timestamp == "" || sig == "" {
-		return false
 	}
 	ts, err := strconv.ParseInt(timestamp, 10, 64)
 	if err != nil {
 		return false
 	}
-	if time.Since(time.Unix(ts, 0)) > 5*time.Minute {
+	age := time.Since(time.Unix(ts, 0))
+	if age < -5*time.Minute || age > 5*time.Minute {
 		return false
 	}
-	signedPayload := timestamp + "." + string(payload)
 	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write([]byte(signedPayload))
+	_, _ = mac.Write([]byte(timestamp + "."))
+	_, _ = mac.Write(payload)
 	expected := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(expected), []byte(sig))
+	for _, signature := range signatures {
+		if hmac.Equal([]byte(expected), []byte(signature)) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveCheckoutRedirectBase(configured string, r *http.Request) string {

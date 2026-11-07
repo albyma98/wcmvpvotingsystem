@@ -4,6 +4,7 @@ export const navigation = [
   { id: 'events', label: 'Eventi', description: 'Partite, esperienze e contenuti per il tuo pubblico.' },
   { id: 'closing', label: 'Regia votazioni', description: 'Gestisci la chiusura MVP, i premi e le notifiche.' },
   { id: 'bar', label: 'Bar e ordini', description: 'Il servizio in arena, dal catalogo alla consegna.' },
+  { id: 'merch', label: 'Merchandising', description: 'Gestisci il catalogo ufficiale, le vendite e le prenotazioni dei tifosi.' },
  ]},
  { label: 'Pubblico e partner', items: [
   { id: 'sponsors', label: 'Sponsor', description: 'Visibilità, creatività e ordine di pubblicazione.' },

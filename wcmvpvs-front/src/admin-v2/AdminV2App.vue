@@ -17,6 +17,7 @@
     <EntitiesView v-else-if="['teams','players','sponsors','coupons','partners','admins'].includes(route.section)" :section="route.section" :key="route.section" />
     <InsightsView v-else-if="['results','selfies','history'].includes(route.section)" :section="route.section" :key="route.section" />
     <BarView v-else-if="route.section === 'bar'" />
+    <MerchView v-else-if="route.section === 'merch'" :detail="route.detail" />
     <MarketingView v-else-if="route.section === 'marketing'" />
     <LotteryView v-else-if="route.section === 'lottery'" :detail="route.detail" />
    </div>
@@ -42,6 +43,7 @@ const EventsView = defineAsyncComponent(()=>import('./views/EventsView.vue'));
 const EntitiesView = defineAsyncComponent(()=>import('./views/EntitiesView.vue'));
 const InsightsView = defineAsyncComponent(()=>import('./views/InsightsView.vue'));
 const BarView = defineAsyncComponent(()=>import('./views/BarView.vue'));
+const MerchView = defineAsyncComponent(()=>import('./views/MerchView.vue'));
 const MarketingView = defineAsyncComponent(()=>import('./views/MarketingView.vue'));
 const VotingView = defineAsyncComponent(()=>import('./views/VotingView.vue'));
 const LotteryView = defineAsyncComponent(()=>import('./views/LotteryView.vue'));
@@ -52,7 +54,7 @@ const route=computed(()=>readAdminV2Route(props.currentPath)||{section:'dashboar
 c.route=route;
 const defaultSection=computed(()=>c.availableTabs[0]?.id||'closing');
 const unknown=computed(()=>!sectionMeta[route.value.section]);
-const allowed=computed(()=>route.value.section==='settings'?c.isSuperAdmin:route.value.section==='lottery'?!c.isStaff:c.availableTabs.some(t=>t.id===route.value.section));
+const allowed=computed(()=>['settings','merch'].includes(route.value.section)?c.isSuperAdmin:route.value.section==='lottery'?!c.isStaff:c.availableTabs.some(t=>t.id===route.value.section));
 const meta=computed(()=>sectionMeta[route.value.section]||{label:'Pagina non trovata',group:'Workspace',description:''});
 let failures=0,mutations=0,unauthorizing=false;const snapshots=new WeakMap(),dirtyForms=new Set();
 let submittedForm=null,submissionTimer;const previousTitle=document.title;
@@ -68,7 +70,7 @@ function refreshWorkspace(){if(hasDirty()&&!window.confirm('Ricaricare i dati e 
 function beforeUnload(event){if(hasDirty()){event.preventDefault();event.returnValue='';}}
 window.addEventListener('beforeunload',beforeUnload);
 document.addEventListener('focusin',rememberForm,true);document.addEventListener('input',trackForm,true);document.addEventListener('change',trackForm,true);document.addEventListener('submit',rememberSubmission,true);
-c.navigate=navigate;c.refreshWorkspace=refreshWorkspace;c.notify=feedback.notify;c.busy=feedback.busy;
+c.navigate=navigate;c.refreshWorkspace=refreshWorkspace;c.notify=feedback.notify;c.busy=feedback.busy;c.discardDraft=cleanForm;
 c.goToLottery=()=>navigate('lottery');
 c.confirmAction=(title,message,action)=>{const form=submittedForm;feedback.confirmAction(title,message,async()=>{const errorsBefore=failures,mutationsBefore=mutations;await action();if(failures===errorsBefore&&mutations>mutationsBefore)cleanForm(form);});};
 c.run=(key,fn,success)=>{const errorsBefore=failures,mutationsBefore=mutations;const form=submittedForm;return feedback.run(key,async()=>{c.globalError='';const result=await fn();await nextTick();if(failures===errorsBefore&&mutations>mutationsBefore){if(success)feedback.notify(success);cleanForm(form);}return result;});};
@@ -80,7 +82,7 @@ onErrorCaptured(error=>{feedback.notify(error?.response?.data?.message||'Impossi
 watch([()=>route.value.section,()=>c.sessionReady,()=>c.availableTabs.map(t=>t.id).join(',')],()=>{
  if(!c.sessionReady)return;
  if(route.value.section==='dashboard'&&!c.isSuperAdmin){navigateAdminV2(props.organizationSlug,defaultSection.value,'',true);return;}
- if(allowed.value && route.value.section==='lottery'){c.stopResultsPolling();c.section='';}
+ if(allowed.value && ['lottery','merch'].includes(route.value.section)){c.stopResultsPolling();c.section='';}
  else if(allowed.value)c.selectSection(route.value.section==='settings'?'dashboard':route.value.section);
  else c.stopResultsPolling();
 },{immediate:true});

@@ -81,6 +81,7 @@ async function saveArena() {
       <div class="m-actions">
         <a v-if="organization.slug" :href="publicOrganizationUrl(organization.slug)" class="m-btn" target="_blank" rel="noopener noreferrer">Pagina pubblica</a>
         <a :href="adminOrganizationUrl(organization)" class="m-btn" target="_blank" rel="noopener noreferrer">Pannello società</a>
+        <a v-if="organization.slug" :href="'/' + encodeURIComponent(organization.slug) + '/admin/new/merch'" class="m-btn" target="_blank" rel="noopener noreferrer">Merchandising</a>
       </div>
     </section>
 

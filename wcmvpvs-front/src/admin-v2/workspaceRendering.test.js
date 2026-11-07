@@ -36,7 +36,7 @@ function fixture(overrides = {}) {
       return () => Vue.h('div', { 'data-view': name, 'data-key': key, 'data-settings': String(props.settings === true) });
     },
   });
-  const children = Object.fromEntries(['EventsView', 'EntitiesView', 'InsightsView', 'BarView', 'MarketingView', 'VotingView', 'LotteryView'].map(name => [name, view(name)]));
+  const children = Object.fromEntries(['EventsView', 'EntitiesView', 'InsightsView', 'BarView', 'MarketingView', 'VotingView', 'LotteryView', 'MerchView'].map(name => [name, view(name)]));
   const Workspace = { setup: (_, { slots }) => () => Vue.h('main', { 'data-workspace': 'verified' }, slots.default?.()) };
   const Panel = { props: ['title'], setup: (props, { slots }) => () => Vue.h('section', [Vue.h('h2', props.title), slots.default?.()]) };
   const Dialog = { props: ['open'], setup: (props, { slots }) => () => props.open ? Vue.h('aside', slots.default?.()) : null };
@@ -101,6 +101,17 @@ test('verified entity and insight deep links select only their requested section
     assert.match(html, new RegExp(`data-view="${expected}"`));
     assert.deepEqual(selected, [section]);
     assert.deepEqual(mounted.map(view => [view.name, view.section, view.key]), [[expected, section, section]]);
+  }
+});
+
+test('the merchandising deep link requires the verified society administrator role', async () => {
+  const path = '/test-club/admin/new/merch/orders';
+  const admin = await render(path);
+  assert.match(admin.html, /data-view="MerchView"/);
+  assert.deepEqual(admin.selected, []);
+  for (const state of [{ isSuperAdmin: false, isStaff: true }, { isSuperAdmin: false, isBarAdmin: true }, { sessionReady: false }]) {
+    const denied = await render(path, state);
+    assert.deepEqual(denied.mounted, []);
   }
 });
 

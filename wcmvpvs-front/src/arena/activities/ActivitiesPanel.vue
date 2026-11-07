@@ -16,6 +16,7 @@ const props = defineProps({
   demo: Boolean,
   active: { type: String, default: "" },
   invitation: String,
+  merchProducts: { type: Map, default: () => new Map() },
   treasureSpots: { type: Array, default: () => TREASURE_SPOTS },
 });
 const emit = defineEmits([
@@ -24,6 +25,8 @@ const emit = defineEmits([
   "command",
   "focus",
   "preview",
+  "merch-try-on",
+  "merch-open",
   "debug",
   "find",
   "neighbor",
@@ -79,6 +82,8 @@ function status(key) {
 function tryItem(item) {
   preview.value = item.key;
   emit("preview", { ...props.state.equipment, [item.slot]: item.key });
+  const product = props.merchProducts.get(item.key);
+  if (product) emit("merch-try-on", product.id);
 }
 async function copy() {
   try {
@@ -249,6 +254,7 @@ async function copy() {
             >
               Acquista · {{ item.cost }}
             </button>
+            <a v-if="merchProducts.has(item.key)" class="merch-product-link" :href="merchProducts.get(item.key).href" @click="emit('merch-open', merchProducts.get(item.key).id)">Vedi nello Shop</a>
           </article>
         </div>
         <button
@@ -664,9 +670,19 @@ blockquote {
 .catalog small {
   font-size: 10px;
 }
-.catalog article > button:last-child {
+.catalog article > button:not(.item-preview) {
   font-size: 11px;
   background: #e3edce;
+}
+.catalog .merch-product-link {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  color: #253814;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: center;
+  text-decoration: underline;
 }
 .match-card {
   text-align: center;

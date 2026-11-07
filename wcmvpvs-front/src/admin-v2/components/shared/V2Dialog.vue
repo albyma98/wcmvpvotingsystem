@@ -1,8 +1,8 @@
-<template><Teleport to="body"><div v-if="open" class="admin-v2 v2-dialog-backdrop" @click.self="close"><section ref="panel" class="v2-dialog" role="dialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1" @keydown="keydown"><header class="v2-panel-heading"><h2 :id="titleId">{{ title }}</h2><button class="v2-button v2-icon-button" type="button" aria-label="Chiudi finestra" :disabled="busy" @click="close"><V2Icon name="close" /></button></header><div class="v2-dialog-body"><slot /></div><footer v-if="$slots.footer" class="v2-dialog-footer"><slot name="footer" /></footer></section></div></Teleport></template>
+<template><Teleport to="body"><div v-if="open" class="admin-v2 v2-dialog-backdrop" :class="{ 'v2-drawer-dialog': drawer }" @click.self="close"><section ref="panel" class="v2-dialog" role="dialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1" @keydown="keydown"><header class="v2-panel-heading"><h2 :id="titleId">{{ title }}</h2><button class="v2-button v2-icon-button" type="button" aria-label="Chiudi finestra" :disabled="busy" @click="close"><V2Icon name="close" /></button></header><div class="v2-dialog-body"><slot /></div><footer v-if="$slots.footer" class="v2-dialog-footer"><slot name="footer" /></footer></section></div></Teleport></template>
 <script setup>
 import { nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import V2Icon from './V2Icon.vue';
-const props = defineProps({ open: Boolean, title: String, busy: Boolean });
+const props = defineProps({ open: Boolean, title: String, busy: Boolean, drawer: Boolean });
 const emit = defineEmits(['close']);
 const titleId = useId(); const panel = ref(null); let previous; let overflow; let siblings = [];
 function close() { if (!props.busy) emit('close'); }
@@ -30,3 +30,8 @@ watch(() => props.open, async open => {
 }, { immediate: true });
 onBeforeUnmount(release);
 </script>
+<style scoped>
+.admin-v2.v2-drawer-dialog { place-items: stretch end; padding: 0; }
+.admin-v2.v2-drawer-dialog .v2-dialog { width: min(700px, 100vw); max-height: 100dvh; border-radius: 16px 0 0 16px; }
+@media (max-width: 640px) { .admin-v2.v2-drawer-dialog .v2-dialog { border-radius: 0; } }
+</style>

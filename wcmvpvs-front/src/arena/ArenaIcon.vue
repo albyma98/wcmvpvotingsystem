@@ -25,6 +25,10 @@
         d="M8 3h8v6a4 4 0 0 1-8 0zM8 5H4v3a4 4 0 0 0 4 4m8-7h4v3a4 4 0 0 1-4 4M12 13v5m-4 3h8m-9-3h10"
       />
     </template>
+    <template v-else-if="name === 'shop'">
+      <path d="M5 8h14l2 13H3L5 8Z" />
+      <path d="M9 10V6a3 3 0 0 1 6 0v4" />
+    </template>
     <template v-else-if="name === 'clap'">
       <path
         d="m8 13-2-4a2 2 0 0 0-3 2l3 7c2 4 6 4 8 1l4-6a2 2 0 0 0-3-2l-3 3-2-6a2 2 0 0 0-3 1l1 4M16 3l1 3m4 0-2 2M12 2v3"
