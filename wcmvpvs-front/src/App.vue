@@ -3,6 +3,7 @@
     <section v-if="appView === 'club-not-found'" class="club-domain-not-found"><h1>Pagina non trovata</h1><a href="/">Torna alla home del club</a></section>
     <OrganizationArena v-else-if="appView === 'arena'" :key="organizationSlug" :slug="organizationSlug" />
     <AdminLottery v-else-if="appView === 'lottery'" />
+    <MasterWorkspace v-else-if="appView === 'master-v2'" :current-path="currentPath" @navigate="navigateTo" />
     <MasterPortal v-else-if="appView === 'master'" />
     <AdminV2App v-else-if="appView === 'admin-v2'" :key="organizationSlug" :organization-slug="organizationSlug" :current-path="currentPath" />
     <AdminPortal v-else-if="appView === 'portal'" :organization-slug="organizationSlug" />
@@ -145,6 +146,7 @@ const ClubAdminPortal = defineAsyncComponent(() => import('./views/ClubAdminPort
 const AdminPortal = defineAsyncComponent(() => import('./components/AdminPortal.vue'));
 const AdminV2App = defineAsyncComponent(() => import('./admin-v2/AdminV2App.vue'));
 const MasterPortal = defineAsyncComponent(() => import('./components/MasterPortal.vue'));
+const MasterWorkspace = defineAsyncComponent(() => import('./master-v2/MasterWorkspace.vue'));
 const AdminLottery = defineAsyncComponent(() => import('./components/AdminLottery.vue'));
 const PartnerPortal = defineAsyncComponent(() => import('./components/PartnerPortal.vue'));
 const TicketValidationView = defineAsyncComponent(() => import('./components/TicketValidationView.vue'));
@@ -152,6 +154,7 @@ const CashLanding = defineAsyncComponent(() => import('./components/CashLanding.
 import { apiClient, fetchVoteStatus } from './api';
 import { clubDomainRoute } from './clubDomain';
 import { readAdminV2Route } from './admin-v2/router/routes';
+import { isMasterWorkspacePath } from './master-v2/routes';
 
 function readEventId(search) {
   const params = new URLSearchParams(search || '');
@@ -290,6 +293,7 @@ const appView = computed(() => {
   if (isTournamentPath.value) {
     return 'tournament';
   }
+  if (isMasterWorkspacePath(currentPath.value)) return 'master-v2';
   if (currentPath.value.startsWith('/admin/master')) {
     return 'master';
   }
