@@ -232,7 +232,7 @@ async function removeOrganization() {
           </div>
         </template>
         <template #cell-sport="{ row }">
-          <div class="cell-text"><span>{{ row.sport || 'Da impostare' }}</span><small class="m-muted-text">{{ row.city || '—' }}</small></div>
+          <div class="cell-text sport-cell"><span>{{ row.sport || 'Da impostare' }}</span><small class="m-muted-text">{{ row.city || '—' }}</small></div>
         </template>
         <template #cell-slug="{ row }">
           <div v-if="row.slug" class="cell-text slug-cell">
@@ -296,6 +296,7 @@ async function removeOrganization() {
 .organization-logo { display: grid; place-items: center; width: 2rem; height: 2rem; flex: none; overflow: hidden; border-radius: .45rem; border: 1px solid var(--m-line); background: var(--m-soft); color: var(--m-accent); }
 .organization-logo img { width: 100%; height: 100%; object-fit: contain; }
 .cell-text { display: grid; gap: .2rem; min-width: 0; overflow-wrap: anywhere; }
+.sport-cell { min-width: 6rem; }
 .slug-cell { min-width: 7rem; max-width: 15rem; }
 .organization-name { font-weight: 650; }
 .row-actions { flex-wrap: nowrap; gap: .15rem; }
