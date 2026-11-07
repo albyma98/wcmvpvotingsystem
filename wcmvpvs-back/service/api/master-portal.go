@@ -75,23 +75,33 @@ func (rt *_router) createMasterOrganization(w http.ResponseWriter, r *http.Reque
 	}
 
 	var payload struct {
-		Name           string  `json:"name"`
-		Slug           string  `json:"slug"`
-		Sport          string  `json:"sport"`
-		City           string  `json:"city"`
-		LogoURL        string  `json:"logo_url"`
-		PrimaryColor   string  `json:"primary_color"`
-		SecondaryColor string  `json:"secondary_color"`
-		TertiaryColor  string  `json:"tertiary_color"`
-		IsActive       bool    `json:"is_active"`
-		SMSCost        float64 `json:"sms_cost"`
-		FreeSMS        int     `json:"free_sms"`
-		BarEnabled     bool    `json:"bar_enabled"`
+		Name           string          `json:"name"`
+		Slug           string          `json:"slug"`
+		Sport          string          `json:"sport"`
+		City           string          `json:"city"`
+		LogoURL        string          `json:"logo_url"`
+		PrimaryColor   string          `json:"primary_color"`
+		SecondaryColor string          `json:"secondary_color"`
+		TertiaryColor  string          `json:"tertiary_color"`
+		IsActive       bool            `json:"is_active"`
+		SMSCost        float64         `json:"sms_cost"`
+		FreeSMS        int             `json:"free_sms"`
+		BarEnabled     bool            `json:"bar_enabled"`
+		ArenaID        json.RawMessage `json:"arena_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while creating organization")
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+	var arenaID *int
+	if payload.ArenaID != nil {
+		var err error
+		arenaID, err = parseArenaAssignment(payload.ArenaID)
+		if err != nil {
+			writeArenaCatalogError(w, ctx, err)
+			return
+		}
 	}
 
 	org, err := rt.db.CreateOrganization(database.Organization{
@@ -107,8 +117,13 @@ func (rt *_router) createMasterOrganization(w http.ResponseWriter, r *http.Reque
 		SMSCost:        payload.SMSCost,
 		FreeSMS:        payload.FreeSMS,
 		BarEnabled:     payload.BarEnabled,
+		ArenaID:        arenaID,
 	})
 	if err != nil {
+		if errors.Is(err, database.ErrInvalidArenaID) {
+			writeArenaCatalogError(w, ctx, err)
+			return
+		}
 		if errors.Is(err, database.ErrInvalidOrganizationData) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -134,42 +149,55 @@ func (rt *_router) updateMasterOrganization(w http.ResponseWriter, r *http.Reque
 	}
 
 	var payload struct {
-		Name           string  `json:"name"`
-		Slug           string  `json:"slug"`
-		Sport          string  `json:"sport"`
-		City           string  `json:"city"`
-		LogoURL        string  `json:"logo_url"`
-		PrimaryColor   string  `json:"primary_color"`
-		SecondaryColor string  `json:"secondary_color"`
-		TertiaryColor  string  `json:"tertiary_color"`
-		IsActive       bool    `json:"is_active"`
-		SMSCost        float64 `json:"sms_cost"`
-		FreeSMS        int     `json:"free_sms"`
-		BarEnabled     bool    `json:"bar_enabled"`
+		Name           string          `json:"name"`
+		Slug           string          `json:"slug"`
+		Sport          string          `json:"sport"`
+		City           string          `json:"city"`
+		LogoURL        string          `json:"logo_url"`
+		PrimaryColor   string          `json:"primary_color"`
+		SecondaryColor string          `json:"secondary_color"`
+		TertiaryColor  string          `json:"tertiary_color"`
+		IsActive       bool            `json:"is_active"`
+		SMSCost        float64         `json:"sms_cost"`
+		FreeSMS        int             `json:"free_sms"`
+		BarEnabled     bool            `json:"bar_enabled"`
+		ArenaID        json.RawMessage `json:"arena_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while updating organization")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	var arenaID *int
+	if payload.ArenaID != nil {
+		arenaID, err = parseArenaAssignment(payload.ArenaID)
+		if err != nil {
+			writeArenaCatalogError(w, ctx, err)
+			return
+		}
+	}
 
 	org, err := rt.db.UpdateOrganization(database.Organization{
-		ID:             orgID,
-		Name:           payload.Name,
-		Slug:           payload.Slug,
-		Sport:          payload.Sport,
-		City:           payload.City,
-		LogoURL:        payload.LogoURL,
-		PrimaryColor:   payload.PrimaryColor,
-		SecondaryColor: payload.SecondaryColor,
-		TertiaryColor:  payload.TertiaryColor,
-		IsActive:       payload.IsActive,
-		SMSCost:        payload.SMSCost,
-		FreeSMS:        payload.FreeSMS,
-		BarEnabled:     payload.BarEnabled,
+		ID:                   orgID,
+		Name:                 payload.Name,
+		Slug:                 payload.Slug,
+		Sport:                payload.Sport,
+		City:                 payload.City,
+		LogoURL:              payload.LogoURL,
+		PrimaryColor:         payload.PrimaryColor,
+		SecondaryColor:       payload.SecondaryColor,
+		TertiaryColor:        payload.TertiaryColor,
+		IsActive:             payload.IsActive,
+		SMSCost:              payload.SMSCost,
+		FreeSMS:              payload.FreeSMS,
+		BarEnabled:           payload.BarEnabled,
+		ArenaID:              arenaID,
+		ClearArenaAssignment: payload.ArenaID != nil && arenaID == nil,
 	})
 	if err != nil {
 		switch {
+		case errors.Is(err, database.ErrInvalidArenaID):
+			writeArenaCatalogError(w, ctx, err)
 		case errors.Is(err, database.ErrInvalidOrganizationData):
 			w.WriteHeader(http.StatusBadRequest)
 		case errors.Is(err, sql.ErrNoRows):

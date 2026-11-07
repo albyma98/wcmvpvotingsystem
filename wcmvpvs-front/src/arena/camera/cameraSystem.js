@@ -41,7 +41,7 @@ export const presets = [
   },
 ];
 
-export function createCameraSystem(camera, element, onTour, onView) {
+export function createCameraSystem(camera, element, onTour, onView, sceneConfig) {
   const controls = new OrbitControls(camera, element);
   controls.enableDamping = true;
   controls.dampingFactor = 0.075;
@@ -67,6 +67,15 @@ export function createCameraSystem(camera, element, onTour, onView) {
   ).matches;
   const vector = (a) => new THREE.Vector3(...a);
   const sampleTour = createTourSampler();
+  const views = sceneConfig?.camera
+    ? [{ ...presets[0], ...sceneConfig.camera }, ...presets.slice(1)]
+    : presets;
+  const halfLength = sceneConfig ? sceneConfig.layout.length / 2 : null;
+  const halfWidth = sceneConfig ? sceneConfig.layout.width / 2 : null;
+  const minX = halfLength === null ? -14 : -halfLength;
+  const maxX = halfLength ?? 16;
+  const minZ = halfWidth === null ? -16.5 : -halfWidth;
+  const maxZ = halfWidth ?? 16.5;
   function stopTour() {
     if (tour) {
       tour = null;
@@ -76,7 +85,7 @@ export function createCameraSystem(camera, element, onTour, onView) {
   }
   function go(id, instant = false) {
     stopTour();
-    const preset = presets.find((view) => view.id === id) || presets[0];
+    const preset = views.find((view) => view.id === id) || views[0];
     active = preset.id;
     const end = vector(preset.position);
     // Keep the entire arena in the narrower portrait frame.
@@ -116,11 +125,12 @@ export function createCameraSystem(camera, element, onTour, onView) {
     stopTour();
     active = "fan";
     const target = vector([seat.x, seat.y + 0.6, seat.z]);
-    const position = vector([
-      seat.x + (close ? 1.2 : 3.2),
-      seat.y + (close ? 1.1 : 2.35),
-      seat.z - seat.side * (close ? 1.7 : 5.2),
-    ]);
+    const across = close ? 1.2 : 3.2;
+    const forward = close ? 1.7 : 5.2;
+    const offset = seat.stand?.startsWith("short")
+      ? [-forward * Math.sin(seat.yaw), across]
+      : [across, -seat.side * forward];
+    const position = vector([seat.x + offset[0], seat.y + (close ? 1.1 : 2.35), seat.z + offset[1]]);
     position
       .sub(target)
       .multiplyScalar(Math.max(1, Math.pow(0.75 / camera.aspect, 0.35)))
@@ -176,8 +186,8 @@ export function createCameraSystem(camera, element, onTour, onView) {
       if (t === 1) transition = null;
     }
     if (!tour) {
-      controls.target.x = THREE.MathUtils.clamp(controls.target.x, -14, 16);
-      controls.target.z = THREE.MathUtils.clamp(controls.target.z, -16.5, 16.5);
+      controls.target.x = THREE.MathUtils.clamp(controls.target.x, minX, maxX);
+      controls.target.z = THREE.MathUtils.clamp(controls.target.z, minZ, maxZ);
       controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0.5, 8.5);
       controls.update();
       if (camera.position.y < 1.3) camera.position.y = 1.3;

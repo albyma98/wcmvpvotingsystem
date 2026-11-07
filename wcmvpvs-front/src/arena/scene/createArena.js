@@ -6,8 +6,9 @@ import { createChairs, createProps } from "./props";
 import { createCameraSystem } from "../camera/cameraSystem";
 import { createCrowd } from "../crowd/createCrowd.js";
 import { createVolleyballMatch } from "./volleyballMatch.js";
+import { createConfiguredArena } from "./configuredArena.js";
 
-export function createArena(container, callbacks, initialCrowd) {
+export function createArena(container, callbacks, initialCrowd, sceneConfig, arenaName) {
   let activities = null;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#e9e8e0");
@@ -21,21 +22,32 @@ export function createArena(container, callbacks, initialCrowd) {
   renderer.toneMappingExposure = 1.15;
   renderer.domElement.setAttribute(
     "aria-label",
-    "Palazzetto 3D con rete e due squadre da sei giocatori in uno scambio animato di pallavolo. Trascina per ruotare, usa la rotella o due dita per lo zoom. I pulsanti consentono di scegliere le viste anche da tastiera.",
+    (sceneConfig
+      ? `${arenaName || "Palazzetto"} in 3D con campo da basket e tribune.`
+      : "Palazzetto 3D con rete e due squadre da sei giocatori in uno scambio animato di pallavolo.") +
+      " Trascina per ruotare, usa la rotella o due dita per lo zoom. I pulsanti consentono di scegliere le viste anche da tastiera.",
   );
   renderer.domElement.setAttribute("role", "img");
   container.appendChild(renderer.domElement);
-  const camera = new THREE.PerspectiveCamera(57, 1, 0.15, 180);
+  const camera = new THREE.PerspectiveCamera(sceneConfig?.camera?.fov ?? 57, 1, 0.15, 180);
   camera.position.set(-22, 13, 23);
   createLighting(scene);
   const architecture = new THREE.Group();
   architecture.name = "arena-geometry";
   scene.add(architecture);
-  createField(architecture);
-  createStands(architecture);
-  const { roof, walls } = createEnvironment(architecture);
-  const railings = createProps(architecture);
-  const chairs = createChairs(architecture);
+  let geometry;
+  if (sceneConfig) {
+    geometry = createConfiguredArena(architecture, sceneConfig, arenaName);
+  } else {
+    createField(architecture);
+    createStands(architecture);
+    geometry = {
+      ...createEnvironment(architecture),
+      railings: createProps(architecture),
+      chairs: createChairs(architecture),
+    };
+  }
+  const { roof, walls, railings, chairs } = geometry;
   // Stable extension anchors for GLB seats, sponsor signage and a future crowd.
   for (const name of ["sponsors", "interaction-zones"]) {
     const layer = new THREE.Group();
@@ -52,12 +64,13 @@ export function createArena(container, callbacks, initialCrowd) {
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
-  const match = createVolleyballMatch(scene, { reducedMotion });
+  const match = sceneConfig ? null : createVolleyballMatch(scene, { reducedMotion });
   const cameras = createCameraSystem(
     camera,
     renderer.domElement,
     callbacks.onTour,
     callbacks.onView,
+    sceneConfig,
   );
   let disposed = false,
     hidden = document.hidden,
@@ -148,14 +161,14 @@ export function createArena(container, callbacks, initialCrowd) {
     cameras.update(now);
     crowd?.update(now, camera);
     activities?.animate(now);
-    if (match.group.visible) match.update(now);
+    if (match?.group.visible) match.update(now);
     if (flags && !reducedMotion)
       flags.rotation.x = Math.sin(now / 1600) * 0.008;
     // Exterior views open the entire near wall, including its frames and doors.
     for (const { group, axis, side, limit } of walls) {
       group.visible = side * camera.position[axis] <= limit + 0.05;
     }
-    const roofHeight = 16.7 - (Math.abs(camera.position.z) * 4.3) / 18;
+    const roofHeight = sceneConfig?.layout.height ?? 16.7 - (Math.abs(camera.position.z) * 4.3) / 18;
     roof.visible = roofEnabled && camera.position.y < roofHeight;
     renderer.render(scene, camera);
     if (crowd && now - lastMarker > 100) {
@@ -209,6 +222,7 @@ export function createArena(container, callbacks, initialCrowd) {
           onActivity: callbacks.onActivity,
           onTreasure: callbacks.onTreasure,
           reducedMotion,
+          anchors: sceneConfig?.activityAnchors,
         });
       }
       activities.update(state);
@@ -248,7 +262,7 @@ export function createArena(container, callbacks, initialCrowd) {
     resetCrowd: () => crowd?.reset(),
     setChairs: (value) => {
       chairs.visible = value;
-      match.setVisible(!value);
+      match?.setVisible(!value);
     },
     setRoof: (value) => {
       roofEnabled = value;

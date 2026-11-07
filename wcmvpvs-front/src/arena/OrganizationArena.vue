@@ -1,6 +1,7 @@
 <script setup>
 import {
   ref,
+  shallowRef,
   computed,
   onMounted,
   onBeforeUnmount,
@@ -9,6 +10,7 @@ import {
 } from "vue";
 import { getOrCreateDeviceId } from "../deviceId";
 import { createArena } from "./scene/createArena.js";
+import { readArenaScene, sceneSeatMap } from "./scene/sceneConfig.js";
 import { organizationCrowd } from "./organizationCrowd.js";
 import { createFillers } from "./seating/seatMap.js";
 import { FAN_ACTIONS } from "./actions/demoSession.js";
@@ -24,6 +26,9 @@ const props = defineProps({
   slug: { type: String, required: true },
   demo: Boolean,
 });
+const assignedArena = shallowRef(null);
+const sceneConfig = shallowRef(null);
+let seatMap;
 const activityState = ref(null),
   activitiesOpen = ref(false),
   activeActivity = ref(""),
@@ -152,7 +157,7 @@ async function applyState(state) {
 async function refreshFans() {
   const data = await adapter.getFans();
   if (disposed) return;
-  const crowd = organizationCrowd(data.fans || [], data.organization_id);
+  const crowd = organizationCrowd(data.fans || [], data.organization_id, seatMap);
   const changed =
     actors.value.map((a) => a.id + ":" + a.seat.id).join() !==
     crowd.actors.map((a) => a.id + ":" + a.seat.id).join();
@@ -309,15 +314,30 @@ onMounted(async () => {
           (await apiClient.get("/fan/arena/activities", requestOptions)).data,
         getFans: async () =>
           (await apiClient.get("/fan/arena", requestOptions)).data,
+        async getArena() {
+          try {
+            return (await apiClient.get("/fan/arena/scene", requestOptions)).data.arena;
+          } catch (error) {
+            if (error.response?.status === 404) return null;
+            throw error;
+          }
+        },
         command: async (cmd) =>
           (await apiClient.post("/fan/arena/activities", cmd, requestOptions))
             .data,
       };
     }
-    const state = await adapter.getState();
+    // The activities endpoint registers eligible members before fetching their seats.
+    const [state, assignment] = await Promise.all([
+      adapter.getState(),
+      adapter.getArena?.(),
+    ]);
     const data = await adapter.getFans();
     if (disposed) return;
-    const crowd = organizationCrowd(data.fans || [], data.organization_id);
+    assignedArena.value = assignment;
+    sceneConfig.value = readArenaScene(assignment?.scene_config);
+    seatMap = sceneSeatMap(sceneConfig.value);
+    const crowd = organizationCrowd(data.fans || [], data.organization_id, seatMap);
     actors.value = crowd.actors;
     total.value = crowd.total;
     me.value = actors.value.find((a) => a.id === crowd.selectedId) || null;
@@ -340,8 +360,10 @@ onMounted(async () => {
         onTreasure: collect,
       },
       renderCrowd(crowd),
+      sceneConfig.value,
+      assignedArena.value?.name,
     );
-    arena.setChairs(false);
+    arena.setChairs(Boolean(sceneConfig.value));
     await applyState(state);
     try {
       pendingInvite.value =
@@ -383,7 +405,7 @@ onBeforeUnmount(() => {
       ><strong class="brand"
         >Arena Tifosi
         <small
-          >{{ total }}
+          ><template v-if="assignedArena">{{ assignedArena.name }} · </template>{{ total }}
           {{ demo ? "profili demo" : "profili della società" }}</small
         ></strong
       ><button
@@ -414,6 +436,7 @@ onBeforeUnmount(() => {
       :demo="demo"
       :active="activeActivity"
       :invitation="invitation"
+      :treasure-spots="sceneConfig?.activityAnchors.treasure ?? undefined"
       @close="closeActivities"
       @open="openActivity"
       @command="command"

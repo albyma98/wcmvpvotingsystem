@@ -16,6 +16,7 @@ const props = defineProps({
   demo: Boolean,
   active: { type: String, default: "" },
   invitation: String,
+  treasureSpots: { type: Array, default: () => TREASURE_SPOTS },
 });
 const emit = defineEmits([
   "close",
@@ -145,7 +146,7 @@ async function copy() {
           palazzetto, avvicinati e tocca il bagliore nel mondo 3D.
         </p>
         <blockquote>
-          {{ TREASURE_SPOTS[state.treasure.location].hint }}
+          {{ treasureSpots[state.treasure.location].hint }}
         </blockquote>
         <p class="note">
           {{ state.treasure.day }} · Reset a mezzanotte Europe/Rome ·

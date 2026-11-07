@@ -449,6 +449,13 @@
                   </label>
                 </div>
               </fieldset>
+              <MasterArenaAssignment
+                :key="organizationForm.id"
+                v-model="organizationForm.arena_id"
+                :assigned-arena="organizationFormArena"
+                :disabled="isSavingOrganization"
+                class="organization-arena-field"
+              />
               <label>
                 Logo (URL)
                 <input
@@ -631,6 +638,8 @@
         </div>
 
         <MasterClubsSection v-if="activeSection === 'clubs'" />
+
+        <MasterArenasSection v-else-if="activeSection === 'arenas'" />
 
         <MasterTournamentsSection v-else-if="activeSection === 'tournaments'" />
 
@@ -829,6 +838,25 @@
                   </div>
                 </div>
               </article>
+
+              <article class="card info-card" aria-labelledby="organization-arena-title">
+                <h3 id="organization-arena-title">Arena assegnata</h3>
+                <form class="arena-assignment-form" @submit.prevent="saveOrganizationArena">
+                  <MasterArenaAssignment
+                    :key="organizationDetail.organization.id"
+                    v-model="organizationDetailArenaId"
+                    :assigned-arena="organizationDetail.organization.arena"
+                    :disabled="isSavingOrganizationArena"
+                    label="Seleziona arena"
+                    @update:model-value="clearOrganizationArenaFeedback"
+                  />
+                  <button class="btn primary" type="submit" :disabled="isSavingOrganizationArena || !organizationArenaChanged">
+                    {{ isSavingOrganizationArena ? 'Salvataggio…' : 'Salva assegnazione' }}
+                  </button>
+                  <p v-if="organizationArenaError" class="error" role="alert">{{ organizationArenaError }}</p>
+                  <p v-if="organizationArenaSaved" role="status">Assegnazione salvata.</p>
+                </form>
+              </article>
             </div>
           </div>
           <p v-else class="empty">
@@ -845,6 +873,7 @@ import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 
 import { apiClient } from '../api';
 import { DEFAULT_ORGANIZATION_COLORS, isHexColor, normalizeOrganizationColors } from '../organizationTheme';
 import VoteTrendChart from './VoteTrendChart.vue';
+import MasterArenaAssignment from './master/MasterArenaAssignment.vue';
 
 const activeUsername = ref(localStorage.getItem('adminUsername') || '');
 const activeRole = ref(localStorage.getItem('adminRole') || '');
@@ -854,6 +883,7 @@ const isSuperAdmin = computed(() => activeRole.value === 'superadmin');
 const tabs = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'organizations', label: 'Società' },
+  { id: 'arenas', label: 'Arene' },
   { id: 'clubs', label: 'Club Hub' },
   { id: 'tournaments', label: 'Tornei' },
   { id: 'qr-redirects', label: 'QR Redirect' },
@@ -863,6 +893,8 @@ const activeSection = ref('dashboard');
 const organizationSection = ref('list');
 const MasterGamificationSection = defineAsyncComponent(() =>
   import('./master/MasterGamificationSection.vue'));
+const MasterArenasSection = defineAsyncComponent(() =>
+  import('./master/MasterArenasSection.vue'));
 
 const MasterTournamentsSection = defineAsyncComponent(() =>
   import('./master/MasterTournamentsSection.vue'));
@@ -911,6 +943,11 @@ const organizationsLoaded = ref(false);
 const selectedOrganizationId = ref(0);
 const organizationDetail = ref(null);
 const isLoadingDetail = ref(false);
+const organizationDetailArenaId = ref(null);
+const isSavingOrganizationArena = ref(false);
+const organizationArenaError = ref('');
+const organizationArenaSaved = ref(false);
+const organizationArenaChanged = computed(() => organizationDetailArenaId.value !== (organizationDetail.value?.organization?.arena_id ?? null));
 
 const organizationColorFields = [
   { key: 'primary_color', label: 'Colore primario', description: 'Pulsanti, icone e accenti principali.' },
@@ -918,7 +955,8 @@ const organizationColorFields = [
   { key: 'tertiary_color', label: 'Colore terziario', description: 'Sfondo e superfici della home.' },
 ];
 const organizationSports = ['Calcio', 'Pallacanestro', 'Pallavolo'];
-const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', sport: '', logo_url: '', is_active: true, sms_cost: 0.08, free_sms: 0, bar_enabled: true, ...DEFAULT_ORGANIZATION_COLORS });
+const organizationForm = reactive({ id: 0, name: '', slug: '', city: '', sport: '', arena_id: null, logo_url: '', is_active: true, sms_cost: 0.08, free_sms: 0, bar_enabled: true, ...DEFAULT_ORGANIZATION_COLORS });
+const organizationFormArena = ref(null);
 const organizationFormVisible = ref(false);
 const organizationFormMode = ref('create');
 const isSavingOrganization = ref(false);
@@ -948,6 +986,8 @@ function resetOrganizationForm() {
   organizationForm.slug = '';
   organizationForm.city = '';
   organizationForm.sport = '';
+  organizationForm.arena_id = null;
+  organizationFormArena.value = null;
   organizationForm.logo_url = '';
   organizationForm.is_active = true;
   organizationForm.sms_cost = 0.08;
@@ -979,6 +1019,8 @@ function openEditOrganization(org) {
   organizationForm.slug = org.slug || '';
   organizationForm.city = org.city || '';
   organizationForm.sport = org.sport || '';
+  organizationForm.arena_id = org.arena_id ?? null;
+  organizationFormArena.value = org.arena ?? null;
   organizationForm.logo_url = org.logo_url || '';
   organizationForm.is_active = Boolean(org.is_active);
   organizationForm.sms_cost = Number(org.sms_cost ?? 0.08);
@@ -1437,12 +1479,44 @@ async function fetchOrganizationDetail(id = selectedOrganizationId.value) {
   isLoadingDetail.value = true;
   try {
     const { data } = await apiClient.get(`/admin/master/organizations/${id}`, authHeaders.value);
+    if (selectedOrganizationId.value !== id) return;
     organizationDetail.value = data || null;
+    organizationDetailArenaId.value = data?.organization?.arena_id ?? null;
   } catch (error) {
     console.error('Impossibile caricare il dettaglio società', error);
-    organizationDetail.value = null;
+    if (selectedOrganizationId.value === id) organizationDetail.value = null;
   } finally {
-    isLoadingDetail.value = false;
+    if (selectedOrganizationId.value === id) isLoadingDetail.value = false;
+  }
+}
+
+function clearOrganizationArenaFeedback() {
+  organizationArenaError.value = '';
+  organizationArenaSaved.value = false;
+}
+
+async function saveOrganizationArena() {
+  if (!organizationDetail.value || !organizationArenaChanged.value || isSavingOrganizationArena.value) return;
+  const { id } = organizationDetail.value.organization;
+  clearOrganizationArenaFeedback();
+  isSavingOrganizationArena.value = true;
+  try {
+    const { data } = await apiClient.patch(`/admin/master/organizations/${id}/arena`, {
+      arena_id: organizationDetailArenaId.value,
+    }, authHeaders.value);
+    const index = organizations.value.findIndex(org => org.id === id);
+    if (index !== -1) organizations.value[index] = data;
+    if (organizationDetail.value?.organization.id === id) {
+      organizationDetail.value.organization = data;
+      organizationDetailArenaId.value = data.arena_id ?? null;
+      organizationArenaSaved.value = true;
+    }
+  } catch (error) {
+    if (selectedOrganizationId.value === id) {
+      organizationArenaError.value = error?.response?.data?.error || 'Impossibile salvare l’assegnazione. Riprova.';
+    }
+  } finally {
+    isSavingOrganizationArena.value = false;
   }
 }
 
@@ -1474,6 +1548,9 @@ async function submitOrganizationForm() {
       free_sms: Math.max(0, Number(organizationForm.free_sms || 0)),
       bar_enabled: organizationForm.bar_enabled !== false,
     };
+    if (organizationFormMode.value === 'create' || organizationForm.arena_id !== (organizationFormArena.value?.id ?? null)) {
+      payload.arena_id = organizationForm.arena_id;
+    }
     if (organizationFormMode.value === 'create') {
       await apiClient.post('/admin/master/organizations', payload, authHeaders.value);
     } else {
@@ -1486,7 +1563,7 @@ async function submitOrganizationForm() {
     }
   } catch (error) {
     if (error?.response?.status === 400) {
-      organizationFormError.value = 'Dati non validi. Verifica i campi obbligatori.';
+      organizationFormError.value = error.response.data?.error || 'Dati non validi. Verifica i campi obbligatori.';
     } else if (error?.response?.status === 404) {
       organizationFormError.value = 'Società non trovata.';
     } else {
@@ -1587,7 +1664,10 @@ async function deleteQRRedirect(redirect) {
 function viewOrganization(id) {
   selectedOrganizationId.value = id;
   organizationDetail.value = null;
+  organizationDetailArenaId.value = null;
+  clearOrganizationArenaFeedback();
   activeSection.value = 'organization-detail';
+  return fetchOrganizationDetail(id);
 }
 
 function ensureSectionData(section) {
@@ -1613,12 +1693,6 @@ watch(activeSection, ensureSectionData);
 watch(isSuperAdmin, (value) => {
   if (value) {
     ensureSectionData(activeSection.value);
-  }
-});
-
-watch(selectedOrganizationId, (value) => {
-  if (value && activeSection.value === 'organization-detail') {
-    fetchOrganizationDetail(value);
   }
 });
 
@@ -2121,6 +2195,10 @@ onMounted(() => {
   min-width: 0;
 }
 .organization-colors legend { font-weight: 700; padding: 0 0.4rem; }
+.organization-arena-field { grid-column: 1 / -1; }
+.arena-assignment-form { display: grid; gap: 0.75rem; }
+.arena-assignment-form button[type='submit'] { justify-self: start; }
+.arena-assignment-form p { margin: 0; }
 .organization-color-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 0.75rem; }
 .organization-color-inputs { display: flex; align-items: center; gap: 0.6rem; }
 .organization-color-inputs input[type='color'] { width: 48px; height: 42px; padding: 0.2rem; cursor: pointer; flex-shrink: 0; }

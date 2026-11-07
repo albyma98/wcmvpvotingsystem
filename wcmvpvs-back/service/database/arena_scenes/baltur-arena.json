@@ -1,0 +1,259 @@
+{
+  "schema_version": 1,
+  "arena": {
+    "slug": "baltur-arena",
+    "name": "Baltur Arena",
+    "city": "Cento",
+    "club_label": "Benedetto XIV Cento",
+    "capacity": 2000
+  },
+  "layout": {
+    "length": 45,
+    "width": 39,
+    "height": 11
+  },
+  "court": {
+    "sport": "basket",
+    "style": "indoor_basket",
+    "length": 28,
+    "width": 15,
+    "has_center_logo": true
+  },
+  "stands": {
+    "long_1": {
+      "type": "tiered",
+      "glass_divider": { "height": 0.95, "opacity": 0.35 }
+    },
+    "long_2": {
+      "type": "tiered",
+      "glass_divider": { "height": 0.95, "opacity": 0.35 }
+    },
+    "short_1": { "type": "curva" },
+    "short_2": { "type": "press_dirigenza" }
+  },
+  "sectors": [
+    {
+      "slug": "tribuna-centrale",
+      "label": "Tribuna Centrale",
+      "side": "long_1",
+      "level": "low",
+      "order": 1,
+      "rows_count": 2,
+      "sector_type": "centrale",
+      "has_glass_divider": false,
+      "is_active": true,
+      "length": 27,
+      "center_offset": 0,
+      "front_offset": 9.65,
+      "base_height": 0.32,
+      "row_depth": 0.55,
+      "row_rise": 0.3,
+      "seats_per_row": 50,
+      "seat_style": "chairs"
+    },
+    {
+      "slug": "gradinata-nord",
+      "label": "Gradinata Nord",
+      "side": "long_1",
+      "level": "high",
+      "order": 1,
+      "rows_count": 10,
+      "sector_type": "gradinata",
+      "has_glass_divider": true,
+      "is_active": true,
+      "length": 28,
+      "center_offset": 0,
+      "front_offset": 12.1,
+      "base_height": 2.55,
+      "row_depth": 0.48,
+      "row_rise": 0.33,
+      "seats_per_row": 51,
+      "seat_style": "bleachers"
+    },
+    {
+      "slug": "tribuna-laterale",
+      "label": "Tribuna Laterale",
+      "side": "long_2",
+      "level": "low",
+      "order": 1,
+      "rows_count": 8,
+      "sector_type": "laterale",
+      "has_glass_divider": false,
+      "is_active": true,
+      "length": 27,
+      "center_offset": 0,
+      "front_offset": 9.55,
+      "base_height": 0.32,
+      "row_depth": 0.54,
+      "row_rise": 0.28,
+      "seats_per_row": 50,
+      "seat_style": "chairs"
+    },
+    {
+      "slug": "gradinata-ghelfi",
+      "label": "Gradinata Ghelfi",
+      "side": "long_2",
+      "level": "high",
+      "order": 1,
+      "rows_count": 9,
+      "sector_type": "gradinata",
+      "has_glass_divider": true,
+      "is_active": true,
+      "length": 28,
+      "center_offset": 0,
+      "front_offset": 14.5,
+      "base_height": 3.15,
+      "row_depth": 0.47,
+      "row_rise": 0.33,
+      "seats_per_row": 51,
+      "seat_style": "bleachers"
+    },
+    {
+      "slug": "settore-zimmer",
+      "label": "Settore Zimmer",
+      "side": "short_1",
+      "level": "low",
+      "order": 1,
+      "rows_count": 7,
+      "sector_type": "curva",
+      "has_glass_divider": false,
+      "is_active": true,
+      "length": 13,
+      "center_offset": 0,
+      "front_offset": 17.5,
+      "base_height": 0.55,
+      "row_depth": 0.53,
+      "row_rise": 0.32,
+      "seats_per_row": 22,
+      "seat_style": "bleachers"
+    },
+    {
+      "slug": "tribuna-press",
+      "label": "Tribuna Press",
+      "side": "short_2",
+      "level": "low",
+      "order": 1,
+      "rows_count": 2,
+      "sector_type": "press",
+      "has_glass_divider": false,
+      "is_active": true,
+      "length": 7.3,
+      "center_offset": -4.1,
+      "front_offset": 17.2,
+      "base_height": 0.06,
+      "row_depth": 0.65,
+      "row_rise": 0.05,
+      "seats_per_row": 14,
+      "seat_style": "chairs"
+    },
+    {
+      "slug": "dirigenza",
+      "label": "Dirigenza",
+      "side": "short_2",
+      "level": "low",
+      "order": 2,
+      "rows_count": 2,
+      "sector_type": "dirigenza",
+      "has_glass_divider": false,
+      "is_active": true,
+      "length": 6.7,
+      "center_offset": 4.1,
+      "front_offset": 17.2,
+      "base_height": 0.06,
+      "row_depth": 0.65,
+      "row_rise": 0.05,
+      "seats_per_row": 12,
+      "seat_style": "chairs"
+    },
+    {
+      "slug": "parterre",
+      "label": "Parterre",
+      "side": "short_2",
+      "level": "low",
+      "order": 3,
+      "rows_count": 1,
+      "sector_type": "parterre",
+      "has_glass_divider": false,
+      "is_active": true,
+      "length": 5.5,
+      "center_offset": -5,
+      "front_offset": 16.2,
+      "base_height": 0.04,
+      "row_depth": 0.58,
+      "row_rise": 0,
+      "seats_per_row": 10,
+      "seat_style": "chairs"
+    }
+  ],
+  "sector_label_options": ["Tribuna Whittaker"],
+  "materials": {
+    "parquet": "#d6ab72",
+    "lines": "#fff8ea",
+    "paint": "#aa202d",
+    "concrete": "#a5a3a0",
+    "seats": "#a71e2a",
+    "metal": "#535658",
+    "glass": "#c8e5eb",
+    "wall": "#ddd7ce"
+  },
+  "camera": {
+    "position": [20, 12, 16],
+    "target": [0, 1.8, 0],
+    "fov": 57
+  },
+  "avatar_anchors": [
+    { "id": "bordocampo", "position": [10, 0, 8.4] }
+  ],
+  "crowd_anchors": [
+    { "id": "curva-tifosi", "sector_slug": "settore-zimmer", "position": [-19.1, 1.51, 0] }
+  ],
+  "sponsor_placeholders": [
+    { "id": "pannello-curva", "position": [-22.2, 4.4, 0], "width": 8, "height": 0.9 }
+  ],
+  "activity_anchors": {
+    "museum": [-16.35, 0, 0],
+    "predictions": [15.5, 0, -4.8],
+    "treasure": [
+      {
+        "position": [-12.5, 0.65, -8.5],
+        "hint": "Cerca a bordocampo, sul lato della Tribuna Laterale verso la curva."
+      },
+      {
+        "position": [9.4, 1.3, 10.2],
+        "hint": "Un bagliore tra i posti della seconda fila della Tribuna Centrale."
+      },
+      {
+        "position": [-10.5, 1.81, -11.17],
+        "hint": "Guarda sulle file basse della Tribuna Laterale, verso la curva."
+      },
+      {
+        "position": [11.9, 0.65, 8.4],
+        "hint": "Segui il bordo del parquet sul lato della Tribuna Centrale verso la stampa."
+      },
+      {
+        "position": [-14, 0.65, 8.25],
+        "hint": "Cerca nell’angolo tra la Tribuna Centrale e il Settore Zimmer."
+      },
+      {
+        "position": [7.8, 2.37, -12.25],
+        "hint": "Nella Tribuna Laterale, alza lo sguardo verso il lato stampa."
+      },
+      {
+        "position": [0.5, 0.65, -8.6],
+        "hint": "Cerca a metà campo, ai piedi della Tribuna Laterale."
+      },
+      {
+        "position": [-7.5, 1.02, 9.65],
+        "hint": "In prima fila nella Tribuna Centrale, dalla parte della curva."
+      },
+      {
+        "position": [-4, 0.65, 8.55],
+        "hint": "Esplora il passaggio tra il parquet e la Tribuna Centrale."
+      },
+      {
+        "position": [15, 0.65, 7.7],
+        "hint": "Guarda oltre la linea di fondo, dalla parte del parterre."
+      }
+    ]
+  }
+}

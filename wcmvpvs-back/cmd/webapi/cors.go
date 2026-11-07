@@ -14,7 +14,7 @@ func applyCORSHandler(h http.Handler) http.Handler {
 			"X-Organization-Slug",
 			"X-Device-Id",
 		}),
-		handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS", "DELETE", "PUT"}),
+		handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS", "DELETE", "PUT", "PATCH"}),
 		handlers.AllowedOrigins(allowedOrigins()),
 		handlers.MaxAge(300),
 	)(h)

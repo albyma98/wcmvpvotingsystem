@@ -4,8 +4,11 @@ import { TREASURE_SPOTS } from "./model.js";
 
 export function createActivityWorld(
   scene,
-  { onActivity, onTreasure, reducedMotion = false },
+  { onActivity, onTreasure, reducedMotion = false, anchors },
 ) {
+  const museumPosition = anchors?.museum ?? [-14.5, 0, 0];
+  const boardPosition = anchors?.predictions ?? [14.6, 0, 0];
+  const treasureSpots = anchors?.treasure ?? TREASURE_SPOTS;
   const root = new THREE.Group();
   root.name = "arena-activities";
   scene.add(root);
@@ -52,11 +55,12 @@ export function createActivityWorld(
   }
   const museum = new THREE.Group();
   museum.name = "community-museum";
+  museum.position.set(...museumPosition);
   root.add(museum);
   const cups = [];
   for (let i = 0; i < 6; i++) {
     const cabinet = new THREE.Group();
-    cabinet.position.set(-14.5, 0, -5 + i * 2);
+    cabinet.position.z = -5 + i * 2;
     museum.add(cabinet);
     add(cabinet, new THREE.BoxGeometry(1.25, 0.8, 1.2), dark, [0, 0.4, 0]);
     add(cabinet, new THREE.BoxGeometry(1.2, 0.07, 1.2), gold, [0, 0.85, 0]);
@@ -92,7 +96,7 @@ export function createActivityWorld(
   // The scoreboard shares the arena renderer; it is a physical panel at the end
   // of the court, with real club fixture names supplied by the activities state.
   const board = new THREE.Group();
-  board.position.set(14.6, 0, 0);
+  board.position.set(...boardPosition);
   root.add(board);
   const frame = createBuilder(board);
   for (const z of [-1.9, 1.9])
@@ -171,7 +175,7 @@ export function createActivityWorld(
       disposeGroup(treasure, false);
     }
     treasure = buildTreasure(state.treasure.kind);
-    treasure.position.set(...TREASURE_SPOTS[state.treasure.location].position);
+    treasure.position.set(...treasureSpots[state.treasure.location].position);
     treasure.visible = !state.treasure.claimed;
     const match =
       [...state.matches]
@@ -219,7 +223,12 @@ export function createActivityWorld(
         Math.max(0.55, center.distanceTo(camera.position) * 0.027),
       );
       if (ray.ray.intersectSphere(sphere, hitpoint)) {
-        const obstruction = ray.intersectObject(architecture, true)[0];
+        const obstruction = ray.intersectObject(architecture, true).find(({ object }) => {
+          if (object.material?.transparent) return false;
+          for (let current = object; current; current = current.parent)
+            if (!current.visible) return false;
+          return true;
+        });
         if (
           !obstruction ||
           obstruction.distance >= camera.position.distanceTo(center) - 0.6
@@ -245,7 +254,7 @@ export function createActivityWorld(
     if (!reducedMotion && treasure.visible) {
       treasure.rotation.y = now / 1100;
       treasure.position.y =
-        TREASURE_SPOTS[state.treasure.location].position[1] +
+        treasureSpots[state.treasure.location].position[1] +
         Math.sin(now / 700) * 0.07;
     }
     if (collecting) {
@@ -272,16 +281,16 @@ export function createActivityWorld(
     focus(kind, index) {
       if (kind === "museum")
         return {
-          x: -14,
-          y: 1,
-          z: Number.isInteger(index) ? -5 + index * 2 : 0,
+          x: museumPosition[0] + 0.5,
+          y: museumPosition[1] + 1,
+          z: museumPosition[2] + (Number.isInteger(index) ? -5 + index * 2 : 0),
           side: -1,
         };
       if (kind === "treasure") {
-        const p = TREASURE_SPOTS[state.treasure.location].position;
+        const p = treasureSpots[state.treasure.location].position;
         return { x: p[0], y: p[1], z: p[2], side: p[2] < 0 ? -1 : 1 };
       }
-      return { x: 12, y: 1, z: 0, side: 1 };
+      return { x: boardPosition[0] - 2.6, y: boardPosition[1] + 1, z: boardPosition[2], side: 1 };
     },
     dispose() {
       root.removeFromParent();

@@ -418,13 +418,9 @@ func (db *appdbimpl) ArenaActivities(org, fan int, cmd ArenaCommand, now time.Ti
 		if e != nil {
 			return state, e
 		}
-		me, e := arenaMember(tx, org, fan)
-		if e != nil {
+		if _, e := arenaMember(tx, org, fan); e != nil {
 			return state, e
 		}
-		best := me.Slot
-		distance := 1 << 30
-		// 665 seats per stand, 35 seats per row, matching the shared 3D map.
 		used := map[int]bool{}
 		rs, e := tx.Query(`SELECT slot FROM arena_members WHERE org=? AND fan<>?`, org, fan)
 		if e != nil {
@@ -439,18 +435,23 @@ func (db *appdbimpl) ArenaActivities(org, fan int, cmd ArenaCommand, now time.Ti
 			used[s] = true
 		}
 		rs.Close()
-		for s := host.Slot / 665 * 665; s < (host.Slot/665+1)*665; s++ {
-			if used[s] {
-				continue
-			}
-			dr, dc := s%665/35-host.Slot%665/35, s%35-host.Slot%35
-			d := dr*dr*80 + dc*dc*100 // approximately .49 m row rise/depth versus .55 m column spacing
-			if d < distance {
-				distance = d
-				best = s
-			}
+		if err := rs.Err(); err != nil {
+			return state, err
 		}
-		if distance == 1<<30 {
+		seats, e := configuredArenaSeats(tx, org)
+		if e != nil {
+			return state, e
+		}
+		best := -1
+		if len(seats) > 0 {
+			if host.Slot >= len(seats) {
+				return state, ErrArena
+			}
+			best = nearestConfiguredArenaSlot(seats, host.Slot, used)
+		} else {
+			best = nearestLegacyArenaSlot(host.Slot, used)
+		}
+		if best == -1 {
 			return state, ErrArena
 		}
 		_, err = tx.Exec(`UPDATE arena_members SET slot=? WHERE org=? AND fan=?`, best, org, fan)

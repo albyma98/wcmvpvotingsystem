@@ -18,10 +18,9 @@ export function createCrowdDirector(actors) {
     const nearby = new Map();
     for (const actor of actors) {
       if (actor.seat.stand !== source.seat.stand) continue;
-      const distance = Math.hypot(
-        (actor.seat.x - source.seat.x) * 0.8,
-        (actor.seat.row - source.seat.row) * 0.65,
-      );
+      const distance = source.seat.stand.length > 1
+        ? Math.hypot(actor.seat.x - source.seat.x, actor.seat.y - source.seat.y, actor.seat.z - source.seat.z)
+        : Math.hypot((actor.seat.x - source.seat.x) * 0.8, (actor.seat.row - source.seat.row) * 0.65);
       if (distance < 3.8 || actor.id === fanId)
         nearby.set(actor.id, distance * 85);
     }
@@ -40,8 +39,9 @@ export function createCrowdDirector(actors) {
       const event = events[i];
       if (now > event.end) continue;
       if (event.kind === "wave") {
+        const across = actor.seat.stand.startsWith("short") ? actor.seat.z : actor.seat.x;
         const delay =
-          ((actor.seat.x + 11.5) / 23) * 4500 +
+          clamp((across + 11.5) / 23) * 4500 +
           (actor.seat.stand === event.source.seat.stand ? 0 : 900);
         const strength = pulse(now - event.start - delay, 1600);
         if (strength > 0)

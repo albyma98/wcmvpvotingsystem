@@ -110,7 +110,9 @@ export function closestNeighbors(actors, me) {
     .filter((a) => a.id !== me.id && a.seat.stand === me.seat.stand)
     .map((a) => ({
       actor: a,
-      d: Math.hypot(a.seat.x - me.seat.x, (a.seat.row - me.seat.row) * 0.6),
+      d: me.seat.stand.length > 1
+        ? Math.hypot(a.seat.x - me.seat.x, a.seat.y - me.seat.y, a.seat.z - me.seat.z)
+        : Math.hypot(a.seat.x - me.seat.x, (a.seat.row - me.seat.row) * 0.6),
     }))
     .filter((x) => x.d < 3.6)
     .sort((a, b) => a.d - b.d)

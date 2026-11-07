@@ -9,7 +9,7 @@ import { DEFAULT_ORGANIZATION_COLORS, isHexColor, normalizeOrganizationColors } 
 const { descriptor } = parse(readFileSync(new URL('./MasterPortal.vue', import.meta.url), 'utf8'));
 const compiled = compileScript(descriptor, { id: 'master-sport-test' });
 const source = compiled.content.replace(/^import .* from .*\r?\n/gm, '').replace('export default', 'return');
-const createComponent = new Function('Vue', 'apiClient', 'localStorage', 'DEFAULT_ORGANIZATION_COLORS', 'isHexColor', 'normalizeOrganizationColors', 'VoteTrendChart',
+const createComponent = new Function('Vue', 'apiClient', 'localStorage', 'DEFAULT_ORGANIZATION_COLORS', 'isHexColor', 'normalizeOrganizationColors', 'VoteTrendChart', 'MasterArenaAssignment',
   `const { computed, defineAsyncComponent, reactive, ref, watch } = Vue; const onMounted = () => {};\n${source}`);
 const template = compileTemplate({ source: descriptor.template.content, id: 'master-sport-test', ssr: true, ssrCssVars: [], compilerOptions: { bindingMetadata: compiled.bindings } });
 assert.deepEqual(template.errors, []);
@@ -23,14 +23,16 @@ const renderCode = template.code.replace(/^import \{([^}]+)\} from "([^"]+)"\r?$
 }).replace('export function ssrRender', 'return function ssrRender');
 const render = new Function(...Object.keys(helpers), renderCode)(...Object.values(helpers));
 
-function fixture(t) {
+function fixture(t, overrides = {}) {
   const writes = [];
   const client = {
     get: async () => ({ data: [] }),
     post: async (path, body) => { writes.push({ method: 'POST', path, body }); },
     put: async (path, body) => { writes.push({ method: 'PUT', path, body }); },
+    ...overrides,
   };
-  const component = createComponent(Vue, client, { getItem: key => key === 'adminRole' ? 'superadmin' : 'Master' }, DEFAULT_ORGANIZATION_COLORS, isHexColor, normalizeOrganizationColors, {});
+  const assignment = { inheritAttrs: false, props: ['assignedArena'], render() { return this.assignedArena?.name || null; } };
+  const component = createComponent(Vue, client, { getItem: key => key === 'adminRole' ? 'superadmin' : 'Master' }, DEFAULT_ORGANIZATION_COLORS, isHexColor, normalizeOrganizationColors, {}, assignment);
   const scope = Vue.effectScope();
   t.after(() => scope.stop());
   const state = scope.run(() => component.setup({}, { expose() {} }));
@@ -81,4 +83,41 @@ test('master shows stored sports and marks legacy organizations as awaiting sele
   state.activeSection.value = 'organization-detail';
   state.organizationDetail.value = { organization: state.organizations.value[1], stats: {} };
   assert.match(html(), /<dt>Sport praticato<\/dt>\s*<dd>Pallavolo<\/dd>/);
+});
+
+test('master assigns an arena on creation and saves or clears an assignment from the society detail', async t => {
+  const arena = { id: 4, name: 'Baltur Arena', slug: 'baltur-arena', city: 'Cento', is_active: true };
+  let organization = { id: 7, name: 'Aurora', slug: 'aurora', arena_id: null, arena: null };
+  const patches = [];
+  const { state, writes, html } = fixture(t, {
+    get: async path => ({ data: path.endsWith('/7') ? { organization, stats: {} } : [organization] }),
+    patch: async (path, body) => {
+      patches.push({ path, body });
+      organization = { ...organization, arena_id: body.arena_id, arena: body.arena_id === arena.id ? arena : null };
+      return { data: organization };
+    },
+  });
+  state.openCreateOrganization();
+  Object.assign(state.organizationForm, { name: 'Cento', slug: 'cento', sport: 'Pallacanestro', arena_id: arena.id });
+  await state.submitOrganizationForm();
+  assert.equal(writes.at(-1).body.arena_id, arena.id);
+
+  await state.viewOrganization(7);
+  assert.equal(state.organizationDetailArenaId.value, null);
+  state.organizationDetailArenaId.value = arena.id;
+  await state.saveOrganizationArena();
+  assert.deepEqual(patches.at(-1), { path: '/admin/master/organizations/7/arena', body: { arena_id: arena.id } });
+  await state.viewOrganization(7);
+  assert.equal(state.organizationDetailArenaId.value, arena.id);
+  assert.match(html(), /Arena assegnata[\s\S]*Baltur Arena/);
+
+  state.openEditOrganization({ ...organization, sport: 'Pallacanestro' });
+  assert.equal(state.organizationForm.arena_id, arena.id);
+  await state.submitOrganizationForm();
+  assert.equal('arena_id' in writes.at(-1).body, false);
+
+  state.organizationDetailArenaId.value = null;
+  await state.saveOrganizationArena();
+  assert.deepEqual(patches.at(-1).body, { arena_id: null });
+  assert.equal(state.organizationDetail.value.organization.arena, null);
 });
