@@ -18,7 +18,10 @@
   line-height: 1.5;
 }
 
-.m-root h1, .m-root h2, .m-root h3 { font-weight: 680; overflow-wrap: anywhere; }
+/* Keep the shared Materialize defaults out of the workspace chrome and field labels. */
+.m-root :where(nav) { width: auto; height: auto; color: inherit; background: transparent; box-shadow: none; line-height: inherit; }
+.m-root :where(nav a, label) { color: inherit; font-size: inherit; }
+.m-root h1, .m-root h2, .m-root h3 { margin: 0; font-weight: 680; overflow-wrap: anywhere; }
 .m-root h2 { font-size: 18px; line-height: 1.35; }
 .m-root h3 { font-size: 15px; line-height: 1.4; }
 .m-root p, .m-root dd { overflow-wrap: anywhere; }
@@ -152,9 +155,12 @@
 .m-success { color: #176044; background: #eaf7ef; border: 1px solid #bce3cc; }
 .m-root :is(input, select, textarea).m-input,
 .m-root .m-field :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   min-height: 38px;
+  height: auto;
+  margin: 0;
   padding: 7px 10px;
   border: 1px solid #c9d1e0;
   border-radius: 8px;
@@ -163,12 +169,27 @@
   font-size: 14px;
   font-weight: 450;
 }
+/* Materialize hides native selects and choice inputs globally. */
+.m-root select.m-input { display: block; appearance: auto; color-scheme: light; }
+.m-root select.m-input:enabled { cursor: pointer; }
+.m-root select.m-input :is(option, optgroup) { color: var(--m-ink); background: var(--m-surface); }
+.m-root select.m-input option:disabled { color: var(--m-muted); }
 .m-root .m-field input[type="color"] { min-width: 42px; padding: 4px; }
 .m-root :is(input, textarea)::placeholder { color: #687386; opacity: 1; }
 .m-root :is(input, select, textarea).m-input:enabled:hover { border-color: #9ca8c0; }
 .m-root :is(input, select, textarea).m-input:disabled { color: var(--m-muted); background: var(--m-soft); cursor: not-allowed; }
 .m-root :is(input, select, textarea)[aria-invalid="true"], .m-root :is(input, select, textarea):user-invalid { border-color: #b93643; }
-.m-root input:is([type="checkbox"], [type="radio"]) { width: 16px; height: 16px; accent-color: var(--m-accent); vertical-align: middle; }
+.m-root input:is([type="checkbox"], [type="radio"]) {
+  appearance: auto;
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--m-accent);
+  vertical-align: middle;
+}
+.m-root input:is([type="checkbox"], [type="radio"]):enabled { cursor: pointer; }
 .m-root textarea { resize: vertical; }
 
 .m-data { min-width: 0; }
