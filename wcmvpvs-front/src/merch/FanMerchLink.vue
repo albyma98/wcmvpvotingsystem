@@ -1,5 +1,6 @@
 <template>
-  <a v-if="visible" :href="href" @click="onClick"><slot>Shop</slot></a>
+  <button v-if="visible && sheet" type="button" aria-haspopup="dialog" @click="$emit('open', $event.currentTarget)"><slot>Shop</slot></button>
+  <a v-else-if="visible" :href="href" @click="onClick"><slot>Shop</slot></a>
 </template>
 
 <script setup>
@@ -10,7 +11,9 @@ import { fanPortalPath } from './shopModel';
 const props = defineProps({
   slug: { type: String, required: true },
   source: { type: String, default: '' },
+  sheet: Boolean,
 });
+defineEmits(['open']);
 const visible = ref(false);
 const href = computed(() => `${fanPortalPath(props.slug)}/shop`);
 

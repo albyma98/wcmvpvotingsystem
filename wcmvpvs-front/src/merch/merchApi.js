@@ -1,7 +1,8 @@
-import { apiClient, getDeviceHeaders, getFanSessionHeaders } from '../api';
+import { apiClient, getDeviceHeaders, getFanSessionHeaders, resolveApiUrl } from '../api';
 import { stripeCheckoutUrl } from './shopModel';
 
 const merchPath = slug => `/v1/clubs/${encodeURIComponent(slug)}/merch`;
+export const merchMediaUrl = url => url.startsWith('/api/') ? resolveApiUrl(url.slice(4)) : url;
 const options = (slug, config = {}) => ({
   timeout: 15000,
   ...config,

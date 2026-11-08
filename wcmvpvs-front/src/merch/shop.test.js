@@ -3,6 +3,7 @@ import test from 'node:test';
 import { nextTick } from 'vue';
 import { setupSfc, testVue } from '../../test/sfcSetup.js';
 import * as shop from './shopModel.js';
+import { createSheetNavigation } from './sheetNavigation.js';
 
 const maglia = {
   id: 'maglia', name: 'Maglia ufficiale', category: 'Abbigliamento', short_description: 'Serie città',
@@ -56,6 +57,79 @@ test('receipts distinguish unpaid, confirmed and late online payments', () => {
   assert.equal(shop.onlinePaymentPending({ payment_status: 'PENDING_ONLINE' }), true);
   assert.equal(shop.onlinePaymentPending({ payment_status: 'PAID' }), false);
 });
+
+test('sheet history keeps the homepage URL and unwinds nested views on close', () => {
+  const { browser, traverse } = sheetHistoryFixture();
+  let view;
+  const navigation = createSheetNavigation(browser, next => { view = next; }, () => false);
+  navigation.show({ page: 'shop' });
+  navigation.show({ page: 'orders' }, true);
+  navigation.show({ page: 'orders', orderId: 'order-1' });
+  assert.equal(view.orderId, 'order-1');
+  assert.equal(browser.history.state.eventId, 42);
+  assert.equal(browser.history.state.orderId, undefined);
+  navigation.back();
+  traverse();
+  assert.deepEqual(view, { page: 'orders' });
+  navigation.show({ page: 'orders', orderId: 'order-2' });
+  navigation.back(true);
+  traverse();
+  assert.equal(view, null);
+  assert.deepEqual(browser.history.state, { eventId: 42 });
+  navigation.dispose();
+});
+
+test('Back during checkout restores its entry before showing an order confirmation', () => {
+  const { browser, traverse } = sheetHistoryFixture();
+  let view;
+  let busy = false;
+  const navigation = createSheetNavigation(browser, next => { view = next; }, () => busy);
+  navigation.show({ page: 'shop' });
+  navigation.show({ page: 'shop', productId: 'maglia' });
+  navigation.show({ page: 'shop', productId: 'maglia', mode: 'offline' });
+  busy = true;
+  navigation.back(true);
+  assert.equal(traverse(), false);
+  browser.history.go(-1);
+  traverse();
+  assert.equal(view.mode, 'offline');
+  navigation.show({ page: 'orders', orderId: 'order-1' }, true);
+  busy = false;
+  traverse();
+  assert.equal(view.orderId, 'order-1');
+  navigation.back();
+  traverse();
+  assert.deepEqual(view, { page: 'shop', productId: 'maglia' });
+  navigation.dispose();
+});
+
+function sheetHistoryFixture() {
+  const browser = new EventTarget();
+  const states = [{ eventId: 42 }];
+  const queue = [];
+  let index = 0;
+  browser.history = {
+    get state() { return states[index]; },
+    pushState(state, title, url) {
+      assert.equal(url, undefined);
+      states.splice(++index, states.length, state);
+    },
+    replaceState(state, title, url) {
+      assert.equal(url, undefined);
+      states[index] = state;
+    },
+    go(delta) { queue.push(delta); },
+  };
+  return {
+    browser,
+    traverse() {
+      if (!queue.length) return false;
+      index += queue.shift();
+      browser.dispatchEvent(Object.assign(new Event('popstate'), { state: states[index] }));
+      return true;
+    },
+  };
+}
 
 function checkoutFixture(t, { mode = 'offline', api, profile = { ok: false } }) {
   const mounted = [];

@@ -1,6 +1,6 @@
 <template>
   <section class="checkout">
-    <div class="dialog-heading">
+    <div v-if="!compact" class="dialog-heading">
       <button class="text-button" type="button" :disabled="busy" @click="$emit('back')">← Indietro</button>
       <h2 id="merch-dialog-title">{{ mode === 'offline' ? 'Conferma prenotazione' : 'Riepilogo acquisto' }}</h2>
       <p>{{ mode === 'offline' ? 'Pagherai direttamente alla società secondo le istruzioni qui sotto.' : 'Continuerai su Stripe. I metodi disponibili dipendono dal dispositivo e dal paese.' }}</p>
@@ -80,6 +80,7 @@ const props = defineProps({
   lines: { type: Array, required: true },
   settings: { type: Object, required: true },
   deliveryOptions: { type: Object, required: true },
+  compact: Boolean,
 });
 const emit = defineEmits(['back', 'created', 'recoverable-order', 'busy-change']);
 const fulfillment = ref(props.deliveryOptions.pickup ? 'pickup' : 'shipping');

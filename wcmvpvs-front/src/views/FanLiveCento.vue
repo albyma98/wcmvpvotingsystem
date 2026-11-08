@@ -85,7 +85,7 @@
               <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z"/></svg></span>
               <span class="shortcut-copy"><b>Gioca</b><span>{{ highlightPlay && featuredMission ? 'Continua a guadagnare monete' : 'Sfide e quiz' }}</span></span>
             </button>
-            <FanMerchLink class="home-shortcut" :slug="organizationSlug">
+            <FanMerchLink class="home-shortcut" :slug="organizationSlug" sheet @open="openMerchShop">
               <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l2 13H3L5 8Z"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
               <span class="shortcut-copy"><b>Shop</b><span>Merch ufficiale</span></span>
             </FanMerchLink>
@@ -652,6 +652,15 @@
       @telemetry="onFormTelemetry"
     />
     <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" :trigger="registrationTrigger" :reward-label="registrationRewardLabel" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" @completed="completeRegistration" @dismissed="dismissRegistration" @telemetry="onFormTelemetry" />
+    <FanMerchShop
+      v-if="merchRequest"
+      :key="organizationSlug"
+      sheet
+      :slug="organizationSlug"
+      :club-name="homeName"
+      :colors="organizationColors"
+      :open-request="merchRequest"
+    />
   </div>
 </template>
 
@@ -673,6 +682,7 @@ import FanCollectionPanel from '../components/FanCollectionPanel.vue';
 import FanAvatar from '../components/FanAvatar.vue';
 import FanMatchCard from '../components/FanMatchCard.vue';
 import FanMerchLink from '../merch/FanMerchLink.vue';
+const FanMerchShop = defineAsyncComponent(() => import('../merch/FanMerchShop.vue'));
 const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
 import { fanRegistrationAcceptance } from '../fanRegistration';
 import { FIRST_FAN_GOAL, VOTE_REWARD, QUIZ_REWARD, FAN_BADGE_NAME, journeyStorageKey, normalizeJourney, journeyProgress, recordJourneyReward, newMinigameRoundId } from '../fanJourney';
@@ -1136,6 +1146,11 @@ function initials(name) {
 const homeName = computed(() =>
   String(organizationName.value || props.activeEvent?.organization_name || '').trim() || 'Società',
 );
+const merchRequest = ref(null);
+function openMerchShop(trigger) {
+  merchRequest.value = { trigger };
+}
+watch(() => props.organizationSlug, () => { merchRequest.value = null; });
 const homeBadge = computed(() => initials(homeName.value));
 const opponentLabel = computed(() => {
   const opponent = String(eventState.value?.team2_name || '').trim();
