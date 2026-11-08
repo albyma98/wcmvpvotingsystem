@@ -9,6 +9,7 @@
         aria-modal="true"
         aria-labelledby="feedback-modal-title"
         @click.self="close"
+        @keydown.esc.stop.prevent="close"
       >
         <div class="feedback-modal__panel">
           <div class="feedback-modal__grabber" aria-hidden="true"></div>
@@ -18,7 +19,7 @@
           </header>
 
           <div class="feedback-modal__body">
-            <h2 id="feedback-modal-title" class="feedback-modal__title">{{ activeQuestion?.title }}</h2>
+            <h2 id="feedback-modal-title" ref="questionTitle" class="feedback-modal__title" tabindex="-1">{{ activeQuestion?.title }}</h2>
 
             <div v-if="isOptionalStep" class="feedback-modal__optional">
               <textarea
@@ -69,7 +70,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { submitEventFeedback } from '../api';
 
 const props = defineProps({
@@ -93,9 +94,13 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  initialAnswer: {
+    type: String,
+    default: '',
+  },
 });
 
-const emit = defineEmits(['update:modelValue', 'submitted', 'telemetry']);
+const emit = defineEmits(['update:modelValue', 'submitted', 'telemetry', 'initial-answer-changed']);
 
 const defaultSurvey = {
   questions: [
@@ -193,6 +198,7 @@ const normalizedSurvey = computed(() => {
 const mandatoryKeys = ['experience', 'team_spirit', 'perks_interest', 'mini_games_interest'];
 const answers = reactive({ experience: '', team_spirit: '', perks_interest: '', mini_games_interest: '', report_experience: '', suggestion: '' });
 const step = ref(0);
+const questionTitle = ref(null);
 const isSubmitting = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
@@ -225,7 +231,7 @@ const stepLabel = computed(() => {
 });
 
 function close() {
-  if (isSubmitting.value) return;
+  if (isSubmitting.value || successMessage.value) return;
   if (!dismissed && !successMessage.value) {
     dismissed = true;
     telemetry('feedback_dismissed', { reason: 'user_closed', duration_ms: Math.min(86400000, Math.max(0, Date.now() - flowStartedAt)) });
@@ -248,8 +254,9 @@ function resetFlow() {
 
 function onSelectOption(value) {
   const question = activeQuestion.value;
-  if (!question?.answerKey) return;
+  if (isSubmitting.value || successMessage.value || !question?.options?.some((option) => option.value === value)) return;
   answers[question.answerKey] = value;
+  if (step.value === 0 && props.initialAnswer) emit('initial-answer-changed', value);
   telemetry('feedback_step', { outcome: 'selected' });
   errorMessage.value = '';
   if (step.value < normalizedSurvey.value.questions.length - 1) {
@@ -258,7 +265,7 @@ function onSelectOption(value) {
 }
 
 function onContinue() {
-  if (isSubmitting.value) return;
+  if (isSubmitting.value || successMessage.value) return;
 
   if (!isOptionalStep.value) {
     const question = activeQuestion.value;
@@ -285,14 +292,14 @@ function onContinue() {
 }
 
 function skipOptional() {
-  if (isSubmitting.value) return;
+  if (isSubmitting.value || successMessage.value) return;
   telemetry('feedback_step', { outcome: 'skipped' });
   answers.suggestion = '';
   submit();
 }
 
 async function submit() {
-  if (isSubmitting.value) return;
+  if (isSubmitting.value || successMessage.value) return;
   if (!props.eventId) {
     errorMessage.value = 'Evento non disponibile.';
     feedbackFailure('unavailable');
@@ -353,11 +360,17 @@ watch(
     if (isOpen) {
       flowStartedAt = Date.now();
       dismissed = false;
+      if (props.initialAnswer) onSelectOption(props.initialAnswer);
     } else {
       resetFlow();
     }
   },
 );
+watch([() => props.modelValue, step], async ([isOpen]) => {
+  if (!isOpen || !props.reportExperienceEnabled) return;
+  await nextTick();
+  if (props.modelValue) questionTitle.value?.focus();
+});
 </script>
 
 <style scoped>

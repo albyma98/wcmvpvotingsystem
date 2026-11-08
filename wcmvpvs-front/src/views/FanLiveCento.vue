@@ -1,6 +1,6 @@
 <template>
   <div class="cento-root" :style="themeStyle">
-    <div class="phone" :inert="isHomeLoading" :aria-hidden="isHomeLoading || undefined" :aria-busy="isHomeLoading">
+    <div class="phone" :inert="isHomeLoading || isFeedbackModalOpen" :aria-hidden="isHomeLoading || isFeedbackModalOpen || undefined" :aria-busy="isHomeLoading">
       <div class="home-scroll">
         <header class="topbar">
           <div class="club">
@@ -28,23 +28,62 @@
         </header>
 
         <main class="home-dashboard">
-          <section class="mvp-card" aria-labelledby="home-mvp-title">
-            <div class="mvp-heading">
-              <img v-if="hasVoted && displayVotedImage" class="mvp-thumbnail" :src="displayVotedImage" alt="" />
-              <h1 id="home-mvp-title">{{ hasVoted ? 'Il tuo MVP' : "Vota l'MVP del pubblico" }}</h1>
-              <span class="mvp-status" :class="{ 'is-open': canVote }">{{ canVote ? 'Votazioni aperte' : 'Votazioni chiuse' }}</span>
+          <section class="mvp-card" :class="{ 'is-confirmed': showHomeVoteReceipt }" aria-labelledby="home-mvp-title">
+            <div v-if="showHomeVoteReceipt" class="mvp-receipt" :class="{ 'is-new': highlightPlay }">
+              <img v-if="displayVotedImage" class="mvp-thumbnail" :src="displayVotedImage" alt="" />
+              <span v-else class="mvp-thumbnail mvp-check" aria-hidden="true">✓</span>
+              <div class="mvp-receipt-copy">
+                <h1 id="home-mvp-title" ref="homeMvpTitle" tabindex="-1">Hai votato il tuo MVP!</h1>
+                <p v-if="votedPlayerCard.fullName !== 'Il tuo MVP'">{{ votedPlayerCard.fullName }}</p>
+                <p v-if="homeVoteReward" class="mvp-receipt-reward" role="status">+{{ homeVoteReward }} monete <span class="coin" aria-hidden="true"></span></p>
+              </div>
+              <button v-if="showMatchSummary" class="mvp-secondary" type="button" @click="openHomeAction('match-summary')">Riepilogo</button>
+              <button v-else-if="canVote" class="mvp-secondary" type="button" :disabled="isVoting || shopBusy" @click="editHomeVote">Modifica voto</button>
             </div>
-            <p v-if="hasVoted">Voto registrato<span v-if="displayVotedName !== 'Il tuo MVP'"> · {{ displayVotedName }}</span></p>
-            <p v-else>{{ canVote ? `Il tuo voto vale +${VOTE_REWARD} monete` : 'In attesa della prossima votazione' }}</p>
-            <button class="mvp-action" :class="{ 'is-primary': canVote && !hasVoted }" type="button" :disabled="!eventId" @click="openHomeAction(showMatchSummary ? 'match-summary' : 'mvp')">
-              {{ showMatchSummary ? 'Vedi il riepilogo' : canVote ? (hasVoted ? 'Modifica voto' : 'Vota ora') : 'Votazioni chiuse' }}
-            </button>
+            <div v-else class="mvp-heading">
+              <h1 id="home-mvp-title" ref="homeMvpTitle" tabindex="-1">Chi è il tuo MVP?</h1>
+              <span class="mvp-status" :class="{ 'is-open': canVote }">{{ mvpStatusLabel }}</span>
+            </div>
+            <Transition name="mvp-collapse" @before-leave="measureMvpCollapse">
+              <div v-if="!showHomeVoteReceipt" class="mvp-content">
+                <template v-if="canVote">
+                  <p v-if="isLoadingPlayers || isLoadingVoteStatus" role="status">Caricamento votazione…</p>
+                  <template v-else-if="playersError || voteStatusError">
+                    <p role="alert">{{ playersError || voteStatusError }}</p>
+                    <button class="mvp-action" type="button" @click="playersError ? loadPlayers() : loadVoteStatus()">Riprova</button>
+                  </template>
+                  <p v-else-if="!players.length">Nessun giocatore disponibile.</p>
+                  <template v-else>
+                    <p>Scorri i giocatori e scegli il migliore in campo.</p>
+                    <MvpPlayerCarousel
+                      :key="walletScope()"
+                      :players="homeMvpPlayers"
+                      :initial-player-id="votedPlayerId"
+                      :selected-player-id="homeMvpSelectedId"
+                      :club-logo-url="homeLogoUrl"
+                      :disabled="isVoting || shopBusy"
+                      @select="selectHomeMvp"
+                    />
+                    <p v-if="voteError" class="mvp-error" role="alert">{{ voteError }}</p>
+                    <button class="mvp-action is-primary" type="button" :disabled="!canConfirmHomeVote" @click="confirmHomeVote">
+                      <span v-if="isVoting" class="mvp-spinner" aria-hidden="true"></span>{{ homeVoteActionLabel }}
+                    </button>
+                  </template>
+                  <button v-if="mvpEditing" class="mvp-secondary" type="button" :disabled="isVoting" @click="cancelHomeVoteEdit">Annulla modifica</button>
+                </template>
+                <template v-else>
+                  <p :role="mvpConnectionError ? 'status' : undefined">{{ mvpUnavailableMessage }}</p>
+                  <button v-if="showMatchSummary" class="mvp-action" type="button" @click="openHomeAction('match-summary')">Vedi il riepilogo</button>
+                  <button v-else-if="mvpConnectionError" class="mvp-action" type="button" @click="eventId ? refreshLiveStatus() : $emit('retry-active-event')">Riprova</button>
+                </template>
+              </div>
+            </Transition>
           </section>
 
           <div class="home-shortcuts">
-            <button class="home-shortcut" type="button" @click="openHomeAction('earn')">
+            <button ref="homePlayButton" class="home-shortcut" :class="{ 'is-vote-next': highlightPlay && !matchConcluded && eventState?.is_active !== false }" type="button" @click="openHomeAction('earn')">
               <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z"/></svg></span>
-              <span class="shortcut-copy"><b>Gioca</b><span>Sfide e quiz</span></span>
+              <span class="shortcut-copy"><b>Gioca</b><span>{{ highlightPlay && featuredMission ? 'Continua a guadagnare monete' : 'Sfide e quiz' }}</span></span>
             </button>
             <FanMerchLink class="home-shortcut" :slug="organizationSlug">
               <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l2 13H3L5 8Z"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
@@ -53,14 +92,28 @@
           </div>
 
           <Transition name="home-slot" mode="out-in">
-            <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" key="feedback" :ref="observeFeedbackInvitation" class="feedback-cta" type="button" @click="openFeedbackModal">
+            <section v-if="hasFeedbackSurvey && !hasSubmittedFeedback && feedbackOptions.length" key="inline-feedback" :ref="observeFeedbackInvitation" class="feedback-cta feedback-inline" aria-labelledby="inline-feedback-title">
+              <h2 id="inline-feedback-title">La tua voce conta</h2>
+              <p id="inline-feedback-question">{{ firstFeedbackQuestion.title }}</p>
+              <div class="feedback-emoji-options" role="group" aria-labelledby="inline-feedback-question">
+                <button
+                  v-for="option in feedbackOptions"
+                  :key="option.value"
+                  type="button"
+                  :aria-label="option.label"
+                  :aria-pressed="inlineFeedbackAnswer === option.value"
+                  @click="answerFeedbackInline(option.value, $event)"
+                ><span aria-hidden="true">{{ option.emoji }}</span></button>
+              </div>
+            </section>
+            <button v-else-if="hasFeedbackSurvey && !hasSubmittedFeedback" key="feedback" :ref="observeFeedbackInvitation" class="feedback-cta" type="button" @click="openFeedbackModal">
               <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-8.5 8.5H4l1.5-4.5A8.5 8.5 0 1 1 20.5 11.5Z"/><path d="M8.5 10h7m-7 4h5"/></svg></span>
-              <span class="feedback-cta-copy"><b>La tua voce conta</b><span>Come stai vivendo la partita?</span></span>
+              <span class="feedback-cta-copy"><b>La tua voce conta</b><span>{{ firstFeedbackQuestion?.title || 'Come stai vivendo la partita?' }}</span></span>
               <span class="feedback-cta-action">Lascia un feedback <span aria-hidden="true">→</span></span>
             </button>
-            <button v-else-if="featuredMission" key="challenge" class="moment-card" type="button" @click="onMission(featuredMission, 'home_featured')">
+            <button v-else-if="featuredMission" key="challenge" ref="homeChallengeButton" class="moment-card" type="button" @click="onMission(featuredMission, 'home_featured')">
               <span class="home-icon" aria-hidden="true">{{ featuredMission.emoji }}</span>
-              <span class="moment-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
+              <span class="moment-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ feedbackThanks ? 'Grazie per il feedback!' : featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
               <span class="moment-action">
                 <span v-if="featuredMission.pts && (featuredMission.repeatable || !doneKeys.includes(featuredMission.key))" class="row-pts">
                   +{{ featuredMission.pts }}<span class="sr-only"> monete</span><span class="coin" aria-hidden="true"></span>
@@ -68,6 +121,7 @@
                 <b>Gioca <span aria-hidden="true">→</span></b>
               </span>
             </button>
+            <p v-else-if="feedbackThanks" key="feedback-thanks" class="feedback-thanks">Grazie per il feedback!</p>
           </Transition>
 
           <section v-if="eventId" class="journey-card" aria-label="Progressione del badge">
@@ -142,7 +196,7 @@
         <div class="sheet-head">
           <div>
             <div class="sheet-title">Vota l'MVP del pubblico</div>
-            <div class="sheet-sub">{{ hasVoted ? 'Tocca un’altra card per cambiare il tuo voto.' : 'Scegli il tuo campione. Fai sentire il tuo tifo.' }}</div>
+            <div class="sheet-sub">{{ hasVoted ? 'Scegli un’altra card e conferma la modifica.' : 'Scegli il tuo campione e conferma il voto.' }}</div>
           </div>
           <button class="close" type="button" aria-label="Chiudi scelta MVP" @click="closeSheets">✕</button>
         </div>
@@ -165,8 +219,15 @@
             :busy="isVoting"
             :can-vote="canVote && !shopBusy"
             :club-logo-url="homeLogoUrl"
-            @select="castVote"
+            @select="missionMvpCandidate = $event"
           />
+          <button
+            v-if="missionMvpCandidate && canVote"
+            class="btn-vote"
+            type="button"
+            :disabled="isVoting || shopBusy || missionMvpCandidate.id === votedPlayerId"
+            @click="castVote(missionMvpCandidate)"
+          >{{ isVoting ? 'Invio del voto…' : `Conferma voto per ${missionMvpCandidate.fullName}` }}</button>
         </div>
       </div>
 
@@ -236,7 +297,7 @@
               :style="{ '--mission-delay': `${index * 25}ms` }"
               type="button"
               :title="mission.title"
-              :disabled="matchConcluded || (mission.key === 'quiz' && !quizAvailable)"
+              :disabled="matchConcluded || (mission.opensMvp && !canVote) || (mission.key === 'quiz' && !quizAvailable)"
               @click="onMission(mission)"
             >
               <span class="mission-card-cover" aria-hidden="true">
@@ -578,11 +639,15 @@
 
     <div class="coin-flight-layer" aria-hidden="true"><span v-for="(flight, index) in coinFlights" :key="index" class="coin coin-flight" :style="flight"></span></div>
     <EventFeedbackModal
-      v-model="isFeedbackModalOpen"
+      :key="walletScope()"
+      :model-value="isFeedbackModalOpen"
       :event-id="eventId"
       :feedback-survey="feedbackSurvey"
       :report-experience-enabled="true"
+      :initial-answer="feedbackModalAnswer"
       :theme-style="themeStyle"
+      @update:model-value="onFeedbackModalChange"
+      @initial-answer-changed="inlineFeedbackAnswer = $event"
       @submitted="handleFeedbackSubmitted"
       @telemetry="onFormTelemetry"
     />
@@ -599,7 +664,9 @@ import { createEventReportTelemetry, createReportSignalSender, reportSource } fr
 import { stopPostHogForNewExperience } from '../lib/posthog';
 import { sanitizeFanAnalyticsMetadata } from '../fanAnalytics';
 import EventFeedbackModal from '../components/EventFeedbackModal.vue';
+import { inlineFeedbackOptions } from '../inlineFeedback';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
+import MvpPlayerCarousel from '../components/MvpPlayerCarousel.vue';
 import FanMvpRoster from '../components/FanMvpRoster.vue';
 import FanMvpCelebration from '../components/FanMvpCelebration.vue';
 import FanCollectionPanel from '../components/FanCollectionPanel.vue';
@@ -653,6 +720,7 @@ const props = defineProps({
   teamLogoUrl: { type: String, default: '' },
   matchLabel: { type: String, default: 'Vota • Gioca • Vinci • Partecipa' },
   activeEvent: { type: Object, default: null },
+  activeEventError: { type: Boolean, default: false },
   votedPlayerImageUrl: { type: String, default: '' },
   votedPlayerName: { type: String, default: '' },
   votedPlayerLastName: { type: String, default: '' },
@@ -662,7 +730,7 @@ const props = defineProps({
 });
 
 const WALLET_STORAGE_KEY = 'wallet:coins';
-const emit = defineEmits(['loading-change', 'brand-change']);
+const emit = defineEmits(['loading-change', 'brand-change', 'retry-active-event']);
 const isHomeLoading = ref(true);
 let bootstrapRevision = 0;
 let assetController;
@@ -739,6 +807,17 @@ const sponsors = ref([]);
 const rawPlayers = ref([]);
 const isLoadingPlayers = ref(false);
 const playersError = ref('');
+const isLoadingVoteStatus = ref(false);
+const voteStatusError = ref('');
+const liveStatusError = ref(false);
+let playersRequestRevision = 0;
+let voteStatusRequestRevision = 0;
+const homeMvpTitle = ref(null);
+const homeMvpSelectedId = ref(null);
+const missionMvpCandidate = ref(null);
+const mvpEditing = ref(false);
+const highlightPlay = ref(false);
+const homeVoteReward = ref(0);
 const isVoting = ref(false);
 const pendingVotePlayerId = ref(null);
 const voteRevealRevision = ref(0);
@@ -787,6 +866,13 @@ const lotteryTicketEl = ref(null);
 const activeGameId = ref(null);
 const isFeedbackModalOpen = ref(false);
 const hasSubmittedFeedback = ref(false);
+const inlineFeedbackAnswer = ref('');
+const feedbackModalAnswer = ref('');
+const feedbackThanks = ref(false);
+const homeChallengeButton = ref(null);
+const homePlayButton = ref(null);
+let feedbackTrigger;
+let feedbackThanksTimer;
 
 // Registry giochi reali (titolo + reward indicativa mostrata nella lista).
 const volleyballGameIds = ['volley-rush', 'setter-pro', 'monster-block'];
@@ -846,6 +932,29 @@ function isGameAvailable(id) {
 const matchConcluded = computed(() => eventState.value?.is_concluded === true);
 const showMatchSummary = computed(() => Boolean(props.eventId) && (matchConcluded.value || eventState.value?.votes_closed === true));
 const canVote = computed(() => Boolean(props.eventId) && Boolean(eventState.value) && eventState.value?.is_active !== false && !eventState.value?.votes_closed && !matchConcluded.value);
+const showHomeVoteReceipt = computed(() => hasVoted.value && (!mvpEditing.value || !canVote.value));
+const isScheduledMatch = computed(() => {
+  const startsAt = eventState.value?.start_datetime
+    || (Number(props.activeEvent?.id) === props.eventId ? props.activeEvent?.start_datetime : '');
+  return !canVote.value && !showMatchSummary.value && Date.parse(startsAt) > Date.now();
+});
+const mvpConnectionError = computed(() => props.eventId ? liveStatusError.value : props.activeEventError);
+const mvpStatusLabel = computed(() => {
+  if (canVote.value) return 'Votazioni aperte';
+  if (showMatchSummary.value) return 'Votazioni chiuse';
+  if (isScheduledMatch.value) return 'Partita programmata';
+  if (mvpConnectionError.value) return 'Stato non disponibile';
+  return props.eventId ? 'Votazioni non aperte' : 'Nessuna partita';
+});
+const mvpUnavailableMessage = computed(() => {
+  if (showMatchSummary.value) return 'Le votazioni per questa partita sono terminate.';
+  if (mvpConnectionError.value) return 'Impossibile verificare lo stato delle votazioni.';
+  if (!props.eventId) return 'Al momento non ci sono partite disponibili.';
+  return 'Il club deve ancora aprire le votazioni.';
+});
+watch(canVote, (open) => {
+  if (!open) cancelHomeVoteEdit();
+});
 const completedGames = computed(() => Object.keys(journey.value.rewards).filter((key) => key !== 'vote').length);
 const featuredMission = computed(() => {
   if (!props.eventId || matchConcluded.value || eventState.value?.is_active === false) return null;
@@ -898,8 +1007,11 @@ async function refreshLiveStatus() {
     const { data } = await apiClient.get(`/events/${eventId}/fan-live`);
     if (isDisposed || scope !== walletScope() || eventId !== props.eventId || Number(data?.event_id) !== eventId) return;
     liveEvent.value = data;
+    liveStatusError.value = false;
     quizAvailable.value = data.quiz?.available === true;
-  } catch (error) { /* conserva le ultime informazioni ricevute se la rete non è disponibile */ }
+  } catch (error) {
+    if (!isDisposed && scope === walletScope() && !eventState.value) liveStatusError.value = true;
+  }
   finally { if (liveRequestEventId === eventId) liveRequestEventId = null; }
 }
 
@@ -1046,33 +1158,58 @@ const hasFeedbackSurvey = computed(() =>
   && Array.isArray(feedbackSurvey.value.questions)
   && feedbackSurvey.value.questions.length > 0,
 );
-const feedbackSubtitle = computed(() => {
-  if (hasSubmittedFeedback.value) return 'Grazie per aver condiviso la tua esperienza!';
-  if (!props.eventId) return 'Disponibile con un evento attivo';
-  if (!hasFeedbackSurvey.value) return 'Sondaggio non disponibile per questa partita';
-  return 'Rispondi alle domande e lascia un suggerimento';
-});
+const firstFeedbackQuestion = computed(() => feedbackSurvey.value.questions?.[0]);
+const feedbackOptions = computed(() => inlineFeedbackOptions(firstFeedbackQuestion.value));
 const feedbackStorageKey = (eventId) => `wcmvpvs-feedback:${eventId}`;
-watch(() => props.eventId, (eventId) => {
+watch([() => props.eventId, () => props.organizationSlug], ([eventId]) => {
   isFeedbackModalOpen.value = false;
   hasSubmittedFeedback.value = false;
-  if (!eventId || typeof window === 'undefined') return;
+  inlineFeedbackAnswer.value = '';
+  feedbackModalAnswer.value = '';
+  feedbackThanks.value = false;
+  feedbackTrigger = undefined;
+  if (typeof window === 'undefined') return;
+  window.clearTimeout(feedbackThanksTimer);
+  if (!eventId) return;
   try {
     hasSubmittedFeedback.value = window.localStorage.getItem(feedbackStorageKey(eventId)) === '1';
   } catch (error) {
     /* il flusso resta utilizzabile quando localStorage non è disponibile */
   }
 }, { immediate: true });
-function openFeedbackModal() {
+function openFeedbackModal(event, initialAnswer = '') {
   if (!hasFeedbackSurvey.value || hasSubmittedFeedback.value) return;
   recordFanEvent('cta_clicked', { cta: 'feedback', placement: 'feedback_home' });
+  feedbackTrigger = event?.currentTarget;
+  feedbackModalAnswer.value = initialAnswer;
   closeSheets();
   isFeedbackModalOpen.value = true;
   recordFanEvent('feedback_opened', { trigger: 'feedback' });
 }
+function answerFeedbackInline(value, event) {
+  if (isFeedbackModalOpen.value || !hasFeedbackSurvey.value || hasSubmittedFeedback.value || !feedbackOptions.value.some((option) => option.value === value)) return;
+  inlineFeedbackAnswer.value = value;
+  openFeedbackModal(event, value);
+}
+function onFeedbackModalChange(open) {
+  isFeedbackModalOpen.value = open;
+  if (open) return;
+  feedbackModalAnswer.value = '';
+  const trigger = feedbackTrigger;
+  const scope = walletScope();
+  feedbackTrigger = undefined;
+  nextTick(() => {
+    if (isDisposed || scope !== walletScope() || isFeedbackModalOpen.value) return;
+    const target = hasSubmittedFeedback.value ? homeChallengeButton.value : trigger;
+    (target && !target.closest('[inert]') ? target : homePlayButton.value)?.focus({ preventScroll: true });
+  });
+}
 function handleFeedbackSubmitted(answers = {}) {
   reportTelemetry?.record('feedback_completed', { experience: answers.report_experience, perks_interest: answers.perks_interest });
   hasSubmittedFeedback.value = true;
+  feedbackThanks.value = true;
+  window.clearTimeout(feedbackThanksTimer);
+  feedbackThanksTimer = window.setTimeout(() => { feedbackThanks.value = false; }, 2600);
   try {
     window.localStorage.setItem(feedbackStorageKey(props.eventId), '1');
   } catch (error) {
@@ -1132,6 +1269,7 @@ const players = computed(() => {
       name,
       fullName: [first, last].filter(Boolean).join(' ') || 'Giocatore',
       lastName: last,
+      role,
       subtitle: role || (number ? `Maglia #${number}` : 'In campo'),
       number,
       badge: initials(`${first} ${last}`),
@@ -1139,6 +1277,52 @@ const players = computed(() => {
     };
   });
 });
+const homeMvpPlayers = computed(() => players.value.map((player) => ({
+  ...player,
+  name: player.fullName,
+  subtitle: player.role,
+})));
+const homeMvpSelectedPlayer = computed(() => homeMvpPlayers.value.find((player) => player.id === homeMvpSelectedId.value));
+const canConfirmHomeVote = computed(() =>
+  canVote.value && !isLoadingPlayers.value && !playersError.value && !isLoadingVoteStatus.value && !voteStatusError.value
+  && !isVoting.value && !shopBusy.value && (!hasVoted.value || mvpEditing.value)
+  && Boolean(homeMvpSelectedPlayer.value) && homeMvpSelectedId.value !== votedPlayerId.value,
+);
+const homeVoteActionLabel = computed(() => {
+  if (isVoting.value) return 'Invio del voto…';
+  if (homeMvpSelectedPlayer.value && homeMvpSelectedId.value !== votedPlayerId.value) return `Conferma voto per ${homeMvpSelectedPlayer.value.fullName}`;
+  return mvpEditing.value ? 'Scegli un nuovo MVP' : 'Seleziona un giocatore';
+});
+
+function selectHomeMvp(player) {
+  if (!canVote.value || isVoting.value || shopBusy.value || showHomeVoteReceipt.value) return;
+  if (!homeMvpSelectedPlayer.value) {
+    recordFanEvent('cta_clicked', { cta: 'mvp', placement: 'home_grid' });
+    recordFanEvent('vote_opened', { is_change: hasVoted.value });
+  }
+  homeMvpSelectedId.value = player.id;
+  voteError.value = '';
+}
+function confirmHomeVote() {
+  if (canConfirmHomeVote.value) return castVote(homeMvpSelectedPlayer.value, { inline: true });
+}
+function editHomeVote() {
+  if (!hasVoted.value || !canVote.value || isVoting.value || shopBusy.value) return;
+  mvpEditing.value = true;
+  highlightPlay.value = false;
+  voteError.value = '';
+  nextTick(() => homeMvpTitle.value?.focus({ preventScroll: true }));
+}
+function cancelHomeVoteEdit() {
+  const wasEditing = mvpEditing.value;
+  mvpEditing.value = false;
+  homeMvpSelectedId.value = null;
+  if (wasEditing && !activeSheet.value && !isFeedbackModalOpen.value) nextTick(() => homeMvpTitle.value?.focus({ preventScroll: true }));
+}
+function measureMvpCollapse(element) {
+  element.inert = true;
+  element.style.height = `${element.offsetHeight}px`;
+}
 
 const finalMvpPlayers = computed(() => matchConcluded.value ? (liveEvent.value?.mvp || []).map((winner) => {
   const roster = players.value.find((player) => player.id === Number(winner.player_id));
@@ -1198,7 +1382,11 @@ function openSheet(id) {
   if (id !== 'vote-result') cancelVotePresentation();
   recordSectionChange(id);
   activeSheet.value = id;
-  if (id === 'mvp') recordFanEvent('vote_opened', { is_change: hasVoted.value });
+  if (id === 'mvp') {
+    missionMvpCandidate.value = null;
+    voteError.value = '';
+    recordFanEvent('vote_opened', { is_change: hasVoted.value });
+  }
   if (id === 'spend') reportTelemetry?.record('shop_view');
   if (['wallet', 'spend', 'profile'].includes(id)) return loadWallet();
 }
@@ -1336,6 +1524,7 @@ async function loadFanProfile() {
   if (data.journey_rewards && typeof data.journey_rewards === 'object') {
     const rewards = revision === walletRevision ? {} : { ...journey.value.rewards };
     const restored = normalizeJourney({ rewards: data.journey_rewards });
+    homeVoteReward.value = revision === walletRevision ? restored.rewards.vote || 0 : Math.max(homeVoteReward.value, restored.rewards.vote || 0);
     for (const [key, amount] of Object.entries(restored.rewards)) rewards[key] = Math.max(rewards[key] || 0, amount);
     journey.value = normalizeJourney({ ...journey.value, rewards });
     if (journey.value.rewards.vote) journey.value.pendingVoteBonus = false;
@@ -1401,7 +1590,7 @@ async function grantCoins(delta, key, roundId = '') {
   } finally { if (!isDisposed && request === journeyRewardRevision && scope === walletScope()) isSavingCoins.value = false; }
 }
 
-async function retryVoteBonus() {
+async function retryVoteBonus({ inline = false } = {}) {
   if (!journey.value.pendingVoteBonus) return;
   const scope = walletScope();
   const result = await grantCoins(VOTE_REWARD, 'vote');
@@ -1413,8 +1602,11 @@ async function retryVoteBonus() {
   if (result.ok) {
     journey.value.pendingVoteBonus = false;
     saveJourney();
-    voteBonusCoins.value = result.coins;
-    if (result.coins) animateVoteReward();
+    homeVoteReward.value = journey.value.rewards.vote || homeVoteReward.value;
+    if (!inline) {
+      voteBonusCoins.value = result.coins;
+      if (result.coins) animateVoteReward();
+    }
   }
 }
 
@@ -1548,26 +1740,39 @@ async function onGameClaim(payload) {
 
 /* ---------- Voto MVP (lista reale + voto reale) ---------- */
 async function loadPlayers() {
+  const scope = walletScope();
+  const request = ++playersRequestRevision;
   isLoadingPlayers.value = true;
   playersError.value = '';
   try {
     const { data } = await apiClient.get('/public/players');
+    if (isDisposed || request !== playersRequestRevision || scope !== walletScope()) return;
     const payload = Array.isArray(data?.players) ? data.players : Array.isArray(data) ? data : [];
     rawPlayers.value = Array.isArray(payload) ? payload : [];
   } catch (error) {
+    if (isDisposed || request !== playersRequestRevision || scope !== walletScope()) return;
     playersError.value = 'Impossibile caricare i giocatori. Riprova.';
     recordFanEvent('home_load_failed', { section: 'mvp', reason: 'load_failed' });
     rawPlayers.value = [];
   } finally {
-    isLoadingPlayers.value = false;
+    if (!isDisposed && request === playersRequestRevision && scope === walletScope()) isLoadingPlayers.value = false;
   }
 }
 async function loadVoteStatus() {
   if (!props.eventId) return;
   const eventId = props.eventId;
   const scope = walletScope();
-  const status = await fetchVoteStatus(eventId);
-  if (isDisposed || scope !== walletScope() || !status.ok || isVoting.value || localVoted.value) return;
+  const request = ++voteStatusRequestRevision;
+  isLoadingVoteStatus.value = true;
+  voteStatusError.value = '';
+  const status = await fetchVoteStatus(eventId).catch(() => ({ ok: false }));
+  if (isDisposed || request !== voteStatusRequestRevision || scope !== walletScope()) return;
+  isLoadingVoteStatus.value = false;
+  if (isVoting.value || localVoted.value) return;
+  if (!status.ok) {
+    voteStatusError.value = 'Impossibile verificare il tuo voto. Riprova.';
+    return;
+  }
   hasVoted.value = Boolean(status?.hasVoted);
   votedPlayerId.value = status?.playerId ?? null;
   if (hasVoted.value && !journey.value.rewards.vote) {
@@ -1576,7 +1781,7 @@ async function loadVoteStatus() {
     await retryVoteBonus();
   }
 }
-async function castVote(player) {
+async function castVote(player, { inline = false } = {}) {
   if (isDisposed || isVoting.value || shopBusy.value || !player?.id || !props.eventId) return;
   voteError.value = '';
   if (!canVote.value) { voteError.value = 'Le votazioni per questa partita sono chiuse.'; return; }
@@ -1609,17 +1814,26 @@ async function castVote(player) {
     votedPlayerId.value = player.id;
     pendingVotePlayerId.value = null;
     localVoted.value = { ...player };
-    voteBonusCoins.value = 0;
-    celebrationKind.value = 'vote';
+    if (!inline) {
+      voteBonusCoins.value = 0;
+      celebrationKind.value = 'vote';
+    }
     if (firstVote) {
       journey.value.pendingVoteBonus = true;
       saveJourney();
     }
-    if (presentationRevision === sheetRevision && (!activeSheet.value || activeSheet.value === 'mvp')) {
+    mvpEditing.value = false;
+    homeMvpSelectedId.value = null;
+    if (inline) {
+      highlightPlay.value = true;
+      if (presentationRevision === sheetRevision && !activeSheet.value && !isFeedbackModalOpen.value) {
+        nextTick(() => homeMvpTitle.value?.focus({ preventScroll: true }));
+      }
+    } else if (presentationRevision === sheetRevision && (!activeSheet.value || activeSheet.value === 'mvp')) {
       startVotePresentation();
       openSheet('vote-result');
     }
-    if (journey.value.pendingVoteBonus) await retryVoteBonus();
+    if (journey.value.pendingVoteBonus) await retryVoteBonus({ inline });
   } catch (error) {
     if (isDisposed || request !== voteRequestRevision || scope !== walletScope()) return;
     voteError.value = 'Impossibile salvare il voto. Riprova tra poco.';
@@ -2048,6 +2262,14 @@ async function bootstrap() {
     voteRequestRevision += 1;
     journeyRewardRevision += 1;
     isVoting.value = false;
+    isLoadingVoteStatus.value = false;
+    voteStatusError.value = '';
+    liveStatusError.value = false;
+    rawPlayers.value = [];
+    homeMvpSelectedId.value = null;
+    mvpEditing.value = false;
+    highlightPlay.value = false;
+    homeVoteReward.value = 0;
     analyticsNicknameRevision += 1;
     isSavingNickname.value = false;
     pendingVotePlayerId.value = null;
@@ -2166,6 +2388,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   stopCoinsStream();
   window.clearTimeout(coinAnimationTimer);
+  window.clearTimeout(feedbackThanksTimer);
   window.clearInterval(liveStatusTimer);
 });
 
@@ -2226,8 +2449,8 @@ watch(
 }
 
 .home-scroll {
-  --home-gap: 8px;
-  --home-pad: 12px;
+  --home-gap: 7px;
+  --home-pad: 10px;
   --home-radius: 16px;
   --home-shadow: 0 1px 2px rgba(35, 22, 26, 0.07);
   min-height: 0;
@@ -2391,11 +2614,13 @@ watch(
 }
 .mvp-card {
   display: grid;
-  align-content: space-between;
-  gap: 6px;
-  min-height: 132px;
-  padding: 12px;
+  min-width: 0;
+  padding: 9px 10px 10px;
   border-top: 3px solid var(--red);
+}
+.mvp-content {
+  min-width: 0;
+  padding-top: 4px;
 }
 .mvp-heading {
   display: flex;
@@ -2403,8 +2628,7 @@ watch(
   flex-wrap: wrap;
   gap: 5px 8px;
 }
-.mvp-heading h1 {
-  flex: 1 1 7.5em;
+.mvp-card h1 {
   min-width: 0;
   margin: 0;
   font-size: 1.125rem;
@@ -2413,15 +2637,63 @@ watch(
   letter-spacing: -.025em;
   overflow-wrap: anywhere;
 }
+.mvp-heading h1 { flex: 1 1 7.5em; }
+.mvp-card.is-confirmed {
+  border-top-color: #b58a3f;
+  background: linear-gradient(110deg, var(--gold-soft), var(--card) 62%);
+}
+.mvp-receipt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+}
+.mvp-receipt.is-new { animation: mvp-receipt-in .24s ease-out both; }
+.mvp-receipt-copy { flex: 1; min-width: 0; }
+.mvp-receipt h1 { font-size: .9375rem; }
+.mvp-receipt .mvp-receipt-reward {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+  font-weight: 800;
+}
+.mvp-receipt-reward .coin { width: 13px; height: 13px; }
 .mvp-thumbnail {
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: 42px;
+  height: 46px;
+  border: 1px solid #b58a3f;
   border-radius: 8px;
   object-fit: cover;
   object-position: center top;
   background: var(--red-soft);
 }
+.mvp-check {
+  display: grid;
+  place-items: center;
+  color: var(--red-text);
+  background: var(--card);
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+.mvp-secondary {
+  min-height: 44px;
+  max-width: 38%;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--red-text);
+  font-family: inherit;
+  font-size: .75rem;
+  font-weight: 800;
+  line-height: 1.25;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.mvp-content > .mvp-secondary { margin-top: 4px; max-width: 100%; }
+.mvp-secondary:disabled { opacity: .55; cursor: default; }
 .mvp-status {
   padding: 4px 8px;
   border-radius: 999px;
@@ -2439,10 +2711,11 @@ watch(
   font-size: .8125rem;
   overflow-wrap: anywhere;
 }
+.mvp-card .mvp-error { margin: 2px 0 5px; color: var(--red-text); font-weight: 700; }
 .mvp-action {
   width: 100%;
   min-height: 44px;
-  padding: 8px 10px;
+  padding: 6px 9px;
   border: 1px solid var(--line);
   border-radius: 11px;
   background: var(--red-soft);
@@ -2453,6 +2726,7 @@ watch(
   cursor: pointer;
   overflow-wrap: anywhere;
 }
+.mvp-content > .mvp-action:first-of-type { margin-top: 3px; }
 .mvp-action.is-primary {
   border-color: transparent;
   background: var(--red);
@@ -2463,12 +2737,31 @@ watch(
   color: var(--muted);
   cursor: default;
 }
+.mvp-spinner {
+  display: inline-block;
+  width: .8em;
+  height: .8em;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: home-spin .7s linear infinite;
+}
+.mvp-collapse-leave-active { overflow: hidden; transition: height .24s ease, padding .24s ease, opacity .16s ease; }
+.mvp-collapse-leave-to { height: 0 !important; padding-top: 0; opacity: 0; }
+@keyframes mvp-receipt-in { from { opacity: .35; transform: translateY(4px); } }
+@keyframes home-spin { to { transform: rotate(1turn); } }
 .home-shortcuts {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
   gap: var(--home-gap);
 }
+.home-shortcut.is-vote-next {
+  border-color: var(--red-text);
+  animation: home-play-in .52s ease .22s both;
+}
+@keyframes home-play-in { 45% { box-shadow: 0 0 0 3px var(--red-line); } }
 .home-shortcut, .moment-card, .rank-link {
   display: flex;
   align-items: center;
@@ -2749,18 +3042,47 @@ watch(
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px 10px;
-  min-height: 112px;
+  gap: 5px 8px;
   background: var(--red);
   border: 1px solid transparent;
   border-radius: var(--home-radius);
-  padding: 11px;
+  padding: 8px 10px;
   cursor: pointer;
   font: inherit;
   color: var(--on-primary);
   text-align: left;
   box-shadow: var(--home-shadow);
 }
+.feedback-inline {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  cursor: default;
+}
+.feedback-inline h2, .feedback-inline p { margin: 0; overflow-wrap: anywhere; }
+.feedback-inline h2 { font-size: .9375rem; font-weight: 800; }
+.feedback-inline p { font-size: .8125rem; }
+.feedback-emoji-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(44px, 1fr));
+  gap: 6px;
+  margin-top: 3px;
+}
+.feedback-emoji-options button {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 2px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: #fffaf2;
+  font: 1.4rem/1 system-ui;
+  cursor: pointer;
+  transition: transform .12s ease, background-color .12s ease;
+}
+.feedback-emoji-options button[aria-pressed='true'] { border-color: #29221e; background: #ffdf93; }
+.feedback-emoji-options button:active { transform: scale(.95); }
+.home-dashboard .feedback-emoji-options button:focus-visible { outline-color: var(--on-primary); }
+.feedback-thanks { margin: 0; padding: 8px; color: var(--ink); font-size: .875rem; }
 .feedback-cta .home-icon {
   background: transparent;
   border: 1px solid currentColor;
@@ -2797,6 +3119,11 @@ watch(
 .home-slot-enter-active { transition: opacity .15s ease, transform .15s ease; }
 .home-slot-leave-active { transition: opacity .1s ease, transform .1s ease; pointer-events: none; }
 .home-slot-enter-from, .home-slot-leave-to { opacity: 0; transform: translateY(4px); }
+@media (prefers-reduced-motion: reduce) {
+  .mvp-receipt.is-new, .mvp-spinner, .home-shortcut.is-vote-next { animation: none; }
+  .mvp-collapse-leave-active, .feedback-emoji-options button { transition: none; }
+  .feedback-emoji-options button:active { transform: none; }
+}
 
 /* Sponsors (blocco ampliato) */
 .sponsors {

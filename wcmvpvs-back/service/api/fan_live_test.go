@@ -74,6 +74,13 @@ func TestFanLiveStatus(t *testing.T) {
 	if data["quiz"].(map[string]interface{})["available"] != true || db.resultsRead != 0 {
 		t.Fatalf("active quiz/results: %+v", data)
 	}
+	db.event.IsActive = false
+	db.event.StartDateTime = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	data = read()
+	if data["is_active"] != false || data["start_datetime"] != db.event.StartDateTime {
+		t.Fatalf("scheduled match: %+v", data)
+	}
+	db.event.IsActive = true
 	db.quiz.ActiveFrom = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	data = read()
 	if data["quiz"].(map[string]interface{})["available"] != false || data["quiz"].(map[string]interface{})["starts_at"] == "" {

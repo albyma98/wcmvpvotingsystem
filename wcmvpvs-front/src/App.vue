@@ -66,6 +66,8 @@
         :voted-player-number="newUiSelectedPlayerNumber"
         :registration-prompt-signal="newUiRegistrationPromptSignal"
         :active-event="activeEvent"
+        :active-event-error="activeEventError"
+        @retry-active-event="fetchActiveEvent"
         @loading-change="isFanHomeLoading = $event"
         @brand-change="fanHomeBrand = $event"
         @feature-select="handleNewUiFeatureSelect"
@@ -180,6 +182,7 @@ const fanMerchRoute = computed(() => readFanMerchRoute(currentPath.value));
 const domainClub = inject('clubDomain', null);
 const domainRoute = computed(() => clubDomainRoute(domainClub, currentPath.value));
 const activeEvent = ref(null);
+const activeEventError = ref(false);
 const isFetchingActiveEvent = ref(false);
 const hasCheckedActiveEvent = ref(false);
 const isFanHomeLoading = ref(true);
@@ -545,6 +548,7 @@ async function fetchActiveEvent() {
   }
 
   isFetchingActiveEvent.value = true;
+  activeEventError.value = false;
   hasCheckedActiveEvent.value = false;
   try {
     const { data } = await apiClient.get('/active-event');
@@ -563,6 +567,7 @@ async function fetchActiveEvent() {
     } else {
       console.error('Impossibile recuperare l\'evento attivo', error);
       activeEvent.value = null;
+      activeEventError.value = true;
     }
   } finally {
     isFetchingActiveEvent.value = false;

@@ -10,6 +10,7 @@ import * as assets from '../fanHomeAssets.js';
 import * as gameArtwork from '../fanGameArtwork.js';
 import * as registration from '../fanRegistration.js';
 import * as fanAnalytics from '../fanAnalytics.js';
+import * as inlineFeedback from '../inlineFeedback.js';
 import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
@@ -31,6 +32,7 @@ const homeRender = new Function(...Object.keys(homeHelpers), homeRenderCode)(...
 function renderHome({ state, props }) {
   const app = Vue.createSSRApp({ setup: () => ({ ...Vue.proxyRefs(state), ...props }), ssrRender: homeRender });
   app.component('FanMerchLink', { render: () => null });
+  app.component('MvpPlayerCarousel', { render: () => Vue.h('div', { 'data-test': 'mvp-carousel' }) });
   return VueSSR.renderToString(app);
 }
 
@@ -365,10 +367,11 @@ function fixture(overrides = {}, options = {}) {
       }, start() {}, observeSponsor() {}, observeVisibility(element, name, metadata) { reportObservations.push({ element, name, metadata }); }, stop() {} };
     }, createReportSignalSender: () => async () => {}, reportSource: () => 'unknown' },
     '../fanRegistration': registration,
-    '../fanAnalytics': fanAnalytics,
+    '../fanAnalytics': fanAnalytics, '../inlineFeedback': inlineFeedback,
     '../lib/posthog': { stopPostHogForNewExperience() {} },
     '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
+    '../components/MvpPlayerCarousel.vue': {},
     '../components/FanMvpRoster.vue': {},
     '../components/FanMvpCelebration.vue': {},
     '../components/FanCollectionPanel.vue': {},
@@ -854,6 +857,82 @@ test('failed vote shows an error and grants nothing', async (t) => {
   assert.equal(state.progress.value.earned, 0);
   assert.equal(saves.length, 0);
   assert.notEqual(state.activeSheet.value, 'vote-result');
+});
+
+test('inline MVP confirms explicitly, keeps retryable selection and shows only confirmed coins', async (t) => {
+  const result = deferred();
+  const reward = deferred();
+  const requests = [];
+  const setup = fixture({
+    vote: async (request) => {
+      requests.push(request);
+      return requests.length === 1 ? { ok: false, message: 'Riprova tra poco' } : result.promise;
+    },
+    claimFanJourneyReward: () => reward.promise,
+  });
+  const { state, scope } = setup;
+  t.after(() => scope.stop());
+  state.rawPlayers.value = [{ id: 7, first_name: 'Mario', last_name: 'Rossi', jersey_number: 7, role: 'Palleggiatore' }];
+  assert.match(await renderHome(setup), /data-test="mvp-carousel"/);
+  assert.equal(state.canConfirmHomeVote.value, false);
+  state.selectHomeMvp(state.homeMvpPlayers.value[0]);
+  assert.equal(requests.length, 0);
+  assert.equal(state.homeVoteActionLabel.value, 'Conferma voto per Mario Rossi');
+  await state.confirmHomeVote();
+  assert.equal(state.voteError.value, 'Riprova tra poco');
+  assert.equal(state.canConfirmHomeVote.value, true);
+  assert.equal(state.homeVoteReward.value, 0);
+
+  const voting = state.confirmHomeVote();
+  state.confirmHomeVote();
+  assert.equal(requests.length, 2);
+  assert.equal(state.homeVoteActionLabel.value, 'Invio del voto…');
+  result.resolve({ ok: true });
+  await flush();
+  const html = await renderHome(setup);
+  assert.match(html, /Hai votato il tuo MVP!.*Mario Rossi/s);
+  assert.match(html, /is-vote-next/);
+  assert.doesNotMatch(html, /data-test="mvp-carousel"/);
+  assert.equal(state.activeSheet.value, '');
+  assert.equal(state.homeVoteReward.value, 0);
+  reward.resolve({ ok: true, data: { wallet: 10, reward_amount: 10, coins_earned: 10 } });
+  await voting;
+  assert.equal(state.homeVoteReward.value, 10);
+  assert.equal(state.totalCoins.value, 10);
+});
+
+test('a saved MVP opens in compact mode, can be edited explicitly and stays compact when voting closes', async (t) => {
+  const setup = fixture({ fetchVoteStatus: async () => ({ ok: true, hasVoted: true, playerId: 7 }) });
+  const { state, props, scope } = setup;
+  t.after(() => scope.stop());
+  state.rawPlayers.value = [{ id: 7, last_name: 'Rossi' }, { id: 8, last_name: 'Bianchi' }];
+  await state.loadVoteStatus();
+  assert.match(await renderHome(setup), /Hai votato il tuo MVP!.*Rossi/s);
+  state.editHomeVote();
+  assert.match(await renderHome(setup), /data-test="mvp-carousel"/);
+  state.selectHomeMvp(state.homeMvpPlayers.value[0]);
+  assert.equal(state.canConfirmHomeVote.value, false);
+  state.selectHomeMvp(state.homeMvpPlayers.value[1]);
+  assert.equal(state.canConfirmHomeVote.value, true);
+  props.activeEvent = { is_active: true, votes_closed: true };
+  await Vue.nextTick();
+  assert.equal(state.canConfirmHomeVote.value, false);
+  assert.match(await renderHome(setup), /Hai votato il tuo MVP!.*Rossi.*Riepilogo/s);
+});
+
+test('home voting differentiates empty roster, network errors, scheduled and unavailable matches', async (t) => {
+  const setup = fixture({ fetchVoteStatus: async () => ({ ok: false }) });
+  const { state, props, scope } = setup;
+  t.after(() => scope.stop());
+  assert.match(await renderHome(setup), /Nessun giocatore disponibile/);
+  await state.loadVoteStatus();
+  assert.match(await renderHome(setup), /Impossibile verificare il tuo voto/);
+  props.activeEvent = { is_active: false, start_datetime: '2099-12-31T18:00:00Z' };
+  assert.match(await renderHome(setup), /Partita programmata/);
+  props.activeEvent = { is_active: false };
+  assert.match(await renderHome(setup), /Votazioni non aperte/);
+  props.eventId = 0;
+  assert.match(await renderHome(setup), /Nessuna partita/);
 });
 
 test('a selected MVP stays pending until the vote is confirmed and blocks double taps', async (t) => {
@@ -1773,6 +1852,40 @@ test('feedback takes the featured slot until sent, then opens a game allowed for
     await Vue.nextTick();
     assert.match(await renderHome(setup), /class="feedback-cta"/, 'a new match asks for its own feedback');
   }
+});
+
+test('the inline feedback uses the configured title, accessible labels and four stored values', async (t) => {
+  const question = {
+    id: 'experience',
+    title: 'Come hai vissuto il voto?',
+    answers: [
+      { value: 'hard', label: 'Difficile', icon: '😣' },
+      { value: 'very_easy', label: 'Facilissima', icon: '🤩' },
+      { value: 'easy', label: 'Abbastanza semplice', icon: '🙂' },
+      { value: 'complex', label: 'Un po’ macchinosa', icon: '😐' },
+    ],
+  };
+  const setup = fixture({}, { props: { activeEvent: { is_active: true, feedback_survey: { questions: [question] } } } });
+  const { state, props, scope } = setup;
+  t.after(() => scope.stop());
+  let html = await renderHome(setup);
+  assert.match(html, /Come hai vissuto il voto\?/);
+  assert.match(html, /🤩.*😊.*😐.*☹️/s);
+  assert.match(html, /aria-label="Abbastanza semplice"/);
+  assert.doesNotMatch(html, />Abbastanza semplice</);
+  for (const value of ['very_easy', 'easy', 'complex', 'hard']) {
+    state.answerFeedbackInline(value);
+    assert.equal(state.isFeedbackModalOpen.value, true);
+    assert.equal(state.feedbackModalAnswer.value, value);
+    assert.equal(state.inlineFeedbackAnswer.value, value);
+    assert.equal(state.hasSubmittedFeedback.value, false);
+    state.onFeedbackModalChange(false);
+  }
+  props.activeEvent.feedback_survey.questions[0].answers[0].label = 'Configurazione diversa';
+  html = await renderHome(setup);
+  assert.match(html, /Lascia un feedback/);
+  assert.match(html, /Come hai vissuto il voto\?/);
+  assert.doesNotMatch(html, /feedback-emoji-options/);
 });
 
 test('an absent or disabled feedback survey leaves the allowed challenge in the featured slot', async t => {

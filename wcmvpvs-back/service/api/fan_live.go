@@ -64,6 +64,7 @@ func (rt *_router) getFanLiveStatus(w http.ResponseWriter, r *http.Request, ctx 
 	w.Header().Set("Cache-Control", "no-store")
 	_ = writeJSON(w, http.StatusOK, map[string]interface{}{
 		"event_id": event.ID, "is_active": event.IsActive, "votes_closed": event.VotesClosed,
+		"start_datetime": event.StartDateTime,
 		"is_concluded": event.IsConcluded, "team2_name": event.Team2Name, "quiz": quiz, "mvp": winners,
 		"show_feedback_survey": event.ShowFeedbackSurvey, "feedback_survey": event.FeedbackSurvey,
 		"available_minigames": games,

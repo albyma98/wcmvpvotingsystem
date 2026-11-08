@@ -11,7 +11,7 @@ const script = compileScript(descriptor, { id: 'feedback-flow-test' }).content
   .replace(/^import .* from '\.\.\/api';?\r?\n/gm, '')
   .replace('export default', 'return');
 const createComponent = new Function('Vue', 'submitEventFeedback', 'setTimeout',
-  `const { computed, reactive, ref, watch } = Vue;\n${script}`);
+  `const { computed, nextTick, reactive, ref, watch } = Vue;\n${script}`);
 
 const choices = { experience: 'very_easy', team_spirit: 'high', perks_interest: 'yes', mini_games_interest: 'super_excited' };
 const survey = {
@@ -79,6 +79,35 @@ test('failed save keeps the modal open and retains answers', async (t) => {
   assert.equal(state.isSubmitting.value, false);
   assert.equal(events.filter(([name]) => name !== 'telemetry').length, 0);
   assert.equal(timers.length, 0);
+});
+
+test('an inline answer seeds the sheet and can be corrected before submitting the full survey', async (t) => {
+  const configuredSurvey = {
+    ...survey,
+    questions: [
+      { ...survey.questions[0], answers: [...survey.questions[0].answers, { value: 'hard', label: 'Difficile' }] },
+      ...survey.questions.slice(1),
+    ],
+  };
+  const { state, props, requests, events, scope } = fixture({ ok: true }, {
+    modelValue: false, initialAnswer: 'very_easy', feedbackSurvey: configuredSurvey,
+  });
+  t.after(() => scope.stop());
+  props.modelValue = true;
+  await Vue.nextTick();
+  assert.equal(state.activeQuestion.value.answerKey, 'team_spirit');
+  assert.equal(state.answers.experience, 'very_easy');
+  assert.equal(requests.length, 0);
+  state.goBack();
+  state.onSelectOption('hard');
+  for (const value of Object.values(choices).slice(1)) state.onSelectOption(value);
+  state.onContinue();
+  state.skipOptional();
+  await new Promise(setImmediate);
+  assert.deepEqual(requests[0], { eventId: 42, payload: { ...choices, experience: 'hard', suggestion: '' } });
+  assert.deepEqual(events.findLast(([name]) => name === 'initial-answer-changed'), ['initial-answer-changed', 'hard']);
+  state.skipOptional();
+  assert.equal(requests.length, 1);
 });
 
 test('the final open question can be skipped without losing the other answers', async (t) => {
