@@ -10,9 +10,14 @@ function isNewFanExperience() {
   return typeof window !== 'undefined' && /^\/(?:[^/]+\/)?new(?:\/|$)/.test(window.location.pathname);
 }
 
+function isUntrackedPage() {
+  return isNewFanExperience() ||
+    (typeof window !== 'undefined' && /^\/admin\/master\/crm(?:\/|$)/.test(window.location.pathname));
+}
+
 export function initPostHog() {
-  if (isNewFanExperience()) {
-    stopPostHogForNewExperience();
+  if (isUntrackedPage()) {
+    stopPostHogOnUntrackedPage();
     return null;
   }
   if (initialized || initFailed) {
@@ -35,8 +40,8 @@ export function initPostHog() {
       capture_pageview: false,
       capture_pageleave: false,
       disable_session_recording: false,
-      // A legacy instance can outlive a Vue route change into the fan experience.
-      before_send: (event) => isNewFanExperience() ? null : event,
+      // The SDK can outlive a Vue route change into an untracked area.
+      before_send: (event) => isUntrackedPage() ? null : event,
       // Identità persistente (no cookie): il person_id coincide col device_id
       // dell'app (localStorage, stabile tra sessioni). Abilita utenti unici reali
       // e retention/ritornati. Segmentazione torneo via surface/tournament_slug.
@@ -58,13 +63,17 @@ export function initPostHog() {
 }
 
 export function getPostHog() {
-  return initialized && !isNewFanExperience() ? posthog : null;
+  return initialized && !isUntrackedPage() ? posthog : null;
 }
 
 export function isPostHogReady() {
-  return initialized && !isNewFanExperience();
+  return initialized && !isUntrackedPage();
 }
 
 export function stopPostHogForNewExperience() {
-  if (initialized && isNewFanExperience()) posthog.stopSessionRecording?.();
+  stopPostHogOnUntrackedPage();
+}
+
+export function stopPostHogOnUntrackedPage() {
+  if (initialized && isUntrackedPage()) posthog.stopSessionRecording?.();
 }

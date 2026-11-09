@@ -41,6 +41,7 @@
 
     <section v-else class="master-shell">
       <nav class="master-nav">
+        <a class="nav-btn" href="/admin/master/crm">CRM</a>
         <button
           v-for="tab in tabs"
           :key="tab.id"

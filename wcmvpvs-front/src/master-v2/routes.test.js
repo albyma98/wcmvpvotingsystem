@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isMasterWorkspacePath, masterBase, masterSectionPath, masterSections, readMasterRoute } from './routes.js';
+import { crmBase, isMasterWorkspacePath, masterBase, masterSectionPath, masterSections, readMasterRoute } from './routes.js';
 
 test('the new namespace does not claim the legacy Master or fan URLs', () => {
   for (const path of ['/admin/master', '/admin/master/newer', '/sport/new', '/sport/admin/v2']) {
@@ -10,6 +10,18 @@ test('the new namespace does not claim the legacy Master or fan URLs', () => {
   assert.equal(readMasterRoute(masterBase + '/').section, 'overview');
   for (const section of masterSections) {
     assert.equal(readMasterRoute(masterSectionPath(section.id)).section, section.id);
+  }
+});
+
+test('CRM opens the work queue and resolves direct company and opportunity links', () => {
+  assert.equal(readMasterRoute(crmBase).tab, 'oggi');
+  assert.equal(readMasterRoute(crmBase + '/pipeline').section, 'crm');
+  assert.equal(readMasterRoute(crmBase + '/14/andamento').id, 14);
+  const opportunity = readMasterRoute(crmBase + '/14/opportunita/28');
+  assert.equal(opportunity.id, 14);
+  assert.equal(opportunity.opportunityId, 28);
+  for (const tail of ['x', '/0', '/14/piloti/28', '/14/opportunita/9007199254740993']) {
+    assert.equal(readMasterRoute(crmBase + tail), null);
   }
 });
 

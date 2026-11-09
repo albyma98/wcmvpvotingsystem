@@ -13,6 +13,7 @@ const emit = defineEmits(['navigate']);
 const PortalsView = defineAsyncComponent(() => import('./portals/PortalsView.vue'));
 const screens = {
   analytics: defineAsyncComponent(() => import('./operations/AnalyticsView.vue')),
+  crm: defineAsyncComponent(() => import('./crm/CrmView.vue')),
   organizations: defineAsyncComponent(() => import('./organizations/OrganizationsView.vue')),
   clubs: PortalsView,
   tournaments: PortalsView,

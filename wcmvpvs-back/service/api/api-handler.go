@@ -10,6 +10,7 @@ import (
 func (rt *_router) Handler() chi.Router {
 	// Register routes
 	registerEngagementReportRoutes(rt)
+	registerCRMRoutes(rt)
 	rt.router.Get("/", rt.getHelloWorld)
 	rt.router.Get("/context", rt.wrap(rt.getContextReply))
 	rt.router.Get("/t", rt.ticketValidationPage)

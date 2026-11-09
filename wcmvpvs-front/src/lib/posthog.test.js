@@ -30,7 +30,7 @@ function fixture({ pathname = '/club/new', stored = new Map(), apiKey = 'test-pr
   const source = readFileSync(new URL('./posthog.js', import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '')
     .replaceAll('import.meta.env', JSON.stringify({ VITE_POSTHOG_KEY: apiKey, MODE: 'test' }));
-  const api = new Function('posthog', 'getOrCreateDeviceId', 'window', `${source}\nreturn { initPostHog, getPostHog, isPostHogReady, stopPostHogForNewExperience };`)(
+  const api = new Function('posthog', 'getOrCreateDeviceId', 'window', `${source}\nreturn { initPostHog, getPostHog, isPostHogReady, stopPostHogForNewExperience, stopPostHogOnUntrackedPage };`)(
     posthog, () => { applicationDeviceReads++; return 'application-device'; }, window,
   );
   return { api, window, stored, requests, initializations, posthog, applicationDeviceReads: () => applicationDeviceReads, storageAccesses: () => storageAccesses, recordingStops: () => recordingStops };
@@ -101,6 +101,23 @@ test('legacy pages retain their original SDK configuration and application ident
   assert.equal(f.initializations[0].config.bootstrap.distinctID, 'application-device');
   assert.equal(f.applicationDeviceReads(), 1);
   assert.equal(f.api.isPostHogReady(), true);
+});
+
+test('CRM skips tracking on direct entry and stops replay when entered from the master workspace', () => {
+  for (const pathname of ['/admin/master/crm', '/admin/master/crm/14/opportunita/28']) {
+    const direct = fixture({ pathname });
+    assert.equal(direct.api.initPostHog(), null);
+    assert.equal(direct.initializations.length, 0);
+
+    const navigation = fixture({ pathname: '/admin/master/new' });
+    navigation.api.initPostHog();
+    navigation.window.location.pathname = pathname;
+    navigation.api.stopPostHogOnUntrackedPage();
+    navigation.posthog.capture('$snapshot');
+    assert.equal(navigation.recordingStops(), 1);
+    assert.equal(navigation.requests.length, 0);
+    assert.equal(navigation.api.getPostHog(), null);
+  }
 });
 
 test('a missing project token keeps PostHog disabled', () => {
