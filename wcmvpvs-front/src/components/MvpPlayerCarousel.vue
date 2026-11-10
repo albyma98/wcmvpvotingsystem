@@ -306,6 +306,7 @@ onBeforeUnmount(() => {
 .mvp-carousel__player.has-confirm :deep(.mvp-player-caption) { padding: 8%; }
 .mvp-carousel__player :deep(.mvp-player-caption strong) { color: var(--ink); font-size: .75rem; }
 .mvp-carousel__player :deep(.mvp-player-role) { color: var(--ink); font-size: .6875rem; }
+.mvp-carousel__player.has-confirm :deep(.mvp-player-role) { display: none; }
 .mvp-carousel__player :deep(.mvp-player-selected) { font-size: .625rem; }
 .mvp-carousel__hint {
   color: var(--ink);
