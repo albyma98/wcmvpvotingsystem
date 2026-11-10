@@ -5,8 +5,8 @@
       class="mvp-carousel__track"
       @scroll.passive="updateFocus"
       @scrollend="settleScroll"
-      @pointerdown="targetSlot = null"
-      @wheel.passive="targetSlot = null"
+      @pointerdown="startBrowsing"
+      @wheel.passive="startBrowsing"
       @keydown.left.prevent="move(-1)"
       @keydown.right.prevent="move(1)"
     >
@@ -14,7 +14,7 @@
         <button
           type="button"
           class="mvp-carousel__player"
-          :class="{ 'is-focused': focusedIndex === index }"
+          :class="{ 'is-focused': focusedIndex === index && selectedPlayerId === player.id }"
           :aria-hidden="cycle !== 0 || undefined"
           :tabindex="cycle !== 0 ? -1 : undefined"
           :aria-label="playerLabel(player)"
@@ -71,6 +71,7 @@ let scrollFrame = 0;
 let scrollTimer;
 let targetSlot = null;
 let movingFocus = false;
+let hasBrowsed = false;
 
 function playerLabel(player) {
   const number = player.number !== '' && player.number != null ? `maglia ${player.number}` : '';
@@ -101,6 +102,17 @@ function nearestSlot() {
   return Math.max(0, Math.min(index, count - 1));
 }
 
+function startBrowsing() {
+  targetSlot = null;
+  hasBrowsed = true;
+}
+
+function updateCenteredPlayer(slot) {
+  if (!slot || focusedIndex.value === slot.index) return;
+  focusedIndex.value = slot.index;
+  if (hasBrowsed && !props.disabled && props.selectedPlayerId !== slot.player.id) emit('select', slot.player);
+}
+
 function updateFocus() {
   if (!track.value) return;
   if (!('onscrollend' in track.value)) {
@@ -110,7 +122,7 @@ function updateFocus() {
   if (scrollFrame) return;
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0;
-    focusedIndex.value = slots.value[nearestSlot()]?.index ?? 0;
+    updateCenteredPlayer(slots.value[nearestSlot()]);
   });
 }
 
@@ -118,12 +130,13 @@ function settleScroll() {
   targetSlot = null;
   const slot = slots.value[nearestSlot()];
   if (!slot) return;
-  focusedIndex.value = slot.index;
+  updateCenteredPlayer(slot);
   if (slot.cycle !== 0) centerSlot(loopPadding.value + slot.index, false);
 }
 
 function move(direction) {
   if (!loopPadding.value) return;
+  hasBrowsed = true;
   const element = track.value;
   const current = targetSlot ?? nearestSlot();
   let next = current + direction;
@@ -142,11 +155,12 @@ function move(direction) {
 }
 
 function centerOnKeyboardFocus(event, slot) {
-  if (!movingFocus && event.currentTarget.matches(':focus-visible')) centerSlot(slot);
+  if (!movingFocus && event.currentTarget.matches(':focus-visible')) select(slots.value[slot].player, slot);
 }
 
 function select(player, slot) {
   if (props.disabled) return;
+  hasBrowsed = true;
   emit('select', player);
   centerSlot(slots.value[targetSlot]?.player === player ? targetSlot : slot);
 }

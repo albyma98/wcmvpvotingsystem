@@ -54,7 +54,7 @@
                   </template>
                   <p v-else-if="!players.length">Nessun giocatore disponibile.</p>
                   <template v-else>
-                    <p>Scorri i giocatori e scegli il migliore in campo.</p>
+                    <p>{{ homeMvpPlayers.length > 1 ? 'Scorri le card e conferma il giocatore al centro.' : 'Seleziona la card per scegliere il tuo MVP.' }}</p>
                     <MvpPlayerCarousel
                       :key="walletScope()"
                       :players="homeMvpPlayers"
