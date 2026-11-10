@@ -26,7 +26,7 @@ const props = defineProps({
   destination: { type: Object, required: true },
 });
 const emit = defineEmits(['finished']);
-const revealDuration = 6360;
+const revealDuration = 5360;
 const card = ref(null);
 const isLanding = ref(false);
 let animation;
