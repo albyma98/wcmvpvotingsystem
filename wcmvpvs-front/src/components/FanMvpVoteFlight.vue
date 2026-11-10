@@ -1,5 +1,5 @@
 <template>
-  <div class="mvp-vote-flight" :class="{ 'is-landing': isLanding }" aria-hidden="true">
+  <div class="mvp-vote-flight" :class="{ 'is-landing': isLanding }" :style="{ '--reveal-duration': `${revealDuration}ms` }" aria-hidden="true">
     <div class="mvp-vote-flight__backdrop"></div>
     <div class="mvp-vote-flight__stage">
       <div ref="card" class="mvp-vote-flight__card">
@@ -9,6 +9,7 @@
       <p class="mvp-vote-flight__message">
         <span>Hai votato</span>
         <strong>{{ player.fullName }}</strong>
+        <span class="mvp-vote-flight__progress"></span>
       </p>
     </div>
   </div>
@@ -25,6 +26,7 @@ const props = defineProps({
   destination: { type: Object, required: true },
 });
 const emit = defineEmits(['finished']);
+const revealDuration = 6360;
 const card = ref(null);
 const isLanding = ref(false);
 let animation;
@@ -61,10 +63,10 @@ onMounted(async () => {
         opacity: source ? 1 : 0,
         easing: 'cubic-bezier(.26,.63,.35,1)',
       },
-      { transform: position(0, 0, 1.045, 1.045, 360), opacity: 1, offset: .54, easing: 'ease-out' },
-      { transform: position(0, 0, 1, 1, 360), opacity: 1, offset: .67 },
+      { transform: position(0, 0, 1.045, 1.045, 360), opacity: 1, offset: 720 / revealDuration, easing: 'ease-out' },
+      { transform: position(0, 0, 1, 1, 360), opacity: 1, offset: 900 / revealDuration },
       { transform: position(0, 0, 1, 1, 360), opacity: 1 },
-    ], { duration: 4900, fill: 'both' });
+    ], { duration: revealDuration, fill: 'both' });
     await animation.finished;
     if (disposed || !props.destination.isConnected) return;
     animation.cancel();
@@ -79,7 +81,7 @@ onMounted(async () => {
       { transform: position() },
       { transform: position(x * .29 - 20, y * .25 - 18, .81, .81, 0, -9), offset: .36 },
       { transform: position(x, y, scaleX, scaleY) },
-    ], { duration: 2100, easing: 'cubic-bezier(.45,.14,.28,1)', fill: 'both' });
+    ], { duration: 640, easing: 'cubic-bezier(.45,.14,.28,1)', fill: 'both' });
     await animation.finished;
   } catch {
     // A cancelled or unavailable animation leaves the confirmed receipt accessible.
@@ -109,7 +111,7 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   background: radial-gradient(ellipse at center, var(--red-deep) -44%, #241526 52%, #100a15 100%);
-  transition: opacity 1.2s ease;
+  transition: opacity .36s ease;
 }
 .mvp-vote-flight__backdrop::after {
   position: absolute;
@@ -152,10 +154,10 @@ onBeforeUnmount(() => {
   color: #fff8ef;
   text-align: center;
   overflow-wrap: anywhere;
-  transition: opacity .8s ease;
+  transition: opacity .24s ease;
 }
-.mvp-vote-flight__message > * { display: block; animation: mvp-vote-message .9s ease-out 1.5s both; }
-.mvp-vote-flight__message span {
+.mvp-vote-flight__message > * { display: block; animation: mvp-vote-message .26s ease-out .16s both; }
+.mvp-vote-flight__message span:first-child {
   color: #ffdb89;
   font-size: .75rem;
   font-weight: 800;
@@ -163,7 +165,24 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 .mvp-vote-flight__message strong { font-size: clamp(1.25rem, 6vw, 2.25rem); line-height: 1.08; }
+.mvp-vote-flight__progress {
+  width: 64px;
+  height: 2px;
+  margin: 10px auto 0;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #ffdb8940;
+}
+.mvp-vote-flight__progress::after {
+  display: block;
+  height: 100%;
+  background: #ffdb89;
+  transform-origin: left;
+  animation: mvp-vote-progress var(--reveal-duration) linear both;
+  content: '';
+}
 .is-landing .mvp-vote-flight__backdrop,
 .is-landing .mvp-vote-flight__message { opacity: 0; }
 @keyframes mvp-vote-message { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes mvp-vote-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 </style>
