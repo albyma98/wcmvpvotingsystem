@@ -43,6 +43,7 @@ function renderHome({ state, props }) {
   const app = Vue.createSSRApp({ setup: () => ({ ...Vue.proxyRefs(state), ...props }), ssrRender: homeRender });
   app.component('FanMerchLink', { render: () => null });
   app.component('MvpPlayerCarousel', { render: () => Vue.h('div', { 'data-test': 'mvp-carousel' }) });
+  app.component('FanPlayerCard', { render: () => Vue.h('span', { 'data-test': 'player-card' }) });
   return VueSSR.renderToString(app);
 }
 
@@ -383,6 +384,7 @@ function fixture(overrides = {}, options = {}) {
     '../components/MvpPlayerCarousel.vue': {},
     '../components/FanMvpRoster.vue': {},
     '../components/FanMvpCelebration.vue': {},
+    '../components/FanMvpVoteFlight.vue': {},
     '../components/FanCollectionPanel.vue': {},
     '../components/FanAvatar.vue': {},
     '../components/FanMatchCard.vue': {},
@@ -882,6 +884,9 @@ test('inline MVP confirms explicitly, keeps retryable selection and shows only c
   const { state, scope } = setup;
   t.after(() => scope.stop());
   state.rawPlayers.value = [{ id: 7, first_name: 'Mario', last_name: 'Rossi', jersey_number: 7, role: 'Palleggiatore' }];
+  const source = { left: 90, top: 160, width: 125, height: 170 };
+  state.isHomeLoading.value = false;
+  state.homeMvpCarousel.value = { getPlayerCardRect(id) { assert.equal(id, 7); return source; } };
   assert.match(await renderHome(setup), /data-test="mvp-carousel"/);
   assert.equal(state.canConfirmHomeVote.value, false);
   state.selectHomeMvp(state.homeMvpPlayers.value[0]);
@@ -889,6 +894,7 @@ test('inline MVP confirms explicitly, keeps retryable selection and shows only c
   assert.equal(state.homeVoteActionLabel.value, 'Conferma voto per Mario Rossi');
   await state.confirmHomeVote();
   assert.equal(state.voteError.value, 'Riprova tra poco');
+  assert.equal(state.homeVoteFlight.value, null);
   assert.equal(state.canConfirmHomeVote.value, true);
   assert.equal(state.homeVoteReward.value, 0);
 
@@ -896,14 +902,23 @@ test('inline MVP confirms explicitly, keeps retryable selection and shows only c
   state.confirmHomeVote();
   assert.equal(requests.length, 2);
   assert.equal(state.homeVoteActionLabel.value, 'Invio del voto…');
+  assert.equal(state.homeVoteFlight.value, null);
   result.resolve({ ok: true });
   await flush();
   const html = await renderHome(setup);
   assert.match(html, /Hai votato il tuo MVP!.*Mario Rossi/s);
   assert.match(html, /is-vote-next/);
+  assert.match(html, /class="[^"]*is-in-flight[^"]*"[^>]*><span data-test="player-card"/);
+  assert.deepEqual(state.homeVoteFlight.value.source, source);
   assert.doesNotMatch(html, /data-test="mvp-carousel"/);
   assert.equal(state.activeSheet.value, '');
   assert.equal(state.homeVoteReward.value, 0);
+  let focused = false;
+  state.homeMvpTitle.value = { focus() { focused = true; } };
+  state.finishHomeVoteFlight();
+  await Vue.nextTick();
+  assert.equal(focused, true);
+  assert.equal(state.homeVoteFlight.value, null);
   reward.resolve({ ok: true, data: { wallet: 10, reward_amount: 10, coins_earned: 10 } });
   await voting;
   assert.equal(state.homeVoteReward.value, 10);
@@ -1047,6 +1062,13 @@ test('reduced motion keeps the confirmation immediate without animated coins or 
   assert.equal(state.isVoteRevealRunning.value, false);
   assert.equal(state.walletPulse.value, false);
   assert.equal(window.timers.size, 0);
+
+  state.closeSheets();
+  state.isHomeLoading.value = false;
+  await state.castVote({ ...player, id: 8 }, { inline: true });
+  assert.equal(state.votedPlayerId.value, 8);
+  assert.equal(state.showHomeVoteReceipt.value, true);
+  assert.equal(state.homeVoteFlight.value, null);
 });
 
 test('an old club vote cannot reveal a card or clear a newer pending selection', async (t) => {

@@ -102,6 +102,18 @@ function nearestSlot() {
   return Math.max(0, Math.min(index, count - 1));
 }
 
+function getPlayerCardRect(playerId) {
+  const slot = slots.value[targetSlot]?.player.id === playerId ? targetSlot : nearestSlot();
+  if (slots.value[slot]?.player.id !== playerId) return null;
+  const element = track.value;
+  const rect = element?.children[slot]?.querySelector('.fan-player-card')?.getBoundingClientRect();
+  if (!rect?.width || !rect.height || rect.bottom <= 0 || rect.top >= window.innerHeight) return null;
+  const viewport = element.getBoundingClientRect();
+  return rect.right > viewport.left && rect.left < viewport.right ? rect : null;
+}
+
+defineExpose({ getPlayerCardRect });
+
 function startBrowsing() {
   targetSlot = null;
   hasBrowsed = true;

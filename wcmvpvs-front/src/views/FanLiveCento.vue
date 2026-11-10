@@ -1,6 +1,6 @@
 <template>
   <div class="cento-root" :style="themeStyle">
-    <div class="phone" :inert="isHomeLoading" :aria-hidden="isHomeLoading || undefined" :aria-busy="isHomeLoading">
+    <div class="phone" :inert="isHomeLoading || Boolean(homeVoteFlight)" :aria-hidden="isHomeLoading || Boolean(homeVoteFlight) || undefined" :aria-busy="isHomeLoading">
       <div class="home-scroll">
         <header class="topbar">
           <div class="club">
@@ -30,11 +30,13 @@
         <main class="home-dashboard">
           <section class="mvp-card" :class="{ 'is-confirmed': showHomeVoteReceipt }" aria-labelledby="home-mvp-title">
             <div v-if="showHomeVoteReceipt" class="mvp-receipt" :class="{ 'is-new': highlightPlay }">
-              <img v-if="displayVotedImage" class="mvp-thumbnail" :src="displayVotedImage" alt="" />
-              <span v-else class="mvp-thumbnail mvp-check" aria-hidden="true">✓</span>
+              <div ref="homeVoteLanding" class="mvp-thumbnail" :class="{ 'is-in-flight': homeVoteFlight }" aria-hidden="true">
+                <FanPlayerCard v-if="votedPlayerCard.fullName !== 'Il tuo MVP' || displayVotedImage" :player="votedPlayerCard" :club-logo-url="homeLogoUrl" loading="eager" />
+                <span v-else class="mvp-check">✓</span>
+              </div>
               <div class="mvp-receipt-copy">
-                <h1 id="home-mvp-title" ref="homeMvpTitle" tabindex="-1">Hai votato il tuo MVP!</h1>
-                <p v-if="votedPlayerCard.fullName !== 'Il tuo MVP'">{{ votedPlayerCard.fullName }}</p>
+                <h1 id="home-mvp-title" ref="homeMvpTitle" tabindex="-1" :aria-describedby="votedPlayerCard.fullName !== 'Il tuo MVP' ? 'home-mvp-player' : undefined">Hai votato il tuo MVP!</h1>
+                <p v-if="votedPlayerCard.fullName !== 'Il tuo MVP'" id="home-mvp-player">{{ votedPlayerCard.fullName }}</p>
                 <p v-if="homeVoteReward" class="mvp-receipt-reward" role="status">+{{ homeVoteReward }} monete <span class="coin" aria-hidden="true"></span></p>
               </div>
               <button v-if="showMatchSummary" class="mvp-secondary" type="button" @click="openHomeAction('match-summary')">Riepilogo</button>
@@ -57,6 +59,7 @@
                     <p>{{ homeMvpPlayers.length > 1 ? 'Scorri le card e conferma il giocatore al centro.' : 'Seleziona la card per scegliere il tuo MVP.' }}</p>
                     <MvpPlayerCarousel
                       :key="walletScope()"
+                      ref="homeMvpCarousel"
                       :players="homeMvpPlayers"
                       :initial-player-id="votedPlayerId"
                       :selected-player-id="homeMvpSelectedId"
@@ -645,6 +648,14 @@
 
     </div>
 
+    <FanMvpVoteFlight
+      v-if="homeVoteFlight && homeVoteLanding"
+      :player="votedPlayerCard"
+      :club-logo-url="homeLogoUrl"
+      :source="homeVoteFlight.source"
+      :destination="homeVoteLanding"
+      @finished="finishHomeVoteFlight"
+    />
     <div class="coin-flight-layer" aria-hidden="true"><span v-for="(flight, index) in coinFlights" :key="index" class="coin coin-flight" :style="flight"></span></div>
     <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" :trigger="registrationTrigger" :reward-label="registrationRewardLabel" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" @completed="completeRegistration" @dismissed="dismissRegistration" @telemetry="onFormTelemetry" />
     <FanMerchShop
@@ -672,6 +683,7 @@ import FanPlayerCard from '../components/FanPlayerCard.vue';
 import MvpPlayerCarousel from '../components/MvpPlayerCarousel.vue';
 import FanMvpRoster from '../components/FanMvpRoster.vue';
 import FanMvpCelebration from '../components/FanMvpCelebration.vue';
+import FanMvpVoteFlight from '../components/FanMvpVoteFlight.vue';
 import FanCollectionPanel from '../components/FanCollectionPanel.vue';
 import FanAvatar from '../components/FanAvatar.vue';
 import FanMatchCard from '../components/FanMatchCard.vue';
@@ -818,6 +830,9 @@ const liveStatusError = ref(false);
 let playersRequestRevision = 0;
 let voteStatusRequestRevision = 0;
 const homeMvpTitle = ref(null);
+const homeMvpCarousel = ref(null);
+const homeVoteLanding = ref(null);
+const homeVoteFlight = ref(null);
 const homeMvpSelectedId = ref(null);
 const missionMvpCandidate = ref(null);
 const mvpEditing = ref(false);
@@ -1089,6 +1104,7 @@ function clearEarnedCoinAnimation() {
 }
 function cancelVotePresentation() {
   window.clearTimeout(voteRevealTimer);
+  homeVoteFlight.value = null;
   isVoteRevealRunning.value = false;
   pendingVoteCoinAnimation = false;
   clearEarnedCoinAnimation();
@@ -1145,6 +1161,7 @@ const homeName = computed(() =>
 );
 const merchRequest = ref(null);
 function openMerchShop(trigger) {
+  sheetRevision += 1;
   merchRequest.value = { trigger };
 }
 watch(() => props.organizationSlug, () => { merchRequest.value = null; });
@@ -1372,6 +1389,17 @@ function selectHomeMvp(player) {
 }
 function confirmHomeVote() {
   if (canConfirmHomeVote.value) return castVote(homeMvpSelectedPlayer.value, { inline: true });
+}
+function finishHomeVoteFlight() {
+  homeVoteFlight.value = null;
+  const scope = walletScope();
+  const revision = sheetRevision;
+  nextTick(() => {
+    if (isDisposed || scope !== walletScope() || revision !== sheetRevision || activeSheet.value
+      || isHomeLoading.value || isRegistrationOpen.value || activeGameId.value) return;
+    homeVoteLanding.value?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    homeMvpTitle.value?.focus({ preventScroll: true });
+  });
 }
 function editHomeVote() {
   if (!hasVoted.value || !canVote.value || isVoting.value || shopBusy.value) return;
@@ -1894,7 +1922,11 @@ async function castVote(player, { inline = false } = {}) {
     if (inline) {
       highlightPlay.value = true;
       if (presentationRevision === sheetRevision && !activeSheet.value) {
-        nextTick(() => homeMvpTitle.value?.focus({ preventScroll: true }));
+        if (isHomeLoading.value || isRegistrationOpen.value || activeGameId.value || shopBusy.value || prefersReducedMotion()) {
+          finishHomeVoteFlight();
+        } else {
+          homeVoteFlight.value = { source: homeMvpCarousel.value?.getPlayerCardRect(player.id) ?? null };
+        }
       }
     } else if (presentationRevision === sheetRevision && (!activeSheet.value || activeSheet.value === 'mvp')) {
       startVotePresentation();
@@ -2728,17 +2760,20 @@ watch(
 .mvp-receipt-reward .coin { width: 13px; height: 13px; }
 .mvp-thumbnail {
   flex: none;
-  width: 42px;
-  height: 46px;
-  border: 1px solid #b58a3f;
-  border-radius: 8px;
-  object-fit: cover;
-  object-position: center top;
-  background: var(--red-soft);
+  width: 44px;
+  aspect-ratio: .66;
 }
+.mvp-thumbnail.is-in-flight { visibility: hidden; }
+.mvp-thumbnail :deep(.mvp-player-number) { padding: 1px; font-size: 10px; }
+.mvp-thumbnail :deep(.mvp-player-number small),
+.mvp-thumbnail :deep(.mvp-player-caption) { display: none; }
+.mvp-thumbnail :deep(.mvp-player-initials) { font-size: .75rem; }
 .mvp-check {
   display: grid;
+  height: 100%;
   place-items: center;
+  border: 1px solid #b58a3f;
+  border-radius: 8px;
   color: var(--red-text);
   background: var(--card);
   font-size: 1.25rem;
