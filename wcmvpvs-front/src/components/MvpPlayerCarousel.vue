@@ -4,19 +4,25 @@
       ref="track"
       class="mvp-carousel__track"
       @scroll.passive="updateFocus"
+      @scrollend="settleScroll"
+      @pointerdown="targetSlot = null"
+      @wheel.passive="targetSlot = null"
       @keydown.left.prevent="move(-1)"
       @keydown.right.prevent="move(1)"
     >
-      <div v-for="(player, index) in players" :key="player.id" class="mvp-carousel__slot">
+      <div v-for="({ player, index, cycle }, slot) in slots" :key="`${cycle}:${player.id}`" class="mvp-carousel__slot">
         <button
           type="button"
           class="mvp-carousel__player"
           :class="{ 'is-focused': focusedIndex === index }"
+          :aria-hidden="cycle !== 0 || undefined"
+          :tabindex="cycle !== 0 ? -1 : undefined"
           :aria-label="playerLabel(player)"
           :aria-pressed="selectedPlayerId === player.id"
           :disabled="disabled"
-          @focus="centerOnKeyboardFocus($event, index)"
-          @click="select(player, index)"
+          @mousedown="cycle !== 0 && $event.preventDefault()"
+          @focus="centerOnKeyboardFocus($event, slot)"
+          @click="select(player, slot)"
         >
           <FanPlayerCard
             :player="player"
@@ -29,15 +35,15 @@
       </div>
     </div>
     <div v-if="players.length > 1" class="mvp-carousel__controls">
-      <button type="button" aria-label="Giocatore precedente" :aria-disabled="focusedIndex === 0" @click="move(-1)">‹</button>
+      <button type="button" aria-label="Giocatore precedente" @click="move(-1)">‹</button>
       <span aria-label="Posizione nel carosello">{{ focusedIndex + 1 }} / {{ players.length }}</span>
-      <button type="button" aria-label="Giocatore successivo" :aria-disabled="focusedIndex === players.length - 1" @click="move(1)">›</button>
+      <button type="button" aria-label="Giocatore successivo" @click="move(1)">›</button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import FanPlayerCard from './FanPlayerCard.vue';
 
 const props = defineProps({
@@ -50,55 +56,113 @@ const props = defineProps({
 const emit = defineEmits(['select']);
 const track = ref(null);
 const focusedIndex = ref(Math.max(0, props.players.findIndex((player) => player.id === props.initialPlayerId)));
+// Extra cards on each side let native swipes cross the seam before we reset the position.
+const loopPadding = computed(() => props.players.length > 1 ? 6 : 0);
+const slots = computed(() => {
+  const count = props.players.length;
+  return Array.from({ length: count + 2 * loopPadding.value }, (_, slot) => {
+    const position = slot - loopPadding.value;
+    const cycle = Math.floor(position / count);
+    const index = position - cycle * count;
+    return { player: props.players[index], index, cycle };
+  });
+});
 let scrollFrame = 0;
+let scrollTimer;
+let targetSlot = null;
+let movingFocus = false;
 
 function playerLabel(player) {
   const number = player.number !== '' && player.number != null ? `maglia ${player.number}` : '';
   return [player.fullName || player.name, number, player.role].filter(Boolean).join(', ');
 }
 
-function centerPlayer(index, smooth = true) {
+function slotLeft(element, slot) {
+  return slot.offsetLeft + (slot.offsetWidth - element.clientWidth) / 2;
+}
+
+function centerSlot(index, smooth = true) {
   const element = track.value;
   const slot = element?.children[index];
   if (!slot) return;
-  const left = slot.offsetLeft + (slot.offsetWidth - element.clientWidth) / 2;
-  element.scrollTo({ left, behavior: smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto' });
+  const left = slotLeft(element, slot);
+  const animate = smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  targetSlot = animate && Math.abs(element.scrollLeft - left) > 1 ? index : null;
+  element.scrollTo({ left, behavior: animate ? 'smooth' : 'auto' });
+}
+
+function nearestSlot() {
+  const element = track.value;
+  const count = element?.children.length ?? 0;
+  if (count < 2) return 0;
+  const first = element.firstElementChild;
+  const step = (element.lastElementChild.offsetLeft - first.offsetLeft) / (count - 1);
+  const index = step > 0 ? Math.round((element.scrollLeft - slotLeft(element, first)) / step) : loopPadding.value;
+  return Math.max(0, Math.min(index, count - 1));
 }
 
 function updateFocus() {
+  if (!track.value) return;
+  if (!('onscrollend' in track.value)) {
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(settleScroll, 150);
+  }
   if (scrollFrame) return;
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0;
-    const element = track.value;
-    const first = element?.children[0];
-    const second = element?.children[1];
-    if (first && second) {
-      const step = second.offsetLeft - first.offsetLeft;
-      if (step > 0) focusedIndex.value = Math.min(props.players.length - 1, Math.max(0, Math.round(element.scrollLeft / step)));
-    }
+    focusedIndex.value = slots.value[nearestSlot()]?.index ?? 0;
   });
 }
 
+function settleScroll() {
+  targetSlot = null;
+  const slot = slots.value[nearestSlot()];
+  if (!slot) return;
+  focusedIndex.value = slot.index;
+  if (slot.cycle !== 0) centerSlot(loopPadding.value + slot.index, false);
+}
+
 function move(direction) {
-  const next = focusedIndex.value + direction;
-  if (next < 0 || next >= props.players.length) return;
-  centerPlayer(next);
-  const focused = track.value?.querySelector('button:focus');
-  if (focused && !props.disabled) track.value.children[next].firstElementChild.focus({ preventScroll: true });
+  if (!loopPadding.value) return;
+  const element = track.value;
+  const current = targetSlot ?? nearestSlot();
+  let next = current + direction;
+  if (next <= 0 || next >= slots.value.length - 1) {
+    const middle = loopPadding.value + slots.value[current].index;
+    centerSlot(middle, false);
+    next = middle + direction;
+  }
+  if (!props.disabled && element.contains(document.activeElement)) {
+    const middle = loopPadding.value + slots.value[next].index;
+    movingFocus = true;
+    element.children[middle].firstElementChild.focus({ preventScroll: true });
+    movingFocus = false;
+  }
+  centerSlot(next);
 }
 
-function centerOnKeyboardFocus(event, index) {
-  if (event.currentTarget.matches(':focus-visible')) centerPlayer(index);
+function centerOnKeyboardFocus(event, slot) {
+  if (!movingFocus && event.currentTarget.matches(':focus-visible')) centerSlot(slot);
 }
 
-function select(player, index) {
+function select(player, slot) {
   if (props.disabled) return;
   emit('select', player);
-  centerPlayer(index);
+  centerSlot(slots.value[targetSlot]?.player === player ? targetSlot : slot);
 }
 
-onMounted(() => centerPlayer(focusedIndex.value, false));
-onBeforeUnmount(() => cancelAnimationFrame(scrollFrame));
+watch(() => props.players.map((player) => player.id), (ids, previousIds) => {
+  if (ids.length === previousIds.length && ids.every((id, index) => id === previousIds[index])) return;
+  const previous = ids.indexOf(previousIds[focusedIndex.value]);
+  focusedIndex.value = previous >= 0 ? previous : Math.max(0, ids.indexOf(props.initialPlayerId));
+  centerSlot(loopPadding.value + focusedIndex.value, false);
+}, { flush: 'post' });
+
+onMounted(() => centerSlot(loopPadding.value + focusedIndex.value, false));
+onBeforeUnmount(() => {
+  cancelAnimationFrame(scrollFrame);
+  clearTimeout(scrollTimer);
+});
 </script>
 
 <style scoped>
@@ -110,6 +174,7 @@ onBeforeUnmount(() => cancelAnimationFrame(scrollFrame));
   gap: 10px;
   padding: 6px max(0px, calc((100% - var(--player-width)) / 2));
   overflow-x: auto;
+  overscroll-behavior-x: none;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
 }
@@ -186,7 +251,6 @@ onBeforeUnmount(() => cancelAnimationFrame(scrollFrame));
   font: 700 1.4rem/1 system-ui;
   cursor: pointer;
 }
-.mvp-carousel__controls button[aria-disabled='true'] { opacity: .42; cursor: default; }
 .mvp-carousel__player:focus-visible,
 .mvp-carousel__controls button:focus-visible { outline: 2px solid var(--red-text); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
