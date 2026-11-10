@@ -1906,14 +1906,14 @@ test('inline feedback saves each answer before advancing, retries, and resumes a
   await restored.state.answerFeedbackInline('complex');
   assert.deepEqual(requests[2], [42, requests[0][1], 'experience', 'complex']);
   await restored.state.answerFeedbackInline('high');
-  await restored.state.answerFeedbackInline('good');
+  assert.match(await renderHome(restored), /Se potessi migliorare qualcosa/);
   await restored.state.answerFeedbackInline('');
   assert.deepEqual(requests.slice(3).map((request) => request.slice(2)), [
-    ['team_spirit', 'high'], ['report_experience', 'good'], ['suggestion', ''],
+    ['team_spirit', 'high'], ['suggestion', ''],
   ]);
   assert.equal(restored.state.hasSubmittedFeedback.value, true);
   assert.equal(window.localStorage.getItem('wcmvpvs-feedback:42'), '1');
-  assert.equal(restored.reportSignals.find(({ name }) => name === 'feedback_completed').metadata.experience, 'good');
+  assert.equal(restored.reportSignals.find(({ name }) => name === 'feedback_completed').metadata.experience, undefined);
 });
 
 test('an absent or disabled feedback survey leaves the allowed challenge in the featured slot', async t => {

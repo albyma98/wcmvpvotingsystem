@@ -26,14 +26,5 @@ export function inlineFeedbackQuestions(survey) {
     && question.title && Array.isArray(question.answers) && question.answers.length,
   );
   if (!questions.length) return [];
-  return [...questions, {
-    id: 'report_experience',
-    title: 'Com’è stata la tua esperienza con ArenaBoostX oggi?',
-    answers: [
-      { value: 'awesome', label: 'Fantastica', icon: '😍' },
-      { value: 'good', label: 'Bella', icon: '🙂' },
-      { value: 'ok', label: 'Così così', icon: '😐' },
-      { value: 'bad', label: 'Da migliorare', icon: '😕' },
-    ],
-  }, { id: 'suggestion', title: survey.suggestionPrompt }];
+  return [...questions, { id: 'suggestion', title: survey.suggestionPrompt }];
 }
