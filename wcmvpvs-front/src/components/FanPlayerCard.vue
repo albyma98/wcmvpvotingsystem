@@ -1,5 +1,5 @@
 <template>
-  <span class="fan-player-card" :class="{ 'is-selected': selected }" role="img" :aria-label="accessibleLabel">
+  <span class="fan-player-card" :class="{ 'is-selected': selected }" :role="$slots.action ? undefined : 'img'" :aria-label="$slots.action ? undefined : accessibleLabel">
     <span class="mvp-player-card">
       <span v-if="hasNumber" class="mvp-player-number" aria-hidden="true"><small>MAGLIA</small>{{ player.number }}</span>
       <img v-if="clubLogoUrl" class="mvp-player-club" :src="clubLogoUrl" alt="" :loading="loading" />
@@ -11,6 +11,7 @@
         <strong>{{ player.name || 'Giocatore' }}</strong>
         <span v-if="player.subtitle" class="mvp-player-role">{{ player.subtitle }}</span>
         <span v-if="selected" class="mvp-player-selected"><span aria-hidden="true">✓</span> {{ selectedLabel }}</span>
+        <slot name="action" />
       </span>
     </span>
   </span>

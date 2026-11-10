@@ -891,17 +891,19 @@ test('inline MVP confirms explicitly, keeps retryable selection and shows only c
   assert.equal(state.canConfirmHomeVote.value, false);
   state.selectHomeMvp(state.homeMvpPlayers.value[0]);
   assert.equal(requests.length, 0);
-  assert.equal(state.homeVoteActionLabel.value, 'Conferma voto per Mario Rossi');
-  await state.confirmHomeVote();
+  assert.equal(state.canConfirmHomeVote.value, true);
+  state.confirmHomeVote(8);
+  assert.equal(requests.length, 0);
+  await state.confirmHomeVote(7);
   assert.equal(state.voteError.value, 'Riprova tra poco');
   assert.equal(state.homeVoteFlight.value, null);
   assert.equal(state.canConfirmHomeVote.value, true);
   assert.equal(state.homeVoteReward.value, 0);
 
-  const voting = state.confirmHomeVote();
-  state.confirmHomeVote();
+  const voting = state.confirmHomeVote(7);
+  state.confirmHomeVote(7);
   assert.equal(requests.length, 2);
-  assert.equal(state.homeVoteActionLabel.value, 'Invio del voto…');
+  assert.equal(state.isVoting.value, true);
   assert.equal(state.homeVoteFlight.value, null);
   result.resolve({ ok: true });
   await flush();

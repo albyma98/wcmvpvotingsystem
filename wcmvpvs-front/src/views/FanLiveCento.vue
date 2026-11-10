@@ -56,21 +56,21 @@
                   </template>
                   <p v-else-if="!players.length">Nessun giocatore disponibile.</p>
                   <template v-else>
-                    <p>{{ homeMvpPlayers.length > 1 ? 'Scorri le card e conferma il giocatore al centro.' : 'Seleziona la card per scegliere il tuo MVP.' }}</p>
+                    <p>{{ homeMvpPlayers.length > 1 ? 'Scorri e conferma dalla card.' : 'Seleziona la card, poi premi «Conferma».' }}</p>
                     <MvpPlayerCarousel
                       :key="walletScope()"
                       ref="homeMvpCarousel"
                       :players="homeMvpPlayers"
-                      :initial-player-id="votedPlayerId"
+                      :voted-player-id="votedPlayerId"
                       :selected-player-id="homeMvpSelectedId"
                       :club-logo-url="homeLogoUrl"
                       :disabled="isVoting || shopBusy"
+                      :can-confirm="canConfirmHomeVote"
+                      :submitting="isVoting"
                       @select="selectHomeMvp"
+                      @confirm="confirmHomeVote"
                     />
                     <p v-if="voteError" class="mvp-error" role="alert">{{ voteError }}</p>
-                    <button class="mvp-action is-primary" type="button" :disabled="!canConfirmHomeVote" @click="confirmHomeVote">
-                      <span v-if="isVoting" class="mvp-spinner" aria-hidden="true"></span>{{ homeVoteActionLabel }}
-                    </button>
                   </template>
                   <button v-if="mvpEditing" class="mvp-secondary" type="button" :disabled="isVoting" @click="cancelHomeVoteEdit">Annulla modifica</button>
                 </template>
@@ -1372,12 +1372,6 @@ const canConfirmHomeVote = computed(() =>
   && !isVoting.value && !shopBusy.value && (!hasVoted.value || mvpEditing.value)
   && Boolean(homeMvpSelectedPlayer.value) && homeMvpSelectedId.value !== votedPlayerId.value,
 );
-const homeVoteActionLabel = computed(() => {
-  if (isVoting.value) return 'Invio del voto…';
-  if (homeMvpSelectedPlayer.value && homeMvpSelectedId.value !== votedPlayerId.value) return `Conferma voto per ${homeMvpSelectedPlayer.value.fullName}`;
-  return mvpEditing.value ? 'Scegli un nuovo MVP' : 'Seleziona un giocatore';
-});
-
 function selectHomeMvp(player) {
   if (!canVote.value || isVoting.value || shopBusy.value || showHomeVoteReceipt.value) return;
   if (!homeMvpSelectedPlayer.value) {
@@ -1387,8 +1381,10 @@ function selectHomeMvp(player) {
   homeMvpSelectedId.value = player.id;
   voteError.value = '';
 }
-function confirmHomeVote() {
-  if (canConfirmHomeVote.value) return castVote(homeMvpSelectedPlayer.value, { inline: true });
+function confirmHomeVote(playerId) {
+  if (canConfirmHomeVote.value && homeMvpSelectedId.value === playerId) {
+    return castVote(homeMvpSelectedPlayer.value, { inline: true });
+  }
 }
 function finishHomeVoteFlight() {
   homeVoteFlight.value = null;
@@ -2829,30 +2825,14 @@ watch(
   overflow-wrap: anywhere;
 }
 .mvp-content > .mvp-action:first-of-type { margin-top: 3px; }
-.mvp-action.is-primary {
-  border-color: transparent;
-  background: var(--red);
-  color: var(--on-primary);
-}
 .mvp-action:disabled {
   background: var(--bg);
   color: var(--muted);
   cursor: default;
 }
-.mvp-spinner {
-  display: inline-block;
-  width: .8em;
-  height: .8em;
-  margin-right: 6px;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: home-spin .7s linear infinite;
-}
 .mvp-collapse-leave-active { overflow: hidden; transition: height .24s ease, padding .24s ease, opacity .16s ease; }
 .mvp-collapse-leave-to { height: 0 !important; padding-top: 0; opacity: 0; }
 @keyframes mvp-receipt-in { from { opacity: .35; transform: translateY(4px); } }
-@keyframes home-spin { to { transform: rotate(1turn); } }
 .home-shortcuts {
   display: grid;
   grid-auto-flow: column;
@@ -3213,7 +3193,7 @@ watch(
 .home-slot-leave-active { transition: opacity .1s ease, transform .1s ease; pointer-events: none; }
 .home-slot-enter-from, .home-slot-leave-to { opacity: 0; transform: translateY(4px); }
 @media (prefers-reduced-motion: reduce) {
-  .mvp-receipt.is-new, .mvp-spinner, .home-shortcut.is-vote-next { animation: none; }
+  .mvp-receipt.is-new, .home-shortcut.is-vote-next { animation: none; }
   .mvp-collapse-leave-active, .feedback-emoji-options button { transition: none; }
   .feedback-emoji-options button:active { transform: none; }
 }

@@ -10,34 +10,53 @@
       @keydown.left.prevent="move(-1)"
       @keydown.right.prevent="move(1)"
     >
-      <div v-for="({ player, index, cycle }, slot) in slots" :key="`${cycle}:${player.id}`" class="mvp-carousel__slot">
-        <button
-          type="button"
+      <div
+        v-for="({ player, index, cycle }, slot) in slots"
+        :key="`${cycle}:${player.id}`"
+        class="mvp-carousel__slot"
+        :aria-hidden="cycle !== 0 || undefined"
+        @mousedown="cycle !== 0 && $event.preventDefault()"
+      >
+        <div
           class="mvp-carousel__player"
-          :class="{ 'is-focused': focusedIndex === index && selectedPlayerId === player.id }"
-          :aria-hidden="cycle !== 0 || undefined"
-          :tabindex="cycle !== 0 ? -1 : undefined"
-          :aria-label="playerLabel(player)"
-          :aria-pressed="selectedPlayerId === player.id"
-          :disabled="disabled"
-          @mousedown="cycle !== 0 && $event.preventDefault()"
-          @focus="centerOnKeyboardFocus($event, slot)"
-          @click="select(player, slot)"
+          :class="{
+            'is-focused': focusedIndex === index && selectedPlayerId === player.id,
+            'is-selected': selectedPlayerId === player.id,
+            'has-confirm': showsConfirm(player, slot),
+          }"
         >
+          <button
+            type="button"
+            class="mvp-carousel__pick"
+            :tabindex="cycle !== 0 ? -1 : undefined"
+            :aria-label="playerLabel(player)"
+            :aria-pressed="selectedPlayerId === player.id"
+            :disabled="disabled"
+            @focus="centerOnKeyboardFocus($event, slot)"
+            @click="select(player, slot)"
+          ></button>
           <FanPlayerCard
+            class="mvp-carousel__art"
             :player="player"
             :club-logo-url="clubLogoUrl"
-            :selected="selectedPlayerId === player.id"
-            selected-label="Scelto"
-            aria-hidden="true"
-          />
-        </button>
+            :selected="votedPlayerId === player.id"
+            :aria-hidden="!showsConfirm(player, slot) || undefined"
+          >
+            <template v-if="showsConfirm(player, slot) || (slot === centeredSlot && player.id === votedPlayerId)" #action>
+              <span v-if="player.id === votedPlayerId" class="mvp-carousel__hint">Scegli un nuovo MVP</span>
+              <button
+                v-else
+                class="mvp-carousel__confirm"
+                type="button"
+                :tabindex="cycle !== 0 ? -1 : undefined"
+                :aria-label="submitting ? 'Invio del voto…' : `Conferma voto per ${player.fullName || player.name}`"
+                :disabled="disabled || !canConfirm"
+                @click="confirm(player, slot)"
+              >{{ submitting ? 'Invio…' : 'Conferma' }}</button>
+            </template>
+          </FanPlayerCard>
+        </div>
       </div>
-    </div>
-    <div v-if="players.length > 1" class="mvp-carousel__controls">
-      <button type="button" aria-label="Giocatore precedente" @click="move(-1)">‹</button>
-      <span aria-label="Posizione nel carosello">{{ focusedIndex + 1 }} / {{ players.length }}</span>
-      <button type="button" aria-label="Giocatore successivo" @click="move(1)">›</button>
     </div>
   </div>
 </template>
@@ -48,16 +67,19 @@ import FanPlayerCard from './FanPlayerCard.vue';
 
 const props = defineProps({
   players: { type: Array, required: true },
-  initialPlayerId: { type: Number, default: null },
+  votedPlayerId: { type: Number, default: null },
   selectedPlayerId: { type: Number, default: null },
   clubLogoUrl: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
+  canConfirm: { type: Boolean, default: false },
+  submitting: { type: Boolean, default: false },
 });
-const emit = defineEmits(['select']);
+const emit = defineEmits(['select', 'confirm']);
 const track = ref(null);
-const focusedIndex = ref(Math.max(0, props.players.findIndex((player) => player.id === props.initialPlayerId)));
+const focusedIndex = ref(Math.max(0, props.players.findIndex((player) => player.id === props.votedPlayerId)));
 // Extra cards on each side let native swipes cross the seam before we reset the position.
 const loopPadding = computed(() => props.players.length > 1 ? 6 : 0);
+const centeredSlot = ref(loopPadding.value + focusedIndex.value);
 const slots = computed(() => {
   const count = props.players.length;
   return Array.from({ length: count + 2 * loopPadding.value }, (_, slot) => {
@@ -75,7 +97,17 @@ let hasBrowsed = false;
 
 function playerLabel(player) {
   const number = player.number !== '' && player.number != null ? `maglia ${player.number}` : '';
-  return [player.fullName || player.name, number, player.role].filter(Boolean).join(', ');
+  const voted = player.id === props.votedPlayerId ? 'Il tuo MVP. Scegli un nuovo MVP.' : '';
+  return [player.fullName || player.name, number, player.role, voted].filter(Boolean).join(', ');
+}
+
+function showsConfirm(player, slot) {
+  return centeredSlot.value === slot && props.selectedPlayerId === player.id && props.votedPlayerId !== player.id;
+}
+
+function confirm(player, slot) {
+  if (props.disabled || !props.canConfirm || !showsConfirm(player, slot) || nearestSlot() !== slot) return;
+  emit('confirm', player.id);
 }
 
 function slotLeft(element, slot) {
@@ -119,8 +151,11 @@ function startBrowsing() {
   hasBrowsed = true;
 }
 
-function updateCenteredPlayer(slot) {
-  if (!slot || focusedIndex.value === slot.index) return;
+function updateCenteredPlayer(slotIndex) {
+  const slot = slots.value[slotIndex];
+  if (!slot) return;
+  centeredSlot.value = slotIndex;
+  if (focusedIndex.value === slot.index) return;
   focusedIndex.value = slot.index;
   if (hasBrowsed && !props.disabled && props.selectedPlayerId !== slot.player.id) emit('select', slot.player);
 }
@@ -134,16 +169,20 @@ function updateFocus() {
   if (scrollFrame) return;
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0;
-    updateCenteredPlayer(slots.value[nearestSlot()]);
+    updateCenteredPlayer(nearestSlot());
   });
 }
 
 function settleScroll() {
   targetSlot = null;
-  const slot = slots.value[nearestSlot()];
+  const slotIndex = nearestSlot();
+  const slot = slots.value[slotIndex];
   if (!slot) return;
-  updateCenteredPlayer(slot);
-  if (slot.cycle !== 0) centerSlot(loopPadding.value + slot.index, false);
+  updateCenteredPlayer(slotIndex);
+  if (slot.cycle !== 0) {
+    centeredSlot.value = loopPadding.value + slot.index;
+    centerSlot(centeredSlot.value, false);
+  }
 }
 
 function move(direction) {
@@ -160,31 +199,37 @@ function move(direction) {
   if (!props.disabled && element.contains(document.activeElement)) {
     const middle = loopPadding.value + slots.value[next].index;
     movingFocus = true;
-    element.children[middle].firstElementChild.focus({ preventScroll: true });
+    element.children[middle].querySelector('.mvp-carousel__pick').focus({ preventScroll: true });
     movingFocus = false;
   }
   centerSlot(next);
 }
 
 function centerOnKeyboardFocus(event, slot) {
-  if (!movingFocus && event.currentTarget.matches(':focus-visible')) select(slots.value[slot].player, slot);
+  if (!movingFocus && event.currentTarget.matches(':focus-visible')) {
+    const { player, index } = slots.value[slot];
+    select(player, slot, false);
+    centeredSlot.value = slot;
+    focusedIndex.value = index;
+  }
 }
 
-function select(player, slot) {
+function select(player, slot, smooth = true) {
   if (props.disabled) return;
   hasBrowsed = true;
   emit('select', player);
-  centerSlot(slots.value[targetSlot]?.player === player ? targetSlot : slot);
+  centerSlot(smooth && slots.value[targetSlot]?.player === player ? targetSlot : slot, smooth);
 }
 
 watch(() => props.players.map((player) => player.id), (ids, previousIds) => {
   if (ids.length === previousIds.length && ids.every((id, index) => id === previousIds[index])) return;
   const previous = ids.indexOf(previousIds[focusedIndex.value]);
-  focusedIndex.value = previous >= 0 ? previous : Math.max(0, ids.indexOf(props.initialPlayerId));
-  centerSlot(loopPadding.value + focusedIndex.value, false);
+  focusedIndex.value = previous >= 0 ? previous : Math.max(0, ids.indexOf(props.votedPlayerId));
+  centeredSlot.value = loopPadding.value + focusedIndex.value;
+  centerSlot(centeredSlot.value, false);
 }, { flush: 'post' });
 
-onMounted(() => centerSlot(loopPadding.value + focusedIndex.value, false));
+onMounted(() => centerSlot(centeredSlot.value, false));
 onBeforeUnmount(() => {
   cancelAnimationFrame(scrollFrame);
   clearTimeout(scrollTimer);
@@ -211,20 +256,29 @@ onBeforeUnmount(() => {
   scroll-snap-align: center;
 }
 .mvp-carousel__player {
+  position: relative;
   display: block;
   width: 100%;
   padding: 2px;
   border: 2px solid transparent;
   border-radius: 15px;
   background: transparent;
-  cursor: pointer;
-  font: inherit;
   transform: scale(.93);
   transition: transform .18s ease, border-color .18s ease;
 }
-.mvp-carousel__player:disabled { cursor: default; }
 .mvp-carousel__player.is-focused { transform: none; border-color: #9e6c1d; }
-.mvp-carousel__player[aria-pressed='true'] { border-color: var(--red-text); background: var(--red-soft); }
+.mvp-carousel__player.is-selected { border-color: var(--red-text); background: var(--red-soft); }
+.mvp-carousel__pick {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.mvp-carousel__pick:disabled { cursor: default; }
+.mvp-carousel__art { position: relative; pointer-events: none; }
 .mvp-carousel__player :deep(.fan-player-card),
 .mvp-carousel__player :deep(.mvp-player-card) {
   aspect-ratio: auto;
@@ -249,36 +303,48 @@ onBeforeUnmount(() => {
   padding: 12% 7% 13%;
   background: linear-gradient(transparent, var(--red-soft) 23%, var(--card));
 }
+.mvp-carousel__player.has-confirm :deep(.mvp-player-caption) { padding: 8%; }
 .mvp-carousel__player :deep(.mvp-player-caption strong) { color: var(--ink); font-size: .75rem; }
 .mvp-carousel__player :deep(.mvp-player-role) { color: var(--ink); font-size: .6875rem; }
 .mvp-carousel__player :deep(.mvp-player-selected) { font-size: .625rem; }
-.mvp-carousel__controls {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  height: 30px;
-  margin: -2px 0 2px;
+.mvp-carousel__hint {
   color: var(--ink);
-  font-size: .75rem;
-  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+  font-size: .625rem;
+  font-weight: 700;
+  line-height: 1.15;
 }
-.mvp-carousel__controls button {
+.mvp-carousel__confirm {
   position: relative;
-  z-index: 0;
+  isolation: isolate;
   display: grid;
-  width: 44px;
-  height: 30px;
+  align-self: stretch;
+  min-height: 44px;
   place-items: center;
+  padding: 0 4px;
   border: 0;
-  border-radius: 11px;
+  border-radius: 9px;
   background: transparent;
-  color: var(--red-text);
-  font: 700 1.4rem/1 system-ui;
+  color: var(--on-primary);
+  font: 800 .75rem/1.2 system-ui;
   cursor: pointer;
+  pointer-events: auto;
 }
-.mvp-carousel__player:focus-visible,
-.mvp-carousel__controls button:focus-visible { outline: 2px solid var(--red-text); outline-offset: 2px; }
+.mvp-carousel__confirm::before {
+  position: absolute;
+  inset: 5px 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--red);
+  content: '';
+}
+.mvp-carousel__confirm:disabled { opacity: .7; cursor: default; }
+.mvp-carousel__pick:focus-visible,
+.mvp-carousel__confirm:focus-visible {
+  outline: 2px solid var(--red-text);
+  outline-offset: 2px;
+}
+.mvp-carousel__confirm:focus-visible { outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) {
   .mvp-carousel__player { transition: none; }
 }
