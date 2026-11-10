@@ -1,7 +1,7 @@
 <template>
   <div class="cento-root" :style="themeStyle">
     <div class="phone" :inert="isHomeLoading || Boolean(homeVoteFlight)" :aria-hidden="isHomeLoading || Boolean(homeVoteFlight) || undefined" :aria-busy="isHomeLoading">
-      <div class="home-scroll">
+      <div class="home-scroll" :class="{ 'has-sponsors': sponsors.length > 0 }">
         <header class="topbar">
           <div class="club">
             <div class="club-logo" :class="{ 'has-logo': homeLogoUrl }">
@@ -156,28 +156,25 @@
             <span>Il tuo codice: <strong>{{ lotteryCode }}</strong></span>
             <span class="lottery-shortcut-action">Apri QR <span aria-hidden="true">→</span></span>
           </button>
-
-          <!-- Sponsors (spazio ampliato al posto dello scoreboard) -->
-          <section v-if="sponsors.length" class="sponsors">
-            <div class="sponsors-head">
-              <span class="label">PARTNER UFFICIALI</span>
-            </div>
-            <div class="sponsor-grid">
-              <button
-                v-for="sponsor in sponsors.slice(0, 6)"
-                :key="sponsor.id"
-                :ref="(element) => observeReportSponsor(element, sponsor)"
-                class="sponsor-chip"
-                type="button"
-                @click="onSponsorClick(sponsor)"
-              >
-                <img v-if="sponsor.imageUrl" :src="sponsor.imageUrl" :alt="sponsor.name || 'Sponsor'" />
-                <span v-else>{{ sponsor.name }}</span>
-              </button>
-            </div>
-          </section>
         </main>
       </div>
+
+      <section v-if="sponsors.length" class="sponsors" aria-labelledby="home-partners-title" :inert="Boolean(activeSheet || activeGameId)">
+        <h2 id="home-partners-title" class="sponsors-head">PARTNER UFFICIALI</h2>
+        <div class="sponsor-grid">
+          <button
+            v-for="sponsor in sponsors.slice(0, 6)"
+            :key="sponsor.id"
+            :ref="(element) => observeReportSponsor(element, sponsor)"
+            class="sponsor-chip"
+            type="button"
+            @click="onSponsorClick(sponsor)"
+          >
+            <img v-if="sponsor.imageUrl" :src="sponsor.imageUrl" :alt="sponsor.name || 'Sponsor'" />
+            <span v-else>{{ sponsor.name }}</span>
+          </button>
+        </div>
+      </section>
 
       <!-- Overlay condiviso dai pannelli della home -->
       <div class="overlay" :class="{ open: activeSheet }" @click="closeSheets"></div>
@@ -2533,6 +2530,7 @@ watch(
 }
 
 .phone {
+  --home-pad: 10px;
   width: 100%;
   max-width: 430px;
   height: 100dvh;
@@ -2545,7 +2543,6 @@ watch(
 
 .home-scroll {
   --home-gap: 7px;
-  --home-pad: 10px;
   --home-radius: 16px;
   --home-shadow: 0 1px 2px rgba(35, 22, 26, 0.07);
   min-height: 0;
@@ -2554,6 +2551,7 @@ watch(
   scroll-padding-top: calc(68px + env(safe-area-inset-top));
   padding-bottom: env(safe-area-inset-bottom);
 }
+.home-scroll.has-sponsors { padding-bottom: 0; }
 
 .topbar {
   position: sticky;
@@ -2890,7 +2888,7 @@ watch(
 .moment-action { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 5px; }
 .moment-action .row-pts { color: var(--ink); font-size: .8125rem; }
 .moment-action > b { color: var(--red-text); font-size: .8125rem; }
-.topbar button:focus-visible, .home-dashboard :is(button, a):focus-visible {
+.topbar button:focus-visible, .home-dashboard :is(button, a):focus-visible, .sponsor-chip:focus-visible {
   outline: 2px solid var(--red-text);
   outline-offset: 2px;
 }
@@ -3198,20 +3196,17 @@ watch(
   .feedback-emoji-options button:active { transform: none; }
 }
 
-/* Sponsors (blocco ampliato) */
 .sponsors {
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 2px 2px 0;
+  gap: 6px;
+  padding: 6px var(--home-pad) calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--bg);
 }
 .sponsors-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.sponsors-head .label {
+  margin: 0;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -3219,7 +3214,7 @@ watch(
 }
 .sponsor-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 .sponsor-chip {
