@@ -332,7 +332,7 @@ onBeforeUnmount(() => {
 }
 .mvp-carousel__confirm::before {
   position: absolute;
-  inset: 8px 9px;
+  inset: 10px 15px;
   z-index: -1;
   border-radius: inherit;
   background: var(--red);
