@@ -64,7 +64,7 @@ onMounted(async () => {
       { transform: position(0, 0, 1.045, 1.045, 360), opacity: 1, offset: .54, easing: 'ease-out' },
       { transform: position(0, 0, 1, 1, 360), opacity: 1, offset: .67 },
       { transform: position(0, 0, 1, 1, 360), opacity: 1 },
-    ], { duration: 1220, fill: 'both' });
+    ], { duration: 4900, fill: 'both' });
     await animation.finished;
     if (disposed || !props.destination.isConnected) return;
     animation.cancel();
@@ -79,7 +79,7 @@ onMounted(async () => {
       { transform: position() },
       { transform: position(x * .29 - 20, y * .25 - 18, .81, .81, 0, -9), offset: .36 },
       { transform: position(x, y, scaleX, scaleY) },
-    ], { duration: 520, easing: 'cubic-bezier(.45,.14,.28,1)', fill: 'both' });
+    ], { duration: 2100, easing: 'cubic-bezier(.45,.14,.28,1)', fill: 'both' });
     await animation.finished;
   } catch {
     // A cancelled or unavailable animation leaves the confirmed receipt accessible.
@@ -109,7 +109,7 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   background: radial-gradient(ellipse at center, var(--red-deep) -44%, #241526 52%, #100a15 100%);
-  transition: opacity .4s ease;
+  transition: opacity 1.2s ease;
 }
 .mvp-vote-flight__backdrop::after {
   position: absolute;
@@ -152,9 +152,9 @@ onBeforeUnmount(() => {
   color: #fff8ef;
   text-align: center;
   overflow-wrap: anywhere;
-  transition: opacity .24s ease;
+  transition: opacity .8s ease;
 }
-.mvp-vote-flight__message > * { display: block; animation: mvp-vote-message .34s ease-out .38s both; }
+.mvp-vote-flight__message > * { display: block; animation: mvp-vote-message .9s ease-out 1.5s both; }
 .mvp-vote-flight__message span {
   color: #ffdb89;
   font-size: .75rem;
