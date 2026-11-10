@@ -682,6 +682,16 @@ export async function submitEventFeedback(eventId: number, feedback: EventFeedba
   }
 }
 
+export async function saveEventFeedbackAnswer(eventId: number, responseId: string, question: string, value: string) {
+  try {
+    await apiClient.post(`/events/${eventId}/feedback/answer`, { response_id: responseId, question, value });
+    return { ok: true };
+  } catch (error) {
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    return { ok: false, error, status };
+  }
+}
+
 export function trackPageEngagement(eventId: number, durationSeconds: number) {
   if (!eventId || durationSeconds <= 0) {
     return Promise.resolve();

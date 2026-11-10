@@ -18,3 +18,22 @@ export function inlineFeedbackOptions(question) {
   if (!labels.every(Boolean) || (!explicitScale && !defaultScale)) return [];
   return experienceScale.map(({ value, emoji }, index) => ({ value, emoji, label: labels[index] }));
 }
+
+export function inlineFeedbackQuestions(survey) {
+  if (!Array.isArray(survey.questions)) return [];
+  const questions = survey.questions.filter((question) =>
+    ['experience', 'team_spirit', 'perks_interest', 'mini_games_interest'].includes(question?.id)
+    && question.title && Array.isArray(question.answers) && question.answers.length,
+  );
+  if (!questions.length) return [];
+  return [...questions, {
+    id: 'report_experience',
+    title: 'Com’è stata la tua esperienza con ArenaBoostX oggi?',
+    answers: [
+      { value: 'awesome', label: 'Fantastica', icon: '😍' },
+      { value: 'good', label: 'Bella', icon: '🙂' },
+      { value: 'ok', label: 'Così così', icon: '😐' },
+      { value: 'bad', label: 'Da migliorare', icon: '😕' },
+    ],
+  }, { id: 'suggestion', title: survey.suggestionPrompt }];
+}

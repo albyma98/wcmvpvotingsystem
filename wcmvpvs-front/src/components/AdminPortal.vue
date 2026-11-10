@@ -4035,22 +4035,24 @@ function normalizeFeedbackSummary(raw, surveyConfig) {
         : null);
     const counts =
       countsSource && typeof countsSource === "object" ? countsSource : {};
-
-    const answers = question.answers.map((option) => {
+    const options = question.answers.map((option) => {
       const resolved = Number(counts?.[option.value] ?? 0);
-      const count = Number.isFinite(resolved) ? resolved : 0;
+      return { ...option, count: Number.isFinite(resolved) ? resolved : 0 };
+    });
+    const questionTotal = options.reduce((sum, option) => sum + option.count, 0);
+    const answers = options.map(({ value, label, icon, count }) => {
       const percent =
-        hasResponses && totalResponses > 0
-          ? Math.round((count / totalResponses) * 100)
+        questionTotal > 0
+          ? Math.round((count / questionTotal) * 100)
           : 0;
       const clampedPercent = Math.min(100, Math.max(0, percent));
       const barPercent = hasResponses
         ? Math.max(clampedPercent, count > 0 ? 6 : 0)
         : 0;
       return {
-        value: option.value,
-        label: option.label,
-        icon: option.icon || "",
+        value,
+        label,
+        icon: icon || "",
         count,
         countLabel: count.toLocaleString("it-IT"),
         percent: clampedPercent,
@@ -4060,10 +4062,6 @@ function normalizeFeedbackSummary(raw, surveyConfig) {
       };
     });
 
-    const questionTotal = answers.reduce(
-      (sum, answer) => sum + answer.count,
-      0,
-    );
     return {
       id: question.id,
       title: question.title,

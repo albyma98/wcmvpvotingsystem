@@ -1382,6 +1382,7 @@ type AppDatabase interface {
 	RecordFanRewardRedemption(eventID int, fanID int, rewardKey string, costCoins int) error
 	PurgeEventData(eventID int) error
 	RecordEventFeedback(feedback EventFeedback) error
+	RecordEventFeedbackAnswer(eventID int, responseID, question, value string) error
 	GetEventFeedbackSummary(eventID int) (EventFeedbackSummary, error)
 	ListShopProducts() ([]ShopProduct, error)
 	GetShopProduct(id int) (ShopProduct, error)
@@ -2077,6 +2078,18 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("error verifying event_feedback table: %w", err)
+	}
+
+	for _, statement := range []string{
+		`ALTER TABLE event_feedback ADD COLUMN response_id TEXT`,
+		`ALTER TABLE event_feedback ADD COLUMN report_experience TEXT`,
+	} {
+		if _, err = db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("error ensuring incremental event feedback columns: %w", err)
+		}
+	}
+	if _, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_event_feedback_response ON event_feedback(event_id, response_id)`); err != nil {
+		return nil, fmt.Errorf("error ensuring event feedback response index: %w", err)
 	}
 
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_event_feedback_event ON event_feedback(event_id)`); err != nil {
@@ -6352,6 +6365,29 @@ func (db *appdbimpl) RecordEventFeedback(feedback EventFeedback) error {
 	}
 
 	_, err := db.c.Exec(`INSERT INTO event_feedback (event_id, experience, team_spirit, perks_interest, mini_games_interest, suggestion) VALUES (?, ?, ?, ?, ?, ?)`, feedback.EventID, experience, teamSpirit, perksInterest, miniGamesInterest, suggestion)
+	return err
+}
+
+func (db *appdbimpl) RecordEventFeedbackAnswer(eventID int, responseID, question, value string) error {
+	answers := map[string]string{
+		"experience": "", "team_spirit": "", "perks_interest": "",
+		"mini_games_interest": "", "suggestion": "", "report_experience": "",
+	}
+	if _, ok := answers[question]; !ok || eventID <= 0 || responseID == "" {
+		return fmt.Errorf("invalid feedback answer")
+	}
+	if question == "suggestion" && value == "" {
+		_, err := db.c.Exec(`UPDATE event_feedback SET suggestion='' WHERE event_id=? AND response_id=?`, eventID, responseID)
+		return err
+	}
+	answers[question] = value
+	// The question is a whitelisted column. Updating only that column preserves other saved answers.
+	query := fmt.Sprintf(`INSERT INTO event_feedback
+		(event_id, response_id, experience, team_spirit, perks_interest, mini_games_interest, suggestion, report_experience)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(event_id, response_id) DO UPDATE SET %s=excluded.%s`, question, question)
+	_, err := db.c.Exec(query, eventID, responseID, answers["experience"], answers["team_spirit"],
+		answers["perks_interest"], answers["mini_games_interest"], answers["suggestion"], answers["report_experience"])
 	return err
 }
 

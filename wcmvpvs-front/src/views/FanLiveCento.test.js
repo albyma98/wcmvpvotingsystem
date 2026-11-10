@@ -14,6 +14,16 @@ import * as inlineFeedback from '../inlineFeedback.js';
 import { setupSfc, testVue, testWindow } from '../../test/sfcSetup.js';
 
 const player = { id: 7, name: 'Rossi', lastName: 'Rossi', number: '7', image: '' };
+const feedbackQuestion = {
+  id: 'experience',
+  title: 'Come hai vissuto il voto?',
+  answers: [
+    { value: 'hard', label: 'Difficile', icon: '😣' },
+    { value: 'very_easy', label: 'Facilissima', icon: '🤩' },
+    { value: 'easy', label: 'Abbastanza semplice', icon: '🙂' },
+    { value: 'complex', label: 'Un po’ macchinosa', icon: '😐' },
+  ],
+};
 
 // Render the real home template so the badge, feedback and challenge priorities are tested together.
 const { descriptor } = parse(readFileSync(new URL('./FanLiveCento.vue', import.meta.url), 'utf8'));
@@ -99,7 +109,7 @@ test('a live response from a previous society cannot enable its lottery QR in th
 });
 
 test('the home lottery shortcut requires registration, the society setting and a ticket, and follows the primary actions', async t => {
-  const setup = fixture({}, { props: { activeEvent: { is_active: true, show_lottery_ticket: true, feedback_survey: { questions: [{ id: 'atmosphere' }] } } } });
+  const setup = fixture({}, { props: { activeEvent: { is_active: true, show_lottery_ticket: true, feedback_survey: { questions: [feedbackQuestion] } } } });
   const { state, props, scope } = setup;
   t.after(() => scope.stop());
   state.isRegistered.value = true;
@@ -108,7 +118,7 @@ test('the home lottery shortcut requires registration, the society setting and a
   let html = await renderHome(setup);
   assert.match(html, /Il tuo codice: <strong>0042<\/strong>/);
   assert.match(html, /Apri QR/);
-  assert.ok(html.indexOf('class="feedback-cta"') < html.indexOf('class="lottery-shortcut"'));
+  assert.ok(html.indexOf('class="feedback-cta feedback-inline"') < html.indexOf('class="lottery-shortcut"'));
   assert.ok(html.indexOf('class="rank-link"') < html.indexOf('class="lottery-shortcut"'));
   state.handleFeedbackSubmitted();
   html = await renderHome(setup);
@@ -369,7 +379,6 @@ function fixture(overrides = {}, options = {}) {
     '../fanRegistration': registration,
     '../fanAnalytics': fanAnalytics, '../inlineFeedback': inlineFeedback,
     '../lib/posthog': { stopPostHogForNewExperience() {} },
-    '../components/EventFeedbackModal.vue': {},
     '../components/FanPlayerCard.vue': {},
     '../components/MvpPlayerCarousel.vue': {},
     '../components/FanMvpRoster.vue': {},
@@ -1817,26 +1826,21 @@ test('points rankings prefer permanent points over a smaller spendable wallet ba
 
 test('feedback takes the featured slot until sent, then opens a game allowed for the society sport', async t => {
   for (const [game, title] of [['basketball', 'Basket Rush'], ['volley-rush', 'Volley Rush']]) {
-    const initialEvent = { is_active: true, available_minigames: [game], feedback_survey: { questions: [{ id: 'atmosphere', text: 'Atmosfera?' }] } };
+    const initialEvent = { is_active: true, available_minigames: [game], feedback_survey: { questions: [feedbackQuestion] } };
     const setup = fixture({}, { props: { activeEvent: initialEvent } });
     const { state, props, scope, window } = setup;
     t.after(() => scope.stop());
     assert.equal(state.progress.value.unlocked, false);
     let html = await renderHome(setup);
-    assert.match(html, /class="feedback-cta"/);
+    assert.match(html, /class="feedback-cta feedback-inline"/);
     assert.match(html, /La tua voce conta/);
-    assert.match(html, /Lascia un feedback/);
-    assert.ok(html.indexOf('class="feedback-cta"') < html.indexOf('class="journey-card"'));
+    assert.match(html, /Come hai vissuto il voto/);
+    assert.ok(html.indexOf('class="feedback-cta feedback-inline"') < html.indexOf('class="journey-card"'));
     assert.doesNotMatch(html, /Sfida del momento|feedback-link|Come sta andando\?/);
 
-    state.openFeedbackModal();
-    assert.equal(state.isFeedbackModalOpen.value, true);
-    state.isFeedbackModalOpen.value = false;
-    assert.match(await renderHome(setup), /class="feedback-cta"/, 'closing without sending keeps the invitation');
-    state.openFeedbackModal();
     state.handleFeedbackSubmitted();
     html = await renderHome(setup);
-    assert.doesNotMatch(html, /class="feedback-cta"|feedback-link/);
+    assert.doesNotMatch(html, /class="feedback-cta feedback-inline"|feedback-link/);
     assert.match(html, /Sfida del momento/);
     assert.ok(html.includes(title));
     assert.match(html, /Gioca <span aria-hidden="true">→<\/span>/);
@@ -1847,82 +1851,111 @@ test('feedback takes the featured slot until sent, then opens a game allowed for
     t.after(() => restored.scope.stop());
     assert.equal(restored.state.hasSubmittedFeedback.value, true);
     assert.match(await renderHome(restored), /Sfida del momento/);
-    assert.doesNotMatch(await renderHome(restored), /class="feedback-cta"/);
+    assert.doesNotMatch(await renderHome(restored), /class="feedback-cta feedback-inline"/);
     props.eventId = 43;
     await Vue.nextTick();
-    assert.match(await renderHome(setup), /class="feedback-cta"/, 'a new match asks for its own feedback');
+    assert.match(await renderHome(setup), /class="feedback-cta feedback-inline"/, 'a new match asks for its own feedback');
   }
 });
 
-test('the inline feedback uses the configured title, accessible labels and four stored values', async (t) => {
-  const question = {
-    id: 'experience',
-    title: 'Come hai vissuto il voto?',
-    answers: [
-      { value: 'hard', label: 'Difficile', icon: '😣' },
-      { value: 'very_easy', label: 'Facilissima', icon: '🤩' },
-      { value: 'easy', label: 'Abbastanza semplice', icon: '🙂' },
-      { value: 'complex', label: 'Un po’ macchinosa', icon: '😐' },
-    ],
-  };
-  const setup = fixture({}, { props: { activeEvent: { is_active: true, feedback_survey: { questions: [question] } } } });
-  const { state, props, scope } = setup;
+test('inline feedback saves each answer before advancing, retries, and resumes a partial response', async (t) => {
+  const first = deferred();
+  const requests = [];
+  const api = { saveEventFeedbackAnswer: (...args) => {
+    requests.push(args);
+    return requests.length === 1 ? first.promise : Promise.resolve({ ok: true });
+  } };
+  const teamQuestion = { id: 'team_spirit', title: 'Quanto ti sei sentito coinvolto?', answers: [{ value: 'high', label: 'Moltissimo', icon: '🔥' }] };
+  const activeEvent = { is_active: true, feedback_survey: { questions: [feedbackQuestion, teamQuestion] } };
+  const setup = fixture(api, { props: { activeEvent } });
+  const { state, window, scope, reportSignals } = setup;
   t.after(() => scope.stop());
-  let html = await renderHome(setup);
+  state.resetReportTelemetry();
+  const html = await renderHome(setup);
   assert.match(html, /Come hai vissuto il voto\?/);
   assert.match(html, /🤩.*😊.*😐.*☹️/s);
   assert.match(html, /aria-label="Abbastanza semplice"/);
   assert.doesNotMatch(html, />Abbastanza semplice</);
-  for (const value of ['very_easy', 'easy', 'complex', 'hard']) {
-    state.answerFeedbackInline(value);
-    assert.equal(state.isFeedbackModalOpen.value, true);
-    assert.equal(state.feedbackModalAnswer.value, value);
-    assert.equal(state.inlineFeedbackAnswer.value, value);
-    assert.equal(state.hasSubmittedFeedback.value, false);
-    state.onFeedbackModalChange(false);
-  }
-  props.activeEvent.feedback_survey.questions[0].answers[0].label = 'Configurazione diversa';
-  html = await renderHome(setup);
-  assert.match(html, /Lascia un feedback/);
-  assert.match(html, /Come hai vissuto il voto\?/);
-  assert.doesNotMatch(html, /feedback-emoji-options/);
+  // The server-provided labels remain visible when the first scale is customized.
+  const customizedEvent = structuredClone(activeEvent);
+  customizedEvent.feedback_survey.questions[0].answers[0].label = 'Configurazione diversa';
+  const customized = fixture(api, { props: { activeEvent: customizedEvent } });
+  t.after(() => customized.scope.stop());
+  assert.match(await renderHome(customized), /feedback-answer-options.*Configurazione diversa/s);
+
+  const saving = state.answerFeedbackInline('easy');
+  await state.answerFeedbackInline('hard');
+  assert.equal(requests.length, 1);
+  assert.match(requests[0][1], /^[0-9a-f]{32}$/);
+  assert.deepEqual(requests[0].slice(2), ['experience', 'easy']);
+  assert.match(await renderHome(setup), /aria-busy="true".*Come hai vissuto il voto/s);
+  first.resolve({ ok: false });
+  await saving;
+  assert.match(await renderHome(setup), /Impossibile salvare la risposta/);
+  await state.answerFeedbackInline('easy');
+  assert.deepEqual(requests[1], requests[0]);
+  assert.match(await renderHome(setup), /Quanto ti sei sentito coinvolto\?/);
+  assert.equal(state.hasSubmittedFeedback.value, false);
+  assert.equal(reportSignals.some(({ name }) => name === 'feedback_completed'), false);
+
+  const restored = fixture(api, { storage: window.storage, props: { activeEvent } });
+  t.after(() => restored.scope.stop());
+  restored.state.resetReportTelemetry();
+  assert.match(await renderHome(restored), /Quanto ti sei sentito coinvolto\?/);
+  restored.state.previousFeedbackQuestion();
+  await restored.state.answerFeedbackInline('complex');
+  assert.deepEqual(requests[2], [42, requests[0][1], 'experience', 'complex']);
+  await restored.state.answerFeedbackInline('high');
+  await restored.state.answerFeedbackInline('good');
+  await restored.state.answerFeedbackInline('');
+  assert.deepEqual(requests.slice(3).map((request) => request.slice(2)), [
+    ['team_spirit', 'high'], ['report_experience', 'good'], ['suggestion', ''],
+  ]);
+  assert.equal(restored.state.hasSubmittedFeedback.value, true);
+  assert.equal(window.localStorage.getItem('wcmvpvs-feedback:42'), '1');
+  assert.equal(restored.reportSignals.find(({ name }) => name === 'feedback_completed').metadata.experience, 'good');
 });
 
 test('an absent or disabled feedback survey leaves the allowed challenge in the featured slot', async t => {
-  for (const feedback of [{}, { show_feedback_survey: false, feedback_survey: { questions: [{ id: 'atmosphere' }] } }]) {
+  for (const feedback of [{}, { show_feedback_survey: false, feedback_survey: { questions: [feedbackQuestion] } }]) {
     const setup = fixture({}, { props: { activeEvent: { is_active: true, available_minigames: ['setter-pro'], ...feedback } } });
     t.after(() => setup.scope.stop());
     const html = await renderHome(setup);
-    assert.doesNotMatch(html, /class="feedback-cta"|feedback-link/);
+    assert.doesNotMatch(html, /class="feedback-cta feedback-inline"|feedback-link/);
     assert.match(html, /Sfida del momento/);
     assert.match(html, /Setter Pro/);
   }
 });
 
 test('a previous live snapshot cannot offer its feedback while the next match is loading', async (t) => {
-  const { props, state, scope } = fixture({}, { props: { activeEvent: { id: 42 } } });
+  const request = deferred();
+  const { props, state, scope, window } = fixture({ saveEventFeedbackAnswer: () => request.promise }, { props: { activeEvent: { id: 42 } } });
   t.after(() => scope.stop());
-  state.liveEvent.value = { event_id: 42, feedback_survey: { questions: [{ id: 'atmosphere' }] } };
+  state.liveEvent.value = { event_id: 42, feedback_survey: { questions: [feedbackQuestion] } };
   assert.equal(state.hasFeedbackSurvey.value, true);
+  const saving = state.answerFeedbackInline('easy');
 
   props.initialDataReady = false;
   props.eventId = 43;
   await Vue.nextTick();
   assert.equal(state.hasFeedbackSurvey.value, false);
-  state.openFeedbackModal();
-  assert.equal(state.isFeedbackModalOpen.value, false);
+  request.resolve({ ok: true });
+  await saving;
+  await state.answerFeedbackInline('easy');
+  assert.equal(state.feedbackDraft.value.responseId, '');
+  assert.equal(window.localStorage.getItem('wcmvpvs-feedback:43'), null);
 });
 
 test('after feedback the home offers only available games and preserves the concluded match summary', async t => {
-  const setup = fixture({}, { props: { activeEvent: { is_active: true, votes_closed: true, available_minigames: ['basketball'], feedback_survey: { questions: [{ id: 'atmosphere' }] } } } });
+  const setup = fixture({}, { props: { activeEvent: { is_active: true, votes_closed: true, available_minigames: ['basketball'], feedback_survey: { questions: [feedbackQuestion] } } } });
   const { state, scope } = setup;
   t.after(() => scope.stop());
-  assert.match(await renderHome(setup), /class="feedback-cta"/);
+  assert.match(await renderHome(setup), /class="feedback-cta feedback-inline"/);
   state.handleFeedbackSubmitted();
   assert.match(await renderHome(setup), /Sfida del momento/);
   state.liveEvent.value = { event_id: 42, is_active: true, votes_closed: true, available_minigames: [] };
   let html = await renderHome(setup);
-  assert.doesNotMatch(html, /Sfida del momento|class="feedback-cta"/);
+  assert.doesNotMatch(html, /Sfida del momento|class="feedback-cta feedback-inline"/);
   assert.match(html, /Vedi il riepilogo/);
   state.liveEvent.value = { event_id: 42, is_active: true, is_concluded: true, available_minigames: ['basketball'] };
   html = await renderHome(setup);
@@ -1930,20 +1963,17 @@ test('after feedback the home offers only available games and preserves the conc
   assert.match(html, /Vedi il riepilogo/);
 });
 
-test('feedback opens only when configured and submitting it prevents another opening for the match', (t) => {
+test('completed feedback ignores another answer for the match', async (t) => {
   const { state, scope, window } = fixture();
   t.after(() => scope.stop());
-  state.openFeedbackModal();
-  assert.equal(state.isFeedbackModalOpen.value, false);
-  state.liveEvent.value = { event_id: 42, is_active: true, feedback_survey: { questions: [{ id: 'atmosphere', text: 'Atmosfera?' }] } };
+  await state.answerFeedbackInline('easy');
+  assert.equal(state.feedbackDraft.value.responseId, '');
+  state.liveEvent.value = { event_id: 42, is_active: true, feedback_survey: { questions: [feedbackQuestion] } };
   assert.equal(state.hasFeedbackSurvey.value, true);
-  state.openFeedbackModal();
-  assert.equal(state.isFeedbackModalOpen.value, true);
   state.handleFeedbackSubmitted();
   assert.equal(window.localStorage.getItem('wcmvpvs-feedback:42'), '1');
-  state.isFeedbackModalOpen.value = false;
-  state.openFeedbackModal();
-  assert.equal(state.isFeedbackModalOpen.value, false);
+  await state.answerFeedbackInline('easy');
+  assert.equal(state.feedbackDraft.value.responseId, '');
 });
 
 test('cached wallet balances are isolated by organization and match and ignore the old global cache', (t) => {

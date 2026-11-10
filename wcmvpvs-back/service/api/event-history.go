@@ -886,14 +886,15 @@ func assembleHistoryReportLines(entry eventHistoryEntry) []pdfLine {
 		for _, question := range questionDefinitions {
 			addParagraphLine(&lines, question.Title, "bold", 12, 0, 3)
 			counts := feedbackCounts(entry.FeedbackSummary, question.ID)
+			questionTotal := 0
+			for _, count := range counts {
+				questionTotal += count
+			}
 			for key, label := range question.Answers {
 				count := counts[key]
 				parts := []string{label, fmt.Sprintf("%s risposte", formatItalianNumber(count))}
-				if entry.FeedbackSummary.TotalResponses > 0 {
-					percentage := 0.0
-					if entry.FeedbackSummary.TotalResponses > 0 {
-						percentage = float64(count) / float64(entry.FeedbackSummary.TotalResponses) * 100
-					}
+				if questionTotal > 0 {
+					percentage := float64(count) / float64(questionTotal) * 100
 					parts = append(parts, formatPercentage(percentage))
 				}
 				addBulletLine(&lines, strings.Join(parts, " • "), 10, 2)

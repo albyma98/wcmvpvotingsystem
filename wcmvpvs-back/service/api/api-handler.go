@@ -152,6 +152,7 @@ func (rt *_router) Handler() chi.Router {
 	rt.router.Get("/public/events/{eventId}/quiz", rt.wrap(rt.withMinigame("quiz", rt.getPublicEventQuiz)))
 	rt.router.Post("/public/events/{eventId}/quiz/answer", rt.wrap(rt.withMinigame("quiz", rt.postPublicEventQuizAnswer)))
 	rt.router.Post("/events/{eventId}/feedback", rt.wrap(rt.submitEventFeedback))
+	rt.router.Post("/events/{eventId}/feedback/answer", rt.wrap(rt.submitEventFeedbackAnswer))
 	rt.router.Get("/admin/events/history", rt.wrapAdmin(rt.getEventHistory))
 	rt.router.Get("/admin/events/history/{eventId}/report", rt.wrapAdmin(rt.downloadEventHistoryReport))
 	rt.router.Get("/admin/events/{eventId}/ai-report", rt.wrapAdmin(rt.getAdminEventAIReport))

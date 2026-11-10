@@ -1,6 +1,6 @@
 <template>
   <div class="cento-root" :style="themeStyle">
-    <div class="phone" :inert="isHomeLoading || isFeedbackModalOpen" :aria-hidden="isHomeLoading || isFeedbackModalOpen || undefined" :aria-busy="isHomeLoading">
+    <div class="phone" :inert="isHomeLoading" :aria-hidden="isHomeLoading || undefined" :aria-busy="isHomeLoading">
       <div class="home-scroll">
         <header class="topbar">
           <div class="club">
@@ -92,25 +92,33 @@
           </div>
 
           <Transition name="home-slot" mode="out-in">
-            <section v-if="hasFeedbackSurvey && !hasSubmittedFeedback && feedbackOptions.length" key="inline-feedback" :ref="observeFeedbackInvitation" class="feedback-cta feedback-inline" aria-labelledby="inline-feedback-title">
+            <section v-if="hasFeedbackSurvey && !hasSubmittedFeedback" key="inline-feedback" :ref="observeFeedbackInvitation" class="feedback-cta feedback-inline" aria-labelledby="inline-feedback-title" :aria-busy="feedbackSaving">
               <h2 id="inline-feedback-title">La tua voce conta</h2>
-              <p id="inline-feedback-question">{{ firstFeedbackQuestion.title }}</p>
-              <div class="feedback-emoji-options" role="group" aria-labelledby="inline-feedback-question">
+              <h3 id="inline-feedback-question" ref="feedbackQuestionTitle" tabindex="-1">{{ activeFeedbackQuestion.title }}</h3>
+              <div v-if="activeFeedbackQuestion.id === 'suggestion'" class="feedback-suggestion">
+                <textarea v-model="feedbackSuggestion" maxlength="80" rows="2" aria-labelledby="inline-feedback-question" :disabled="feedbackSaving" />
+                <small>{{ feedbackSuggestion.length }}/80</small>
+              </div>
+              <div v-else :key="activeFeedbackQuestion.id" :class="feedbackOptions.length ? 'feedback-emoji-options' : 'feedback-answer-options'" role="group" aria-labelledby="inline-feedback-question">
                 <button
-                  v-for="option in feedbackOptions"
+                  v-for="option in feedbackOptions.length ? feedbackOptions : activeFeedbackQuestion.answers"
                   :key="option.value"
                   type="button"
-                  :aria-label="option.label"
-                  :aria-pressed="inlineFeedbackAnswer === option.value"
-                  @click="answerFeedbackInline(option.value, $event)"
-                ><span aria-hidden="true">{{ option.emoji }}</span></button>
+                  :aria-label="option.emoji ? option.label : undefined"
+                  :aria-pressed="(feedbackPendingAnswer ?? feedbackDraft.answers[activeFeedbackQuestion.id]) === option.value"
+                  :disabled="feedbackSaving"
+                  @click="answerFeedbackInline(option.value)"
+                ><span aria-hidden="true">{{ option.emoji || option.icon }}</span><span v-if="!option.emoji">{{ option.label }}</span></button>
+              </div>
+              <p v-if="feedbackError" class="feedback-error" role="alert">{{ feedbackError }}</p>
+              <div v-if="feedbackStep > 0 || activeFeedbackQuestion.id === 'suggestion'" class="feedback-inline-actions">
+                <button v-if="feedbackStep > 0" type="button" :disabled="feedbackSaving" @click="previousFeedbackQuestion">Indietro</button>
+                <template v-if="activeFeedbackQuestion.id === 'suggestion'">
+                  <button type="button" :disabled="feedbackSaving" @click="answerFeedbackInline('')">Salta</button>
+                  <button type="button" :disabled="feedbackSaving" @click="answerFeedbackInline(feedbackSuggestion)">{{ feedbackSaving ? 'Salvataggio…' : 'Invia' }}</button>
+                </template>
               </div>
             </section>
-            <button v-else-if="hasFeedbackSurvey && !hasSubmittedFeedback" key="feedback" :ref="observeFeedbackInvitation" class="feedback-cta" type="button" @click="openFeedbackModal">
-              <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-8.5 8.5H4l1.5-4.5A8.5 8.5 0 1 1 20.5 11.5Z"/><path d="M8.5 10h7m-7 4h5"/></svg></span>
-              <span class="feedback-cta-copy"><b>La tua voce conta</b><span>{{ firstFeedbackQuestion?.title || 'Come stai vivendo la partita?' }}</span></span>
-              <span class="feedback-cta-action">Lascia un feedback <span aria-hidden="true">→</span></span>
-            </button>
             <button v-else-if="featuredMission" key="challenge" ref="homeChallengeButton" class="moment-card" type="button" @click="onMission(featuredMission, 'home_featured')">
               <span class="home-icon" aria-hidden="true">{{ featuredMission.emoji }}</span>
               <span class="moment-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ feedbackThanks ? 'Grazie per il feedback!' : featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
@@ -434,7 +442,7 @@
           </div>
           <div v-if="progress.unlocked" class="row-item leaderboard-row journey-badge"><span class="avatar" aria-hidden="true">🏅</span><span class="row-copy"><b>{{ FAN_BADGE_NAME }}</b><span>Il tuo badge digitale della partita</span></span></div>
           <p class="sheet-sub">{{ leaderboardUser ? `La tua posizione nella società: #${leaderboardUser.rank}` : 'Grazie per aver partecipato alla serata.' }}</p>
-          <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" class="btn-vote" type="button" @click="openFeedbackModal">Com’è andata? Lascia il tuo feedback</button>
+          <button v-if="hasFeedbackSurvey && !hasSubmittedFeedback" class="btn-vote" type="button" @click="openInlineFeedback">Com’è andata? Lascia il tuo feedback</button>
           <p v-else-if="hasSubmittedFeedback" class="sheet-sub">Feedback ricevuto, grazie!</p>
         </div>
       </div>
@@ -638,19 +646,6 @@
     </div>
 
     <div class="coin-flight-layer" aria-hidden="true"><span v-for="(flight, index) in coinFlights" :key="index" class="coin coin-flight" :style="flight"></span></div>
-    <EventFeedbackModal
-      :key="walletScope()"
-      :model-value="isFeedbackModalOpen"
-      :event-id="eventId"
-      :feedback-survey="feedbackSurvey"
-      :report-experience-enabled="true"
-      :initial-answer="feedbackModalAnswer"
-      :theme-style="themeStyle"
-      @update:model-value="onFeedbackModalChange"
-      @initial-answer-changed="inlineFeedbackAnswer = $event"
-      @submitted="handleFeedbackSubmitted"
-      @telemetry="onFormTelemetry"
-    />
     <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" :trigger="registrationTrigger" :reward-label="registrationRewardLabel" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" @completed="completeRegistration" @dismissed="dismissRegistration" @telemetry="onFormTelemetry" />
     <FanMerchShop
       v-if="merchRequest"
@@ -672,8 +667,7 @@ import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
 import { createEventReportTelemetry, createReportSignalSender, reportSource } from '../eventReportTelemetry';
 import { stopPostHogForNewExperience } from '../lib/posthog';
 import { sanitizeFanAnalyticsMetadata } from '../fanAnalytics';
-import EventFeedbackModal from '../components/EventFeedbackModal.vue';
-import { inlineFeedbackOptions } from '../inlineFeedback';
+import { inlineFeedbackOptions, inlineFeedbackQuestions } from '../inlineFeedback';
 import FanPlayerCard from '../components/FanPlayerCard.vue';
 import MvpPlayerCarousel from '../components/MvpPlayerCarousel.vue';
 import FanMvpRoster from '../components/FanMvpRoster.vue';
@@ -702,6 +696,7 @@ import {
   apiClient,
   fetchFanProfile,
   fetchVoteStatus,
+  saveEventFeedbackAnswer,
   fetchQuickQuiz,
   vote,
   fetchFanWallet,
@@ -874,14 +869,16 @@ const platformInfoRef = ref(null);
 const profileBodyEl = ref(null);
 const lotteryTicketEl = ref(null);
 const activeGameId = ref(null);
-const isFeedbackModalOpen = ref(false);
 const hasSubmittedFeedback = ref(false);
-const inlineFeedbackAnswer = ref('');
-const feedbackModalAnswer = ref('');
+const feedbackDraft = ref({ responseId: '', answers: {} });
+const feedbackPosition = ref(null);
+const feedbackPendingAnswer = ref(null);
+const feedbackSuggestion = ref('');
+const feedbackError = ref('');
+const feedbackQuestionTitle = ref(null);
 const feedbackThanks = ref(false);
 const homeChallengeButton = ref(null);
 const homePlayButton = ref(null);
-let feedbackTrigger;
 let feedbackThanksTimer;
 
 // Registry giochi reali (titolo + reward indicativa mostrata nella lista).
@@ -1166,57 +1163,116 @@ const feedbackSurvey = computed(() => {
       || 'Se potessi migliorare qualcosa, cosa ti piacerebbe aggiungere o cambiare?',
   };
 });
+const feedbackQuestions = computed(() => inlineFeedbackQuestions(feedbackSurvey.value));
 const hasFeedbackSurvey = computed(() =>
   Boolean(props.eventId)
   && eventState.value?.show_feedback_survey !== false
   && eventState.value?.showFeedbackSurvey !== false
-  && Array.isArray(feedbackSurvey.value.questions)
-  && feedbackSurvey.value.questions.length > 0,
+  && feedbackQuestions.value.length > 0,
 );
-const firstFeedbackQuestion = computed(() => feedbackSurvey.value.questions?.[0]);
-const feedbackOptions = computed(() => inlineFeedbackOptions(firstFeedbackQuestion.value));
+const feedbackStep = computed(() => {
+  const unanswered = feedbackQuestions.value.findIndex(({ id }) => !Object.hasOwn(feedbackDraft.value.answers, id));
+  const last = feedbackQuestions.value.length - 1;
+  return Math.min(feedbackPosition.value ?? (unanswered < 0 ? last : unanswered), last);
+});
+const activeFeedbackQuestion = computed(() => feedbackQuestions.value[feedbackStep.value]);
+const feedbackOptions = computed(() => inlineFeedbackOptions(activeFeedbackQuestion.value));
+const feedbackSaving = computed(() => feedbackPendingAnswer.value !== null);
 const feedbackStorageKey = (eventId) => `wcmvpvs-feedback:${eventId}`;
 watch([() => props.eventId, () => props.organizationSlug], ([eventId]) => {
-  isFeedbackModalOpen.value = false;
   hasSubmittedFeedback.value = false;
-  inlineFeedbackAnswer.value = '';
-  feedbackModalAnswer.value = '';
+  feedbackDraft.value = { responseId: '', answers: {} };
+  feedbackPosition.value = null;
+  feedbackPendingAnswer.value = null;
+  feedbackSuggestion.value = '';
+  feedbackError.value = '';
   feedbackThanks.value = false;
-  feedbackTrigger = undefined;
   if (typeof window === 'undefined') return;
   window.clearTimeout(feedbackThanksTimer);
   if (!eventId) return;
   try {
-    hasSubmittedFeedback.value = window.localStorage.getItem(feedbackStorageKey(eventId)) === '1';
+    const saved = window.localStorage.getItem(feedbackStorageKey(eventId));
+    if (saved === '1') {
+      hasSubmittedFeedback.value = true;
+    } else if (saved) {
+      const draft = JSON.parse(saved);
+      if (/^[0-9a-f]{32}$/.test(draft?.responseId) && draft.organizationSlug === props.organizationSlug
+        && draft.answers && typeof draft.answers === 'object' && !Array.isArray(draft.answers)) {
+        feedbackDraft.value = draft;
+      }
+    }
   } catch (error) {
     /* il flusso resta utilizzabile quando localStorage non è disponibile */
   }
 }, { immediate: true });
-function openFeedbackModal(event, initialAnswer = '') {
+
+function persistFeedback(value) {
+  try {
+    window.localStorage.setItem(feedbackStorageKey(props.eventId), value);
+  } catch (error) {
+    /* lo stato resta disponibile per la sessione corrente */
+  }
+}
+function openInlineFeedback() {
   if (!hasFeedbackSurvey.value || hasSubmittedFeedback.value) return;
-  recordFanEvent('cta_clicked', { cta: 'feedback', placement: 'feedback_home' });
-  feedbackTrigger = event?.currentTarget;
-  feedbackModalAnswer.value = initialAnswer;
   closeSheets();
-  isFeedbackModalOpen.value = true;
-  recordFanEvent('feedback_opened', { trigger: 'feedback' });
+  nextTick(() => feedbackQuestionTitle.value?.focus());
 }
-function answerFeedbackInline(value, event) {
-  if (isFeedbackModalOpen.value || !hasFeedbackSurvey.value || hasSubmittedFeedback.value || !feedbackOptions.value.some((option) => option.value === value)) return;
-  inlineFeedbackAnswer.value = value;
-  openFeedbackModal(event, value);
+function previousFeedbackQuestion() {
+  if (feedbackSaving.value || feedbackStep.value <= 0) return;
+  recordFanEvent('feedback_step', { trigger: 'feedback', count: feedbackStep.value + 1, outcome: 'back' });
+  feedbackPosition.value = feedbackStep.value - 1;
+  feedbackError.value = '';
+  nextTick(() => feedbackQuestionTitle.value?.focus({ preventScroll: true }));
 }
-function onFeedbackModalChange(open) {
-  isFeedbackModalOpen.value = open;
-  if (open) return;
-  feedbackModalAnswer.value = '';
-  const trigger = feedbackTrigger;
+async function answerFeedbackInline(value) {
+  const question = activeFeedbackQuestion.value;
+  if (feedbackSaving.value || !hasFeedbackSurvey.value || hasSubmittedFeedback.value || !question) return;
+  const optional = question.id === 'suggestion';
+  if (!optional && !question.answers.some((answer) => answer.value === value)) return;
+  const answer = value.trim();
+  const draft = feedbackDraft.value;
+  const step = feedbackStep.value;
   const scope = walletScope();
-  feedbackTrigger = undefined;
+  if (!draft.responseId) {
+    const random = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    draft.responseId = Array.from(random, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    draft.organizationSlug = props.organizationSlug;
+    persistFeedback(JSON.stringify(draft));
+    recordFanEvent('cta_clicked', { cta: 'feedback', placement: 'feedback_home' });
+    recordFanEvent('feedback_opened', { trigger: 'feedback' });
+  }
+  feedbackError.value = '';
+  feedbackPendingAnswer.value = answer;
+  let result;
+  try {
+    result = await saveEventFeedbackAnswer(props.eventId, draft.responseId, question.id, answer);
+  } catch (error) {
+    result = { ok: false };
+  }
+  if (isDisposed || scope !== walletScope() || draft !== feedbackDraft.value) return;
+  feedbackPendingAnswer.value = null;
+  if (!result?.ok) {
+    feedbackError.value = 'Impossibile salvare la risposta. Riprova.';
+    recordFanEvent('feedback_failed', { trigger: 'feedback', count: step + 1, reason: 'save_failed', outcome: 'failure' });
+    return;
+  }
+  recordFanEvent('feedback_step', { trigger: 'feedback', count: step + 1, outcome: optional && !answer ? 'skipped' : 'selected' });
+  if (optional) {
+    handleFeedbackSubmitted(draft.answers);
+    nextTick(() => {
+      if (isDisposed || scope !== walletScope() || draft !== feedbackDraft.value || activeSheet.value || isRegistrationOpen.value || activeGameId.value) return;
+      (homeChallengeButton.value || homePlayButton.value)?.focus({ preventScroll: true });
+    });
+    return;
+  }
+  draft.answers[question.id] = answer;
+  persistFeedback(JSON.stringify(draft));
+  feedbackPosition.value = step + 1;
   nextTick(() => {
-    if (isDisposed || scope !== walletScope() || isFeedbackModalOpen.value) return;
-    const target = hasSubmittedFeedback.value ? homeChallengeButton.value : trigger;
-    (target && !target.closest('[inert]') ? target : homePlayButton.value)?.focus({ preventScroll: true });
+    if (!activeSheet.value && !isRegistrationOpen.value && !activeGameId.value && draft === feedbackDraft.value) {
+      feedbackQuestionTitle.value?.focus({ preventScroll: true });
+    }
   });
 }
 function handleFeedbackSubmitted(answers = {}) {
@@ -1225,11 +1281,7 @@ function handleFeedbackSubmitted(answers = {}) {
   feedbackThanks.value = true;
   window.clearTimeout(feedbackThanksTimer);
   feedbackThanksTimer = window.setTimeout(() => { feedbackThanks.value = false; }, 2600);
-  try {
-    window.localStorage.setItem(feedbackStorageKey(props.eventId), '1');
-  } catch (error) {
-    /* lo stato di conferma resta valido per la sessione corrente */
-  }
+  persistFeedback('1');
 }
 
 /* ---------- Giocatore votato (locale o da prop parent) ---------- */
@@ -1332,7 +1384,7 @@ function cancelHomeVoteEdit() {
   const wasEditing = mvpEditing.value;
   mvpEditing.value = false;
   homeMvpSelectedId.value = null;
-  if (wasEditing && !activeSheet.value && !isFeedbackModalOpen.value) nextTick(() => homeMvpTitle.value?.focus({ preventScroll: true }));
+  if (wasEditing && !activeSheet.value) nextTick(() => homeMvpTitle.value?.focus({ preventScroll: true }));
 }
 function measureMvpCollapse(element) {
   element.inert = true;
@@ -1841,7 +1893,7 @@ async function castVote(player, { inline = false } = {}) {
     homeMvpSelectedId.value = null;
     if (inline) {
       highlightPlay.value = true;
-      if (presentationRevision === sheetRevision && !activeSheet.value && !isFeedbackModalOpen.value) {
+      if (presentationRevision === sheetRevision && !activeSheet.value) {
         nextTick(() => homeMvpTitle.value?.focus({ preventScroll: true }));
       }
     } else if (presentationRevision === sheetRevision && (!activeSheet.value || activeSheet.value === 'mvp')) {
@@ -2159,8 +2211,8 @@ function reportBrowserContext() {
   };
 }
 function onFormTelemetry(event) {
-  if (!['feedback_step', 'feedback_dismissed', 'feedback_failed', 'registration_step', 'registration_failed', 'registration_dismissed', 'login_started', 'login_completed', 'login_failed'].includes(event?.name)) return;
-  recordFanEvent(event.name, { ...sanitizeFanAnalyticsMetadata(event.metadata), trigger: event.name.startsWith('feedback_') ? 'feedback' : registrationTrigger.value });
+  if (!['registration_step', 'registration_failed', 'registration_dismissed', 'login_started', 'login_completed', 'login_failed'].includes(event?.name)) return;
+  recordFanEvent(event.name, { ...sanitizeFanAnalyticsMetadata(event.metadata), trigger: registrationTrigger.value });
 }
 function analyticsFailureReason(response) {
   const status = Number(response?.status ?? response?.error?.response?.status);
@@ -3055,82 +3107,73 @@ watch(
 
 .feedback-cta {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 5px 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
   background: var(--red);
   border: 1px solid transparent;
   border-radius: var(--home-radius);
   padding: 8px 10px;
-  cursor: pointer;
-  font: inherit;
   color: var(--on-primary);
   text-align: left;
   box-shadow: var(--home-shadow);
 }
-.feedback-inline {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 3px;
-  cursor: default;
-}
-.feedback-inline h2, .feedback-inline p { margin: 0; overflow-wrap: anywhere; }
+.feedback-inline h2, .feedback-inline h3, .feedback-inline p { margin: 0; overflow-wrap: anywhere; }
 .feedback-inline h2 { font-size: .9375rem; font-weight: 800; }
-.feedback-inline p { font-size: .8125rem; }
+.feedback-inline h3 { font-size: .9375rem; font-weight: 600; line-height: 1.35; }
 .feedback-emoji-options {
   display: grid;
   grid-template-columns: repeat(4, minmax(44px, 1fr));
   gap: 6px;
   margin-top: 3px;
 }
-.feedback-emoji-options button {
-  display: grid;
-  place-items: center;
+.feedback-emoji-options button,
+.feedback-answer-options button,
+.feedback-inline-actions button {
   min-height: 44px;
-  padding: 2px;
   border: 2px solid transparent;
   border-radius: 10px;
   background: #fffaf2;
-  font: 1.4rem/1 system-ui;
+  color: #29221e;
+  font: inherit;
   cursor: pointer;
+}
+.feedback-emoji-options button {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  font: 1.4rem/1 system-ui;
   transition: transform .12s ease, background-color .12s ease;
 }
-.feedback-emoji-options button[aria-pressed='true'] { border-color: #29221e; background: #ffdf93; }
+.feedback-inline button[aria-pressed='true'] { border-color: #29221e; background: #ffdf93; }
+.feedback-inline button:disabled { cursor: wait; }
 .feedback-emoji-options button:active { transform: scale(.95); }
-.home-dashboard .feedback-emoji-options button:focus-visible { outline-color: var(--on-primary); }
-.feedback-thanks { margin: 0; padding: 8px; color: var(--ink); font-size: .875rem; }
-.feedback-cta .home-icon {
-  background: transparent;
-  border: 1px solid currentColor;
-  color: inherit;
-}
-.feedback-cta-copy {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.feedback-cta-copy b {
-  display: block;
-  font-size: 1rem;
-  font-weight: 800;
-}
-.feedback-cta-copy span {
-  display: block;
-  font-size: .8125rem;
-}
-.feedback-cta-action {
+.home-dashboard .feedback-inline button:focus-visible,
+.home-dashboard .feedback-inline textarea:focus-visible { outline-color: var(--on-primary); }
+.feedback-answer-options { display: grid; gap: 5px; }
+.feedback-answer-options button {
   display: flex;
   align-items: center;
-  grid-column: 1 / -1;
-  justify-content: space-between;
   gap: 8px;
-  min-height: 34px;
-  background: var(--card);
-  padding: 5px 10px;
-  border-radius: 10px;
-  font-weight: 800;
-  font-size: .8125rem;
-  color: var(--red-text);
+  padding: 5px 9px;
+  font-size: .875rem;
+  text-align: left;
   overflow-wrap: anywhere;
 }
+.feedback-inline-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.feedback-inline-actions button { padding: 4px 9px; font-size: .8125rem; font-weight: 700; }
+.feedback-suggestion textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #fffaf2;
+  color: #29221e;
+  font: inherit;
+}
+.feedback-suggestion small { display: block; text-align: right; }
+.feedback-error { font-size: .8125rem; font-weight: 700; }
+.feedback-thanks { margin: 0; padding: 8px; color: var(--ink); font-size: .875rem; }
 .home-slot-enter-active { transition: opacity .15s ease, transform .15s ease; }
 .home-slot-leave-active { transition: opacity .1s ease, transform .1s ease; pointer-events: none; }
 .home-slot-enter-from, .home-slot-leave-to { opacity: 0; transform: translateY(4px); }
