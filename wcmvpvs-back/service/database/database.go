@@ -31,6 +31,7 @@ Then you can initialize the AppDatabase and pass it to the api package.
 package database
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -1316,6 +1317,8 @@ type AppDatabase interface {
 	DeleteSponsor(id int, organizationID int) error
 	ListSponsors(organizationID int) ([]Sponsor, error)
 	ListActiveSponsors(organizationID int) ([]Sponsor, error)
+	GetGameWallSponsors(ctx context.Context, organizationID int, activeOnly bool) (map[string]int, error)
+	SaveGameWallSponsors(ctx context.Context, organizationID int, assignments map[string]int) error
 	RecordTrackingEvents(eventID int, items []TrackingEvent) error
 	GetBrandedGameParticipationCount(eventID int, deviceID string) (int, error)
 	CreateBrandedGameParticipation(p BrandedGameParticipation) (BrandedGameParticipation, error)
@@ -2199,6 +2202,9 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_sponsors_org ON sponsors(organization_id)`); err != nil {
 		return nil, fmt.Errorf("error ensuring sponsors organization index: %w", err)
+	}
+	if err = ensureGameWallSponsors(db); err != nil {
+		return nil, fmt.Errorf("error ensuring game wall sponsors: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsor_clicks';`).Scan(&tableName)

@@ -679,7 +679,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import { normalizeOrganizationColors, organizationThemeStyle } from '../organizationTheme';
 import { preloadFanHomeImages } from '../fanHomeAssets';
 import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
-import { gameWallSponsorAssignments, resolveGameWallSponsors } from '../games/gameWallSponsors';
+import { resolveGameWallSponsors } from '../games/gameWallSponsors';
 import { findAssignedSponsor, postVoteSponsorAssignments } from '../sponsorPlacements';
 import { createEventReportTelemetry, createReportSignalSender, reportSource } from '../eventReportTelemetry';
 import { stopPostHogForNewExperience } from '../lib/posthog';
@@ -765,6 +765,7 @@ const organizationColors = ref(normalizeOrganizationColors());
 const organizationName = ref('');
 const organizationLogoUrl = ref('');
 const organizationSport = ref('');
+const gameWallAssignments = ref({});
 const homeLogoUrl = computed(() => props.organizationSlug ? organizationLogoUrl.value : props.teamLogoUrl);
 const themeStyle = computed(() => organizationThemeStyle(organizationColors.value));
 watch(() => props.organizationSlug, (slug, previous, onCleanup) => {
@@ -772,6 +773,7 @@ watch(() => props.organizationSlug, (slug, previous, onCleanup) => {
   organizationName.value = '';
   organizationLogoUrl.value = '';
   organizationSport.value = '';
+  gameWallAssignments.value = {};
   if (!slug) {
     organizationThemeRequest = Promise.resolve();
     return;
@@ -786,11 +788,12 @@ async function loadOrganizationBrand(slug, signal) {
       params: { organization_slug: slug },
       signal,
     });
-    if (!signal.aborted) {
+    if (!signal.aborted && slug === props.organizationSlug) {
       organizationColors.value = normalizeOrganizationColors(data);
       organizationName.value = String(data?.name || '').trim();
       organizationLogoUrl.value = String(data?.logo_url || '').trim();
       organizationSport.value = String(data?.sport || '').trim();
+      gameWallAssignments.value = data?.game_wall_sponsors || {};
     }
   } catch (error) {
     if (!signal.aborted) console.error('Impossibile caricare i dati della società', error);
@@ -2109,7 +2112,8 @@ async function submitNickname() {
 /* ---------- Sponsors ---------- */
 const currentSponsorCatalog = computed(() => sponsorCatalogSlug.value === props.organizationSlug ? sponsors.value : []);
 const wallSponsors = computed(() => resolveGameWallSponsors(
-  gameWallSponsorAssignments[props.organizationSlug]?.[activeGameId.value],
+  gameWallAssignments.value,
+  activeGameId.value,
   currentSponsorCatalog.value,
 ));
 const postVoteSponsors = computed(() => {

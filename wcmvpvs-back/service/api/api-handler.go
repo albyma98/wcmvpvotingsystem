@@ -226,6 +226,8 @@ func (rt *_router) Handler() chi.Router {
 
 	rt.router.Get("/admin/sponsors", rt.wrapAdmin(rt.listAllSponsors))
 	rt.router.Post("/admin/sponsors", rt.wrapAdmin(rt.createSponsor))
+	rt.router.Get("/admin/sponsors/game-walls", rt.wrapAdmin(rt.getGameWallSponsors))
+	rt.router.Put("/admin/sponsors/game-walls", rt.wrapAdmin(rt.saveGameWallSponsors))
 	rt.router.Put("/admin/sponsors/{id}", rt.wrapAdmin(rt.updateSponsor))
 	rt.router.Delete("/admin/sponsors/{id}", rt.wrapAdmin(rt.deleteSponsor))
 

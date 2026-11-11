@@ -1,13 +1,14 @@
 import { findAssignedSponsor } from '../sponsorPlacements.js';
 
-// Associa slug, minigioco e lato a un ID del catalogo /sponsors.
-export const gameWallSponsorAssignments = {
-  // 'slug-societa': { basketball: { left: 12, right: 34 } },
-};
+export const gameWallGames = [
+  { id: 'basketball', label: 'Basket Rush' },
+  { id: 'playmaker', label: 'Playmaker' },
+  { id: 'crossover', label: 'Crossover Rush' },
+];
 
-export function resolveGameWallSponsors(assignments, sponsors) {
+export function resolveGameWallSponsors(assignments, gameId, sponsors) {
   return {
-    left: findAssignedSponsor(assignments?.left, sponsors),
-    right: findAssignedSponsor(assignments?.right, sponsors),
+    left: findAssignedSponsor(assignments[`${gameId}_left`], sponsors),
+    right: findAssignedSponsor(assignments[`${gameId}_right`], sponsors),
   };
 }

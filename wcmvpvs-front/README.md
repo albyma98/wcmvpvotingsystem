@@ -8,17 +8,9 @@ Vedere [istruzioni, controlli e architettura](arena-demo/README.md).
 
 ## Sponsor nelle arene di basket
 
-In `src/games/gameWallSponsors.js`, associa gli ID degli sponsor attivi di Fan Live allo slug della società, al gioco (`basketball`, `playmaker`, `crossover`) e al lato (`left`, `right`).
+Nell’admin della società, apri **Sponsor → Banner nei minigiochi**. Scegli lo sponsor per ogni parete di Basket Rush, Playmaker e Crossover Rush, poi premi **Salva banner**. Le assegnazioni si applicano alla successiva apertura di Fan Live.
 
-```js
-'slug-societa': {
-  basketball: { left: 12, right: 34 },
-  playmaker: { left: 34, right: 12 },
-  crossover: { left: 12 },
-},
-```
-
-I pannelli usano i loghi del catalogo Fan Live e mostrano una superficie neutra quando un lato è senza assegnazione o il logo non è disponibile. Le modifiche alla mappa richiedono una nuova build del frontend.
+I pannelli usano i loghi degli sponsor visibili di Fan Live. Scegli **Pannello neutro** per svuotare una parete. Anche uno sponsor nascosto, eliminato o con un logo irraggiungibile lascia il pannello neutro.
 
 ## Sponsor nella conferma MVP
 
