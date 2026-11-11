@@ -9,6 +9,7 @@ import * as brand from '../organizationTheme.js';
 import * as assets from '../fanHomeAssets.js';
 import * as gameArtwork from '../fanGameArtwork.js';
 import * as gameWallSponsors from '../games/gameWallSponsors.js';
+import * as sponsorPlacements from '../sponsorPlacements.js';
 import * as registration from '../fanRegistration.js';
 import * as fanAnalytics from '../fanAnalytics.js';
 import * as inlineFeedback from '../inlineFeedback.js';
@@ -370,6 +371,7 @@ function fixture(overrides = {}, options = {}) {
     '../fanHomeAssets': options.assets || assets,
     '../fanGameArtwork': gameArtwork,
     '../games/gameWallSponsors': { ...gameWallSponsors, gameWallSponsorAssignments: options.wallSponsorAssignments || {} },
+    '../sponsorPlacements': { ...sponsorPlacements, postVoteSponsorAssignments: options.postVoteSponsorAssignments || {} },
     '../eventReportTelemetry': { createEventReportTelemetry: (configuration) => {
       reportContexts.push(configuration);
       return { record(name, metadata = {}) {
@@ -1272,6 +1274,36 @@ test('wall sponsors use the active catalog for the current society, game and sid
   state.activeGameId.value = 'playmaker';
   assert.equal(state.wallSponsors.value.left.imageUrl, '/partner.png');
   assert.equal(state.wallSponsors.value.right, undefined);
+});
+
+test('post-vote placements resolve in order and only use the current society’s active sponsors', async (t) => {
+  const { state, props, scope } = fixture({
+    apiClient: { get: async (path, config) => {
+      if (path !== '/sponsors') return { data: {} };
+      const data = config.headers['X-Organization-Slug'] === 'club'
+        ? [{ id: 34, logo_data: '/right.png' }, { id: 12, logo_data: '/left.png' }]
+        : [{ id: 12, logo_data: '/other.png' }];
+      return { data };
+    } },
+  }, {
+    postVoteSponsorAssignments: {
+      club: { post_vote_left: 12, post_vote_right: 34 },
+      'other-club': { post_vote_left: 34, post_vote_right: 12 },
+    },
+  });
+  t.after(() => scope.stop());
+  const signal = new AbortController().signal;
+  const placements = () => state.postVoteSponsors.value.map(({ placement, sponsor }) => [placement, sponsor.imageUrl]);
+
+  await state.loadSponsors(signal);
+  assert.deepEqual(placements(), [['post_vote_left', '/left.png'], ['post_vote_right', '/right.png']]);
+  props.organizationSlug = 'other-club';
+  assert.deepEqual(placements(), []);
+  await state.loadSponsors(signal);
+  assert.deepEqual(placements(), [['post_vote_right', '/other.png']]);
+  props.organizationSlug = 'unassigned';
+  await state.loadSponsors(signal);
+  assert.deepEqual(placements(), []);
 });
 
 test('Playmaker is repeatable and every server-confirmed assist advances wallet and the first goal', (t) => {

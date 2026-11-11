@@ -20,6 +20,16 @@ In `src/games/gameWallSponsors.js`, associa gli ID degli sponsor attivi di Fan L
 
 I pannelli usano i loghi del catalogo Fan Live e mostrano una superficie neutra quando un lato è senza assegnazione o il logo non è disponibile. Le modifiche alla mappa richiedono una nuova build del frontend.
 
+## Sponsor nella conferma MVP
+
+In `src/sponsorPlacements.js`, associa lo slug della società agli ID degli sponsor del catalogo Fan Live.
+
+```js
+'slug-societa': { post_vote_left: 12, post_vote_right: 34 },
+```
+
+La conferma usa gli sponsor attivi assegnati. Con un solo ID attivo il banner è centrato. Le modifiche alle assegnazioni richiedono una nuova build del frontend.
+
 This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
 
 Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).

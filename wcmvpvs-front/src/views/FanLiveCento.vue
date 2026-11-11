@@ -655,6 +655,7 @@
       v-if="homeVoteFlight && homeVoteLanding"
       :player="votedPlayerCard"
       :club-logo-url="homeLogoUrl"
+      :sponsors="postVoteSponsors"
       :source="homeVoteFlight.source"
       :destination="homeVoteLanding"
       @finished="finishHomeVoteFlight"
@@ -679,6 +680,7 @@ import { normalizeOrganizationColors, organizationThemeStyle } from '../organiza
 import { preloadFanHomeImages } from '../fanHomeAssets';
 import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
 import { gameWallSponsorAssignments, resolveGameWallSponsors } from '../games/gameWallSponsors';
+import { findAssignedSponsor, postVoteSponsorAssignments } from '../sponsorPlacements';
 import { createEventReportTelemetry, createReportSignalSender, reportSource } from '../eventReportTelemetry';
 import { stopPostHogForNewExperience } from '../lib/posthog';
 import { sanitizeFanAnalyticsMetadata } from '../fanAnalytics';
@@ -2105,10 +2107,17 @@ async function submitNickname() {
 }
 
 /* ---------- Sponsors ---------- */
+const currentSponsorCatalog = computed(() => sponsorCatalogSlug.value === props.organizationSlug ? sponsors.value : []);
 const wallSponsors = computed(() => resolveGameWallSponsors(
   gameWallSponsorAssignments[props.organizationSlug]?.[activeGameId.value],
-  sponsorCatalogSlug.value === props.organizationSlug ? sponsors.value : [],
+  currentSponsorCatalog.value,
 ));
+const postVoteSponsors = computed(() => {
+  const assignments = postVoteSponsorAssignments[props.organizationSlug];
+  return ['post_vote_left', 'post_vote_right']
+    .map((placement) => ({ placement, sponsor: findAssignedSponsor(assignments?.[placement], currentSponsorCatalog.value) }))
+    .filter(({ sponsor }) => sponsor);
+});
 
 // Stessa normalizzazione di LiveExperienceHome: sponsor = logo (logo_data/image_url).
 function normalizeSponsor(item, index) {
