@@ -8,6 +8,7 @@ import * as journey from '../fanJourney.js';
 import * as brand from '../organizationTheme.js';
 import * as assets from '../fanHomeAssets.js';
 import * as gameArtwork from '../fanGameArtwork.js';
+import * as gameWallSponsors from '../games/gameWallSponsors.js';
 import * as registration from '../fanRegistration.js';
 import * as fanAnalytics from '../fanAnalytics.js';
 import * as inlineFeedback from '../inlineFeedback.js';
@@ -368,6 +369,7 @@ function fixture(overrides = {}, options = {}) {
     vue: options.vue || testVue, '../api': api, '../organizationTheme': brand, '../fanJourney': journey,
     '../fanHomeAssets': options.assets || assets,
     '../fanGameArtwork': gameArtwork,
+    '../games/gameWallSponsors': { ...gameWallSponsors, gameWallSponsorAssignments: options.wallSponsorAssignments || {} },
     '../eventReportTelemetry': { createEventReportTelemetry: (configuration) => {
       reportContexts.push(configuration);
       return { record(name, metadata = {}) {
@@ -1237,6 +1239,39 @@ test('basketball receipts for another event or invalid balances do not change th
   state.onBasketballCredit({ event_id: 42, wallet: 1, basketball_earned: NaN, coins_earned: 1 });
   assert.equal(state.totalCoins.value, 0);
   assert.equal(state.progress.value.current, 0);
+});
+
+test('wall sponsors use the active catalog for the current society, game and side', async (t) => {
+  const oldCatalog = deferred();
+  const { state, props, scope } = fixture({
+    apiClient: { get: async (path, config) => {
+      if (path !== '/sponsors') return { data: {} };
+      if (config.headers['X-Organization-Slug'] === 'club') return oldCatalog.promise;
+      return { data: [{ id: 21, logo_data: '/partner.png', organization_id: 7, creative_id: 9 }] };
+    } },
+  }, {
+    props: { initialDataReady: false },
+    wallSponsorAssignments: {
+      club: { basketball: { left: 21 } },
+      'other-club': { basketball: { left: 99, right: 21 }, playmaker: { left: 21 } },
+    },
+  });
+  t.after(() => scope.stop());
+  const signal = new AbortController().signal;
+  const oldRequest = state.loadSponsors(signal);
+  props.organizationSlug = 'other-club';
+  await state.loadSponsors(signal);
+  state.activeGameId.value = 'basketball';
+  assert.equal(state.wallSponsors.value.left, undefined);
+  const { sponsorId, creativeId, organizationId, imageUrl } = state.wallSponsors.value.right;
+  assert.deepEqual({ sponsorId, creativeId, organizationId, imageUrl }, {
+    sponsorId: 21, creativeId: 9, organizationId: 7, imageUrl: '/partner.png',
+  });
+  oldCatalog.resolve({ data: [{ id: 21, logo_data: '/wrong-club.png', organization_id: 6 }] });
+  await oldRequest;
+  state.activeGameId.value = 'playmaker';
+  assert.equal(state.wallSponsors.value.left.imageUrl, '/partner.png');
+  assert.equal(state.wallSponsors.value.right, undefined);
 });
 
 test('Playmaker is repeatable and every server-confirmed assist advances wallet and the first goal', (t) => {

@@ -6061,7 +6061,7 @@ func (db *appdbimpl) querySponsors(activeOnly bool, organizationID int) ([]Spons
 
 	var sponsors []Sponsor
 	for rows.Next() {
-		var s Sponsor
+		s := Sponsor{OrganizationID: organizationID}
 		var isActive int
 		if err := rows.Scan(&s.ID, &s.Position, &s.Name, &s.ReportName, &s.LogoData, &s.LinkURL, &isActive); err != nil {
 			return nil, err

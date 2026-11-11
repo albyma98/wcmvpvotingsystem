@@ -30,6 +30,7 @@
         <rect width="360" height="560" fill="url(#pm-arena)"/>
         <path d="M-20 0h90l80 280H-20Zm400 0h-90l-80 280h170Z" fill="#b5fff7" opacity=".035"/>
         <g fill="#adced7" opacity=".2"><circle v-for="(dot, i) in crowd" :key="i" :cx="dot.x" :cy="dot.y" :r="dot.r"/></g>
+        <GameWallSponsors game-id="playmaker" :sponsors="wallSponsors" />
         <path d="M33 158h294l98 402H-65Z" fill="url(#pm-floor)"/><path d="M33 158h294l98 402H-65Z" fill="url(#pm-wood)"/>
         <g fill="none" stroke="#f9e5bf" stroke-width="1.5" opacity=".5"><path d="M40 169h280l76 368H-36ZM126 169 101 314q79 33 158 0l-25-145M111 267q69 28 138 0M14 292q166 245 332 0"/><ellipse cx="180" cy="505" rx="61" ry="18"/></g>
         <path d="M126 169 101 314q79 33 158 0l-25-145Z" fill="var(--red, #3fa7a1)" opacity=".09"/>
@@ -67,8 +68,9 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { startPlaymakerSession, submitPlaymakerPass } from '../../api';
 import { PLAYMAKER_WORLD, PLAYMAKER_START, getPlaymakerScene, createPlaymakerPass, samplePlaymakerPass } from '../../games/playmaker';
+import GameWallSponsors from './GameWallSponsors.vue';
 
-const props = defineProps({ eventId: { type: Number, required: true }, walletCoins: { type: Number, default: 0 }, earnedCoins: { type: Number, default: 0 }, clubName: { type: String, default: '' }, clubLogoUrl: { type: String, default: '' }, organizationSlug: { type: String, default: '' } });
+const props = defineProps({ eventId: { type: Number, required: true }, walletCoins: { type: Number, default: 0 }, earnedCoins: { type: Number, default: 0 }, clubName: { type: String, default: '' }, clubLogoUrl: { type: String, default: '' }, organizationSlug: { type: String, default: '' }, wallSponsors: { type: Object, default: undefined } });
 const emit = defineEmits(['credited', 'saving-change', 'round-started', 'round-completed']);
 const gameEventId = props.eventId;
 const state = ref('intro');

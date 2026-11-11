@@ -21,6 +21,7 @@
         <rect width="360" height="560" fill="url(#cr-night)"/>
         <path d="M-40 0h100l130 270H-40Zm440 0H300L170 270h230Z" fill="#a9d7ee" opacity=".04"/>
         <g fill="#9dbbd1" opacity=".2"><circle v-for="(dot, i) in crowd" :key="i" :cx="dot.x" :cy="dot.y" :r="dot.r"/></g>
+        <GameWallSponsors game-id="crossover" :sponsors="wallSponsors" />
         <g :transform="`translate(${-pose.player.lean * .2}, 0)`">
           <path d="M40 149h280l106 411H-66Z" fill="url(#cr-floor)"/><path d="M40 149h280l106 411H-66Z" fill="url(#cr-wood)"/>
           <g fill="none" stroke="#ffe6bd" stroke-width="1.5" opacity=".45"><path d="M47 159h266l89 373H-42ZM126 159 101 295q79 33 158 0l-25-136M110 252q70 29 140 0M12 289q168 253 336 0"/><ellipse cx="180" cy="526" rx="60" ry="16"/></g>
@@ -50,8 +51,9 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { startCrossoverSession, submitCrossoverDuel } from '../../api';
 import { CROSSOVER_WORLD, CROSSOVER_ANIMATION_MS, evaluateCrossoverDuel, getCrossoverScene, sampleCrossoverFinish } from '../../games/crossover';
+import GameWallSponsors from './GameWallSponsors.vue';
 
-const props = defineProps({ eventId: { type: Number, required: true }, walletCoins: { type: Number, default: 0 }, earnedCoins: { type: Number, default: 0 }, clubName: { type: String, default: '' }, clubLogoUrl: { type: String, default: '' }, organizationSlug: { type: String, default: '' } });
+const props = defineProps({ eventId: { type: Number, required: true }, walletCoins: { type: Number, default: 0 }, earnedCoins: { type: Number, default: 0 }, clubName: { type: String, default: '' }, clubLogoUrl: { type: String, default: '' }, organizationSlug: { type: String, default: '' }, wallSponsors: { type: Object, default: undefined } });
 const emit = defineEmits(['credited', 'saving-change', 'round-started', 'round-completed']);
 const gameEventId = props.eventId;
 const state = ref('intro');

@@ -558,6 +558,7 @@
             :event-id="eventId"
             :wallet-coins="totalCoins"
             :earned-coins="journey.rewards.basketball || 0"
+            :wall-sponsors="wallSponsors"
             :club-name="homeName"
             :club-logo-url="homeLogoUrl"
             @credited="onBasketballCredit"
@@ -572,6 +573,7 @@
             :event-id="eventId"
             :wallet-coins="totalCoins"
             :earned-coins="journey.rewards.playmaker || 0"
+            :wall-sponsors="wallSponsors"
             :club-name="homeName"
             :club-logo-url="homeLogoUrl"
             :organization-slug="organizationSlug"
@@ -587,6 +589,7 @@
             :event-id="eventId"
             :wallet-coins="totalCoins"
             :earned-coins="journey.rewards.crossover || 0"
+            :wall-sponsors="wallSponsors"
             :club-name="homeName"
             :club-logo-url="homeLogoUrl"
             :organization-slug="organizationSlug"
@@ -675,6 +678,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import { normalizeOrganizationColors, organizationThemeStyle } from '../organizationTheme';
 import { preloadFanHomeImages } from '../fanHomeAssets';
 import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
+import { gameWallSponsorAssignments, resolveGameWallSponsors } from '../games/gameWallSponsors';
 import { createEventReportTelemetry, createReportSignalSender, reportSource } from '../eventReportTelemetry';
 import { stopPostHogForNewExperience } from '../lib/posthog';
 import { sanitizeFanAnalyticsMetadata } from '../fanAnalytics';
@@ -821,6 +825,7 @@ const registrationOriginSheet = ref('');
 const isLoadingLeaderboard = ref(false);
 const leaderboardError = ref('');
 const sponsors = ref([]);
+const sponsorCatalogSlug = ref(null);
 
 const rawPlayers = ref([]);
 const isLoadingPlayers = ref(false);
@@ -2100,13 +2105,22 @@ async function submitNickname() {
 }
 
 /* ---------- Sponsors ---------- */
+const wallSponsors = computed(() => resolveGameWallSponsors(
+  gameWallSponsorAssignments[props.organizationSlug]?.[activeGameId.value],
+  sponsorCatalogSlug.value === props.organizationSlug ? sponsors.value : [],
+));
+
 // Stessa normalizzazione di LiveExperienceHome: sponsor = logo (logo_data/image_url).
 function normalizeSponsor(item, index) {
   const imageUrl = String(item?.logo_data || item?.image_url || item?.imageUrl || '').trim();
   if (!imageUrl) return null;
   const priorityRaw = Number(item?.priority ?? item?.order_index ?? item?.order ?? item?.display_order);
+  const sponsorId = Number(item?.id) || null;
   return {
-    id: Number(item?.id) || index + 1,
+    id: sponsorId || index + 1,
+    sponsorId,
+    creativeId: item?.creative_id ?? null,
+    organizationId: Number(item?.organization_id) || null,
     name: String(item?.name || '').trim(),
     imageUrl,
     linkUrl: String(item?.link_url || item?.linkUrl || '').trim(),
@@ -2114,16 +2128,22 @@ function normalizeSponsor(item, index) {
     insertedIndex: index,
   };
 }
-async function loadSponsors() {
+async function loadSponsors(signal) {
+  const slug = props.organizationSlug;
   try {
-    const { data } = await apiClient.get('/sponsors');
+    const { data } = await apiClient.get('/sponsors', {
+      signal,
+      headers: slug ? { 'X-Organization-Slug': slug } : undefined,
+    });
+    if (signal.aborted || slug !== props.organizationSlug) return;
     const list = Array.isArray(data) ? data : Array.isArray(data?.sponsors) ? data.sponsors : [];
     sponsors.value = list
       .map((item, index) => normalizeSponsor(item, index))
       .filter(Boolean)
       .sort((a, b) => (a.priority !== b.priority ? a.priority - b.priority : a.insertedIndex - b.insertedIndex));
+    sponsorCatalogSlug.value = slug;
   } catch (error) {
-    sponsors.value = [];
+    if (!signal.aborted && slug === props.organizationSlug) sponsors.value = [];
   }
 }
 function onSponsorClick(sponsor) {
@@ -2436,7 +2456,7 @@ async function bootstrap() {
     loadFanProfile().catch(() => {}).then(() => loadVoteStatus()),
     loadPlayers(),
     refreshLeaderboard(),
-    loadSponsors(),
+    loadSponsors(signal),
     ensureCentoFonts(),
   ]);
   if (revision !== bootstrapRevision || signal.aborted) return;

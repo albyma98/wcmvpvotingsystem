@@ -26,6 +26,7 @@
         <rect width="360" height="560" fill="url(#br-arena)" />
         <path d="M-30 0h70l170 360H-30Zm420 0h-70L150 360h240Z" fill="url(#br-light)" />
         <g fill="#88d9e8" opacity=".18"><circle v-for="(seat, index) in crowdDots" :key="index" :cx="seat.x" :cy="seat.y" :r="seat.r" /></g>
+        <GameWallSponsors game-id="basketball" :sponsors="wallSponsors" />
         <path d="M0 325Q180 295 360 325v235H0Z" fill="url(#br-floor)" />
         <g fill="none" stroke="#e9cf9c" stroke-width="1" opacity=".13"><path v-for="x in floorLines" :key="x" :d="`M180 307 ${x} 560`" /><path d="M0 359h360M0 410h360M0 481h360" /></g>
         <g fill="none" stroke="#e9e0c3" stroke-width="1.5" opacity=".3"><path d="M120 322 75 449q105 62 210 0l-45-127M100 381q80 32 160 0M0 480q180 122 360 0" /><ellipse cx="180" cy="487" rx="126" ry="35" /></g>
@@ -91,8 +92,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { prepareBasketballShot, submitBasketballShot } from '../../api';
 import { BASKETBALL_WORLD, BASKETBALL_START, BASKETBALL_HOOP, createBasketballShot, sampleBasketballShot } from '../../games/basketballShot';
+import GameWallSponsors from './GameWallSponsors.vue';
 
-const props = defineProps({ eventId: { type: Number, required: true }, walletCoins: { type: Number, default: 0 }, earnedCoins: { type: Number, default: 0 }, clubName: { type: String, default: '' }, clubLogoUrl: { type: String, default: '' } });
+const props = defineProps({ eventId: { type: Number, required: true }, walletCoins: { type: Number, default: 0 }, earnedCoins: { type: Number, default: 0 }, clubName: { type: String, default: '' }, clubLogoUrl: { type: String, default: '' }, wallSponsors: { type: Object, default: undefined } });
 const emit = defineEmits(['credited', 'saving-change', 'round-started', 'round-completed']);
 const gameEventId = props.eventId;
 const state = ref('loading');
