@@ -209,6 +209,23 @@ func scanChatMessage(row rowScanner, fanID int, admin bool) (ChatMessage, int, e
 	return m, adminID, err
 }
 
+// Preview returns the newest public message of an enabled chat.
+func (s MatchChatStore) Preview(ctx context.Context) (*ChatMessage, error) {
+	message, _, err := scanChatMessage(s.DB.QueryRowContext(ctx, `SELECT `+chatMessageColumns+`
+		FROM event_chat_messages m
+		JOIN event_chat_settings c ON c.event_id=m.event_id AND c.enabled=1
+		LEFT JOIN fan_profiles p ON p.id=m.author_user_id
+		WHERE m.event_id=? AND m.moderation_status='visible'
+		ORDER BY m.id DESC LIMIT 1`, s.EventID), 0, false)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &message, nil
+}
+
 func (s MatchChatStore) History(ctx context.Context, before int64, fanID int, admin bool) (ChatHistory, error) {
 	h := ChatHistory{Messages: []ChatMessage{}, CanWrite: fanID > 0}
 	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})

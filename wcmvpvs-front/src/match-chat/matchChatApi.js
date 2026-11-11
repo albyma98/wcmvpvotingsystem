@@ -32,10 +32,11 @@ export function chatErrorText(error) {
 }
 
 // Reset backoff after the server acknowledges the subscription.
-export function connectMatchChat(slug, eventId, { statusOnly, onUpdate, onDisconnect }) {
+export function connectMatchChat(slug, eventId, { statusOnly, preview, onUpdate, onDisconnect }) {
   const url = new URL(resolveApiUrl(`/events/${eventId}/match-chat/${statusOnly ? 'status/' : ''}stream`));
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   url.searchParams.set('organization_slug', slug);
+  if (statusOnly && preview) url.searchParams.set('preview', '1');
   let socket;
   let timer;
   let handshakeTimer;

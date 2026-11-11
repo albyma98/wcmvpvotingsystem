@@ -136,6 +136,44 @@ func TestMeasuredSponsorAnalytics(t *testing.T) {
 	if err != nil || report.Total.Impressions != 5 || len(report.Sponsors) != 1 || report.Sponsors[0].SponsorName != "Partner" {
 		t.Fatalf("lost sponsor history: %+v, %v", report, err)
 	}
+
+	// The archive must cover the whole event, including measurements outside
+	// the current season, even after the match is marked as concluded.
+	older := newExposure("home_footer", "", database.SponsorHTML, newID())
+	older.Timestamp = now.AddDate(-2, 0, 0).UnixMilli()
+	older.SponsorName = entry.Name
+	if count, err := rt.db.RecordSponsorAnalytics(ctx, "older-browser", []database.SponsorAnalyticsEvent{older}); err != nil || count != 1 {
+		t.Fatalf("seed historical exposure: %d, %v", count, err)
+	}
+	if _, err := rt.db.SQLConn().Exec(`UPDATE events SET is_concluded=1,is_active=0 WHERE id=?`, match); err != nil {
+		t.Fatal(err)
+	}
+	base := fmt.Sprintf("/admin/sponsors/analytics?match_id=%d&sponsor_id=%d", match, id)
+	for _, tc := range []struct {
+		path                      string
+		club, status, impressions int
+	}{
+		{base, scope.OrganizationID, http.StatusOK, 6},
+		{base + "&from=" + now.AddDate(0, 0, -1).UTC().Format("2006-01-02") + "&to=" + now.UTC().Format("2006-01-02"),
+			scope.OrganizationID, http.StatusOK, 5},
+		{base, other, http.StatusNotFound, 0},
+		{base + "&from=2026-10-01", scope.OrganizationID, http.StatusBadRequest, 0},
+		{"/admin/sponsors/analytics", scope.OrganizationID, http.StatusBadRequest, 0},
+	} {
+		w := httptest.NewRecorder()
+		adminScope := scope
+		adminScope.OrganizationID = tc.club
+		rt.getMeasuredSponsorAnalytics(w, httptest.NewRequest(http.MethodGet, tc.path, nil), adminScope)
+		if w.Code != tc.status {
+			t.Fatalf("archive query %s (club %d): status %d, want %d", tc.path, tc.club, w.Code, tc.status)
+		}
+		if tc.status == http.StatusOK {
+			var archive database.SponsorAnalyticsReport
+			if err := json.Unmarshal(w.Body.Bytes(), &archive); err != nil || archive.Total.Impressions != tc.impressions {
+				t.Fatalf("archive query %s: report %+v, want %d impressions, decode %v", tc.path, archive, tc.impressions, err)
+			}
+		}
+	}
 }
 
 func TestSponsorGrantAndBatchRateLimit(t *testing.T) {

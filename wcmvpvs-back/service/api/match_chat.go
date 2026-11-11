@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -323,7 +324,7 @@ func (rt *_router) matchChatFanWrite(w http.ResponseWriter, r *http.Request, ctx
 	lock.Lock()
 	err = store.Write(c, true, func(tx *sql.Tx, _ bool) error { return action(tx) })
 	if err == nil && update.Type != "" {
-		rt.chat.messages.publish(store.EventID, update, false)
+		rt.chat.publishMessageUpdate(store.EventID, update)
 	}
 	lock.Unlock()
 	if err != nil {
@@ -471,7 +472,17 @@ func (rt *_router) matchChatAdminWrite(w http.ResponseWriter, r *http.Request, c
 		if update.Type == "status" {
 			rt.chat.publishStatus(store.EventID, *update.Enabled, false)
 		} else {
-			rt.chat.messages.publish(store.EventID, update, false)
+			rt.chat.publishMessageUpdate(store.EventID, update)
+		}
+		if update.Type == "removed" || (update.Type == "status" && *update.Enabled) {
+			// Refresh the preview once for all viewers, even if the admin left after committing.
+			previewContext, cancel := context.WithTimeout(context.WithoutCancel(c), 2*time.Second)
+			latest, previewErr := store.Preview(previewContext)
+			cancel()
+			if previewErr != nil {
+				ctx.Logger.WithError(previewErr).Warn("cannot refresh match chat preview")
+			}
+			rt.chat.publishPreview(store.EventID, latest)
 		}
 	}
 	lock.Unlock()

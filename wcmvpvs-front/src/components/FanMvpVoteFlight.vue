@@ -1,7 +1,8 @@
 <template>
-  <div class="mvp-vote-flight" :class="{ 'is-landing': isLanding, 'has-sponsors': sponsors.length }" :style="{ '--reveal-duration': `${revealDuration}ms` }" aria-hidden="true">
+  <div class="mvp-vote-flight" :class="{ 'is-landing': isLanding, 'has-details': sponsors.length || showAuthInvite }" :style="{ '--reveal-duration': `${revealDuration}ms` }" aria-hidden="true">
     <div class="mvp-vote-flight__backdrop"></div>
     <div class="mvp-vote-flight__stage">
+      <p v-if="showAuthInvite" class="mvp-vote-flight__auth-invite">Accedi/Registrati e gioca per poter vincere i gadget</p>
       <div ref="card" class="mvp-vote-flight__card">
         <FanPlayerCard class="mvp-vote-flight__face" :player="player" :club-logo-url="clubLogoUrl" selected loading="eager" />
         <span class="mvp-vote-flight__back">★ MVP ★</span>
@@ -49,6 +50,7 @@ const props = defineProps({
   player: { type: Object, required: true },
   clubLogoUrl: { type: String, default: '' },
   sponsors: { type: Array, default: () => [] },
+  showAuthInvite: { type: Boolean, default: false },
   source: { type: Object, default: null },
   destination: { type: Object, required: true },
 });
@@ -151,10 +153,10 @@ onBeforeUnmount(() => {
   content: '';
 }
 .mvp-vote-flight__stage { position: relative; perspective: 1000px; }
-.mvp-vote-flight.has-sponsors {
+.mvp-vote-flight.has-details {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
-.has-sponsors .mvp-vote-flight__stage {
+.has-details .mvp-vote-flight__stage {
   display: grid;
   justify-items: center;
   row-gap: clamp(6px, 2dvh, 14px);
@@ -166,7 +168,17 @@ onBeforeUnmount(() => {
   transform-style: preserve-3d;
   will-change: transform;
 }
-.has-sponsors .mvp-vote-flight__card { z-index: 1; }
+.has-details .mvp-vote-flight__card { z-index: 1; }
+.mvp-vote-flight__auth-invite {
+  max-width: 32ch;
+  margin: 0;
+  color: #ffdb89;
+  font-size: clamp(.875rem, 4vw, 1.125rem);
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+  transition: opacity .24s ease;
+}
 .mvp-vote-flight__face,
 .mvp-vote-flight__back { backface-visibility: hidden; }
 .mvp-vote-flight__back {
@@ -242,7 +254,7 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
   transition: opacity .24s ease;
 }
-.has-sponsors .mvp-vote-flight__message { position: static; width: 100%; transform: none; }
+.has-details .mvp-vote-flight__message { position: static; width: 100%; transform: none; }
 .mvp-vote-flight__message > * { display: block; animation: mvp-vote-message .26s ease-out .16s both; }
 .mvp-vote-flight__message span:first-child {
   color: #ffdb89;
@@ -269,11 +281,12 @@ onBeforeUnmount(() => {
   content: '';
 }
 .is-landing .mvp-vote-flight__backdrop,
+.is-landing .mvp-vote-flight__auth-invite,
 .is-landing .mvp-vote-flight__sponsors,
 .is-landing .mvp-vote-flight__message { opacity: 0; }
 @media (max-height: 420px) {
-  .has-sponsors .mvp-vote-flight__card { width: min(47vw, 31dvh); }
-  .has-sponsors .mvp-vote-flight__message strong { font-size: clamp(1.125rem, 6dvh, 1.5rem); }
+  .has-details .mvp-vote-flight__card { width: min(47vw, 31dvh); }
+  .has-details .mvp-vote-flight__message strong { font-size: clamp(1.125rem, 6dvh, 1.5rem); }
 }
 @keyframes mvp-vote-message { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes mvp-vote-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }

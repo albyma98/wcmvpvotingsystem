@@ -1,100 +1,102 @@
 <template>
-  <section class="v2-panel v2-stack">
-    <h2>Sponsor Analytics</h2>
-    <form class="v2-stack" @submit.prevent="load">
-      <div class="v2-grid-3">
-        <label class="v2-field">Sponsor
-          <select v-model="selection.sponsor">
-            <option value="">Tutti gli sponsor</option>
-            <option v-for="sponsor in sponsorOptions" :key="sponsor.id" :value="String(sponsor.id)">{{ sponsor.name }}</option>
-          </select>
-        </label>
-        <label class="v2-field">Partita
-          <select v-model="selection.match">
-            <option value="">Tutte le partite e le visite senza partita</option>
-            <option v-for="event in events" :key="event.id" :value="String(event.id)">{{ eventLabel(event) }}</option>
-          </select>
-        </label>
-        <label class="v2-field">Stagione
-          <select v-model.number="season" @change="setSeason">
-            <option :value="0">Intervallo personalizzato</option>
-            <option v-for="year in seasons" :key="year" :value="year">{{ year }}/{{ year + 1 }}</option>
-          </select>
-        </label>
-      </div>
-      <div class="v2-grid-3">
-        <label class="v2-field">Dal (UTC)<input v-model="selection.from" type="date" required @input="season = 0" /></label>
-        <label class="v2-field">Al (UTC)<input v-model="selection.to" type="date" :min="selection.from" required @input="season = 0" /></label>
-        <div class="v2-toolbar"><button type="submit" class="v2-button v2-primary" :disabled="loading">Aggiorna</button></div>
-      </div>
-    </form>
-    <p v-if="loading" class="v2-muted" role="status">Caricamento delle statistiche…</p>
-    <p v-else-if="error" class="v2-error" role="alert">{{ error }}</p>
-    <template v-else-if="report">
-      <p v-if="!report.total.impressions && !report.total.clicks" class="v2-empty">Nessuna misurazione sponsor nel periodo.</p>
-      <template v-else>
-        <div class="v2-grid-4">
-          <article v-for="metric in overview" :key="metric.label" class="v2-metric">
-            <span>{{ metric.label }}</span><strong>{{ metric.value }}</strong>
-            <small v-if="metric.note">{{ metric.note }}</small>
-          </article>
+  <component :is="matchId ? 'details' : 'section'" :class="matchId ? 'v2-history-section' : 'v2-panel'"
+    @toggle="loadOnExpand">
+    <summary v-if="matchId">Sponsor Analytics</summary>
+    <div v-if="!matchId || expanded" class="v2-stack" :class="{ 'v2-detail-body': matchId }">
+      <h2 v-if="!matchId">Sponsor Analytics</h2>
+      <form @submit.prevent="load">
+        <div class="v2-grid-3">
+          <label class="v2-field">Sponsor
+            <select v-model="selection.sponsor">
+              <option value="">Tutti gli sponsor</option>
+              <option v-for="sponsor in sponsorOptions" :key="sponsor.id" :value="String(sponsor.id)">{{ sponsor.name }}</option>
+            </select>
+          </label>
+          <label v-if="!matchId" class="v2-field">Partita
+            <select v-model="selection.match">
+              <option value="">Tutte le partite e le visite senza partita</option>
+              <option v-for="event in events" :key="event.id" :value="String(event.id)">{{ eventLabel(event) }}</option>
+            </select>
+          </label>
+          <label v-if="!matchId" class="v2-field">Stagione
+            <select v-model.number="season" @change="setSeason">
+              <option :value="0">Intervallo personalizzato</option>
+              <option v-for="year in seasons" :key="year" :value="year">{{ year }}/{{ year + 1 }}</option>
+            </select>
+          </label>
+          <label v-if="!matchId" class="v2-field">Dal (UTC)<input v-model="selection.from" type="date" required @input="season = 0" /></label>
+          <label v-if="!matchId" class="v2-field">Al (UTC)<input v-model="selection.to" type="date" :min="selection.from" required @input="season = 0" /></label>
+          <div class="v2-toolbar"><button type="submit" class="v2-button v2-primary" :disabled="loading">Aggiorna</button></div>
         </div>
-        <p class="v2-muted">La reach stima i browser distinti. Le impression geometriche dei giochi entrano nel totale misurato. La viewability riguarda l’inventario HTML e il CTR usa le impression HTML qualificate. Le durate usano le esposizioni con chiusura ricevuta.</p>
+      </form>
+      <p v-if="loading" class="v2-muted" role="status">Caricamento delle statistiche…</p>
+      <p v-else-if="error" class="v2-error" role="alert">{{ error }}</p>
+      <template v-else-if="report">
+        <p v-if="!report.total.impressions && !report.total.clicks" class="v2-empty">{{ matchId ? 'Nessuna misurazione sponsor per questo evento.' : 'Nessuna misurazione sponsor nel periodo.' }}</p>
+        <template v-else>
+          <div class="v2-grid-4">
+            <article v-for="metric in overview" :key="metric.label" class="v2-metric">
+              <span>{{ metric.label }}</span><strong>{{ metric.value }}</strong>
+              <small v-if="metric.note">{{ metric.note }}</small>
+            </article>
+          </div>
+          <p class="v2-muted">La reach stima i browser distinti. Le impression geometriche dei giochi entrano nel totale misurato. La viewability riguarda l’inventario HTML e il CTR usa le impression HTML qualificate. Le durate usano le esposizioni con chiusura ricevuta.</p>
 
-        <h3>Posizionamenti</h3>
-        <div class="v2-table-wrap">
-          <table class="v2-table">
-            <thead><tr><th scope="col">Posizionamento</th><th scope="col">Impression</th><th scope="col">Viewable</th><th scope="col">Reach</th><th scope="col">Tempo totale</th><th scope="col">Clic</th><th scope="col">CTR</th></tr></thead>
-            <tbody>
-              <tr v-for="row in report.placements" :key="row.placement_id + row.game_id">
-                <th scope="row">{{ placementLabel(row) }}</th>
-                <td>{{ format(row.impressions) }}</td><td>{{ format(row.viewable_impressions) }}</td>
-                <td>{{ format(row.reach) }}</td><td>{{ seconds(row.total_visible_ms) }}</td>
-                <td>{{ format(row.clicks) }}</td><td>{{ format(row.ctr, '%') }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <details>
-          <summary>Sponsor e creatività</summary>
+          <h3>Posizionamenti</h3>
           <div class="v2-table-wrap">
             <table class="v2-table">
-              <thead><tr><th scope="col">Sponsor</th><th scope="col">Impression</th><th scope="col">Reach</th><th scope="col">Clic</th></tr></thead>
-              <tbody><tr v-for="row in report.sponsors" :key="row.sponsor_id">
-                <th scope="row">{{ row.sponsor_name }}</th><td>{{ format(row.impressions) }}</td>
-                <td>{{ format(row.reach) }}</td><td>{{ format(row.clicks) }}</td>
-              </tr></tbody>
+              <thead><tr><th scope="col">Posizionamento</th><th scope="col">Impression</th><th scope="col">Viewable</th><th scope="col">Reach</th><th scope="col">Tempo totale</th><th scope="col">Clic</th><th scope="col">CTR</th></tr></thead>
+              <tbody>
+                <tr v-for="row in report.placements" :key="row.placement_id + row.game_id">
+                  <th scope="row">{{ placementLabel(row) }}</th>
+                  <td>{{ format(row.impressions) }}</td><td>{{ format(row.viewable_impressions) }}</td>
+                  <td>{{ format(row.reach) }}</td><td>{{ seconds(row.total_visible_ms) }}</td>
+                  <td>{{ format(row.clicks) }}</td><td>{{ format(row.ctr, '%') }}</td>
+                </tr>
+              </tbody>
             </table>
           </div>
-          <div class="v2-table-wrap">
-            <table class="v2-table">
-              <thead><tr><th scope="col">Creatività</th><th scope="col">Posizionamento</th><th scope="col">Impression</th><th scope="col">Viewable</th><th scope="col">Reach</th><th scope="col">Clic</th></tr></thead>
-              <tbody><tr v-for="row in report.creatives" :key="[row.sponsor_id,row.creative_id,row.placement_id,row.game_id].join(':')">
-                <th scope="row"><span :title="row.creative_id">{{ row.sponsor_name }} · {{ row.creative_id.slice(0, 8) }}</span></th>
-                <td>{{ placementLabel(row) }}</td><td>{{ format(row.impressions) }}</td>
-                <td>{{ format(row.viewable_impressions) }}</td><td>{{ format(row.reach) }}</td><td>{{ format(row.clicks) }}</td>
-              </tr></tbody>
-            </table>
-          </div>
-        </details>
 
-        <details>
-          <summary>Andamento giornaliero</summary>
-          <div class="v2-table-wrap">
-            <table class="v2-table">
-              <thead><tr><th scope="col">Giorno (UTC)</th><th scope="col">Impression</th><th scope="col">Reach giornaliera</th></tr></thead>
-              <tbody><tr v-for="row in report.trend" :key="row.day">
-                <th scope="row"><time :datetime="row.day">{{ row.day }}</time></th>
-                <td><meter :value="row.impressions" :max="peak" aria-label="Impression">{{ row.impressions }}</meter> {{ format(row.impressions) }}</td>
-                <td><meter v-if="row.reach !== null" :value="row.reach" :max="peak" aria-label="Reach">{{ row.reach }}</meter> {{ format(row.reach) }}</td>
-              </tr></tbody>
-            </table>
-          </div>
-        </details>
+          <details>
+            <summary>Sponsor e creatività</summary>
+            <div class="v2-table-wrap">
+              <table class="v2-table">
+                <thead><tr><th scope="col">Sponsor</th><th scope="col">Impression</th><th scope="col">Reach</th><th scope="col">Clic</th></tr></thead>
+                <tbody><tr v-for="row in report.sponsors" :key="row.sponsor_id">
+                  <th scope="row">{{ row.sponsor_name }}</th><td>{{ format(row.impressions) }}</td>
+                  <td>{{ format(row.reach) }}</td><td>{{ format(row.clicks) }}</td>
+                </tr></tbody>
+              </table>
+            </div>
+            <div class="v2-table-wrap">
+              <table class="v2-table">
+                <thead><tr><th scope="col">Creatività</th><th scope="col">Posizionamento</th><th scope="col">Impression</th><th scope="col">Viewable</th><th scope="col">Reach</th><th scope="col">Clic</th></tr></thead>
+                <tbody><tr v-for="row in report.creatives" :key="[row.sponsor_id,row.creative_id,row.placement_id,row.game_id].join(':')">
+                  <th scope="row"><span :title="row.creative_id">{{ row.sponsor_name }} · {{ row.creative_id.slice(0, 8) }}</span></th>
+                  <td>{{ placementLabel(row) }}</td><td>{{ format(row.impressions) }}</td>
+                  <td>{{ format(row.viewable_impressions) }}</td><td>{{ format(row.reach) }}</td><td>{{ format(row.clicks) }}</td>
+                </tr></tbody>
+              </table>
+            </div>
+          </details>
+
+          <details>
+            <summary>Andamento giornaliero</summary>
+            <div class="v2-table-wrap">
+              <table class="v2-table">
+                <thead><tr><th scope="col">Giorno (UTC)</th><th scope="col">Impression</th><th scope="col">Reach giornaliera</th></tr></thead>
+                <tbody><tr v-for="row in report.trend" :key="row.day">
+                  <th scope="row"><time :datetime="row.day">{{ row.day }}</time></th>
+                  <td><meter :value="row.impressions" :max="peak" aria-label="Impression">{{ row.impressions }}</meter> {{ format(row.impressions) }}</td>
+                  <td><meter v-if="row.reach !== null" :value="row.reach" :max="peak" aria-label="Reach">{{ row.reach }}</meter> {{ format(row.reach) }}</td>
+                </tr></tbody>
+              </table>
+            </div>
+          </details>
+        </template>
       </template>
-    </template>
-  </section>
+    </div>
+  </component>
 </template>
 
 <script setup>
@@ -102,6 +104,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { apiClient } from '../../api';
 
 const props = defineProps({
+  matchId: { type: Number, default: 0 },
   events: { type: Array, default: () => [] },
   sponsors: { type: Array, default: () => [] },
   authHeaders: { type: Object, required: true },
@@ -116,6 +119,7 @@ const selection = reactive({ sponsor: '', match: '', from: '', to: '' });
 const report = ref(null);
 const knownSponsors = ref([]);
 const loading = ref(false);
+const expanded = ref(false);
 const error = ref('');
 let request;
 
@@ -170,26 +174,40 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
+    const params = props.matchId
+      ? { match_id: props.matchId, sponsor_id: selection.sponsor }
+      : { from: selection.from, to: selection.to, sponsor_id: selection.sponsor, match_id: selection.match };
     const { data } = await apiClient.get('/admin/sponsors/analytics', {
-      ...props.authHeaders, signal: controller.signal,
-      params: { from: selection.from, to: selection.to, sponsor_id: selection.sponsor, match_id: selection.match },
+      ...props.authHeaders, signal: controller.signal, params,
     });
     if (controller.signal.aborted) return;
     report.value = data;
     if (!selection.sponsor) knownSponsors.value = data.sponsors;
   } catch (err) {
     if (controller.signal.aborted) return;
-    error.value = err.response?.status === 400 ? 'Scegli un intervallo valido di massimo 367 giorni.' : 'Statistiche sponsor non disponibili. Riprova.';
+    error.value = !props.matchId && err.response?.status === 400
+      ? 'Scegli un intervallo valido di massimo 367 giorni.'
+      : 'Statistiche sponsor non disponibili. Riprova.';
   } finally {
     if (!controller.signal.aborted) loading.value = false;
   }
 }
-onMounted(load);
+function loadOnExpand(event) {
+  if (!props.matchId) return;
+  expanded.value = event.currentTarget.open;
+  if (expanded.value && !report.value && !loading.value) return load();
+}
+
+onMounted(() => {
+  if (!props.matchId) void load();
+});
 onUnmounted(() => request?.abort());
 </script>
 
 <style scoped>
 details { min-width: 0; }
 summary { cursor: pointer; padding: .5rem 0; }
+.v2-history-section > summary { font-weight: 650; min-height: 44px; line-height: 1.6; }
+.v2-detail-body { padding-top: 12px; }
 meter { vertical-align: middle; width: min(8rem, 35vw); }
 </style>

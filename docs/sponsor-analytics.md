@@ -20,6 +20,7 @@ Gli stemmi club e squadra, le fotografie e le card dei giocatori, i marchi di Ar
 - `event_report_signals` continua a raccogliere telemetria operativa di `/new`. Prima del nuovo motore registrava il footer come `home_partner`, il titolo Sponsor Rush come `sponsored_game_view` e, per alcuni clic, anche una richiesta separata a `sponsor_clicks`. Le nuove esposizioni e i clic commerciali transitano attraverso il solo batch sponsor. Gli eventi delle partite ai minigiochi mantengono la propria funzione operativa.
 - PostHog è già disattivato su `/new`. Le statistiche commerciali provengono da `sponsor_measured_exposures` e `sponsor_measured_event_ids` in SQLite.
 - **Risultati → Sponsor Analytics** offre filtri, riepilogo, dettaglio, trend e aggregazione per la stagione dal 1° luglio al 30 giugno, in UTC. La stessa struttura aggregata è disponibile ai report marketing in `commercial_sponsor_analytics`. I PDF esistenti conservano le definizioni e le misurazioni storiche.
+- In **Archivio e report**, ogni scheda evento include **Sponsor Analytics**. Aprendo il riquadro si caricano tutti i dati attribuiti alla partita, con filtro sponsor. L'archivio usa lo stesso endpoint e gli stessi aggregati di Risultati.
 
 ## Definizioni e copertura
 

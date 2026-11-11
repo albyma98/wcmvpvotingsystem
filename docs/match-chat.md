@@ -2,7 +2,7 @@
 
 ## Attivazione
 
-Apri **/{slug}/admin/new → Eventi → Configura → Match Chat**. Attiva **Abilita Match Chat per questo evento**. Lo switch salva subito la configurazione di quella partita. La homepage **/{slug}/new** mostra **Chat Live** quando l’evento selezionato ha la chat attiva.
+Apri **/{slug}/admin/new → Eventi → Configura → Match Chat**. Attiva **Abilita Match Chat per questo evento**. Lo switch salva subito la configurazione di quella partita. Quando la chat è attiva, la homepage **/{slug}/new** mostra **Chat Live** sopra la classifica tifosi, con un’anteprima dell’ultimo messaggio visibile. Premi sul box per aprire la conversazione.
 
 Per un evento concluso, apri **Archivio e report**, espandi l’evento e scegli **Match Chat**.
 
@@ -48,7 +48,7 @@ Le pagine contengono fino a 30 elementi e restituiscono `next_before` oppure `ne
 
 ## WebSocket e deployment
 
-I due canali richiedono origine HTTP(S) corrispondente al sito e `organization_slug` nella query. Il server verifica l’associazione tra società ed evento. I frame sono in sola lettura. Il canale disponibilità invia solo `{type:"status", enabled}`. Il canale messaggi apre con lo stesso frame, poi invia `message`, `reaction` con conteggio assoluto e `removed` con l’ID del messaggio. Alla disattivazione invia lo stato e chiude le sottoscrizioni alla conversazione. Il client risincronizza la cronologia recente dopo la riconnessione e usa il cursore per recuperare le pagine precedenti.
+I due canali richiedono origine HTTP(S) corrispondente al sito e `organization_slug` nella query. Il server verifica l’associazione tra società ed evento. I frame sono in sola lettura. Il canale disponibilità invia `{type:"status", enabled}`. Con `preview=1` include l’ultimo messaggio visibile nel frame iniziale e invia `{type:"preview", message}` quando l’anteprima viene aggiornata. Il campo `message` è omesso quando non ci sono messaggi visibili. Il canale messaggi apre con lo stato, poi invia `message`, `reaction` con conteggio assoluto e `removed` con l’ID del messaggio. Alla disattivazione invia lo stato e chiude le sottoscrizioni alla conversazione. Il client risincronizza la cronologia recente dopo la riconnessione e usa il cursore per recuperare le pagine precedenti.
 
 Il deployment Compose esistente inoltra gli upgrade via Caddy. Ciascun canale ammette fino a 2.000 connessioni per evento e 5.000 per processo. Il broadcast vive in memoria nel processo Go e presuppone una sola istanza backend. Prima di scalare a più istanze serve un trasporto condiviso per gli aggiornamenti, oltre al coordinamento delle scritture e dei limiti tra le istanze.
 

@@ -308,21 +308,26 @@ func (rt *_router) ingestMeasuredSponsorEvents(w http.ResponseWriter, r *http.Re
 func (rt *_router) getMeasuredSponsorAnalytics(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
 	const day = "2006-01-02"
 	query := r.URL.Query()
-	from, errFrom := time.Parse(day, query.Get("from"))
-	to, errTo := time.Parse(day, query.Get("to"))
 	match, errMatch := optionalSponsorAnalyticsID(query.Get("match_id"))
 	sponsor, errSponsor := optionalSponsorAnalyticsID(query.Get("sponsor_id"))
-	if errFrom != nil || errTo != nil || errMatch != nil || errSponsor != nil ||
-		to.Before(from) || to.Sub(from) > 366*24*time.Hour {
+	if errMatch != nil || errSponsor != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+	filter := sponsorAnalyticsMatchFilter(ctx.OrganizationID, match, sponsor)
+	if match == 0 || query.Has("from") || query.Has("to") {
+		from, errFrom := time.Parse(day, query.Get("from"))
+		to, errTo := time.Parse(day, query.Get("to"))
+		if errFrom != nil || errTo != nil || to.Before(from) || to.Sub(from) > 366*24*time.Hour {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		filter.From, filter.Until = from, to.AddDate(0, 0, 1)
 	}
 	if match > 0 && !rt.ensureEventInOrganization(w, ctx, match) {
 		return
 	}
-	report, err := rt.db.GetMeasuredSponsorAnalytics(r.Context(), database.SponsorAnalyticsFilter{
-		ClubID: ctx.OrganizationID, MatchID: match, SponsorID: sponsor, From: from, Until: to.AddDate(0, 0, 1),
-	})
+	report, err := rt.db.GetMeasuredSponsorAnalytics(r.Context(), filter)
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("cannot load measured sponsor analytics")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -330,6 +335,13 @@ func (rt *_router) getMeasuredSponsorAnalytics(w http.ResponseWriter, r *http.Re
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, report)
+}
+
+func sponsorAnalyticsMatchFilter(club, match, sponsor int) database.SponsorAnalyticsFilter {
+	return database.SponsorAnalyticsFilter{
+		ClubID: club, MatchID: match, SponsorID: sponsor, From: time.Unix(0, 0).UTC(),
+		Until: time.Now().UTC().Truncate(24 * time.Hour).Add(24 * time.Hour),
+	}
 }
 
 func optionalSponsorAnalyticsID(value string) (int, error) {
@@ -346,11 +358,7 @@ func optionalSponsorAnalyticsID(value string) (int, error) {
 // Commercial report snapshots use the same aggregates as the admin dashboard.
 // Their existing engagement and historical sponsor fields remain independent.
 func (rt *_router) measuredSponsorReportForEvent(r *http.Request, ctx reqcontext.RequestContext, club, match, sponsor int) *database.SponsorAnalyticsReport {
-	now := time.Now().UTC()
-	report, err := rt.db.GetMeasuredSponsorAnalytics(r.Context(), database.SponsorAnalyticsFilter{
-		ClubID: club, MatchID: match, SponsorID: sponsor, From: time.Unix(0, 0).UTC(),
-		Until: now.Truncate(24 * time.Hour).Add(24 * time.Hour),
-	})
+	report, err := rt.db.GetMeasuredSponsorAnalytics(r.Context(), sponsorAnalyticsMatchFilter(club, match, sponsor))
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("cannot attach sponsor analytics to report")
 		return nil

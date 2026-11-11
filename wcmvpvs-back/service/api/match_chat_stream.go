@@ -23,24 +23,24 @@ type chatUpdate struct {
 
 type chatHub struct {
 	mu          sync.Mutex
-	rooms       map[int]map[chan []byte]struct{}
+	rooms       map[int]map[chan []byte]bool
 	connections int
 }
 
-func (h *chatHub) subscribe(eventID int) (<-chan []byte, func(), bool) {
+func (h *chatHub) subscribe(eventID int, preview bool) (<-chan []byte, func(), bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.connections >= 5000 || len(h.rooms[eventID]) >= 2000 {
 		return nil, nil, false
 	}
 	if h.rooms == nil {
-		h.rooms = make(map[int]map[chan []byte]struct{})
+		h.rooms = make(map[int]map[chan []byte]bool)
 	}
 	if h.rooms[eventID] == nil {
-		h.rooms[eventID] = make(map[chan []byte]struct{})
+		h.rooms[eventID] = make(map[chan []byte]bool)
 	}
 	ch := make(chan []byte, 32)
-	h.rooms[eventID][ch] = struct{}{}
+	h.rooms[eventID][ch] = preview
 	h.connections++
 	return ch, func() {
 		h.mu.Lock()
@@ -60,7 +60,10 @@ func (h *chatHub) publish(eventID int, update chatUpdate, closeRoom bool) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for ch := range h.rooms[eventID] {
+	for ch, preview := range h.rooms[eventID] {
+		if update.Type == "preview" && !preview {
+			continue
+		}
 		sent := false
 		select {
 		case ch <- payload:
@@ -81,6 +84,17 @@ func (c *matchChat) publishStatus(eventID int, enabled, deleted bool) {
 	update := chatUpdate{Type: "status", Enabled: &enabled}
 	c.status.publish(eventID, update, deleted)
 	c.messages.publish(eventID, update, !enabled)
+}
+
+func (c *matchChat) publishMessageUpdate(eventID int, update chatUpdate) {
+	c.messages.publish(eventID, update, false)
+	if update.Type == "message" {
+		c.publishPreview(eventID, update.Message)
+	}
+}
+
+func (c *matchChat) publishPreview(eventID int, message *database.ChatMessage) {
+	c.status.publish(eventID, chatUpdate{Type: "preview", Message: message}, false)
 }
 
 func (c *matchChat) deleteEvent(eventID int) {
@@ -113,12 +127,17 @@ func (rt *_router) serveMatchChatStream(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	hub := &rt.chat.messages
+	preview := statusOnly && r.URL.Query().Get("preview") == "1"
 	if statusOnly {
 		hub = &rt.chat.status
 	}
 	lock := &rt.chat.writes[store.EventID%len(rt.chat.writes)]
 	lock.Lock()
 	enabled, err := store.Enabled(r.Context())
+	initial := chatUpdate{Type: "status", Enabled: &enabled}
+	if err == nil && enabled && preview {
+		initial.Message, err = store.Preview(r.Context())
+	}
 	if err == nil && !statusOnly && !enabled {
 		err = database.ErrChatDisabled
 	}
@@ -127,7 +146,7 @@ func (rt *_router) serveMatchChatStream(w http.ResponseWriter, r *http.Request, 
 		matchChatStoreError(w, ctx, err)
 		return
 	}
-	updates, unsubscribe, ok := hub.subscribe(store.EventID)
+	updates, unsubscribe, ok := hub.subscribe(store.EventID, preview)
 	lock.Unlock()
 	if !ok {
 		matchChatError(w, http.StatusServiceUnavailable, "chat_capacity")
@@ -154,7 +173,7 @@ func (rt *_router) serveMatchChatStream(w http.ResponseWriter, r *http.Request, 
 		close(disconnected)
 	}()
 	_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
-	if err := conn.WriteJSON(chatUpdate{Type: "status", Enabled: &enabled}); err != nil {
+	if err := conn.WriteJSON(initial); err != nil {
 		return
 	}
 	ticker := time.NewTicker(25 * time.Second)

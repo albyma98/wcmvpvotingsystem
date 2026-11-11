@@ -99,7 +99,11 @@ func decodeChatTest(t *testing.T, w *httptest.ResponseRecorder, out interface{})
 
 func (f matchChatFixture) socket(t *testing.T, event int, path, slug, origin string, want int) *websocket.Conn {
 	t.Helper()
+	path, query, _ := strings.Cut(path, "?")
 	url := "ws" + strings.TrimPrefix(f.server.URL, "http") + chatTestPath(event, path) + "?organization_slug=" + slug
+	if query != "" {
+		url += "&" + query
+	}
 	header := http.Header{}
 	if origin != "" {
 		header.Set("Origin", origin)
@@ -133,6 +137,44 @@ func readChatTestUpdate(t *testing.T, conn *websocket.Conn, kind string) chatUpd
 func (f matchChatFixture) enable(t *testing.T, event int, enabled bool) {
 	t.Helper()
 	f.request(t, "PUT", "/admin"+chatTestPath(event, "/settings"), f.slug, f.admin, fmt.Sprintf(`{"enabled":%t}`, enabled), 200)
+}
+
+func TestMatchChatPreviewFollowsLatestVisibleMessage(t *testing.T) {
+	f := newMatchChatFixture(t)
+	preview := f.socket(t, f.a, "/status/stream?preview=1", f.slug, f.server.URL, 101)
+	if got := readChatTestUpdate(t, preview, "status"); *got.Enabled || got.Message != nil {
+		t.Fatalf("disabled chat preview: %+v", got)
+	}
+	f.enable(t, f.a, true)
+	readChatTestUpdate(t, preview, "status")
+	if got := readChatTestUpdate(t, preview, "preview"); got.Message != nil {
+		t.Fatalf("empty chat preview: %+v", got.Message)
+	}
+
+	f.request(t, "POST", chatTestPath(f.a, "/messages"), f.slug, "session1", `{"text":"Forza squadra","request_id":"preview-fan-message"}`, 200)
+	first := readChatTestUpdate(t, preview, "preview").Message
+	if first == nil || first.Text != "Forza squadra" || first.Nickname != "Fan 1" || first.Mine || first.AuthorID != 0 {
+		t.Fatalf("fan preview: %+v", first)
+	}
+	admin := "/admin" + chatTestPath(f.a, "/messages")
+	f.request(t, "POST", admin, f.slug, f.admin, `{"text":"Si comincia!","request_id":"preview-official-message"}`, 200)
+	latest := readChatTestUpdate(t, preview, "preview").Message
+	if latest == nil || latest.Text != "Si comincia!" || latest.Nickname != "Società" {
+		t.Fatalf("official preview: %+v", latest)
+	}
+
+	reconnected := f.socket(t, f.a, "/status/stream?preview=1", f.slug, f.server.URL, 101)
+	if got := readChatTestUpdate(t, reconnected, "status"); got.Message == nil || got.Message.ID != latest.ID {
+		t.Fatalf("initial preview after reconnecting: %+v", got.Message)
+	}
+	f.request(t, "DELETE", fmt.Sprintf("%s/%d", admin, latest.ID), f.slug, f.admin, "", 200)
+	if got := readChatTestUpdate(t, preview, "preview").Message; got == nil || got.ID != first.ID {
+		t.Fatalf("removed message still in preview: %+v", got)
+	}
+	f.enable(t, f.a, false)
+	if got := readChatTestUpdate(t, preview, "status"); *got.Enabled || got.Message != nil {
+		t.Fatalf("preview after disabling: %+v", got)
+	}
 }
 
 func TestMatchChatRealtimeIsolationAndToggle(t *testing.T) {

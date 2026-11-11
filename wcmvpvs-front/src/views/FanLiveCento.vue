@@ -14,9 +14,6 @@
             </div>
           </div>
           <div class="top-right">
-            <MatchChatEntry v-if="eventId && organizationSlug" :key="`${organizationSlug}:${eventId}`"
-              :slug="organizationSlug" :event-id="eventId" :event-label="matchChatEventLabel"
-              @verify="openRegistration()" @track="recordMatchChat" />
             <button ref="platformInfoTriggerRef" class="platform-info-button" type="button" aria-label="Informazioni e istruzioni" title="Come funziona ArenaBoostX" aria-haspopup="dialog" aria-controls="fan-platform-info" :aria-expanded="activeSheet === 'info'" @click="openPlatformInfo">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
             </button>
@@ -148,6 +145,10 @@
             </div>
             <button v-if="journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare il bonus voto' }}</button>
           </section>
+
+          <MatchChatEntry v-if="eventId && organizationSlug" :key="`${organizationSlug}:${eventId}`"
+            :slug="organizationSlug" :event-id="eventId" :event-label="matchChatEventLabel"
+            @verify="openRegistration()" @track="recordMatchChat" />
 
           <button class="rank-link" type="button" @click="openHomeAction('leaderboard')">
             <svg class="rank-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8v6a4 4 0 0 1-8 0V3Zm0 2H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4m-4 2v4m-4 4h8m-7 0v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
@@ -665,6 +666,7 @@
       :player="votedPlayerCard"
       :club-logo-url="homeLogoUrl"
       :sponsors="postVoteSponsors"
+      :show-auth-invite="!isRegistered"
       :source="homeVoteFlight.source"
       :destination="homeVoteLanding"
       @finished="finishHomeVoteFlight"
@@ -866,6 +868,7 @@ const homeMvpTitle = ref(null);
 const homeMvpCarousel = ref(null);
 const homeVoteLanding = ref(null);
 const homeVoteFlight = ref(null);
+let homeVoteBonusRequest = null;
 const homeMvpSelectedId = ref(null);
 const missionMvpCandidate = ref(null);
 const mvpEditing = ref(false);
@@ -1081,7 +1084,7 @@ async function refreshLiveStatus() {
 }
 
 function openRegistration(trigger = 'profile_overlay', rewardLabel = '') {
-  if (shopBusy.value) return;
+  if (shopBusy.value && !(trigger === 'after_vote' && homeVoteBonusRequest)) return;
   if (!isRegistrationOpen.value && !isRegistered.value) reportTelemetry?.record('registration_started');
   registrationTrigger.value = trigger;
   registrationRewardLabel.value = rewardLabel;
@@ -1105,6 +1108,9 @@ async function registerJourneyFan(form) {
   const scope = walletScope();
   const registrationStartedAt = Date.now();
   const trigger = registrationTrigger.value;
+  // The prompt can open while the guest's bonus is still being saved.
+  if (homeVoteBonusRequest) await homeVoteBonusRequest;
+  if (isDisposed || scope !== walletScope()) return { ok: false };
   const response = await registerFanProfile({ event_id: props.eventId, nickname: form.nickname, phone: form.phone, ...fanRegistrationAcceptance(form), guest_coins: totalCoins.value });
   if (isDisposed || scope !== walletScope()) return { ok: false };
   if (!response.ok) return response;
@@ -1118,6 +1124,8 @@ async function registerJourneyFan(form) {
 }
 async function loginJourneyFan() {
   const scope = walletScope();
+  if (homeVoteBonusRequest) await homeVoteBonusRequest;
+  if (isDisposed || scope !== walletScope()) return { ok: false };
   const profile = await loadFanProfile();
   if (isDisposed || scope !== walletScope()) return { ok: false };
   if (profile?.registration_pending || profile?.user?.registration_pending) {
@@ -1438,6 +1446,7 @@ function finishHomeVoteFlight() {
       || isHomeLoading.value || isRegistrationOpen.value || activeGameId.value) return;
     homeVoteLanding.value?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
     homeMvpTitle.value?.focus({ preventScroll: true });
+    if (!isRegistered.value) openRegistration('after_vote');
   });
 }
 function editHomeVote() {
@@ -1960,8 +1969,9 @@ async function castVote(player, { inline = false } = {}) {
     homeMvpSelectedId.value = null;
     if (inline) {
       highlightPlay.value = true;
-      if (presentationRevision === sheetRevision && !activeSheet.value) {
-        if (isHomeLoading.value || isRegistrationOpen.value || activeGameId.value || shopBusy.value || prefersReducedMotion()) {
+      if (presentationRevision === sheetRevision && !activeSheet.value && !isHomeLoading.value
+        && !isRegistrationOpen.value && !activeGameId.value && !shopBusy.value) {
+        if (prefersReducedMotion()) {
           finishHomeVoteFlight();
         } else {
           homeVoteFlight.value = { source: homeMvpCarousel.value?.getPlayerCardRect(player.id) ?? null };
@@ -1971,7 +1981,15 @@ async function castVote(player, { inline = false } = {}) {
       startVotePresentation();
       openSheet('vote-result');
     }
-    if (journey.value.pendingVoteBonus) await retryVoteBonus({ inline });
+    if (journey.value.pendingVoteBonus) {
+      const reward = retryVoteBonus({ inline });
+      if (inline) homeVoteBonusRequest = reward;
+      try {
+        await reward;
+      } finally {
+        if (homeVoteBonusRequest === reward) homeVoteBonusRequest = null;
+      }
+    }
   } catch (error) {
     if (isDisposed || request !== voteRequestRevision || scope !== walletScope()) return;
     voteError.value = 'Impossibile salvare il voto. Riprova tra poco.';
@@ -2357,6 +2375,7 @@ function resetReportTelemetry() {
   }) : null;
 }
 function recordMatchChat(name) {
+  if (name === 'match_chat_opened') sheetRevision += 1;
   reportTelemetry?.record(name);
 }
 function observeLotteryShortcut(element) {
@@ -2411,6 +2430,7 @@ async function bootstrap() {
     loadedEventId = walletScope();
     voteRequestRevision += 1;
     journeyRewardRevision += 1;
+    homeVoteBonusRequest = null;
     isVoting.value = false;
     isLoadingVoteStatus.value = false;
     voteStatusError.value = '';
@@ -2631,14 +2651,6 @@ watch(
   min-width: 0;
   align-items: center;
   gap: 8px;
-}
-.topbar:has(.match-chat-trigger) .club { flex-basis: 5.5rem; }
-@media (max-width: 400px) {
-  .topbar:has(.match-chat-trigger) .club-name :is(b, span) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 }
 .club-logo {
   flex-shrink: 0;

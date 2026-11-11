@@ -56,6 +56,26 @@ async function render(section, populate) {
   return html;
 }
 
+test('Sponsor Analytics offers concluded matches even when there are no open matches', async () => {
+  const html = await render('results', c => {
+    c.events = [c.normalizeEventResponse({
+      id: 42, team1_id: 1, team2_id: 2, start_datetime: '2026-10-04T18:00:00Z', is_concluded: true,
+    })];
+    assert.equal(c.availableEvents.length, 0);
+  });
+  assert.match(html, /Sponsor Analytics<\/h2>[\s\S]*?<option\b[^>]*\bvalue="42"/);
+});
+
+test('the archive renders a collapsed Sponsor Analytics section for each event', async () => {
+  const html = await render('history', c => {
+    c.eventHistory = [42, 43].map(id => c.normalizeHistoryEntry({
+      id, title: `Partita ${id}`, start_datetime: '2026-10-04T18:00:00Z',
+    }));
+  });
+  assert.match(html, /Partita 42[\s\S]*?Sponsor Analytics<\/summary>[\s\S]*?Partita 43[\s\S]*?Sponsor Analytics<\/summary>/);
+  assert.doesNotMatch(html, /Tutti gli sponsor/);
+});
+
 test('history renders populated server payloads, funnel steps, survey text, prizes and tracking metadata', async () => {
   const html = await render('history', c => {
     c.eventHistory = [c.normalizeHistoryEntry({

@@ -44,11 +44,20 @@ const homeRenderCode = compiledHome.code.replace(/^import \{([^}]+)\} from "([^"
 const homeRender = new Function(...Object.keys(homeHelpers), homeRenderCode)(...Object.values(homeHelpers));
 function renderHome({ state, props }) {
   const app = Vue.createSSRApp({ setup: () => ({ ...Vue.proxyRefs(state), ...props }), ssrRender: homeRender });
+  app.component('MatchChatEntry', { render: () => Vue.h('button', { 'data-test': 'match-chat' }, 'Chat Live') });
   app.component('FanMerchLink', { render: () => null });
   app.component('MvpPlayerCarousel', { render: () => Vue.h('div', { 'data-test': 'mvp-carousel' }) });
   app.component('FanPlayerCard', { render: () => Vue.h('span', { 'data-test': 'player-card' }) });
   return VueSSR.renderToString(app);
 }
+
+test('the match chat entry appears above the leaderboard for the current match', async (t) => {
+  const setup = fixture();
+  t.after(() => setup.scope.stop());
+  assert.match(await renderHome(setup), /data-test="match-chat".*Classifica tifosi/s);
+  setup.props.eventId = 0;
+  assert.doesNotMatch(await renderHome(setup), /data-test="match-chat"/);
+});
 
 test('the lottery ticket stays hidden by default even after a vote and does not load its QR image', t => {
   const { state, scope } = fixture();
@@ -922,16 +931,34 @@ test('inline MVP confirms explicitly, keeps retryable selection and shows only c
   assert.doesNotMatch(html, /data-test="mvp-carousel"/);
   assert.equal(state.activeSheet.value, '');
   assert.equal(state.homeVoteReward.value, 0);
+  assert.equal(state.isRegistrationOpen.value, false);
   let focused = false;
   state.homeMvpTitle.value = { focus() { focused = true; } };
   state.finishHomeVoteFlight();
   await Vue.nextTick();
   assert.equal(focused, true);
   assert.equal(state.homeVoteFlight.value, null);
+  assert.equal(state.isRegistrationOpen.value, true, 'open the prompt as soon as the card lands, even while the bonus is pending');
+  assert.equal(state.registrationTrigger.value, 'after_vote');
   reward.resolve({ ok: true, data: { wallet: 10, reward_amount: 10, coins_earned: 10 } });
   await voting;
   assert.equal(state.homeVoteReward.value, 10);
   assert.equal(state.totalCoins.value, 10);
+});
+
+test('the full-screen confirmation returns a signed-in fan to their vote without opening registration', async (t) => {
+  const { state, scope } = fixture({
+    fetchFanProfile: async () => ({ ok: true, data: { registered: true, user: { nickname: 'Fan' }, wallet: 0 } }),
+  });
+  t.after(() => scope.stop());
+  await state.loadFanProfile();
+  state.isHomeLoading.value = false;
+  await state.castVote(player, { inline: true });
+  assert.ok(state.homeVoteFlight.value);
+  state.finishHomeVoteFlight();
+  await Vue.nextTick();
+  assert.equal(state.isRegistrationOpen.value, false);
+  assert.equal(state.showHomeVoteReceipt.value, true);
 });
 
 test('a saved MVP opens in compact mode, can be edited explicitly and stays compact when voting closes', async (t) => {
@@ -1078,6 +1105,7 @@ test('reduced motion keeps the confirmation immediate without animated coins or 
   assert.equal(state.votedPlayerId.value, 8);
   assert.equal(state.showHomeVoteReceipt.value, true);
   assert.equal(state.homeVoteFlight.value, null);
+  assert.equal(state.isRegistrationOpen.value, true);
 });
 
 test('an old club vote cannot reveal a card or clear a newer pending selection', async (t) => {

@@ -36,3 +36,29 @@ test('commercial sponsor filters use the authenticated club and render unavailab
   assert.equal(metrics.CTR, 'N/D');
   assert.equal(metrics['Conversioni attribuite'], 'N/D');
 });
+
+test('an archived event loads lazily and keeps the same match scope when filtering by sponsor', async (t) => {
+  const requests = [];
+  const { state, scope } = setupSfc(new URL('./AdminSponsorAnalytics.vue', import.meta.url), {
+    vue: { ...vue, onMounted: (load) => load(), onUnmounted() {} },
+    '../../api': { apiClient: { get: async (path, config) => {
+      requests.push({ path, config });
+      return { data: { total: { impressions: 12 }, sponsors: [{ sponsor_id: 7, sponsor_name: 'Partner' }] } };
+    } } },
+  }, { matchId: 42, authHeaders: { headers: { 'X-Organization-Slug': 'club-a' } }, sponsors: [], events: [] });
+  t.after(() => scope.stop());
+
+  assert.equal(requests.length, 0);
+  await state.loadOnExpand({ currentTarget: { open: true } });
+  assert.equal(state.report.value.total.impressions, 12);
+  assert.deepEqual(state.sponsorOptions.value, [{ id: 7, name: 'Partner' }]);
+  state.loadOnExpand({ currentTarget: { open: false } });
+  await state.loadOnExpand({ currentTarget: { open: true } });
+  assert.equal(requests.length, 1);
+  state.selection.sponsor = '7';
+  await state.load();
+  assert.deepEqual(requests.map(({ config }) => config.params), [
+    { match_id: 42, sponsor_id: '' },
+    { match_id: 42, sponsor_id: '7' },
+  ]);
+});
