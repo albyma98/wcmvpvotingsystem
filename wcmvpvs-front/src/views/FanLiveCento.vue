@@ -94,7 +94,7 @@
             </FanMerchLink>
           </div>
 
-          <Transition name="home-slot" mode="out-in">
+          <Transition name="home-slot" mode="out-in" @after-enter="focusFeedbackThanks">
             <section v-if="hasFeedbackSurvey && !hasSubmittedFeedback" key="inline-feedback" :ref="observeFeedbackInvitation" class="feedback-cta feedback-inline" aria-labelledby="inline-feedback-title" :aria-busy="feedbackSaving">
               <h2 id="inline-feedback-title">La tua voce conta</h2>
               <h3 id="inline-feedback-question" ref="feedbackQuestionTitle" tabindex="-1">{{ activeFeedbackQuestion.title }}</h3>
@@ -122,17 +122,45 @@
                 </template>
               </div>
             </section>
-            <button v-else-if="featuredMission" key="challenge" ref="homeChallengeButton" class="moment-card" type="button" @click="onMission(featuredMission, 'home_featured')">
-              <span class="home-icon" aria-hidden="true">{{ featuredMission.emoji }}</span>
-              <span class="moment-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ feedbackThanks ? 'Grazie per il feedback!' : featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
-              <span class="moment-action">
-                <span v-if="featuredMission.pts && (featuredMission.repeatable || !doneKeys.includes(featuredMission.key))" class="row-pts">
-                  +{{ featuredMission.pts }}<span class="sr-only"> monete</span><span class="coin" aria-hidden="true"></span>
+            <div v-else-if="feedbackThanks || featuredMission" key="after-feedback" class="home-slot-followup">
+              <section v-if="feedbackThanks" class="feedback-celebration" aria-labelledby="feedback-thanks-title">
+                <div class="feedback-celebration__art" aria-hidden="true">
+                  <svg class="feedback-celebration__confetti" viewBox="0 0 100 88" fill="none">
+                    <g class="feedback-celebration__confetti-primary" fill="var(--red-text)">
+                      <rect x="11" y="18" width="7" height="4" rx="1.5" transform="rotate(35 11 18)"/>
+                      <rect x="74" y="11" width="8" height="4" rx="1.5" transform="rotate(-40 74 11)"/>
+                      <rect x="83" y="62" width="7" height="4" rx="1.5" transform="rotate(28 83 62)"/>
+                      <circle cx="6" cy="49" r="2"/><circle cx="46" cy="79" r="2.5"/>
+                    </g>
+                    <g class="feedback-celebration__confetti-gold" fill="var(--gold)">
+                      <path d="M47 2l1.5 4.5L53 8l-4.5 1.5L47 14l-1.5-4.5L41 8l4.5-1.5zM18 60l1.5 4.5L24 66l-4.5 1.5L18 72l-1.5-4.5L12 66l4.5-1.5z"/>
+                      <rect x="68" y="75" width="4" height="7" rx="1.5" transform="rotate(-28 68 75)"/>
+                      <circle cx="92" cy="33" r="3"/><circle cx="27" cy="9" r="2"/>
+                    </g>
+                  </svg>
+                  <span class="feedback-celebration__seal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path pathLength="1" d="m5 12 5 5 9-10"/>
+                    </svg>
+                  </span>
+                </div>
+                <div class="feedback-celebration__copy">
+                  <span>Feedback ricevuto</span>
+                  <h2 id="feedback-thanks-title" ref="feedbackThanksTitle" tabindex="-1" aria-describedby="feedback-thanks-copy">Grazie per il feedback!</h2>
+                  <p id="feedback-thanks-copy">Le tue risposte ci aiutano a migliorare l’esperienza in arena.</p>
+                </div>
+              </section>
+              <button v-if="featuredMission" class="moment-card" type="button" @click="onMission(featuredMission, 'home_featured')">
+                <span class="home-icon" aria-hidden="true">{{ featuredMission.emoji }}</span>
+                <span class="moment-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
+                <span class="moment-action">
+                  <span v-if="featuredMission.pts && (featuredMission.repeatable || !doneKeys.includes(featuredMission.key))" class="row-pts">
+                    +{{ featuredMission.pts }}<span class="sr-only"> monete</span><span class="coin" aria-hidden="true"></span>
+                  </span>
+                  <b>Gioca <span aria-hidden="true">→</span></b>
                 </span>
-                <b>Gioca <span aria-hidden="true">→</span></b>
-              </span>
-            </button>
-            <p v-else-if="feedbackThanks" key="feedback-thanks" class="feedback-thanks">Grazie per il feedback!</p>
+              </button>
+            </div>
           </Transition>
 
           <section v-if="eventId" class="journey-card" aria-label="Progressione del badge">
@@ -928,9 +956,8 @@ const feedbackSuggestion = ref('');
 const feedbackError = ref('');
 const feedbackQuestionTitle = ref(null);
 const feedbackThanks = ref(false);
-const homeChallengeButton = ref(null);
+const feedbackThanksTitle = ref(null);
 const homePlayButton = ref(null);
-let feedbackThanksTimer;
 
 // Registry giochi reali (titolo + reward indicativa mostrata nella lista).
 const volleyballGameIds = ['volley-rush', 'setter-pro', 'monster-block'];
@@ -1256,7 +1283,6 @@ watch([() => props.eventId, () => props.organizationSlug], ([eventId]) => {
   feedbackError.value = '';
   feedbackThanks.value = false;
   if (typeof window === 'undefined') return;
-  window.clearTimeout(feedbackThanksTimer);
   if (!eventId) return;
   try {
     const saved = window.localStorage.getItem(feedbackStorageKey(eventId));
@@ -1328,10 +1354,6 @@ async function answerFeedbackInline(value) {
   recordFanEvent('feedback_step', { trigger: 'feedback', count: step + 1, outcome: optional && !answer ? 'skipped' : 'selected' });
   if (optional) {
     handleFeedbackSubmitted(draft.answers);
-    nextTick(() => {
-      if (isDisposed || scope !== walletScope() || draft !== feedbackDraft.value || activeSheet.value || isRegistrationOpen.value || activeGameId.value) return;
-      (homeChallengeButton.value || homePlayButton.value)?.focus({ preventScroll: true });
-    });
     return;
   }
   draft.answers[question.id] = answer;
@@ -1347,9 +1369,12 @@ function handleFeedbackSubmitted(answers = {}) {
   reportTelemetry?.record('feedback_completed', { experience: answers.report_experience, perks_interest: answers.perks_interest });
   hasSubmittedFeedback.value = true;
   feedbackThanks.value = true;
-  window.clearTimeout(feedbackThanksTimer);
-  feedbackThanksTimer = window.setTimeout(() => { feedbackThanks.value = false; }, 2600);
   persistFeedback('1');
+}
+function focusFeedbackThanks() {
+  if (!feedbackThanks.value || activeSheet.value || isRegistrationOpen.value || activeGameId.value) return;
+  // Keep focus where the fan moved it if they used another control during the save.
+  if (document.activeElement === document.body) feedbackThanksTitle.value?.focus();
 }
 
 /* ---------- Giocatore votato (locale o da prop parent) ---------- */
@@ -2558,7 +2583,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   stopCoinsStream();
   window.clearTimeout(coinAnimationTimer);
-  window.clearTimeout(feedbackThanksTimer);
   window.clearInterval(liveStatusTimer);
 });
 
@@ -3264,7 +3288,65 @@ watch(
 }
 .feedback-suggestion small { display: block; text-align: right; }
 .feedback-error { font-size: .8125rem; font-weight: 700; }
-.feedback-thanks { margin: 0; padding: 8px; color: var(--ink); font-size: .875rem; }
+.home-slot-followup { display: grid; gap: var(--home-gap); }
+.feedback-celebration {
+  display: grid;
+  grid-template-columns: clamp(68px, 22vw, 100px) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(8px, 3vw, 16px);
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--red-line);
+  border-radius: var(--home-radius);
+  background: radial-gradient(ellipse at left, var(--gold-soft), transparent 60%), var(--card);
+  box-shadow: var(--home-shadow);
+  color: var(--ink);
+}
+.feedback-celebration__art { position: relative; display: grid; place-items: center; aspect-ratio: 100 / 88; }
+.feedback-celebration__art::before {
+  content: '';
+  position: absolute;
+  width: 61%;
+  aspect-ratio: 1;
+  border: 1px solid var(--red-line);
+  border-radius: 50%;
+  background: var(--red-soft);
+  animation: feedback-halo .65s cubic-bezier(.16, 1, .3, 1) .08s both;
+}
+.feedback-celebration__seal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 48%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 3px 0 var(--red-deep);
+  color: var(--on-primary);
+  animation: feedback-seal .58s cubic-bezier(.2, .75, .25, 1) .05s both;
+}
+.feedback-celebration__seal svg { width: 56%; }
+.feedback-celebration__seal path { stroke-dasharray: 1; animation: feedback-check .3s ease-out .24s both; }
+.feedback-celebration__confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.feedback-celebration__confetti g { transform-origin: center; animation: feedback-confetti .95s ease-out .16s both; }
+.feedback-celebration__confetti .feedback-celebration__confetti-gold { animation-delay: .22s; }
+.feedback-celebration__copy { overflow-wrap: anywhere; animation: feedback-copy .42s cubic-bezier(.16, 1, .3, 1) .12s both; }
+.feedback-celebration__copy > span { color: var(--red-text); font-size: .625rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.feedback-celebration h2 { margin: 2px 0 4px; font-size: clamp(1.0625rem, 4.8vw, 1.375rem); font-weight: 850; line-height: 1.12; letter-spacing: -.025em; }
+.feedback-celebration p { margin: 0; font-size: .8125rem; }
+@keyframes feedback-halo { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes feedback-seal {
+  0% { opacity: 0; transform: scale(.4) rotate(-22deg); }
+  62% { opacity: 1; transform: scale(1.15) rotate(6deg); }
+  100% { transform: none; }
+}
+@keyframes feedback-check { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes feedback-confetti {
+  0% { opacity: 0; transform: scale(.25) rotate(-25deg); }
+  35% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(4px) scale(1.1) rotate(12deg); }
+}
+@keyframes feedback-copy { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .home-slot-enter-active { transition: opacity .15s ease, transform .15s ease; }
 .home-slot-leave-active { transition: opacity .1s ease, transform .1s ease; pointer-events: none; }
 .home-slot-enter-from, .home-slot-leave-to { opacity: 0; transform: translateY(4px); }
@@ -3272,6 +3354,8 @@ watch(
   .mvp-receipt.is-new, .home-shortcut.is-vote-next { animation: none; }
   .mvp-collapse-leave-active, .feedback-emoji-options button { transition: none; }
   .feedback-emoji-options button:active { transform: none; }
+  .feedback-celebration__art::before, .feedback-celebration__seal, .feedback-celebration__seal path, .feedback-celebration__copy { animation: none; }
+  .feedback-celebration__confetti { display: none; }
 }
 
 .sponsors {

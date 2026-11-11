@@ -1974,7 +1974,7 @@ test('feedback takes the featured slot until sent, then opens a game allowed for
     state.handleFeedbackSubmitted();
     html = await renderHome(setup);
     assert.doesNotMatch(html, /class="feedback-cta feedback-inline"|feedback-link/);
-    assert.match(html, /Sfida del momento/);
+    assert.match(html, /Grazie per il feedback!.*Sfida del momento/s);
     assert.ok(html.includes(title));
     assert.match(html, /Gioca <span aria-hidden="true">→<\/span>/);
     state.onMission(state.featuredMission.value);
@@ -1983,8 +1983,9 @@ test('feedback takes the featured slot until sent, then opens a game allowed for
     const restored = fixture({}, { storage: window.storage, props: { activeEvent: initialEvent } });
     t.after(() => restored.scope.stop());
     assert.equal(restored.state.hasSubmittedFeedback.value, true);
-    assert.match(await renderHome(restored), /Sfida del momento/);
-    assert.doesNotMatch(await renderHome(restored), /class="feedback-cta feedback-inline"/);
+    const restoredHtml = await renderHome(restored);
+    assert.match(restoredHtml, /Sfida del momento/);
+    assert.doesNotMatch(restoredHtml, /class="feedback-cta feedback-inline"|Grazie per il feedback!/);
     props.eventId = 43;
     await Vue.nextTick();
     assert.match(await renderHome(setup), /class="feedback-cta feedback-inline"/, 'a new match asks for its own feedback');
@@ -1993,9 +1994,11 @@ test('feedback takes the featured slot until sent, then opens a game allowed for
 
 test('inline feedback saves each answer before advancing, retries, and resumes a partial response', async (t) => {
   const first = deferred();
+  const finalSave = deferred();
   const requests = [];
   const api = { saveEventFeedbackAnswer: (...args) => {
     requests.push(args);
+    if (args[2] === 'suggestion' && args[3]) return finalSave.promise;
     return requests.length === 1 ? first.promise : Promise.resolve({ ok: true });
   } };
   const teamQuestion = { id: 'team_spirit', title: 'Quanto ti sei sentito coinvolto?', answers: [{ value: 'high', label: 'Moltissimo', icon: '🔥' }] };
@@ -2040,10 +2043,18 @@ test('inline feedback saves each answer before advancing, retries, and resumes a
   assert.deepEqual(requests[2], [42, requests[0][1], 'experience', 'complex']);
   await restored.state.answerFeedbackInline('high');
   assert.match(await renderHome(restored), /Se potessi migliorare qualcosa/);
+  const submitting = restored.state.answerFeedbackInline('Più giochi');
+  assert.doesNotMatch(await renderHome(restored), /Grazie per il feedback!/);
+  finalSave.resolve({ ok: false });
+  await submitting;
+  const failedHtml = await renderHome(restored);
+  assert.match(failedHtml, /Impossibile salvare la risposta/);
+  assert.doesNotMatch(failedHtml, /Grazie per il feedback!/);
   await restored.state.answerFeedbackInline('');
   assert.deepEqual(requests.slice(3).map((request) => request.slice(2)), [
-    ['team_spirit', 'high'], ['suggestion', ''],
+    ['team_spirit', 'high'], ['suggestion', 'Più giochi'], ['suggestion', ''],
   ]);
+  assert.match(await renderHome(restored), /Grazie per il feedback!/);
   assert.equal(restored.state.hasSubmittedFeedback.value, true);
   assert.equal(window.localStorage.getItem('wcmvpvs-feedback:42'), '1');
   assert.equal(restored.reportSignals.find(({ name }) => name === 'feedback_completed').metadata.experience, undefined);
