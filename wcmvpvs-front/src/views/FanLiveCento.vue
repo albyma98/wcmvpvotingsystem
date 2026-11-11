@@ -680,7 +680,7 @@ import { normalizeOrganizationColors, organizationThemeStyle } from '../organiza
 import { preloadFanHomeImages } from '../fanHomeAssets';
 import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
 import { resolveGameWallSponsors } from '../games/gameWallSponsors';
-import { findAssignedSponsor, postVoteSponsorAssignments } from '../sponsorPlacements';
+import { findAssignedSponsor, postVoteSponsorSlots } from '../sponsorPlacements';
 import { createEventReportTelemetry, createReportSignalSender, reportSource } from '../eventReportTelemetry';
 import { stopPostHogForNewExperience } from '../lib/posthog';
 import { sanitizeFanAnalyticsMetadata } from '../fanAnalytics';
@@ -766,6 +766,7 @@ const organizationName = ref('');
 const organizationLogoUrl = ref('');
 const organizationSport = ref('');
 const gameWallAssignments = ref({});
+const postVoteAssignments = ref({});
 const homeLogoUrl = computed(() => props.organizationSlug ? organizationLogoUrl.value : props.teamLogoUrl);
 const themeStyle = computed(() => organizationThemeStyle(organizationColors.value));
 watch(() => props.organizationSlug, (slug, previous, onCleanup) => {
@@ -774,6 +775,7 @@ watch(() => props.organizationSlug, (slug, previous, onCleanup) => {
   organizationLogoUrl.value = '';
   organizationSport.value = '';
   gameWallAssignments.value = {};
+  postVoteAssignments.value = {};
   if (!slug) {
     organizationThemeRequest = Promise.resolve();
     return;
@@ -794,6 +796,7 @@ async function loadOrganizationBrand(slug, signal) {
       organizationLogoUrl.value = String(data?.logo_url || '').trim();
       organizationSport.value = String(data?.sport || '').trim();
       gameWallAssignments.value = data?.game_wall_sponsors || {};
+      postVoteAssignments.value = data?.post_vote_sponsors || {};
     }
   } catch (error) {
     if (!signal.aborted) console.error('Impossibile caricare i dati della società', error);
@@ -2116,12 +2119,9 @@ const wallSponsors = computed(() => resolveGameWallSponsors(
   activeGameId.value,
   currentSponsorCatalog.value,
 ));
-const postVoteSponsors = computed(() => {
-  const assignments = postVoteSponsorAssignments[props.organizationSlug];
-  return ['post_vote_left', 'post_vote_right']
-    .map((placement) => ({ placement, sponsor: findAssignedSponsor(assignments?.[placement], currentSponsorCatalog.value) }))
-    .filter(({ sponsor }) => sponsor);
-});
+const postVoteSponsors = computed(() => postVoteSponsorSlots
+  .map(({ id: placement }) => ({ placement, sponsor: findAssignedSponsor(postVoteAssignments.value[placement], currentSponsorCatalog.value) }))
+  .filter(({ sponsor }) => sponsor));
 
 // Stessa normalizzazione di LiveExperienceHome: sponsor = logo (logo_data/image_url).
 function normalizeSponsor(item, index) {

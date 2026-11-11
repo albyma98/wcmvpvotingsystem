@@ -371,7 +371,7 @@ function fixture(overrides = {}, options = {}) {
     '../fanHomeAssets': options.assets || assets,
     '../fanGameArtwork': gameArtwork,
     '../games/gameWallSponsors': gameWallSponsors,
-    '../sponsorPlacements': { ...sponsorPlacements, postVoteSponsorAssignments: options.postVoteSponsorAssignments || {} },
+    '../sponsorPlacements': sponsorPlacements,
     '../eventReportTelemetry': { createEventReportTelemetry: (configuration) => {
       reportContexts.push(configuration);
       return { record(name, metadata = {}) {
@@ -1283,30 +1283,34 @@ test('wall sponsors use the active catalog for the current society, game and sid
 test('post-vote placements resolve in order and only use the current society’s active sponsors', async (t) => {
   const { state, props, scope } = fixture({
     apiClient: { get: async (path, config) => {
+      if (path === '/organization-theme') {
+        const assignments = {
+          club: { post_vote_left: 12, post_vote_right: 34 },
+          'other-club': { post_vote_right: 12 },
+        };
+        return { data: { post_vote_sponsors: assignments[config.params.organization_slug] } };
+      }
       if (path !== '/sponsors') return { data: {} };
       const data = config.headers['X-Organization-Slug'] === 'club'
         ? [{ id: 34, logo_data: '/right.png' }, { id: 12, logo_data: '/left.png' }]
         : [{ id: 12, logo_data: '/other.png' }];
       return { data };
     } },
-  }, {
-    postVoteSponsorAssignments: {
-      club: { post_vote_left: 12, post_vote_right: 34 },
-      'other-club': { post_vote_left: 34, post_vote_right: 12 },
-    },
   });
   t.after(() => scope.stop());
   const signal = new AbortController().signal;
   const placements = () => state.postVoteSponsors.value.map(({ placement, sponsor }) => [placement, sponsor.imageUrl]);
 
-  await state.loadSponsors(signal);
+  await Promise.all([state.organizationThemeRequest, state.loadSponsors(signal)]);
   assert.deepEqual(placements(), [['post_vote_left', '/left.png'], ['post_vote_right', '/right.png']]);
   props.organizationSlug = 'other-club';
   assert.deepEqual(placements(), []);
-  await state.loadSponsors(signal);
+  await Vue.nextTick();
+  await Promise.all([state.organizationThemeRequest, state.loadSponsors(signal)]);
   assert.deepEqual(placements(), [['post_vote_right', '/other.png']]);
   props.organizationSlug = 'unassigned';
-  await state.loadSponsors(signal);
+  await Vue.nextTick();
+  await Promise.all([state.organizationThemeRequest, state.loadSponsors(signal)]);
   assert.deepEqual(placements(), []);
 });
 

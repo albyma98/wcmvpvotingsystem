@@ -1,21 +1,21 @@
 <template>
-  <section class="game-wall-sponsors">
+  <section class="sponsor-placements" :class="placementGroup">
     <header>
-      <h2>Banner nei minigiochi</h2>
-      <p>I pannelli mostrano i loghi degli sponsor visibili. Seleziona «Pannello neutro» per lasciare libera una parete.</p>
+      <h2>{{ config.title }}</h2>
+      <p>{{ config.description }}</p>
     </header>
     <p v-if="loading" role="status">Caricamento delle assegnazioni…</p>
     <button v-else-if="!saved && error" type="button" :class="run ? 'v2-button' : 'btn secondary'" @click="load">
       Riprova
     </button>
-    <form v-else-if="saved" class="wall-form" @submit.prevent="submit">
-      <div class="wall-games">
-        <fieldset v-for="game in gameWallGames" :key="game.id" :disabled="saving">
-          <legend>{{ game.label }}</legend>
-          <label v-for="side in sides" :key="side.id" class="v2-field">
-            {{ side.label }}
-            <select v-model="draft[`${game.id}_${side.id}`]">
-              <option :value="0">Pannello neutro</option>
+    <form v-else-if="saved" class="placement-form" @submit.prevent="submit">
+      <div class="placement-groups">
+        <fieldset v-for="group in config.groups" :key="group.label" :disabled="saving">
+          <legend>{{ group.label }}</legend>
+          <label v-for="slot in group.slots" :key="slot.id" class="v2-field">
+            {{ slot.label }}
+            <select v-model="draft[slot.id]">
+              <option :value="0">{{ config.emptyLabel }}</option>
               <option v-for="sponsor in sponsors" :key="sponsor.id" :value="sponsor.id" :disabled="!sponsor.isActive">
                 {{ sponsor.name || `Sponsor ${sponsor.position}` }}{{ sponsor.isActive ? '' : ' (nascosto)' }}
               </option>
@@ -25,12 +25,12 @@
       </div>
       <div>
         <button type="submit" :class="run ? 'v2-button v2-primary' : 'btn primary'" :disabled="saving || !dirty">
-          {{ saving ? 'Salvataggio…' : 'Salva banner' }}
+          {{ saving ? 'Salvataggio…' : config.submitLabel }}
         </button>
       </div>
     </form>
-    <p v-if="error" class="wall-error" role="alert">{{ error }}</p>
-    <p v-if="success && !dirty" class="wall-success" role="status">Assegnazioni salvate.</p>
+    <p v-if="error" class="placement-error" role="alert">{{ error }}</p>
+    <p v-if="success && !dirty" class="placement-success" role="status">Assegnazioni salvate.</p>
   </section>
 </template>
 
@@ -38,18 +38,35 @@
 import { computed, ref, watch } from 'vue';
 import { apiClient } from '../../api';
 import { gameWallGames } from '../../games/gameWallSponsors';
+import { postVoteSponsorSlots } from '../../sponsorPlacements';
 
 const props = defineProps({
   authHeaders: { type: Object, required: true },
   sponsors: { type: Array, required: true },
+  placementGroup: { type: String, required: true, validator: (value) => ['game-walls', 'post-vote'].includes(value) },
   run: { type: Function, default: null },
 });
-const endpoint = '/admin/sponsors/game-walls';
-const sides = [
-  { id: 'left', label: 'Parete sinistra' },
-  { id: 'right', label: 'Parete destra' },
-];
-const slots = gameWallGames.flatMap((game) => sides.map((side) => `${game.id}_${side.id}`));
+const endpoint = `/admin/sponsors/${props.placementGroup}`;
+const config = props.placementGroup === 'post-vote' ? {
+  title: 'Banner nella conferma MVP',
+  description: 'Scegli quali sponsor visibili mostrare dopo il voto. Se scegli un solo sponsor, il banner sarà centrato.',
+  emptyLabel: 'Nessuno sponsor',
+  submitLabel: 'Salva banner MVP',
+  groups: [{ label: 'Partner del Match Day', slots: postVoteSponsorSlots }],
+} : {
+  title: 'Banner nei minigiochi',
+  description: 'I pannelli mostrano i loghi degli sponsor visibili. Seleziona «Pannello neutro» per lasciare libera una parete.',
+  emptyLabel: 'Pannello neutro',
+  submitLabel: 'Salva banner',
+  groups: gameWallGames.map((game) => ({
+    label: game.label,
+    slots: [
+      { id: `${game.id}_left`, label: 'Parete sinistra' },
+      { id: `${game.id}_right`, label: 'Parete destra' },
+    ],
+  })),
+};
+const slots = config.groups.flatMap((group) => group.slots.map((slot) => slot.id));
 const saved = ref(null);
 const draft = ref({});
 const loading = ref(false);
@@ -101,7 +118,7 @@ async function load() {
 }
 
 function submit() {
-  return props.run ? props.run('sponsor-game-walls', save) : save();
+  return props.run ? props.run(`sponsor-${props.placementGroup}`, save) : save();
 }
 
 async function save() {
@@ -126,14 +143,15 @@ async function save() {
 </script>
 
 <style scoped>
-.game-wall-sponsors, .wall-form { display: grid; gap: 16px; }
-.game-wall-sponsors header { display: grid; gap: 6px; }
-.game-wall-sponsors header p { color: var(--v2-muted, #526078); font-size: .875rem; }
-.wall-games { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
-.wall-games fieldset { display: grid; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--v2-line, #dce2e9); border-radius: 8px; }
-.wall-games legend { padding: 0 6px; font-weight: 600; }
-.wall-games label { display: grid; gap: 4px; }
-.wall-games select { width: 100%; min-height: 42px; }
-.wall-error { color: #a32135; }
-.wall-success { color: #116443; }
+.sponsor-placements, .placement-form { display: grid; gap: 16px; }
+.sponsor-placements header { display: grid; gap: 6px; }
+.sponsor-placements header p { color: var(--v2-muted, #526078); font-size: .875rem; }
+.placement-groups { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
+.placement-groups fieldset { display: grid; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--v2-line, #dce2e9); border-radius: 8px; }
+.post-vote fieldset { grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
+.placement-groups legend { padding: 0 6px; font-weight: 600; }
+.placement-groups label { display: grid; gap: 4px; }
+.placement-groups select { width: 100%; min-height: 42px; }
+.placement-error { color: #a32135; }
+.placement-success { color: #116443; }
 </style>

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 )
 
 // Public branding is available even when the organization has no active event.
@@ -25,9 +26,13 @@ func (rt *_router) getOrganizationTheme(w http.ResponseWriter, r *http.Request, 
 		}
 		return
 	}
-	walls, err := rt.db.GetGameWallSponsors(r.Context(), ctx.OrganizationID, true)
+	walls, err := rt.db.GetSponsorPlacements(r.Context(), ctx.OrganizationID, database.GameWallPlacements, true)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot load public game wall sponsors")
+	}
+	postVote, err := rt.db.GetSponsorPlacements(r.Context(), ctx.OrganizationID, database.PostVotePlacements, true)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot load public post-vote sponsors")
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -39,5 +44,10 @@ func (rt *_router) getOrganizationTheme(w http.ResponseWriter, r *http.Request, 
 		SecondaryColor   string         `json:"secondary_color"`
 		TertiaryColor    string         `json:"tertiary_color"`
 		GameWallSponsors map[string]int `json:"game_wall_sponsors,omitempty"`
-	}{org.Name, org.LogoURL, org.Sport, org.PrimaryColor, org.SecondaryColor, org.TertiaryColor, walls})
+		PostVoteSponsors map[string]int `json:"post_vote_sponsors,omitempty"`
+	}{
+		Name: org.Name, LogoURL: org.LogoURL, Sport: org.Sport,
+		PrimaryColor: org.PrimaryColor, SecondaryColor: org.SecondaryColor, TertiaryColor: org.TertiaryColor,
+		GameWallSponsors: walls, PostVoteSponsors: postVote,
+	})
 }

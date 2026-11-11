@@ -5,7 +5,8 @@
       <p>Gestisci fino a {{ maxSponsors }} sponsor da mostrare nella schermata pubblica.</p>
     </header>
 
-    <AdminGameWallSponsors :auth-headers="authHeaders" :sponsors="sponsors" />
+    <AdminSponsorPlacements placement-group="post-vote" :auth-headers="authHeaders" :sponsors="sponsors" />
+    <AdminSponsorPlacements placement-group="game-walls" :auth-headers="authHeaders" :sponsors="sponsors" />
 
     <div class="sponsor-controls" role="group" aria-label="Visibilità sponsor">
       <label class="sponsor-range">
@@ -109,7 +110,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
 import { apiClient } from '../../api';
-import AdminGameWallSponsors from './AdminGameWallSponsors.vue';
+import AdminSponsorPlacements from './AdminSponsorPlacements.vue';
 
 const props = defineProps({
   authHeaders: { type: Object, required: true },

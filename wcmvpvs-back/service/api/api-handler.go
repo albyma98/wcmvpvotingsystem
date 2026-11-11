@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -226,8 +227,10 @@ func (rt *_router) Handler() chi.Router {
 
 	rt.router.Get("/admin/sponsors", rt.wrapAdmin(rt.listAllSponsors))
 	rt.router.Post("/admin/sponsors", rt.wrapAdmin(rt.createSponsor))
-	rt.router.Get("/admin/sponsors/game-walls", rt.wrapAdmin(rt.getGameWallSponsors))
-	rt.router.Put("/admin/sponsors/game-walls", rt.wrapAdmin(rt.saveGameWallSponsors))
+	rt.router.Get("/admin/sponsors/game-walls", rt.wrapAdmin(rt.getSponsorPlacements(database.GameWallPlacements)))
+	rt.router.Put("/admin/sponsors/game-walls", rt.wrapAdmin(rt.saveSponsorPlacements(database.GameWallPlacements)))
+	rt.router.Get("/admin/sponsors/post-vote", rt.wrapAdmin(rt.getSponsorPlacements(database.PostVotePlacements)))
+	rt.router.Put("/admin/sponsors/post-vote", rt.wrapAdmin(rt.saveSponsorPlacements(database.PostVotePlacements)))
 	rt.router.Put("/admin/sponsors/{id}", rt.wrapAdmin(rt.updateSponsor))
 	rt.router.Delete("/admin/sponsors/{id}", rt.wrapAdmin(rt.deleteSponsor))
 

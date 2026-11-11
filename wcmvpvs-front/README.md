@@ -14,13 +14,9 @@ I pannelli usano i loghi degli sponsor visibili di Fan Live. Scegli **Pannello n
 
 ## Sponsor nella conferma MVP
 
-In `src/sponsorPlacements.js`, associa lo slug della società agli ID degli sponsor del catalogo Fan Live.
+Nell’admin della società, apri **Sponsor → Banner nella conferma MVP**. Scegli uno sponsor per il banner a sinistra (`post_vote_left`) e uno per quello a destra (`post_vote_right`), poi premi **Salva banner MVP**. Le assegnazioni si applicano alla successiva apertura di Fan Live.
 
-```js
-'slug-societa': { post_vote_left: 12, post_vote_right: 34 },
-```
-
-La conferma usa gli sponsor attivi assegnati. Con un solo ID attivo il banner è centrato. Le modifiche alle assegnazioni richiedono una nuova build del frontend.
+Seleziona **Nessuno sponsor** per lasciare libera una posizione. Solo gli sponsor visibili appaiono nella conferma. Quando ne è visibile uno solo, il banner è centrato.
 
 This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
 
