@@ -2708,6 +2708,9 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	if err = ensureFanProfileTables(db); err != nil {
 		return nil, err
 	}
+	if err = ensureMatchChatTables(db); err != nil {
+		return nil, err
+	}
 	if err = ensureMarketingTables(db); err != nil {
 		return nil, err
 	}
@@ -3890,7 +3893,7 @@ SELECT e.id,
        e.team1_id,
        e.team2_id,
        e.start_datetime,
-       e.location,
+       COALESCE(e.location, ''),
        e.is_active,
        e.votes_closed,
        e.is_concluded,
@@ -4019,7 +4022,7 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	defer tx.Rollback()
 	// The /new reporting subsystem is installed by the API. Explicit cleanup
 	// also works on SQLite connections where foreign-key cascades are disabled.
-	for _, table := range []string{"engagement_report_signals", "engagement_report_calculations", "engagement_report_snapshots", "engagement_report_manual_sources", "engagement_report_source_history", "engagement_report_analysis_reviews", "engagement_report_analysis_cache", "voting_notifications", "event_voting_closures"} {
+	for _, table := range []string{"event_chat_reactions", "event_chat_reports", "event_chat_messages", "event_chat_mutes", "event_chat_settings", "engagement_report_signals", "engagement_report_calculations", "engagement_report_snapshots", "engagement_report_manual_sources", "engagement_report_source_history", "engagement_report_analysis_reviews", "engagement_report_analysis_cache", "voting_notifications", "event_voting_closures"} {
 		var exists int
 		if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&exists); err != nil {
 			return err

@@ -448,6 +448,7 @@ func (rt *_router) deleteEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	rt.chat.deleteEvent(id)
 	w.WriteHeader(http.StatusNoContent)
 	ctx.Logger.WithField("event_id", id).Info("event deleted")
 }

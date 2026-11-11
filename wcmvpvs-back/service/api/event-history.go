@@ -389,6 +389,7 @@ func (rt *_router) purgeEvent(w http.ResponseWriter, r *http.Request, ctx reqcon
 		return
 	}
 
+	rt.chat.deleteEvent(eventID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

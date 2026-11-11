@@ -309,6 +309,7 @@ func (rt *_router) deleteMasterOrganization(w http.ResponseWriter, r *http.Reque
 
 	mediaCleanupFailed := false
 	for _, eventID := range eventIDs {
+		rt.chat.deleteEvent(eventID)
 		for _, mediaDir := range []string{"selfies", "story-videos"} {
 			path := filepath.Join("tmp", mediaDir, fmt.Sprintf("event_%d", eventID))
 			if err := os.RemoveAll(path); err != nil {

@@ -16,6 +16,8 @@ export const FAN_ANALYTICS_EVENTS = new Set([
   'leaderboard_loaded', 'leaderboard_failed', 'profile_loaded', 'profile_failed',
   'profile_edit_started', 'profile_updated', 'profile_update_failed', 'wallet_loaded', 'wallet_failed',
   'vote_reward_claimed', 'vote_reward_failed',
+  'match_chat_opened', 'match_chat_closed', 'match_chat_message_sent',
+  'match_chat_reaction_added', 'match_chat_message_reported',
 ]);
 
 const sections = ['home', 'mvp', 'vote-result', 'earn', 'wallet', 'spend', 'collectible', 'leaderboard', 'match-summary', 'profile', 'info'];

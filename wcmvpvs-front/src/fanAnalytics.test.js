@@ -32,3 +32,13 @@ test('only known enums, public IDs, bounded numbers and validated round/date val
   assert.equal(FAN_ANALYTICS_EVENTS.has('vote_changed'), true);
   assert.equal(FAN_ANALYTICS_EVENTS.has('input_changed'), false);
 });
+
+test('Match Chat signals use the existing allowlist without chat content', () => {
+  for (const name of ['opened', 'closed', 'message_sent', 'reaction_added', 'message_reported']) {
+    assert.ok(FAN_ANALYTICS_EVENTS.has(`match_chat_${name}`));
+  }
+  assert.deepEqual(sanitizeFanAnalyticsMetadata({
+    text: 'Forza!', nickname: 'CurvaFan', phone: '+393331234567',
+    author_user_id: 42, message_id: 5, reason: 'abuse',
+  }), {});
+});

@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 5173,
       proxy: {
-        '^/api/v1/clubs/[^/]+/matches/stream$': {
+        '^/api/(v1/clubs/[^/]+/matches/stream|events/\\d+/match-chat/(status/)?stream)(\\?.*)?$': {
           ...apiProxy,
           ws: true,
           rewriteWsOrigin: true,

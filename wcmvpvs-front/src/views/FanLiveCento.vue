@@ -14,6 +14,9 @@
             </div>
           </div>
           <div class="top-right">
+            <MatchChatEntry v-if="eventId && organizationSlug" :key="`${organizationSlug}:${eventId}`"
+              :slug="organizationSlug" :event-id="eventId" :event-label="matchChatEventLabel"
+              @verify="openRegistration()" @track="recordMatchChat" />
             <button ref="platformInfoTriggerRef" class="platform-info-button" type="button" aria-label="Informazioni e istruzioni" title="Come funziona ArenaBoostX" aria-haspopup="dialog" aria-controls="fan-platform-info" :aria-expanded="activeSheet === 'info'" @click="openPlatformInfo">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
             </button>
@@ -685,6 +688,7 @@ import FanCollectionPanel from '../components/FanCollectionPanel.vue';
 import FanAvatar from '../components/FanAvatar.vue';
 import FanMatchCard from '../components/FanMatchCard.vue';
 import FanMerchLink from '../merch/FanMerchLink.vue';
+const MatchChatEntry = defineAsyncComponent(() => import('../match-chat/MatchChatEntry.vue'));
 const FanMerchShop = defineAsyncComponent(() => import('../merch/FanMerchShop.vue'));
 const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
 import { fanRegistrationAcceptance } from '../fanRegistration';
@@ -943,6 +947,16 @@ const eventState = computed(() => {
   if (Number(liveEvent.value?.event_id) === props.eventId) return liveEvent.value;
   const activeEvent = props.activeEvent;
   return !activeEvent?.id || activeEvent.id === props.eventId ? activeEvent : null;
+});
+const matchChatEventLabel = computed(() => {
+  const event = eventState.value;
+  const match = event?.team2_name
+    ? `${event.team1_name || homeName.value} – ${event.team2_name}`
+    : `Partita #${props.eventId}`;
+  const start = new Date(event?.start_datetime || '');
+  if (Number.isNaN(start.getTime())) return match;
+  const date = start.toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return `${match} · ${date}`;
 });
 const availableMinigames = computed(() => liveEvent.value?.available_minigames ?? props.activeEvent?.available_minigames);
 function isGameAvailable(id) {
@@ -2296,6 +2310,9 @@ function resetReportTelemetry() {
     }),
   }) : null;
 }
+function recordMatchChat(name) {
+  reportTelemetry?.record(name);
+}
 function observeLotteryShortcut(element) {
   reportTelemetry?.observeVisibility?.(element, 'lottery_shortcut_view', { placement: 'lottery_shortcut', has_ticket: true });
 }
@@ -2573,6 +2590,14 @@ watch(
   min-width: 0;
   align-items: center;
   gap: 8px;
+}
+.topbar:has(.match-chat-trigger) .club { flex-basis: 5.5rem; }
+@media (max-width: 400px) {
+  .topbar:has(.match-chat-trigger) .club-name :is(b, span) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 .club-logo {
   flex-shrink: 0;

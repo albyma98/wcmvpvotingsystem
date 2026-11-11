@@ -241,6 +241,7 @@ type _router struct {
 	liveCache     *TTLCache
 	tournamentHub *sseHub
 	clubMatches   clubMatchHub
+	chat matchChat
 	merchWorker   *merchWorker
 }
 

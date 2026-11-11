@@ -6,10 +6,11 @@ import EventExperienceFields from '../components/events/EventExperienceFields.vu
 import BrandedGameFields from '../components/events/BrandedGameFields.vue';
 import EventQuizEditor from '../components/events/EventQuizEditor.vue';
 import EventStoriesEditor from '../components/events/EventStoriesEditor.vue';
+import EventMatchChat from '../components/events/EventMatchChat.vue';
 
 const props = defineProps({ detail: { type: String, default: '' } });
 const c = inject('admin-v2');
-const tabs = [{ id:'settings', label:'Esperienza', icon:'settings' }, { id:'prizes', label:'Premi', icon:'lottery' }, { id:'feedback', label:'Sondaggio', icon:'results' }, { id:'quiz', label:'Quiz', icon:'check' }, { id:'stories', label:'Stories', icon:'selfies' }];
+const tabs = [{ id:'settings', label:'Esperienza', icon:'settings' }, { id:'prizes', label:'Premi', icon:'lottery' }, { id:'feedback', label:'Sondaggio', icon:'results' }, { id:'quiz', label:'Quiz', icon:'check' }, { id:'stories', label:'Stories', icon:'selfies' }, { id:'chat', label:'Match Chat', icon:'events' }];
 const routeParts = computed(() => props.detail.split('/'));
 const creating = computed(() => routeParts.value[0] === 'create');
 const selected = computed(() => c.availableEvents.find(event => String(event.id) === routeParts.value[0]));
@@ -68,6 +69,7 @@ function saveSection(event, section) {
     <form v-else-if="tab === 'feedback'" class="v2-stack" @submit.prevent="saveSection(selected,'feedback')"><div><h2>Sondaggio dei tifosi</h2><p class="v2-muted">Personalizza le domande e le risposte del sondaggio per i tuoi tifosi.</p></div><fieldset v-for="(question,index) in c.feedbackDraftFor(selected.id).questions" :key="question.id" class="v2-stack" :disabled="c.isSavingPrizesFor(selected.id)"><legend>Domanda {{ index + 1 }}</legend><label class="v2-field">Testo della domanda<input v-model="question.title" :placeholder="question.id" /></label><div class="v2-grid-2"><label v-for="answer in question.answers" :key="answer.value" class="v2-field"><span>{{ answer.icon }} Etichetta risposta · {{ answer.value }}</span><input v-model="answer.label" :placeholder="answer.value" /></label></div></fieldset><label class="v2-field">Domanda per i suggerimenti (facoltativa)<textarea v-model="c.feedbackDraftFor(selected.id).suggestionPrompt" maxlength="120" rows="3" :disabled="c.isSavingPrizesFor(selected.id)" placeholder="Chiedi ai tifosi cosa migliorare…"></textarea><small>Massimo 120 caratteri.</small></label><p v-if="c.eventFeedbackErrors[selected.id]" class="v2-error" role="alert">{{ c.eventFeedbackErrors[selected.id] }}</p><div><button class="v2-button v2-primary" :disabled="c.isSavingPrizesFor(selected.id) || c.busy(`event-save-${selected.id}`)">{{ c.isSavingPrizesFor(selected.id) ? 'Salvataggio…' : 'Salva sondaggio' }}</button></div></form>
     <EventQuizEditor v-else-if="tab === 'quiz'" :event="selected" />
     <EventStoriesEditor v-else-if="tab === 'stories'" :event="selected" />
+    <EventMatchChat v-else-if="tab === 'chat'" :key="selected.id" :event="selected" />
    </V2Panel>
   </template>
   <V2Panel v-else title="Evento non disponibile"><p class="v2-muted">L’evento richiesto non è nella programmazione della società. Se è stato concluso, cercalo nello storico.</p><div class="v2-toolbar v2-events-footer"><button class="v2-button" @click="c.navigate('events')">Tutti gli eventi</button><button class="v2-button" @click="c.navigate('history')">Apri storico</button></div></V2Panel>
