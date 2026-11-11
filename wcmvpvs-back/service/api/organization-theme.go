@@ -26,11 +26,11 @@ func (rt *_router) getOrganizationTheme(w http.ResponseWriter, r *http.Request, 
 		}
 		return
 	}
-	walls, err := rt.db.GetSponsorPlacements(r.Context(), ctx.OrganizationID, database.GameWallPlacements, true)
+	walls, err := rt.db.GetSponsorPlacements(r.Context(), ctx.OrganizationID, database.GameWallPlacements, false)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot load public game wall sponsors")
 	}
-	postVote, err := rt.db.GetSponsorPlacements(r.Context(), ctx.OrganizationID, database.PostVotePlacements, true)
+	postVote, err := rt.db.GetSponsorPlacements(r.Context(), ctx.OrganizationID, database.PostVotePlacements, false)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot load public post-vote sponsors")
 	}

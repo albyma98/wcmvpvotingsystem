@@ -16,7 +16,7 @@
             {{ slot.label }}
             <select v-model="draft[slot.id]">
               <option :value="0">{{ config.emptyLabel }}</option>
-              <option v-for="sponsor in sponsors" :key="sponsor.id" :value="sponsor.id" :disabled="!sponsor.isActive">
+              <option v-for="sponsor in sponsors" :key="sponsor.id" :value="sponsor.id">
                 {{ sponsor.name || `Sponsor ${sponsor.position}` }}{{ sponsor.isActive ? '' : ' (nascosto)' }}
               </option>
             </select>
@@ -49,13 +49,13 @@ const props = defineProps({
 const endpoint = `/admin/sponsors/${props.placementGroup}`;
 const config = props.placementGroup === 'post-vote' ? {
   title: 'Banner nella conferma MVP',
-  description: 'Scegli quali sponsor visibili mostrare dopo il voto. Se scegli un solo sponsor, il banner sarà centrato.',
+  description: 'Scegli gli sponsor da mostrare dopo il voto. Se scegli un solo sponsor, il banner sarà centrato.',
   emptyLabel: 'Nessuno sponsor',
   submitLabel: 'Salva banner MVP',
   groups: [{ label: 'Partner del Match Day', slots: postVoteSponsorSlots }],
 } : {
   title: 'Banner nei minigiochi',
-  description: 'I pannelli mostrano i loghi degli sponsor visibili. Seleziona «Pannello neutro» per lasciare libera una parete.',
+  description: 'Scegli gli sponsor da mostrare nei pannelli. Seleziona «Pannello neutro» per lasciare libera una parete.',
   emptyLabel: 'Pannello neutro',
   submitLabel: 'Salva banner',
   groups: gameWallGames.map((game) => ({

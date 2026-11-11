@@ -17,6 +17,7 @@ test('fits logos by their intrinsic proportions and falls back while a replaceme
 
   const { state, props, scope } = setupSfc(new URL('./SvgSponsorBoard.vue', import.meta.url), {
     vue: { ...testVue, useId: () => 'test' },
+    '../../useSponsorTracking.js': { useSponsorPlacement: () => ({}) },
   }, { enabled: true, imageUrl: '/square.svg', width: 100, height: 40 }, { Image: Logo });
   t.after(() => scope.stop());
 

@@ -501,6 +501,9 @@ func (rt *_router) prepareRecipientReport(w http.ResponseWriter, r *http.Request
 	}
 	s.CalculationID = newReportID()
 	s.SelectedKPIIDs = profile.KPIIDs
+	if profile.ID == "sponsor" {
+		s.CommercialSponsors = rt.measuredSponsorReportForEvent(r, ctx, org, id, sponsorID)
+	}
 	raw, err := json.Marshal(s)
 	if err == nil {
 		_, err = rt.db.SQLConn().Exec(`INSERT INTO engagement_report_calculations(id,event_id,admin_id,payload,created_at) VALUES(?,?,?,?,?)`, s.CalculationID, id, ctx.AdminID, string(raw), s.CalculatedAt)

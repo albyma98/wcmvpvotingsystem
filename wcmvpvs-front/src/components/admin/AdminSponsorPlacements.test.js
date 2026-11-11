@@ -54,7 +54,7 @@ test('the admin loads, saves and clears wall assignments with the society scope'
   assert.deepEqual(requests, [[endpoint, 'home'], [endpoint, 'home'], [endpoint, 'away']]);
 });
 
-test('the MVP form saves only its two banner slots and can clear either one', async (t) => {
+test('the MVP form can save a hidden sponsor and clear the other slot', async (t) => {
   const requests = [];
   const { state, scope } = setupSfc(new URL('./AdminSponsorPlacements.vue', import.meta.url), {
     vue: testVue,
@@ -70,7 +70,7 @@ test('the MVP form saves only its two banner slots and can clear either one', as
   }, {
     placementGroup: 'post-vote',
     authHeaders: { headers: { 'X-Organization-Slug': 'home' } },
-    sponsors: [{ id: 12, isActive: true }, { id: 34, isActive: true }],
+    sponsors: [{ id: 12, isActive: true }, { id: 34, isActive: false }],
   });
   t.after(() => scope.stop());
   await nextTick();

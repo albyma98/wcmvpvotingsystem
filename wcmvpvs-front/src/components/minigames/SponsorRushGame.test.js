@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setupSfc, testVue, testWindow } from '../../../test/sfcSetup.js';
 import * as journey from '../../fanJourney.js';
+import * as sponsorAnalytics from '../../sponsorAnalyticsService.js';
 
 function game(t, props = {}) {
   const setup = setupSfc(new URL('./SponsorRushGame.vue', import.meta.url), {
     vue: testVue, '../../api': { apiClient: { get: async () => ({ data: [] }) } },
     '../../fanJourney': journey,
+    '../../useSponsorTracking.js': { useSponsorPlacement: () => ({}) },
+    '../../sponsorAnalyticsService.js': sponsorAnalytics,
   }, { completionReward: null, ...props }, { window: testWindow() });
   t.after(() => setup.scope.stop());
   return setup;

@@ -40,9 +40,11 @@
       v-if="imageBounds"
       :key="imageUrl"
       :href="imageUrl"
+      v-sponsor-placement="{ sponsor, placement: `game_wall_${position}`, game: gameId, method: 'svg_geometry', enabled: imageLoaded }"
       v-bind="imageBounds"
       preserveAspectRatio="xMidYMid meet"
-      @error="imageRatio = 0"
+      @load="imageLoaded = true"
+      @error="imageLoaded = false; imageRatio = 0"
     />
     <rect
       v-else
@@ -59,9 +61,11 @@
 
 <script setup>
 import { computed, ref, useId, watch } from 'vue';
+import { useSponsorPlacement } from '../../useSponsorTracking.js';
 
 const props = defineProps({
   sponsorId: { type: [Number, String], default: null },
+  sponsor: { type: Object, default: null },
   creativeId: { type: [Number, String], default: null },
   organizationId: { type: [Number, String], default: null },
   gameId: { type: String, required: true },
@@ -76,7 +80,9 @@ const props = defineProps({
 });
 
 const panelId = `sponsor-board-${useId()}`;
+const vSponsorPlacement = useSponsorPlacement();
 const imageRatio = ref(0);
+const imageLoaded = ref(false);
 const imageBounds = computed(() => {
   if (!imageRatio.value) return null;
   const width = Math.min(props.width * .88, props.height * .8 * imageRatio.value);
@@ -87,6 +93,7 @@ const imageBounds = computed(() => {
 // Un SVG senza viewBox può adattarsi all'intero rettangolo di <image>.
 watch([() => props.enabled, () => props.imageUrl], ([enabled, url], _, onCleanup) => {
   imageRatio.value = 0;
+  imageLoaded.value = false;
   if (!enabled || !url || typeof Image === 'undefined') return;
   const logo = new Image();
   logo.onload = () => {

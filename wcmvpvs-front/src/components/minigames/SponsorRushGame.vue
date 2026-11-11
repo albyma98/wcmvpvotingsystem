@@ -40,7 +40,10 @@
           :style="{ transform: `translate3d(${item.x}px, ${item.y}px, 0)` }"
         >
           <template v-if="item.type === 'logo'">
-            <img v-if="sponsorLogo" :src="sponsorLogo" alt="Logo sponsor" class="logo-image" />
+            <img v-if="sponsorLogo" v-sponsor-placement="{
+              sponsor: roundSponsor, placement: 'sponsor_rush_logo', game: 'sponsor-rush',
+              method: 'game_geometry', enabled: phase === 'playing',
+            }" :src="sponsorLogo" alt="Logo sponsor" class="logo-image" />
             <span v-else class="logo-fallback">🏷️</span>
           </template>
           <span v-else class="obstacle">⛔</span>
@@ -76,11 +79,15 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { apiClient } from '../../api';
 import { newMinigameRoundId } from '../../fanJourney';
+import { useSponsorPlacement } from '../../useSponsorTracking.js';
+import { sponsorAnalyticsFields } from '../../sponsorAnalyticsService.js';
 
+const vSponsorPlacement = useSponsorPlacement();
 const emit = defineEmits(['claim', 'exit', 'round-started', 'round-completed']);
 const props = defineProps({
   completionReward: { type: Number, default: null },
   sponsor: { type: Object, default: null },
+  sponsorAnalyticsMatchId: { type: Number, default: null },
 });
 const hasFixedReward = computed(() => Number.isFinite(props.completionReward) && props.completionReward >= 0);
 const fixedReward = computed(() => hasFixedReward.value ? Math.floor(props.completionReward) : 0);
@@ -152,10 +159,14 @@ async function loadSponsorLogo() {
       roundSponsor.value = props.sponsor;
       return;
     }
-    const { data } = await apiClient.get('/sponsors');
-    const first = Array.isArray(data) ? data.find((item) => typeof item?.logo_data === 'string' && item.logo_data.trim()) : null;
+    const matchId = props.sponsorAnalyticsMatchId;
+    const { data } = await apiClient.get('/sponsors', matchId == null ? undefined : {
+      params: { include_placements: 1, analytics_match_id: matchId },
+    });
+    const first = Array.isArray(data) ? data.find((item) => (matchId == null || item?.is_active !== false)
+      && typeof item?.logo_data === 'string' && item.logo_data.trim()) : null;
     sponsorLogo.value = first?.logo_data || '';
-    roundSponsor.value = first;
+    roundSponsor.value = first && { ...first, ...sponsorAnalyticsFields(first, matchId) };
   } catch (error) {
     sponsorLogo.value = '';
   }

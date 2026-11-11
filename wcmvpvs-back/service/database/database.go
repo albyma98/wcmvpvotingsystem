@@ -43,6 +43,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -1317,6 +1318,7 @@ type AppDatabase interface {
 	DeleteSponsor(id int, organizationID int) error
 	ListSponsors(organizationID int) ([]Sponsor, error)
 	ListActiveSponsors(organizationID int) ([]Sponsor, error)
+	ListActiveOrPlacedSponsors(organizationID int) ([]Sponsor, error)
 	GetSponsorPlacements(ctx context.Context, organizationID int, group SponsorPlacementGroup, activeOnly bool) (map[string]int, error)
 	SaveSponsorPlacements(ctx context.Context, organizationID int, group SponsorPlacementGroup, assignments map[string]int) error
 	RecordTrackingEvents(eventID int, items []TrackingEvent) error
@@ -1327,6 +1329,8 @@ type AppDatabase interface {
 	RecordSponsorExposure(eventID int, sponsorIDs []int, deviceID, exposureType string, durationMs int) error
 	RecordSponsorClick(eventID, sponsorID int, deviceID string) error
 	GetSponsorAnalytics(eventID int) (SponsorAnalytics, error)
+	RecordSponsorAnalytics(ctx context.Context, audience string, events []SponsorAnalyticsEvent) (int, error)
+	GetMeasuredSponsorAnalytics(ctx context.Context, filter SponsorAnalyticsFilter) (SponsorAnalyticsReport, error)
 	GetSponsorClickStats(eventID int) ([]SponsorClickStat, error)
 	RecordEngagementSession(eventID int, deviceID string, durationSeconds int) error
 	RecordPostVoteAction(eventID int, deviceID, action string) error
@@ -1455,7 +1459,8 @@ type AppDatabase interface {
 }
 
 type appdbimpl struct {
-	c *sql.DB
+	c                  *sql.DB
+	sponsorAnalyticsMu sync.Mutex
 }
 
 const maxSponsorSlots = 4
@@ -2205,6 +2210,9 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if err = ensureSponsorPlacements(db); err != nil {
 		return nil, fmt.Errorf("error ensuring sponsor placements: %w", err)
+	}
+	if err = ensureSponsorAnalytics(db); err != nil {
+		return nil, fmt.Errorf("error ensuring sponsor analytics: %w", err)
 	}
 
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='sponsor_clicks';`).Scan(&tableName)
@@ -4077,6 +4085,13 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	if _, err := tx.Exec(`DELETE FROM sponsor_clicks WHERE event_id = ?`, eventID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM sponsor_measured_event_ids WHERE exposure_id IN
+		(SELECT id FROM sponsor_measured_exposures WHERE match_id=?)`, eventID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM sponsor_measured_exposures WHERE match_id=?`, eventID); err != nil {
+		return err
+	}
 
 	if _, err := tx.Exec(`DELETE FROM sponsor_exposures WHERE event_id = ?`, eventID); err != nil {
 		return err
@@ -5587,11 +5602,19 @@ func (db *appdbimpl) DeleteSponsor(id int, organizationID int) error {
 }
 
 func (db *appdbimpl) ListSponsors(organizationID int) ([]Sponsor, error) {
-	return db.querySponsors(false, organizationID)
+	return db.querySponsors(organizationID, "")
 }
 
 func (db *appdbimpl) ListActiveSponsors(organizationID int) ([]Sponsor, error) {
-	return db.querySponsors(true, organizationID)
+	return db.querySponsors(organizationID, ` AND is_active = 1`)
+}
+
+func (db *appdbimpl) ListActiveOrPlacedSponsors(organizationID int) ([]Sponsor, error) {
+	return db.querySponsors(organizationID, ` AND (is_active = 1 OR id IN (
+		SELECT sponsor_id FROM game_wall_sponsors WHERE organization_id = sponsors.organization_id
+		UNION ALL
+		SELECT sponsor_id FROM post_vote_sponsors WHERE organization_id = sponsors.organization_id
+	))`)
 }
 
 func (db *appdbimpl) RecordTrackingEvents(eventID int, items []TrackingEvent) error {
@@ -6048,16 +6071,13 @@ ORDER BY s.position ASC, s.id ASC
 	return stats, nil
 }
 
-func (db *appdbimpl) querySponsors(activeOnly bool, organizationID int) ([]Sponsor, error) {
+func (db *appdbimpl) querySponsors(organizationID int, filter string) ([]Sponsor, error) {
 	if organizationID == 0 {
 		return []Sponsor{}, nil
 	}
 
 	baseQuery := `SELECT id, position, name, IFNULL(report_name, ''), logo_data, IFNULL(link_url, ''), is_active FROM sponsors WHERE organization_id = ?`
-	if activeOnly {
-		baseQuery += ` AND is_active = 1`
-	}
-	baseQuery += ` ORDER BY position ASC, id ASC`
+	baseQuery += filter + ` ORDER BY position ASC, id ASC`
 
 	rows, err := db.c.Query(baseQuery, organizationID)
 	if err != nil {
@@ -6075,7 +6095,7 @@ func (db *appdbimpl) querySponsors(activeOnly bool, organizationID int) ([]Spons
 		s.IsActive = isActive == 1
 		sponsors = append(sponsors, s)
 	}
-	return sponsors, nil
+	return sponsors, rows.Err()
 }
 
 func (db *appdbimpl) nextSponsorPosition(organizationID int) (int, error) {

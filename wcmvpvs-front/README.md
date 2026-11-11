@@ -10,13 +10,13 @@ Vedere [istruzioni, controlli e architettura](arena-demo/README.md).
 
 Nell’admin della società, apri **Sponsor → Banner nei minigiochi**. Scegli lo sponsor per ogni parete di Basket Rush, Playmaker e Crossover Rush, poi premi **Salva banner**. Le assegnazioni si applicano alla successiva apertura di Fan Live.
 
-I pannelli usano i loghi degli sponsor visibili di Fan Live. Scegli **Pannello neutro** per svuotare una parete. Anche uno sponsor nascosto, eliminato o con un logo irraggiungibile lascia il pannello neutro.
+Puoi assegnare anche gli sponsor contrassegnati come **nascosti** nella home. Scegli **Pannello neutro** per svuotare una parete. Uno sponsor eliminato o con un logo irraggiungibile lascia il pannello neutro.
 
 ## Sponsor nella conferma MVP
 
 Nell’admin della società, apri **Sponsor → Banner nella conferma MVP**. Scegli uno sponsor per il banner a sinistra (`post_vote_left`) e uno per quello a destra (`post_vote_right`), poi premi **Salva banner MVP**. Le assegnazioni si applicano alla successiva apertura di Fan Live.
 
-Seleziona **Nessuno sponsor** per lasciare libera una posizione. Solo gli sponsor visibili appaiono nella conferma. Quando ne è visibile uno solo, il banner è centrato.
+Seleziona **Nessuno sponsor** per lasciare libera una posizione. Puoi assegnare anche gli sponsor contrassegnati come **nascosti** nella home. Quando compare un solo sponsor, il banner è centrato.
 
 This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
 

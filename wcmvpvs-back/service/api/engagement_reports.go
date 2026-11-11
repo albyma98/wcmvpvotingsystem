@@ -26,6 +26,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -93,6 +94,8 @@ type engagementReportSnapshot struct {
 	Notes                string                    `json:"notes,omitempty"`
 	LatestReport         *engagementReportSnapshot `json:"latest_report,omitempty"`
 	SchemaVersion        int                       `json:"schema_version"`
+
+	CommercialSponsors *database.SponsorAnalyticsReport `json:"commercial_sponsor_analytics,omitempty"`
 }
 
 func (rt *_router) ensureEngagementReportTables() error {
@@ -529,6 +532,7 @@ func (rt *_router) prepareEngagementReport(w http.ResponseWriter, r *http.Reques
 	}
 	snapshot := engagementReportSnapshot{CalculationID: newReportID(), Event: reportEvent{event.ID, title, event.StartDateTime, event.Location, org.Name, org.LogoURL}, Branding: brand, CalculatedAt: time.Now().UTC().Format(time.RFC3339Nano), MeasurementStartedAt: started, Facts: facts, KPIs: buildCombinedReportKPIs(facts, details, signals, previous, operational, previousOperational), Details: details, SchemaVersion: 1}
 	snapshot.Profiles = reportRecipientProfiles()
+	snapshot.CommercialSponsors = rt.measuredSponsorReportForEvent(r, ctx, orgID, eventID, 0)
 	// Preserve the existing one-page default while exposing every available
 	// indicator in the review form. Additional KPIs can be selected explicitly.
 	for i, kpi := range snapshot.KPIs {

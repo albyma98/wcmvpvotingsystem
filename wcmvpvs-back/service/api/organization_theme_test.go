@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -73,4 +75,71 @@ func TestMasterOrganizationColorsAndPublicTheme(t *testing.T) {
 	if denied.Code != http.StatusForbidden {
 		t.Fatalf("staff create status: %d", denied.Code)
 	}
+}
+
+func TestPublicSponsorPlacementsIncludeAssignedHiddenSponsors(t *testing.T) {
+	rt, ctx, _, otherOrg := votingAPIFixture(t)
+	create := func(org, position int) int {
+		t.Helper()
+		id, err := rt.db.CreateSponsor(database.Sponsor{
+			OrganizationID: org, Position: position, Name: "Sponsor", LogoData: "logo", IsActive: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	active := create(ctx.OrganizationID, 1)
+	hiddenWall := create(ctx.OrganizationID, 2)
+	hiddenMVP := create(ctx.OrganizationID, 3)
+	create(ctx.OrganizationID, 4)
+	create(otherOrg, 1)
+	if _, err := rt.db.SQLConn().Exec(`UPDATE sponsors SET is_active = 0 WHERE organization_id = ? AND id <> ?`, ctx.OrganizationID, active); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.db.SaveSponsorPlacements(context.Background(), ctx.OrganizationID, database.GameWallPlacements, map[string]int{"basketball_left": hiddenWall}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.db.SaveSponsorPlacements(context.Background(), ctx.OrganizationID, database.PostVotePlacements, map[string]int{"post_vote_right": hiddenMVP}); err != nil {
+		t.Fatal(err)
+	}
+
+	checkCatalog := func(query string, want []int) {
+		t.Helper()
+		response := httptest.NewRecorder()
+		rt.listPublicSponsors(response, httptest.NewRequest(http.MethodGet, "/sponsors"+query, nil), ctx)
+		var sponsors []database.Sponsor
+		if err := json.Unmarshal(response.Body.Bytes(), &sponsors); response.Code != http.StatusOK || err != nil {
+			t.Fatalf("catalog status %d, body %s, error %v", response.Code, response.Body.String(), err)
+		}
+		ids := make([]int, 0, len(sponsors))
+		for _, sponsor := range sponsors {
+			ids = append(ids, sponsor.ID)
+			if sponsor.IsActive != (sponsor.ID == active) {
+				t.Fatalf("unexpected active flag for sponsor %d", sponsor.ID)
+			}
+		}
+		if !reflect.DeepEqual(ids, want) {
+			t.Fatalf("catalog %q: got %v, want %v", query, ids, want)
+		}
+	}
+	checkCatalog("", []int{active})
+	checkCatalog("?include_placements=1", []int{active, hiddenWall, hiddenMVP})
+
+	theme := httptest.NewRecorder()
+	rt.getOrganizationTheme(theme, httptest.NewRequest(http.MethodGet, "/organization-theme", nil), ctx)
+	var assignments struct {
+		Walls map[string]int `json:"game_wall_sponsors"`
+		MVP   map[string]int `json:"post_vote_sponsors"`
+	}
+	if err := json.Unmarshal(theme.Body.Bytes(), &assignments); theme.Code != http.StatusOK || err != nil {
+		t.Fatalf("theme status %d, body %s, error %v", theme.Code, theme.Body.String(), err)
+	}
+	if assignments.Walls["basketball_left"] != hiddenWall || assignments.MVP["post_vote_right"] != hiddenMVP {
+		t.Fatalf("missing hidden placements: %+v", assignments)
+	}
+	if err := rt.db.SaveSponsorPlacements(context.Background(), ctx.OrganizationID, database.PostVotePlacements, nil); err != nil {
+		t.Fatal(err)
+	}
+	checkCatalog("?include_placements=1", []int{active, hiddenWall})
 }

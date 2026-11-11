@@ -4,6 +4,7 @@
     :key="side"
     :position="side"
     :game-id="gameId"
+    :sponsor="sponsors[side]"
     :sponsor-id="sponsors[side]?.sponsorId"
     :creative-id="sponsors[side]?.creativeId"
     :organization-id="sponsors[side]?.organizationId"

@@ -16,16 +16,28 @@ func (rt *_router) listPublicSponsors(w http.ResponseWriter, r *http.Request, ct
 		return
 	}
 
-	sponsors, err := rt.db.ListActiveSponsors(ctx.OrganizationID)
+	list := rt.db.ListActiveSponsors
+	if r.URL.Query().Get("include_placements") == "1" {
+		list = rt.db.ListActiveOrPlacedSponsors
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	sponsors, err := list(ctx.OrganizationID)
 	if err != nil {
-		ctx.Logger.WithError(err).Error("cannot list active sponsors")
+		ctx.Logger.WithError(err).Error("cannot list public sponsors")
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if matchID, err := optionalSponsorAnalyticsID(r.URL.Query().Get("analytics_match_id")); err == nil &&
+		r.URL.Query().Has("analytics_match_id") && r.URL.Query().Get("include_placements") == "1" &&
+		rt.sponsorAnalyticsConfigured() {
+		rt.writeSponsorAnalyticsCatalog(w, r, ctx, sponsors, matchID)
 		return
 	}
 
 	w.Header().Set("content-type", "application/json")
 	_ = json.NewEncoder(w).Encode(sponsors)
-	ctx.Logger.WithField("sponsors", len(sponsors)).Info("listed active sponsors")
+	ctx.Logger.WithField("sponsors", len(sponsors)).Info("listed public sponsors")
 }
 
 func (rt *_router) getSponsorPlacements(group database.SponsorPlacementGroup) httpRouterHandler {

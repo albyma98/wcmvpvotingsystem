@@ -199,6 +199,7 @@ type _router struct {
 	voteRateMu       sync.Mutex
 	voteRateByDevice map[string][]time.Time
 	voteRateByIP     map[string][]time.Time
+	sponsorLimiter   sponsorAnalyticsLimiter
 
 	authRateMu      sync.Mutex
 	authRateByPhone map[string][]time.Time

@@ -165,17 +165,21 @@
       <section v-if="sponsors.length" class="sponsors" aria-labelledby="home-partners-title" :inert="Boolean(activeSheet || activeGameId)">
         <h2 id="home-partners-title" class="sponsors-head">PARTNER UFFICIALI</h2>
         <div class="sponsor-grid">
-          <button
+          <SponsorBanner
             v-for="sponsor in sponsors.slice(0, 6)"
             :key="sponsor.id"
-            :ref="(element) => observeReportSponsor(element, sponsor)"
+            tag="button"
+            :sponsor="sponsor"
+            placement="home_footer"
+            :enabled="!isRegistrationOpen"
+            :clickable="/^https?:\/\//i.test(sponsor.linkUrl)"
             class="sponsor-chip"
             type="button"
             @click="onSponsorClick(sponsor)"
           >
             <img v-if="sponsor.imageUrl" :src="sponsor.imageUrl" :alt="sponsor.name || 'Sponsor'" />
             <span v-else>{{ sponsor.name }}</span>
-          </button>
+          </SponsorBanner>
         </div>
       </section>
 
@@ -314,7 +318,11 @@
               <span class="mission-card-cover" aria-hidden="true">
                 <img class="mission-card-artwork" :src="FAN_GAME_ARTWORK[mission.key]" alt="" width="320" height="320" decoding="async" />
               </span>
-              <b class="mission-card-title">{{ mission.title }}</b>
+              <b v-sponsor-placement="mission.key === 'sponsor-rush' && {
+                sponsor: sponsors[0], placement: 'sponsor_rush_entry', game: 'sponsor-rush',
+                creativeVariant: 'text', enabled: activeSheet === 'earn' && !activeGameId && !isRegistrationOpen,
+                endWhenDisabled: activeSheet !== 'earn',
+              }" class="mission-card-title">{{ mission.title }}</b>
               <span class="mission-card-description">{{ !mission.repeatable && (doneKeys.includes(mission.key) || (mission.key === 'vote' && hasVoted)) ? 'Bonus già ricevuto' : mission.subtitle }}</span>
               <span class="mission-card-reward">
                 <template v-if="mission.key === 'quiz' && !quizAvailable">Non disponibile</template>
@@ -631,6 +639,7 @@
             class="game-fill"
             :completion-reward="12"
             :sponsor="sponsors[0] || null"
+            :sponsor-analytics-match-id="eventId || 0"
             @claim="onGameClaim"
             @round-started="onReportGameStarted"
             @round-completed="onReportGameCompleted"
@@ -681,6 +690,9 @@ import { preloadFanHomeImages } from '../fanHomeAssets';
 import { FAN_GAME_ARTWORK } from '../fanGameArtwork';
 import { resolveGameWallSponsors } from '../games/gameWallSponsors';
 import { findAssignedSponsor, postVoteSponsorSlots } from '../sponsorPlacements';
+import { provideSponsorTracking, useSponsorPlacement } from '../useSponsorTracking.js';
+import { sponsorAnalyticsFields } from '../sponsorAnalyticsService.js';
+import SponsorBanner from '../components/SponsorBanner.vue';
 import { createEventReportTelemetry, createReportSignalSender, reportSource } from '../eventReportTelemetry';
 import { stopPostHogForNewExperience } from '../lib/posthog';
 import { sanitizeFanAnalyticsMetadata } from '../fanAnalytics';
@@ -752,6 +764,11 @@ const props = defineProps({
   // Segnale dal parent dopo il primo voto (registrazione). Accettato per compat; TODO: prompt registrazione.
   registrationPromptSignal: { type: Number, default: 0 },
 });
+const sponsorMeasurement = provideSponsorTracking({
+  url: resolveApiUrl,
+  scope: () => ({ slug: props.organizationSlug, match: props.eventId || 0 }),
+});
+const vSponsorPlacement = useSponsorPlacement(sponsorMeasurement);
 
 const WALLET_STORAGE_KEY = 'wallet:coins';
 const emit = defineEmits(['loading-change', 'brand-change', 'retry-active-event']);
@@ -832,8 +849,10 @@ const registrationDestination = ref('profile');
 const registrationOriginSheet = ref('');
 const isLoadingLeaderboard = ref(false);
 const leaderboardError = ref('');
-const sponsors = ref([]);
+const sponsorCatalog = ref([]);
 const sponsorCatalogSlug = ref(null);
+const currentSponsorCatalog = computed(() => sponsorCatalogSlug.value === props.organizationSlug ? sponsorCatalog.value : []);
+const sponsors = computed(() => currentSponsorCatalog.value.filter((sponsor) => sponsor.isActive));
 
 const rawPlayers = ref([]);
 const isLoadingPlayers = ref(false);
@@ -2113,7 +2132,6 @@ async function submitNickname() {
 }
 
 /* ---------- Sponsors ---------- */
-const currentSponsorCatalog = computed(() => sponsorCatalogSlug.value === props.organizationSlug ? sponsors.value : []);
 const wallSponsors = computed(() => resolveGameWallSponsors(
   gameWallAssignments.value,
   activeGameId.value,
@@ -2124,18 +2142,17 @@ const postVoteSponsors = computed(() => postVoteSponsorSlots
   .filter(({ sponsor }) => sponsor));
 
 // Stessa normalizzazione di LiveExperienceHome: sponsor = logo (logo_data/image_url).
-function normalizeSponsor(item, index) {
+function normalizeSponsor(item, index, matchId) {
   const imageUrl = String(item?.logo_data || item?.image_url || item?.imageUrl || '').trim();
   if (!imageUrl) return null;
   const priorityRaw = Number(item?.priority ?? item?.order_index ?? item?.order ?? item?.display_order);
-  const sponsorId = Number(item?.id) || null;
+  const analytics = sponsorAnalyticsFields(item, matchId);
   return {
-    id: sponsorId || index + 1,
-    sponsorId,
-    creativeId: item?.creative_id ?? null,
-    organizationId: Number(item?.organization_id) || null,
+    ...analytics,
+    id: analytics.sponsorId || index + 1,
     name: String(item?.name || '').trim(),
     imageUrl,
+    isActive: item?.is_active !== false,
     linkUrl: String(item?.link_url || item?.linkUrl || '').trim(),
     priority: Number.isFinite(priorityRaw) ? priorityRaw : Number.POSITIVE_INFINITY,
     insertedIndex: index,
@@ -2143,29 +2160,25 @@ function normalizeSponsor(item, index) {
 }
 async function loadSponsors(signal) {
   const slug = props.organizationSlug;
+  const matchId = props.eventId || 0;
   try {
     const { data } = await apiClient.get('/sponsors', {
+      params: { include_placements: 1, analytics_match_id: matchId },
       signal,
       headers: slug ? { 'X-Organization-Slug': slug } : undefined,
     });
-    if (signal.aborted || slug !== props.organizationSlug) return;
+    if (signal.aborted || slug !== props.organizationSlug || matchId !== (props.eventId || 0)) return;
     const list = Array.isArray(data) ? data : Array.isArray(data?.sponsors) ? data.sponsors : [];
-    sponsors.value = list
-      .map((item, index) => normalizeSponsor(item, index))
+    sponsorCatalog.value = list
+      .map((item, index) => normalizeSponsor(item, index, matchId))
       .filter(Boolean)
       .sort((a, b) => (a.priority !== b.priority ? a.priority - b.priority : a.insertedIndex - b.insertedIndex));
     sponsorCatalogSlug.value = slug;
   } catch (error) {
-    if (!signal.aborted && slug === props.organizationSlug) sponsors.value = [];
+    if (!signal.aborted && slug === props.organizationSlug) sponsorCatalog.value = [];
   }
 }
 function onSponsorClick(sponsor) {
-  if (sponsor?.linkUrl && /^https?:\/\//i.test(sponsor.linkUrl)) recordFanEvent('sponsor_click', { sponsor_id: sponsor.id, placement: 'home_partner' });
-  if (props.eventId && sponsor?.id) {
-    apiClient
-      .post(`/events/${props.eventId}/sponsors/${sponsor.id}/click`, { at: new Date().toISOString() })
-      .catch(() => {});
-  }
   if (sponsor?.linkUrl) {
     window.open(sponsor.linkUrl, '_blank', 'noopener');
   }
@@ -2356,13 +2369,8 @@ function bindLotteryTicket(element) {
   lotteryTicketEl.value = element;
   reportTelemetry?.observeVisibility?.(element, 'lottery_qr_view', { placement: 'profile_ticket', has_ticket: true });
 }
-function observeReportSponsor(element, sponsor) {
-  reportTelemetry?.observeSponsor(element, { sponsor_id: sponsor.id, name: sponsor.name, placement: 'home_partner' });
-}
 function observeReportMission(element, mission) {
   reportTelemetry?.observeVisibility?.(element, 'cta_viewed', { cta: mission.opensMvp ? 'mvp' : 'earn', game_id: mission.game, placement: 'game_catalog' }, { onceKey: `game_catalog:${mission.key}` });
-  const sponsor = sponsors.value[0];
-  if (mission.key === 'sponsor-rush' && sponsor) reportTelemetry?.observeSponsor(element, { sponsor_id: sponsor.id, name: sponsor.name, placement: 'sponsor_rush_entry' }, 'sponsored_game_view');
 }
 function reportGameRound(name, payload = {}) {
   const gameId = activeGameId.value;
@@ -2477,7 +2485,7 @@ async function bootstrap() {
   await preloadFanHomeImages([
     homeLogoUrl.value,
     ...players.value.map((player) => player.image),
-    ...sponsors.value.map((sponsor) => sponsor.imageUrl),
+    ...currentSponsorCatalog.value.map((sponsor) => sponsor.imageUrl),
     displayVotedImage.value,
     lotteryQrUrl.value,
     ...Object.values(FAN_GAME_ARTWORK),

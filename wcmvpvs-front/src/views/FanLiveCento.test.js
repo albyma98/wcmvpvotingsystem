@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import * as sponsorAnalytics from '../sponsorAnalyticsService.js';
 import { compileTemplate, parse } from '@vue/compiler-sfc';
 import * as Vue from 'vue';
 import * as VueSSR from 'vue/server-renderer';
@@ -372,6 +373,8 @@ function fixture(overrides = {}, options = {}) {
     '../fanGameArtwork': gameArtwork,
     '../games/gameWallSponsors': gameWallSponsors,
     '../sponsorPlacements': sponsorPlacements,
+    '../useSponsorTracking.js': { provideSponsorTracking() {}, useSponsorPlacement: () => ({}) },
+    '../sponsorAnalyticsService.js': sponsorAnalytics,
     '../eventReportTelemetry': { createEventReportTelemetry: (configuration) => {
       reportContexts.push(configuration);
       return { record(name, metadata = {}) {
@@ -1243,7 +1246,7 @@ test('basketball receipts for another event or invalid balances do not change th
   assert.equal(state.progress.value.current, 0);
 });
 
-test('wall sponsors use the active catalog for the current society, game and side', async (t) => {
+test('wall sponsors include hidden assignments for the current society, game and side', async (t) => {
   const oldCatalog = deferred();
   const oldTheme = deferred();
   const { state, props, scope } = fixture({
@@ -1254,7 +1257,8 @@ test('wall sponsors use the active catalog for the current society, game and sid
       }
       if (path !== '/sponsors') return { data: {} };
       if (config.headers['X-Organization-Slug'] === 'club') return oldCatalog.promise;
-      return { data: [{ id: 21, logo_data: '/partner.png', organization_id: 7, creative_id: 9 }] };
+      assert.equal(config.params.include_placements, 1);
+      return { data: [{ id: 21, logo_data: '/partner.png', organization_id: 7, creative_id: 9, is_active: false }] };
     } },
   }, {
     props: { initialDataReady: false },
@@ -1272,6 +1276,7 @@ test('wall sponsors use the active catalog for the current society, game and sid
   assert.deepEqual({ sponsorId, creativeId, organizationId, imageUrl }, {
     sponsorId: 21, creativeId: 9, organizationId: 7, imageUrl: '/partner.png',
   });
+  assert.deepEqual(state.sponsors.value, []);
   oldCatalog.resolve({ data: [{ id: 21, logo_data: '/wrong-club.png', organization_id: 6 }] });
   oldTheme.resolve({ data: { game_wall_sponsors: { playmaker_right: 21 } } });
   await oldRequest;
@@ -1280,7 +1285,7 @@ test('wall sponsors use the active catalog for the current society, game and sid
   assert.equal(state.wallSponsors.value.right, undefined);
 });
 
-test('post-vote placements resolve in order and only use the current society’s active sponsors', async (t) => {
+test('post-vote placements can show hidden sponsors without listing them on the home screen', async (t) => {
   const { state, props, scope } = fixture({
     apiClient: { get: async (path, config) => {
       if (path === '/organization-theme') {
@@ -1292,7 +1297,7 @@ test('post-vote placements resolve in order and only use the current society’s
       }
       if (path !== '/sponsors') return { data: {} };
       const data = config.headers['X-Organization-Slug'] === 'club'
-        ? [{ id: 34, logo_data: '/right.png' }, { id: 12, logo_data: '/left.png' }]
+        ? [{ id: 34, logo_data: '/right.png', is_active: false }, { id: 12, logo_data: '/left.png', is_active: true }]
         : [{ id: 12, logo_data: '/other.png' }];
       return { data };
     } },
@@ -1303,6 +1308,7 @@ test('post-vote placements resolve in order and only use the current society’s
 
   await Promise.all([state.organizationThemeRequest, state.loadSponsors(signal)]);
   assert.deepEqual(placements(), [['post_vote_left', '/left.png'], ['post_vote_right', '/right.png']]);
+  assert.deepEqual(state.sponsors.value.map(({ sponsorId }) => sponsorId), [12]);
   props.organizationSlug = 'other-club';
   assert.deepEqual(placements(), []);
   await Vue.nextTick();

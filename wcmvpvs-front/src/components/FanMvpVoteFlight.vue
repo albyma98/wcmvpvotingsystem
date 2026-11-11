@@ -9,9 +9,14 @@
       <div v-if="sponsors.length" class="mvp-vote-flight__sponsors">
         <p class="mvp-vote-flight__sponsor-label">Partner del Match Day</p>
         <div class="mvp-vote-flight__sponsor-row">
-          <div
+          <SponsorBanner
             v-for="{ placement, sponsor } in sponsors"
             :key="placement"
+            :sponsor="sponsor"
+            :placement="placement"
+            :enabled="!isLanding"
+            :full-duration="4000"
+            :creative-variant="failedLogos[placement] === sponsor.imageUrl ? 'text' : ''"
             class="mvp-vote-flight__sponsor"
             :data-placement="placement"
             :data-sponsor-id="sponsor.sponsorId"
@@ -23,7 +28,7 @@
               @error="failedLogos[placement] = sponsor.imageUrl"
             />
             <span v-else>{{ sponsor.name || 'Sponsor' }}</span>
-          </div>
+          </SponsorBanner>
         </div>
       </div>
       <p class="mvp-vote-flight__message">
@@ -38,6 +43,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import FanPlayerCard from './FanPlayerCard.vue';
+import SponsorBanner from './SponsorBanner.vue';
 
 const props = defineProps({
   player: { type: Object, required: true },
