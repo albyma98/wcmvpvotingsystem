@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { clubDomainRoute, clubHomePath, resolveClubDomain } from './clubDomain.js'
+import { clubDomainRoute, clubHomePath, clubMVPEntryRoute, clubMVPPath, resolveClubDomain } from './clubDomain.js'
 
 test('domain resolution uses the current host and never trusts a browser-supplied club identifier', async () => {
   const calls = []
@@ -39,4 +39,17 @@ test('custom domains cannot display another club, the Master or unrelated match-
   for (const path of ['/club/other', '/club-admin/other', '/admin/master', '/another/new', '/team/%ZZ', '/unknown', '/team/one/extra']) {
     assert.equal(clubDomainRoute({ clubSlug: 'aurora' }, path).view, 'club-not-found', path)
   }
+})
+
+test('MVP Light routes stay scoped to the ClubHub and support a direct match link', () => {
+  const domain = { clubSlug: 'aurora' }
+  assert.deepEqual(clubMVPEntryRoute(domain, '/mvp'), { view: 'club-mvp', clubSlug: 'aurora', matchId: '' })
+  assert.deepEqual(clubMVPEntryRoute(domain, '/mvp/31'), { view: 'club-mvp', clubSlug: 'aurora', matchId: '31' })
+  assert.equal(clubMVPEntryRoute(domain, '/club/rivale/mvp'), null)
+  assert.equal(clubMVPEntryRoute(domain, '/mvp/0'), null)
+  assert.equal(clubMVPEntryRoute(null, '/mvp'), null)
+  assert.equal(clubMVPEntryRoute(null, '/t/torneo/mvp'), null)
+  assert.equal(clubMVPEntryRoute(null, '/club/aurora/mvp/31').matchId, '31')
+  assert.equal(clubMVPPath('aurora', true, 31), '/mvp/31')
+  assert.equal(clubMVPPath('aurora', false), '/club/aurora/mvp')
 })

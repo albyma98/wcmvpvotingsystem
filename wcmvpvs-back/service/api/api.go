@@ -236,13 +236,14 @@ type _router struct {
 	tapLiveRematch *tapLiveRematchManager
 
 	// Tournament Mode (modalità torneo): data layer + cache live + hub SSE.
-	store         *Store
-	clubDomains   *clubDomainManager
-	liveCache     *TTLCache
-	tournamentHub *sseHub
-	clubMatches   clubMatchHub
-	chat matchChat
-	merchWorker   *merchWorker
+	store          *Store
+	clubDomains    *clubDomainManager
+	liveCache      *TTLCache
+	tournamentHub  *sseHub
+	clubMatches    clubMatchHub
+	clubMVPUpdates *sseHub
+	chat           matchChat
+	merchWorker    *merchWorker
 }
 
 type adminSession struct {

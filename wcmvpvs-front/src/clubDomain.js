@@ -18,6 +18,8 @@ export function clubDomainRoute(domain, pathname) {
   if (parts[0] === 'club-admin' && parts[1] === clubSlug && parts.length === 2) return { view: 'club-admin', clubSlug, teamSlug: '' }
   if (parts[0] === 'club' && parts[1] === clubSlug) parts.splice(0, 2)
   if (!parts.length) return { view: 'club', clubSlug, teamSlug: '' }
+  const mvp = clubMVPRoute(parts)
+  if (mvp) return { view: 'club-mvp', clubSlug, ...mvp }
   if (parts[0] === 'team' && parts.length === 2) {
     try { return { view: 'club', clubSlug, teamSlug: decodeURIComponent(parts[1]) } } catch { /* malformed URL */ }
   }
@@ -26,4 +28,26 @@ export function clubDomainRoute(domain, pathname) {
 
 export function clubHomePath(slug, customDomain = false) {
   return customDomain ? '/' : `/club/${encodeURIComponent(slug)}`
+}
+
+function clubMVPRoute(parts) {
+  if (parts[0] !== 'mvp') return null
+  if (parts.length === 1) return { matchId: '' }
+  if (parts.length === 2 && /^[1-9]\d*$/.test(parts[1])) return { matchId: parts[1] }
+  return null
+}
+
+export function clubMVPPath(slug, customDomain, matchId) {
+  const base = customDomain ? '/mvp' : `${clubHomePath(slug)}/mvp`
+  return matchId ? `${base}/${matchId}` : base
+}
+
+export function clubMVPEntryRoute(domain, pathname) {
+  if (domain) {
+    const route = clubDomainRoute(domain, pathname)
+    return route.view === 'club-mvp' ? route : null
+  }
+  const [prefix, clubSlug, ...parts] = pathname.split('/').filter(Boolean)
+  const route = prefix === 'club' && clubSlug ? clubMVPRoute(parts) : null
+  return route ? { view: 'club-mvp', clubSlug, ...route } : null
 }

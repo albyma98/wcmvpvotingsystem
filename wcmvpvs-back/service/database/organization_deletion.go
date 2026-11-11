@@ -134,6 +134,7 @@ func (db *appdbimpl) DeleteOrganizationData(id int) ([]int, error) {
 		{"event_quiz_questions", `quiz_id IN (SELECT id FROM purge_org_events)`},
 		{"court_operator_sessions", `operator_id IN (SELECT id FROM court_operators WHERE event_id IN (SELECT id FROM purge_org_events))`},
 		{"club_admin_sessions", `site_id IN (SELECT id FROM purge_org_sites)`},
+		{"club_mvp_votes", `match_id IN (SELECT id FROM club_matches WHERE site_id IN (SELECT id FROM purge_org_sites))`},
 		{"user_coupons", `coupon_id IN (SELECT id FROM purge_org_coupons) OR user_id IN (SELECT id FROM purge_org_fans)`},
 	}
 	for _, item := range exceptions {
@@ -182,7 +183,9 @@ func (db *appdbimpl) DeleteOrganizationData(id int) ([]int, error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if name == "organizations" {
+		// MVP Light player IDs belong to club_players, not Match Day's
+		// players. Call-ups are removed by the club match deletion trigger.
+		if name == "organizations" || name == "club_mvp_callups" || name == "club_mvp_votes" {
 			continue
 		}
 		columns := tables[name]

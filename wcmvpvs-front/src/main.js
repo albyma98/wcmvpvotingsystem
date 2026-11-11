@@ -1,10 +1,7 @@
 import { createApp } from "vue";
 import "./style.css";
 import "./assets/admin-theme.css";
-import App from "./App.vue";
-import { QrcodeStream, QrcodeDropZone, QrcodeCapture } from "vue-qrcode-reader";
-import { initPostHog } from "./lib/posthog";
-import { resolveClubDomain } from "./clubDomain";
+import { clubMVPEntryRoute, resolveClubDomain } from "./clubDomain";
 
 async function boot() {
   const controller = new AbortController();
@@ -19,6 +16,16 @@ async function boot() {
       window.location.replace(destination.href);
       return;
     }
+    const mvp = clubMVPEntryRoute(domain, window.location.pathname);
+    if (mvp) {
+      const { default: ClubMVPView } = await import("./views/ClubMVPView.vue");
+      createApp(ClubMVPView, { slug: mvp.clubSlug, matchId: mvp.matchId, customDomain: Boolean(domain) }).mount("#app");
+      return;
+    }
+    const [{ default: App }, { QrcodeStream, QrcodeDropZone, QrcodeCapture }, { initPostHog }] = await Promise.all([
+      import("./App.vue"), import("vue-qrcode-reader"), import("./lib/posthog"),
+    ]);
+    initPostHog();
     const app = createApp(App);
     app.provide("clubDomain", domain);
     app.component("QrcodeStream", QrcodeStream);
@@ -47,6 +54,5 @@ if (
     createApp(Studio).mount("#app"),
   );
 } else {
-  initPostHog();
   boot();
 }

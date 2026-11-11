@@ -12,7 +12,7 @@ const compiledScript = compileScript(descriptor, { id: 'club-cms-test' })
 const script = compiledScript.content
   .replace(/^import .* from .*\r?\n/gm, '')
   .replace('export default', 'return')
-const createComponent = new Function('Vue', 'clubHomeTiles', 'clubMatchHasWinner', 'clubMatchSets', 'clubSetLabel', 'CLUB_FONTS', 'clubTypography', 'ClubTileIconUpload', 'ClubMediaField', 'fetch', 'setTimeout', 'onMounted', 'onUnmounted', 'confirm',
+const createComponent = new Function('Vue', 'clubHomeTiles', 'clubMatchHasWinner', 'clubMatchSets', 'clubSetLabel', 'CLUB_FONTS', 'clubTypography', 'ClubTileIconUpload', 'ClubMediaField', 'ClubMVPAdmin', 'fetch', 'setTimeout', 'onMounted', 'onUnmounted', 'confirm',
   `const { computed, reactive, ref, nextTick } = Vue;\n${script}`)
 
 const template = compileTemplate({ source: descriptor.template.content, id: 'club-cms-test', ssr: true, ssrCssVars: [], compilerOptions: { bindingMetadata: compiledScript.bindings } })
@@ -33,7 +33,8 @@ async function fixture(t, failSave = false, config = {}) {
   let matches = structuredClone(config.matches || [])
   const writes = []
   const requests = []
-  const component = createComponent(Vue, clubHomeTiles, clubMatchHasWinner, clubMatchSets, clubSetLabel, CLUB_FONTS, clubTypography, { render: () => null }, { render: () => null }, async (path, options) => {
+  const stub = { render: () => null }
+  const component = createComponent(Vue, clubHomeTiles, clubMatchHasWinner, clubMatchSets, clubSetLabel, CLUB_FONTS, clubTypography, stub, stub, stub, async (path, options) => {
     requests.push({ path, ...options, body: options?.body ? JSON.parse(options.body) : undefined })
     if (options?.method && config.failWrites) return { ok: false, status: 500, json: async () => ({ error: config.writeError || 'save_failed' }) }
     if (options?.method && config.waitForWrite) await config.waitForWrite
@@ -168,7 +169,7 @@ test('Homepage renders both labeled font selectors with their options before ide
 const mutations = requests => requests.filter(request => ['POST', 'PUT', 'DELETE'].includes(request.method))
 
 test('Structured roster preserves compound names, isolates edits and saves the chosen order', async t => {
-  const original = { firstName: 'Maria Luisa', lastName: 'De Luca', jerseyNumber: 7, role: 'Centrale', imageUrl: '/maria.jpg' }
+  const original = { id: 7, firstName: 'Maria Luisa', lastName: 'De Luca', jerseyNumber: 7, role: 'Centrale', imageUrl: '/maria.jpg' }
   const { state, requests } = await fixture(t, false, { players: { 1: [original] } })
   state.openRoster({ id: 1 })
   state.rosterPlayers.value[0].role = 'Capitana'
@@ -182,7 +183,7 @@ test('Structured roster preserves compound names, isolates edits and saves the c
   assert.equal(saved.path, '/api/v1/club-admin/aurora/teams/1/players')
   assert.deepEqual(saved.body.players, [
     { firstName: 'Anna', lastName: 'Rossi', jerseyNumber: 0, role: '', imageUrl: '', position: 0 },
-    { firstName: 'Maria Luisa', lastName: 'De Luca', jerseyNumber: 7, role: 'Capitana', imageUrl: '/maria.jpg', position: 1 },
+    { id: 7, firstName: 'Maria Luisa', lastName: 'De Luca', jerseyNumber: 7, role: 'Capitana', imageUrl: '/maria.jpg', position: 1 },
   ])
   assert.equal(state.settings.tagline, 'Homepage ancora da salvare')
   assert.equal(state.busy.value, false)

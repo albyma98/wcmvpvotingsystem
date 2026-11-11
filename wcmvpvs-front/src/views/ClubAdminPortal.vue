@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import ClubTileIconUpload from '../components/ClubTileIconUpload.vue'
 import ClubMediaField from '../components/ClubMediaField.vue'
+import ClubMVPAdmin from '../components/ClubMVPAdmin.vue'
 import { clubHomeTiles, clubMatchHasWinner, clubMatchSets, clubSetLabel } from '../clubHub'
 import { CLUB_FONTS, clubTypography } from '../clubTypography'
 
@@ -67,6 +68,8 @@ const consolePanel = ref(null)
 const scoreError = ref('')
 const bestOf = ref(5)
 const consoleMatch = computed(() => overview.value.matches?.find(match => match.id === consoleMatchId.value))
+const mvpMatchId = ref(0)
+const mvpMatch = computed(() => overview.value.matches?.find(match => match.id === mvpMatchId.value))
 const consoleSets = computed(() => consoleMatch.value ? clubMatchSets(consoleMatch.value) : [])
 const consoleHasWinner = computed(() => consoleMatch.value && clubMatchHasWinner(consoleMatch.value))
 const consoleSetNumber = computed(() => consoleMatch.value ? consoleMatch.value.scoreFor + consoleMatch.value.scoreAgainst + 1 : 1)
@@ -154,6 +157,7 @@ function editPost(item) { return editRecord('post', item) }
 function editGallery(item) { return editRecord('gallery', item) }
 function editSponsor(item) { return editRecord('sponsor', item) }
 async function editMatch(item) {
+  mvpMatchId.value = 0
   consoleMatchId.value = 0
   try { await editRecord('match', item) } catch { error.value = 'I parziali di questa partita non sono leggibili. Verifica i dati esistenti prima di modificarli.' }
 }
@@ -282,7 +286,10 @@ async function saveRecord(kind, path, payload, success) {
       invalid_sponsor_description: 'La descrizione dello sponsor può contenere al massimo 3000 caratteri.',
       invalid_sponsor_position: 'L’ordine dello sponsor deve essere un numero intero tra 0 e 1000000.',
     }
-    error.value = e.message === 'unauthorized' ? 'La sessione è scaduta. Accedi nuovamente per continuare.' : (kind === 'sponsor' && sponsorErrors[e.message]) || (e.message === 'match_changed' ? 'La partita è cambiata. Riaprila dal calendario per caricare il punteggio aggiornato.' : 'Salvataggio non riuscito. I dati inseriti sono conservati: verifica i campi e riprova.')
+    error.value = e.message === 'unauthorized' ? 'La sessione è scaduta. Accedi nuovamente per continuare.' : (kind === 'sponsor' && sponsorErrors[e.message]) || ({
+      match_changed: 'La partita è cambiata. Riaprila dal calendario per caricare il punteggio aggiornato.',
+      mvp_has_votes: 'La divisione della partita è bloccata perché sono stati registrati voti MVP Light.',
+    }[e.message] || 'Salvataggio non riuscito. I dati inseriti sono conservati: verifica i campi e riprova.')
     if (e.message === 'match_changed') await refreshMatches().catch(() => {})
   }
   finally { busy.value = false }
@@ -331,6 +338,7 @@ async function refreshMatches() {
 }
 async function openMatchConsole(match) {
   if (processing.value) return
+  mvpMatchId.value = 0
   consoleMatchId.value = match.id
   bestOf.value = match.bestOf || 5
   scoreError.value = ''
@@ -387,8 +395,9 @@ async function saveRoster() {
   busy.value = true
   error.value = ''
   try {
-    const players = rosterPlayers.value.map((player, position) => ({ firstName: player.firstName.trim(), lastName: player.lastName.trim(), jerseyNumber: Number(player.jerseyNumber) || 0, role: player.role.trim(), imageUrl: player.imageUrl.trim(), position }))
-    await request(`/teams/${rosterTeamId.value}/players`, { method: 'PUT', body: JSON.stringify({ players }) })
+    const players = rosterPlayers.value.map((player, position) => ({ id: player.id, firstName: player.firstName.trim(), lastName: player.lastName.trim(), jerseyNumber: Number(player.jerseyNumber) || 0, role: player.role.trim(), imageUrl: player.imageUrl.trim(), position }))
+    const updated = await request(`/teams/${rosterTeamId.value}/players`, { method: 'PUT', body: JSON.stringify({ players }) })
+    if (updated.players) rosterPlayers.value = updated.players.map(player => ({ ...player, key: ++playerKey }))
     baselines.roster = JSON.stringify(rosterPlayers.value)
     message('Roster aggiornato.')
     await loadOverview({ resetSettings: false })
@@ -416,7 +425,11 @@ async function confirmDelete() {
     pendingDelete.value = null
     message('Elemento eliminato.')
     await loadOverview({ resetSettings: false })
-  } catch { error.value = 'Eliminazione non riuscita. Riprova.'; deleteDialog.value?.close(); pendingDelete.value = null }
+  } catch (e) {
+    error.value = e.message === 'mvp_has_votes' ? 'L’elemento contiene partite con voti MVP Light e viene conservato nello storico.' : 'Eliminazione non riuscita. Riprova.'
+    deleteDialog.value?.close()
+    pendingDelete.value = null
+  }
   finally { busy.value = false }
 }
 function teamName(id){return teams.value.find(team=>team.id===id)?.name||'Tutta la società'}
@@ -667,7 +680,9 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload); wi
         </div>
 
         <div v-else-if="activeTab==='matches'" class="editor-layout">
-          <section v-if="consoleMatch" ref="consolePanel" class="card content-editor score-console" tabindex="-1" aria-labelledby="score-heading" :aria-busy="busy">
+          <ClubMVPAdmin v-if="mvpMatch" :key="mvpMatch.id" :match="mvpMatch" :club-name="matchClubName" :slug="slug"
+            :custom-domain="customDomain" :request="request" @close="mvpMatchId = 0" />
+          <section v-else-if="consoleMatch" ref="consolePanel" class="card content-editor score-console" tabindex="-1" aria-labelledby="score-heading" :aria-busy="busy">
             <div class="editor-heading">
               <div><p class="eyebrow">{{ teamName(consoleMatch.teamId) || 'Calendario' }}</p><h2 id="score-heading">{{ matchClubName }} – {{ consoleMatch.opponent }}</h2></div>
               <span class="badge" :class="consoleMatch.status">{{ statusLabels[consoleMatch.status] }}</span>
@@ -703,7 +718,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload); wi
               </fieldset>
               <p v-else class="form-hint">Risultato finale pubblicato nel calendario.</p>
             </template>
-            <footer class="editor-footer"><button type="button" :disabled="processing" @click="consoleMatchId = 0">Torna all’editor</button></footer>
+            <footer class="editor-footer"><button type="button" :disabled="processing" @click="consoleMatchId = 0">Torna all’editor</button><button type="button" :disabled="processing" @click="mvpMatchId = consoleMatch.id">MVP Light</button></footer>
           </section>
           <form v-else ref="editorPanel" class="card content-editor" :aria-busy="busy" @submit.prevent="saveMatch">
             <div class="editor-heading"><div><p class="eyebrow">CALENDARIO E RISULTATI</p><h2>{{ matchForm.id ? 'Modifica partita' : 'Nuova partita' }}</h2></div><span v-if="matchForm.id" class="badge">In modifica</span></div>
@@ -742,12 +757,12 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload); wi
                 </template>
               </div></fieldset>
             </fieldset>
-            <footer class="editor-footer"><button type="button" :disabled="processing" @click="clearEditor('match')">{{ matchForm.id ? 'Annulla modifica' : 'Svuota campi' }}</button><button class="primary" :disabled="processing || !teams.length">{{ busy ? 'Salvataggio…' : 'Salva partita' }}</button></footer>
+            <footer class="editor-footer"><button type="button" :disabled="processing" @click="clearEditor('match')">{{ matchForm.id ? 'Annulla modifica' : 'Svuota campi' }}</button><button v-if="matchForm.id" type="button" :disabled="processing" @click="mvpMatchId = matchForm.id">MVP Light</button><button class="primary" :disabled="processing || !teams.length">{{ busy ? 'Salvataggio…' : 'Salva partita' }}</button></footer>
             <p v-if="!teams.length" class="form-hint">Crea prima una squadra nella sezione Squadre e roster.</p>
           </form>
           <section class="card records-panel"><div class="panel-heading"><h2>Incontri del club</h2><span class="badge">{{filteredMatches.length}}</span></div>
             <p v-if="!filteredMatches.length" class="empty-state">{{ overview.matches?.length ? 'Nessuna partita corrisponde ai filtri.' : 'Il calendario è vuoto. Inserisci il primo incontro della stagione.' }}</p>
-            <div class="records-list"><article v-for="match in filteredMatches" :key="match.id" class="record-card" :class="{ selected: consoleMatch ? consoleMatch.id === match.id : matchForm.id === match.id }">
+            <div class="records-list"><article v-for="match in filteredMatches" :key="match.id" class="record-card" :class="{ selected: (mvpMatch?.id || consoleMatch?.id || matchForm.id) === match.id }">
               <div class="record-meta"><span class="badge" :class="match.status">{{ statusLabels[match.status] || match.status }}</span><span>{{match.home ? 'In casa' : 'Trasferta'}}</span></div>
               <h3>{{matchClubName}} <span class="versus">vs</span> {{match.opponent}}</h3>
               <p>{{formatDate(match.scheduledAt)}}</p><p v-if="match.competition || match.roundLabel">{{[match.competition, match.roundLabel].filter(Boolean).join(' · ')}}</p><p v-if="match.location">{{match.location}}</p>
@@ -755,6 +770,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload); wi
               <div class="record-actions">
                 <button v-if="match.status !== 'completed'" type="button" class="primary" :disabled="processing" @click="openMatchConsole(match)">{{ match.status === 'live' ? 'Gestisci diretta' : 'Apri diretta' }}</button>
                 <button v-if="match.status !== 'live' || !match.bestOf" :disabled="processing" :aria-label="`Modifica partita contro ${match.opponent}`" @click="editMatch(match)">Modifica</button>
+                <button type="button" :disabled="processing" :aria-label="`MVP Light contro ${match.opponent}`" @click="mvpMatchId = match.id">MVP Light</button>
                 <button class="danger" :disabled="processing" :aria-label="`Elimina partita contro ${match.opponent}`" @click="askDelete('matches', match)">Elimina</button>
               </div>
             </article></div>

@@ -175,6 +175,9 @@ func (rt *_router) clubAdminScore(w http.ResponseWriter, r *http.Request, siteID
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "score_failed"})
 	default:
 		rt.clubMatches.publish(siteID, clubMatchMessage{Match: &match})
+		if rt.clubMVPUpdates != nil && (action.Action == "start" || action.Action == "finish") {
+			rt.clubMVPUpdates.Broadcast(int(siteID))
+		}
 		writeJSON(w, http.StatusOK, match)
 	}
 }

@@ -279,7 +279,7 @@ func (s *Store) EnsureClubTables() error {
 			}
 		}
 	}
-	return nil
+	return s.ensureClubMVPTables()
 }
 
 func boolInt(v bool) int {
@@ -423,6 +423,11 @@ func (s *Store) DeleteClubSite(ctx context.Context, siteID int64) error {
 			return err
 		}
 	}
+	// Whole-site deletion is explicit. Remove votes before deleting the
+	// matches whose history is protected from ordinary calendar edits.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM club_mvp_votes WHERE match_id IN (SELECT id FROM club_matches WHERE site_id=?)`, siteID); err != nil {
+		return err
+	}
 	for _, table := range []string{"club_admin_sessions", "club_admins", "club_players", "club_posts", "club_gallery", "club_matches", "club_teams", "club_sponsors", "club_visits"} {
 		if _, err = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE site_id=?", siteID); err != nil {
 			return err
@@ -551,7 +556,19 @@ func (s *Store) DeleteClubTeam(ctx context.Context, siteID, id int64) error {
 }
 
 func (s *Store) ListClubPlayers(ctx context.Context, siteID, teamID int64) ([]ClubPlayer, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT id,team_id,first_name,last_name,jersey_number,role,image_url,position FROM club_players WHERE site_id=? AND team_id=? ORDER BY position,jersey_number,id`, siteID, teamID)
+	return listClubPlayers(ctx, s.db, siteID, teamID, true)
+}
+
+type clubPlayerQuerier interface {
+	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+}
+
+func listClubPlayers(ctx context.Context, db clubPlayerQuerier, siteID, teamID int64, includeImages bool) ([]ClubPlayer, error) {
+	image := "''"
+	if includeImages {
+		image = "image_url"
+	}
+	rows, e := db.QueryContext(ctx, `SELECT id,team_id,first_name,last_name,jersey_number,role,`+image+`,position FROM club_players WHERE site_id=? AND team_id=? ORDER BY position,jersey_number,id`, siteID, teamID)
 	if e != nil {
 		return nil, e
 	}
@@ -572,14 +589,45 @@ func (s *Store) ReplaceClubPlayers(ctx context.Context, siteID, teamID int64, it
 		return e
 	}
 	defer tx.Rollback()
-	if _, e = tx.ExecContext(ctx, `DELETE FROM club_players WHERE site_id=? AND team_id=?`, siteID, teamID); e != nil {
+	// Acquire the writer lock before reading the roster to reconcile IDs.
+	result, e := tx.ExecContext(ctx, `UPDATE club_teams SET id=id WHERE id=? AND site_id=?`, teamID, siteID)
+	if e != nil {
 		return e
+	}
+	if count, e := result.RowsAffected(); e != nil {
+		return e
+	} else if count == 0 {
+		return errClubNotFound
+	}
+	current, e := listClubPlayers(ctx, tx, siteID, teamID, false)
+	if e != nil {
+		return e
+	}
+	removed := make(map[int64]bool, len(current))
+	for _, player := range current {
+		removed[player.ID] = true
 	}
 	for i, v := range items {
 		if strings.TrimSpace(v.FirstName) == "" && strings.TrimSpace(v.LastName) == "" {
 			continue
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO club_players(site_id,team_id,first_name,last_name,jersey_number,role,image_url,position) VALUES(?,?,?,?,?,?,?,?)`, siteID, teamID, v.FirstName, v.LastName, v.JerseyNumber, v.Role, v.ImageURL, i); e != nil {
+		if v.ID > 0 {
+			if !removed[v.ID] {
+				return errClubNotFound
+			}
+			delete(removed, v.ID)
+			_, e = tx.ExecContext(ctx, `UPDATE club_players SET first_name=?,last_name=?,jersey_number=?,role=?,image_url=?,position=? WHERE id=?`,
+				v.FirstName, v.LastName, v.JerseyNumber, v.Role, v.ImageURL, i, v.ID)
+		} else {
+			_, e = tx.ExecContext(ctx, `INSERT INTO club_players(site_id,team_id,first_name,last_name,jersey_number,role,image_url,position) VALUES(?,?,?,?,?,?,?,?)`,
+				siteID, teamID, v.FirstName, v.LastName, v.JerseyNumber, v.Role, v.ImageURL, i)
+		}
+		if e != nil {
+			return e
+		}
+	}
+	for id := range removed {
+		if _, e = tx.ExecContext(ctx, `DELETE FROM club_players WHERE id=?`, id); e != nil {
 			return e
 		}
 	}

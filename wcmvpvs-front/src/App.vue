@@ -84,6 +84,13 @@
       :slug="clubSlug"
       :custom-domain="Boolean(domainClub)"
     />
+    <ClubMVPView
+      v-else-if="appView === 'club-mvp'"
+      :key="currentPath"
+      :slug="clubSlug"
+      :match-id="mvpRoute.matchId"
+      :custom-domain="Boolean(domainClub)"
+    />
     <ClubHomeView
       v-else-if="appView === 'club'"
       :slug="clubSlug"
@@ -152,6 +159,7 @@ const TournamentSectionView = defineAsyncComponent(() => import('./views/Tournam
 // Club Hub — verticale annuale multi-squadra, separato da Live e Tournament.
 const ClubHomeView = defineAsyncComponent(() => import('./views/ClubHomeView.vue'));
 const ClubAdminPortal = defineAsyncComponent(() => import('./views/ClubAdminPortal.vue'));
+const ClubMVPView = defineAsyncComponent(() => import('./views/ClubMVPView.vue'));
 
 // Admin components loaded only when the URL matches an admin route
 const AdminPortal = defineAsyncComponent(() => import('./components/AdminPortal.vue'));
@@ -163,7 +171,7 @@ const PartnerPortal = defineAsyncComponent(() => import('./components/PartnerPor
 const TicketValidationView = defineAsyncComponent(() => import('./components/TicketValidationView.vue'));
 const CashLanding = defineAsyncComponent(() => import('./components/CashLanding.vue'));
 import { apiClient, fetchVoteStatus } from './api';
-import { clubDomainRoute } from './clubDomain';
+import { clubDomainRoute, clubMVPEntryRoute } from './clubDomain';
 import { readAdminV2Route } from './admin-v2/router/routes';
 import { isMasterWorkspacePath } from './master-v2/routes';
 import { readFanMerchRoute } from './merch/shopModel';
@@ -205,6 +213,7 @@ const clubSlug = computed(() =>
 const clubTeamSlug = computed(() =>
   domainRoute.value?.teamSlug || (isClubPath.value && pathSegments.value[2] === 'team' ? (pathSegments.value[3] ?? '') : ''),
 );
+const mvpRoute = computed(() => clubMVPEntryRoute(domainClub, currentPath.value));
 
 const isNewUiPath = computed(() => {
   const segments = pathSegments.value;
@@ -299,7 +308,7 @@ const appView = computed(() => {
     return 'club-admin';
   }
   if (isClubPath.value) {
-    return 'club';
+    return mvpRoute.value ? 'club-mvp' : 'club';
   }
   if (isTournamentAdminPath.value) {
     return 'tournament-admin';
