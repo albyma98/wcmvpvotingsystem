@@ -31,6 +31,7 @@ func registerClubRoutes(rt *_router) {
 
 	// Sito pubblico annuale.
 	rt.router.Get("/v1/clubs/{slug}/home", rt.clubPublicHome)
+	rt.router.Get("/v1/clubs/{slug}/matches/stream", rt.clubPublicMatchStream)
 	rt.router.Get("/v1/clubs/{slug}/teams/{teamSlug}", rt.clubPublicTeam)
 	rt.router.Post("/v1/clubs/{slug}/visits", rt.clubPublicVisit)
 
@@ -55,6 +56,7 @@ func registerClubRoutes(rt *_router) {
 	rt.router.Get("/v1/club-admin/{slug}/matches", rt.wrapClubAdmin(rt.clubAdminMatches))
 	rt.router.Post("/v1/club-admin/{slug}/matches", rt.wrapClubAdmin(rt.clubAdminSaveMatch))
 	rt.router.Put("/v1/club-admin/{slug}/matches/{id}", rt.wrapClubAdmin(rt.clubAdminSaveMatch))
+	rt.router.Post("/v1/club-admin/{slug}/matches/{id}/score", rt.wrapClubAdmin(rt.clubAdminScore))
 	rt.router.Delete("/v1/club-admin/{slug}/matches/{id}", rt.wrapClubAdmin(rt.clubAdminDeleteMatch))
 	rt.router.Get("/v1/club-admin/{slug}/sponsors", rt.wrapClubAdmin(rt.clubAdminSponsors))
 	rt.router.Post("/v1/club-admin/{slug}/sponsors", rt.wrapClubAdmin(rt.clubAdminSaveSponsor))
@@ -207,6 +209,7 @@ func (rt *_router) deleteMasterClub(w http.ResponseWriter, r *http.Request, ctx 
 		http.Error(w, `{"error":"internal"}`, 500)
 		return
 	}
+	rt.clubMatches.reset(id)
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
@@ -427,6 +430,7 @@ func (rt *_router) clubAdminDeleteTeam(w http.ResponseWriter, r *http.Request, s
 		http.Error(w, `{"error":"delete_failed"}`, 500)
 		return
 	}
+	rt.clubMatches.reset(siteID)
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 func (rt *_router) clubAdminSavePlayers(w http.ResponseWriter, r *http.Request, siteID int64) {
@@ -507,7 +511,11 @@ func (rt *_router) clubAdminDeleteGallery(w http.ResponseWriter, r *http.Request
 	rt.clubAdminDeleteRecord(w, r, siteID, "club_gallery")
 }
 func (rt *_router) clubAdminMatches(w http.ResponseWriter, r *http.Request, siteID int64) {
-	v, _ := rt.store.ListClubMatches(r.Context(), siteID, 0)
+	v, err := rt.store.ListClubMatches(r.Context(), siteID, 0)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "matches_unavailable"})
+		return
+	}
 	writeJSON(w, 200, map[string]interface{}{"matches": v})
 }
 func (rt *_router) clubAdminSaveMatch(w http.ResponseWriter, r *http.Request, siteID int64) {
@@ -524,10 +532,15 @@ func (rt *_router) clubAdminSaveMatch(w http.ResponseWriter, r *http.Request, si
 		return
 	}
 	id, e := rt.store.SaveClubMatch(r.Context(), siteID, v)
+	if errors.Is(e, errClubMatchConflict) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "match_changed"})
+		return
+	}
 	if e != nil {
 		http.Error(w, `{"error":"save_failed"}`, 500)
 		return
 	}
+	rt.clubMatches.reset(siteID)
 	writeJSON(w, 200, map[string]interface{}{"id": id, "ok": true})
 }
 func (rt *_router) clubAdminDeleteMatch(w http.ResponseWriter, r *http.Request, siteID int64) {
@@ -542,6 +555,9 @@ func (rt *_router) clubAdminDeleteRecord(w http.ResponseWriter, r *http.Request,
 	if e = rt.store.DeleteClubRecord(r.Context(), siteID, table, id); e != nil {
 		http.Error(w, `{"error":"delete_failed"}`, 500)
 		return
+	}
+	if table == "club_matches" {
+		rt.clubMatches.reset(siteID)
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }

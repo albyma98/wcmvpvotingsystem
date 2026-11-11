@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc'
 import * as Vue from 'vue'
 import * as VueSSR from 'vue/server-renderer'
-import { clubHomeTiles } from '../clubHub.js'
+import { clubHomeTiles, clubMatchHasWinner, clubMatchSets, clubSetLabel } from '../clubHub.js'
 import { CLUB_FONTS, clubTypography } from '../clubTypography.js'
 
 const { descriptor } = parse(readFileSync(new URL('./ClubAdminPortal.vue', import.meta.url), 'utf8'))
@@ -12,7 +12,7 @@ const compiledScript = compileScript(descriptor, { id: 'club-cms-test' })
 const script = compiledScript.content
   .replace(/^import .* from .*\r?\n/gm, '')
   .replace('export default', 'return')
-const createComponent = new Function('Vue', 'clubHomeTiles', 'CLUB_FONTS', 'clubTypography', 'ClubTileIconUpload', 'ClubMediaField', 'fetch', 'setTimeout', 'onMounted', 'onUnmounted', 'confirm',
+const createComponent = new Function('Vue', 'clubHomeTiles', 'clubMatchHasWinner', 'clubMatchSets', 'clubSetLabel', 'CLUB_FONTS', 'clubTypography', 'ClubTileIconUpload', 'ClubMediaField', 'fetch', 'setTimeout', 'onMounted', 'onUnmounted', 'confirm',
   `const { computed, reactive, ref, nextTick } = Vue;\n${script}`)
 
 const template = compileTemplate({ source: descriptor.template.content, id: 'club-cms-test', ssr: true, ssrCssVars: [], compilerOptions: { bindingMetadata: compiledScript.bindings } })
@@ -30,14 +30,20 @@ const render = new Function(...Object.keys(helpers), renderCode)(...Object.value
 async function fixture(t, failSave = false, config = {}) {
   let club = { name: 'Aurora', active: true, contacts: [{ name: 'Segreteria', email: 'info@aurora.it' }], tileIcons: {} }
   let sponsors = structuredClone(config.sponsors || [])
+  let matches = structuredClone(config.matches || [])
   const writes = []
   const requests = []
-  const component = createComponent(Vue, clubHomeTiles, CLUB_FONTS, clubTypography, { render: () => null }, { render: () => null }, async (path, options) => {
+  const component = createComponent(Vue, clubHomeTiles, clubMatchHasWinner, clubMatchSets, clubSetLabel, CLUB_FONTS, clubTypography, { render: () => null }, { render: () => null }, async (path, options) => {
     requests.push({ path, ...options, body: options?.body ? JSON.parse(options.body) : undefined })
     if (options?.method && config.failWrites) return { ok: false, status: 500, json: async () => ({ error: config.writeError || 'save_failed' }) }
     if (options?.method && config.waitForWrite) await config.waitForWrite
     let data = {}
-    if (path.endsWith('/overview')) data = { club: structuredClone(club), teams: [{ id: 1, name: 'Under 16', active: true }], sponsors: structuredClone(sponsors), counts: { sponsors: sponsors.length } }
+    if (path.endsWith('/overview')) data = { club: structuredClone(club), teams: [{ id: 1, name: 'Under 16', active: true }], sponsors: structuredClone(sponsors), matches: structuredClone(matches), counts: { sponsors: sponsors.length } }
+    if (path.endsWith('/matches') && !options?.method) data = { matches: structuredClone(matches) }
+    if (path.endsWith('/score') && config.scoreUpdates?.length) {
+      data = config.scoreUpdates.shift()
+      matches = matches.map(match => match.id === data.id ? data : match)
+    }
     if (path.endsWith('/teams')) data = { teams: [{ id: 1, name: 'Under 16', active: true }], players: config.players || {} }
     if (path.endsWith('/settings')) {
       writes.push(JSON.parse(options.body))
@@ -59,6 +65,31 @@ async function fixture(t, failSave = false, config = {}) {
   await state.loadOverview()
   return { state, writes, requests }
 }
+
+test('calendar console opens an existing match, sends versioned scoring actions and shows the final score', async t => {
+  const scheduled = { id: 19, teamId: 1, opponent: 'Ospiti', status: 'scheduled', revision: 0, scoreFor: 0, scoreAgainst: 0, setsJson: '[]' }
+  const live = { ...scheduled, status: 'live', revision: 1, bestOf: 3, pointsFor: 0, pointsAgainst: 0 }
+  const lastSet = { ...live, revision: 2, scoreFor: 2, setsJson: '["25-21","25-22"]' }
+  const completed = { ...lastSet, status: 'completed', revision: 3 }
+  const { state, requests } = await fixture(t, false, { matches: [scheduled], scoreUpdates: [live, lastSet, completed] })
+  state.activeTab.value = 'matches'
+  await state.openMatchConsole(scheduled)
+  state.bestOf.value = 3
+  await state.applyScore('start')
+  assert.equal(state.consoleMatch.value.status, 'live')
+  await state.applyScore('close_set')
+  assert.equal(state.consoleHasWinner.value, true)
+  await state.applyScore('finish')
+  assert.deepEqual(requests.filter(item => item.path.endsWith('/matches/19/score')).map(item => item.body), [
+    { action: 'start', revision: 0, bestOf: 3 },
+    { action: 'close_set', revision: 1, bestOf: 3 },
+    { action: 'finish', revision: 2, bestOf: 3 },
+  ])
+  let html = ''
+  render({}, chunk => { html += chunk }, null, {}, { slug: 'aurora' }, Vue.proxyRefs(state), {}, {})
+  assert.match(html, /Risultato finale pubblicato nel calendario/)
+  assert.match(html, /25–22/)
+})
 
 test('CMS saves reordered contacts and uploaded icons, then reloads and restores defaults', async t => {
   const { state, writes } = await fixture(t)

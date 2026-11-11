@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import ClubTileIconUpload from '../components/ClubTileIconUpload.vue'
 import ClubMediaField from '../components/ClubMediaField.vue'
-import { clubHomeTiles } from '../clubHub'
+import { clubHomeTiles, clubMatchHasWinner, clubMatchSets, clubSetLabel } from '../clubHub'
 import { CLUB_FONTS, clubTypography } from '../clubTypography'
 
 const props = defineProps({ slug: { type: String, required: true }, customDomain: Boolean })
@@ -62,6 +62,20 @@ const teamForm = reactive(emptyTeam())
 const postForm = reactive(emptyPost())
 const galleryForm = reactive(emptyGallery())
 const matchForm = reactive(emptyMatch())
+const consoleMatchId = ref(0)
+const consolePanel = ref(null)
+const scoreError = ref('')
+const bestOf = ref(5)
+const consoleMatch = computed(() => overview.value.matches?.find(match => match.id === consoleMatchId.value))
+const consoleSets = computed(() => consoleMatch.value ? clubMatchSets(consoleMatch.value) : [])
+const consoleHasWinner = computed(() => consoleMatch.value && clubMatchHasWinner(consoleMatch.value))
+const consoleSetNumber = computed(() => consoleMatch.value ? consoleMatch.value.scoreFor + consoleMatch.value.scoreAgainst + 1 : 1)
+const canCloseSet = computed(() => {
+  const match = consoleMatch.value
+  if (!match || consoleHasWinner.value) return false
+  const target = consoleSetNumber.value === match.bestOf ? 15 : 25
+  return Math.max(match.pointsFor, match.pointsAgainst) >= target && Math.abs(match.pointsFor - match.pointsAgainst) >= 2
+})
 const sponsorForm = reactive(emptySponsor())
 const rosterTeamId = ref(0)
 const rosterPlayers = ref([])
@@ -89,7 +103,7 @@ const descriptions = {
   teams: 'Gestisci le schede delle squadre e i dati di ogni atleta.',
   posts: 'Crea, aggiorna e organizza le comunicazioni della società.',
   gallery: 'Organizza le fotografie con didascalie, date e squadre.',
-  matches: 'Pianifica gli incontri e aggiorna risultati e parziali.',
+  matches: 'Pianifica gli incontri e aggiorna la diretta, i risultati e i parziali.',
   sponsors: 'Presenta i partner che sostengono il club e collega i loro siti web.',
   contacts: 'Mantieni aggiornati i riferimenti di uffici e persone.',
 }
@@ -139,7 +153,10 @@ function editTeam(item) { return editRecord('team', item) }
 function editPost(item) { return editRecord('post', item) }
 function editGallery(item) { return editRecord('gallery', item) }
 function editSponsor(item) { return editRecord('sponsor', item) }
-async function editMatch(item) { try { await editRecord('match', item) } catch { error.value = 'I parziali di questa partita non sono leggibili. Verifica i dati esistenti prima di modificarli.' } }
+async function editMatch(item) {
+  consoleMatchId.value = 0
+  try { await editRecord('match', item) } catch { error.value = 'I parziali di questa partita non sono leggibili. Verifica i dati esistenti prima di modificarli.' }
+}
 function localDateTime(value) {
   if (!value) return ''
   if (!/(Z|[+-]\d{2}:\d{2})$/.test(value)) return value.slice(0, 16)
@@ -203,6 +220,7 @@ async function logout() {
   try {
     await request('/logout', { method: 'POST' })
     authenticated.value = false
+    consoleMatchId.value = 0
     login.password = ''
     for (const kind of ['team', 'post', 'gallery', 'match', 'sponsor']) resetEditor(kind)
     rosterTeamId.value = 0
@@ -264,7 +282,8 @@ async function saveRecord(kind, path, payload, success) {
       invalid_sponsor_description: 'La descrizione dello sponsor può contenere al massimo 3000 caratteri.',
       invalid_sponsor_position: 'L’ordine dello sponsor deve essere un numero intero tra 0 e 1000000.',
     }
-    error.value = e.message === 'unauthorized' ? 'La sessione è scaduta. Accedi nuovamente per continuare.' : (kind === 'sponsor' && sponsorErrors[e.message]) || 'Salvataggio non riuscito. I dati inseriti sono conservati: verifica i campi e riprova.'
+    error.value = e.message === 'unauthorized' ? 'La sessione è scaduta. Accedi nuovamente per continuare.' : (kind === 'sponsor' && sponsorErrors[e.message]) || (e.message === 'match_changed' ? 'La partita è cambiata. Riaprila dal calendario per caricare il punteggio aggiornato.' : 'Salvataggio non riuscito. I dati inseriti sono conservati: verifica i campi e riprova.')
+    if (e.message === 'match_changed') await refreshMatches().catch(() => {})
   }
   finally { busy.value = false }
 }
@@ -305,6 +324,50 @@ function saveMatch() {
   if (matchForm.sets.some(set => !validScore(set.scoreFor) || !validScore(set.scoreAgainst))) return invalid('Completa entrambi i punteggi di ogni parziale con numeri interi maggiori o uguali a zero.')
   const { sets, ...payload } = matchForm
   return saveRecord('match', '/matches', { ...payload, opponent: payload.opponent.trim(), teamId: Number(payload.teamId), scoreFor: Number(payload.scoreFor), scoreAgainst: Number(payload.scoreAgainst), setsJson: JSON.stringify(sets.map(set => `${Number(set.scoreFor)}-${Number(set.scoreAgainst)}`)) }, 'Partita salvata.')
+}
+async function refreshMatches() {
+  const data = await request('/matches')
+  overview.value.matches = data.matches ?? []
+}
+async function openMatchConsole(match) {
+  if (processing.value) return
+  consoleMatchId.value = match.id
+  bestOf.value = match.bestOf || 5
+  scoreError.value = ''
+  busy.value = true
+  try {
+    await refreshMatches()
+    if (!consoleMatch.value) error.value = 'Questa partita non è più in calendario.'
+  } catch {
+    scoreError.value = 'Impossibile verificare il punteggio attuale. Riprova ad aprire la console.'
+  } finally { busy.value = false }
+  await nextTick()
+  consolePanel.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  consolePanel.value?.focus({ preventScroll: true })
+}
+async function applyScore(action) {
+  const match = consoleMatch.value
+  if (!match || processing.value) return
+  if (action === 'finish' && !confirm('Concludere la partita e pubblicare il risultato finale?')) return
+  scoreError.value = ''
+  busy.value = true
+  try {
+    const updated = await request(`/matches/${match.id}/score`, {
+      method: 'POST',
+      body: JSON.stringify({ action, revision: match.revision ?? 0, bestOf: bestOf.value }),
+    })
+    overview.value.matches = overview.value.matches.map(item => item.id === updated.id ? updated : item)
+    if (action === 'finish') message('Risultato finale salvato nel calendario.')
+  } catch (e) {
+    const errors = {
+      match_changed: 'Il punteggio è cambiato. Controllalo prima di continuare.',
+      invalid_score_action: 'Questa azione non è disponibile per il punteggio attuale.',
+      match_not_found: 'Questa partita non è più in calendario.',
+    }
+    scoreError.value = errors[e.message] || 'Aggiornamento non confermato. Controlla il punteggio prima di riprovare.'
+    await refreshMatches().catch(() => {})
+    if (!consoleMatch.value) error.value = scoreError.value
+  } finally { busy.value = false }
 }
 function openRoster(team) {
   if (busy.value || imageUploads.value || (rosterTeamId.value && JSON.stringify(rosterPlayers.value) !== baselines.roster && !confirm('Scartare le modifiche non salvate al roster?'))) return
@@ -604,7 +667,45 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload); wi
         </div>
 
         <div v-else-if="activeTab==='matches'" class="editor-layout">
-          <form ref="editorPanel" class="card content-editor" :aria-busy="busy" @submit.prevent="saveMatch">
+          <section v-if="consoleMatch" ref="consolePanel" class="card content-editor score-console" tabindex="-1" aria-labelledby="score-heading" :aria-busy="busy">
+            <div class="editor-heading">
+              <div><p class="eyebrow">{{ teamName(consoleMatch.teamId) || 'Calendario' }}</p><h2 id="score-heading">{{ matchClubName }} – {{ consoleMatch.opponent }}</h2></div>
+              <span class="badge" :class="consoleMatch.status">{{ statusLabels[consoleMatch.status] }}</span>
+            </div>
+            <p v-if="scoreError" class="error" role="alert">{{ scoreError }}</p>
+            <fieldset v-if="consoleMatch.status !== 'completed' && !consoleMatch.bestOf" class="score-start" :disabled="processing">
+              <label>Formato della partita
+                <select v-model.number="bestOf"><option :value="5">Al meglio dei 5 set</option><option :value="3">Al meglio dei 3 set</option></select>
+              </label>
+              <button type="button" class="primary" @click="applyScore('start')">Avvia diretta</button>
+            </fieldset>
+            <template v-else>
+              <p class="score-sets-won">Set vinti <strong>{{ consoleMatch.scoreFor }}–{{ consoleMatch.scoreAgainst }}</strong></p>
+              <ol v-if="consoleSets.length" class="score-partials" aria-label="Parziali dei set">
+                <li v-for="(set, index) in consoleSets" :key="index"><span>{{ index + 1 }}° set</span><b>{{ clubSetLabel(set, true) }}</b></li>
+              </ol>
+              <fieldset v-if="consoleMatch.status === 'live'" class="score-controls" :disabled="processing">
+                <template v-if="!consoleHasWinner">
+                  <h3>{{ consoleSetNumber }}° set</h3>
+                  <div class="score-sides">
+                    <div v-for="side in [{ id: 'for', name: matchClubName, points: consoleMatch.pointsFor }, { id: 'against', name: consoleMatch.opponent, points: consoleMatch.pointsAgainst }]" :key="side.id" class="score-side">
+                      <h4>{{ side.name }}</h4><strong>{{ side.points }}</strong>
+                      <button type="button" class="primary score-point" :disabled="canCloseSet" :aria-label="`Aggiungi un punto a ${side.name}`" @click="applyScore('point_' + side.id)">+1 punto</button>
+                      <button type="button" :disabled="!side.points" :aria-label="`Togli un punto a ${side.name}`" @click="applyScore('undo_' + side.id)">−1 punto</button>
+                    </div>
+                  </div>
+                </template>
+                <div class="score-actions">
+                  <button v-if="!consoleHasWinner" type="button" :disabled="!canCloseSet" @click="applyScore('close_set')">Chiudi set</button>
+                  <button v-if="consoleSets.length && !consoleMatch.pointsFor && !consoleMatch.pointsAgainst" type="button" @click="applyScore('reopen_set')">Riapri ultimo set</button>
+                  <button v-if="consoleHasWinner" type="button" class="primary" @click="applyScore('finish')">Concludi partita</button>
+                </div>
+              </fieldset>
+              <p v-else class="form-hint">Risultato finale pubblicato nel calendario.</p>
+            </template>
+            <footer class="editor-footer"><button type="button" :disabled="processing" @click="consoleMatchId = 0">Torna all’editor</button></footer>
+          </section>
+          <form v-else ref="editorPanel" class="card content-editor" :aria-busy="busy" @submit.prevent="saveMatch">
             <div class="editor-heading"><div><p class="eyebrow">CALENDARIO E RISULTATI</p><h2>{{ matchForm.id ? 'Modifica partita' : 'Nuova partita' }}</h2></div><span v-if="matchForm.id" class="badge">In modifica</span></div>
             <p class="form-hint required-hint">* Campi obbligatori</p>
             <fieldset class="form-body" :disabled="processing">
@@ -621,7 +722,7 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload); wi
                 <label class="wide">Impianto o indirizzo<input v-model="matchForm.location" placeholder="Es. Palazzetto dello Sport, Via Roma 10" /></label>
               </div></fieldset>
               <fieldset class="form-section"><legend><span>03</span> Stato e risultato</legend><div class="form-grid">
-                <label class="wide">Stato della partita<select v-model="matchForm.status"><option v-for="(label, value) in statusLabels" :key="value" :value="value">{{label}}</option></select></label>
+                <label class="wide">Stato della partita<select v-model="matchForm.status"><option value="scheduled">{{ statusLabels.scheduled }}</option><option v-if="matchForm.status === 'live'" value="live">{{ statusLabels.live }}</option><option value="completed">{{ statusLabels.completed }}</option></select></label>
                 <template v-if="matchForm.status !== 'scheduled' || matchForm.sets.length">
                   <label>Risultato · {{ matchClubName }}<input v-model.number="matchForm.scoreFor" type="number" min="0" step="1" required /></label>
                   <label>Risultato · {{ matchForm.opponent || 'Avversario' }}<input v-model.number="matchForm.scoreAgainst" type="number" min="0" step="1" required /></label>
@@ -646,12 +747,16 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload); wi
           </form>
           <section class="card records-panel"><div class="panel-heading"><h2>Incontri del club</h2><span class="badge">{{filteredMatches.length}}</span></div>
             <p v-if="!filteredMatches.length" class="empty-state">{{ overview.matches?.length ? 'Nessuna partita corrisponde ai filtri.' : 'Il calendario è vuoto. Inserisci il primo incontro della stagione.' }}</p>
-            <div class="records-list"><article v-for="match in filteredMatches" :key="match.id" class="record-card" :class="{ selected: matchForm.id === match.id }">
+            <div class="records-list"><article v-for="match in filteredMatches" :key="match.id" class="record-card" :class="{ selected: consoleMatch ? consoleMatch.id === match.id : matchForm.id === match.id }">
               <div class="record-meta"><span class="badge" :class="match.status">{{ statusLabels[match.status] || match.status }}</span><span>{{match.home ? 'In casa' : 'Trasferta'}}</span></div>
               <h3>{{matchClubName}} <span class="versus">vs</span> {{match.opponent}}</h3>
               <p>{{formatDate(match.scheduledAt)}}</p><p v-if="match.competition || match.roundLabel">{{[match.competition, match.roundLabel].filter(Boolean).join(' · ')}}</p><p v-if="match.location">{{match.location}}</p>
               <div v-if="match.status !== 'scheduled'" class="match-result">{{match.scoreFor}} <span>:</span> {{match.scoreAgainst}}<small>Squadra del club / avversario</small></div>
-              <div class="record-actions"><button :disabled="processing" :aria-label="`Modifica partita contro ${match.opponent}`" @click="editMatch(match)">Modifica</button><button class="danger" :disabled="processing" :aria-label="`Elimina partita contro ${match.opponent}`" @click="askDelete('matches', match)">Elimina</button></div>
+              <div class="record-actions">
+                <button v-if="match.status !== 'completed'" type="button" class="primary" :disabled="processing" @click="openMatchConsole(match)">{{ match.status === 'live' ? 'Gestisci diretta' : 'Apri diretta' }}</button>
+                <button v-if="match.status !== 'live' || !match.bestOf" :disabled="processing" :aria-label="`Modifica partita contro ${match.opponent}`" @click="editMatch(match)">Modifica</button>
+                <button class="danger" :disabled="processing" :aria-label="`Elimina partita contro ${match.opponent}`" @click="askDelete('matches', match)">Elimina</button>
+              </div>
             </article></div>
           </section>
         </div>
@@ -669,6 +774,24 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload); wi
 </template>
 
 <style scoped>
+.score-console{scroll-margin-top:24px}
+.score-console:focus{outline:none}
+.score-start,.score-controls{min-width:0;margin:0;padding:0;border:0}
+.score-start{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.score-start label{min-width:min(100%,220px)}
+.score-sets-won{display:flex;align-items:center;justify-content:center;gap:12px;color:#475569}
+.score-sets-won strong{color:#0f172a;font-size:28px;font-variant-numeric:tabular-nums}
+.score-partials{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;list-style:none;margin:0 0 20px;padding:0}
+.score-partials li{display:grid;gap:2px;padding:6px 12px;border-radius:8px;background:#f1f5f9;text-align:center;font-variant-numeric:tabular-nums}
+.score-partials span{font-size:12px;color:#475569}
+.score-controls h3{text-align:center;margin:0 0 10px}
+.score-sides{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.score-side{display:grid;gap:8px;justify-items:stretch;text-align:center;padding:12px;border:1px solid #e2e8f0;border-radius:12px}
+.score-side h4{margin:0;overflow-wrap:anywhere}
+.score-side strong{font-size:clamp(32px,7vw,56px);line-height:1.1;font-variant-numeric:tabular-nums}
+.score-console button{min-height:44px}
+.score-console .score-point{min-height:56px;font-size:16px}
+.score-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px}
 * { box-sizing: border-box; }
 .club-admin { --club-admin-canvas: #f6f7fb; --club-admin-surface: #fff; --club-admin-ink: #182238; --club-admin-secondary: #526078; --club-admin-border: #e1e5ee; --club-admin-accent: #4f46e5; min-height: 100vh; background: var(--club-admin-canvas); color: var(--club-admin-ink); font-family: Inter, 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.5; color-scheme: light; }
 .club-admin h1, .club-admin h2, .club-admin h3 { color: var(--club-admin-ink); font-family: inherit; text-transform: none; letter-spacing: -.025em; }

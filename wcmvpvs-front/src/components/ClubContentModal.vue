@@ -13,6 +13,7 @@ const props = defineProps({
   teamLoading: Boolean,
   teamError: { type: String, default: '' },
   section: { type: String, default: 'overview' },
+  liveConnected: Boolean,
 })
 const emit = defineEmits(['close', 'update:section'])
 const dialog = ref(null)
@@ -77,12 +78,12 @@ onBeforeUnmount(() => dialog.value?.close())
           <div class="club-stats">
             <button v-for="stat in stats" :key="stat.section" class="club-stat" type="button" @click="emit('update:section', stat.section)"><b>{{ stat.count }}</b><span>{{ stat.label }}</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg></button>
           </div>
-          <ClubMatchCard v-if="featuredMatch" :match="featuredMatch" :team-name="matchClubName" featured />
+          <ClubMatchCard v-if="featuredMatch" :match="featuredMatch" :team-name="matchClubName" :live-connected="liveConnected" featured />
           <div v-else class="club-state"><span class="club-state-icon" aria-hidden="true">↗</span><h3>Ci vediamo in campo</h3><p>Il prossimo appuntamento sarà pubblicato a breve.</p></div>
         </section>
 
         <section v-else-if="currentView === 'matches'" class="club-match-list" aria-label="Calendario e risultati">
-          <ClubMatchCard v-for="match in matches" :key="match.id" :match="match" :team-name="matchClubName" />
+          <ClubMatchCard v-for="match in matches" :key="match.id" :match="match" :team-name="matchClubName" :live-connected="liveConnected" />
           <div v-if="!matches.length" class="club-state"><span class="club-state-icon" aria-hidden="true">↗</span><h3>Il calendario prende forma</h3><p>Le prossime partite saranno disponibili qui.</p></div>
         </section>
 

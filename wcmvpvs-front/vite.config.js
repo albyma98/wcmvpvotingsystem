@@ -5,9 +5,15 @@ import { adminV2Controllers } from './build/adminV2Controllers.js'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const backendTarget = (env.VITE_API_BASE_URL || 'http://localhost:3000')
+  const remoteAPI = /^https?:\/\//.test(env.VITE_API_BASE_URL || '')
+  const backendTarget = (remoteAPI ? env.VITE_API_BASE_URL : 'http://localhost:3000')
     .replace(/\/api\/?$/, '')
     .replace(/\/$/, '')
+  const apiProxy = {
+    target: backendTarget,
+    changeOrigin: true,
+    rewrite: remoteAPI ? undefined : path => path.replace(/^\/api/, ''),
+  }
 
   return {
     plugins: [adminV2Controllers(), vue()],
@@ -20,10 +26,12 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 5173,
       proxy: {
-        '/api': {
-          target: backendTarget,
-          changeOrigin: true,
+        '^/api/v1/clubs/[^/]+/matches/stream$': {
+          ...apiProxy,
+          ws: true,
+          rewriteWsOrigin: true,
         },
+        '/api': apiProxy,
       },
     },
     build: {

@@ -42,10 +42,8 @@
             :selected="votedPlayerId === player.id"
             :aria-hidden="!showsConfirm(player, slot) || undefined"
           >
-            <template v-if="showsConfirm(player, slot) || (slot === centeredSlot && player.id === votedPlayerId)" #action>
-              <span v-if="player.id === votedPlayerId" class="mvp-carousel__hint">Scegli un nuovo MVP</span>
+            <template v-if="showsConfirm(player, slot)" #action>
               <button
-                v-else
                 class="mvp-carousel__confirm"
                 type="button"
                 :tabindex="cycle !== 0 ? -1 : undefined"
@@ -97,7 +95,7 @@ let hasBrowsed = false;
 
 function playerLabel(player) {
   const number = player.number !== '' && player.number != null ? `maglia ${player.number}` : '';
-  const voted = player.id === props.votedPlayerId ? 'Il tuo MVP. Scegli un nuovo MVP.' : '';
+  const voted = player.id === props.votedPlayerId ? 'Il tuo MVP' : '';
   return [player.fullName || player.name, number, player.role, voted].filter(Boolean).join(', ');
 }
 
@@ -308,13 +306,6 @@ onBeforeUnmount(() => {
 .mvp-carousel__player :deep(.mvp-player-role) { color: var(--ink); font-size: .6875rem; }
 .mvp-carousel__player.has-confirm :deep(.mvp-player-role) { display: none; }
 .mvp-carousel__player :deep(.mvp-player-selected) { font-size: .625rem; }
-.mvp-carousel__hint {
-  color: var(--ink);
-  margin-top: 3px;
-  font-size: .625rem;
-  font-weight: 700;
-  line-height: 1.15;
-}
 .mvp-carousel__confirm {
   position: relative;
   isolation: isolate;

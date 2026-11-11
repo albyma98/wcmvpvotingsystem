@@ -44,3 +44,67 @@ export function clubInitials(name) {
 export function clubScoreLabel(match) {
   return match.home ? `${match.scoreFor} – ${match.scoreAgainst}` : `${match.scoreAgainst} – ${match.scoreFor}`
 }
+
+export function clubMatchSets(match) {
+  try {
+    const sets = JSON.parse(match.setsJson || '[]')
+    return Array.isArray(sets) ? sets.filter(value => typeof value === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function clubSetLabel(set, home) {
+  const scores = set.split(/[-–:]/).map(score => score.trim())
+  return scores.length === 2 ? (home ? scores : scores.reverse()).join('–') : set
+}
+
+export function clubMatchHasWinner(match) {
+  return Boolean(match.bestOf) && Math.max(match.scoreFor, match.scoreAgainst) > match.bestOf / 2
+}
+
+export function clubCurrentSetLabel(match) {
+  if (!match.bestOf || match.status !== 'live') return ''
+  if (clubMatchHasWinner(match)) return 'In attesa del risultato finale'
+  const points = match.home ? [match.pointsFor, match.pointsAgainst] : [match.pointsAgainst, match.pointsFor]
+  return `${match.scoreFor + match.scoreAgainst + 1}° set · ${points.join('–')}`
+}
+
+export function connectClubMatches(slug, onMessage, onConnection) {
+  if (typeof WebSocket !== 'function') return () => {}
+  const url = new URL(`/api/v1/clubs/${encodeURIComponent(slug)}/matches/stream`, window.location.href)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  let socket
+  let timer
+  let retryDelay = 500
+  let stopped = false
+
+  function connect() {
+    if (stopped) return
+    socket = new WebSocket(url)
+    socket.onmessage = event => {
+      let update
+      try { update = JSON.parse(event.data) } catch { return }
+      if (Array.isArray(update.matches)) {
+        retryDelay = 500
+        onConnection(true)
+      }
+      onMessage(update)
+    }
+    socket.onclose = () => {
+      if (stopped) return
+      onConnection(false)
+      timer = setTimeout(connect, retryDelay)
+      retryDelay = Math.min(retryDelay * 2, 10000)
+    }
+  }
+
+  connect()
+  return () => {
+    stopped = true
+    clearTimeout(timer)
+    socket.onmessage = null
+    socket.onclose = null
+    socket.close()
+  }
+}

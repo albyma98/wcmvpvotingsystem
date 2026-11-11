@@ -31,7 +31,7 @@ async function fixture(t, teamSlug = '', fetcher) {
   const visits = []
   const payload = {
     club: { name: 'Club Aurora', titleFont: 'Arial', bodyFont: 'Arial' },
-    team: { name: 'Under 18' },
+    team: { id: 8, name: 'Under 18' },
     matches: [
       { id: 3, scheduledAt: '2026-11-15T18:00:00Z', status: 'scheduled', opponent: 'Ospiti novembre', location: 'Pala Aurora' },
       { id: 1, scheduledAt: '2026-10-20T18:00:00Z', status: 'completed', opponent: 'Ospiti ottobre' },
@@ -97,4 +97,24 @@ test('home features the nearest scheduled match with only the venue in its detai
   assert.equal(state.featuredMatch.value.id, 3)
   state.data.value.matches.forEach(match => { match.status = 'completed' })
   assert.equal(state.featuredMatch.value.id, 3)
+})
+
+test('live snapshots update the team calendar in place, orient away scores and retain the final result', async t => {
+  const { state, html } = await fixture(t, 'under-18')
+  const scheduled = { id: 3, teamId: 8, scheduledAt: '2026-11-15T18:00:00Z', status: 'scheduled', opponent: 'Ospiti', revision: 0, home: false }
+  state.applyMatchUpdate({ matches: [scheduled, { ...scheduled, id: 6, teamId: 9, opponent: 'Altra categoria' }] })
+  state.liveConnected.value = true
+  const live = { ...scheduled, status: 'live', revision: 1, bestOf: 3, scoreFor: 1, scoreAgainst: 0, pointsFor: 12, pointsAgainst: 10, setsJson: '["25-22"]' }
+  state.applyMatchUpdate({ match: live })
+  const during = await html()
+  assert.match(during, /2° set · 10–12/)
+  assert.match(during, /Parziali · 22–25/)
+  assert.doesNotMatch(during, /Altra categoria/)
+  const completed = { ...live, status: 'completed', revision: 2, scoreFor: 2, pointsFor: 0, pointsAgainst: 0, setsJson: '["25-22","25-20"]' }
+  state.applyMatchUpdate({ match: completed })
+  state.applyMatchUpdate({ match: live })
+  const after = await html()
+  assert.match(after, /Conclusa/)
+  assert.match(after, /Parziali · 22–25, 20–25/)
+  assert.doesNotMatch(after, /2° set ·/)
 })

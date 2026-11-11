@@ -96,18 +96,22 @@ type ClubGalleryItem struct {
 }
 
 type ClubMatch struct {
-	ID           int64  `json:"id"`
-	TeamID       int64  `json:"teamId"`
-	Opponent     string `json:"opponent"`
-	Competition  string `json:"competition"`
-	RoundLabel   string `json:"roundLabel"`
-	ScheduledAt  string `json:"scheduledAt"`
-	Location     string `json:"location"`
-	Home         bool   `json:"home"`
-	Status       string `json:"status"`
-	ScoreFor     int    `json:"scoreFor"`
-	ScoreAgainst int    `json:"scoreAgainst"`
-	SetsJSON     string `json:"setsJson"`
+	ID            int64  `json:"id"`
+	TeamID        int64  `json:"teamId"`
+	Opponent      string `json:"opponent"`
+	Competition   string `json:"competition"`
+	RoundLabel    string `json:"roundLabel"`
+	ScheduledAt   string `json:"scheduledAt"`
+	Location      string `json:"location"`
+	Home          bool   `json:"home"`
+	Status        string `json:"status"`
+	ScoreFor      int    `json:"scoreFor"`
+	ScoreAgainst  int    `json:"scoreAgainst"`
+	SetsJSON      string `json:"setsJson"`
+	PointsFor     int    `json:"pointsFor"`
+	PointsAgainst int    `json:"pointsAgainst"`
+	BestOf        int    `json:"bestOf"`
+	Revision      int64  `json:"revision"`
 }
 
 type ClubAdmin struct {
@@ -261,6 +265,17 @@ func (s *Store) EnsureClubTables() error {
 		if !columns[column.name] {
 			if _, err := s.db.Exec("ALTER TABLE club_sites ADD COLUMN " + column.name + " " + column.definition); err != nil {
 				return fmt.Errorf("club settings migration: %w", err)
+			}
+		}
+	}
+	matchColumns, err := s.tableColumns("club_matches")
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{"points_for", "points_against", "best_of", "revision"} {
+		if !matchColumns[name] {
+			if _, err := s.db.Exec("ALTER TABLE club_matches ADD COLUMN " + name + " INTEGER NOT NULL DEFAULT 0"); err != nil {
+				return fmt.Errorf("club match migration: %w", err)
 			}
 		}
 	}
@@ -663,8 +678,26 @@ func (s *Store) SaveClubGallery(ctx context.Context, siteID int64, v ClubGallery
 	return res.LastInsertId()
 }
 
+const clubMatchSelect = `SELECT id,team_id,opponent,competition,round_label,scheduled_at,location,home,status,score_for,score_against,sets_json,points_for,points_against,best_of,revision FROM club_matches WHERE site_id=?`
+
+func scanClubMatch(row rowScanner) (ClubMatch, error) {
+	var v ClubMatch
+	var home int
+	err := row.Scan(&v.ID, &v.TeamID, &v.Opponent, &v.Competition, &v.RoundLabel, &v.ScheduledAt, &v.Location, &home, &v.Status, &v.ScoreFor, &v.ScoreAgainst, &v.SetsJSON, &v.PointsFor, &v.PointsAgainst, &v.BestOf, &v.Revision)
+	v.Home = home != 0
+	return v, err
+}
+
+func (s *Store) clubMatch(ctx context.Context, siteID, matchID int64) (ClubMatch, error) {
+	match, err := scanClubMatch(s.db.QueryRowContext(ctx, clubMatchSelect+" AND id=?", siteID, matchID))
+	if errors.Is(err, sql.ErrNoRows) {
+		err = errClubNotFound
+	}
+	return match, err
+}
+
 func (s *Store) ListClubMatches(ctx context.Context, siteID, teamID int64) ([]ClubMatch, error) {
-	q := `SELECT id,team_id,opponent,competition,round_label,scheduled_at,location,home,status,score_for,score_against,sets_json FROM club_matches WHERE site_id=?`
+	q := clubMatchSelect
 	args := []interface{}{siteID}
 	if teamID > 0 {
 		q += ` AND team_id=?`
@@ -678,12 +711,10 @@ func (s *Store) ListClubMatches(ctx context.Context, siteID, teamID int64) ([]Cl
 	defer rows.Close()
 	out := []ClubMatch{}
 	for rows.Next() {
-		var v ClubMatch
-		var home int
-		if e = rows.Scan(&v.ID, &v.TeamID, &v.Opponent, &v.Competition, &v.RoundLabel, &v.ScheduledAt, &v.Location, &home, &v.Status, &v.ScoreFor, &v.ScoreAgainst, &v.SetsJSON); e != nil {
-			return nil, e
+		v, err := scanClubMatch(rows)
+		if err != nil {
+			return nil, err
 		}
-		v.Home = home != 0
 		out = append(out, v)
 	}
 	return out, rows.Err()
@@ -696,8 +727,10 @@ func (s *Store) SaveClubMatch(ctx context.Context, siteID int64, v ClubMatch) (i
 		v.SetsJSON = "[]"
 	}
 	if v.ID > 0 {
-		_, e := s.db.ExecContext(ctx, `UPDATE club_matches SET team_id=?,opponent=?,competition=?,round_label=?,scheduled_at=?,location=?,home=?,status=?,score_for=?,score_against=?,sets_json=? WHERE id=? AND site_id=?`, v.TeamID, v.Opponent, v.Competition, v.RoundLabel, v.ScheduledAt, v.Location, boolInt(v.Home), v.Status, v.ScoreFor, v.ScoreAgainst, v.SetsJSON, v.ID, siteID)
-		return v.ID, e
+		result, err := s.db.ExecContext(ctx, `UPDATE club_matches SET team_id=?,opponent=?,competition=?,round_label=?,scheduled_at=?,location=?,home=?,status=?,score_for=?,score_against=?,sets_json=?,points_for=0,points_against=0,best_of=CASE WHEN ?='completed' THEN best_of ELSE 0 END,revision=revision+1
+			WHERE id=? AND site_id=? AND (best_of=0 OR (status<>'live' AND revision=?))`,
+			v.TeamID, v.Opponent, v.Competition, v.RoundLabel, v.ScheduledAt, v.Location, boolInt(v.Home), v.Status, v.ScoreFor, v.ScoreAgainst, v.SetsJSON, v.Status, v.ID, siteID, v.Revision)
+		return v.ID, clubMatchWriteResult(result, err)
 	}
 	res, e := s.db.ExecContext(ctx, `INSERT INTO club_matches(site_id,team_id,opponent,competition,round_label,scheduled_at,location,home,status,score_for,score_against,sets_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, siteID, v.TeamID, v.Opponent, v.Competition, v.RoundLabel, v.ScheduledAt, v.Location, boolInt(v.Home), v.Status, v.ScoreFor, v.ScoreAgainst, v.SetsJSON)
 	if e != nil {

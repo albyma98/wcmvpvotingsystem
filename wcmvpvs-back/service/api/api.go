@@ -240,6 +240,7 @@ type _router struct {
 	clubDomains   *clubDomainManager
 	liveCache     *TTLCache
 	tournamentHub *sseHub
+	clubMatches   clubMatchHub
 	merchWorker   *merchWorker
 }
 

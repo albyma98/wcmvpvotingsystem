@@ -15,7 +15,7 @@
       worker-src 'self' blob:;
       img-src 'self' data: blob: https:;
       media-src 'self' blob:;
-      connect-src 'self' blob:;
+      connect-src 'self' wss://{http.request.host} blob:;
     "
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Content-Type-Options "nosniff"

@@ -1,11 +1,13 @@
 <script setup>
 import { computed } from 'vue'
-import { formatClubDate } from '../clubHub'
+import { clubCurrentSetLabel, clubMatchSets, clubSetLabel, formatClubDate } from '../clubHub'
 
-const props = defineProps({ match: { type: Object, required: true }, teamName: { type: String, default: 'Squadra' }, featured: Boolean })
+const props = defineProps({ match: { type: Object, required: true }, teamName: { type: String, default: 'Squadra' }, featured: Boolean, liveConnected: Boolean })
 const homeName = computed(() => props.match.home ? props.teamName : props.match.opponent)
 const awayName = computed(() => props.match.home ? props.match.opponent : props.teamName)
 const statusLabel = computed(() => props.match.status === 'live' ? 'In diretta' : props.match.status === 'completed' ? 'Risultato finale' : 'In programma')
+const partials = computed(() => clubMatchSets(props.match))
+const currentSet = computed(() => clubCurrentSetLabel(props.match))
 </script>
 
 <template>
@@ -18,11 +20,16 @@ const statusLabel = computed(() => props.match.status === 'live' ? 'In diretta' 
     <time class="club-match-date" :datetime="match.scheduledAt">{{ formatClubDate(match.scheduledAt) }}</time>
     <div class="club-match-scoreboard">
       <strong>{{ homeName }}</strong>
-      <div v-if="match.status === 'completed'" class="club-match-score" :aria-label="`Risultato: ${match.home ? match.scoreFor : match.scoreAgainst} a ${match.home ? match.scoreAgainst : match.scoreFor}`">
+      <div v-if="match.status !== 'scheduled'" class="club-match-score" :aria-label="`Set vinti: ${match.home ? match.scoreFor : match.scoreAgainst} a ${match.home ? match.scoreAgainst : match.scoreFor}`">
         <b>{{ match.home ? match.scoreFor : match.scoreAgainst }}</b><span>:</span><b>{{ match.home ? match.scoreAgainst : match.scoreFor }}</b>
       </div>
       <span v-else class="club-match-vs">VS</span>
       <strong>{{ awayName }}</strong>
+    </div>
+    <div v-if="match.status === 'live' || (match.status === 'completed' && partials.length)" class="club-match-sets">
+      <strong v-if="currentSet">{{ currentSet }}</strong>
+      <p v-if="partials.length">Parziali · {{ partials.map(set => clubSetLabel(set, match.home)).join(', ') }}</p>
+      <small v-if="match.status === 'live' && !liveConnected" role="status">Riconnessione alla diretta…</small>
     </div>
     <div v-if="match.location || match.roundLabel || (featured && match.competition)" class="club-match-details">
       <span v-if="match.location">{{ match.location }}</span><span v-if="match.roundLabel">{{ match.roundLabel }}</span><span v-if="featured && match.competition">{{ match.competition }}</span>
@@ -31,6 +38,9 @@ const statusLabel = computed(() => props.match.status === 'live' ? 'In diretta' 
 </template>
 
 <style scoped>
+.club-match-sets{margin:-8px 0 14px;text-align:center;font-variant-numeric:tabular-nums;color:#475569}
+.club-match-sets strong{display:block;color:#0f172a;font-size:17px}
+.club-match-sets p,.club-match-sets small{margin:4px 0 0;font-size:12px}
 .club-match-card{min-width:0;padding:22px;border:1px solid #dbe2ec;border-radius:22px;background:#fff;box-shadow:inset 0 2px 0 #fff,0 4px 0 #dce2eb,0 10px 22px rgba(15,23,42,.06);color:#0f172a}
 .club-match-card.is-featured{border-top:4px solid var(--club-accent,#f59e0b)}
 .club-match-meta{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
