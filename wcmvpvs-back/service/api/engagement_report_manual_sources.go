@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -154,38 +155,13 @@ func (rt *_router) saveRecipientReportSources(w http.ResponseWriter, r *http.Req
 		return
 	}
 	defer tx.Rollback()
-	var old reportManualSource
-	err = tx.QueryRow(`SELECT event_id,field_key,sponsor_id,value,unit,source_type,source_description,entered_by,entered_at,updated_at,verification_status,note,revision FROM engagement_report_manual_sources WHERE event_id=? AND field_key=? AND sponsor_id=?`, id, m.FieldKey, m.SponsorID).Scan(&old.EventID, &old.FieldKey, &old.SponsorID, &old.Value, &old.Unit, &old.SourceType, &old.SourceDescription, &old.EnteredBy, &old.EnteredAt, &old.UpdatedAt, &old.VerificationStatus, &old.Note, &old.Revision)
-	if err != nil && err != sql.ErrNoRows {
-		reportError(w, 500, "Impossibile leggere la sorgente.")
-		return
-	}
-	if old.Revision != m.Revision {
+	err = storeOfficialAttendance(tx, id, ctx.AdminID, m, time.Now().UTC().Format(time.RFC3339Nano))
+	if errors.Is(err, errMatchdayRevision) {
 		reportError(w, 409, "La sorgente è stata modificata da un altro amministratore. Ricarica i dati prima di salvare.")
 		return
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	m.EventID, m.EnteredBy, m.EnteredAt, m.UpdatedAt, m.Revision = id, ctx.AdminID, now, now, old.Revision+1
-	if old.Revision > 0 {
-		m.EnteredAt = old.EnteredAt
-		m.EnteredBy = old.EnteredBy
-	}
-	m.SourceDescription = strings.TrimSpace(m.SourceDescription)
-	m.Note = strings.TrimSpace(m.Note)
-	_, err = tx.Exec(`INSERT INTO engagement_report_manual_sources(event_id,field_key,sponsor_id,value,unit,source_type,source_description,entered_by,entered_at,updated_at,verification_status,note,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,field_key,sponsor_id) DO UPDATE SET value=excluded.value,unit=excluded.unit,source_type=excluded.source_type,source_description=excluded.source_description,updated_at=excluded.updated_at,verification_status=excluded.verification_status,note=excluded.note,revision=excluded.revision`, id, m.FieldKey, m.SponsorID, m.Value, m.Unit, m.SourceType, m.SourceDescription, m.EnteredBy, m.EnteredAt, m.UpdatedAt, m.VerificationStatus, m.Note, m.Revision)
 	if err != nil {
 		reportError(w, 500, "Impossibile salvare la sorgente.")
-		return
-	}
-	var before interface{}
-	if old.Revision > 0 {
-		raw, _ := json.Marshal(old)
-		before = string(raw)
-	}
-	after, _ := json.Marshal(m)
-	_, err = tx.Exec(`INSERT INTO engagement_report_source_history(event_id,field_key,sponsor_id,previous_json,current_json,changed_by,changed_at) VALUES(?,?,?,?,?,?,?)`, id, m.FieldKey, m.SponsorID, before, string(after), ctx.AdminID, now)
-	if err != nil {
-		reportError(w, 500, "Impossibile salvare lo storico.")
 		return
 	}
 	if err = tx.Commit(); err != nil {
@@ -193,4 +169,34 @@ func (rt *_router) saveRecipientReportSources(w http.ResponseWriter, r *http.Req
 		return
 	}
 	_ = writeJSON(w, 200, map[string]interface{}{"saved": true, "message": "Presenze ufficiali salvate per l'evento. Ricalcola il report per utilizzare i nuovi dati."})
+}
+
+func storeOfficialAttendance(tx *sql.Tx, eventID, adminID int, m reportManualSource, now string) error {
+	var old reportManualSource
+	err := tx.QueryRow(`SELECT event_id,field_key,sponsor_id,value,unit,source_type,source_description,entered_by,entered_at,updated_at,verification_status,note,revision FROM engagement_report_manual_sources WHERE event_id=? AND field_key=? AND sponsor_id=?`, eventID, m.FieldKey, m.SponsorID).Scan(&old.EventID, &old.FieldKey, &old.SponsorID, &old.Value, &old.Unit, &old.SourceType, &old.SourceDescription, &old.EnteredBy, &old.EnteredAt, &old.UpdatedAt, &old.VerificationStatus, &old.Note, &old.Revision)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if old.Revision != m.Revision {
+		return errMatchdayRevision
+	}
+	m.EventID, m.EnteredBy, m.EnteredAt, m.UpdatedAt, m.Revision = eventID, adminID, now, now, old.Revision+1
+	if old.Revision > 0 {
+		m.EnteredAt = old.EnteredAt
+		m.EnteredBy = old.EnteredBy
+	}
+	m.SourceDescription = strings.TrimSpace(m.SourceDescription)
+	m.Note = strings.TrimSpace(m.Note)
+	_, err = tx.Exec(`INSERT INTO engagement_report_manual_sources(event_id,field_key,sponsor_id,value,unit,source_type,source_description,entered_by,entered_at,updated_at,verification_status,note,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,field_key,sponsor_id) DO UPDATE SET value=excluded.value,unit=excluded.unit,source_type=excluded.source_type,source_description=excluded.source_description,updated_at=excluded.updated_at,verification_status=excluded.verification_status,note=excluded.note,revision=excluded.revision`, eventID, m.FieldKey, m.SponsorID, m.Value, m.Unit, m.SourceType, m.SourceDescription, m.EnteredBy, m.EnteredAt, m.UpdatedAt, m.VerificationStatus, m.Note, m.Revision)
+	if err != nil {
+		return err
+	}
+	var before interface{}
+	if old.Revision > 0 {
+		raw, _ := json.Marshal(old)
+		before = string(raw)
+	}
+	after, _ := json.Marshal(m)
+	_, err = tx.Exec(`INSERT INTO engagement_report_source_history(event_id,field_key,sponsor_id,previous_json,current_json,changed_by,changed_at) VALUES(?,?,?,?,?,?,?)`, eventID, m.FieldKey, m.SponsorID, before, string(after), adminID, now)
+	return err
 }

@@ -11,6 +11,7 @@ import (
 func (rt *_router) Handler() chi.Router {
 	// Register routes
 	registerEngagementReportRoutes(rt)
+	registerMatchdayKPIRoutes(rt)
 	registerMatchChatRoutes(rt)
 	registerCRMRoutes(rt)
 	rt.router.Get("/", rt.getHelloWorld)

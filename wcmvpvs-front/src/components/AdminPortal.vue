@@ -1255,6 +1255,14 @@
                   </div>
                   <div class="history-item__actions">
                     <button
+                      class="btn outline history-item__kpi-button"
+                      type="button"
+                      @click="matchdayEvent = entry"
+                    >
+                      <V2Icon name="results" :size="17" />
+                      KPI Matchday
+                    </button>
+                    <button
                       class="btn secondary"
                       type="button"
                       :disabled="isGeneratingHistoryAiReport(entry.id)"
@@ -1910,6 +1918,12 @@
               </div>
             </li>
           </ul>
+          <MatchdayKpiDialog
+            :event="matchdayEvent"
+            :auth-headers="authHeaders"
+            @close="matchdayEvent = null"
+            @unauthorized="handleUnauthorized"
+          />
         </section>
 
         <AdminTeamsSection
@@ -2056,6 +2070,8 @@ import AdminCouponsSection from "./admin/AdminCouponsSection.vue";
 import AdminVotingSettings from "./admin/AdminVotingSettings.vue";
 import AdminVotingClosure from "./admin/AdminVotingClosure.vue";
 import EngagementReportModal from "./EngagementReportModal.vue";
+import MatchdayKpiDialog from "../admin-v2/components/reports/MatchdayKpiDialog.vue";
+import V2Icon from "../admin-v2/components/shared/V2Icon.vue";
 
 const props = defineProps({
   organizationSlug: {
@@ -2334,6 +2350,7 @@ const partners = ref([]);
 const sponsors = ref([]);
 const coupons = ref([]);
 const eventHistory = ref([]);
+const matchdayEvent = ref(null);
 const couponEventSearch = ref("");
 const eventSelfies = ref([]);
 const isLoadingEventHistory = ref(false);
@@ -3487,6 +3504,7 @@ function clearCollections() {
     delete selfieBusyState[key];
   });
   engagementReportDialog.visible = false;
+  matchdayEvent.value = null;
   lastCreatedEventLink.value = "";
   resetNewCouponForm();
   couponBeingSaved.value = 0;
@@ -7767,6 +7785,12 @@ textarea:focus {
 
 .history-item__actions .btn {
   min-width: 0;
+}
+
+.history-item__kpi-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .history-item__totals {

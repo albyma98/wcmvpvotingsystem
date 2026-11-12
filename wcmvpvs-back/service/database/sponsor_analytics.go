@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -204,22 +205,23 @@ type SponsorAnalyticsFilter struct {
 }
 
 type SponsorAnalyticsMetrics struct {
-	Impressions          int      `json:"impressions"`
-	HTMLImpressions      int      `json:"html_impressions"`
-	GeometricImpressions int      `json:"geometric_impressions"`
-	Viewable             *int     `json:"viewable_impressions"`
-	Viewability          *float64 `json:"viewability_rate"`
-	Reach                *int     `json:"reach"`
-	Frequency            *float64 `json:"frequency"`
-	TotalDuration        *int64   `json:"total_visible_ms"`
-	AverageDuration      *float64 `json:"average_visible_ms"`
-	DurationSamples      int      `json:"duration_samples"`
-	Clicks               *int     `json:"clicks"`
-	UniqueClicks         *int     `json:"unique_clickers"`
-	CTR                  *float64 `json:"ctr"`
-	FullViews            *int     `json:"full_views"`
-	FullRate             *float64 `json:"full_view_rate"`
-	Conversions          *int     `json:"conversions"`
+	Impressions             int      `json:"impressions"`
+	HTMLImpressions         int      `json:"html_impressions"`
+	GeometricImpressions    int      `json:"geometric_impressions"`
+	Viewable                *int     `json:"viewable_impressions"`
+	Viewability             *float64 `json:"viewability_rate"`
+	Reach                   *int     `json:"reach"`
+	Frequency               *float64 `json:"frequency"`
+	TotalDuration           *int64   `json:"total_visible_ms"`
+	AverageDuration         *float64 `json:"average_visible_ms"`
+	DurationSamples         int      `json:"duration_samples"`
+	PositiveDurationSamples int      `json:"-"`
+	Clicks                  *int     `json:"clicks"`
+	UniqueClicks            *int     `json:"unique_clickers"`
+	CTR                     *float64 `json:"ctr"`
+	FullViews               *int     `json:"full_views"`
+	FullRate                *float64 `json:"full_view_rate"`
+	Conversions             *int     `json:"conversions"`
 }
 
 type SponsorAnalyticsRow struct {
@@ -275,17 +277,6 @@ func (db *appdbimpl) GetMeasuredSponsorAnalytics(ctx context.Context, f SponsorA
 		filter += ` AND sponsor_id=?`
 		args = append(args, f.SponsorID)
 	}
-	const stats = `, COALESCE(SUM(impression),0), COUNT(CASE WHEN impression AND method='html_display' THEN 1 END),
-		COALESCE(SUM(viewable),0),
-		COUNT(DISTINCT CASE WHEN impression THEN NULLIF(audience_key,'') END),
-		COUNT(CASE WHEN impression AND audience_key='' THEN 1 END),
-		SUM(CASE WHEN impression AND ended THEN visible_ms END),
-		COUNT(CASE WHEN impression AND ended THEN 1 END),
-		COUNT(CASE WHEN impression AND ended AND visible_ms>0 THEN 1 END),
-		COALESCE(SUM(clicks),0), COUNT(CASE WHEN clickable THEN 1 END),
-		COUNT(DISTINCT CASE WHEN clicks>0 THEN NULLIF(audience_key,'') END),
-		COUNT(CASE WHEN clicks>0 AND audience_key='' THEN 1 END),
-		COALESCE(SUM(full_view),0), COUNT(CASE WHEN full_duration>0 AND impression AND (ended OR full_view) THEN 1 END)`
 	groups := []struct {
 		columns, suffix string
 		target          *[]SponsorAnalyticsRow
@@ -297,7 +288,7 @@ func (db *appdbimpl) GetMeasuredSponsorAnalytics(ctx context.Context, f SponsorA
 		{`0,'','','','','',date(start_ms/1000,'unixepoch')`, ` GROUP BY date(start_ms/1000,'unixepoch') ORDER BY 7`, &report.Trend},
 	}
 	for _, group := range groups {
-		rows, err := tx.QueryContext(ctx, `SELECT `+group.columns+stats+filter+group.suffix, args...)
+		rows, err := tx.QueryContext(ctx, `SELECT `+group.columns+measuredSponsorStatsSQL+filter+group.suffix, args...)
 		if err != nil {
 			return report, err
 		}
@@ -322,14 +313,81 @@ func (db *appdbimpl) GetMeasuredSponsorAnalytics(ctx context.Context, f SponsorA
 	return report, tx.Commit()
 }
 
-func scanSponsorAnalyticsRow(rows *sql.Rows) (SponsorAnalyticsRow, error) {
+const measuredSponsorStatsSQL = `, COALESCE(SUM(impression),0), COUNT(CASE WHEN impression AND method='html_display' THEN 1 END),
+		COALESCE(SUM(viewable),0),
+		COUNT(DISTINCT CASE WHEN impression THEN NULLIF(audience_key,'') END),
+		COUNT(CASE WHEN impression AND audience_key='' THEN 1 END),
+		SUM(CASE WHEN impression AND ended THEN visible_ms END),
+		COUNT(CASE WHEN impression AND ended THEN 1 END),
+		COUNT(CASE WHEN impression AND ended AND visible_ms>0 THEN 1 END),
+		COALESCE(SUM(clicks),0), COUNT(CASE WHEN clickable THEN 1 END),
+		COUNT(DISTINCT CASE WHEN clicks>0 THEN NULLIF(audience_key,'') END),
+		COUNT(CASE WHEN clicks>0 AND audience_key='' THEN 1 END),
+		COALESCE(SUM(full_view),0), COUNT(CASE WHEN full_duration>0 AND impression AND (ended OR full_view) THEN 1 END)`
+
+// ReadMeasuredSponsorMatches groups the same measured data as the commercial
+// report for several already scoped events in a single read.
+func ReadMeasuredSponsorMatches(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+}, clubID int, eventIDs []int) (map[int]*SponsorAnalyticsReport, error) {
+	reports := make(map[int]*SponsorAnalyticsReport)
+	if len(eventIDs) == 0 {
+		return reports, nil
+	}
+	args := []interface{}{clubID}
+	for _, id := range eventIDs {
+		args = append(args, id)
+	}
+	in := strings.TrimSuffix(strings.Repeat("?,", len(eventIDs)), ",")
+	rows, err := q.QueryContext(ctx, `WITH scoped AS (
+		SELECT match_id, sponsor_id, sponsor_name, placement_id, game_id, method, impression, viewable,
+			audience_key, ended, visible_ms, clicks, clickable, full_view, full_duration
+		FROM sponsor_measured_exposures WHERE club_id=? AND match_id IN (`+in+`)
+	), levels AS (SELECT 0 AS level UNION ALL SELECT 1 UNION ALL SELECT 2)
+	SELECT match_id, level, CASE WHEN level=1 THEN sponsor_id ELSE 0 END AS grouped_sponsor,
+		CASE WHEN level=1 THEN MAX(sponsor_name) ELSE '' END, '',
+		CASE WHEN level=2 THEN placement_id ELSE '' END AS grouped_placement,
+		CASE WHEN level=2 THEN game_id ELSE '' END AS grouped_game,
+		CASE WHEN level=2 THEN method ELSE '' END AS grouped_method, ''
+		`+measuredSponsorStatsSQL+`
+	FROM scoped CROSS JOIN levels
+	GROUP BY match_id, level, grouped_sponsor, grouped_placement, grouped_game, grouped_method
+	ORDER BY match_id, level, grouped_sponsor, grouped_placement, grouped_game, grouped_method`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, level int
+		row, err := scanSponsorAnalyticsRow(rows, &id, &level)
+		if err != nil {
+			return nil, err
+		}
+		report := reports[id]
+		if report == nil {
+			report = &SponsorAnalyticsReport{}
+			reports[id] = report
+		}
+		switch level {
+		case 0:
+			report.Total = row.SponsorAnalyticsMetrics
+		case 1:
+			report.Sponsors = append(report.Sponsors, row)
+		case 2:
+			report.Placements = append(report.Placements, row)
+		}
+	}
+	return reports, rows.Err()
+}
+
+func scanSponsorAnalyticsRow(rows *sql.Rows, prefix ...interface{}) (SponsorAnalyticsRow, error) {
 	var row SponsorAnalyticsRow
 	m := &row.SponsorAnalyticsMetrics
 	var viewable, reach, missingReach, clicks, clickable, uniqueClicks, missingClicks, full, fullDenominator, visibleSamples int
 	var duration sql.NullInt64
-	err := rows.Scan(&row.SponsorID, &row.SponsorName, &row.Creative, &row.Placement, &row.Game, &row.Method, &row.Day,
+	err := rows.Scan(append(prefix, &row.SponsorID, &row.SponsorName, &row.Creative, &row.Placement, &row.Game, &row.Method, &row.Day,
 		&m.Impressions, &m.HTMLImpressions, &viewable, &reach, &missingReach, &duration, &m.DurationSamples, &visibleSamples,
-		&clicks, &clickable, &uniqueClicks, &missingClicks, &full, &fullDenominator)
+		&clicks, &clickable, &uniqueClicks, &missingClicks, &full, &fullDenominator)...)
 	if err != nil {
 		return row, err
 	}
@@ -347,6 +405,7 @@ func scanSponsorAnalyticsRow(rows *sql.Rows) (SponsorAnalyticsRow, error) {
 	if duration.Valid {
 		m.TotalDuration = &duration.Int64
 		if visibleSamples > 0 {
+			m.PositiveDurationSamples = visibleSamples
 			average := float64(duration.Int64) / float64(visibleSamples)
 			m.AverageDuration = &average
 		}

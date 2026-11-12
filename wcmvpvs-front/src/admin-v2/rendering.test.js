@@ -30,11 +30,12 @@ const createController = new Function(...args, 'localStorage', 'window', code)(.
   { location: { origin: 'https://example.test', pathname: '/club/admin/new' }, addEventListener() {}, removeEventListener() {} },
 );
 
-let server, Entities, Insights;
+let server, Entities, Insights, MatchdayMetricCard;
 before(async () => {
   server = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error', optimizeDeps: { noDiscovery: true } });
   Entities = (await server.ssrLoadModule('/src/admin-v2/views/EntitiesView.vue')).default;
   Insights = (await server.ssrLoadModule('/src/admin-v2/views/InsightsView.vue')).default;
+  MatchdayMetricCard = (await server.ssrLoadModule('/src/admin-v2/components/reports/MatchdayMetricCard.vue')).default;
 });
 after(async () => { await server?.close(); });
 
@@ -74,6 +75,33 @@ test('the archive renders a collapsed Sponsor Analytics section for each event',
   });
   assert.match(html, /Partita 42[\s\S]*?Sponsor Analytics<\/summary>[\s\S]*?Partita 43[\s\S]*?Sponsor Analytics<\/summary>/);
   assert.doesNotMatch(html, /Tutti gli sponsor/);
+});
+
+test('the archive offers KPI Matchday for every event without loading the dialog', async () => {
+  const html = await render('history', c => {
+    c.eventHistory = [42, 43].map(id => c.normalizeHistoryEntry({
+      id, title: `Partita ${id}`, start_datetime: '2026-10-04T18:00:00Z',
+    }));
+  });
+  assert.equal((html.match(/KPI Matchday/g) || []).length, 2);
+  assert.match(html, /Partita 42[\s\S]*?KPI Matchday[\s\S]*?<details class="v2-history-disclosure"/);
+  assert.doesNotMatch(html, /Matchday KPI Analytics/);
+});
+
+test('Matchday displays measured zero, missing data, and distinct shop conversions', async () => {
+  const event = { id: 42, title: 'Finale', start_datetime: '2026-10-04T18:00:00Z' };
+  const metrics = [
+    { code: 'qr_conversion', name: 'Conversione QR', status: 'available', source: 'mixed', value: 0, unit: 'percent' },
+    { code: 'penetration', name: 'Penetrazione', status: 'missing', value: null, unit: 'percent' },
+    { code: 'shop_conversions', name: 'Conversioni shop', status: 'available', source: 'db', value: null,
+      columns: [{ id: 'count', label: 'Numero', unit: 'count' }],
+      rows: [{ label: 'Acquisti confermati', values: { count: 2 } }, { label: 'Prenotazioni confermate', values: { count: 3 } }] },
+  ];
+  const app = Vue.createSSRApp({ render: () => Vue.h('div', metrics.map(metric => Vue.h(MatchdayMetricCard, { metric, event }))) });
+  const html = await renderToString(app);
+  assert.match(html, /Conversione QR[\s\S]*?Misto[\s\S]*?>0%<\/strong>/);
+  assert.match(html, /Penetrazione[\s\S]*?Dato mancante/);
+  assert.match(html, /Acquisti confermati<\/dt><dd\b[^>]*>2<\/dd>[\s\S]*?Prenotazioni confermate<\/dt><dd\b[^>]*>3<\/dd>/);
 });
 
 test('history renders populated server payloads, funnel steps, survey text, prizes and tracking metadata', async () => {
