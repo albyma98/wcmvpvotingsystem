@@ -424,7 +424,7 @@ func (s *Store) DeleteClubSite(ctx context.Context, siteID int64) error {
 		}
 	}
 	// Whole-site deletion is explicit. Remove votes before deleting the
-	// matches whose history is protected from ordinary calendar edits.
+	// matches whose history is protected by the match deletion trigger.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM club_mvp_votes WHERE match_id IN (SELECT id FROM club_matches WHERE site_id=?)`, siteID); err != nil {
 		return err
 	}
@@ -788,10 +788,31 @@ func (s *Store) SaveClubMatch(ctx context.Context, siteID int64, v ClubMatch) (i
 }
 
 func (s *Store) DeleteClubRecord(ctx context.Context, siteID int64, table string, id int64) error {
-	allowed := map[string]bool{"club_posts": true, "club_gallery": true, "club_matches": true}
-	if !allowed[table] {
+	switch table {
+	case "club_matches":
+		return s.deleteClubMatch(ctx, siteID, id)
+	case "club_posts", "club_gallery":
+		_, err := s.db.ExecContext(ctx, "DELETE FROM "+table+" WHERE site_id=? AND id=?", siteID, id)
+		return err
+	default:
 		return errors.New("invalid table")
 	}
-	_, e := s.db.ExecContext(ctx, "DELETE FROM "+table+" WHERE site_id=? AND id=?", siteID, id)
-	return e
+}
+
+func (s *Store) deleteClubMatch(ctx context.Context, siteID, id int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// The history trigger protects bulk deletion. An explicit match deletion
+	// removes votes first so the existing trigger can clean up the ballot.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM club_mvp_votes WHERE match_id IN (SELECT id FROM club_matches WHERE site_id=? AND id=?)`, siteID, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM club_matches WHERE site_id=? AND id=?`, siteID, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

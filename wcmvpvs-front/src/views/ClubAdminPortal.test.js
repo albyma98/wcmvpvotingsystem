@@ -375,6 +375,14 @@ test('Deletion waits for explicit confirmation and clears the editor for a delet
   assert.equal(state.pendingDelete.value, null)
 })
 
+test('Match deletion warns that the MVP Light history is deleted too', async t => {
+  const { state } = await fixture(t)
+  await state.askDelete('matches', { id: 19, opponent: 'Ospiti' })
+  let html = ''
+  render({}, chunk => { html += chunk }, null, {}, { slug: 'aurora' }, Vue.proxyRefs(state), {}, {})
+  assert.match(html, /L’eliminazione comprende anche le convocazioni, i voti e la classifica MVP Light, se presenti\./)
+})
+
 test('Unsaved edits survive canceled resets and trigger the browser leave guard', async t => {
   const { state } = await fixture(t, false, { confirm: false })
   state.postForm.title = 'Da conservare'

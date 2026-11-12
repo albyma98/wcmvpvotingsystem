@@ -246,7 +246,6 @@ func TestClubMVPLightLifecycle(t *testing.T) {
 	if data.TotalVotes != 2 || data.PlayersVoted != 2 || !data.Callups[0].Leader || !data.Callups[1].Leader || data.Callups[0].Percentage != 50 {
 		t.Fatalf("ranking: %+v", data)
 	}
-	expect(409, "DELETE", adminPath(a), "", admin)
 	expect(409, "DELETE", fmt.Sprintf("/v1/club-admin/aurora/teams/%d", teamID), "", admin)
 
 	// Editing or removing a roster entry keeps both votes and their snapshots.
@@ -273,6 +272,30 @@ func TestClubMVPLightLifecycle(t *testing.T) {
 		data.Callups[0].FirstName != roster[1].FirstName || data.Callups[0].Eligible || data.Callups[1].FirstName != roster[2].FirstName {
 		t.Fatalf("historical ranking: %+v", data)
 	}
+
+	expect(401, "DELETE", adminPath(a), "", nil)
+	expect(403, "DELETE", adminPath(a), "", otherAdmin)
+	expect(200, "DELETE", fmt.Sprintf("/v1/club-admin/rivale/matches/%d", a), "", otherAdmin)
+	if data := readAdmin(a); data.TotalVotes != 2 {
+		t.Fatalf("deletion from another club affected ranking: %+v", data)
+	}
+	expect(200, "DELETE", adminPath(a), "", admin)
+	expect(404, "GET", adminPath(a)+"/mvp", "", admin)
+	var calendar struct{ Matches []ClubMatch }
+	decode(expect(200, "GET", "/v1/club-admin/aurora/matches", "", admin), &calendar)
+	if len(calendar.Matches) != 1 || calendar.Matches[0].ID != b {
+		t.Fatalf("calendar after deletion: %+v", calendar.Matches)
+	}
+	for _, table := range []string{"club_mvp_votes", "club_mvp_callups", "club_mvp_matches"} {
+		var remaining int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE match_id=?`, a).Scan(&remaining); err != nil || remaining != 0 {
+			t.Fatalf("match deletion left %d rows in %s: %v", remaining, table, err)
+		}
+	}
+	if data := readAdmin(b); data.TotalVotes != 1 {
+		t.Fatalf("match deletion affected the other ballot: %+v", data)
+	}
+
 	if err := store.DeleteClubSite(ctx, siteID); err != nil {
 		t.Fatal(err)
 	}

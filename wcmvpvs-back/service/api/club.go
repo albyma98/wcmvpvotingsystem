@@ -567,9 +567,6 @@ func (rt *_router) clubAdminDeleteRecord(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	e = rt.store.DeleteClubRecord(r.Context(), siteID, table, id)
-	if clubMVPHasHistory(w, e) {
-		return
-	}
 	if e != nil {
 		http.Error(w, `{"error":"delete_failed"}`, 500)
 		return

@@ -13,7 +13,7 @@ Sul dominio ClubHub il QR punta a `/mvp`. Sul dominio della piattaforma il perco
 
 All'avvio del backend, `EnsureClubTables` applica la migrazione SQLite idempotente. La migrazione crea le tabelle per configurazioni, convocazioni e voti, genera la chiave persistente di firma dei cookie e installa i trigger per chiusura e conservazione dello storico. Il passaggio di una partita a conclusa chiude la votazione nella stessa scrittura del risultato. Non servono variabili d'ambiente aggiuntive. I domini personalizzati continuano a usare la configurazione ClubHub.
 
-Il primo voto blocca la convocazione. Il salvataggio del roster conserva gli ID dei giocatori esistenti. Se un convocato viene rimosso dal roster, scompare dalla scheda pubblica e i voti precedenti restano associati ai dati del giocatore al momento della convocazione. Il calendario protegge l'incontro e la sua divisione dall'eliminazione quando contengono voti.
+Il primo voto blocca la convocazione. Il salvataggio del roster conserva gli ID dei giocatori esistenti. Se un convocato viene rimosso dal roster, scompare dalla scheda pubblica e i voti precedenti restano associati ai dati del giocatore al momento della convocazione. Dal calendario si può eliminare una partita anche se ha ricevuto voti. La conferma elimina anche convocazioni, voti e classifica MVP Light della partita. Per eliminare una divisione dal CMS, occorre prima eliminare le sue partite con voti.
 
 Il backend consente un voto per partita e per cookie anonimo firmato. Usa un vincolo SQLite per gestire invii simultanei e limita la frequenza dei tentativi. La protezione è riferita al browser e al dominio. Browser diversi, navigazione privata o cancellazione dei cookie permettono di ottenere una nuova identità.
 

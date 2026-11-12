@@ -781,7 +781,12 @@ onUnmounted(() => { window.removeEventListener('beforeunload', beforeUnload); wi
         <template v-if="pendingDelete">
           <p class="eyebrow">CONFERMA ELIMINAZIONE</p><h2 id="delete-title">Eliminare questo elemento?</h2>
           <p class="delete-name">{{ pendingDelete.item.name || pendingDelete.item.title || pendingDelete.item.opponent || 'Fotografia selezionata' }}</p>
-          <p id="delete-description">{{pendingDelete.kind === 'teams' ? 'Verranno eliminati anche tutti gli atleti, gli incontri, le fotografie e i contenuti collegati alla squadra.' : 'L’elemento verrà rimosso dal CMS e dal sito pubblico.'}} Questa operazione non può essere annullata.</p>
+          <p id="delete-description">
+            <template v-if="pendingDelete.kind === 'matches'">La partita verrà rimossa dal calendario del CMS e dal sito pubblico. L’eliminazione comprende anche le convocazioni, i voti e la classifica MVP Light, se presenti.</template>
+            <template v-else-if="pendingDelete.kind === 'teams'">Verranno eliminati anche tutti gli atleti, gli incontri, le fotografie e i contenuti collegati alla squadra.</template>
+            <template v-else>L’elemento verrà rimosso dal CMS e dal sito pubblico.</template>
+            Questa operazione non può essere annullata.
+          </p>
           <div class="dialog-actions"><button type="button" autofocus :disabled="processing" @click="cancelDelete">Annulla</button><button type="button" class="danger-filled" :disabled="processing" @click="confirmDelete">{{busy ? 'Eliminazione…' : 'Elimina definitivamente'}}</button></div>
         </template>
       </dialog>
