@@ -50,6 +50,7 @@ export const REPORT_FACT_LABELS = {
   identified_visitors: 'Partecipanti con profilo riconciliato', guest_visitors: 'Partecipanti rimasti ospiti',
   total_sponsor_clicks: 'Clic sponsor riconciliati', sponsor_interactors: 'Utenti con interazioni sponsor',
   sponsor_engaged_exposed: 'Utenti esposti con interazioni sponsor', shop_redemptions: 'Riscatti di collezionabili confermati',
+  sponsor_engagement_reach: 'Utenti esposti nel campione con interazioni collegabili',
   feedback_collected: 'Risposte al feedback raccolte',
 };
 
@@ -57,11 +58,11 @@ export function reportSourceLabel(value, compact = false) {
   const labels = compact ? {
     new_tracking: 'Telemetria /new', operational: 'Dati operativi', mixed: 'Telemetria + operativi',
     estimated: 'Stima da azioni',
-    manual: 'Verificato / corretto', unavailable: 'N/D',
+    manual: 'Verificato / corretto', manual_verified: 'Fonte verificata', manual_unverified: 'Fonte NON verificata', unavailable: 'N/D',
   } : {
     new_tracking: 'Misurazione dedicata home /new', operational: 'Dati operativi dell’evento', mixed: 'Misurazione /new e dati operativi riconciliati',
     estimated: 'Stima da azioni',
-    manual: 'Inserimento manuale verificato', unavailable: 'Misura non disponibile',
+    manual: 'Inserimento manuale verificato', manual_verified: 'Sorgente manuale verificata', manual_unverified: 'Sorgente manuale NON verificata', unavailable: 'Misura non disponibile',
   };
   return labels[value] || labels.unavailable;
 }
@@ -167,11 +168,16 @@ export function validateReportReview(facts, overrides, notes = '', originalKpis 
     const value = numericReportValue(override.value);
     if (override.value !== null && override.value !== '' && (value === null || value < 0 || (kpi.unit === 'percent' && value > 100) || (kpi.unit === 'count' && !Number.isInteger(value)))) errors.push(`${kpi.label}: valore non valido.`);
   }
+  return [...errors, ...validateReportReviewText(notes, descriptions)];
+}
+
+export function validateReportReviewText(notes, descriptions) {
+  const errors = [];
   for (const schema of REPORT_KPIS) {
     const description = descriptions[schema.id];
     if (description !== undefined && (typeof description !== 'string' || Array.from(description).length > 120)) errors.push(`${schema.label}: la breve descrizione non può superare 120 caratteri.`);
   }
-  if (String(notes).length > 4000) errors.push('Le note del report non possono superare 4.000 caratteri.');
+  if (Array.from(String(notes)).length > 4000) errors.push('Le note del report non possono superare 4.000 caratteri.');
   return errors;
 }
 

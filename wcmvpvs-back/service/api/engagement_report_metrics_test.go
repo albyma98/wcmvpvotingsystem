@@ -162,7 +162,7 @@ func TestEngagementReportMetricsSponsorClicksRequireSameSponsorExposure(t *testi
 	reportTestKPI(t, facts, "sponsor_engagement", reportMetricFloat(100))
 	reportTestKPI(t, facts, "sponsor_ctr", reportMetricFloat(50))
 	reportTestKPI(t, facts, "sponsored_participation", reportMetricFloat(100))
-	if len(details.Sponsors) != 2 || details.Sponsors[0].Clickers != 0 || details.Sponsors[1].Clickers != 1 {
+	if len(details.Sponsors) != 2 || *details.Sponsors[0].Clickers != 0 || *details.Sponsors[1].Clickers != 1 {
 		t.Fatalf("sponsor detail: %+v", details.Sponsors)
 	}
 }

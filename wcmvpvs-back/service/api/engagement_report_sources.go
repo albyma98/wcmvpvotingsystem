@@ -31,15 +31,18 @@ type reportOperationalSummary struct {
 }
 
 type reportOperationalFeedback struct {
-	PerksResponses int `json:"perks_responses"`
-	PerksPositive  int `json:"perks_positive"`
+	PerksResponses      int
+	PerksPositive       int
+	ExperienceResponses int
+	ExperiencePositive  int
 }
 
 type reportOperationalData struct {
-	Signals  []reportSignal            `json:"-"`
-	Sources  []reportSourceRows        `json:"sources"`
-	Summary  reportOperationalSummary  `json:"summary"`
-	Feedback reportOperationalFeedback `json:"feedback"`
+	Signals           []reportSignal            `json:"-"`
+	Sources           []reportSourceRows        `json:"sources"`
+	Summary           reportOperationalSummary  `json:"summary"`
+	Feedback          reportOperationalFeedback `json:"feedback"`
+	SponsorClicksByID map[int]int
 }
 
 func reportOperationalDeviceKey(orgID int, deviceID string) string {
@@ -68,7 +71,7 @@ func reportOperationalGame(key string) string {
 }
 
 func (rt *_router) loadReportOperationalData(eventID, orgID int) (reportOperationalData, error) {
-	out := reportOperationalData{Signals: []reportSignal{}, Sources: []reportSourceRows{}}
+	out := reportOperationalData{Signals: []reportSignal{}, Sources: []reportSourceRows{}, SponsorClicksByID: map[int]int{}}
 	conn := rt.db.SQLConn()
 	verified := map[int]bool{}
 	// Validate stored profile IDs against this tenant. Never export profile PII.
@@ -283,9 +286,9 @@ func (rt *_router) loadReportOperationalData(eventID, orgID int) (reportOperatio
 	}); err != nil {
 		return out, err
 	}
-	if err = read("event_feedback", `SELECT f.perks_interest FROM event_feedback f JOIN events e ON e.id=f.event_id WHERE f.event_id=? AND e.organization_id=?`, func(rows *sql.Rows) error {
-		var perks string
-		if err := rows.Scan(&perks); err != nil {
+	if err = read("event_feedback", `SELECT f.perks_interest, COALESCE(f.report_experience,'') FROM event_feedback f JOIN events e ON e.id=f.event_id WHERE f.event_id=? AND e.organization_id=?`, func(rows *sql.Rows) error {
+		var perks, experience string
+		if err := rows.Scan(&perks, &experience); err != nil {
 			return err
 		}
 		out.Summary.FeedbackResponses++
@@ -296,8 +299,13 @@ func (rt *_router) loadReportOperationalData(eventID, orgID int) (reportOperatio
 		case "maybe", "little", "no":
 			out.Feedback.PerksResponses++
 		}
-		// Feedback has no participant ID and its experience field describes
-		// voting ease, not the new overall-experience satisfaction question.
+		switch experience {
+		case "awesome", "good":
+			out.Feedback.ExperiencePositive++
+			out.Feedback.ExperienceResponses++
+		case "ok", "bad":
+			out.Feedback.ExperienceResponses++
+		}
 		return nil
 	}); err != nil {
 		return out, err
@@ -309,6 +317,7 @@ func (rt *_router) loadReportOperationalData(eventID, orgID int) (reportOperatio
 			return err
 		}
 		out.Summary.SponsorClicks++
+		out.SponsorClicksByID[sponsor]++
 		if strings.TrimSpace(device) == "" {
 			out.Summary.SponsorClicksWithoutIdentity++
 			return nil

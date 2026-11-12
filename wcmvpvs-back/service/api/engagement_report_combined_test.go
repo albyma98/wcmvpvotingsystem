@@ -114,3 +114,29 @@ func TestEngagementReportPrepareAndApprovalIncludeOperationalDataWithoutSignals(
 		t.Fatal("approved snapshot lost operational details")
 	}
 }
+
+func TestEngagementReportsReadOverallFeedbackFromSavedAnswers(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	if _, err := f.conn.Exec(`INSERT INTO event_feedback(event_id,experience,team_spirit,perks_interest,mini_games_interest,report_experience)
+		VALUES (?,'very_easy','high','yes','maybe','awesome'),
+		       (?,'very_easy','high','no','maybe','bad'),
+		       (?,'very_easy','high','yes','maybe',NULL)`, f.event, f.event, f.event); err != nil {
+		t.Fatal(err)
+	}
+	copy := map[string]interface{}{"events": []interface{}{
+		engagementReportSignalPayload("feedback-copy", "feedback_completed", map[string]interface{}{"experience": "awesome", "perks_interest": "yes"}),
+	}}
+	engagementReportRequireStatus(t, engagementReportRequest(t, f.router.recordReportSignals, http.MethodPost, f.event, copy, f.ctx, map[string]string{"X-Device-ID": "feedback-browser"}), http.StatusNoContent)
+	legacy := engagementReportDecodeSnapshot(t, engagementReportRequest(t, f.router.prepareEngagementReport, http.MethodGet, f.event, nil, f.ctx, nil))
+	for _, snapshot := range []engagementReportSnapshot{legacy, recipientDraft(t, f, "analytics", 0)} {
+		reportTestFact(t, snapshot.Facts, "experience_responses", 2)
+		reportTestFact(t, snapshot.Facts, "feedback_collected", 3)
+		k := recipientTestKPI(t, snapshot, "satisfaction")
+		if k.Value == nil || *k.Value != 50 || k.Source != "operational" {
+			t.Fatalf("wrong satisfaction KPI: %+v", k)
+		}
+		if k := recipientTestKPI(t, snapshot, "feedback_response"); k.Value != nil {
+			t.Fatalf("feedback response rate has no known audience: %+v", k)
+		}
+	}
+}

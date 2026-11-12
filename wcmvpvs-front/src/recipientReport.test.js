@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { recipientKpis, comparisonLabel, manualReportFields, manualSourceErrors, recipientSourceLabel, analysisMetricReferences } from './recipientReport.js';
+import { recipientKpis, comparisonLabel, reportAttendanceField, manualSourceErrors, recipientSourceLabel, analysisMetricReferences } from './recipientReport.js';
 import { recipientReportFixture } from '../test/recipientReportFixture.js';
 import { createEngagementReportPdf } from './engagementReportPdf.js';
 
@@ -27,23 +27,13 @@ test('attendance requires integer source, confirmation and preserves verificatio
   assert.equal(analysisMetricReferences({ metric_ids: ['visitors', 'unknown'] }, r.kpis).split(' · ').length, 1);
 });
 
-test('every missing KPI supports its unit and numeric bounds, including zero denominators', () => {
-  const r = recipientReportFixture('analytics');
-  r.kpis.forEach(k => { k.value = null; k.availability = { reason: 'zero_denominator', manual_allowed: true }; });
-  const fields = manualReportFields(r, r.kpis);
-  for (const k of r.kpis) {
-    const field = fields.find(f => f.key === `kpi:${k.id}`);
-    assert.ok(field, k.id);
-    const form = { value: k.unit === 'count' ? 5 : 12.5, source_description: 'Registro verificabile', confirmed: true };
-    assert.deepEqual(manualSourceErrors(form, field), []);
-    if (k.unit === 'count') assert.ok(manualSourceErrors({ ...form, value: 1.5 }, field).length);
-    if (k.unit === 'percent') assert.ok(manualSourceErrors({ ...form, value: 100.1 }, field).length);
-  }
-  const report = recipientReportFixture('sponsor'); report.sponsor_id = 7;
+test('official attendance is the only report input offered for missing data', () => {
+  const report = recipientReportFixture('analytics');
   report.kpis.forEach(k => { k.value = null; });
-  const scoped = manualReportFields(report, recipientKpis(report, 'sponsor'));
-  assert.equal(scoped.find(f => f.key === 'kpi:sponsor_reach').sponsor_id, 7);
-  assert.equal(scoped.find(f => f.key === 'kpi:visitors').sponsor_id, 0);
+  const adoption = report.kpis.find(k => k.id === 'venue_adoption');
+  adoption.availability = { reason: 'manual_source_missing', manual_allowed: true };
+  assert.equal(reportAttendanceField(report.kpis).unit, 'people');
+  assert.equal(reportAttendanceField(recipientKpis(report, 'sponsor')), null);
 });
 
 test('PDF identifies direct manual rates and omits nonexistent calculated fractions', () => {

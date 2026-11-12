@@ -182,8 +182,10 @@ func reportSponsorSignals(signals []reportSignal, sponsorID int) []reportSignal 
 	return out
 }
 
+const recipientReportSchemaVersion = 3
+
 func (rt *_router) buildRecipientEvent(eventID, orgID, sponsorID, previousID int) (engagementReportSnapshot, []reportSignal, error) {
-	s := engagementReportSnapshot{SchemaVersion: 2, CalculatedAt: time.Now().UTC().Format(time.RFC3339Nano), SponsorID: sponsorID, Profiles: reportRecipientProfiles()}
+	s := engagementReportSnapshot{SchemaVersion: recipientReportSchemaVersion, CalculatedAt: time.Now().UTC().Format(time.RFC3339Nano), SponsorID: sponsorID, Profiles: reportRecipientProfiles()}
 	var err error
 	s.Event, err = rt.recipientReportEvent(eventID, orgID)
 	if err != nil {
@@ -214,41 +216,58 @@ func (rt *_router) buildRecipientEvent(eventID, orgID, sponsorID, previousID int
 		}
 	}
 	s.Facts, s.Details, s.MeasurementStartedAt = calculateCombinedReportMetrics(signals, previous, op, prevOp)
+	sponsorSignals, sponsorOp := signals, op
 	if sponsorID > 0 {
-		// Reuse the same calculator with only attributed evidence. Never divide
-		// a partner's counts by an event-wide sponsor audience.
-		filteredOp := reportOperationalData{Signals: reportSponsorSignals(op.Signals, sponsorID)}
-		filtered, details, _ := calculateCombinedReportMetrics(reportSponsorSignals(signals, sponsorID), nil, filteredOp, reportOperationalData{})
-		for _, key := range strings.Fields("sponsor_reach sponsor_impressions sponsor_clickers sponsored_players sponsored_exposed_visitors") {
-			s.Facts[key] = filtered[key]
+		sponsorSignals = reportSponsorSignals(signals, sponsorID)
+		sponsorOp = reportOperationalData{Signals: reportSponsorSignals(op.Signals, sponsorID)}
+		sponsorOp.Summary.SponsorClicks = op.SponsorClicksByID[sponsorID]
+		sponsorOp.Summary.SponsorClicksWithoutIdentity = sponsorOp.Summary.SponsorClicks
+		for _, signal := range sponsorOp.Signals {
+			if signal.Name == "sponsor_click" {
+				sponsorOp.Summary.SponsorClicksWithoutIdentity--
+			}
+		}
+		filtered, details, _ := calculateCombinedReportMetrics(sponsorSignals, nil, sponsorOp, reportOperationalData{})
+		for _, k := range buildReportKPIs(nil) {
+			if k.Group != "Sponsor" {
+				continue
+			}
+			for _, key := range []string{k.FactKey, k.NumeratorKey, k.DenominatorKey} {
+				if key != "" {
+					s.Facts[key] = filtered[key]
+				}
+			}
 		}
 		s.Details.Sponsors = details.Sponsors
-		s.Details.CoverageNotes = append(s.Details.CoverageNotes, "Le metriche sponsor sono attribuite solo al partner selezionato. I partecipanti digitali rappresentano il contesto complessivo dell'evento. Assenza di dati disaggregati: N/D, senza attribuzione di totali aggregati.")
+		s.Details.Operational.SponsorClicks = sponsorOp.Summary.SponsorClicks
+		s.Details.Operational.SponsorClicksWithoutIdentity = sponsorOp.Summary.SponsorClicksWithoutIdentity
+		s.Details.CoverageNotes = append(s.Details.CoverageNotes, "Le metriche sponsor si riferiscono al partner selezionato. I partecipanti digitali rappresentano il contesto complessivo dell'evento.")
 	}
 	// A count of zero needs evidence that exposure measurement existed. A
 	// click-only legacy record cannot establish that nobody saw the partner.
-	exposureSignals := signals
-	if sponsorID > 0 {
-		exposureSignals = reportSponsorSignals(signals, sponsorID)
-	}
 	hasExposure, hasSponsoredExposure := false, false
-	for _, signal := range exposureSignals {
+	for _, signal := range sponsorSignals {
 		hasExposure = hasExposure || signal.Name == "sponsor_view" || signal.Name == "sponsored_game_view"
 		hasSponsoredExposure = hasSponsoredExposure || signal.Name == "sponsored_game_view"
 	}
 	if !hasExposure {
-		for _, key := range strings.Fields("sponsor_reach sponsor_impressions sponsor_clickers") {
+		for _, key := range []string{"sponsor_reach", "sponsor_impressions", "sponsor_clickers", "sponsor_engaged_exposed", "sponsor_engagement_reach"} {
 			s.Facts[key] = nil
 		}
 	}
 	if !hasSponsoredExposure {
 		s.Facts["sponsored_players"], s.Facts["sponsored_exposed_visitors"] = nil, nil
 	}
-	s.ManualSources, err = rt.loadReportManualSources(eventID)
+	measured, measuredSponsors, err := rt.loadReportMeasuredSponsors(eventID, orgID, sponsorID)
 	if err != nil {
 		return s, nil, err
 	}
-	s.ManualSources = filterReportManualSources(s.ManualSources, sponsorID)
+	measuredNotes := measured.apply(s.Facts, &s.Details, measuredSponsors)
+	s.ManualSources, err = rt.loadReportManualSources(eventID, true)
+	if err != nil {
+		return s, nil, err
+	}
+	s.Details.Sources = append(s.Details.Sources, reportSourceRows{Table: "engagement_report_manual_sources", Rows: len(s.ManualSources)})
 	automatic := s.Facts["attendees"]
 	s.OriginalFacts = map[string]*float64{}
 	for key, value := range s.Facts {
@@ -256,8 +275,27 @@ func (rt *_router) buildRecipientEvent(eventID, orgID, sponsorID, previousID int
 	}
 	s.Conflicts = resolveReportManualSources(s.Facts, s.ManualSources)
 	s.KPIs = buildCombinedReportKPIs(s.Facts, s.Details, signals, previous, op, prevOp)
+	if sponsorID > 0 {
+		scopedKPIs := buildCombinedReportKPIs(s.Facts, s.Details, sponsorSignals, nil, sponsorOp, reportOperationalData{})
+		for i := range scopedKPIs {
+			if scopedKPIs[i].Group == "Sponsor" {
+				s.KPIs[i] = scopedKPIs[i]
+			}
+		}
+	}
 	for i := range s.KPIs {
 		k := &s.KPIs[i]
+		if note, measured := measuredNotes[k.ID]; measured {
+			// Comparison must match the measurement definition as well as the units.
+			k.Description = note
+			k.Note = note
+			if k.Value != nil {
+				k.Source = "operational"
+			}
+			if k.ID == "sponsor_impressions" {
+				k.DisplayDescription = "Esposizioni HTML qualificate registrate per la partita."
+			}
+		}
 		if k.ID == "venue_adoption" && automatic == nil {
 			for _, m := range s.ManualSources {
 				if m.FieldKey == "attendees" {
@@ -273,25 +311,6 @@ func (rt *_router) buildRecipientEvent(eventID, orgID, sponsorID, previousID int
 		if k.Availability.Reason == "incompatible_population" {
 			k.Value = nil
 			k.Source = "unavailable"
-		}
-		for _, m := range s.ManualSources {
-			if m.FieldKey != "kpi:"+k.ID {
-				continue
-			}
-			if k.Value != nil {
-				if *k.Value != m.Value {
-					s.Conflicts = append(s.Conflicts, fmt.Sprintf("%s: il valore da sorgenti calcolabili (%g) differisce dal completamento manuale (%g). Viene mantenuto il valore calcolabile.", k.Label, *k.Value, m.Value))
-				}
-				continue
-			}
-			missingReason := k.Availability.Message
-			k.Value = reportMetricFloat(m.Value)
-			k.Numerator, k.Denominator = nil, nil
-			k.Source = "manual_" + m.VerificationStatus
-			k.Corrected = true
-			k.Provenance = []reportManualSource{m}
-			k.Note = "Valore KPI completato manualmente, non ricostruito dal tracciamento. Motivo originario: " + missingReason
-			k.Availability = &reportAvailability{Reason: "available", Message: "Valore KPI manuale; consultare fonte e stato di verifica.", ManualAllowed: true, Fields: []reportSourceField{manualKPIField(*k)}, Dependencies: []string{}}
 		}
 	}
 	return s, signals, nil
@@ -323,16 +342,14 @@ func recipientKPIAvailability(k reportKPI, facts map[string]*float64, signals []
 	}
 	if k.ID == "venue_adoption" && k.Numerator != nil && k.Denominator != nil && *k.Denominator > 0 && *k.Numerator > *k.Denominator {
 		a.ManualAllowed = true
-		a.Fields = []reportSourceField{manualKPIField(k)}
 		a.Reason, a.Message = "incompatible_population", "Il pubblico con provenienza arena supera le presenze: popolazioni incompatibili, verificare la fonte."
 		return a
 	}
 	if k.Value != nil {
 		return a
 	}
-	a.ManualAllowed = true
-	a.Fields = []reportSourceField{manualKPIField(k)}
-	a.Reason, a.Message = "tracking_missing", "Dati automatici insufficienti. Puoi completare il valore KPI manualmente indicando la fonte."
+	a.Reason, a.Message = "tracking_missing", "Dati della partita insufficienti per questo indicatore."
+	a.ManualAllowed = k.ID == "venue_adoption"
 	if k.ID == "event_retention" && previousID == 0 {
 		a.Reason, a.Message = "not_applicable", "Nessuna partita precedente conclusa della stessa società."
 		return a
@@ -524,7 +541,7 @@ func (rt *_router) loadRecipientCalculation(id string, eventID, adminID int) (en
 	if err == nil {
 		err = json.Unmarshal([]byte(raw), &s)
 	}
-	if err == nil && s.SchemaVersion != 2 {
+	if err == nil && s.SchemaVersion != recipientReportSchemaVersion {
 		err = fmt.Errorf("calcolo destinatario richiesto")
 	}
 	return s, err

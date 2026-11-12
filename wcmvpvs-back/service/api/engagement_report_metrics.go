@@ -41,9 +41,9 @@ type reportGame struct {
 type reportSponsor struct {
 	ID               int      `json:"id"`
 	Name             string   `json:"name"`
-	Reach            int      `json:"reach"`
+	Reach            *int     `json:"reach"`
 	Impressions      int      `json:"impressions"`
-	Clickers         int      `json:"clickers"`
+	Clickers         *int     `json:"clickers"`
 	CTR              *float64 `json:"ctr"`
 	ExposureMeasured bool     `json:"exposure_measured"`
 }
@@ -67,7 +67,7 @@ var engagementReportFactKeys = []string{
 	"feedback_respondents", "feedback_eligible_visitors", "experience_positive",
 	"experience_responses", "perks_positive", "perks_responses",
 	"estimated_seconds", "estimated_timed_visitors", "identified_visitors", "guest_visitors",
-	"total_sponsor_clicks", "sponsor_interactors", "sponsor_engaged_exposed", "shop_redemptions", "feedback_collected",
+	"total_sponsor_clicks", "sponsor_interactors", "sponsor_engaged_exposed", "sponsor_engagement_reach", "shop_redemptions", "feedback_collected",
 }
 
 type reportVisitorSet map[string]bool
@@ -567,10 +567,12 @@ func calculateReportMetrics(signals []reportSignal, previous []reportSignal) (ma
 			allSponsoredPlayers[visitor] = true
 		}
 		impressions += len(sponsor.impressions)
-		details.Sponsors = append(details.Sponsors, reportSponsor{ID: id, Name: sponsor.name, Reach: len(sponsor.reach), Impressions: len(sponsor.impressions), Clickers: len(clickers), CTR: reportMetricRatio(reportMetricFloat(float64(len(clickers))), reportMetricFloat(float64(len(sponsor.reach))), true), ExposureMeasured: len(sponsor.reach) > 0})
+		reach, clicked := len(sponsor.reach), len(clickers)
+		details.Sponsors = append(details.Sponsors, reportSponsor{ID: id, Name: sponsor.name, Reach: &reach, Impressions: len(sponsor.impressions), Clickers: &clicked, CTR: reportMetricRatio(reportMetricFloat(float64(clicked)), reportMetricFloat(float64(reach)), true), ExposureMeasured: reach > 0})
 	}
 	sort.Slice(details.Sponsors, func(i, j int) bool { return details.Sponsors[i].ID < details.Sponsors[j].ID })
 	count("sponsor_reach", allReach)
+	facts["sponsor_engagement_reach"] = facts["sponsor_reach"]
 	count("sponsor_clickers", allClickers)
 	count("sponsored_exposed_visitors", allSponsored)
 	count("sponsored_players", allSponsoredPlayers)
@@ -612,7 +614,7 @@ func buildReportKPIs(facts map[string]*float64) []reportKPI {
 		{ID: "guest_visitors", Label: "Partecipanti ospiti", Group: "Pubblico", Unit: "count", FactKey: "guest_visitors", Description: "Identità osservabili rimaste prive di un profilo verificato dopo la riconciliazione locale all'evento. Sono dispositivi o sessioni, non persone fisiche certificate."},
 		{ID: "sponsor_clicks", Label: "Clic complessivi verso gli sponsor", Group: "Sponsor", Unit: "count", FactKey: "total_sponsor_clicks", Description: "Clic salvati nell'evento, inclusi quelli senza identità. Il totale operativo è prioritario e non viene sommato alle sue copie telemetriche; in sua assenza si usa il minimo osservato nei segnali."},
 		{ID: "sponsor_interactors", Label: "Partecipanti attivi con gli sponsor", Group: "Sponsor", Unit: "count", FactKey: "sponsor_interactors", Description: "Identità uniche con almeno un clic sponsor o un avvio/completamento di gioco attribuito a uno sponsor. Le prove prive di identità non generano utenti unici e ogni identità conta una volta."},
-		{ID: "sponsor_engagement", Label: "Coinvolgimento del pubblico esposto agli sponsor", Group: "Sponsor", Unit: "percent", NumeratorKey: "sponsor_engaged_exposed", DenominatorKey: "sponsor_reach", Description: "Identità che interagiscono con un clic o gioco dello stesso sponsor per cui esiste un'esposizione qualificata, rispetto alla copertura unica sponsor. Senza esposizioni misurate il tasso resta N/D."},
+		{ID: "sponsor_engagement", Label: "Coinvolgimento del pubblico esposto agli sponsor", Group: "Sponsor", Unit: "percent", NumeratorKey: "sponsor_engaged_exposed", DenominatorKey: "sponsor_engagement_reach", Description: "Identità che interagiscono con un clic o gioco dello stesso sponsor visto, rispetto alla copertura unica del campione con esposizioni collegabili alle interazioni."},
 		{ID: "shop_redemptions", Label: "Riscatti di premi virtuali", Group: "Fidelizzazione", Unit: "count", FactKey: "shop_redemptions", Description: "Acquisti dello shop addebitati in monete virtuali e attribuiti all'evento. Le copie dei segnali non vengono sommate al registro; in assenza di addebiti si usa il minimo osservato per identità e oggetto. Non misura ricavi in euro."},
 		{ID: "audience_registration_conversion", Label: "Nuovi profili sul pubblico osservabile", Group: "Acquisizione", Unit: "percent", NumeratorKey: "new_profiles", DenominatorKey: "visitors", Description: "Prime registrazioni verificate attribuite all'evento rispetto alle identità digitali osservabili. Il pubblico può essere un minimo verificabile quando mancano visite passive storiche; il tasso non è una conversione su tutti gli spettatori."},
 		{ID: "feedback_collected", Label: "Feedback raccolti", Group: "Feedback", Unit: "count", FactKey: "feedback_collected", Description: "Risposte salvate nell'evento, anche anonime, senza sommare le copie telemetriche. In assenza di risposte operative si usa il minimo di risposte identificabili nei segnali; non equivale a un conteggio di persone uniche."},

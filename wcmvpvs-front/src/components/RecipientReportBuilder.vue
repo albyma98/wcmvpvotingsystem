@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { apiClient } from '../api';
 import { reportDownloadFilename } from '../engagementReport.js';
-import { manualReportFields, manualSourceErrors, recipientKpis } from '../recipientReport.js';
+import { reportAttendanceField, manualSourceErrors, recipientKpis } from '../recipientReport.js';
 import ReportKpiCard from './ReportKpiCard.vue';
 import ReportAnalysisView from './ReportAnalysisView.vue';
 
@@ -13,23 +13,20 @@ const loading = ref(false), working = ref(false), aiLoading = ref(false), source
 const reviewLoading = ref(false), reviewSaving = ref(false), reviewMessage = ref('');
 const sponsors = ref([]), sponsorID = ref(0), sponsorMode = ref('aggregate'), sourceOpen = ref(false), sourceErrors = ref([]), sourceMessage = ref(''), history = ref(null);
 const sourceForm = reactive({ value: '', source_description: '', note: '', verified: false, confirmed: false, revision: 0 });
-const sourceTarget = ref('attendees');
 const analyses = reactive(new Map());
 const versions = ref(null);
 let controller, aiController, reviewController;
 const profile = computed(() => snapshot.value?.profiles?.find(p => p.id === recipient.value));
 const kpis = computed(() => recipientKpis(snapshot.value, recipient.value));
 const missing = computed(() => kpis.value.filter(k => k.value == null));
-const recoverable = computed(() => missing.value);
-const sourceOptions = computed(() => manualReportFields(snapshot.value, kpis.value));
-const selectedSource = computed(() => sourceOptions.value.find(f => f.key === sourceTarget.value));
-const hasSavedSources = computed(() => sourceOptions.value.some(f => snapshot.value?.manual_sources?.some(m => m.field_key === f.key && (m.sponsor_id || 0) === f.sponsor_id)));
+const attendance = computed(() => snapshot.value?.manual_sources?.find(m => m.field_key === 'attendees'));
+const selectedSource = computed(() => reportAttendanceField(kpis.value, attendance.value));
 const groups = computed(() => (profile.value?.groups || []).map(name => ({ name, kpis: kpis.value.filter(k => k.group === name) })).filter(g => g.kpis.length));
 const analysisKey = computed(() => `${snapshot.value?.data_hash}|${recipient.value}|${compare.value}`);
 const analysis = computed(() => analyses.get(analysisKey.value));
 const analysisApproved = computed(() => analysis.value?.review?.state === 'approved' && !analysis.value?.dirty);
 const busy = computed(() => loading.value || working.value || aiLoading.value || sourceSaving.value || reviewLoading.value || reviewSaving.value);
-const sourceValidation = computed(() => selectedSource.value ? manualSourceErrors(sourceForm, selectedSource.value) : ['Seleziona un KPI da completare.']);
+const sourceValidation = computed(() => selectedSource.value ? manualSourceErrors(sourceForm, selectedSource.value) : ['Le presenze ufficiali non sono modificabili per questo report.']);
 const endpoint = computed(() => `/admin/events/${props.eventId}/engagement-report`);
 
 function invalidatePreview() { approved.value = null; if (previewUrl.value) URL.revokeObjectURL(previewUrl.value); previewUrl.value = ''; }
@@ -63,23 +60,19 @@ async function loadSponsors() {
 function changeSponsor() { load(); }
 function historyFieldLabel(key) { return key === 'attendees' ? 'Presenze ufficiali' : snapshot.value?.kpis?.find(k => `kpi:${k.id}` === key)?.label || 'Indicatore'; }
 
-function populateSource() {
-  const source = snapshot.value?.manual_sources?.find(m => m.field_key === sourceTarget.value && (m.sponsor_id || 0) === (selectedSource.value?.sponsor_id || 0));
+function openSources() {
+  const source = attendance.value;
   Object.assign(sourceForm, { value: source?.value ?? '', source_description: source?.source_description || '', note: source?.note || '', verified: source?.verification_status === 'verified', confirmed: false, revision: source?.revision || 0 });
   sourceErrors.value = []; sourceOpen.value = true; history.value = null;
-}
-function openSources(kpi) {
-  sourceTarget.value = kpi?.id ? `kpi:${kpi.id}` : sourceOptions.value[0]?.key;
-  populateSource();
 }
 async function saveSources() {
   sourceErrors.value = sourceValidation.value; if (sourceErrors.value.length) return;
   sourceSaving.value = true; error.value = '';
   try {
-    await apiClient.put(`${endpoint.value}/sources`, { sources: [{ field_key: selectedSource.value.key, sponsor_id: selectedSource.value.sponsor_id, value: Number(sourceForm.value), unit: selectedSource.value.unit, source_type: selectedSource.value.key === 'attendees' ? 'official_attendance' : 'manual_kpi', source_description: sourceForm.source_description.trim(), note: sourceForm.note.trim(), verification_status: sourceForm.verified ? 'verified' : 'unverified', revision: sourceForm.revision }] }, props.authHeaders);
+    await apiClient.put(`${endpoint.value}/sources`, { sources: [{ field_key: 'attendees', value: Number(sourceForm.value), unit: selectedSource.value.unit, source_type: 'official_attendance', source_description: sourceForm.source_description.trim(), note: sourceForm.note.trim(), verification_status: sourceForm.verified ? 'verified' : 'unverified', revision: sourceForm.revision }] }, props.authHeaders);
     sourceOpen.value = false; await load();
-    sourceMessage.value = 'Completamento salvato per l’evento. KPI e confronti aggiornati; i dati rimangono disponibili tra destinatari. Genera nuovamente l’analisi per usare i valori aggiornati.';
-  } catch (cause) { fail(cause, 'Impossibile salvare il completamento.'); }
+    sourceMessage.value = 'Presenze ufficiali salvate. Il report è stato ricalcolato.';
+  } catch (cause) { fail(cause, 'Impossibile salvare le presenze ufficiali.'); }
   finally { sourceSaving.value = false; }
 }
 async function showHistory() {
@@ -188,22 +181,19 @@ onBeforeUnmount(() => { controller?.abort(); aiController?.abort(); reviewContro
       <p class="recipient-builder__caption">Sezioni PDF: {{ profile?.id === 'analytics' ? '20 indicatori, valori, denominatori e metodologia' : `${kpis.length} indicatori, confronto e sintesi` }}{{ appendix && profile?.allow_appendix ? ' + appendice dei 20 KPI' : '' }}. {{ profile?.id === 'analytics' ? 'Il corpo comprende già l’appendice.' : '' }}</p>
       <p v-if="compare" class="recipient-builder__caption">{{ snapshot.previous_event ? `Partita precedente: ${snapshot.previous_event.title} · ${snapshot.previous_event.start_datetime}` : 'Nessuna partita precedente conclusa disponibile.' }} La direzione della variazione non indica automaticamente un miglioramento.</p>
       <p v-for="conflict in snapshot.conflicts || []" :key="conflict" role="alert" class="recipient-builder__error">{{ conflict }}</p>
-      <div v-if="missing.length" class="recipient-builder__notice"><strong>{{ missing.length }} indicatori N/D completabili manualmente.</strong><p>Il completamento è facoltativo. Ogni valore inserito mantiene fonte, stato di verifica e storico delle modifiche.</p><button type="button" :disabled="busy" @click="openSources">Completa dati mancanti</button></div>
+      <p v-if="missing.length" class="recipient-builder__notice">{{ missing.length }} indicatori N/D per dati insufficienti.</p>
       <p v-if="sourceMessage" role="status">{{ sourceMessage }}</p>
-      <button v-if="hasSavedSources && !sourceOpen" type="button" :disabled="busy" @click="openSources">Gestisci completamenti manuali</button>
-      <section v-if="sourceOpen" class="recipient-builder__source" aria-label="Completa sorgenti mancanti">
-        <h3>Completa o modifica un valore manuale</h3>
-        <label>KPI o sorgente da completare<select v-model="sourceTarget" :disabled="busy" @change="populateSource"><option v-for="field in sourceOptions" :key="field.key" :value="field.key">{{ field.label }}</option></select></label>
-        <p v-if="sourceTarget === 'attendees'">Le presenze completano il denominatore dell’adozione; il numeratore rimane il pubblico con provenienza arena misurata. Per inserire direttamente la percentuale seleziona il KPI Adozione del pubblico presente.</p>
-        <p v-else>Il valore verrà identificato come KPI manuale: non ricostruisce il tracciamento mancante e non modifica gli altri indicatori. {{ selectedSource?.kpi?.description }}</p>
-        <p v-if="selectedSource?.sponsor_id">Valore attribuito esclusivamente a {{ snapshot.sponsor_name }}.</p>
-        <form @submit.prevent="saveSources"><div class="recipient-builder__source-fields"><label>Valore ({{ { people: 'persone', count: 'conteggio', percent: '%', seconds: 'secondi' }[selectedSource?.unit] }})<input v-model="sourceForm.value" type="number" :min="selectedSource?.min" :max="selectedSource?.max" :step="selectedSource?.type === 'integer' ? 1 : 'any'" required :disabled="busy" /></label><label>Fonte del dato<input v-model="sourceForm.source_description" type="text" minlength="3" maxlength="500" required placeholder="Es. distinta ufficiale / sistema biglietteria, riferimento" :disabled="busy" /></label><label>Nota facoltativa<textarea v-model="sourceForm.note" maxlength="1000" :disabled="busy"></textarea></label></div><label><input v-model="sourceForm.verified" type="checkbox" :disabled="busy" /> Ho verificato la fonte (altrimenti il report indica NON verificata)</label><label><input v-model="sourceForm.confirmed" type="checkbox" :disabled="busy" /> Confermo la partita, la definizione del KPI e il salvataggio del valore</label><ul v-if="sourceErrors.length || sourceForm.confirmed && sourceValidation.length" role="alert"><li v-for="message in sourceValidation" :key="message">{{ message }}</li></ul><div class="recipient-builder__actions"><button type="submit" :disabled="busy">Salva e aggiorna</button><button type="button" :disabled="busy" @click="sourceOpen = false">Salta completamento</button><button type="button" :disabled="busy" @click="showHistory">Storico modifiche</button></div></form>
+      <button v-if="selectedSource && !sourceOpen" type="button" :disabled="busy" @click="openSources">{{ attendance ? 'Modifica presenze ufficiali' : 'Registra presenze ufficiali' }}</button>
+      <section v-if="sourceOpen" class="recipient-builder__source" aria-label="Presenze ufficiali">
+        <h3>Presenze ufficiali</h3>
+        <p>Il numero di spettatori viene salvato per la partita e usato come denominatore del KPI di adozione.</p>
+        <form @submit.prevent="saveSources"><div class="recipient-builder__source-fields"><label>Spettatori presenti<input v-model="sourceForm.value" type="number" :min="selectedSource?.min" :max="selectedSource?.max" step="1" required :disabled="busy" /></label><label>Fonte del dato<input v-model="sourceForm.source_description" type="text" minlength="3" maxlength="500" required placeholder="Es. distinta ufficiale / sistema biglietteria, riferimento" :disabled="busy" /></label><label>Nota facoltativa<textarea v-model="sourceForm.note" maxlength="1000" :disabled="busy"></textarea></label></div><label><input v-model="sourceForm.verified" type="checkbox" :disabled="busy" /> Ho verificato la fonte (altrimenti il report indica NON verificata)</label><label><input v-model="sourceForm.confirmed" type="checkbox" :disabled="busy" /> Confermo il conteggio per questa partita</label><ul v-if="sourceErrors.length || sourceForm.confirmed && sourceValidation.length" role="alert"><li v-for="message in sourceValidation" :key="message">{{ message }}</li></ul><div class="recipient-builder__actions"><button type="submit" :disabled="busy">Salva e aggiorna</button><button type="button" :disabled="busy" @click="sourceOpen = false">Annulla</button><button type="button" :disabled="busy" @click="showHistory">Storico modifiche</button></div></form>
         <ol v-if="history"><li v-for="(change, i) in history" :key="i">{{ historyFieldLabel(change.field_key) }}{{ change.sponsor_id ? ` · Sponsor #${change.sponsor_id}` : '' }} · {{ change.changed_at }} · amministratore {{ change.changed_by }} · {{ change.previous?.value ?? 'N/D' }} → {{ change.current.value }} · {{ change.current.source_description }} · {{ change.current.verification_status }}</li></ol>
       </section>
-      <section v-for="group in groups" :key="group.name"><h3>{{ group.name }}</h3><div class="recipient-builder__grid"><ReportKpiCard v-for="kpi in group.kpis" :key="kpi.id" :kpi="kpi" :compare="compare" :busy="busy" :event-context="!!snapshot.sponsor_id && kpi.id === 'visitors'" @complete="openSources" /></div></section>
+      <section v-for="group in groups" :key="group.name"><h3>{{ group.name }}</h3><div class="recipient-builder__grid"><ReportKpiCard v-for="kpi in group.kpis" :key="kpi.id" :kpi="kpi" :compare="compare" :event-context="!!snapshot.sponsor_id && kpi.id === 'visitors'" /></div></section>
       <section class="recipient-builder__ai"><div class="recipient-builder__actions"><button type="button" :disabled="busy" @click="generateAnalysis(false)">{{ aiLoading ? 'Analisi in corso…' : 'Genera analisi' }}</button><button type="button" :disabled="busy" @click="generateAnalysis(true)">Rigenera analisi</button></div><p class="recipient-builder__caption">Genera e Rigenera sono gli unici pulsanti che possono chiamare OpenAI. La generazione prepara una bozza da rivedere e approvare; rigenerare sostituisce la bozza con un nuovo testo da approvare. Puoi anche modificare e approvare la sintesi locale senza usare l’AI.</p><p v-if="reviewLoading" role="status">Caricamento bozza e revisione…</p><p v-if="reviewMessage" role="status">{{ reviewMessage }}</p><ReportAnalysisView v-if="analysis" :analysis="analysis.analysis" :status="analysis.status" :kpis="kpis" :review="analysis.review" :dirty="analysis.dirty" :busy="busy" :warnings="analysis.warnings" @update:analysis="editAnalysis" @save="reviewAnalysis('draft')" @approve="reviewAnalysis('approve')" @discard="reviewAnalysis('discard')" /><p v-if="includeAI && !analysisApproved" class="recipient-builder__notice">Per includere l’analisi nel PDF, approva la bozza corrente. Puoi esportare senza analisi togliendo la spunta a «Includi analisi AI / sintesi».</p></section>
       <button type="button" :disabled="busy" @click="loadAnalysisReview">Ricarica bozza salvata</button>
-      <details><summary>Limiti e metodologia</summary><ul><li v-for="(note, i) in snapshot.details?.coverage_notes || []" :key="i">{{ note }}</li></ul><p>Precedenza: automatico, manuale verificato, manuale non verificato, N/D. I conflitti sono segnalati. Le revisioni approvate conservano i dati originali.</p></details>
+      <details><summary>Limiti e metodologia</summary><ul><li v-for="(note, i) in snapshot.details?.coverage_notes || []" :key="i">{{ note }}</li></ul><p>I KPI usano i dati salvati per la partita. Le presenze ufficiali riportano lo stato di verifica della fonte.</p></details>
       <label class="recipient-builder__notes">Note del report<textarea v-model="notes" maxlength="4000" rows="2" :disabled="busy"></textarea></label>
       <div class="recipient-builder__actions"><button type="button" :disabled="busy || includeAI && !analysisApproved" @click="renderReport(false)">Anteprima PDF</button><button type="button" class="recipient-builder__primary" :disabled="busy || includeAI && !analysisApproved" @click="renderReport(true)">{{ working ? 'Generazione…' : 'Esporta PDF personalizzato' }}</button><button type="button" :disabled="busy" @click="load">Aggiorna sorgenti e confronto</button></div>
       <p class="recipient-builder__caption">Anteprima ed esportazione salvano uno snapshot versionato. La versione approvata resta riproducibile anche se le sorgenti cambiano successivamente.</p>

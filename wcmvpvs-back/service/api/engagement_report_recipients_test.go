@@ -80,6 +80,59 @@ func TestRecipientProfilesUseOriginalCatalog(t *testing.T) {
 	}
 }
 
+func TestReportsUseMeasuredSponsorDataAndMatchClicksToTheSameSponsor(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	sponsor := func(name string, position int) int {
+		id, err := f.router.db.CreateSponsor(database.Sponsor{OrganizationID: f.org.ID, Name: name, Position: position, LogoData: "logo", IsActive: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	a, b := sponsor("Partner A", 1), sponsor("Partner B", 2)
+	insert := func(id string, event, org, sponsorID int, audience string, viewable, clicks int) {
+		t.Helper()
+		_, err := f.conn.Exec(`INSERT INTO sponsor_measured_exposures
+			(id,club_id,match_id,sponsor_id,sponsor_name,creative_id,placement_id,game_id,method,session_id,audience_key,
+			 start_ms,last_ms,max_percentage,impression,viewable,full_duration,clickable,clicks)
+			VALUES (?,?,?,?,'Partner','creative','post_vote','','html_display','session',?,1,1001,100,?,?,0,1,?)`,
+			id, org, event, sponsorID, audience, viewable, viewable, clicks)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("a1", f.event, f.org.ID, a, "one", 1, 2)
+	insert("a2", f.event, f.org.ID, a, "one", 1, 0)
+	insert("a3", f.event, f.org.ID, a, "two", 1, 0)
+	insert("b1", f.event, f.org.ID, b, "one", 1, 1)
+	insert("b2", f.event, f.org.ID, b, "two", 0, 1)
+	insert("foreign", f.event, f.other.ID, a, "foreign", 1, 1)
+	legacy := engagementReportDecodeSnapshot(t, engagementReportRequest(t, f.router.prepareEngagementReport, http.MethodGet, f.event, nil, f.ctx, nil))
+	for _, snapshot := range []engagementReportSnapshot{legacy, recipientDraft(t, f, "sponsor", 0)} {
+		reportTestFact(t, snapshot.Facts, "sponsor_impressions", 4)
+		reportTestFact(t, snapshot.Facts, "sponsor_reach", 2)
+		reportTestFact(t, snapshot.Facts, "sponsor_clickers", 1)
+		reportTestFact(t, snapshot.Facts, "total_sponsor_clicks", 4)
+		k := recipientTestKPI(t, snapshot, "sponsor_ctr")
+		if k.Value == nil || *k.Value != 50 || k.Source != "operational" {
+			t.Fatalf("wrong CTR for exposed audience: %+v", k)
+		}
+		if len(snapshot.Details.Sponsors) != 2 || snapshot.Details.Sponsors[0].Impressions != 3 {
+			t.Fatalf("missing measured partner breakdown: %+v", snapshot.Details.Sponsors)
+		}
+	}
+	dedicated := recipientDraft(t, f, "sponsor", b)
+	reportTestFact(t, dedicated.Facts, "sponsor_reach", 1)
+	reportTestFact(t, dedicated.Facts, "sponsor_clickers", 1)
+	reportTestFact(t, dedicated.Facts, "total_sponsor_clicks", 2)
+	insert("anonymous", f.event, f.org.ID, b, "", 1, 0)
+	dedicated = recipientDraft(t, f, "sponsor", b)
+	reportTestFact(t, dedicated.Facts, "sponsor_impressions", 2)
+	if dedicated.Facts["sponsor_reach"] != nil || recipientTestKPI(t, dedicated, "sponsor_ctr").Value != nil {
+		t.Fatal("anonymous exposure cannot establish reach or CTR")
+	}
+}
+
 func TestRecipientManualAttendancePersistsRecalculatesAndAudits(t *testing.T) {
 	f := newEngagementReportFixture(t)
 	recipientPageSignal(t, f)
@@ -101,6 +154,10 @@ func TestRecipientManualAttendancePersistsRecalculatesAndAudits(t *testing.T) {
 	executive := recipientDraft(t, f, "executive", 0)
 	if *recipientTestKPI(t, executive, "venue_adoption").Value != 1 {
 		t.Fatal("source lost between profiles")
+	}
+	custom := engagementReportDecodeSnapshot(t, engagementReportRequest(t, f.router.prepareEngagementReport, http.MethodGet, f.event, nil, f.ctx, nil))
+	if k := recipientTestKPI(t, custom, "venue_adoption"); k.Value == nil || *k.Value != 1 || k.Source != "manual_verified" {
+		t.Fatalf("custom report did not use the official attendance source: %+v", k)
 	}
 	engagementReportRequireStatus(t, engagementReportRequest(t, f.router.saveRecipientReportSources, "PUT", f.event, recipientSourcePayload(200, 0, true), f.ctx, nil), 409)
 	engagementReportRequireStatus(t, engagementReportRequest(t, f.router.saveRecipientReportSources, "PUT", f.event, recipientSourcePayload(200, 1, false), f.ctx, nil), 200)
@@ -139,8 +196,8 @@ func TestRecipientSourcesRejectDerivedDataInvalidInputAndUnauthorized(t *testing
 		engagementReportRequireStatus(t, r, 400)
 	}
 	s := recipientDraft(t, f, "executive", 0)
-	if !recipientTestKPI(t, s, "sponsored_participation").Availability.ManualAllowed {
-		t.Fatal("missing KPI must allow an explicit manual value")
+	if recipientTestKPI(t, s, "sponsored_participation").Availability.ManualAllowed {
+		t.Fatal("missing KPI must remain unavailable without database evidence")
 	}
 }
 

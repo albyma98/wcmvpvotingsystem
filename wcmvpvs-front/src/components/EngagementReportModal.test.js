@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import { testVue } from '../../test/sfcSetup.js';
 import * as Report from '../engagementReport.js';
+import * as Recipient from '../recipientReport.js';
 
 const { descriptor } = parse(readFileSync(new URL('./EngagementReportModal.vue', import.meta.url), 'utf8'));
 const source = compileScript(descriptor, { id: 'report-modal-test' }).content
@@ -11,7 +12,7 @@ const source = compileScript(descriptor, { id: 'report-modal-test' }).content
   .replace("await import('../engagementReportPdf.js')", 'await Promise.resolve({ createEngagementReportPdf: createPdf })')
   .replace('export default', 'return');
 const componentFactory = new Function('imports', 'document', 'createPdf', source);
-const measured = { calculation_id: 'calc-42', event: { id: 42, title: 'Finale' }, branding: { company_name: 'ArenaBoostX' }, calculated_at: '2026-10-23T10:00:00Z', facts: { visitors: 100, engagement_eligible_visitors: 100, active_visitors: 40 }, kpis: [{ id: 'visitors', value: 100, display_description: 'Pubblico digitale dell’evento' }, { id: 'active_participation', value: 40, display_description: 'Tifosi che interagiscono' }] };
+const measured = { calculation_id: 'calc-42', event: { id: 42, title: 'Finale' }, branding: { company_name: 'ArenaBoostX' }, calculated_at: '2026-10-23T10:00:00Z', facts: { visitors: 100, engagement_eligible_visitors: 100, active_visitors: 65 }, kpis: [{ id: 'visitors', value: 100, display_description: 'Pubblico digitale dell’evento' }, { id: 'active_participation', value: 40, display_description: 'Tifosi che interagiscono' }] };
 const flush = () => new Promise(setImmediate);
 
 async function fixture({ get, post, downloadError = false } = {}) {
@@ -19,12 +20,12 @@ async function fixture({ get, post, downloadError = false } = {}) {
   let loaded = measured;
   const http = {
     get: async (...args) => { requests.push(['get', ...args]); const response = get ? await get(...args) : { data: structuredClone(measured) }; loaded = response.data; return response; },
-    post: async (...args) => { requests.push(['post', ...args]); return post ? post(...args) : { data: { ...structuredClone(loaded), id: 73, approved_at: '2026-10-23T11:00:00Z', format: args[1].format, facts: args[1].facts, overrides: args[1].overrides, selected_kpi_ids: args[1].selected_kpi_ids, kpis: Report.calculateReportKpis(args[1].facts, loaded.kpis, args[1].overrides, loaded.facts, args[1].descriptions).filter(kpi => loaded.kpis.some(available => available.id === kpi.id)) } }; },
+    post: async (...args) => { requests.push(['post', ...args]); return post ? post(...args) : { data: { ...structuredClone(loaded), id: 73, approved_at: '2026-10-23T11:00:00Z', format: args[1].format, selected_kpi_ids: args[1].selected_kpi_ids, kpis: loaded.kpis.map(kpi => ({ ...kpi, display_description: args[1].descriptions[kpi.id] })) } }; },
   };
   const focus = { calls: 0, focus() { this.calls++; } };
   const document = { body: { style: { overflow: 'auto' } }, activeElement: focus, addEventListener: (key, handler) => handlers.set(key, handler), removeEventListener: key => handlers.delete(key) };
   const createPdf = snapshot => { rendered.push(snapshot); if (downloadError) throw new Error('PDF temporarily unavailable'); return { save: name => saved.push(name) }; };
-  const component = componentFactory({ vue: testVue, '../api': { apiClient: http }, '../engagementReport.js': Report }, document, createPdf);
+  const component = componentFactory({ vue: testVue, '../api': { apiClient: http }, '../engagementReport.js': Report, '../recipientReport.js': Recipient }, document, createPdf);
   const props = testVue.reactive({ modelValue: true, eventId: 42, eventTitle: 'Finale', authHeaders: { headers: { 'X-Organization-Slug': 'club' } } });
   const scope = testVue.effectScope();
   const state = scope.run(() => component.setup(props, { expose() {}, emit: (...args) => events.push(args) }));
@@ -32,25 +33,22 @@ async function fixture({ get, post, downloadError = false } = {}) {
   return { state, props, scope, requests, events, saved, rendered, document, handlers, focus };
 }
 
-test('opening fetches measurements and base edits approve without requiring a correction reason', async t => {
+test('opening and approval keep the server KPI even when client arithmetic would differ', async t => {
   const f = await fixture(); t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
   assert.equal(f.requests[0][1], '/admin/events/42/engagement-report');
   assert.equal(f.state.kpis.value.length, 2);
   assert.equal(f.document.body.style.overflow, 'hidden');
-  f.state.facts.visitors = 200;
   assert.equal(f.state.kpis.value.find(kpi => kpi.id === 'active_participation').value, 40);
-  f.state.facts.engagement_eligible_visitors = 200;
-  assert.equal(f.state.kpis.value.find(kpi => kpi.id === 'active_participation').value, 20);
   f.state.format.value = 'extended';
   await f.state.approveAndDownload();
   assert.equal(f.requests[1][2].calculation_id, 'calc-42');
-  assert.equal(f.requests[1][2].facts.visitors, 200);
-  assert.equal(f.requests[1][2].facts.engagement_eligible_visitors, 200);
+  assert.equal(f.requests[1][2].facts, undefined);
+  assert.equal(f.requests[1][2].overrides, undefined);
   assert.equal(f.requests[1][2].format, 'extended');
   assert.equal(f.requests[1][2].notes, '');
   assert.deepEqual(f.state.validationErrors.value, []);
   assert.equal(f.rendered[0].id, 73);
-  assert.equal(f.rendered[0].kpis.find(kpi => kpi.id === 'active_participation').value, 20);
+  assert.equal(f.rendered[0].kpis.find(kpi => kpi.id === 'active_participation').value, 40);
   assert.equal(f.saved.length, 1);
   assert.ok(f.events.some(([name]) => name === 'generated'));
   f.props.modelValue = false; await testVue.nextTick();
@@ -84,14 +82,11 @@ test('all KPI descriptions are editable, clearable, resettable and included in a
   assert.equal(f.state.descriptions.active_participation, measured.kpis[1].display_description);
   f.state.descriptions.visitors = '  Pubblico personalizzato  ';
   f.state.descriptions.active_participation = '';
-  f.state.toggleOverride(f.state.kpis.value[0]);
-  f.state.overrides.visitors.value = 110;
   await f.state.approveAndDownload();
   const body = f.requests.find(([verb]) => verb === 'post')[2];
   assert.equal(Object.keys(body.descriptions).length, 2);
   assert.equal(body.descriptions.visitors, 'Pubblico personalizzato');
   assert.equal(body.descriptions.active_participation, '');
-  assert.deepEqual(body.overrides.visitors, { value: 110 });
   assert.equal(body.notes, '');
   assert.equal(f.rendered[0].kpis[0].display_description, 'Pubblico personalizzato');
   assert.equal(f.rendered[0].kpis[1].display_description, '');
@@ -118,20 +113,16 @@ test('mixed-source review exposes coverage and operational provenance without re
   assert.deepEqual(f.state.coverageNotes.value, data.details.coverage_notes);
   assert.equal(f.state.sourceTables.value[0].table, 'votes');
   assert.equal(f.state.operationalItems.value.find(item => item.key === 'identified_participants').label, 'Profili identificati attivi');
-  f.state.facts.visitors = 101;
-  assert.equal(f.state.kpis.value[0].source, 'manual');
   assert.equal(f.state.kpis.value[0].note, data.kpis[0].note);
 });
 
-test('failed approval preserves corrections and does not generate an unapproved PDF', async t => {
+test('failed approval preserves descriptions and does not generate an unapproved PDF', async t => {
   const f = await fixture({ post: async () => { throw { response: { status: 422, data: { error: 'Dati non coerenti' } } }; } });
   t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
-  const visitors = f.state.kpis.value.find(kpi => kpi.id === 'visitors');
-  f.state.toggleOverride(visitors);
-  f.state.overrides.visitors.value = 110;
+  f.state.descriptions.visitors = 'Descrizione da conservare';
   await f.state.approveAndDownload();
   assert.equal(f.state.error.value, 'Dati non coerenti');
-  assert.equal(f.state.overrides.visitors.value, 110);
+  assert.equal(f.state.descriptions.visitors, 'Descrizione da conservare');
   assert.equal(f.rendered.length, 0);
   assert.equal(f.state.approved.value, null);
 });
@@ -163,7 +154,7 @@ test('thirty KPI form defaults to the frozen selection and caps one page without
   assert.equal(f.state.kpis.value.length, 30);
   assert.deepEqual(f.state.selectedKpiIds.value, data.selected_kpi_ids);
   assert.equal(f.state.timeEstimate.value.covered_visitors, 3);
-  assert.equal(f.state.sourceLabel('estimated'), 'Stima da azioni');
+  assert.equal(f.state.sourceLabel({ source: 'estimated' }), 'Stima da azioni');
   f.state.selectKpis('all');
   assert.equal(f.state.selectedKpiIds.value.length, 30);
   await f.state.approveAndDownload();
@@ -188,14 +179,11 @@ test('selection and unselected KPI edits are archived while PDF retry uses its a
   const f = await fixture({ get: async () => ({ data: structuredClone(data) }), downloadError: true });
   t.after(() => { f.state.releaseDialog(); f.scope.stop(); });
   f.state.descriptions.visitors = 'Conserva anche la descrizione non selezionata';
-  f.state.toggleOverride(f.state.kpis.value.find(kpi => kpi.id === 'identified_visitors'));
-  f.state.overrides.identified_visitors.value = 61;
   await f.state.approveAndDownload();
   const body = f.requests.find(([verb]) => verb === 'post')[2];
   assert.deepEqual(body.selected_kpi_ids, ['estimated_total_time', 'guest_visitors']);
   assert.equal(Object.keys(body.descriptions).length, 30);
   assert.equal(body.descriptions.visitors, 'Conserva anche la descrizione non selezionata');
-  assert.deepEqual(body.overrides.identified_visitors, { value: 61 });
   await f.state.approveAndDownload();
   assert.equal(f.requests.filter(([verb]) => verb === 'post').length, 1);
   assert.deepEqual(f.rendered[1].selected_kpi_ids, body.selected_kpi_ids);
@@ -235,6 +223,6 @@ test('twenty KPI snapshots without selection preserve their complete original fo
   const body = f.requests.find(([verb]) => verb === 'post')[2];
   assert.equal(body.selected_kpi_ids.length, 20);
   assert.equal(Object.keys(body.descriptions).length, 20);
-  assert.equal(body.facts.estimated_seconds, undefined);
+  assert.equal(body.facts, undefined);
   assert.equal(body.descriptions.estimated_avg_time, undefined);
 });

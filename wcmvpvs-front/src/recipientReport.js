@@ -24,17 +24,10 @@ export function comparisonLabel(kpi) {
   return `${absolute}${c.percent != null ? ` (${signed(c.percent)}%)` : c.reason ? ` · ${c.reason}` : ''}`;
 }
 
-export function manualReportFields(snapshot, kpis) {
-  const options = [];
-  if (kpis.some(k => k.id === 'venue_adoption' && k.value == null) || snapshot?.manual_sources?.some(m => m.field_key === 'attendees')) {
-    options.push({ key: 'attendees', label: 'Presenze ufficiali (sorgente per l’adozione)', type: 'integer', unit: 'people', min: 0, max: 10000000, sponsor_id: 0 });
-  }
-  for (const k of kpis) {
-    if (k.value != null && !(k.provenance || []).some(m => m.source_type === 'manual_kpi')) continue;
-    const configured = k.availability?.fields?.find(f => f.key === `kpi:${k.id}`);
-    options.push({ key: `kpi:${k.id}`, label: k.label, type: k.unit === 'count' ? 'integer' : 'number', unit: k.unit, min: 0, max: k.unit === 'percent' ? 100 : 1e12, ...configured, sponsor_id: k.group === 'Sponsor' ? snapshot?.sponsor_id || 0 : 0, kpi: k });
-  }
-  return options;
+export function reportAttendanceField(kpis, attendance) {
+  const adoption = kpis.find(kpi => kpi.id === 'venue_adoption');
+  if (!adoption || !attendance && !adoption.availability?.manual_allowed) return null;
+  return { type: 'integer', unit: 'people', min: 0, max: 10000000 };
 }
 
 export function manualSourceErrors(form, field = { type: 'integer', min: 0, max: 10000000 }) {

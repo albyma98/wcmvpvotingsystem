@@ -57,7 +57,7 @@ func calculateCombinedReportMetrics(signals, previous []reportSignal, operationa
 		facts["shop_eligible_profiles"] = nil
 	}
 	if !seen["sponsor_view"] && !seen["sponsored_game_view"] {
-		for _, key := range []string{"sponsor_reach", "sponsor_impressions", "sponsor_clickers", "sponsored_players", "sponsored_exposed_visitors", "sponsor_engaged_exposed"} {
+		for _, key := range []string{"sponsor_reach", "sponsor_impressions", "sponsor_clickers", "sponsored_players", "sponsored_exposed_visitors", "sponsor_engaged_exposed", "sponsor_engagement_reach"} {
 			facts[key] = nil
 		}
 	}
@@ -69,11 +69,15 @@ func calculateCombinedReportMetrics(signals, previous []reportSignal, operationa
 	if operational.Summary.FeedbackResponses > 0 {
 		// event_feedback has no device/fan identifier. Do not invent unique
 		// respondents or add anonymous answers to their browser copies.
-		details.CoverageNotes = append(details.CoverageNotes, "I feedback salvati sono risposte anonime, non utenti unici. Il tasso di risposta usa solo il campione identificabile nei segnali, senza aggiungere le risposte anonime. L'interesse premi usa le risposte valide salvate, senza sommare le copie telemetriche. La facilità di voto storica non è soddisfazione complessiva.")
+		details.CoverageNotes = append(details.CoverageNotes, "Il tasso di risposta usa il campione identificabile nei segnali. Soddisfazione e interesse per i premi usano le risposte valide salvate per ciascuna domanda quando disponibili. Per ogni domanda viene usata una sola fonte.")
 	}
 	if operational.Feedback.PerksResponses > 0 {
 		facts["perks_responses"] = reportMetricFloat(float64(operational.Feedback.PerksResponses))
 		facts["perks_positive"] = reportMetricFloat(float64(operational.Feedback.PerksPositive))
+	}
+	if operational.Feedback.ExperienceResponses > 0 {
+		facts["experience_responses"] = reportMetricFloat(float64(operational.Feedback.ExperienceResponses))
+		facts["experience_positive"] = reportMetricFloat(float64(operational.Feedback.ExperiencePositive))
 	}
 	return facts, details, started
 }
@@ -143,6 +147,12 @@ func buildCombinedReportKPIs(facts map[string]*float64, details reportDetails, s
 		if k.ID == "perks_interest" && operational.Feedback.PerksResponses > 0 {
 			k.Source = "operational"
 			k.Note = "Risposte valide di event_feedback; le copie dei segnali non vengono sommate. Il campione è composto da risposte anonime, non da utenti unici."
+			k.Description += " Campione di risposte anonime salvate."
+		}
+		if k.ID == "satisfaction" && operational.Feedback.ExperienceResponses > 0 {
+			k.Source = "operational"
+			k.Note = "Risposte valide alla domanda report_experience in event_feedback. Il campione è composto da risposte anonime. Le copie telemetriche sono escluse."
+			k.Description += " Campione di risposte anonime salvate."
 		}
 		if k.ID == "feedback_response" && k.Value != nil && operational.Summary.FeedbackResponses > 0 {
 			k.Note = "Rispondenti unici e pubblico eleggibile del solo campione tracciato. Le risposte anonime salvate sono riportate separatamente e non vengono aggiunte al numeratore."

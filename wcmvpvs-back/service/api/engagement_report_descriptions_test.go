@@ -18,7 +18,7 @@ func reportDescriptionKPI(t *testing.T, snapshot engagementReportSnapshot, id st
 	return reportKPI{}
 }
 
-func TestEngagementReportValuesCanBeCorrectedWithoutReasonsAndDescriptionsAreOptional(t *testing.T) {
+func TestEngagementReportDescriptionsAreOptionalAndValuesStayUnchanged(t *testing.T) {
 	f := newEngagementReportFixture(t)
 	draft := engagementReportDecodeSnapshot(t, engagementReportRequest(t, f.router.prepareEngagementReport, http.MethodGet, f.event, nil, f.ctx, nil))
 	for _, k := range draft.KPIs {
@@ -28,18 +28,12 @@ func TestEngagementReportValuesCanBeCorrectedWithoutReasonsAndDescriptionsAreOpt
 	}
 	input := map[string]interface{}{
 		"calculation_id": draft.CalculationID, "format": "one_page",
-		"facts":        map[string]*float64{"visitors": reportMetricFloat(5)},
-		"overrides":    map[string]reportOverride{"active_participation": {Value: reportMetricFloat(70)}},
 		"descriptions": map[string]string{"visitors": " Pubblico   verificato dalla società. ", "satisfaction": "", "new_profiles": strings.Repeat("è", 120)},
 	}
 	approved := engagementReportDecodeSnapshot(t, engagementReportRequest(t, f.router.approveEngagementReport, http.MethodPost, f.event, input, f.ctx, nil))
 	visitors := reportDescriptionKPI(t, approved, "visitors")
-	active := reportDescriptionKPI(t, approved, "active_participation")
-	if visitors.Value == nil || *visitors.Value != 5 || !visitors.Corrected || visitors.Source != "manual" || visitors.Note != "" || visitors.DisplayDescription != "Pubblico verificato dalla società." {
-		t.Fatalf("correction without reason failed %+v", visitors)
-	}
-	if active.Value == nil || *active.Value != 70 || active.Numerator != nil || active.Denominator != nil || !active.Corrected || active.Note != "" {
-		t.Fatalf("override without reason failed %+v", active)
+	if visitors.Value != nil || visitors.Corrected || visitors.DisplayDescription != "Pubblico verificato dalla società." {
+		t.Fatalf("caption changed a measured value: %+v", visitors)
 	}
 	if reportDescriptionKPI(t, approved, "satisfaction").DisplayDescription != "" {
 		t.Fatal("explicit empty description was replaced")

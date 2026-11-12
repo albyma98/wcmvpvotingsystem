@@ -37,7 +37,7 @@ test('headless compiler supports every reused controller and removes their prese
   assert.equal(readFileSync(sourceFile, 'utf8'), legacySource);
 });
 
-test('V2 report approval keeps selections, facts and descriptions and resolves the existing PDF module', async t => {
+test('V2 report approval keeps measured values while sending selections and descriptions', async t => {
   const url = new URL('../components/EngagementReportModal.vue', import.meta.url);
   const generated = compileAdminV2Controller(readFileSync(url, 'utf8'), fileURLToPath(url));
   assert.doesNotMatch(generated, /import\(['"]\.\.\/engagementReportPdf/);
@@ -45,14 +45,14 @@ test('V2 report approval keeps selections, facts and descriptions and resolves t
   const source = generated.replace(/await import\("[^"]+engagementReportPdf\.js"\)/g, 'await Promise.resolve({createEngagementReportPdf:()=>({save(){}})})');
   const measured = {calculation_id:'calc-v2',event:{id:42,title:'Finale'},facts:{visitors:100,engagement_eligible_visitors:100,active_visitors:40},kpis:[{id:'visitors',value:100,display_description:'Pubblico digitale'},{id:'active_participation',value:40,display_description:'Partecipazione'}]};
   const calls = [];
-  const api = {post:async(path,body)=>{calls.push([path,body]);return {data:{...measured,id:73,approved_at:'2026-11-05T10:00:00Z',kpis:Report.calculateReportKpis(body.facts,measured.kpis,body.overrides,measured.facts,body.descriptions)}};}};
+  const api = {post:async(path,body)=>{calls.push([path,body]);return {data:{...measured,id:73,approved_at:'2026-11-05T10:00:00Z',kpis:measured.kpis.map(kpi=>({...kpi,display_description:body.descriptions[kpi.id]}))}};}};
   const {state} = controllerFixture(t,api,'superadmin',source,{modelValue:false,eventId:42,authHeaders:{headers:{'X-Organization-Slug':'club'}}});
-  state.snapshot.value=structuredClone(measured);state.resetReview();state.facts.visitors=200;state.descriptions.visitors='Descrizione approvata';state.format.value='extended';
+  state.snapshot.value=structuredClone(measured);state.resetReview();state.descriptions.visitors='Descrizione approvata';state.format.value='extended';
   await state.approveAndDownload();
   assert.equal(calls[0][0],'/admin/events/42/engagement-report');
-  assert.equal(calls[0][1].calculation_id,'calc-v2');assert.equal(calls[0][1].facts.visitors,200);assert.equal(calls[0][1].descriptions.visitors,'Descrizione approvata');
+  assert.equal(calls[0][1].calculation_id,'calc-v2');assert.equal(calls[0][1].facts,undefined);assert.equal(calls[0][1].overrides,undefined);assert.equal(calls[0][1].descriptions.visitors,'Descrizione approvata');
   assert.deepEqual(calls[0][1].selected_kpi_ids,['visitors','active_participation']);
-  assert.equal(state.approved.value.id,73);assert.equal(state.error.value,'');
+  assert.equal(state.approved.value.id,73);assert.equal(state.approved.value.kpis[0].value,100);assert.equal(state.error.value,'');
   await state.approveAndDownload();assert.equal(calls.length,1,'Download retry must not approve a second snapshot');
 });
 

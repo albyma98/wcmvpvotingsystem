@@ -479,59 +479,24 @@ func (rt *_router) prepareEngagementReport(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	var event reportEvent
-	err := rt.db.SQLConn().QueryRow(`SELECT e.id,e.start_datetime,COALESCE(e.location,''),COALESCE(t1.name,''),COALESCE(t2.name,'') FROM events e LEFT JOIN teams t1 ON t1.id=e.team1_id LEFT JOIN teams t2 ON t2.id=e.team2_id WHERE e.id=? AND e.organization_id=?`, eventID, orgID).Scan(&event.ID, &event.StartDateTime, &event.Location, &event.Title, &event.OrganizationName)
+	event, err := rt.recipientReportEvent(eventID, orgID)
 	if err != nil {
 		reportError(w, 500, "Impossibile caricare l'evento.")
 		return
 	}
-	brand, err := rt.loadReportBranding()
+	previousID, err := rt.precedingConcludedEvent(event, orgID)
 	if err != nil {
-		reportError(w, 500, "Impossibile caricare il marchio.")
+		reportError(w, 500, "Impossibile caricare l'evento precedente.")
 		return
 	}
-	signals, err := rt.loadReportSignals(eventID)
+	snapshot, _, err := rt.buildRecipientEvent(eventID, orgID, 0, previousID)
 	if err != nil {
-		reportError(w, 500, "Impossibile calcolare le misurazioni.")
+		ctx.Logger.WithError(err).Warn("cannot calculate engagement report")
+		reportError(w, 500, "Impossibile calcolare i KPI dell'evento.")
 		return
 	}
-	operational, err := rt.loadReportOperationalData(eventID, orgID)
-	if err != nil {
-		reportError(w, 500, "Impossibile caricare i dati operativi dell'evento.")
-		return
-	}
-	previous := []reportSignal{}
-	previousOperational := reportOperationalData{}
-	var previousID int
-	err = rt.db.SQLConn().QueryRow(`SELECT id FROM events WHERE organization_id=? AND id<>? AND (julianday(start_datetime) < julianday(?) OR (julianday(start_datetime)=julianday(?) AND id<?)) ORDER BY julianday(start_datetime) DESC,id DESC LIMIT 1`, orgID, eventID, event.StartDateTime, event.StartDateTime, eventID).Scan(&previousID)
-	if err != nil && err != sql.ErrNoRows {
-		reportError(w, 500, "Impossibile confrontare l'evento precedente.")
-		return
-	}
-	if previousID > 0 {
-		previous, err = rt.loadReportSignals(previousID)
-		if err != nil {
-			reportError(w, 500, "Impossibile confrontare l'evento precedente.")
-			return
-		}
-		previousOperational, err = rt.loadReportOperationalData(previousID, orgID)
-		if err != nil {
-			reportError(w, 500, "Impossibile confrontare le attività dell'evento precedente.")
-			return
-		}
-	}
-	facts, details, started := calculateCombinedReportMetrics(signals, previous, operational, previousOperational)
-	title := strings.TrimSpace(event.Title + " - " + event.OrganizationName)
-	if title == "-" || title == "" {
-		title = fmt.Sprintf("Evento #%d", event.ID)
-	}
-	org, err := rt.db.GetOrganization(orgID)
-	if err != nil {
-		reportError(w, 500, "Impossibile caricare la società.")
-		return
-	}
-	snapshot := engagementReportSnapshot{CalculationID: newReportID(), Event: reportEvent{event.ID, title, event.StartDateTime, event.Location, org.Name, org.LogoURL}, Branding: brand, CalculatedAt: time.Now().UTC().Format(time.RFC3339Nano), MeasurementStartedAt: started, Facts: facts, KPIs: buildCombinedReportKPIs(facts, details, signals, previous, operational, previousOperational), Details: details, SchemaVersion: 1}
-	snapshot.Profiles = reportRecipientProfiles()
+	snapshot.SchemaVersion = 1
+	snapshot.CalculationID = newReportID()
 	snapshot.CommercialSponsors = rt.measuredSponsorReportForEvent(r, ctx, orgID, eventID, 0)
 	// Preserve the existing one-page default while exposing every available
 	// indicator in the review form. Additional KPIs can be selected explicitly.
@@ -628,27 +593,19 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 		reportError(w, 400, "Seleziona il destinatario per approvare questo calcolo; non sono consentite sostituzioni dei KPI.")
 		return
 	}
-	original := snapshot.Facts
-	reviewed := make(map[string]*float64, len(original))
-	for k, v := range original {
-		reviewed[k] = v
-	}
-	for k, v := range input.Facts {
-		if _, known := original[k]; !known {
-			reportError(w, 400, "Dato di base sconosciuto.")
-			return
-		}
-		if v != nil && (math.IsNaN(*v) || math.IsInf(*v, 0) || *v < 0 || *v > 1e12 || *v != math.Trunc(*v)) {
-			reportError(w, 400, "I dati di base devono essere interi non negativi.")
-			return
-		}
-		reviewed[k] = v
-	}
-	input.Notes = strings.TrimSpace(input.Notes)
-	if active, visitors := reviewed["active_visitors"], reviewed["visitors"]; active != nil && visitors != nil && *active > *visitors {
-		reportError(w, 400, "I partecipanti attivi non possono superare i partecipanti digitali osservabili.")
+	if len(input.Overrides) > 0 {
+		reportError(w, 400, "I KPI sono di sola lettura. Usa i valori del calcolo salvato.")
 		return
 	}
+	// Accept unchanged facts echoed by older clients. The saved values remain authoritative.
+	for key, value := range input.Facts {
+		measured, known := snapshot.Facts[key]
+		if !known || !sameReportNumber(value, measured) {
+			reportError(w, 400, "I dati di base sono di sola lettura. Usa i valori del calcolo salvato.")
+			return
+		}
+	}
+	input.Notes = strings.TrimSpace(input.Notes)
 	// Formulas, captions and the available indicator set belong to the frozen
 	// calculation. An older 20-KPI draft must not gain newly introduced KPIs.
 	kpis := append([]reportKPI{}, snapshot.KPIs...)
@@ -661,12 +618,6 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 	reviewedDescriptions := map[string]string{}
 	for i := range kpis {
 		k := &kpis[i]
-		if k.FactKey != "" {
-			k.Value = reviewed[k.FactKey]
-		} else {
-			k.Numerator, k.Denominator = reviewed[k.NumeratorKey], reviewed[k.DenominatorKey]
-			k.Value = reportMetricRatio(k.Numerator, k.Denominator, k.Unit == "percent")
-		}
 		knownKPIs[k.ID] = true
 		if description, exists := input.Descriptions[k.ID]; exists {
 			description = strings.Join(strings.Fields(description), " ")
@@ -677,41 +628,6 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 			k.DisplayDescription = description
 		}
 		reviewedDescriptions[k.ID] = k.DisplayDescription
-		if k.Unit == "percent" && k.Numerator != nil && k.Denominator != nil && *k.Numerator > *k.Denominator {
-			reportError(w, 400, "Il numeratore supera il pubblico di riferimento: "+k.Label)
-			return
-		}
-		k.Corrected = !sameReportNumber(k.Value, snapshot.KPIs[i].Value) || (k.FactKey != "" && !sameReportNumber(reviewed[k.FactKey], original[k.FactKey])) || (k.NumeratorKey != "" && !sameReportNumber(reviewed[k.NumeratorKey], original[k.NumeratorKey])) || (k.DenominatorKey != "" && !sameReportNumber(reviewed[k.DenominatorKey], original[k.DenominatorKey]))
-		if k.Corrected {
-			k.Source = "manual"
-			k.Note = input.Notes
-		}
-		if override, exists := input.Overrides[k.ID]; exists {
-			override.Note = strings.TrimSpace(override.Note)
-			if utf8.RuneCountInString(override.Note) > 500 {
-				reportError(w, 400, "La nota facoltativa non può superare 500 caratteri.")
-				return
-			}
-			v := override.Value
-			if v != nil && (math.IsNaN(*v) || math.IsInf(*v, 0) || *v < 0 || *v > 1e12 || (k.Unit == "percent" && *v > 100) || (k.Unit == "count" && *v != math.Trunc(*v))) {
-				reportError(w, 400, "Valore KPI non valido.")
-				return
-			}
-			k.Value = v
-			// A directly reviewed rate need not equal the measured fraction.
-			// Keep that fraction in original_facts, not beside the corrected value.
-			k.Numerator, k.Denominator = nil, nil
-			k.Source = "manual"
-			k.Corrected = true
-			k.Note = override.Note
-			input.Overrides[k.ID] = override
-		}
-	}
-	for id := range input.Overrides {
-		if !knownKPIs[id] {
-			reportError(w, 400, "Indicatore sconosciuto.")
-			return
-		}
 	}
 	for id := range input.Descriptions {
 		if !knownKPIs[id] {
@@ -723,11 +639,8 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 	snapshot.ApprovedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	snapshot.ApprovedBy = ctx.AdminUsername
 	snapshot.Format = input.Format
-	snapshot.OriginalFacts = original
-	snapshot.Facts = reviewed
 	snapshot.KPIs = kpis
 	snapshot.SelectedKPIIDs = selected
-	snapshot.Overrides = input.Overrides
 	snapshot.Notes = input.Notes
 	rawBytes, err := json.Marshal(snapshot)
 	if err != nil {
@@ -737,12 +650,10 @@ func (rt *_router) approveEngagementReport(w http.ResponseWriter, r *http.Reques
 	approvalInput, _ := json.Marshal(struct {
 		CalculationID  string
 		Format         string
-		Facts          map[string]*float64
-		Overrides      map[string]reportOverride
 		Descriptions   map[string]string
 		SelectedKPIIDs []string
 		Notes          string
-	}{input.CalculationID, input.Format, reviewed, input.Overrides, reviewedDescriptions, selected, input.Notes})
+	}{input.CalculationID, input.Format, reviewedDescriptions, selected, input.Notes})
 	approvalHash := sha256.Sum256(approvalInput)
 	approvalKey := hex.EncodeToString(approvalHash[:])
 	_, err = rt.db.SQLConn().Exec(`INSERT INTO engagement_report_snapshots(id,calculation_id,approval_key,event_id,admin_id,payload,approved_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(approval_key) DO NOTHING`, snapshot.ID, snapshot.CalculationID, approvalKey, eventID, ctx.AdminID, string(rawBytes), snapshot.ApprovedAt)

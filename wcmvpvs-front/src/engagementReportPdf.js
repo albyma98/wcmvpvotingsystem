@@ -441,7 +441,9 @@ function recipientPages(doc, p, report) {
       if (a.limitations?.length) { section('Limiti dell’analisi'); a.limitations.forEach(t => wrapped(t, { size: 7.2, color: C.muted })); }
     }
     section('Metodo e provenienza');
-    wrapped('N/D non equivale a zero. Precedenza: calcolabile, manuale verificato, manuale NON verificato, non disponibile. I completamenti diretti sono indicati come KPI manuali e non ricostruiscono il tracciamento. Le variazioni non implicano benefici o relazioni causali.', { size: 7.4 });
+    wrapped(report.schema_version >= 3
+      ? 'I KPI sono calcolati dai dati salvati per la partita. N/D indica dati insufficienti. Per le presenze ufficiali è riportato lo stato di verifica della fonte.'
+      : 'N/D non equivale a zero. Precedenza: calcolabile, manuale verificato, manuale NON verificato, non disponibile. I completamenti diretti sono indicati come KPI manuali e non ricostruiscono il tracciamento. Le variazioni non implicano benefici o relazioni causali.', { size: 7.4 });
     (report.conflicts || []).forEach(t => wrapped(`Conflitto: ${t}`, { size: 7.4 }));
     (report.details?.coverage_notes || []).forEach(t => wrapped(t, { size: 7.2, color: C.muted }));
     if (report.notes) { section('Note della società'); wrapped(report.notes, { size: 7.5 }); }

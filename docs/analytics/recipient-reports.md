@@ -22,7 +22,7 @@ Il catalogo Go è già composto da **30 KPI**: i primi venti sono quelli elencat
 | File | Responsabilità |
 | --- | --- |
 | `service/api/engagement_report_recipients.go` | Configurazioni dei quattro profili, orchestrazione del calcolo esistente, confronto Go, indisponibilità, snapshot e archivio |
-| `service/api/engagement_report_manual_sources.go` | Validazione presenze e completamenti di tutti i KPI N/D, ambito sponsor, autorizzazione, transazione e storico |
+| `service/api/engagement_report_manual_sources.go` | Validazione e salvataggio delle presenze ufficiali, autorizzazione e storico |
 | `service/api/engagement_report_recipient_ai.go` | Responses API, schema rigoroso, validazione, cache e sintesi deterministica |
 | `service/api/engagement_report_analysis_review.go` | Bozze editoriali, validazione dei testi, approvazione/scarto, revisioni concorrenti e autore della decisione |
 | `service/api/report_migrations/001_recipient_reports.sql` | Migrazione idempotente incorporata nel binario con `go:embed` |
@@ -49,7 +49,7 @@ Percorsi backend relativi a `wcmvpvs-back`, frontend relativi a `wcmvpvs-front`.
 | Sponsor | `sponsor_reach`, `sponsor_impressions`, `sponsor_ctr`, `sponsored_participation`, `visitors` | 1 |
 | Analytics | Primi 20 KPI originali, nello stesso ordine | Paginazione secondo definizioni, denominatori e analisi |
 
-Il cambio destinatario seleziona immediatamente i KPI già calcolati, senza reload e senza chiamare OpenAI. Il passaggio da un report dedicato a un partner a un altro ambito ricarica il calcolo, perché cambia la popolazione misurata. I dati manuali restano associati all'evento.
+Il cambio destinatario seleziona immediatamente i KPI già calcolati, senza reload e senza chiamare OpenAI. Il passaggio da un report dedicato a un partner a un altro ambito ricarica il calcolo, perché cambia la popolazione misurata. Le presenze ufficiali restano associate all'evento.
 
 L'anteprima è il **PDF effettivo**, generato dallo snapshot approvato e visualizzato tramite URL Blob. Anche l'anteprima salva una versione immutabile. L'esportazione successiva usa la stessa versione. L'archivio permette di scaricare nuovamente gli snapshot salvati senza ricalcolare le fonti. Ogni modifica alle opzioni o ai dati invalida l'anteprima locale; le versioni già approvate rimangono in archivio.
 
@@ -64,14 +64,14 @@ Tutti i percorsi sotto `/admin` richiedono la sessione amministrativa e lo scope
 | GET | `/admin/events/{eventId}/engagement-report` | Flusso originale; espone anche le configurazioni profili |
 | GET | `/admin/events/{eventId}/engagement-report?recipient=executive` | Calcolo nuovo, tutti i KPI con confronti e motivi N/D; profili ammessi: `executive`, `marketing`, `sponsor`, `analytics` |
 | GET | stesso percorso con `recipient=sponsor&sponsor_id={id}` | Calcolo del solo partner; nessun ID significa ambito aggregato |
-| PUT | `/admin/events/{eventId}/engagement-report/sources` | Salvataggio transazionale delle sorgenti consentite |
+| PUT | `/admin/events/{eventId}/engagement-report/sources` | Salvataggio transazionale della fonte per le presenze ufficiali |
 | GET | `/admin/events/{eventId}/engagement-report/sources` | Sorgenti e storico delle modifiche |
 | POST | `/admin/events/{eventId}/engagement-report/analysis` | Generazione esplicita o cache; corpo: `calculation_id`, `recipient`, `compare_previous`, `regenerate` |
 | POST | `/admin/events/{eventId}/engagement-report` | Approvazione originale oppure nuova con `recipient`, `calculation_id`, `compare_previous`, `include_appendix`, `include_ai`, `notes` |
 | GET | `/admin/events/{eventId}/engagement-report/snapshots` | Archivio a pagine di 50; `before` è il timestamp della versione più vecchia della pagina |
 | GET | `/admin/events/{eventId}/engagement-report/snapshots/{reportId}` | Versione immutabile da rigenerare in PDF |
 
-Un calcolo dello schema nuovo non può passare nel ramo di approvazione originale per aggirare i vincoli. Il ramo destinatario rifiuta `facts`, `overrides`, `descriptions` e selezioni KPI arbitrarie. Le formule e la composizione del profilo restano di proprietà del server. Il percorso originale conserva le revisioni già supportate per compatibilità con i client e i report precedenti.
+Un calcolo dello schema nuovo non può passare nel ramo di approvazione originale per aggirare i vincoli. Il ramo destinatario rifiuta `facts`, `overrides`, `descriptions` e selezioni KPI arbitrarie. Le formule e la composizione del profilo restano di proprietà del server. Il percorso originale accetta selezione, descrizioni e note. Per i client precedenti, eventuali dati di base inviati devono coincidere con il calcolo salvato.
 
 Esempio di sorgente:
 
@@ -92,37 +92,19 @@ Esempio di sorgente:
 
 `revision: 0` crea la sorgente. Gli aggiornamenti devono inviare la revisione letta: un dato modificato da un altro amministratore restituisce 409. ID amministratore e timestamp sono attribuiti dal backend. L'interfaccia richiede la conferma di partita, popolazione e salvataggio. Senza verifica esplicita la sorgente viene salvata come `unverified`.
 
-## Sorgenti manuali, migrazione e N/D
+## Dati di base e KPI N/D
 
-La migrazione crea `engagement_report_manual_sources`, `engagement_report_source_history` e `engagement_report_analysis_cache`, con indici, vincoli e riferimenti all'evento. Viene applicata transazionalmente all'avvio nel punto già usato dai report; non richiede file SQL sul server di runtime. Le tabelle operative preesistenti e i segnali non vengono alterati. La cancellazione esplicita di un evento include le nuove tabelle anche quando le cascade SQLite sono disabilitate.
+Entrambi i generatori calcolano valori, numeratori e denominatori a partire dalle osservazioni e dalle operazioni dell'evento già in SQLite. Il PDF usa il calcolo salvato e approvato. Le vecchie versioni e lo storico delle modifiche restano consultabili. I completamenti diretti dei KPI appartengono allo storico.
 
-Tutti i KPI **N/D** sono completabili manualmente, come richiesto nell'estensione successiva. Il pulsante **Inserisci valore** apre il pannello sul KPI selezionato; un menu consente di scegliere un altro indicatore mancante. Sono conservati fonte obbligatoria, nota facoltativa, stato di verifica, autore, timestamp e revisioni. Dopo il salvataggio è disponibile **Modifica valore manuale**. Il completamento è individuale nell'interfaccia; l'endpoint accetta anche batch transazionali fino a trentuno elementi.
+La sorgente `attendees` accetta il numero ufficiale di spettatori, da zero a dieci milioni. Il server salva fonte, stato di verifica, revisione e storico con il dato. L'adozione usa il rapporto `onsite_visitors / attendees × 100` e richiede la provenienza arena e popolazioni compatibili.
 
-Per un completamento diretto usare `field_key: "kpi:<id_catalogo>"`, `source_type: "manual_kpi"` e l'unità effettiva del catalogo (`count`, `percent`, `seconds`). I conteggi devono essere interi non negativi; percentuali tra zero e cento; tempi non negativi, anche decimali. Conteggi e tempi hanno limite massimo di mille miliardi. Il backend valida ID, unità, ambito, fonte e revisione. Un KPI già disponibile da sorgenti calcolabili non può essere sostituito tramite il completamento N/D.
-
-La sorgente **`attendees`** rimane disponibile separatamente, con interi da zero a dieci milioni e unità `people`. Il suo inserimento ricalcola l'adozione secondo la formula originale; un valore KPI diretto è invece presentato come **KPI manuale verificato / NON verificato**, senza inventare tracciamento o numeratori e denominatori. Gli altri KPI non vengono ricalcolati a partire da un valore derivato inserito direttamente. Ogni KPI N/D espone il motivo originario e il campo manuale con tipo, unità e limiti.
-
-L'adozione conserva la formula effettiva:
-
-```text
-onsite_visitors / attendees × 100
-```
-
-Non usa il totale dei partecipanti digitali come sostituto degli osservati con provenienza arena. Se il tracciamento arena manca, l'inserimento delle presenze non rende il KPI calcolabile. Se il numeratore supera le presenze, il valore resta N/D e viene segnalata l'incompatibilità. La provenienza arena, da sola, non certifica la presenza fisica.
-
-Precedenza: **valore calcolabile > completamento manuale verificato > completamento manuale non verificato > N/D**. I record attivi hanno una revisione e uno stato. Se arrivano dati calcolabili in conflitto con un completamento diretto, il valore calcolabile viene mantenuto e il conflitto è esposto all'amministratore e nel report. I valori non verificati sono marcati **NON verificati** in UI e PDF. Lo storico conserva i JSON prima e dopo ogni modifica, autore, timestamp, campo e ambito sponsor nella stessa transazione. Un batch con una revisione obsoleta viene annullato integralmente.
-
-La migrazione `002_manual_kpis.sql` ricrea la tabella delle sorgenti con una chiave `(event_id, field_key, sponsor_id)`, copiando prima tutte le presenze precedenti con scope zero. Aggiunge lo scope anche allo storico, conservando le vecchie righe. L'avvio controlla la presenza della nuova colonna per applicare la migrazione una sola volta. Non è necessario eseguire SQL manualmente sul server.
-
-Per i KPI del gruppo Sponsor, `sponsor_id: 0` identifica il totale evento; un ID positivo identifica esclusivamente quel partner, verificato nella stessa società. I dati manuali aggregati non vengono usati nei report dedicati e viceversa. Gli altri KPI, inclusi i partecipanti digitali di contesto, restano associati all'evento con scope zero. I valori salvati entrano nell'hash dati, nei confronti e negli snapshot: modificandoli cambia la cache AI utilizzabile. L'AI riceve il tipo di provenienza e il limite di misurazione originario, senza ricevere il testo libero della fonte o delle note.
-
-Verifica dell'estensione: **74 test frontend superati**, suite API/database/server e build di produzione superate. Tre nuovi test backend coprono tutti i trenta KPI mancanti, revisioni e rollback dei batch, precedenza dei dati calcolabili, separazione degli sponsor, validazione e migrazione delle presenze precedenti. Verificato anche il pannello Vue reale in Edge con API simulate: selezione del KPI, inserimento di una percentuale decimale, conferma, salvataggio e riapertura del valore.
+Per lo sponsor, l'ambito può essere l'intera partita o il partner selezionato. Le esposizioni HTML qualificate e i clic correlati provengono da `sponsor_measured_exposures`. Il CTR sugli esposti conta i dispositivi che hanno visto e cliccato lo stesso sponsor. I dati storici alimentano i report quando la misurazione dedicata manca. Per la soddisfazione, il calcolo usa le risposte valide alla domanda `event_feedback.report_experience` quando disponibili.
 
 Motivi N/D: `manual_source_missing`, `tracking_missing`, `zero_denominator`, `feature_unavailable`, `not_applicable`, `not_synchronized`; aggiunto `incompatible_population`. L'indisponibilità di una funzionalità richiede evidenza delle osservazioni. Non si promette che dati storici arriveranno in futuro: `not_synchronized` è usato quando l'evento non è ancora iniziato, non per attribuire arbitrariamente un ritardo a un dato assente.
 
 ## Confronti e attribuzione sponsor
 
-La partita precedente è quella della stessa società con data anteriore e `is_concluded=1`. La semplice data trascorsa non equivale a conclusione. Per calcolare il ritorno della partita precedente si carica anche la sua precedente conclusa. I valori manuali di entrambe le partite sono inclusi nel confronto e nello snapshot.
+La partita precedente è quella della stessa società con data anteriore e `is_concluded=1`. La semplice data trascorsa non equivale a conclusione. Per calcolare il ritorno della partita precedente si carica anche la sua precedente conclusa. Le fonti delle presenze ufficiali di entrambe le partite sono incluse nel confronto e nello snapshot.
 
 Go calcola differenza assoluta, variazione relativa dei conteggi se la base è positiva e punti percentuali per i tassi. Una base zero lascia la variazione percentuale N/D; unità, definizioni e chiavi dei denominatori diverse impediscono il confronto. Le direzioni sono `up`, `down`, `unchanged`, `unavailable`, senza associare automaticamente verde/rosso o giudizi positivi/negativi. Gli aggiornamenti successivi cambiano il nuovo calcolo e la sua cache, non i PDF approvati.
 
@@ -275,7 +257,7 @@ Sul computer di verifica è stato usato un compilatore C portabile temporaneo pe
 
 - Lo schema eventi non contiene uno stato di annullamento distinto. Il nuovo confronto esclude gli eventi non conclusi; distinguere un evento annullato erroneamente marcato concluso richiederebbe un nuovo stato nel dominio eventi, che non viene inventato in questa modifica.
 - Nessuna certificazione automatica della presenza fisica: è conservata la semantica della provenienza arena già adottata.
-- Tutti i KPI N/D sono completabili direttamente dall'amministratore, con provenienza esplicita. Un valore manuale non certifica né ricostruisce il tracciamento mancante; le definizioni e i motivi originari di indisponibilità rimangono consultabili.
+- I KPI N/D indicano dati insufficienti per il calcolo. Le definizioni e i motivi di indisponibilità rimangono consultabili.
 - La validazione strutturale e dei riferimenti ai KPI è automatica. I numeri nel testo generano un avviso e richiedono revisione amministrativa; un JSON Schema non dimostra la veridicità semantica di un’interpretazione o di una formulazione causale.
 - Executive e Sponsor mantengono un formato compatto con KPI principali; i testi approvati lunghi possono aggiungere pagine per conservare integralmente il contenuto. Marketing privilegia la completezza con eventuali pagine di approfondimento oltre alle due principali.
 - Le verifiche OpenAI usano risposte simulate: disponibilità, crediti e accesso al modello dell'account vanno verificati con le credenziali del deployment. Non sono state eseguite chiamate a pagamento.
