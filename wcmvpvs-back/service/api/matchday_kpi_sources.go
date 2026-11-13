@@ -80,6 +80,8 @@ type matchdayGameObservation struct {
 	identity            matchdayIdentity
 	game, round, source string
 	start, completed    bool
+	abandoned           bool
+	live                bool
 }
 
 func loadMatchdayVotesAndGames(ctx context.Context, q matchdayQueryer, orgID int, data map[int]*matchdayFacts) error {
@@ -102,10 +104,11 @@ func loadMatchdayVotesAndGames(ctx context.Context, q matchdayQueryer, orgID int
 	}
 	for _, f := range data {
 		for _, s := range f.Signals {
-			if s.Name == "game_started" || s.Name == "game_completed" {
+			if s.Name == "game_started" || s.Name == "game_completed" || s.Name == "game_abandoned" {
 				if game := reportMetricString(s.Metadata, "game_id"); game != "" {
 					f.games = append(f.games, matchdayGameObservation{matchdaySignalIdentity(s), game,
-						reportMetricString(s.Metadata, "round_id"), "engagement_report_signals", s.Name == "game_started", s.Name == "game_completed"})
+						reportMetricString(s.Metadata, "round_id"), "engagement_report_signals", s.Name == "game_started", s.Name == "game_completed", s.Name == "game_abandoned",
+						reportMetricString(s.Metadata, "mode") == "live"})
 				}
 			}
 		}
@@ -115,11 +118,12 @@ func loadMatchdayVotesAndGames(ctx context.Context, q matchdayQueryer, orgID int
 			}
 			if game := reportMetricString(t.Metadata, "game_id"); game != "" {
 				f.games = append(f.games, matchdayGameObservation{t.identity(), game,
-					reportMetricString(t.Metadata, "round_id"), "tracking_events", t.Name == "game.started", t.Name == "game.completed"})
+					reportMetricString(t.Metadata, "round_id"), "tracking_events", t.Name == "game.started", t.Name == "game.completed", false,
+					reportMetricString(t.Metadata, "mode") == "live"})
 			}
 		}
 	}
-	// All structured queries yield event, raw device, fan, game, round, start and completion.
+	// All structured queries yield event, raw device, fan, game, round, start and outcome (1 completed, 2 abandoned).
 	// Issuing a hoop target or preparing a volleyball round does not certify a start.
 	for _, spec := range []struct{ source, query string }{
 		{"basketball_shots", `SELECT event_id,device_id,fan_id,'basketball',shot_id,1,1 FROM basketball_shots WHERE organization_id=? AND status IN ('made','miss') AND event_id IN (`},
@@ -132,14 +136,17 @@ func loadMatchdayVotesAndGames(ctx context.Context, q matchdayQueryer, orgID int
 		{"fan_journey_quiz_answers", `SELECT DISTINCT event_id,device_id,0,'quiz','',1,0 FROM fan_journey_quiz_answers WHERE organization_id=? AND event_id IN (`},
 		{"reaction_tests", `SELECT r.event_id,r.device_id,0,'reaction','reaction:'||r.id,1,1 FROM reaction_tests r JOIN events e ON e.id=r.event_id WHERE e.organization_id=? AND r.is_valid=1 AND r.event_id IN (`},
 		{"branded_game_participations", `SELECT g.event_id,g.device_id,COALESCE(g.user_id,0),'branded_game',CAST(g.id AS TEXT),1,g.completed FROM branded_game_participations g JOIN events e ON e.id=g.event_id WHERE e.organization_id=? AND g.event_id IN (`},
-		{"tap_live_matches", `SELECT g.event_id,'',CASE p.n WHEN 1 THEN g.fan1_id ELSE g.fan2_id END,g.game_id,g.match_id,1,g.status='finished' FROM tap_live_matches g CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2) p WHERE g.organization_id=? AND g.started_at IS NOT NULL AND g.event_id IN (`},
+		{"tap_live_matches", `SELECT g.event_id,'',CASE p.n WHEN 1 THEN g.fan1_id ELSE g.fan2_id END,g.game_id,g.match_id,1,
+			CASE WHEN g.status='finished' AND COALESCE(g.abandoned_by_fan_id,0)>0 THEN 2 WHEN g.status='finished' THEN 1 ELSE 0 END
+			FROM tap_live_matches g CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2) p WHERE g.organization_id=? AND g.started_at IS NOT NULL AND g.event_id IN (`},
 	} {
 		if err := matchdayRead(ctx, q, spec.query+in+`)`, args, func(rows *sql.Rows) error {
-			var id int
-			g := matchdayGameObservation{source: spec.source}
-			if err := rows.Scan(&id, &g.identity.Device, &g.identity.FanID, &g.game, &g.round, &g.start, &g.completed); err != nil {
+			var id, outcome int
+			g := matchdayGameObservation{source: spec.source, live: spec.source == "tap_live_matches"}
+			if err := rows.Scan(&id, &g.identity.Device, &g.identity.FanID, &g.game, &g.round, &g.start, &outcome); err != nil {
 				return err
 			}
+			g.completed, g.abandoned = outcome == 1, outcome == 2
 			data[id].games = append(data[id].games, g)
 			return nil
 		}); err != nil {
@@ -187,6 +194,21 @@ func matchdayLink(links map[string]string, key, value string) {
 	} else if !found {
 		links[key] = value
 	}
+}
+
+func loadMatchdayRegistrations(ctx context.Context, q matchdayQueryer, orgID int, data map[int]*matchdayFacts) error {
+	in, args := matchdayIDs(data)
+	return matchdayRead(ctx, q, `SELECT r.event_id,r.fan_id,r.device_key FROM fan_matchday_registrations r
+		JOIN fan_profiles p ON p.id=r.fan_id AND p.organization_id=r.organization_id AND p.registration_pending=0
+		WHERE r.organization_id=? AND r.event_id IN (`+in+`)`, append([]interface{}{orgID}, args...), func(rows *sql.Rows) error {
+		var id int
+		var identity matchdayIdentity
+		if err := rows.Scan(&id, &identity.FanID, &identity.DeviceKey); err != nil {
+			return err
+		}
+		data[id].registrations = append(data[id].registrations, identity)
+		return nil
+	})
 }
 
 func calculateMatchdayAudience(ctx context.Context, q matchdayQueryer, orgID int, ordered []*matchdayFacts, loadAttributedActions func() error) error {
@@ -244,7 +266,8 @@ func calculateMatchdayAudience(ctx context.Context, q matchdayQueryer, orgID int
 		UNION ALL SELECT e.id,e.start_datetime,t.device_id,0,0 FROM past e JOIN tracking_events t ON t.event_id=e.id
 		WHERE t.organization_id IN (0,e.organization_id) AND t.event_name IN ('session.started','page.view') GROUP BY e.id,t.device_id
 		UNION ALL SELECT e.id,e.start_datetime,v.device_id,COALESCE(v.user_id,0),0 FROM past e JOIN votes v ON v.event_id=e.id GROUP BY e.id,v.device_id,v.user_id
-		UNION ALL SELECT e.id,e.start_datetime,p.device_id,0,0 FROM past e JOIN page_engagements p ON p.event_id=e.id WHERE p.duration_seconds>0 GROUP BY e.id,p.device_id`, []interface{}{orgID, current.Format(time.RFC3339)}, func(rows *sql.Rows) error {
+		UNION ALL SELECT e.id,e.start_datetime,p.device_id,0,0 FROM past e JOIN page_engagements p ON p.event_id=e.id WHERE p.duration_seconds>0 GROUP BY e.id,p.device_id
+		UNION ALL SELECT e.id,e.start_datetime,r.device_key,r.fan_id,1 FROM past e JOIN fan_matchday_registrations r ON r.event_id=e.id AND r.organization_id=e.organization_id`, []interface{}{orgID, current.Format(time.RFC3339)}, func(rows *sql.Rows) error {
 			var s sighting
 			var at, key string
 			var hashed bool
@@ -334,6 +357,15 @@ func matchdayComparableIdentity(id string) bool {
 }
 
 func (f *matchdayFacts) eachIdentity(use func(matchdayIdentity)) {
+	f.Operations.eachIdentity(use)
+	for _, identity := range f.registrations {
+		use(identity)
+	}
+	if f.feedback != nil {
+		for _, response := range f.feedback.tracked {
+			use(response.identity)
+		}
+	}
 	for _, device := range f.legacyDevices {
 		use(matchdayIdentity{Device: device})
 	}

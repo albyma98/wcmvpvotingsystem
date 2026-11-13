@@ -101,7 +101,7 @@ func TestMatchdaySponsorMeasurementAndFeedbackCoverage(t *testing.T) {
 	}
 	for code, want := range map[string]float64{
 		"sponsor_impressions": 3, "sponsor_reach": 1, "sponsor_viewable": 1, "sponsor_viewability": 50,
-		"sponsor_frequency": 3, "sponsor_ctr": 100.0 / 3, "sponsor_avg_visible_time": 900, "sponsor_placements": 3,
+		"sponsor_frequency": 3, "sponsor_ctr": 100.0 / 3, "sponsor_avg_visible_time": 600, "sponsor_placements": 3,
 		"feedback_responses": 2, "feedback_answers": 8, "feedback_completed": 1, "feedback_respondents": 1,
 		"feedback_response_rate": 100, "feedback_completion_rate": 100, "feedback_satisfaction": 100,
 	} {

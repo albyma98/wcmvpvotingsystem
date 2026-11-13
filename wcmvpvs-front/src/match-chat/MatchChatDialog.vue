@@ -11,6 +11,8 @@ const before = ref(0);
 const state = ref('connecting');
 const canWrite = ref(false);
 const draft = ref('');
+const replyTo = ref(null);
+const composer = ref(null);
 const sending = ref(false);
 const loadingOlder = ref(false);
 const archived = ref(false);
@@ -76,6 +78,7 @@ function applyUpdate(update) {
   } else if (update.type === 'removed') {
     messages.value = messages.value.filter(message => message.id !== update.message_id);
     if (reportId.value === update.message_id) reportId.value = null;
+    if (replyTo.value?.id === update.message_id) replyTo.value = null;
   } else if (update.type === 'reaction') {
     const message = messages.value.find(item => item.id === update.message_id);
     if (message) message.reactions = reactionsFor(message, update.reaction, false);
@@ -104,6 +107,7 @@ function disable() {
   state.value = 'disabled';
   canWrite.value = false;
   reportId.value = null;
+  replyTo.value = null;
   notice.value = '';
   messages.value = [];
   before.value = 0;
@@ -117,7 +121,7 @@ async function syncHistory() {
   state.value = 'syncing';
   error.value = '';
   try {
-    const data = await request({ path: '/messages', signal: pending.controller.signal });
+    const data = await request({ path: '/messages', params: { matchday_open: 1 }, signal: pending.controller.signal });
     if (syncing !== pending) return;
     syncing = null;
     if (pending.overflow) {
@@ -205,13 +209,14 @@ async function send() {
   const text = draft.value.trim();
   if (!text || length.value > 180 || sending.value || state.value !== 'live') return;
   if (!canWrite.value) { emit('verify'); return; }
-  const id = retryDraft?.text === text ? retryDraft.id : chatRequestId();
-  retryDraft = { text, id };
+  const replyId = replyTo.value?.id;
+  const id = retryDraft?.text === text && retryDraft.replyId === replyId ? retryDraft.id : chatRequestId();
+  retryDraft = { text, id, replyId };
   sending.value = true;
   error.value = '';
   notice.value = '';
   try {
-    const response = await request({ method: 'post', path: '/messages', data: { text, request_id: id } });
+    const response = await request({ method: 'post', path: '/messages', data: { text, request_id: id, ...(replyId ? { reply_to_id: replyId } : {}) } });
     if (lifetime.signal.aborted) return;
     const messageId = response.message.id;
     if (ownMessages.size >= maxMessages) ownMessages.delete(ownMessages.values().next().value);
@@ -219,13 +224,25 @@ async function send() {
     const message = messages.value.find(item => item.id === messageId);
     if (message) message.mine = true;
     if (draft.value.trim() === text) draft.value = '';
+    if (replyTo.value?.id === replyId) replyTo.value = null;
     retryDraft = null;
     if (response.changed) emit('track', 'match_chat_message_sent');
   } catch (err) {
+    if (chatErrorCode(err) === 'chat_reply_unavailable' && replyTo.value?.id === replyId) replyTo.value = null;
     handleError(err);
   } finally {
     sending.value = false;
   }
+}
+
+function beginReply(message) {
+  if (!canWrite.value) { emit('verify'); return; }
+  replyTo.value = { id: message.id, nickname: message.nickname };
+  nextTick(() => composer.value?.focus());
+}
+
+function replyAuthor(id) {
+  return messages.value.find(message => message.id === id)?.nickname || 'un messaggio precedente';
 }
 
 async function react(message, emoji) {
@@ -329,6 +346,7 @@ onBeforeUnmount(() => {
               <span v-else-if="message.type === 'ai'" class="chat-badge">AI</span>
               <time :datetime="new Date(message.created_at).toISOString()">{{ chatTime(message.created_at) }}</time>
             </div>
+            <p v-if="message.reply_to_id" class="chat-reply-reference">In risposta a {{ replyAuthor(message.reply_to_id) }}</p>
             <p>{{ message.text }}</p>
             <div class="chat-reactions">
               <button v-for="emoji in chatEmojis" :key="emoji" type="button"
@@ -337,6 +355,8 @@ onBeforeUnmount(() => {
                 :disabled="state !== 'live' || Boolean(reacting)" @click="react(message, emoji)">
                 {{ emoji }}<span v-if="message.reactions?.find(item => item.emoji === emoji)?.count">{{ message.reactions.find(item => item.emoji === emoji).count }}</span>
               </button>
+              <button v-if="message.type === 'fan' && !message.mine" type="button" class="chat-flag"
+                :disabled="state !== 'live' || sending" @click="beginReply(message)">Rispondi</button>
               <button v-if="!message.mine && !reported.includes(message.id)" type="button" class="chat-flag"
                 :aria-expanded="reportId === message.id" :disabled="state !== 'live'" @click="beginReport(message)">Segnala</button>
             </div>
@@ -358,8 +378,12 @@ onBeforeUnmount(() => {
         <p v-if="notice" role="status">{{ notice }}</p>
         <button v-if="state === 'error'" type="button" @click="syncHistory">Ricarica i messaggi</button>
         <button v-else-if="state === 'live' && !canWrite" type="button" class="chat-verify" @click="emit('verify')">Accedi o crea un profilo verificato per partecipare</button>
-        <form v-else-if="canWrite" class="chat-composer" @submit.prevent="send">
-          <input v-model="draft" type="text" aria-label="Scrivi un messaggio" aria-describedby="match-chat-count"
+        <div v-if="canWrite && replyTo" class="chat-reply-draft">
+          <span>Risposta a {{ replyTo.nickname }}</span>
+          <button type="button" :disabled="sending" @click="replyTo = null">Annulla risposta</button>
+        </div>
+        <form v-if="canWrite && state !== 'error'" class="chat-composer" @submit.prevent="send">
+          <input ref="composer" v-model="draft" type="text" aria-label="Scrivi un messaggio" aria-describedby="match-chat-count"
             placeholder="Scrivi alla tribuna…" maxlength="360" enterkeyhint="send" autocomplete="off" />
           <button type="submit" :disabled="sending || state !== 'live' || !draft.trim() || length > 180">{{ sending ? 'Invio…' : 'Invia' }}</button>
           <small id="match-chat-count" :class="{ 'chat-over-limit': length > 180 }">{{ length }}/180</small>
@@ -409,6 +433,7 @@ onBeforeUnmount(() => {
 .chat-byline { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: .75rem; overflow-wrap: anywhere; }
 .chat-byline time { color: var(--muted); }
 .chat-bubble p { margin: 6px 0 3px; font-size: .9rem; line-height: 1.4; overflow-wrap: anywhere; white-space: pre-wrap; }
+.chat-bubble .chat-reply-reference { color: var(--muted); font-size: .75rem; }
 .chat-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
 .chat-reactions button { min-height: 36px; min-width: 34px; color: var(--muted); border-radius: 10px; border: 1px solid transparent; padding: 0 3px; background: transparent; }
 .chat-reactions button[aria-pressed=true] { border-color: var(--red-text); background: var(--red-soft); color: var(--red-text); }
@@ -421,6 +446,8 @@ onBeforeUnmount(() => {
 .chat-footer p { font-size: .8rem; margin: 3px 0 7px; }
 .chat-footer .chat-new { position: absolute; right: 12px; bottom: calc(100% + 7px); background: var(--red-soft); color: var(--red-text); }
 .chat-footer .chat-verify { width: 100%; }
+.chat-reply-draft { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; color: var(--muted); font-size: .8rem; }
+.chat-reply-draft span { min-width: 0; overflow-wrap: anywhere; }
 .chat-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
 .chat-composer input { width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 12px; padding: 0 10px; font-size: 16px; color: var(--ink); background: var(--card); }
 .chat-composer button { background: var(--red); color: var(--on-primary); min-width: 60px; }

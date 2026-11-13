@@ -1390,6 +1390,7 @@ type AppDatabase interface {
 	PurgeEventData(eventID int) error
 	RecordEventFeedback(feedback EventFeedback) error
 	RecordEventFeedbackAnswer(eventID int, responseID, question, value string) error
+	RecordEventFeedbackTrackedAnswer(eventID int, responseID, question, value, deviceKey string, fanID int) error
 	GetEventFeedbackSummary(eventID int) (EventFeedbackSummary, error)
 	ListShopProducts() ([]ShopProduct, error)
 	GetShopProduct(id int) (ShopProduct, error)
@@ -2091,6 +2092,8 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	for _, statement := range []string{
 		`ALTER TABLE event_feedback ADD COLUMN response_id TEXT`,
 		`ALTER TABLE event_feedback ADD COLUMN report_experience TEXT`,
+		`ALTER TABLE event_feedback ADD COLUMN report_device_key TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE event_feedback ADD COLUMN report_fan_id INTEGER REFERENCES fan_profiles(id) ON DELETE SET NULL`,
 	} {
 		if _, err = db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("error ensuring incremental event feedback columns: %w", err)
@@ -2724,6 +2727,9 @@ FOREIGN KEY (team_id) REFERENCES teams(id)
 	}
 	if err = ensureMatchChatTables(db); err != nil {
 		return nil, err
+	}
+	if err = ensureMatchdayTechnology(db); err != nil {
+		return nil, fmt.Errorf("ensuring matchday technology: %w", err)
 	}
 	if err = ensureMarketingTables(db); err != nil {
 		return nil, err
@@ -4036,7 +4042,7 @@ func (db *appdbimpl) PurgeEventData(eventID int) error {
 	defer tx.Rollback()
 	// The /new reporting subsystem is installed by the API. Explicit cleanup
 	// also works on SQLite connections where foreign-key cascades are disabled.
-	for _, table := range []string{"event_chat_reactions", "event_chat_reports", "event_chat_messages", "event_chat_mutes", "event_chat_settings", "engagement_report_signals", "engagement_report_calculations", "engagement_report_snapshots", "engagement_report_manual_sources", "engagement_report_source_history", "engagement_report_analysis_reviews", "engagement_report_analysis_cache", "matchday_kpi_manual_revisions", "voting_notifications", "event_voting_closures"} {
+	for _, table := range []string{"event_chat_replies", "event_chat_opens", "event_chat_setting_changes", "event_chat_blocked_attempts", "merch_match_activity", "merch_match_orders", "merch_match_coverage", "event_chat_reactions", "event_chat_reports", "event_chat_messages", "event_chat_mutes", "event_chat_settings", "engagement_report_signals", "engagement_report_calculations", "engagement_report_snapshots", "engagement_report_manual_sources", "engagement_report_source_history", "engagement_report_analysis_reviews", "engagement_report_analysis_cache", "matchday_kpi_manual_revisions", "matchday_qr_arrivals", "fan_matchday_registrations", "matchday_api_requests", "matchday_technology_windows", "voting_notifications", "event_voting_closures"} {
 		var exists int
 		if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&exists); err != nil {
 			return err
@@ -6398,6 +6404,10 @@ func (db *appdbimpl) RecordEventFeedback(feedback EventFeedback) error {
 }
 
 func (db *appdbimpl) RecordEventFeedbackAnswer(eventID int, responseID, question, value string) error {
+	return db.RecordEventFeedbackTrackedAnswer(eventID, responseID, question, value, "", 0)
+}
+
+func (db *appdbimpl) RecordEventFeedbackTrackedAnswer(eventID int, responseID, question, value, deviceKey string, fanID int) error {
 	answers := map[string]string{
 		"experience": "", "team_spirit": "", "perks_interest": "",
 		"mini_games_interest": "", "suggestion": "", "report_experience": "",
@@ -6406,19 +6416,36 @@ func (db *appdbimpl) RecordEventFeedbackAnswer(eventID int, responseID, question
 		return fmt.Errorf("invalid feedback answer")
 	}
 	if question == "suggestion" && value == "" {
-		_, err := db.c.Exec(`UPDATE event_feedback SET suggestion='' WHERE event_id=? AND response_id=?`, eventID, responseID)
+		_, err := db.c.Exec(`UPDATE event_feedback SET suggestion='' WHERE event_id=? AND response_id=?
+			AND (report_device_key='' OR (report_device_key=? AND (?=0 OR report_fan_id IS NULL)) OR report_fan_id=?)`,
+			eventID, responseID, deviceKey, fanID, fanID)
 		return err
 	}
 	answers[question] = value
 	// The question is a whitelisted column. Updating only that column preserves other saved answers.
 	query := fmt.Sprintf(`INSERT INTO event_feedback
-		(event_id, response_id, experience, team_spirit, perks_interest, mini_games_interest, suggestion, report_experience)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(event_id, response_id) DO UPDATE SET %s=excluded.%s`, question, question)
-	_, err := db.c.Exec(query, eventID, responseID, answers["experience"], answers["team_spirit"],
-		answers["perks_interest"], answers["mini_games_interest"], answers["suggestion"], answers["report_experience"])
-	return err
+		(event_id, response_id, experience, team_spirit, perks_interest, mini_games_interest, suggestion, report_experience, report_device_key, report_fan_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?,0))
+		ON CONFLICT(event_id, response_id) DO UPDATE SET %s=excluded.%s,
+			report_device_key=COALESCE(NULLIF(event_feedback.report_device_key,''),excluded.report_device_key),
+			report_fan_id=COALESCE(event_feedback.report_fan_id,excluded.report_fan_id)
+		WHERE event_feedback.report_device_key=''
+			OR (event_feedback.report_device_key=excluded.report_device_key AND (excluded.report_fan_id IS NULL OR event_feedback.report_fan_id IS NULL))
+			OR event_feedback.report_fan_id=excluded.report_fan_id`, question, question)
+	result, err := db.c.Exec(query, eventID, responseID, answers["experience"], answers["team_spirit"],
+		answers["perks_interest"], answers["mini_games_interest"], answers["suggestion"], answers["report_experience"], deviceKey, fanID)
+	if err != nil {
+		return err
+	}
+	if changed, err := result.RowsAffected(); err != nil {
+		return err
+	} else if changed == 0 {
+		return ErrFeedbackResponseOwner
+	}
+	return nil
 }
+
+var ErrFeedbackResponseOwner = errors.New("feedback response belongs to another browser or profile")
 
 func (db *appdbimpl) GetEventFeedbackSummary(eventID int) (EventFeedbackSummary, error) {
 	summary := EventFeedbackSummary{
@@ -7752,6 +7779,8 @@ func ensureFanProfileTables(db *sql.DB) error {
 			PRIMARY KEY (fan_id, legal_version),
 			FOREIGN KEY (fan_id) REFERENCES fan_profiles(id) ON DELETE CASCADE
 		);`,
+		fanMatchdayRegistrationSchema,
+		`CREATE INDEX IF NOT EXISTS idx_fan_matchday_registration_event ON fan_matchday_registrations(event_id, organization_id);`,
 		`CREATE TABLE IF NOT EXISTS fan_wallets (
 			fan_id INTEGER PRIMARY KEY,
 			coins INTEGER NOT NULL DEFAULT 0,
@@ -7953,10 +7982,11 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 		}
 	}
 
+	registrationPending := false
 	if profileID > 0 {
 		var existingOrganization int
 		var verifiedAt string
-		if err := tx.QueryRow(`SELECT organization_id, IFNULL(phone_verified_at,'') FROM fan_profiles WHERE id=? AND (phone=? OR phone_e164=?)`, profileID, input.Phone, input.Phone).Scan(&existingOrganization, &verifiedAt); err != nil {
+		if err := tx.QueryRow(`SELECT organization_id, IFNULL(phone_verified_at,''), registration_pending FROM fan_profiles WHERE id=? AND (phone=? OR phone_e164=?)`, profileID, input.Phone, input.Phone).Scan(&existingOrganization, &verifiedAt, &registrationPending); err != nil {
 			if input.Acceptance != nil && errors.Is(err, sql.ErrNoRows) {
 				return FanProfileSummary{}, ErrFanVerificationRequired
 			}
@@ -8050,6 +8080,11 @@ func (db *appdbimpl) RegisterFan(input FanRegisterInput) (FanProfileSummary, err
 	}
 
 	if input.Acceptance != nil {
+		if registrationPending && input.EventID > 0 {
+			if err := recordFanMatchdayRegistration(tx, input, profile.ID); err != nil {
+				return FanProfileSummary{}, err
+			}
+		}
 		if _, err = tx.Exec(`INSERT INTO fan_registration_acceptances (fan_id,organization_id,minimum_age_declared,legal_version,phone_verified_at)
 			SELECT id,organization_id,?,?,phone_verified_at FROM fan_profiles WHERE id=?
 			ON CONFLICT(fan_id,legal_version) DO NOTHING`, input.Acceptance.MinimumAgeDeclared, input.Acceptance.LegalVersion, profile.ID); err != nil {

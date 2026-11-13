@@ -40,7 +40,7 @@ const enums = {
   device_type: ['mobile', 'tablet', 'desktop', 'unknown'],
   browser_family: ['Chrome', 'Edge', 'Firefox', 'Safari', 'Other', 'unknown'],
 };
-const booleans = new Set(['vote_available', 'games_available', 'feedback_available', 'registered', 'has_voted', 'is_concluded', 'votes_closed', 'is_change', 'has_ticket', 'success']);
+const booleans = new Set(['vote_available', 'games_available', 'feedback_available', 'feedback_measured', 'registered', 'has_voted', 'is_concluded', 'votes_closed', 'is_change', 'has_ticket', 'success']);
 const identifiers = new Set(['sponsor_id', 'player_id', 'previous_player_id']);
 const numbers = new Set(['score', 'taps', 'count', 'amount', 'coins', 'coins_earned', 'visit_count']);
 const milliseconds = new Set(['duration_ms', 'elapsed_ms', 'latency_ms', 'time_to_first_action_ms']);
@@ -58,6 +58,7 @@ export function sanitizeFanAnalyticsMetadata(input) {
     else if ((key === 'active_seconds' || key === 'visible_seconds') && Number.isFinite(value) && value >= 0 && value <= 86400) output[key] = value;
     else if (key === 'status_code' && Number.isInteger(value) && value >= 100 && value <= 599) output[key] = value;
     else if (key === 'round_id' && typeof value === 'string' && /^[A-Za-z0-9_:-]{8,128}$/.test(value)) output[key] = value;
+    else if (key === 'feedback_response_id' && typeof value === 'string' && /^[0-9a-f]{32}$/.test(value)) output[key] = value;
     else if ((key === 'started_at' || key === 'ended_at') && typeof value === 'string' && value.length <= 35 && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value))) output[key] = value;
     else if (key === 'schema_version' && value === FAN_ANALYTICS_SCHEMA_VERSION) output[key] = value;
     else if (key === 'app_version' && typeof value === 'string' && /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]{1,30})?$/.test(value)) output[key] = value;

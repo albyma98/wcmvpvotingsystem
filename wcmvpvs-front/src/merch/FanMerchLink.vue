@@ -11,19 +11,21 @@ import { fanPortalPath } from './shopModel';
 const props = defineProps({
   slug: { type: String, required: true },
   source: { type: String, default: '' },
+  eventId: { type: Number, default: 0 },
+  matchdayReady: { type: Boolean, default: true },
   sheet: Boolean,
 });
 defineEmits(['open']);
 const visible = ref(false);
 const href = computed(() => `${fanPortalPath(props.slug)}/shop`);
 
-watch(() => props.slug, async (slug, previous, onCleanup) => {
+watch(() => [props.slug, props.eventId, props.matchdayReady], async ([slug, eventId, matchdayReady], previous, onCleanup) => {
   visible.value = false;
   if (!slug || typeof window === 'undefined') return;
   const controller = new AbortController();
   onCleanup(() => controller.abort());
   try {
-    const result = await fetchMerchVisibility(slug, controller.signal);
+    const result = await fetchMerchVisibility(slug, controller.signal, matchdayReady ? eventId : 0);
     if (!controller.signal.aborted) visible.value = result;
   } catch { /* An unavailable shop should not block the fan portal. */ }
 }, { immediate: true });

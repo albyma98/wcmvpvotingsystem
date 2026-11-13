@@ -413,7 +413,7 @@ function onPrimaryAction() {
   startGame();
 }
 async function startGame() {
-  roundId = newMinigameRoundId();
+  roundId = isLiveFlow.value && liveMatchId.value ? liveMatchId.value : newMinigameRoundId();
   emit('round-started', { roundId, mode: isLiveFlow.value ? 'live' : 'singleplayer' });
   stopTimer();
   stopBallMovement();

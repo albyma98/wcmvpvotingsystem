@@ -1,4 +1,4 @@
-import { apiClient, getFanSessionHeaders, resolveApiUrl } from '../api';
+import { apiClient, getDeviceHeaders, getFanSessionHeaders, resolveApiUrl } from '../api';
 
 export const chatEmojis = ['❤️', '🔥', '😂', '👏', '💪'];
 export const chatReasons = { abuse: 'Contenuto inappropriato', spam: 'Spam', other: 'Altro' };
@@ -11,7 +11,7 @@ export function matchChatRequest(slug, eventId, { admin = false, method = 'get',
   return apiClient({
     method, data, params, signal, timeout: 12000,
     url: `${admin ? '/admin' : ''}/events/${eventId}/match-chat${path}`,
-    headers: { 'X-Organization-Slug': slug, ...(admin ? {} : getFanSessionHeaders(slug)) },
+    headers: { 'X-Organization-Slug': slug, ...(admin ? {} : { ...getDeviceHeaders(), ...getFanSessionHeaders(slug) }) },
   }).then(response => response.data);
 }
 
@@ -27,6 +27,7 @@ export function chatErrorText(error) {
     chat_duplicate: 'Hai già inviato un messaggio uguale di recente.',
     chat_verification_required: 'Accedi con un profilo tifoso verificato per partecipare.',
     chat_item_not_found: 'Il contenuto non è più disponibile.',
+    chat_reply_unavailable: 'Il messaggio a cui stai rispondendo non è più disponibile.',
     invalid_message: 'Inserisci un messaggio da 1 a 180 caratteri.',
   })[chatErrorCode(error)] || 'Operazione non riuscita. Riprova.';
 }

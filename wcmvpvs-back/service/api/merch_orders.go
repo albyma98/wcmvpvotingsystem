@@ -38,6 +38,8 @@ type merchCheckoutInput struct {
 	Notes              string      `json:"notes"`
 	RequestID          string      `json:"request_id"`
 	ExpectedTotalCents *int64      `json:"expected_total_cents"`
+	MatchID            int         `json:"match_id,omitempty"`
+	matchDeviceKey     string
 }
 
 type merchOrderItem struct {
@@ -391,7 +393,11 @@ func (rt *_router) createMerchOrder(ctx context.Context, org int, account string
 	if !merchRequestID.MatchString(in.RequestID) || in.ExpectedTotalCents == nil {
 		return order, merchInvalid("Riepilogo o identificativo richiesta mancante")
 	}
-	raw, err := json.Marshal(in)
+	// Matchday attribution is independent of checkout idempotency. A request
+	// retried with an expired measurement grant still resumes the original order.
+	checkout := in
+	checkout.MatchID = 0
+	raw, err := json.Marshal(checkout)
 	if err != nil {
 		return order, err
 	}
@@ -407,6 +413,9 @@ func (rt *_router) createMerchOrder(ctx context.Context, org int, account string
 			return loadMerchOrderItems(ctx, tx, &order)
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err := validateMerchMatch(ctx, tx, org, in.MatchID); err != nil {
 			return err
 		}
 		ok, err := merchRate(ctx, tx, org, "order", ip, time.Hour, 45)
@@ -484,6 +493,12 @@ func (rt *_router) createMerchOrder(ctx context.Context, org int, account string
 		if err != nil {
 			return err
 		}
+		if in.MatchID != 0 {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO merch_match_orders(organization_id,event_id,order_id,device_key) VALUES (?,?,?,?)`,
+				org, in.MatchID, order.ID, in.matchDeviceKey); err != nil {
+				return err
+			}
+		}
 		for n, i := range order.Items {
 			_, err = tx.ExecContext(ctx, `INSERT INTO merch_order_items (organization_id,order_id,line_no,product_id,variant_id,name,variant_name,sku,quantity,unit_cents,tracked) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, org, order.ID, n, i.ProductID, i.VariantID, i.Name, i.VariantName, i.SKU, i.Quantity, i.UnitCents, i.tracked)
 			if err != nil {
@@ -538,6 +553,11 @@ func addMerchPayment(ctx context.Context, tx *sql.Tx, order merchOrder, source, 
 }
 
 func addMerchAnalytics(ctx context.Context, tx *sql.Tx, org int, event, eventType, product, variant string) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO merch_analytics_events (organization_id,event_id,type,product_id,variant_id,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT(organization_id,event_id) DO NOTHING`, org, event, eventType, product, variant, time.Now().Unix())
+	_, err := insertMerchAnalytics(ctx, tx, org, event, eventType, product, variant)
 	return err
+}
+
+func insertMerchAnalytics(ctx context.Context, tx *sql.Tx, org int, event, eventType, product, variant string) (sql.Result, error) {
+	return tx.ExecContext(ctx, `INSERT INTO merch_analytics_events (organization_id,event_id,type,product_id,variant_id,created_at)
+		VALUES (?,?,?,?,?,?) ON CONFLICT(organization_id,event_id) DO NOTHING`, org, event, eventType, product, variant, time.Now().Unix())
 }

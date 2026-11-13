@@ -106,11 +106,34 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
+let matchdayObservation: { slug: string; eventId: number; grant: string } | undefined;
+
+export function setMatchdayObservation(slug: string, eventId: number, grant: string) {
+  matchdayObservation = slug && eventId > 0 && grant ? { slug, eventId, grant } : undefined;
+}
+
+export function getMatchdayObservationHeaders(slug: string, eventId: number) {
+  if (matchdayObservation?.slug === slug && matchdayObservation.eventId === eventId) {
+    return { 'X-Matchday-Grant': matchdayObservation.grant };
+  }
+  return {};
+}
+
 apiClient.interceptors.request.use((config) => {
   const orgSlug = getOrganizationSlugFromLocation();
   if (orgSlug && !config.headers?.['X-Organization-Slug']) {
     config.headers = config.headers || {};
     config.headers['X-Organization-Slug'] = orgSlug;
+  }
+  if (matchdayObservation && matchdayObservation.slug === orgSlug && !config.headers?.['X-Matchday-Grant'] && /^\/(?!\/)/.test(config.url || '') &&
+      !config.url?.startsWith('/admin/') && typeof window !== 'undefined') {
+    const { pathname, search } = window.location;
+    const params = new URLSearchParams(search);
+    const explicitEvent = params.get('eventId') ?? params.get('eventID');
+    if (/^\/[^/]+\/new\/?$/.test(pathname) && (!explicitEvent || explicitEvent === String(matchdayObservation.eventId))) {
+      config.headers = config.headers || {};
+      config.headers['X-Matchday-Grant'] = matchdayObservation.grant;
+    }
   }
   return config;
 });
@@ -684,7 +707,9 @@ export async function submitEventFeedback(eventId: number, feedback: EventFeedba
 
 export async function saveEventFeedbackAnswer(eventId: number, responseId: string, question: string, value: string) {
   try {
-    await apiClient.post(`/events/${eventId}/feedback/answer`, { response_id: responseId, question, value });
+    await apiClient.post(`/events/${eventId}/feedback/answer`, { response_id: responseId, question, value }, {
+      headers: { ...getDeviceHeaders(), ...getFanSessionHeaders() },
+    });
     return { ok: true };
   } catch (error) {
     const status = axios.isAxiosError(error) ? error.response?.status : undefined;

@@ -11,6 +11,8 @@ import (
 const (
 	SponsorImpression       = "sponsor_impression"
 	SponsorViewable         = "sponsor_viewable"
+	SponsorGeometryViewable = "sponsor_geometry_viewable"
+	SponsorExposureSample   = "sponsor_exposure_sample"
 	SponsorExposureEnd      = "sponsor_exposure_end"
 	SponsorClick            = "sponsor_click"
 	SponsorFullView         = "sponsor_full_view"
@@ -37,11 +39,13 @@ type SponsorAnalyticsEvent struct {
 	Percentage int    `json:"visibility_percentage"`
 	Method     string `json:"measurement_method"`
 	Grant      string `json:"grant"`
+	GeometrySampled bool `json:"geometry_sampled,omitempty"`
 
 	// Populated only after validating the signed catalog.
 	SponsorName  string `json:"-"`
 	Clickable    bool   `json:"-"`
 	FullDuration int    `json:"-"`
+	ReportDeviceKey string `json:"-"`
 }
 
 func ensureSponsorAnalytics(db *sql.DB) error {
@@ -80,7 +84,19 @@ func ensureSponsorAnalytics(db *sql.DB) error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_sponsor_measured_event_exposure ON sponsor_measured_event_ids(exposure_id);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	for _, statement := range []string{
+		`ALTER TABLE sponsor_measured_exposures ADD COLUMN report_device_key TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sponsor_measured_exposures ADD COLUMN geometry_sampled INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE sponsor_measured_exposures ADD COLUMN geometry_viewable INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := db.Exec(statement); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return err
+		}
+	}
+	return nil
 }
 
 type measuredSponsorState struct {
@@ -89,6 +105,7 @@ type measuredSponsorState struct {
 	start, last                                          int64
 	duration, continuous, clicks                         int
 	impression, viewable, ended, full, clickable         bool
+	geometrySampled, geometryViewable                    bool
 }
 
 func (s measuredSponsorState) accepts(e SponsorAnalyticsEvent, audience string) bool {
@@ -103,6 +120,10 @@ func (s measuredSponsorState) accepts(e SponsorAnalyticsEvent, audience string) 
 	switch e.Type {
 	case SponsorViewable:
 		return s.method == SponsorHTML && !s.viewable && e.Continuous >= 1000 && e.Percentage >= 50
+	case SponsorGeometryViewable:
+		return s.geometrySampled && !s.geometryViewable && s.method != SponsorHTML && e.Continuous >= 1000 && e.Percentage >= 50
+	case SponsorExposureSample:
+		return true
 	case SponsorFullView:
 		return s.viewable && !s.full && s.fullDuration > 0 && e.Continuous >= s.fullDuration && e.Percentage >= 50
 	case SponsorExposureEnd:
@@ -155,12 +176,12 @@ func (db *appdbimpl) RecordSponsorAnalytics(ctx context.Context, audience string
 		err = tx.QueryRowContext(ctx, `
 			SELECT club_id, COALESCE(match_id,0), sponsor_id, creative_id, placement_id, game_id, method,
 				session_id, audience_key, start_ms, last_ms, visible_ms, continuous_ms, impression,
-				viewable, ended, full_view, full_duration, clickable, clicks
+				viewable, ended, full_view, full_duration, clickable, clicks, geometry_sampled, geometry_viewable
 			FROM sponsor_measured_exposures WHERE id=?`, e.ExposureID).Scan(
 			&state.club, &state.match, &state.sponsor, &state.creative, &state.placement, &state.game,
 			&state.method, &state.session, &state.audience, &state.start, &state.last,
 			&state.duration, &state.continuous, &state.impression, &state.viewable, &state.ended,
-			&state.full, &state.fullDuration, &state.clickable, &state.clicks)
+			&state.full, &state.fullDuration, &state.clickable, &state.clicks, &state.geometrySampled, &state.geometryViewable)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			impression := e.Type == SponsorImpression && e.Percentage > 0
@@ -171,20 +192,23 @@ func (db *appdbimpl) RecordSponsorAnalytics(ctx context.Context, audience string
 			_, err = tx.ExecContext(ctx, `
 				INSERT INTO sponsor_measured_exposures (
 					id, club_id, match_id, sponsor_id, sponsor_name, creative_id, placement_id, game_id,
-					method, session_id, audience_key, start_ms, last_ms, max_percentage, impression, full_duration, clickable, clicks
-				) VALUES (?,?,NULLIF(?,0),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+					method, session_id, audience_key, start_ms, last_ms, max_percentage, impression, full_duration, clickable, clicks,
+					report_device_key, geometry_sampled
+				) VALUES (?,?,NULLIF(?,0),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 				e.ExposureID, e.ClubID, e.MatchID, e.SponsorID, e.SponsorName, e.CreativeID, e.Placement, e.Game,
 				e.Method, e.SessionID, audience, e.Timestamp, e.Timestamp, e.Percentage, impression,
-				e.FullDuration, e.Clickable, boolToInt(click))
+				e.FullDuration, e.Clickable, boolToInt(click), e.ReportDeviceKey, e.GeometrySampled && e.Method != SponsorHTML)
 		case err != nil:
 			return 0, err
 		case state.accepts(e, audience):
 			_, err = tx.ExecContext(ctx, `UPDATE sponsor_measured_exposures
 				SET last_ms=?, visible_ms=?, continuous_ms=?, max_percentage=MAX(max_percentage,?),
-					viewable=(viewable OR ?), ended=?, full_view=(full_view OR ?), clicks=clicks+?
+					viewable=(viewable OR ?), ended=?, full_view=(full_view OR ?), clicks=clicks+?,
+					report_device_key=CASE WHEN report_device_key='' THEN ? ELSE report_device_key END,
+					geometry_viewable=(geometry_viewable OR ?)
 				WHERE id=?`, e.Timestamp, e.Duration, e.Continuous, e.Percentage,
 				e.Type == SponsorViewable, e.Type == SponsorExposureEnd, e.Type == SponsorFullView,
-				boolToInt(e.Type == SponsorClick), e.ExposureID)
+				boolToInt(e.Type == SponsorClick), e.ReportDeviceKey, e.Type == SponsorGeometryViewable, e.ExposureID)
 		default:
 			continue
 		}
@@ -216,6 +240,10 @@ type SponsorAnalyticsMetrics struct {
 	AverageDuration         *float64 `json:"average_visible_ms"`
 	DurationSamples         int      `json:"duration_samples"`
 	PositiveDurationSamples int      `json:"-"`
+	GeometrySampled         int      `json:"-"`
+	GeometryViewable        int      `json:"-"`
+	ObservedDuration        *int64   `json:"-"`
+	ObservedDurationSamples int      `json:"-"`
 	Clicks                  *int     `json:"clicks"`
 	UniqueClicks            *int     `json:"unique_clickers"`
 	CTR                     *float64 `json:"ctr"`
@@ -323,7 +351,11 @@ const measuredSponsorStatsSQL = `, COALESCE(SUM(impression),0), COUNT(CASE WHEN 
 		COALESCE(SUM(clicks),0), COUNT(CASE WHEN clickable THEN 1 END),
 		COUNT(DISTINCT CASE WHEN clicks>0 THEN NULLIF(audience_key,'') END),
 		COUNT(CASE WHEN clicks>0 AND audience_key='' THEN 1 END),
-		COALESCE(SUM(full_view),0), COUNT(CASE WHEN full_duration>0 AND impression AND (ended OR full_view) THEN 1 END)`
+		COALESCE(SUM(full_view),0), COUNT(CASE WHEN full_duration>0 AND impression AND (ended OR full_view) THEN 1 END),
+		COUNT(CASE WHEN impression AND geometry_sampled THEN 1 END),
+		COUNT(CASE WHEN impression AND geometry_viewable THEN 1 END),
+		SUM(CASE WHEN impression AND (ended OR visible_ms>0) THEN visible_ms END),
+		COUNT(CASE WHEN impression AND (ended OR visible_ms>0) THEN 1 END)`
 
 // ReadMeasuredSponsorMatches groups the same measured data as the commercial
 // report for several already scoped events in a single read.
@@ -341,7 +373,7 @@ func ReadMeasuredSponsorMatches(ctx context.Context, q interface {
 	in := strings.TrimSuffix(strings.Repeat("?,", len(eventIDs)), ",")
 	rows, err := q.QueryContext(ctx, `WITH scoped AS (
 		SELECT match_id, sponsor_id, sponsor_name, placement_id, game_id, method, impression, viewable,
-			audience_key, ended, visible_ms, clicks, clickable, full_view, full_duration
+			audience_key, ended, visible_ms, clicks, clickable, full_view, full_duration, geometry_sampled, geometry_viewable
 		FROM sponsor_measured_exposures WHERE club_id=? AND match_id IN (`+in+`)
 	), levels AS (SELECT 0 AS level UNION ALL SELECT 1 UNION ALL SELECT 2)
 	SELECT match_id, level, CASE WHEN level=1 THEN sponsor_id ELSE 0 END AS grouped_sponsor,
@@ -384,10 +416,11 @@ func scanSponsorAnalyticsRow(rows *sql.Rows, prefix ...interface{}) (SponsorAnal
 	var row SponsorAnalyticsRow
 	m := &row.SponsorAnalyticsMetrics
 	var viewable, reach, missingReach, clicks, clickable, uniqueClicks, missingClicks, full, fullDenominator, visibleSamples int
-	var duration sql.NullInt64
+	var duration, observedDuration sql.NullInt64
 	err := rows.Scan(append(prefix, &row.SponsorID, &row.SponsorName, &row.Creative, &row.Placement, &row.Game, &row.Method, &row.Day,
 		&m.Impressions, &m.HTMLImpressions, &viewable, &reach, &missingReach, &duration, &m.DurationSamples, &visibleSamples,
-		&clicks, &clickable, &uniqueClicks, &missingClicks, &full, &fullDenominator)...)
+		&clicks, &clickable, &uniqueClicks, &missingClicks, &full, &fullDenominator,
+		&m.GeometrySampled, &m.GeometryViewable, &observedDuration, &m.ObservedDurationSamples)...)
 	if err != nil {
 		return row, err
 	}
@@ -409,6 +442,9 @@ func scanSponsorAnalyticsRow(rows *sql.Rows, prefix ...interface{}) (SponsorAnal
 			average := float64(duration.Int64) / float64(visibleSamples)
 			m.AverageDuration = &average
 		}
+	}
+	if observedDuration.Valid {
+		m.ObservedDuration = &observedDuration.Int64
 	}
 	if clickable > 0 {
 		m.Clicks = &clicks

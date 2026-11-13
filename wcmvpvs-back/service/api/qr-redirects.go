@@ -146,6 +146,15 @@ func (rt *_router) handleQRRedirectNotFound(w http.ResponseWriter, r *http.Reque
 		if err := rt.db.IncrementQRRedirectHit(redirect.ID); err != nil {
 			ctx.Logger.WithError(err).Warn("cannot increment qr redirect hit")
 		}
+		target, err := rt.matchdayQRDestination(r, redirect.ID, redirect.TargetPath)
+		if err != nil {
+			ctx.Logger.WithError(err).Warn("cannot record matchday QR arrival")
+		}
+		if target != redirect.TargetPath {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+		return
 	}
 
 	http.Redirect(w, r, redirect.TargetPath, http.StatusFound)

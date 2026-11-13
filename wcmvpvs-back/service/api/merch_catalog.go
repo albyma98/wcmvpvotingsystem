@@ -491,6 +491,9 @@ func (rt *_router) ensureMerchMigration() error {
 	if _, err := tx.Exec(merchMigration); err != nil {
 		return fmt.Errorf("merchandising schema: %w", err)
 	}
+	if _, err := tx.Exec(merchMatchMigration); err != nil {
+		return fmt.Errorf("merchandising matchday schema: %w", err)
+	}
 	if err := rt.ensureMerchNotifications(ctx, tx); err != nil {
 		return fmt.Errorf("merchandising notifications schema: %w", err)
 	}

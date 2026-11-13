@@ -26,5 +26,11 @@ export function inlineFeedbackQuestions(survey) {
     && question.title && Array.isArray(question.answers) && question.answers.length,
   );
   if (!questions.length) return [];
-  return [...questions, { id: 'suggestion', title: survey.suggestionPrompt }];
+  return [...questions, {
+    id: 'report_experience', title: 'Com’è stata la tua esperienza complessiva?',
+    answers: [
+      { value: 'awesome', label: 'Fantastica' }, { value: 'good', label: 'Bella' },
+      { value: 'ok', label: 'Discreta' }, { value: 'bad', label: 'Negativa' },
+    ],
+  }, { id: 'suggestion', title: survey.suggestionPrompt }];
 }

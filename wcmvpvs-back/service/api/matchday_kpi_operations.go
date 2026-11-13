@@ -8,18 +8,30 @@ import (
 )
 
 type matchdayChatFacts struct {
-	enabled                                    bool
-	fans, lostAuthors, official, bots          int
-	reported, removed, moderated, fanReactions int
-	authors                                    map[int]bool
+	enabled                                              bool
+	measured, complete, everEnabled, openWithoutIdentity bool
+	fans, lostAuthors, official, bots                    int
+	reported, removed, moderated, fanReactions           int
+	replies, blocked                                     int
+	openIdentities                                       []matchdayIdentity
+	authors                                              map[int]bool
 }
 
 type matchdayOperationsFacts struct {
 	chat         matchdayChatFacts
+	merch        matchdayMerchFacts
 	virtualItems map[string]int
 	barOrders    int
 	barPaid      int
 	barClosed    int
+}
+
+func (f matchdayOperationsFacts) eachIdentity(use func(matchdayIdentity)) {
+	for _, group := range [][]matchdayIdentity{f.merch.visitIdentities, f.merch.buyerIdentities, f.chat.openIdentities} {
+		for _, identity := range group {
+			use(identity)
+		}
+	}
 }
 
 func loadMatchdayOperations(ctx context.Context, q matchdayQueryer, orgID int, data map[int]*matchdayFacts) error {
@@ -28,6 +40,9 @@ func loadMatchdayOperations(ctx context.Context, q matchdayQueryer, orgID int, d
 	}
 	if err := loadMatchdayChat(ctx, q, orgID, data); err != nil {
 		return fmt.Errorf("matchday chat: %w", err)
+	}
+	if err := loadMatchdayChatMeasurement(ctx, q, orgID, data); err != nil {
+		return fmt.Errorf("matchday chat measurement: %w", err)
 	}
 	ids, args := matchdayIDs(data)
 	rows, err := q.QueryContext(ctx, `SELECT event_id, source, COUNT(*) FROM fan_wallet_movements
@@ -56,6 +71,9 @@ func loadMatchdayOperations(ctx context.Context, q matchdayQueryer, orgID int, d
 	}
 	if err := loadMatchdayBar(ctx, q, orgID, data); err != nil {
 		return fmt.Errorf("matchday bar: %w", err)
+	}
+	if err := loadMatchdayMerch(ctx, q, orgID, data); err != nil {
+		return fmt.Errorf("matchday merchandising: %w", err)
 	}
 	return nil
 }
@@ -314,6 +332,7 @@ func calculateMatchdayShop(f *matchdayFacts) {
 		bar.Rows = append(bar.Rows, matchdayRow{Label: "Valore lordo ordini pagati", Values: map[string]*float64{"amount": f.BarRevenue}})
 	}
 	matchdayPut(f, bar)
+	applyMatchdayMerch(f)
 }
 
 func matchdayShopManual(f *matchdayFacts, code, name, description, formula, unit, table string) matchdayMetric {
@@ -338,10 +357,18 @@ func calculateMatchdayChat(f *matchdayFacts) {
 	const reports = "event_chat_reports.event_id, message_id, review_status"
 	const reactions = "event_chat_reactions.event_id, message_id, fan_id"
 	const openSignals = "engagement_report_signals.name, fan_id, device_key, session_id"
+	const openRecords = "event_chat_opens.event_id, device_key, fan_id"
+	const repliesSource = "event_chat_replies.event_id, message_id, reply_to_id"
+	const blockedSource = "event_chat_blocked_attempts.event_id, attempts"
 	const chatMissing = "Le aperture non sono state osservate nella telemetria dell'evento."
 	const deletedAuthors = "Alcuni messaggi hanno perso il riferimento al profilo dell'autore."
 	chat := f.Operations.chat
 	openers := map[string]bool{}
+	for _, opener := range chat.openIdentities {
+		if identity := f.Resolve(opener); identity != "" {
+			openers[identity] = true
+		}
+	}
 	for _, signal := range f.Signals {
 		if signal.Name == "match_chat_opened" {
 			identity := f.Resolve(matchdaySignalIdentity(signal))
@@ -350,7 +377,7 @@ func calculateMatchdayChat(f *matchdayFacts) {
 			}
 		}
 	}
-	active := chat.enabled || chat.fans+chat.official+chat.bots > 0 || len(openers) > 0
+	active := chat.enabled || chat.everEnabled || chat.fans+chat.official+chat.bots > 0 || len(openers) > 0 || chat.openWithoutIdentity
 	put := func(metrics ...matchdayMetric) {
 		if !active {
 			for i := range metrics {
@@ -362,8 +389,27 @@ func calculateMatchdayChat(f *matchdayFacts) {
 		matchdayPut(f, metrics...)
 	}
 	opens := matchdayUnavailable("chat_openers", "Utenti che hanno aperto la chat", "Identità distinte osservate all'apertura della chat.", "Identità distinte con match_chat_opened", "count", "not_measurable", chatMissing, openSignals)
-	if len(openers) > 0 {
-		opens = matchdayCount(opens.Code, opens.Name, opens.Description, opens.Formula, float64(len(openers)), openSignals)
+	if chat.measured || len(openers) > 0 {
+		opens = matchdayCount(opens.Code, opens.Name, opens.Description, "Identità distinte che hanno aperto la chat", float64(len(openers)), openRecords, openSignals)
+		if chat.openWithoutIdentity {
+			opens.Status, opens.Reason = "partial", "Alcune aperture sono prive di un identificativo pseudonimo."
+		}
+	}
+	replies := matchdayUnavailable("chat_replies", "Risposte tra tifosi", "Messaggi che rispondono a un altro messaggio.", "Conteggio risposte con messaggio padre", "count", "not_measurable", "La registrazione delle risposte non era attiva per questa partita.", repliesSource)
+	blocked := matchdayUnavailable("chat_blocked", "Messaggi bloccati", "Tentativi di invio respinti dalla moderazione o dalle regole di chat.", "Conteggio dei tentativi bloccati", "count", "not_measurable", "La registrazione dei tentativi respinti non era attiva per questa partita.", blockedSource)
+	if chat.measured || chat.replies > 0 {
+		replies = matchdayCount(replies.Code, replies.Name, replies.Description, replies.Formula, float64(chat.replies), repliesSource)
+	}
+	if chat.measured || chat.blocked > 0 {
+		blocked = matchdayCount(blocked.Code, blocked.Name, blocked.Description, blocked.Formula, float64(chat.blocked), blockedSource)
+	}
+	if !chat.complete {
+		const reason = "La raccolta non è documentata dalla prima configurazione della chat per la partita."
+		for _, metric := range []*matchdayMetric{&opens, &replies, &blocked} {
+			if metric.Value != nil && metric.Status == "available" {
+				metric.Status, metric.Reason = "partial", reason
+			}
+		}
 	}
 	authors := matchdayCount("chat_participants", "Partecipanti unici in chat", "Tifosi con almeno un messaggio salvato nella chat, inclusi quelli poi rimossi.", "COUNT(DISTINCT autore dei messaggi fan)", float64(len(chat.authors)), messages)
 	reachedAuthors := 0
@@ -385,10 +431,10 @@ func calculateMatchdayChat(f *matchdayFacts) {
 		matchdayCount("chat_total_messages", "Messaggi umani complessivi", "Messaggi dei tifosi e messaggi ufficiali, inclusi quelli rimossi.", "Messaggi fan + messaggi ufficiali", float64(chat.fans+chat.official), messages),
 		matchdayCount("chat_bot_messages", "Messaggi automatici", "Messaggi automatici distinti dai messaggi umani.", "Conteggio messaggi ai", float64(chat.bots), messages),
 		matchdayCount("chat_fan_reactions", "Reazioni tra tifosi", "Reazioni tuttora registrate da un tifoso al messaggio di un altro.", "Reazioni a messaggi fan, escluse le autoreazioni", float64(chat.fanReactions), messages, reactions),
-		matchdayUnavailable("chat_replies", "Risposte tra tifosi", "Messaggi che rispondono a un altro messaggio.", "Conteggio risposte con messaggio padre", "count", "not_measurable", "La chat non registra relazioni di risposta tra messaggi.", messages),
+		replies,
 		matchdayCount("chat_reported", "Messaggi segnalati", "Messaggi dei tifosi con almeno una segnalazione.", "Messaggi fan distinti con almeno un report", float64(chat.reported), messages, reports),
 		matchdayCount("chat_removed", "Messaggi rimossi", "Messaggi dei tifosi rimossi da un moderatore.", "Conteggio messaggi fan con stato removed", float64(chat.removed), messages),
-		matchdayUnavailable("chat_blocked", "Messaggi bloccati", "Tentativi di invio respinti dalla moderazione o dalle regole di chat.", "Conteggio dei tentativi bloccati", "count", "not_measurable", "I tentativi respinti non vengono salvati nel registro dei messaggi.", "event_chat_mutes.event_id, fan_id, muted_until"),
+		blocked,
 		matchdayRatio("chat_moderation_rate", "Tasso di moderazione", "Messaggi dei tifosi rimossi o con segnalazione esaminata.", "Messaggi fan rimossi o esaminati / messaggi fan × 100", "percent", float64(chat.moderated), float64(chat.fans), messages, reports))
 }
 
@@ -438,9 +484,15 @@ func calculateMatchdayTechnology(f *matchdayFacts) {
 			{Label: "Voti respinti per limite di frequenza", Values: map[string]*float64{"count": matchdayOperationsValue(limited)}},
 		}
 	}
-	payment := matchdayUnavailable("tech_payment_success", "Pagamenti riusciti", "Esiti del checkout bar digitale attribuiti alla partita. I pagamenti merchandising hanno dati a livello di società.", "Ordini bar pagati / checkout bar con esito definitivo × 100", "percent", "not_measurable", "Nessun esito definitivo di pagamento è attribuibile alla partita.", bar, attribution)
-	if f.Operations.barClosed > 0 {
-		payment = matchdayRatio(payment.Code, payment.Name, payment.Description, payment.Formula, payment.Unit, float64(f.Operations.barPaid), float64(f.Operations.barClosed), bar, attribution)
+	payment := matchdayUnavailable("tech_payment_success", "Pagamenti riusciti", "Esiti dei pagamenti digitali attribuiti alla partita.", "Pagamenti riusciti / pagamenti con esito definitivo × 100", "percent", "not_measurable", "Nessun esito definitivo di pagamento è attribuibile alla partita.")
+	if merch := f.Operations.merch; merch.paymentResolved > 0 {
+		const orders = "merch_match_orders.event_id, merch_orders.mode, payment_status"
+		payment = matchdayRatio(payment.Code, payment.Name, "Esiti definitivi degli ordini online dello shop attribuiti alla partita.",
+			"Ordini pagati (anche se poi rimborsati) / ordini con esito di pagamento definitivo × 100", payment.Unit,
+			float64(merch.paymentPaid), float64(merch.paymentResolved), orders)
+		payment.coverage = "merch-online"
+	} else if f.Operations.barClosed > 0 && !f.Operations.merch.observedPayment {
+		payment = matchdayRatio(payment.Code, payment.Name, "Esiti del checkout bar digitale attribuiti alla partita.", "Ordini bar pagati / checkout bar con esito definitivo × 100", payment.Unit, float64(f.Operations.barPaid), float64(f.Operations.barClosed), bar, attribution)
 		payment.Status, payment.Reason = "partial", "Il campione comprende solo checkout bar collegabili alla partita. I checkout ancora in corso sono esclusi."
 	}
 	issues := matchdayUnavailable("tech_application_issues", "Errori e criticità osservati", "Segnali di errore provenienti dalla home tifosi.", "Conteggio diagnostiche client selezionate, per categoria e motivo", "count", "not_measurable", "La telemetria non contiene diagnostiche di errore per la partita.", signals)
@@ -463,6 +515,7 @@ func calculateMatchdayTechnology(f *matchdayFacts) {
 		issues.Columns = []matchdayColumn{{ID: "count", Label: "Eventi osservati", Unit: "count"}}
 	}
 	matchdayPut(f, vote, payment, issues)
+	calculateMatchdayServerTechnology(f)
 }
 
 func matchdayFailureLabel(name string) string {

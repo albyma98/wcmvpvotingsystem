@@ -124,6 +124,8 @@ func matchChatStoreError(w http.ResponseWriter, ctx reqcontext.RequestContext, e
 		matchChatError(w, 429, "chat_rate_limited")
 	case errors.Is(err, database.ErrChatDuplicate), errors.Is(err, database.ErrChatRequestConflict):
 		matchChatError(w, 409, err.Error())
+	case errors.Is(err, database.ErrChatReplyUnavailable):
+		matchChatError(w, 409, "chat_reply_unavailable")
 	case errors.Is(err, sql.ErrNoRows):
 		matchChatError(w, 404, "chat_item_not_found")
 	default:
@@ -143,8 +145,10 @@ func decodeMatchChat(w http.ResponseWriter, r *http.Request, value interface{}) 
 }
 
 type matchChatInput struct {
-	Text      string `json:"text"`
-	RequestID string `json:"request_id"`
+	Text         string `json:"text"`
+	RequestID    string `json:"request_id"`
+	ReplyToID    int64  `json:"reply_to_id,omitempty"`
+	rejectedText bool
 }
 
 func readMatchChatMessage(w http.ResponseWriter, r *http.Request) (matchChatInput, bool) {
@@ -153,7 +157,9 @@ func readMatchChatMessage(w http.ResponseWriter, r *http.Request) (matchChatInpu
 		return in, false
 	}
 	in.Text = strings.TrimSpace(in.Text)
-	if !chatRequestID.MatchString(in.RequestID) || !moderateMatchChatText(in.Text) {
+	validRequest := chatRequestID.MatchString(in.RequestID)
+	in.rejectedText = validRequest && !moderateMatchChatText(in.Text)
+	if !validRequest || in.rejectedText || in.ReplyToID < 0 {
 		matchChatError(w, 400, "invalid_message")
 		return in, false
 	}
@@ -213,6 +219,11 @@ func (rt *_router) matchChatHistory(w http.ResponseWriter, r *http.Request, ctx 
 		matchChatStoreError(w, ctx, err)
 		return
 	}
+	if before == 0 && r.URL.Query().Get("matchday_open") == "1" {
+		if err := store.RecordOpen(r.Context(), fanID, rt.matchdayRequestDeviceKey(r, ctx.OrganizationID), time.Now()); err != nil {
+			ctx.Logger.WithError(err).Warn("match chat open measurement")
+		}
+	}
 	writeJSON(w, 200, history)
 }
 
@@ -240,16 +251,25 @@ func (rt *_router) matchChatFanWrite(w http.ResponseWriter, r *http.Request, ctx
 	var result interface{}
 	var action func(*sql.Tx) error
 	c := r.Context()
+	sendingMessage := strings.HasSuffix(r.URL.Path, "/messages")
+	blocked := func(reason string) {
+		if err := store.RecordBlockedAttempt(c, reason, now); err != nil {
+			ctx.Logger.WithError(err).Warn("match chat blocked attempt measurement")
+		}
+	}
 
 	switch {
-	case strings.HasSuffix(r.URL.Path, "/messages"):
+	case sendingMessage:
 		in, ok := readMatchChatMessage(w, r)
 		if !ok {
+			if in.rejectedText {
+				blocked("invalid_message")
+			}
 			return
 		}
 		action = func(tx *sql.Tx) error {
 			message, created, err := store.Send(c, tx, database.ChatSend{FanID: fanID, Nickname: nickname, Text: in.Text,
-				RequestID: in.RequestID, Now: time.Now().UnixMilli(), MinInterval: chatInterval, PerMinute: chatPerMinute, DuplicateWindow: 30 * time.Second})
+				RequestID: in.RequestID, ReplyToID: in.ReplyToID, Now: time.Now().UnixMilli(), MinInterval: chatInterval, PerMinute: chatPerMinute, DuplicateWindow: 30 * time.Second})
 			if created {
 				public := message
 				public.Mine = false
@@ -317,6 +337,9 @@ func (rt *_router) matchChatFanWrite(w http.ResponseWriter, r *http.Request, ctx
 		}
 	}
 	if !rt.chat.allowActivity(fanID) {
+		if sendingMessage {
+			blocked("chat_rate_limited")
+		}
 		matchChatStoreError(w, ctx, database.ErrChatRate)
 		return
 	}
@@ -328,6 +351,9 @@ func (rt *_router) matchChatFanWrite(w http.ResponseWriter, r *http.Request, ctx
 	}
 	lock.Unlock()
 	if err != nil {
+		if sendingMessage && (errors.Is(err, database.ErrChatMuted) || errors.Is(err, database.ErrChatRate) || errors.Is(err, database.ErrChatDuplicate)) {
+			blocked(err.Error())
+		}
 		matchChatStoreError(w, ctx, err)
 		return
 	}
@@ -418,7 +444,7 @@ func (rt *_router) matchChatAdminWrite(w http.ResponseWriter, r *http.Request, c
 		}
 		requireEnabled = true
 		action = func(tx *sql.Tx, _ bool) error {
-			message, changed, err := store.Send(c, tx, database.ChatSend{AdminID: ctx.AdminID, Text: in.Text, RequestID: in.RequestID, Now: now.UnixMilli()})
+			message, changed, err := store.Send(c, tx, database.ChatSend{AdminID: ctx.AdminID, Text: in.Text, RequestID: in.RequestID, ReplyToID: in.ReplyToID, Now: now.UnixMilli()})
 			if changed {
 				update = chatUpdate{Type: "message", Message: &message}
 			}

@@ -170,7 +170,7 @@ const AdminLottery = defineAsyncComponent(() => import('./components/AdminLotter
 const PartnerPortal = defineAsyncComponent(() => import('./components/PartnerPortal.vue'));
 const TicketValidationView = defineAsyncComponent(() => import('./components/TicketValidationView.vue'));
 const CashLanding = defineAsyncComponent(() => import('./components/CashLanding.vue'));
-import { apiClient, fetchVoteStatus } from './api';
+import { apiClient, fetchVoteStatus, setMatchdayObservation } from './api';
 import { clubDomainRoute, clubMVPEntryRoute } from './clubDomain';
 import { readAdminV2Route } from './admin-v2/router/routes';
 import { isMasterWorkspacePath } from './master-v2/routes';
@@ -556,11 +556,19 @@ async function fetchActiveEvent() {
     return;
   }
 
+  const view = appView.value;
+  const slug = organizationSlug.value;
+  const stillCurrent = () => view === appView.value && slug === organizationSlug.value;
   isFetchingActiveEvent.value = true;
   activeEventError.value = false;
   hasCheckedActiveEvent.value = false;
   try {
-    const { data } = await apiClient.get('/active-event');
+    const matchday = view === 'newui-cento';
+    const { data } = await apiClient.get('/active-event', matchday ? { params: { matchday: '1' } } : undefined);
+    if (!stillCurrent()) return;
+    if (matchday) {
+      setMatchdayObservation(slug, Number(data?.id), data?.matchday_grant);
+    }
     activeEvent.value = data ?? null;
     // Keep this match addressable for the recap after the admin closes it.
     if (appView.value === 'newui-cento' && data?.id && !currentEventId.value && typeof window !== 'undefined') {
@@ -571,6 +579,7 @@ async function fetchActiveEvent() {
       currentEventId.value = data.id;
     }
   } catch (error) {
+    if (!stillCurrent()) return;
     if (error?.response?.status === 204 || error?.response?.status === 404) {
       activeEvent.value = null;
     } else {
@@ -580,7 +589,8 @@ async function fetchActiveEvent() {
     }
   } finally {
     isFetchingActiveEvent.value = false;
-    hasCheckedActiveEvent.value = true;
+    if (stillCurrent()) hasCheckedActiveEvent.value = true;
+    else if (appView.value === 'public' || isNewUiLikeView(appView.value)) void fetchActiveEvent();
   }
 }
 
@@ -622,14 +632,15 @@ onBeforeUnmount(() => {
   window.removeEventListener('popstate', handlePopState);
 });
 
-watch(appView, (view) => {
+watch([appView, organizationSlug], ([view]) => {
+  setMatchdayObservation('', 0, '');
+  activeEvent.value = null;
   isFanHomeLoading.value = true;
   hasSplashMinimumElapsed.value = false;
   fanHomeBrand.value = {};
   if (view === 'public' || isNewUiLikeView(view)) {
     fetchActiveEvent();
   } else {
-    activeEvent.value = null;
     hasCheckedActiveEvent.value = false;
   }
 });

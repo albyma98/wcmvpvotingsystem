@@ -171,6 +171,11 @@ func New(cfg Config) (Router, error) {
 	if err := rt.ensureMerchMigration(); err != nil {
 		return nil, err
 	}
+	recorder, err := rt.newMatchdayRequestRecorder()
+	if err != nil {
+		return nil, err
+	}
+	rt.matchdayRequests = recorder
 	rt.votingNotifications = newVotingNotificationWorker(rt)
 	rt.merchWorker = rt.startMerchWorker()
 	return rt, nil
@@ -184,6 +189,7 @@ type _router struct {
 	baseLogger logrus.FieldLogger
 
 	db database.AppDatabase
+	matchdayRequests *matchdayRequestRecorder
 
 	VoteSecret string
 

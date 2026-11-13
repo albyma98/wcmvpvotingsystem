@@ -24,6 +24,7 @@ func (rt *_router) postVote(w http.ResponseWriter, r *http.Request, ctx reqconte
 		_ = writeJSONMessage(w, http.StatusBadRequest, "Richiesta di voto non valida.")
 		return
 	}
+	validateMatchdayRequestEvent(r, req.EventID)
 
 	req.DeviceID = strings.TrimSpace(req.DeviceID)
 	if req.DeviceID == "" {

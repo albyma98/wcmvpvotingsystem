@@ -2042,6 +2042,8 @@ test('inline feedback saves each answer before advancing, retries, and resumes a
   await restored.state.answerFeedbackInline('complex');
   assert.deepEqual(requests[2], [42, requests[0][1], 'experience', 'complex']);
   await restored.state.answerFeedbackInline('high');
+  assert.match(await renderHome(restored), /esperienza complessiva/);
+  await restored.state.answerFeedbackInline('good');
   assert.match(await renderHome(restored), /Se potessi migliorare qualcosa/);
   const submitting = restored.state.answerFeedbackInline('Più giochi');
   assert.doesNotMatch(await renderHome(restored), /Grazie per il feedback!/);
@@ -2052,12 +2054,14 @@ test('inline feedback saves each answer before advancing, retries, and resumes a
   assert.doesNotMatch(failedHtml, /Grazie per il feedback!/);
   await restored.state.answerFeedbackInline('');
   assert.deepEqual(requests.slice(3).map((request) => request.slice(2)), [
-    ['team_spirit', 'high'], ['suggestion', 'Più giochi'], ['suggestion', ''],
+    ['team_spirit', 'high'], ['report_experience', 'good'], ['suggestion', 'Più giochi'], ['suggestion', ''],
   ]);
   assert.match(await renderHome(restored), /Grazie per il feedback!/);
   assert.equal(restored.state.hasSubmittedFeedback.value, true);
   assert.equal(window.localStorage.getItem('wcmvpvs-feedback:42'), '1');
-  assert.equal(restored.reportSignals.find(({ name }) => name === 'feedback_completed').metadata.experience, undefined);
+  const completed = restored.reportSignals.find(({ name }) => name === 'feedback_completed').metadata;
+  assert.equal(completed.experience, 'good');
+  assert.equal(completed.feedback_response_id, requests[0][1]);
 });
 
 test('an absent or disabled feedback survey leaves the allowed challenge in the featured slot', async t => {

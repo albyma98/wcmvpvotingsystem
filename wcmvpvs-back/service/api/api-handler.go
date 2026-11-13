@@ -21,6 +21,7 @@ func (rt *_router) Handler() chi.Router {
 
 	// Special routes
 	rt.router.Get("/liveness", rt.liveness)
+	rt.router.Get("/readiness", rt.readiness)
 
 	rt.router.Post("/vote", rt.wrap(rt.postVote))
 	// Admin CRUD routes

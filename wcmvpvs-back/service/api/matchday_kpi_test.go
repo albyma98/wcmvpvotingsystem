@@ -17,6 +17,9 @@ import (
 func TestMatchdayArchiveRoundTrip(t *testing.T) {
 	f := newEngagementReportFixture(t)
 	rt := f.router
+	if err := rt.ensureMerchMigration(); err != nil {
+		t.Fatal(err)
+	}
 	rt.router = chi.NewRouter()
 	rt.sessionTimeout = time.Hour
 	rt.adminSessions = map[string]adminSession{

@@ -65,6 +65,11 @@ func TestFanRegistrationRecordsVerifiedAcceptanceAndAutomaticGadgetEntry(t *test
 	if err := db.c.QueryRow(`SELECT COUNT(*) FROM fan_registration_acceptances WHERE fan_id=?`, profile.Profile.ID).Scan(&receipts); err != nil || receipts != 1 {
 		t.Fatalf("duplicate receipts: %d %v", receipts, err)
 	}
+	var matchdayEvent int
+	var matchdayDevice string
+	if err := db.c.QueryRow(`SELECT event_id,device_key FROM fan_matchday_registrations WHERE fan_id=? AND organization_id=?`, profile.Profile.ID, club.ID).Scan(&matchdayEvent, &matchdayDevice); err != nil || matchdayEvent != event || len(matchdayDevice) != 64 {
+		t.Fatalf("missing or invalid matchday attribution: event=%d key length=%d error=%v", matchdayEvent, len(matchdayDevice), err)
+	}
 	if err := db.c.QueryRow(`SELECT COUNT(*) FROM fan_lottery_entries WHERE event_id=? AND fan_id=?`, event, profile.Profile.ID).Scan(&entries); err != nil || entries != 1 {
 		t.Fatalf("duplicate entry: %d %v", entries, err)
 	}

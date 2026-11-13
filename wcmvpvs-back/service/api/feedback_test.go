@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -92,5 +93,81 @@ func TestFeedbackAnswersUpdateOneAnonymousResponse(t *testing.T) {
 	summary, err = f.router.db.GetEventFeedbackSummary(f.event)
 	if err != nil || summary.TotalResponses != 2 || summary.ExperienceCounts["hard"] != 1 {
 		t.Fatalf("retries or edits duplicated the response: %+v, %v", summary, err)
+	}
+}
+
+func TestMatchdayFeedbackUsesSavedAnswersForOutcomesAndBrowserIdentity(t *testing.T) {
+	f := newEngagementReportFixture(t)
+	if _, err := f.conn.Exec(`UPDATE events SET show_feedback_survey=1 WHERE id=?`, f.event); err != nil {
+		t.Fatal(err)
+	}
+	responseID := strings.Repeat("a", 32)
+	failedID := strings.Repeat("b", 32)
+	post := func(device, response, question, value string, status int) {
+		t.Helper()
+		body := map[string]string{"response_id": response, "question": question, "value": value}
+		res := engagementReportRequest(t, f.router.submitEventFeedbackAnswer, http.MethodPost, f.event, body, f.ctx, map[string]string{"X-Device-ID": device})
+		if res.Code != status {
+			t.Fatalf("status %d, want %d saving %s", res.Code, status, question)
+		}
+	}
+	post("answering-browser", responseID, "experience", "easy", http.StatusNoContent)
+	post("other-browser", responseID, "experience", "hard", http.StatusConflict)
+	post("answering-browser", responseID, "team_spirit", "high", http.StatusNoContent)
+	post("answering-browser", responseID, "perks_interest", "yes", http.StatusNoContent)
+	post("answering-browser", responseID, "mini_games_interest", "maybe", http.StatusNoContent)
+	post("answering-browser", responseID, "report_experience", "good", http.StatusNoContent)
+	post("answering-browser", responseID, "report_experience", "good", http.StatusNoContent)
+
+	facts := &matchdayFacts{
+		Event: matchdayEvent{ID: f.event}, Metrics: map[string]matchdayMetric{},
+		Resolve: func(id matchdayIdentity) string { return id.DeviceKey },
+		Signals: []reportSignal{
+			{Name: "feedback_opened", DeviceID: "failed-browser", Metadata: map[string]interface{}{"feedback_response_id": failedID}},
+			{Name: "feedback_completed", DeviceID: "failed-browser", Metadata: map[string]interface{}{"feedback_response_id": failedID}},
+			{Name: "cta_viewed", DeviceID: "view-only", Metadata: map[string]interface{}{"cta": "feedback", "placement": "feedback_home", "feedback_measured": true}},
+		},
+	}
+	if err := loadMatchdayFeedback(context.Background(), f.conn, f.org.ID, map[int]*matchdayFacts{f.event: facts}); err != nil {
+		t.Fatal(err)
+	}
+	for code, want := range map[string]float64{
+		"feedback_responses": 1, "feedback_started": 2, "feedback_completed": 1,
+		"feedback_respondents": 1, "feedback_response_rate": 100.0 / 3, "feedback_completion_rate": 50, "feedback_satisfaction": 100,
+	} {
+		checkMatchdayDomainMetric(t, facts, code, want)
+		if facts.Metrics[code].Status != "available" {
+			t.Fatalf("%s has status %s", code, facts.Metrics[code].Status)
+		}
+	}
+	if len(facts.Actions) != 1 || facts.Actions[0].Identity.DeviceKey != reportOperationalDeviceKey(f.org.ID, "answering-browser") {
+		t.Fatalf("unexpected feedback actions: %+v", facts.Actions)
+	}
+}
+
+func TestMatchdayLiveTapRoundMergesBrowserAndAuthoritativeOutcome(t *testing.T) {
+	first := matchdayIdentity{DeviceKey: "first"}
+	second := matchdayIdentity{DeviceKey: "second"}
+	const round = "head-to-head"
+	facts := &matchdayFacts{
+		Metrics: map[string]matchdayMetric{}, Resolve: func(id matchdayIdentity) string { return id.DeviceKey },
+		games: []matchdayGameObservation{
+			{identity: first, game: "tap", round: round, source: "engagement_report_signals", live: true, start: true},
+			{identity: first, game: "tap", round: round, source: "engagement_report_signals", live: true, completed: true},
+			{identity: first, game: "tap", round: round, source: "tap_live_matches", live: true, start: true, abandoned: true},
+			{identity: second, game: "tap", round: round, source: "tap_live_matches", live: true, start: true, abandoned: true},
+		},
+	}
+	calculateMatchdayGames(facts)
+	for code, want := range map[string]float64{
+		"games_players": 2, "games_starts": 1, "games_completions": 0, "games_completion_rate": 0, "games_per_player": 1, "games_replay_rate": 0,
+	} {
+		checkMatchdayDomainMetric(t, facts, code, want)
+		if facts.Metrics[code].Status != "available" {
+			t.Fatalf("%s has status %s", code, facts.Metrics[code].Status)
+		}
+	}
+	if len(facts.Actions) != 2 {
+		t.Fatalf("unexpected duplicated game actions: %+v", facts.Actions)
 	}
 }

@@ -67,7 +67,8 @@ export function sponsorVisiblePercentage(element, entry, doc, win) {
 }
 
 export function createSponsorMeasurement({ service, scope, win = globalThis.window, doc = globalThis.document,
-  clock = win?.performance, uuid = () => sponsorEventID(win?.crypto), measure = sponsorVisiblePercentage } = {}) {
+  clock = win?.performance, uuid = () => sponsorEventID(win?.crypto), measure = sponsorVisiblePercentage,
+  measureGeometryViewability = false } = {}) {
   const targets = new Map();
   const session = uuid();
   const observer = session && win?.IntersectionObserver
@@ -94,6 +95,7 @@ export function createSponsorMeasurement({ service, scope, win = globalThis.wind
       timestamp: Math.floor(clock.timeOrigin + now),
       visible_duration_ms: Math.floor(exposure.total), continuous_visible_ms: Math.floor(exposure.longest),
       visibility_percentage: percentage, grant: info.sponsor.analyticsGrant,
+      ...(measureGeometryViewability && info.method !== 'html_display' ? { geometry_sampled: true } : {}),
     }, exposure.scope);
   }
 
@@ -107,7 +109,7 @@ export function createSponsorMeasurement({ service, scope, win = globalThis.wind
     const id = uuid();
     if (!current || !id) return null;
     return { id, scope: { ...current, device: service.device() }, total: 0, longest: 0,
-      continuous: 0, last: null, percentage: 0, peak: 0, viewable: false, full: false };
+      continuous: 0, last: null, percentage: 0, peak: 0, viewable: false, full: false, sampledTotal: 0 };
   }
 
   function pause(state) {
@@ -147,13 +149,17 @@ export function createSponsorMeasurement({ service, scope, win = globalThis.wind
       exposure.continuous = Math.min(exposure.total, exposure.continuous + elapsed);
       exposure.longest = Math.max(exposure.longest, exposure.continuous);
     }
-    if (state.info.method === 'html_display' && !exposure.viewable && exposure.continuous >= 1000) {
+    if ((state.info.method === 'html_display' || measureGeometryViewability) && !exposure.viewable && exposure.continuous >= 1000) {
       exposure.viewable = true;
-      send(state, 'sponsor_viewable', now, percentage);
+      send(state, state.info.method === 'html_display' ? 'sponsor_viewable' : 'sponsor_geometry_viewable', now, percentage);
     }
     if (!exposure.full && state.info.fullDuration && exposure.continuous >= state.info.fullDuration) {
       exposure.full = true;
       send(state, 'sponsor_full_view', now, percentage);
+    }
+    if (measureGeometryViewability && exposure.total - exposure.sampledTotal >= 5000) {
+      exposure.sampledTotal = exposure.total;
+      send(state, 'sponsor_exposure_sample', now, percentage);
     }
   }
 
@@ -215,6 +221,15 @@ export function createSponsorMeasurement({ service, scope, win = globalThis.wind
 
   function visibility() {
     if (doc.visibilityState === 'visible') return;
+    if (measureGeometryViewability) {
+      for (const state of targets.values()) {
+        const exposure = state.exposure;
+        if (exposure && exposure.total > exposure.sampledTotal) {
+          exposure.sampledTotal = exposure.total;
+          send(state, 'sponsor_exposure_sample', clock.now(), exposure.percentage);
+        }
+      }
+    }
     targets.forEach(pause);
     void service.flush({ urgent: true });
   }

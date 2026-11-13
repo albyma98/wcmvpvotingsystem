@@ -154,7 +154,27 @@ func (rt *_router) submitEventFeedbackAnswer(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	if err := rt.db.RecordEventFeedbackAnswer(eventID, hex.EncodeToString(responseID), payload.Question, value); err != nil {
+	key := hex.EncodeToString(responseID)
+	deviceID := strings.TrimSpace(r.Header.Get("X-Device-ID"))
+	if deviceID == "" || len(deviceID) > 160 {
+		err = rt.db.RecordEventFeedbackAnswer(eventID, key, payload.Question, value)
+	} else {
+		fanID := 0
+		if token := rt.fanSessionTokenFromRequest(r); token != "" {
+			if lookupErr := rt.db.SQLConn().QueryRowContext(r.Context(), `SELECT p.id FROM fan_sessions s JOIN fan_profiles p ON p.id=s.fan_id
+				WHERE s.token=? AND p.organization_id=? AND p.registration_pending=0`, token, ctx.OrganizationID).Scan(&fanID); lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+				ctx.Logger.WithError(lookupErr).Warn("cannot resolve feedback profile")
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
+		err = rt.db.RecordEventFeedbackTrackedAnswer(eventID, key, payload.Question, value, reportOperationalDeviceKey(ctx.OrganizationID, deviceID), fanID)
+	}
+	if errors.Is(err, database.ErrFeedbackResponseOwner) {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err != nil {
 		ctx.Logger.WithError(err).Warn("cannot record feedback answer")
 		w.WriteHeader(http.StatusInternalServerError)
 		return

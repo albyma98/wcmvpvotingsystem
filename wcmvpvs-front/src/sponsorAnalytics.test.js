@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createSponsorMeasurement, sponsorVisiblePercentage } from './sponsorMeasurement.js';
 import { createSponsorAnalyticsService, existingSponsorDevice } from './sponsorAnalyticsService.js';
 
-function fixture() {
+function fixture(measureGeometryViewability = false) {
   const events = [];
   const service = {
     record: (event, scope) => events.push({ ...event, device: scope.device }),
@@ -18,7 +18,7 @@ function fixture() {
   const listeners = new Map();
   const scope = { slug: 'club', match: 42 };
   const measurement = createSponsorMeasurement({
-    service, scope: () => scope, measure: (element, entry) => entry ? element.ratio : 0,
+    service, scope: () => scope, measure: (element, entry) => entry ? element.ratio : 0, measureGeometryViewability,
     clock: { timeOrigin: 1760000000000, now: () => now }, uuid: () => String(++sequence),
     win: {
       IntersectionObserver: class {
@@ -115,6 +115,21 @@ test('all three SVG courts report geometry, while a rotation closes and replaces
   assert.deepEqual(eventsOf(events, 'viewable').map((e) => e.creative_id), ['replacement']);
   assert.equal(eventsOf(events, 'exposure_end').length, 8);
   assert.ok(eventsOf(events, 'exposure_end').every((e) => e.visibility_percentage === 100));
+});
+
+test('Matchday measures continuous geometry and checkpoints without relabeling HTML viewability', () => {
+  const { events, advance, target, hide } = fixture(true);
+  target(9, 'game_wall_left', { game: 'basketball', method: 'svg_geometry' });
+  advance(900);
+  hide(true);
+  hide(false);
+  // The first sample after visibility resumes establishes a new baseline.
+  advance(5250);
+  assert.equal(eventsOf(events, 'impression')[0].geometry_sampled, true);
+  assert.equal(eventsOf(events, 'geometry_viewable').length, 1);
+  assert.ok(eventsOf(events, 'geometry_viewable')[0].continuous_visible_ms >= 1000);
+  assert.equal(eventsOf(events, 'viewable').length, 0);
+  assert.ok(eventsOf(events, 'exposure_sample').length >= 2);
 });
 
 test('SVG measurement samples transformed screen coordinates and discounts paint above the board', () => {

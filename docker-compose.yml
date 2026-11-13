@@ -25,6 +25,16 @@ services:
     # ports:
     #   - "3000:3000"
 
+  matchday-health:
+    image: wcmvpvs-backend:latest
+    depends_on:
+      - backend
+    entrypoint: ["/app/healthcheck"]
+    command: ["-database", "/data/mvpvs.db", "-url", "${MATCHDAY_PROBE_URL:-http://backend:3000/readiness}"]
+    restart: unless-stopped
+    volumes:
+      - backend-data:/data
+
   frontend:
     build:
       context: ./wcmvpvs-front

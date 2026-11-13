@@ -9,6 +9,9 @@ import (
 
 func TestMatchdayOperationsSeparatesChatAndBarActivity(t *testing.T) {
 	f := newMatchChatFixture(t)
+	if err := f.rt.ensureMerchMigration(); err != nil {
+		t.Fatal(err)
+	}
 	db := f.rt.db.SQLConn()
 	org, err := f.rt.db.GetEventOrganizationID(f.a)
 	if err != nil {

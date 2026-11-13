@@ -279,7 +279,8 @@ func (rt *_router) ingestMeasuredSponsorEvents(w http.ResponseWriter, r *http.Re
 			continue
 		}
 		switch e.Type {
-		case database.SponsorImpression, database.SponsorViewable, database.SponsorExposureEnd, database.SponsorFullView, database.SponsorClick:
+		case database.SponsorImpression, database.SponsorViewable, database.SponsorGeometryViewable, database.SponsorExposureSample,
+			database.SponsorExposureEnd, database.SponsorFullView, database.SponsorClick:
 		default:
 			continue
 		}
@@ -289,6 +290,9 @@ func (rt *_router) ingestMeasuredSponsorEvents(w http.ResponseWriter, r *http.Re
 			grants[e.Grant] = grant
 		}
 		if grant.Expires >= now.Unix() && validateSponsorPlacement(&e, grant) {
+			if batch.Match > 0 && batch.Device != "" {
+				e.ReportDeviceKey = reportOperationalDeviceKey(ctx.OrganizationID, batch.Device)
+			}
 			valid = append(valid, e)
 		}
 	}

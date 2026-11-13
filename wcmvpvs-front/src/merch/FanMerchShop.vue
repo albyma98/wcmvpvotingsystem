@@ -100,7 +100,7 @@
             <button v-if="!sheet" class="dialog-close" type="button" aria-label="Chiudi" :disabled="checkoutBusy" @click="dismiss">×</button>
             <component :is="sheet ? KeepAlive : 'div'" :max="sheet ? 3 : undefined">
               <MerchCheckout v-if="checkoutMode && !currentFallback" :key="sheetView?.checkoutId || checkoutMode"
-                :compact="sheet" :slug="slug" :mode="checkoutMode" :lines="activeLines" :settings="settings"
+                :compact="sheet" :slug="slug" :event-id="eventId" :mode="checkoutMode" :lines="activeLines" :settings="settings"
                 :delivery-options="deliveryOptions" @back="mode = ''" @created="handleOrder" @recoverable-order="rememberOrder" @busy-change="checkoutBusy = $event" />
             </component>
             <section v-if="currentFallback" class="checkout">
@@ -202,6 +202,7 @@ import {
 
 const props = defineProps({
   slug: { type: String, required: true },
+  eventId: { type: Number, default: 0 },
   route: { type: Object, default: null },
   search: { type: String, default: '' },
   sheet: Boolean,
@@ -352,7 +353,12 @@ function openSheet() {
   sheetTrigger = props.openRequest.trigger;
   sheetScroll.clear();
   sheetNavigation.show({ page: 'shop' });
+  if (props.eventId > 0) recordShopEvent('merch_shop_opened');
   void loadCatalog();
+}
+
+function recordShopEvent(type, productId, variantId) {
+  trackMerchEvent(props.slug, type, productId, variantId, props.eventId);
 }
 
 function closeSheet() {
@@ -465,7 +471,7 @@ function observeProduct(element) {
         observer.unobserve(entry.target);
         if (!impressed.has(id)) {
           impressed.add(id);
-          trackMerchEvent(props.slug, 'merch_impression', id);
+          recordShopEvent('merch_impression', id);
         }
       }
     }, { threshold: 0.4 });
@@ -480,7 +486,7 @@ function chooseVariant(option) {
   if (variant.value?.id === option.id) return;
   variant.value = option;
   quantity.value = Math.min(quantity.value, merchMaxQuantity(product.value, option));
-  trackMerchEvent(props.slug, 'merch_variant_selected', product.value.id, option.id);
+  recordShopEvent('merch_variant_selected', product.value.id, option.id);
 }
 
 function openCart() {
@@ -530,7 +536,7 @@ function removeFromCart(line) {
 
 function startCheckout(nextMode, lines) {
   const snapshot = lines.map(line => ({ ...line }));
-  trackMerchEvent(props.slug, 'merch_outbound_click', snapshot[0]?.product_id);
+  recordShopEvent('merch_outbound_click', snapshot[0]?.product_id);
   if (props.sheet) sheetNavigation.show({ ...sheetView.value, mode: nextMode, lines: snapshot, checkoutId: ++checkoutSequence });
   else {
     checkoutLines.value = snapshot;
@@ -585,7 +591,7 @@ watch(product, (item, previous) => {
   variant.value = merchMaxQuantity(item, preferred) ? preferred : null;
   quantity.value = Math.max(1, Math.min(selection?.quantity || 1, maxQuantity.value));
   photoIndex.value = selection?.photoIndex < item?.media?.length ? selection.photoIndex : 0;
-  if (item) trackMerchEvent(props.slug, 'merch_product_view', item.id);
+  if (item) recordShopEvent('merch_product_view', item.id);
 });
 watch(() => props.route?.page, () => {
   legacyCart.value = false;

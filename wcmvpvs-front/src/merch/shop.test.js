@@ -23,6 +23,24 @@ test('the fan portal exposes only valid shop, product and personal-order routes'
   }
 });
 
+test('merch visibility is measured when the page obtains its match grant', async () => {
+  const calls = [];
+  const { props, scope } = setupSfc(new URL('./FanMerchLink.vue', import.meta.url), {
+    vue: testVue,
+    './merchApi': { fetchMerchVisibility: async (slug, signal, matchId) => { calls.push({ slug, signal, matchId }); return true; } },
+    './shopModel': shop,
+  }, { slug: 'home', eventId: 42, matchdayReady: false, sheet: true }, { window: {} });
+  try {
+    props.matchdayReady = true;
+    await nextTick();
+    assert.deepEqual(calls.map(({ slug, matchId }) => [slug, matchId]), [['home', 0], ['home', 42]]);
+    assert.equal(calls[0].signal.aborted, true);
+    assert.equal(calls[1].signal.aborted, false);
+  } finally {
+    scope.stop();
+  }
+});
+
 test('filters, held stock, variant overrides and combined cart modes follow public catalog data', () => {
   assert.deepEqual(shop.selectedMerchProducts([maglia, sciarpa], { search: 'citta', inStock: true }), [maglia]);
   assert.deepEqual(shop.selectedMerchProducts([maglia, sciarpa], { category: 'Accessori', inStock: true }), []);

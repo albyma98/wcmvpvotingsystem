@@ -21,6 +21,7 @@ type merchPublicHandler func(http.ResponseWriter, *http.Request, database.Organi
 
 func (rt *_router) wrapMerchPublic(fn merchPublicHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
 		org, err := rt.db.GetOrganizationBySlug(chi.URLParam(r, "slug"))
 		if err != nil {
 			rt.writeMerchError(w, err)
@@ -31,7 +32,9 @@ func (rt *_router) wrapMerchPublic(fn merchPublicHandler) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		fn(w, r, org)
+		rt.observeMatchdayRequest(w, r, org.ID, started, func(w http.ResponseWriter, r *http.Request) {
+			fn(w, r, org)
+		})
 	}
 }
 
@@ -105,6 +108,11 @@ func (rt *_router) getMerchCatalog(w http.ResponseWriter, r *http.Request, org d
 	}
 	settings.SMSNotifications = false
 	if r.URL.Query().Get("summary") == "1" {
+		if matchID, err := strconv.Atoi(r.URL.Query().Get("match_id")); err == nil && matchID > 0 {
+			if rt.merchMatchdayGrantMatches(r, org.ID, matchID) {
+				rt.markMerchMatchCoverage(r.Context(), org.ID, matchID, settings.Enabled && settings.Visible)
+			}
+		}
 		_ = writeJSON(w, http.StatusOK, map[string]interface{}{"settings": map[string]bool{"enabled": settings.Enabled, "visible": settings.Visible}})
 		return
 	}
@@ -187,6 +195,15 @@ func (rt *_router) postMerchOrder(w http.ResponseWriter, r *http.Request, org da
 	if err != nil {
 		rt.writeMerchError(w, err)
 		return
+	}
+	if in.MatchID != 0 {
+		validateMatchdayRequestEvent(r, in.MatchID)
+		if rt.merchMatchdayGrantMatches(r, org.ID, in.MatchID) {
+			in.matchDeviceKey = rt.matchdayRequestDeviceKey(r, org.ID)
+		} else {
+			// An expired measurement grant must not block a purchase.
+			in.MatchID = 0
+		}
 	}
 	account := ""
 	if in.Mode == "online" {
@@ -484,6 +501,7 @@ func (rt *_router) postAdminMerchOrderAction(w http.ResponseWriter, r *http.Requ
 
 type merchAnalyticsInput struct {
 	EventID   string `json:"event_id"`
+	MatchID   int    `json:"match_id,omitempty"`
 	Type      string `json:"type"`
 	ProductID string `json:"product_id"`
 	VariantID string `json:"variant_id"`
@@ -500,18 +518,45 @@ func (rt *_router) postMerchAnalytics(w http.ResponseWriter, r *http.Request, or
 		return
 	}
 	switch in.Type {
+	case "merch_shop_opened":
+		if in.MatchID <= 0 || in.ProductID != "" || in.VariantID != "" {
+			rt.writeMerchError(w, merchInvalid("Apertura shop non valida"))
+			return
+		}
 	case "merch_impression", "merch_product_view", "merch_variant_selected", "merch_outbound_click", "merch_avatar_try_on":
 	default:
 		rt.writeMerchError(w, merchInvalid("Evento non valido"))
 		return
 	}
-	if (in.ProductID == "" && in.Type != "merch_impression" && in.Type != "merch_outbound_click") || (in.VariantID == "" && in.Type == "merch_variant_selected") {
+	if in.MatchID != 0 {
+		validateMatchdayRequestEvent(r, in.MatchID)
+		if !rt.merchMatchdayGrantMatches(r, org.ID, in.MatchID) {
+			if in.Type == "merch_shop_opened" {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			in.MatchID = 0
+		}
+	}
+	if (in.ProductID == "" && in.Type != "merch_impression" && in.Type != "merch_outbound_click" && in.Type != "merch_shop_opened") || (in.VariantID == "" && in.Type == "merch_variant_selected") {
 		rt.writeMerchError(w, merchInvalid("Prodotto o variante mancanti"))
 		return
 	}
 	ctx := r.Context()
+	fanID, deviceKey := 0, ""
+	if in.MatchID != 0 {
+		fan, err := rt.merchFan(r, org.ID)
+		if err != nil {
+			rt.writeMerchError(w, err)
+			return
+		}
+		fanID, deviceKey = fan.ID, rt.matchdayRequestDeviceKey(r, org.ID)
+	}
 	var rejection error
 	err := rt.merchWrite(ctx, func(tx *sql.Tx) error {
+		if err := validateMerchMatch(ctx, tx, org.ID, in.MatchID); err != nil {
+			return err
+		}
 		settings, err := loadMerchSettings(ctx, tx, org.ID)
 		if err != nil {
 			return err
@@ -549,7 +594,17 @@ func (rt *_router) postMerchAnalytics(w http.ResponseWriter, r *http.Request, or
 				return err
 			}
 		}
-		return addMerchAnalytics(ctx, tx, org.ID, in.EventID, in.Type, in.ProductID, in.VariantID)
+		result, err := insertMerchAnalytics(ctx, tx, org.ID, in.EventID, in.Type, in.ProductID, in.VariantID)
+		if err != nil || in.MatchID == 0 {
+			return err
+		}
+		inserted, err := result.RowsAffected()
+		if err != nil || inserted == 0 {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO merch_match_activity(organization_id,event_id,analytics_id,fan_id,device_key)
+			VALUES (?,?,?,NULLIF(?,0),?)`, org.ID, in.MatchID, in.EventID, fanID, deviceKey)
+		return err
 	})
 	if err == nil {
 		err = rejection

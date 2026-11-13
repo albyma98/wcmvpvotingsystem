@@ -10,7 +10,7 @@ import (
 
 const (
 	matchdayChannelSources = "tracking_events.session_id, device_id, fan_id, occurred_at, metadata_json (session.started)"
-	matchdayReportChannels = "engagement_report_signals.session_id, device_key, fan_id, occurred_at, metadata.source (page_view)"
+	matchdayReportChannels = "engagement_report_signals.session_id, device_key, fan_id, occurred_at, metadata.entry_channel (page_view)"
 )
 
 func loadMatchdayMarketing(ctx context.Context, q matchdayQueryer, orgID int, data map[int]*matchdayFacts, voteSecret string) error {
@@ -26,7 +26,7 @@ func loadMatchdayMarketing(ctx context.Context, q matchdayQueryer, orgID int, da
 type matchdayEntry struct {
 	channel, person string
 	at              time.Time
-	qr              bool
+	qr, modern      bool
 }
 
 type matchdayChannel struct {
@@ -38,6 +38,7 @@ type matchdayAcquisition struct {
 	channels                                 map[string]*matchdayChannel
 	people                                   map[string]bool
 	access, acquired, comparable, active, qr int
+	modern, legacy                           bool
 }
 
 func matchdayEntryChannel(rawURL, referrer string) (string, bool) {
@@ -118,24 +119,29 @@ func matchdayChannelKey(value string) string {
 func matchdayAcquisitionFor(f *matchdayFacts) matchdayAcquisition {
 	out := matchdayAcquisition{channels: map[string]*matchdayChannel{}, people: map[string]bool{}}
 	entries := map[string]matchdayEntry{}
-	putEntry := func(key, channel string, qr bool, identity matchdayIdentity, at string) {
+	putEntry := func(key, channel string, qr, modern bool, identity matchdayIdentity, at string) {
 		if identity.Session == "" {
 			return
 		}
-		key += identity.Session
-		entry := matchdayEntry{channel: channel, qr: qr, person: f.Resolve(identity), at: reportMetricTime(at)}
-		if current, exists := entries[key]; !exists || matchdayEntryBefore(entry, current) {
+		key += identity.Device + identity.DeviceKey + "\x00" + identity.Session
+		entry := matchdayEntry{channel: channel, qr: qr, modern: modern, person: f.Resolve(identity), at: reportMetricTime(at)}
+		if current, exists := entries[key]; !exists || (modern && !current.modern) || (modern == current.modern && matchdayEntryBefore(entry, current)) {
 			entries[key] = entry
 		}
 	}
 	for _, row := range f.Tracking {
 		if row.Name == "session.started" {
 			channel, qr := matchdayEntryChannel(reportMetricString(row.Metadata, "url"), reportMetricString(row.Metadata, "referrer"))
-			putEntry("tracking:", channel, qr, matchdayTrackingIdentity(row), row.At)
+			putEntry("tracking:", channel, qr, false, matchdayTrackingIdentity(row), row.At)
 		}
 	}
 	for _, signal := range f.Signals {
 		if signal.Name == "page_view" {
+			if channel := matchdayEntryChannels[reportMetricString(signal.Metadata, "entry_channel")]; channel != "" {
+				qr, _ := signal.Metadata["entry_qr"].(bool)
+				putEntry("report:", channel, qr, true, matchdayReportIdentity(signal), signal.OccurredAt)
+				continue
+			}
 			channel := "Sorgente sconosciuta"
 			switch reportMetricString(signal.Metadata, "source") {
 			case "arena":
@@ -143,7 +149,7 @@ func matchdayAcquisitionFor(f *matchdayFacts) matchdayAcquisition {
 			case "remote":
 				channel = "Remoto"
 			}
-			putEntry("report:", channel, false, matchdayReportIdentity(signal), signal.OccurredAt)
+			putEntry("report:", channel, false, false, matchdayReportIdentity(signal), signal.OccurredAt)
 		}
 	}
 
@@ -155,6 +161,8 @@ func matchdayAcquisitionFor(f *matchdayFacts) matchdayAcquisition {
 		}
 	}
 	for _, entry := range entries {
+		out.modern = out.modern || entry.modern
+		out.legacy = out.legacy || !entry.modern
 		channel := out.channels[entry.channel]
 		if channel == nil {
 			channel = &matchdayChannel{people: map[string]bool{}}
@@ -234,7 +242,7 @@ func matchdayDomainRatio(numerator, denominator int, scale float64) *float64 {
 func calculateMatchdayMarketing(f *matchdayFacts, previous *matchdayFacts) {
 	c := matchdayAcquisitionFor(f)
 	sources := []string{matchdayChannelSources, matchdayReportChannels}
-	const limits = "Copertura delle sole sessioni osservate. La home tifosi registra soltanto Arena, Remoto o sorgente sconosciuta."
+	const limits = "La raccolta precedente può attribuire gli ingressi soltanto ai canali salvati all’epoca."
 	const acquisitionLimits = "Prima presenza osservata nello storico disponibile. L’identità può essere un profilo o un dispositivo persistente."
 	const noChannels = "Nessuna sessione di ingresso osservata per la partita."
 	const accessFormula = "Sessioni di ingresso distinte e identità uniche per canale."
@@ -278,10 +286,25 @@ func calculateMatchdayMarketing(f *matchdayFacts, previous *matchdayFacts) {
 		acquired.Columns = []matchdayColumn{{ID: "new", Label: "Nuovi utenti", Unit: "count"}}
 		activation.Columns = []matchdayColumn{{ID: "active", Label: "Attivazione", Unit: "percent"}}
 		share.Columns = []matchdayColumn{{ID: "share", Label: "Traffico", Unit: "percent"}}
+		if c.modern && !c.legacy {
+			access.Status, access.Reason = "available", ""
+			share.Status, share.Reason = "available", ""
+			if c.comparable == len(c.people) && acquired.Value != nil {
+				acquired.Status, acquired.Reason = "available", acquisitionLimits
+			}
+			if activation.Value != nil && f.Metrics["direction_far"].Status == "available" {
+				activation.Status, activation.Reason = "available", ""
+			}
+		}
 	}
 	qr := matchdayUnavailable("marketing_qr_conversion", "Conversione QR", "Sessioni d’ingresso attribuite esplicitamente a un QR.", "Sessioni QR / scansioni QR effettive × 100.", "percent", "missing", "Servono le scansioni effettive rilevate da una fonte esterna.", append(sources, "Integrazione manuale: qr_scans")...)
 	qr.Missing = []string{"qr_scans"}
-	if scans := f.Manual["qr_scans"].Value; scans != nil {
+	if f.qrOpens > 0 {
+		qr = matchdayRatio(qr.Code, qr.Name, "Arrivi confermati alla partita dai link QR gestiti dalla piattaforma.",
+			"Aperture con arrivo confermato / aperture dei link QR misurate × 100.", "percent", float64(f.qrLandings), float64(f.qrOpens), "matchday_qr_arrivals")
+		qr.Reason = "Perimetro dei link QR configurati verso /new. Una lettura del codice senza apertura del link resta fuori dal conteggio."
+		qr.coverage = "managed_qr_arrivals"
+	} else if scans := f.Manual["qr_scans"].Value; scans != nil {
 		qr.Missing = nil
 		qr.Denominator = scans
 		qr.Source = "mixed"
@@ -306,7 +329,9 @@ func calculateMatchdayMarketing(f *matchdayFacts, previous *matchdayFacts) {
 		} else {
 			cpa = matchdayRatio(cpa.Code, cpa.Name, cpa.Description, cpa.Formula, "eur", *spend, *acquired.Value, cpa.Sources...)
 			cpa.Source = "mixed"
-			cpa = matchdayDomainPartial(cpa, acquisitionLimits)
+			if acquired.Status == "partial" {
+				cpa = matchdayDomainPartial(cpa, acquisitionLimits)
+			}
 		}
 	}
 
@@ -338,8 +363,18 @@ func calculateMatchdayMarketing(f *matchdayFacts, previous *matchdayFacts) {
 					"unique_delta": matchdayDomainValue(float64(len(a.people) - len(b.people))),
 				}})
 			}
+			if c.modern && p.modern && !c.legacy && !p.legacy {
+				change.Status, change.Reason = "available", ""
+			}
 		}
 	}
+	coverage := "legacy_entry"
+	if c.modern && c.legacy {
+		coverage = "mixed_entry"
+	} else if c.modern {
+		coverage = "modern_entry"
+	}
+	access.coverage, acquired.coverage, activation.coverage, share.coverage, cpa.coverage, change.coverage = coverage, coverage, coverage, coverage, coverage, coverage
 	matchdayPut(f, access, acquired, activation, share, qr, cpa, change)
 }
 

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
+	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
 )
 
 func (rt *_router) getActiveEvent(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {
@@ -26,6 +28,7 @@ func (rt *_router) getActiveEvent(w http.ResponseWriter, r *http.Request, ctx re
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	validateMatchdayRequestEvent(r, event.ID)
 
 	event.AvailableMinigames, err = rt.db.GetOrganizationMinigames(ctx.OrganizationID)
 	if err != nil {
@@ -35,6 +38,13 @@ func (rt *_router) getActiveEvent(w http.ResponseWriter, r *http.Request, ctx re
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("content-type", "application/json")
-	_ = json.NewEncoder(w).Encode(event)
+	if rt.matchdayRequests != nil && r.URL.Query().Get("matchday") == "1" && event.IsActive && !event.IsConcluded {
+		_ = json.NewEncoder(w).Encode(struct {
+			database.Event
+			MatchdayGrant string `json:"matchday_grant"`
+		}{Event: event, MatchdayGrant: rt.matchdayRequests.grant(ctx.OrganizationID, event.ID, time.Now())})
+	} else {
+		_ = json.NewEncoder(w).Encode(event)
+	}
 	ctx.Logger.WithField("event_id", event.ID).Info("returned active event")
 }

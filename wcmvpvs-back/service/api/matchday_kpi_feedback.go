@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	matchdayFeedbackDB     = "event_feedback.response_id, experience, team_spirit, perks_interest, mini_games_interest, report_experience, suggestion"
+	matchdayFeedbackDB     = "event_feedback.response_id, report_device_key, report_fan_id, experience, team_spirit, perks_interest, mini_games_interest, report_experience, suggestion"
 	matchdayFeedbackReport = "engagement_report_signals.name, fan_id, device_key, session_id, metadata"
 	matchdayFeedbackLegacy = "tracking_events.event_name, fan_id, device_id, session_id"
 )
@@ -24,13 +24,38 @@ type matchdayFeedbackData struct {
 	experiencePositive, experienceAnswers   int
 	distribution                            map[string]map[string]int
 	themes                                  map[string]int
+	tracked                                 []matchdayFeedbackResponse
+}
+
+type matchdayFeedbackResponse struct {
+	id       string
+	identity matchdayIdentity
+	complete bool
 }
 
 func loadMatchdayFeedback(ctx context.Context, q matchdayQueryer, orgID int, data map[int]*matchdayFacts) error {
+	for _, f := range data {
+		if f.feedback == nil {
+			if err := preloadMatchdayFeedback(ctx, q, orgID, data); err != nil {
+				return err
+			}
+			break
+		}
+	}
+	for _, f := range data {
+		if f.feedback != nil {
+			f.feedback.apply(f)
+		}
+	}
+	return nil
+}
+
+func preloadMatchdayFeedback(ctx context.Context, q matchdayQueryer, orgID int, data map[int]*matchdayFacts) error {
 	in, ids := matchdayIDs(data)
 	rows, err := q.QueryContext(ctx, `
 		SELECT e.id, e.show_feedback_survey, COALESCE(e.feedback_survey_config,''),
-			COALESCE(f.id,0), COALESCE(f.experience,''), COALESCE(f.team_spirit,''),
+			COALESCE(f.response_id,''), COALESCE(f.report_device_key,''), COALESCE(f.report_fan_id,0),
+			COALESCE(f.experience,''), COALESCE(f.team_spirit,''),
 			COALESCE(f.perks_interest,''), COALESCE(f.mini_games_interest,''),
 			COALESCE(f.report_experience,''), COALESCE(f.suggestion,'')
 		FROM events e LEFT JOIN event_feedback f ON f.event_id=e.id
@@ -39,37 +64,32 @@ func loadMatchdayFeedback(ctx context.Context, q matchdayQueryer, orgID int, dat
 		return fmt.Errorf("matchday feedback: %w", err)
 	}
 	defer rows.Close()
-	all := map[int]*matchdayFeedbackData{}
 	for rows.Next() {
-		var eventID, rowID int
+		var eventID int
 		var enabled bool
+		var response matchdayFeedbackResponse
 		var rawConfig, experience, spirit, perks, games, rating, suggestion string
-		if err := rows.Scan(&eventID, &enabled, &rawConfig, &rowID, &experience, &spirit, &perks, &games, &rating, &suggestion); err != nil {
+		if err := rows.Scan(&eventID, &enabled, &rawConfig, &response.id, &response.identity.DeviceKey, &response.identity.FanID, &experience, &spirit, &perks, &games, &rating, &suggestion); err != nil {
 			return err
 		}
-		item := all[eventID]
+		item := data[eventID].feedback
 		if item == nil {
 			var config *database.EventFeedbackSurveyConfig
 			if rawConfig != "" {
 				_ = json.Unmarshal([]byte(rawConfig), &config)
 			}
 			item = &matchdayFeedbackData{enabled: enabled, config: database.NormalizeEventFeedbackSurveyConfig(config), distribution: map[string]map[string]int{}, themes: map[string]int{}}
-			all[eventID] = item
+			data[eventID].feedback = item
 		}
-		if rowID > 0 {
-			item.add(experience, spirit, perks, games, rating, suggestion)
-		}
+		item.add(response, experience, spirit, perks, games, rating, suggestion)
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	for id, item := range all {
-		item.apply(data[id])
-	}
 	return nil
 }
 
-func (d *matchdayFeedbackData) add(experience, spirit, perks, games, rating, suggestion string) {
+func (d *matchdayFeedbackData) add(response matchdayFeedbackResponse, experience, spirit, perks, games, rating, suggestion string) {
 	answered := 0
 	for _, item := range []struct{ question, value string }{
 		{"experience", experience}, {"team_spirit", spirit},
@@ -80,10 +100,13 @@ func (d *matchdayFeedbackData) add(experience, spirit, perks, games, rating, sug
 			answered++
 		}
 	}
-	if answered == 4 {
+	tracked := response.id != "" && response.identity.DeviceKey != ""
+	validRating := validFeedbackAnswer("report_experience", rating)
+	response.complete = answered == 4 && (!tracked || validRating)
+	if response.complete {
 		d.complete++
 	}
-	if validFeedbackAnswer("report_experience", rating) {
+	if validRating {
 		d.answer("report_experience", rating)
 		d.experienceAnswers++
 		if rating == "awesome" || rating == "good" {
@@ -99,6 +122,9 @@ func (d *matchdayFeedbackData) add(experience, spirit, perks, games, rating, sug
 	if answered > 0 {
 		d.records++
 		d.answers += answered
+		if tracked {
+			d.tracked = append(d.tracked, response)
+		}
 	}
 }
 
@@ -144,6 +170,9 @@ type matchdayFeedbackCohort struct {
 	exposed     map[string]bool
 	opened      map[string]bool
 	completed   map[string]bool
+	measured    bool
+	visibility  bool
+	legacy      bool
 }
 
 func matchdayFeedbackTelemetry(f *matchdayFacts) matchdayFeedbackCohort {
@@ -175,17 +204,36 @@ func matchdayFeedbackTelemetry(f *matchdayFacts) matchdayFeedbackCohort {
 	}
 	for _, signal := range f.Signals {
 		identity := matchdayReportIdentity(signal)
+		responseID := reportMetricString(signal.Metadata, "feedback_response_id")
 		switch signal.Name {
 		case "cta_viewed":
 			if reportMetricString(signal.Metadata, "cta") == "feedback" && reportMetricString(signal.Metadata, "placement") == "feedback_home" {
+				if measured, _ := signal.Metadata["feedback_measured"].(bool); measured {
+					c.measured = true
+					c.visibility = true
+				} else {
+					c.legacy = true
+				}
 				add("report", "exposed", identity)
 			}
 		case "feedback_opened":
-			add("report", "opened", identity)
+			if reportFeedbackResponsePattern.MatchString(responseID) {
+				c.measured = true
+				c.opened["response:"+responseID] = true
+				// Choosing an answer proves exposure even when the visibility timer has not fired.
+				add("report", "exposed", identity)
+			} else {
+				c.legacy = true
+				add("report", "opened", identity)
+			}
 		case "feedback_completed":
-			add("report", "completed", identity)
+			if responseID == "" {
+				c.legacy = true
+				add("report", "completed", identity)
+			}
 		case "feedback_step":
-			if reportMetricString(signal.Metadata, "trigger") == "feedback" && reportMetricString(signal.Metadata, "outcome") == "selected" {
+			if responseID == "" && reportMetricString(signal.Metadata, "trigger") == "feedback" && reportMetricString(signal.Metadata, "outcome") == "selected" {
+				c.legacy = true
 				add("report", "answered", identity)
 			}
 		}
@@ -194,9 +242,11 @@ func matchdayFeedbackTelemetry(f *matchdayFacts) matchdayFeedbackCohort {
 		identity := matchdayTrackingIdentity(row)
 		switch row.Name {
 		case "feedback.modal_opened":
+			c.legacy = true
 			add("tracking", "exposed", identity)
 			add("tracking", "opened", identity)
 		case "feedback.submitted":
+			c.legacy = true
 			add("tracking", "completed", identity)
 		}
 	}
@@ -205,16 +255,44 @@ func matchdayFeedbackTelemetry(f *matchdayFacts) matchdayFeedbackCohort {
 
 func (d *matchdayFeedbackData) apply(f *matchdayFacts) {
 	c := matchdayFeedbackTelemetry(f)
+	legacyRespondents := c.respondents
+	c.respondents = make(map[string]matchdayIdentity, len(legacyRespondents)+len(d.tracked))
+	for person, identity := range legacyRespondents {
+		c.respondents[person] = identity
+	}
+	trackedPeople := make(map[string]bool)
+	for _, row := range d.tracked {
+		c.measured = true
+		key := "response:" + row.id
+		c.opened[key] = true
+		if row.complete {
+			c.completed[key] = true
+		}
+		if person := f.Resolve(row.identity); person != "" {
+			c.respondents[person] = row.identity
+			c.exposed[person] = true
+			trackedPeople[person] = true
+		}
+		f.Actions = append(f.Actions, matchdayAction{Identity: row.identity, Feature: "feedback", Count: 1})
+	}
+	fullCoverage := c.measured && !c.legacy && len(d.tracked) == d.records
+	coverage := func(metric matchdayMetric, legacyReason string) matchdayMetric {
+		if fullCoverage {
+			metric.coverage = "feedback_attributed"
+			return metric
+		}
+		return matchdayDomainPartial(metric, legacyReason)
+	}
 	const responseFormula = "Rispondenti osservati e associabili a un’esposizione / utenti con esposizione misurata × 100."
-	const flowFormula = "Sessioni con invio e avvio osservati / sessioni con avvio osservato × 100."
+	const flowFormula = "Questionari con tutte le risposte obbligatorie salvate / questionari iniziati × 100."
 	const responseScope = "Il tasso copre le esposizioni osservate nella home e le aperture del questionario precedente. Le risposte anonime senza collegamento restano fuori dal tasso."
 	const flowScope = "Il tasso copre gli avvii osservati e i relativi completamenti nella stessa sessione."
 	const peopleScope = "Rispondenti associabili a un profilo, dispositivo o sessione. Le risposte salvate senza identità possono riguardare altri tifosi."
-	telemetry := []string{matchdayFeedbackReport, matchdayFeedbackLegacy}
+	telemetry := []string{matchdayFeedbackDB, matchdayFeedbackReport, matchdayFeedbackLegacy}
 	response := matchdayUnavailable("feedback_response_rate", "Tasso di risposta", "Percentuale del pubblico esposto che ha risposto.", responseFormula, "percent", "not_measurable", "Nessuna esposizione al questionario misurata.", telemetry...)
 	respondents := matchdayUnavailable("feedback_respondents", "Rispondenti unici", "Identità distinte che hanno risposto.", "Deduplicazione dei rispondenti osservabili.", "count", "not_measurable", "Le risposte salvate non includono un identificativo del tifoso.", telemetry...)
-	starts := matchdayUnavailable("feedback_started", "Sondaggi iniziati", "Aperture o primi tentativi di risposta osservati.", "Sessioni distinte con apertura o primo tentativo.", "count", "not_measurable", "Nessun avvio di questionario osservato.", telemetry...)
-	completionRate := matchdayUnavailable("feedback_completion_rate", "Completamento sondaggi", "Percentuale delle sessioni avviate che hanno completato il questionario.", flowFormula, "percent", "not_measurable", "Nessun avvio di questionario osservato.", telemetry...)
+	starts := matchdayUnavailable("feedback_started", "Sondaggi iniziati", "Primi tentativi di risposta o aperture del questionario precedente.", "Schede distinte con avvio o prima risposta salvata.", "count", "not_measurable", "Nessun avvio di questionario osservato.", telemetry...)
+	completionRate := matchdayUnavailable("feedback_completion_rate", "Completamento sondaggi", "Percentuale dei questionari avviati con risposte obbligatorie salvate.", flowFormula, "percent", "not_measurable", "Nessun avvio di questionario osservato.", telemetry...)
 	satisfaction := matchdayUnavailable("feedback_satisfaction", "Tasso di soddisfazione", "Risposte positive alla domanda dedicata all’esperienza.", "Risposte awesome o good / risposte valide alla domanda dedicata × 100.", "percent", "not_measurable", "Nessuna risposta su una scala di soddisfazione riconosciuta.", matchdayFeedbackDB)
 	if len(c.exposed) > 0 {
 		matched := 0
@@ -223,20 +301,23 @@ func (d *matchdayFeedbackData) apply(f *matchdayFacts) {
 				matched++
 			}
 		}
-		response = matchdayDomainPartial(matchdayRatio(response.Code, response.Name, response.Description, responseFormula, "percent", float64(matched), float64(len(c.exposed)), telemetry...), responseScope)
+		response = coverage(matchdayRatio(response.Code, response.Name, response.Description, responseFormula, "percent", float64(matched), float64(len(c.exposed)), telemetry...), responseScope)
+		if !c.visibility && fullCoverage {
+			response = matchdayDomainPartial(response, "Sono osservabili soltanto le esposizioni confermate da un’interazione con il questionario.")
+		}
 	}
 	if len(c.respondents) > 0 || (len(c.exposed) > 0 && d.records == 0) {
-		respondents = matchdayDomainPartial(matchdayCount(respondents.Code, respondents.Name, respondents.Description, respondents.Formula, float64(len(c.respondents)), telemetry...), peopleScope)
+		respondents = coverage(matchdayCount(respondents.Code, respondents.Name, respondents.Description, respondents.Formula, float64(len(c.respondents)), telemetry...), peopleScope)
 	}
-	if len(c.opened) > 0 {
+	if len(c.opened) > 0 || fullCoverage {
 		matched := 0
 		for session := range c.completed {
 			if c.opened[session] {
 				matched++
 			}
 		}
-		starts = matchdayDomainPartial(matchdayCount(starts.Code, starts.Name, starts.Description, starts.Formula, float64(len(c.opened)), telemetry...), flowScope)
-		completionRate = matchdayDomainPartial(matchdayRatio(completionRate.Code, completionRate.Name, completionRate.Description, flowFormula, "percent", float64(matched), float64(len(c.opened)), telemetry...), flowScope)
+		starts = coverage(matchdayCount(starts.Code, starts.Name, starts.Description, starts.Formula, float64(len(c.opened)), telemetry...), flowScope)
+		completionRate = coverage(matchdayRatio(completionRate.Code, completionRate.Name, completionRate.Description, flowFormula, "percent", float64(matched), float64(len(c.opened)), telemetry...), flowScope)
 	}
 	if d.experienceAnswers > 0 {
 		satisfaction = matchdayRatio(satisfaction.Code, satisfaction.Name, satisfaction.Description, satisfaction.Formula, "percent", float64(d.experiencePositive), float64(d.experienceAnswers), matchdayFeedbackDB)
@@ -267,7 +348,7 @@ func (d *matchdayFeedbackData) apply(f *matchdayFacts) {
 			}})
 		}
 	}
-	completed := matchdayCount("feedback_completed", "Sondaggi completati", "Schede con tutte le risposte obbligatorie salvate.", "Schede con risposta valida a tutte e quattro le domande obbligatorie.", float64(d.complete), matchdayFeedbackDB)
+	completed := matchdayCount("feedback_completed", "Sondaggi completati", "Schede con tutte le risposte obbligatorie salvate.", "Quattro domande configurate e, per i questionari con il nuovo tracciamento, valutazione complessiva.", float64(d.complete), matchdayFeedbackDB)
 	themes := matchdayCount("feedback_themes", "Temi nei suggerimenti", "Suggerimenti testuali salvati. Il dettaglio mostra le categorie menzionate da almeno due schede.", "Conteggio schede con suggerimenti e aggregazione per parole chiave.", float64(d.suggestions), matchdayFeedbackDB)
 	themes.Columns = []matchdayColumn{{ID: "count", Label: "Menzioni", Unit: "count"}}
 	for label, count := range d.themes {
@@ -284,10 +365,15 @@ func (d *matchdayFeedbackData) apply(f *matchdayFacts) {
 	}
 	matchdayPut(f, metrics...)
 
-	for _, identity := range c.respondents {
+	legacyActions := 0
+	for person, identity := range legacyRespondents {
+		if trackedPeople[person] {
+			continue
+		}
+		legacyActions++
 		f.Actions = append(f.Actions, matchdayAction{Identity: identity, Feature: "feedback", Count: 1})
 	}
-	if anonymous := d.records - len(c.respondents); anonymous > 0 {
+	if anonymous := d.records - len(d.tracked) - legacyActions; anonymous > 0 {
 		f.Actions = append(f.Actions, matchdayAction{Feature: "feedback", Count: anonymous})
 	}
 }

@@ -12,7 +12,7 @@ COPY . .
 
 ENV CGO_ENABLED=1
 # Se il tuo codice supporta il flag '!webui', tienilo:
-RUN go build -tags '!webui' -o /app/webapi ./cmd/webapi
+RUN go build -tags '!webui' -o /app/webapi ./cmd/webapi && go build -o /app/healthcheck ./cmd/healthcheck
 
 # Runtime minimale
 FROM debian:bookworm-slim
@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/webapi ./webapi
+COPY --from=builder /app/healthcheck ./healthcheck
 
 # Se vuoi seedare una directory iniziale per migrazioni o asset statici del back:
 # COPY service/database ./service/database

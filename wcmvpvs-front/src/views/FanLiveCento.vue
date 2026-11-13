@@ -88,7 +88,7 @@
               <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z"/></svg></span>
               <span class="shortcut-copy"><b>Gioca</b><span>{{ highlightPlay && featuredMission ? 'Continua a guadagnare monete' : 'Sfide e quiz' }}</span></span>
             </button>
-            <FanMerchLink class="home-shortcut" :slug="organizationSlug" sheet @open="openMerchShop">
+            <FanMerchLink class="home-shortcut" :slug="organizationSlug" :event-id="eventId" :matchday-ready="initialDataReady" sheet @open="openMerchShop">
               <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l2 13H3L5 8Z"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
               <span class="shortcut-copy"><b>Shop</b><span>Merch ufficiale</span></span>
             </FanMerchLink>
@@ -703,9 +703,10 @@
     <FanRegistrationPromptModal v-if="isRegistrationOpen" v-model="isRegistrationOpen" :trigger="registrationTrigger" :reward-label="registrationRewardLabel" :club-name="homeName" :organization-slug="organizationSlug" :theme-style="themeStyle" :wallet-coins="totalCoins" :on-submit="registerJourneyFan" :on-login="loginJourneyFan" @completed="completeRegistration" @dismissed="dismissRegistration" @telemetry="onFormTelemetry" />
     <FanMerchShop
       v-if="merchRequest"
-      :key="organizationSlug"
+      :key="`${organizationSlug}:${eventId}`"
       sheet
       :slug="organizationSlug"
+      :event-id="eventId"
       :club-name="homeName"
       :colors="organizationColors"
       :open-request="merchRequest"
@@ -797,6 +798,8 @@ const props = defineProps({
 const sponsorMeasurement = provideSponsorTracking({
   url: resolveApiUrl,
   scope: () => ({ slug: props.organizationSlug, match: props.eventId || 0 }),
+  matchday: true,
+  device: () => getDeviceHeaders()['X-Device-ID'],
 });
 const vSponsorPlacement = useSponsorPlacement(sponsorMeasurement);
 
@@ -1242,7 +1245,7 @@ function openMerchShop(trigger) {
   sheetRevision += 1;
   merchRequest.value = { trigger };
 }
-watch(() => props.organizationSlug, () => { merchRequest.value = null; });
+watch(() => [props.organizationSlug, props.eventId], () => { merchRequest.value = null; });
 const homeBadge = computed(() => initials(homeName.value));
 const opponentLabel = computed(() => {
   const opponent = String(eventState.value?.team2_name || '').trim();
@@ -1334,7 +1337,7 @@ async function answerFeedbackInline(value) {
     draft.organizationSlug = props.organizationSlug;
     persistFeedback(JSON.stringify(draft));
     recordFanEvent('cta_clicked', { cta: 'feedback', placement: 'feedback_home' });
-    recordFanEvent('feedback_opened', { trigger: 'feedback' });
+    recordFanEvent('feedback_opened', { trigger: 'feedback', feedback_response_id: draft.responseId });
   }
   feedbackError.value = '';
   feedbackPendingAnswer.value = answer;
@@ -1351,7 +1354,7 @@ async function answerFeedbackInline(value) {
     recordFanEvent('feedback_failed', { trigger: 'feedback', count: step + 1, reason: 'save_failed', outcome: 'failure' });
     return;
   }
-  recordFanEvent('feedback_step', { trigger: 'feedback', count: step + 1, outcome: optional && !answer ? 'skipped' : 'selected' });
+  recordFanEvent('feedback_step', { trigger: 'feedback', feedback_response_id: draft.responseId, count: step + 1, outcome: optional && !answer ? 'skipped' : 'selected' });
   if (optional) {
     handleFeedbackSubmitted(draft.answers);
     return;
@@ -1366,7 +1369,7 @@ async function answerFeedbackInline(value) {
   });
 }
 function handleFeedbackSubmitted(answers = {}) {
-  reportTelemetry?.record('feedback_completed', { experience: answers.report_experience, perks_interest: answers.perks_interest });
+  reportTelemetry?.record('feedback_completed', { feedback_response_id: feedbackDraft.value.responseId, experience: answers.report_experience, perks_interest: answers.perks_interest });
   hasSubmittedFeedback.value = true;
   feedbackThanks.value = true;
   persistFeedback('1');
@@ -2362,7 +2365,7 @@ function openHomeAction(id, placement = ['profile', 'wallet'].includes(id) ? 'to
 }
 function recordGameExit(reason) {
   const gameId = activeGameId.value;
-  if (!gameId) return;
+  if (!gameId || !analyticsGameOpenedAt) return;
   if (reason !== 'completed') {
     for (const [key, round] of reportRoundTimes) {
       if (round.gameId !== gameId || reportRoundsCompleted.has(key) || reportRoundsAbandoned.has(key)) continue;
@@ -2371,6 +2374,7 @@ function recordGameExit(reason) {
     }
   }
   recordFanEvent('game_closed', { game_id: gameId, duration_ms: Math.max(0, Date.now() - analyticsGameOpenedAt), outcome: reason === 'completed' ? 'completed' : 'abandoned', reason: reason === 'completed' ? undefined : reason });
+  analyticsGameOpenedAt = 0;
 }
 function resetReportTelemetry() {
   const organizationSlug = props.organizationSlug;
@@ -2407,7 +2411,7 @@ function observeLotteryShortcut(element) {
   reportTelemetry?.observeVisibility?.(element, 'lottery_shortcut_view', { placement: 'lottery_shortcut', has_ticket: true });
 }
 function observeFeedbackInvitation(element) {
-  reportTelemetry?.observeVisibility?.(element, 'cta_viewed', { cta: 'feedback', placement: 'feedback_home' });
+  reportTelemetry?.observeVisibility?.(element, 'cta_viewed', { cta: 'feedback', placement: 'feedback_home', feedback_measured: true });
 }
 function bindLotteryTicket(element) {
   lotteryTicketEl.value = element;
@@ -2563,8 +2567,13 @@ function ensureCentoFonts() {
   return Promise.resolve(link.centoFontsReady).then(() => document.fonts?.ready);
 }
 
+function recordGamePageExit(event) {
+  if (!event.persisted && activeGameId.value) recordGameExit('navigation');
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onKeydown);
+  window.addEventListener('pagehide', recordGamePageExit);
   bootstrap();
   liveStatusTimer = window.setInterval(refreshLiveStatus, 30000);
 });
@@ -2581,6 +2590,7 @@ onBeforeUnmount(() => {
   bootstrapRevision += 1;
   assetController?.abort();
   window.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('pagehide', recordGamePageExit);
   stopCoinsStream();
   window.clearTimeout(coinAnimationTimer);
   window.clearInterval(liveStatusTimer);

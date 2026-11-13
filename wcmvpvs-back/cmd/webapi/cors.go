@@ -15,6 +15,7 @@ func applyCORSHandler(h http.Handler) http.Handler {
 			"X-Device-Id",
 			"X-Fan-Session",
 			"X-Merch-Access",
+			"X-Matchday-Grant",
 		}),
 		handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS", "DELETE", "PUT", "PATCH"}),
 		handlers.AllowedOrigins(allowedOrigins()),

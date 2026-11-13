@@ -91,6 +91,11 @@ func TestMeasuredSponsorAnalytics(t *testing.T) {
 		invalidPlacement, forgedCreative, step(missingStart, database.SponsorExposureEnd, 1500, 1000, 1000),
 	}
 	post(batch, browser, scope.OrganizationID, http.StatusOK, 10)
+	var storedDevice string
+	if err := rt.db.SQLConn().QueryRow(`SELECT report_device_key FROM sponsor_measured_exposures WHERE id=?`, home.ExposureID).Scan(&storedDevice); err != nil ||
+		storedDevice != reportOperationalDeviceKey(scope.OrganizationID, browser) {
+		t.Fatalf("measured sponsor identity = %q, error = %v", storedDevice, err)
+	}
 	post(batch, browser, scope.OrganizationID, http.StatusOK, 0)
 	post(batch, browser, other, http.StatusNotFound, 0)
 	returnVisit := newExposure("home_footer", "", database.SponsorHTML, newID())

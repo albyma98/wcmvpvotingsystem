@@ -12,6 +12,8 @@ function fixture(send = async () => {}, options = {}) {
   const observers = [];
   const document = { visibilityState: 'visible', addEventListener: (name, callback) => listeners.set(name, callback), removeEventListener: (name) => listeners.delete(name) };
   const window = {
+    location: options.location,
+    history: options.history,
     sessionStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value) },
     localStorage: { getItem: (key) => localStorage.get(key), setItem: (key, value) => localStorage.set(key, value) },
     setTimeout: (callback, ms) => { const key = ++nextId; timers.set(key, { callback, at: time + ms }); return key; },
@@ -45,6 +47,24 @@ function fixture(send = async () => {}, options = {}) {
   }
   return { telemetry, sent, mirrors, storage, localStorage, window, document, observers, timers, listeners, advance, login() { identity = { 'X-Device-ID': 'guest', 'X-Fan-Session': 'verified' }; }, events() { return sent.flatMap(([, events]) => events); } };
 }
+
+test('managed QR attribution survives home initialization and is only sent internally', async () => {
+  const token = 'ab'.repeat(16);
+  const location = { href: `https://club.test/club/new?eventId=42&abx_qr=${token}` };
+  const history = { replaceState: (_state, _title, url) => { location.href = String(url); } };
+  const pending = fixture(undefined, { location, history });
+  pending.telemetry.stop();
+  assert.equal(new URL(location.href).searchParams.get('abx_qr'), token);
+
+  const ready = fixture(undefined, { location, history });
+  ready.telemetry.start();
+  await ready.telemetry.flush();
+  assert.equal(ready.events().find(event => event.name === 'page_view')?.qr_arrival, token);
+  assert.equal(ready.mirrors.find(({ event }) => event.name === 'page_view')?.event.qr_arrival, undefined);
+  assert.equal(new URL(location.href).searchParams.get('abx_qr'), null);
+  assert.equal(new URL(location.href).searchParams.get('eventId'), '42');
+  ready.telemetry.stop();
+});
 
 test('PostHog mirroring observes sanitized actions once, without credentials or delivery retry duplicates', async () => {
   let fail = true;

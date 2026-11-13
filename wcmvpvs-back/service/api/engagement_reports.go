@@ -38,6 +38,7 @@ type reportSignal struct {
 	DeviceID   string                 `json:"-"`
 	FanID      int                    `json:"-"`
 	Metadata   map[string]interface{} `json:"metadata"`
+	QRArrival  string                 `json:"qr_arrival,omitempty"`
 }
 
 type reportBranding struct {
@@ -105,6 +106,7 @@ func (rt *_router) ensureEngagementReportTables() error {
 	for _, query := range []string{
 		`CREATE TABLE IF NOT EXISTS engagement_report_signals (event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE, signal_id TEXT NOT NULL, name TEXT NOT NULL, session_id TEXT NOT NULL, device_key TEXT NOT NULL, fan_id INTEGER NOT NULL DEFAULT 0, occurred_at TEXT NOT NULL, metadata TEXT NOT NULL, received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(event_id, signal_id))`,
 		`CREATE INDEX IF NOT EXISTS engagement_report_signals_event ON engagement_report_signals(event_id, occurred_at)`,
+		matchdayQRSchema,
 		`CREATE TABLE IF NOT EXISTS engagement_report_branding (id INTEGER PRIMARY KEY CHECK(id=1), company_name TEXT NOT NULL, logo_data TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE IF NOT EXISTS engagement_report_calculations (id TEXT PRIMARY KEY, event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE, admin_id INTEGER NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS engagement_report_snapshots (id TEXT PRIMARY KEY, calculation_id TEXT NOT NULL, approval_key TEXT NOT NULL UNIQUE, event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE, admin_id INTEGER NOT NULL, payload TEXT NOT NULL, approved_at TEXT NOT NULL)`,
@@ -213,6 +215,7 @@ var reportMetadataEnums = map[string]map[string]bool{
 	"browser_family": reportStringSet("Chrome Edge Firefox Safari Other unknown"),
 }
 var reportRoundPattern = regexp.MustCompile(`^[A-Za-z0-9_:-]{8,128}$`)
+var reportFeedbackResponsePattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 var reportAppVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]{1,30})?$`)
 
 func cleanReportMetadata(input map[string]interface{}) map[string]interface{} {
@@ -225,7 +228,7 @@ func cleanReportMetadata(input map[string]interface{}) map[string]interface{} {
 	if value, ok := input["error_code"].(string); ok && reportMetadataEnums["reason"][value] {
 		out["error_code"] = value
 	}
-	for _, key := range []string{"vote_available", "games_available", "feedback_available", "registered", "has_voted", "is_concluded", "votes_closed", "is_change", "has_ticket", "success"} {
+	for _, key := range []string{"vote_available", "games_available", "feedback_available", "feedback_measured", "registered", "has_voted", "is_concluded", "votes_closed", "is_change", "has_ticket", "success"} {
 		if value, ok := input[key].(bool); ok {
 			out[key] = value
 		}
@@ -258,8 +261,17 @@ func cleanReportMetadata(input map[string]interface{}) map[string]interface{} {
 	if value, ok := input["round_id"].(string); ok && reportRoundPattern.MatchString(value) {
 		out["round_id"] = value
 	}
+	if value, ok := input["feedback_response_id"].(string); ok && reportFeedbackResponsePattern.MatchString(value) {
+		out["feedback_response_id"] = value
+	}
 	if value, ok := input["app_version"].(string); ok && reportAppVersionPattern.MatchString(value) {
 		out["app_version"] = value
+	}
+	if channel, ok := input["entry_channel"].(string); ok && matchdayEntryChannels[channel] != "" {
+		out["entry_channel"] = channel
+	}
+	if tagged, ok := input["entry_qr"].(bool); ok {
+		out["entry_qr"] = tagged
 	}
 	for _, key := range []string{"started_at", "ended_at"} {
 		if value, ok := input[key].(string); ok && len(value) <= 35 {
@@ -353,10 +365,33 @@ func (rt *_router) recordReportSignals(w http.ResponseWriter, r *http.Request, c
 	defer tx.Rollback()
 	for _, s := range input.Events {
 		metadata, _ := json.Marshal(s.Metadata)
-		_, err = tx.Exec(`INSERT INTO engagement_report_signals(event_id,signal_id,name,session_id,device_key,fan_id,occurred_at,metadata) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(event_id,signal_id) DO NOTHING`, eventID, s.ID, s.Name, s.SessionID, deviceKey, fanID, s.OccurredAt, string(metadata))
+		result, err := tx.Exec(`INSERT INTO engagement_report_signals(event_id,signal_id,name,session_id,device_key,fan_id,occurred_at,metadata) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(event_id,signal_id) DO NOTHING`, eventID, s.ID, s.Name, s.SessionID, deviceKey, fanID, s.OccurredAt, string(metadata))
 		if err != nil {
 			reportError(w, 500, "Impossibile salvare le misurazioni.")
 			return
+		}
+		if s.Name == "page_view" && s.QRArrival != "" {
+			inserted, err := result.RowsAffected()
+			if err != nil {
+				reportError(w, 500, "Impossibile salvare le misurazioni.")
+				return
+			}
+			if inserted == 0 {
+				continue
+			}
+			channel, err := confirmMatchdayQRArrival(tx, orgID, eventID, s.QRArrival, deviceKey, s.SessionID)
+			if err != nil {
+				reportError(w, 500, "Impossibile salvare le misurazioni.")
+				return
+			}
+			if channel != "" {
+				s.Metadata["entry_channel"], s.Metadata["entry_qr"] = channel, true
+				metadata, _ := json.Marshal(s.Metadata)
+				if _, err := tx.Exec(`UPDATE engagement_report_signals SET metadata=? WHERE event_id=? AND signal_id=?`, string(metadata), eventID, s.ID); err != nil {
+					reportError(w, 500, "Impossibile salvare le misurazioni.")
+					return
+				}
+			}
 		}
 	}
 	if err = tx.Commit(); err != nil {

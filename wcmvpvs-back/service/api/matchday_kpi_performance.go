@@ -18,15 +18,19 @@ func matchdayPartial(m matchdayMetric, reason string) matchdayMetric {
 }
 
 func calculateMatchdayGames(f *matchdayFacts) {
-	type round struct{ started, completed bool }
+	type round struct{ started, completed, abandoned bool }
 	type entry struct {
 		players map[string]bool
 		rounds  map[string]round
 	}
 	strong := map[string]bool{}
 	modernReaction := map[string]bool{}
+	liveMatches := map[string]bool{}
 	for _, g := range f.games {
 		actor := f.Resolve(g.identity)
+		if g.source == "tap_live_matches" {
+			liveMatches[g.game+"\x00"+g.round] = true
+		}
 		if g.round != "" && g.source != "reaction_tests" {
 			strong[actor+"\x00"+g.game] = true
 			if g.game == "reaction" {
@@ -42,7 +46,9 @@ func calculateMatchdayGames(f *matchdayFacts) {
 		}
 	}
 	playerStarts := map[string]int{}
+	participations := map[string]bool{}
 	games := map[string]*entry{}
+	partialRounds, partialPeople := false, false
 	for _, g := range f.games {
 		actor := f.Resolve(g.identity)
 		if g.game == "" || (g.source == "reaction_tests" && modernReaction[actor]) {
@@ -50,6 +56,8 @@ func calculateMatchdayGames(f *matchdayFacts) {
 		}
 		if actor != "" {
 			players[actor] = true
+		} else {
+			partialPeople = true
 		}
 		if games[g.game] == nil {
 			games[g.game] = &entry{map[string]bool{}, map[string]round{}}
@@ -60,33 +68,37 @@ func calculateMatchdayGames(f *matchdayFacts) {
 		}
 		sources[g.source] = true
 		if g.round == "" {
+			partialRounds = true
 			if actor != "" && !strong[actor+"\x00"+g.game] && strings.HasPrefix(g.source, "fan_journey_") {
 				g.round = "legacy:" + actor
 			} else {
 				continue
 			}
 		}
-		key := g.round
-		// A live head-to-head round is a single match with two participants.
-		if g.source != "tap_live_matches" && !strings.HasPrefix(g.game, "tap") {
-			key = actor + "\x00" + g.round
+		key := actor + "\x00" + g.round
+		if g.live {
+			key = g.round
+			if liveMatches[g.game+"\x00"+g.round] {
+				if g.source != "tap_live_matches" {
+					// The result of the shared match comes from its authoritative server row.
+					g.completed, g.abandoned = false, false
+				}
+			} else {
+				partialRounds = true
+			}
 		}
 		state := e.rounds[key]
-		if g.start && (!state.started || g.source == "tap_live_matches") && actor != "" {
-			if g.source == "tap_live_matches" {
-				marker := "live:" + actor + "\x00" + g.round
-				if strong[marker] {
-					continue
-				}
-				strong[marker] = true
+		participation := g.game + "\x00" + key + "\x00" + actor
+		if g.start && !participations[participation] {
+			participations[participation] = true
+			if actor != "" {
+				playerStarts[actor]++
 			}
-			playerStarts[actor]++
-			f.Actions = append(f.Actions, matchdayAction{Identity: g.identity, Feature: "game", Count: 1})
-		} else if g.start && !state.started {
 			f.Actions = append(f.Actions, matchdayAction{Identity: g.identity, Feature: "game", Count: 1})
 		}
 		state.started = state.started || g.start
 		state.completed = state.completed || g.completed
+		state.abandoned = state.abandoned || g.abandoned
 		e.rounds[key] = state
 	}
 	gameSources := make([]string, 0, len(sources))
@@ -95,10 +107,14 @@ func calculateMatchdayGames(f *matchdayFacts) {
 	}
 	sort.Strings(gameSources)
 	starts, completed, matched, replays, participatingStarts := 0, 0, 0, 0, 0
+	uncertainOutcomes := false
 	rows := make([]matchdayRow, 0, len(games))
 	for game, e := range games {
 		var gs, gc int
 		for _, r := range e.rounds {
+			if (r.started && !r.completed && !r.abandoned) || (!r.started && r.completed) {
+				uncertainOutcomes = true
+			}
 			if r.started {
 				gs++
 			}
@@ -137,8 +153,10 @@ func calculateMatchdayGames(f *matchdayFacts) {
 	for _, m := range gameMetrics {
 		if len(gameSources) == 0 {
 			m.Value, m.Numerator, m.Denominator, m.Status, m.Reason = nil, nil, nil, "missing", "Nessuna raccolta di partite osservata per questo evento."
-		} else {
+		} else if partialRounds || partialPeople || len(f.games) == 0 {
 			m = matchdayPartial(m, "Copertura dei giochi e identificativi di round variabili. Il tasso usa solo completamenti abbinati a un avvio.")
+		} else if uncertainOutcomes && (m.Code == "games_completions" || m.Code == "games_completion_rate" || m.Code == "games_popular") {
+			m = matchdayPartial(m, "Alcuni round sono privi di un esito finale o di un avvio correlabile.")
 		}
 		matchdayPut(f, m)
 	}
@@ -148,11 +166,21 @@ func calculateMatchdayGames(f *matchdayFacts) {
 
 func matchdayAudienceCoverage(f *matchdayFacts) string {
 	coverageSources := []string{}
+	modern, legacy := false, false
 	for _, s := range f.Signals {
 		if s.Name == "page_view" {
-			coverageSources = append(coverageSources, "engagement_report_signals")
-			break
+			if matchdayEntryChannels[reportMetricString(s.Metadata, "entry_channel")] != "" {
+				modern = true
+			} else {
+				legacy = true
+			}
 		}
+	}
+	if modern {
+		coverageSources = append(coverageSources, "new_home_entries")
+	}
+	if legacy {
+		coverageSources = append(coverageSources, "engagement_report_signals")
 	}
 	for _, t := range f.Tracking {
 		if t.Name == "page.view" || t.Name == "session.started" {
@@ -196,8 +224,8 @@ func calculateMatchdayPerformance(f, previous *matchdayFacts) {
 			multifunction++
 		}
 	}
-	audienceSources := []string{"engagement_report_signals", "tracking_events", "page_engagements", "votes", "game rounds", "event_chat_messages", "fan_profiles"}
-	actionSources := []string{"votes", "game rounds", "event_feedback", "event_chat_messages", "sponsor_clicks", "sponsor_measured_exposures", "bar_orders", "engagement_report_signals", "tracking_events"}
+	audienceSources := []string{"engagement_report_signals", "tracking_events", "page_engagements", "votes", "game rounds", "event_chat_messages", "fan_profiles", "fan_matchday_registrations"}
+	actionSources := []string{"votes", "game rounds", "event_feedback", "event_chat_messages", "sponsor_clicks", "sponsor_measured_exposures", "bar_orders", "merch_match_orders", "engagement_report_signals", "tracking_events"}
 	const audienceReason = "Copertura delle identità osservate. Browser non associati a un profilo possono rappresentare la stessa persona."
 	const actionReason = "Copertura delle azioni tracciate. Gli aggregati esterni e le azioni prive di identità non identificano nuovi tifosi attivi."
 	const actionDefinition = "Voti validi, avvii di gioco, feedback, messaggi umani, click sponsor e acquisti o prenotazioni attribuibili."
@@ -216,6 +244,13 @@ func calculateMatchdayPerformance(f, previous *matchdayFacts) {
 	}
 	for _, m := range metrics {
 		m.coverage = f.coverage
+		if m.Status == "partial" && f.coverage == "new_home_entries" {
+			if m.Code == "direction_reach" {
+				m.Status, m.Reason = "available", "Identità digitali osservate. Browser non associati a un profilo possono appartenere alla stessa persona."
+			} else if actions == attributedActions && matchdayHasObservedActions(f) {
+				m.Status, m.Reason = "available", "Perimetro delle azioni registrate e attribuite alla partita."
+			}
+		}
 		if reach == 0 && (m.Code != "mvp_interactions" || actions == 0) {
 			m.Value, m.Numerator, m.Denominator, m.Status, m.Reason = nil, nil, nil, "missing", "Nessuna identità osservata per l’evento."
 		}
@@ -227,7 +262,13 @@ func calculateMatchdayPerformance(f, previous *matchdayFacts) {
 		penetration.Missing = []string{"attendees"}
 	}
 	if attendance != nil && reach > 0 {
-		penetration = matchdayPartial(matchdayRatio(penetration.Code, penetration.Name, penetration.Description, penetration.Formula, "percent", reach, *attendance, penetration.Sources...), "Il pubblico digitale può includere utenti remoti. Le presenze provengono dalla fonte indicata dall’amministratore.")
+		penetration = matchdayRatio(penetration.Code, penetration.Name, penetration.Description, penetration.Formula, "percent", reach, *attendance, penetration.Sources...)
+		if penetration.Value != nil {
+			penetration.Reason = "Il pubblico digitale può includere utenti remoti. Le presenze provengono dalla fonte indicata dall’amministratore."
+			if f.coverage != "new_home_entries" {
+				penetration.Status = "partial"
+			}
+		}
 		penetration.Source = "mixed"
 		penetration.coverage = f.coverage
 	}
@@ -236,6 +277,16 @@ func calculateMatchdayPerformance(f, previous *matchdayFacts) {
 	calculateMatchdayMVP(f)
 	calculateMatchdayDuration(f)
 	calculateMatchdayRevenue(f)
+}
+
+func matchdayHasObservedActions(f *matchdayFacts) bool {
+	for _, code := range []string{"games_starts", "feedback_respondents", "chat_participants", "sponsor_clicks", "shop_paid_orders", "shop_reservations"} {
+		metric := f.Metrics[code]
+		if (metric.Status != "available" || metric.Source != "db") && metric.Status != "not_applicable" {
+			return false
+		}
+	}
+	return true
 }
 
 func calculateMatchdayRetention(f, previous *matchdayFacts, sources []string) {
@@ -260,6 +311,9 @@ func calculateMatchdayRetention(f, previous *matchdayFacts, sources []string) {
 		if total > 0 && current > 0 {
 			m = matchdayPartial(matchdayRatio(m.Code, m.Name, m.Description, m.Formula, "percent", float64(returned), float64(total), sources...), "Coorte osservata con profili e dispositivi persistenti. Le sessioni anonime sono escluse.")
 			r = matchdayPartial(matchdayCount(r.Code, r.Name, r.Description, r.Formula, float64(returned), sources...), m.Reason)
+			if f.coverage == "new_home_entries" && total == len(previous.Reach) && current == len(f.Reach) {
+				m.Status, r.Status = "available", "available"
+			}
 		}
 	}
 	m.coverage, r.coverage = f.coverage, f.coverage
@@ -295,6 +349,9 @@ func calculateMatchdayMVP(f *matchdayFacts) {
 	})
 	conversion := matchdayPartial(matchdayRatio("mvp_conversion", "Conversione MVP", "Votanti distinti sul pubblico digitale osservato.", "Votanti MVP / utenti unici × 100", "percent", float64(len(voters)), float64(len(f.Reach)), "votes", "engagement_report_signals", "tracking_events"), "Copertura del pubblico digitale osservato.")
 	conversion.coverage = f.coverage
+	if conversion.Status == "partial" && f.coverage == "new_home_entries" {
+		conversion.Status, conversion.Reason = "available", ""
+	}
 	count := matchdayCount("mvp_voters", "Votanti unici MVP", "Identità distinte con un voto accettato dal sistema MVP evento.", "Identità distinte in votes", float64(len(voters)), "votes", "fan_profiles")
 	if len(voters) == 0 && len(f.votes) > 0 {
 		count.Value, count.Status, count.Reason = nil, "missing", "Voti presenti senza identità deduplicabile."
@@ -381,8 +438,25 @@ func calculateMatchdayCRM(f *matchdayFacts, profiles map[int]matchdayProfile) {
 	profilesMetric.Code, profilesMetric.Name = "crm_identified", "Profili identificati"
 	identification := matchdayPartial(matchdayRatio("crm_identification_rate", "Identification rate", "Quota dei visitatori associata a un profilo.", "Profili identificati / utenti unici × 100", "percent", float64(identified), float64(len(f.Reach)), sources...), fanbase.Reason)
 	optIn := matchdayPartial(matchdayRatio("crm_opt_in", "Opt-in rate", "Stato attuale del consenso per i nuovi profili verificati.", "Nuovi profili con consenso e verifica / nuovi profili osservati × 100", "percent", float64(valid), float64(newProfiles), sources...), "Lo stato del profilo non conserva la data del consenso o le sue revisioni.")
+	consents := matchdayUnavailable("crm_new_consents", "Nuovi consensi marketing", "Nuovi consensi con data e prova attribuibile a un profilo della partita.", "Consensi acquisiti durante l’evento", "count", "not_measurable", "Il profilo conserva lo stato corrente del consenso. I consensi dei contatti legacy sono separati dai profili tifosi.", "fan_profiles.marketing_consent", "contacts")
+	modern := f.hasModernCollection()
 	for _, m := range []matchdayMetric{current, fanbase, profilesMetric, identification, optIn} {
 		m.coverage = f.coverage
+		if m.Code == current.Code && (modern || len(f.registrations) > 0) {
+			m = matchdayCount(current.Code, current.Name, "Profili verificati completati durante il flusso di registrazione della partita.",
+				"Registrazioni verificate attribuite alla partita dal server", float64(len(f.registrations)), "fan_matchday_registrations")
+			m.coverage = "event_registration"
+			matchdayPut(f, m)
+			continue
+		}
+		if m.Code == optIn.Code && modern {
+			m = matchdayUnavailable(m.Code, m.Name, m.Description, m.Formula, m.Unit, "not_applicable", "Il profilo di /new non raccoglie consensi per SMS promozionali.")
+			matchdayPut(f, m)
+			continue
+		}
+		if m.Status == "partial" && f.coverage == "new_home_entries" && (m.Code == fanbase.Code || m.Code == profilesMetric.Code || m.Code == identification.Code) {
+			m.Status, m.Reason = "available", ""
+		}
 		if len(f.Reach) == 0 {
 			m.Value, m.Numerator, m.Denominator, m.Status, m.Reason = nil, nil, nil, "missing", "Nessuna identità osservata."
 		} else if f.Event.start.IsZero() && (m.Code == current.Code || m.Code == optIn.Code) {
@@ -390,19 +464,26 @@ func calculateMatchdayCRM(f *matchdayFacts, profiles map[int]matchdayProfile) {
 		}
 		matchdayPut(f, m)
 	}
-	matchdayPut(f, matchdayUnavailable("crm_new_consents", "Nuovi consensi marketing", "Nuovi consensi con data e prova attribuibile a un profilo della partita.", "Consensi validi acquisiti durante l’evento", "count", "not_measurable", "Il profilo conserva lo stato corrente del consenso. I consensi dei contatti legacy sono separati dai profili tifosi.", "fan_profiles.marketing_consent", "contacts"))
+	if modern {
+		consents.Status, consents.Reason = "not_applicable", "Il profilo di /new non raccoglie consensi per SMS promozionali."
+	}
+	matchdayPut(f, consents)
 }
 
 var matchdayRome, _ = time.LoadLocation("Europe/Rome")
 
 func calculateMatchdayRevenue(f *matchdayFacts) {
-	m := matchdayUnavailable("direction_revenue", "Ricavi generati", "Ricavi confermati attribuibili alla partita.", "Ricavi confermati e attribuiti da fonti distinte", "eur", "missing", "Non sono disponibili incassi attribuiti all’evento.", "bar_orders", "tracking_events", "matchday_kpi_manual_revisions")
+	m := matchdayUnavailable("direction_revenue", "Ricavi generati", "Ricavi confermati attribuibili alla partita.", "Ricavi confermati e attribuiti da fonti distinte", "eur", "missing", "Non sono disponibili incassi attribuiti all’evento.", "bar_orders", "tracking_events", "merch_orders", "matchday_kpi_manual_revisions")
+	shop, shopSource := f.MerchRevenue, "db"
+	if shop == nil && f.allowsMatchdayManual("shop_gmv") {
+		shop, shopSource = f.Manual["shop_gmv"].Value, "manual"
+	}
 	var total float64
 	for _, component := range []struct {
 		value  *float64
 		source string
 	}{
-		{f.BarRevenue, "db"}, {f.Manual["shop_gmv"].Value, "manual"}, {f.Manual["offline_revenue"].Value, "manual"},
+		{f.BarRevenue, "db"}, {shop, shopSource}, {f.Manual["offline_revenue"].Value, "manual"},
 	} {
 		if component.value == nil {
 			continue
@@ -416,9 +497,12 @@ func calculateMatchdayRevenue(f *matchdayFacts) {
 	}
 	if m.Source != "" {
 		m.Value, m.Status, m.Reason = reportMetricFloat(math.Round(total*100)/100), "partial", "Somma degli incassi attribuiti disponibili. La copertura dipende dalla presenza di fonti bar, shop e offline."
-		m.coverage = fmt.Sprintf("%t:%t:%t", f.BarRevenue != nil, f.Manual["shop_gmv"].Value != nil, f.Manual["offline_revenue"].Value != nil)
+		m.coverage = fmt.Sprintf("%t:%t:%t:%t", f.BarRevenue != nil, f.MerchRevenue != nil, shop != nil, f.Manual["offline_revenue"].Value != nil)
 	} else {
-		m.Missing = []string{"offline_revenue", "shop_gmv"}
+		m.Missing = []string{"offline_revenue"}
+		if f.allowsMatchdayManual("shop_gmv") {
+			m.Missing = append(m.Missing, "shop_gmv")
+		}
 	}
 	matchdayPut(f, m)
 }

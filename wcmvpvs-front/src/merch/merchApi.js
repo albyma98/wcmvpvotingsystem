@@ -1,4 +1,4 @@
-import { apiClient, getDeviceHeaders, getFanSessionHeaders, resolveApiUrl } from '../api';
+import { apiClient, getDeviceHeaders, getFanSessionHeaders, getMatchdayObservationHeaders, resolveApiUrl } from '../api';
 import { stripeCheckoutUrl } from './shopModel';
 
 const merchPath = slug => `/v1/clubs/${encodeURIComponent(slug)}/merch`;
@@ -17,9 +17,9 @@ const options = (slug, config = {}) => ({
 export const fetchMerchCatalog = async (slug, signal) =>
   (await apiClient.get(merchPath(slug), options(slug, { signal }))).data;
 
-export async function fetchMerchVisibility(slug, signal) {
+export async function fetchMerchVisibility(slug, signal, eventId) {
   const { data } = await apiClient.get(merchPath(slug), {
-    params: { summary: 1 },
+    params: { summary: 1, ...(eventId > 0 ? { match_id: eventId } : {}) },
     signal,
     timeout: 7000,
   });
@@ -51,14 +51,34 @@ export function requestMerchRecovery(slug, id, token, step, payload, signal) {
   }));
 }
 
-export function trackMerchEvent(slug, type, productId, variantId) {
+export function trackMerchEvent(slug, type, productId, variantId, matchId) {
   if (!globalThis.crypto?.randomUUID) return;
-  void apiClient.post(`${merchPath(slug)}/events`, {
+  const payload = {
     event_id: globalThis.crypto.randomUUID(),
     type,
     product_id: productId,
     ...(variantId ? { variant_id: variantId } : {}),
-  }, options(slug)).catch(() => {});
+    ...(matchId > 0 ? { match_id: matchId } : {}),
+  };
+  const config = options(slug, {
+    timeout: 8000,
+    headers: getMatchdayObservationHeaders(slug, matchId),
+    ...(typeof globalThis.fetch === 'function' && { adapter: ['fetch', 'xhr'], fetchOptions: { keepalive: true } }),
+  });
+  return sendMerchEvent(`${merchPath(slug)}/events`, payload, config);
+}
+
+async function sendMerchEvent(path, payload, config) {
+  for (const delay of [0, 500, 1500]) {
+    if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
+    try {
+      await apiClient.post(path, payload, config);
+      return;
+    } catch (error) {
+      const status = error?.response?.status;
+      if (status && status !== 408 && status < 500) return;
+    }
+  }
 }
 
 export function merchRequestError(error, fallback) {

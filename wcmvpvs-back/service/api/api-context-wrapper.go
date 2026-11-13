@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/gofrs/uuid"
@@ -16,6 +17,7 @@ type httpRouterHandler func(http.ResponseWriter, *http.Request, reqcontext.Reque
 // wrap parses the request and adds a reqcontext.RequestContext instance related to the request.
 func (rt *_router) wrap(fn httpRouterHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
 		reqUUID, err := uuid.NewV4()
 		if err != nil {
 			rt.baseLogger.WithError(err).Error("can't generate a request UUID")
@@ -35,12 +37,13 @@ func (rt *_router) wrap(fn httpRouterHandler) http.HandlerFunc {
 		if !rt.populateOrganizationFromRequest(w, r, &ctx) {
 			return
 		}
-		if !rt.enforceBarFeatureAccess(w, r, ctx) {
-			return
-		}
-		ctx.Logger.Infof("handling %s %s", r.Method, r.URL.Path)
-		// Call the next handler in chain (usually, the handler function for the path)
-		fn(w, r, ctx)
+		rt.observeMatchdayRequest(w, r, ctx.OrganizationID, started, func(w http.ResponseWriter, r *http.Request) {
+			if !rt.enforceBarFeatureAccess(w, r, ctx) {
+				return
+			}
+			ctx.Logger.Infof("handling %s %s", r.Method, r.URL.Path)
+			fn(w, r, ctx)
+		})
 	}
 }
 

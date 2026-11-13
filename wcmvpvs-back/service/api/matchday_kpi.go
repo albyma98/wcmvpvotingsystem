@@ -60,9 +60,14 @@ type matchdayFacts struct {
 	Reach                          map[string]bool
 	FirstEvent                     map[string]int
 	BarRevenue                     *float64
+	MerchRevenue                   *float64
+	Technology                     matchdayTechnologyFacts
+	qrOpens, qrLandings            int
+	registrations                  []matchdayIdentity
 	Operations                     matchdayOperationsFacts
 	votes                          []matchdayVote
 	games                          []matchdayGameObservation
+	feedback                       *matchdayFeedbackData
 	rewards                        int
 	lottery                        int
 	legacyDevices                  []string
@@ -331,7 +336,8 @@ func (rt *_router) matchdayKPIReport(ctx context.Context, q matchdayQueryer, org
 		load func(context.Context, matchdayQueryer, int, map[int]*matchdayFacts) error
 	}{
 		{"manual", loadMatchdayManual}, {"telemetry", loadMatchdayTelemetry}, {"page engagement", loadMatchdayPageEngagement}, {"votes and games", loadMatchdayVotesAndGames},
-		{"operations", loadMatchdayOperations},
+		{"feedback", preloadMatchdayFeedback}, {"operations", loadMatchdayOperations},
+		{"QR arrivals", loadMatchdayQRArrivals}, {"registrations", loadMatchdayRegistrations}, {"technology", loadMatchdayTechnology},
 	}
 	for _, loader := range loaders {
 		if err := loader.load(ctx, q, orgID, data); err != nil {
@@ -348,9 +354,9 @@ func (rt *_router) matchdayKPIReport(ctx context.Context, q matchdayQueryer, org
 		if i+1 < len(ordered) {
 			previous = ordered[i+1]
 		}
+		calculateMatchdayOperations(f)
 		calculateMatchdayPerformance(f, previous)
 		calculateMatchdayMarketing(f, previous)
-		calculateMatchdayOperations(f)
 	}
 	f := ordered[0]
 	result := matchdayResponse{Event: current, Scope: scope, Limit: limit, Executive: matchdayExecutive, Sections: append([]matchdaySection(nil), matchdayDepartments...)}
@@ -395,6 +401,9 @@ func (rt *_router) matchdayKPIReport(ctx context.Context, q matchdayQueryer, org
 		}
 	}
 	for _, definition := range matchdayManualDefinitions {
+		if !f.allowsMatchdayManual(definition.Code) {
+			continue
+		}
 		field, ok := f.Manual[definition.Code]
 		if !ok {
 			field = definition
@@ -405,6 +414,17 @@ func (rt *_router) matchdayKPIReport(ctx context.Context, q matchdayQueryer, org
 		result.ManualFields = append(result.ManualFields, field)
 	}
 	return result, nil
+}
+
+func (f *matchdayFacts) allowsMatchdayManual(code string) bool {
+	switch code {
+	case "qr_scans":
+		return f.qrOpens == 0
+	case "shop_paid_orders", "shop_gmv", "shop_reservations":
+		return !f.Operations.merch.observed
+	default:
+		return true
+	}
 }
 
 func (rt *_router) handleMatchdayKPI(w http.ResponseWriter, r *http.Request, auth reqcontext.RequestContext) {
@@ -447,6 +467,16 @@ func (rt *_router) handleMatchdayKPI(w http.ResponseWriter, r *http.Request, aut
 			var result matchdayResponse
 			result, err = rt.matchdayKPIReport(ctx, tx, orgID, eventID, limit, scope, true)
 			if err == nil {
+				for _, input := range input.Values {
+					allowed := false
+					for _, field := range result.ManualFields {
+						allowed = allowed || input.Code == field.Code
+					}
+					if !allowed {
+						reportError(w, http.StatusConflict, "Il dato è rilevato automaticamente. Aggiorna la scheda per vedere il valore misurato.")
+						return
+					}
+				}
 				err = tx.Commit()
 				if err == nil {
 					_ = writeJSON(w, http.StatusOK, result)

@@ -76,6 +76,7 @@ import { merchItemKey, merchMoney } from './shopModel';
 
 const props = defineProps({
   slug: { type: String, required: true },
+  eventId: { type: Number, default: 0 },
   mode: { type: String, required: true },
   lines: { type: Array, required: true },
   settings: { type: Object, required: true },
@@ -133,6 +134,7 @@ async function submit() {
     ...quoteInput(),
     expected_total_cents: quote.value.total_cents,
     request_id: globalThis.crypto.randomUUID(),
+    ...(props.eventId > 0 ? { match_id: props.eventId } : {}),
     ...(collectContact ? {
       name: contact.name,
       [contactField.value]: contactField.value === 'phone' ? contact.phone.replace(/[\s().-]/g, '') : contact.email,

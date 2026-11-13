@@ -62,6 +62,29 @@ func ensureMatchChatTables(db *sql.DB) error {
 			PRIMARY KEY(event_id,fan_id)
 		);
 		CREATE INDEX IF NOT EXISTS idx_event_chat_mutes ON event_chat_mutes(event_id,muted_until);
+		CREATE TABLE IF NOT EXISTS event_chat_opens (
+			event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+			device_key TEXT NOT NULL DEFAULT '', fan_id INTEGER NOT NULL DEFAULT 0,
+			first_opened_at INTEGER NOT NULL,
+			PRIMARY KEY(event_id,device_key,fan_id)
+		);
+		CREATE TABLE IF NOT EXISTS event_chat_setting_changes (
+			id INTEGER PRIMARY KEY,
+			event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+			enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), changed_at INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_event_chat_setting_changes ON event_chat_setting_changes(event_id,enabled);
+		CREATE TABLE IF NOT EXISTS event_chat_blocked_attempts (
+			event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+			minute INTEGER NOT NULL, reason TEXT NOT NULL, attempts INTEGER NOT NULL,
+			PRIMARY KEY(event_id,minute,reason)
+		);
+		CREATE TABLE IF NOT EXISTS event_chat_replies (
+			event_id INTEGER NOT NULL, message_id INTEGER NOT NULL, reply_to_id INTEGER NOT NULL,
+			PRIMARY KEY(event_id,message_id),
+			FOREIGN KEY(event_id,message_id) REFERENCES event_chat_messages(event_id,id) ON DELETE CASCADE,
+			FOREIGN KEY(event_id,reply_to_id) REFERENCES event_chat_messages(event_id,id) ON DELETE CASCADE
+		);
 	`)
 	if err != nil {
 		return fmt.Errorf("creating match chat tables: %w", err)
@@ -70,11 +93,12 @@ func ensureMatchChatTables(db *sql.DB) error {
 }
 
 var (
-	ErrChatDisabled        = errors.New("chat_disabled")
-	ErrChatMuted           = errors.New("chat_muted")
-	ErrChatRate            = errors.New("chat_rate_limited")
-	ErrChatDuplicate       = errors.New("chat_duplicate")
-	ErrChatRequestConflict = errors.New("chat_request_conflict")
+	ErrChatDisabled         = errors.New("chat_disabled")
+	ErrChatMuted            = errors.New("chat_muted")
+	ErrChatRate             = errors.New("chat_rate_limited")
+	ErrChatDuplicate        = errors.New("chat_duplicate")
+	ErrChatRequestConflict  = errors.New("chat_request_conflict")
+	ErrChatReplyUnavailable = errors.New("chat_reply_unavailable")
 )
 
 const ChatPageSize = 30
@@ -100,6 +124,7 @@ type ChatMessage struct {
 	Status    string         `json:"status"`
 	Mine      bool           `json:"mine,omitempty"`
 	AuthorID  int            `json:"author_id,omitempty"`
+	ReplyToID int64          `json:"reply_to_id,omitempty"`
 	Reactions []ChatReaction `json:"reactions,omitempty"`
 }
 
@@ -186,19 +211,33 @@ func (s MatchChatStore) Write(ctx context.Context, requireEnabled bool, fn func(
 }
 
 func (s MatchChatStore) SetEnabled(ctx context.Context, tx *sql.Tx, enabled bool, admin int, now int64) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO event_chat_settings(event_id,enabled,created_at,updated_at,updated_by)
+	var recorded bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM event_chat_setting_changes WHERE event_id=?)`, s.EventID).Scan(&recorded); err != nil {
+		return err
+	}
+	previous, err := s.enabled(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if !recorded || previous != enabled {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO event_chat_setting_changes(event_id,enabled,changed_at) VALUES (?,?,?)`, s.EventID, enabled, now); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO event_chat_settings(event_id,enabled,created_at,updated_at,updated_by)
 		VALUES(?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET enabled=excluded.enabled,
 		updated_at=excluded.updated_at,updated_by=excluded.updated_by`, s.EventID, enabled, now, now, admin)
 	return err
 }
 
 const chatMessageColumns = `m.id, COALESCE(NULLIF(p.nickname,''),'Tifoso'), m.message_text, m.message_type,
-	m.created_at, m.moderation_status, COALESCE(m.author_user_id,0), COALESCE(m.admin_id,0)`
+	m.created_at, m.moderation_status, COALESCE(m.author_user_id,0), COALESCE(m.admin_id,0),
+	COALESCE((SELECT r.reply_to_id FROM event_chat_replies r WHERE r.event_id=m.event_id AND r.message_id=m.id),0)`
 
 func scanChatMessage(row rowScanner, fanID int, admin bool) (ChatMessage, int, error) {
 	var m ChatMessage
 	var author, adminID int
-	err := row.Scan(&m.ID, &m.Nickname, &m.Text, &m.Type, &m.CreatedAt, &m.Status, &author, &adminID)
+	err := row.Scan(&m.ID, &m.Nickname, &m.Text, &m.Type, &m.CreatedAt, &m.Status, &author, &adminID, &m.ReplyToID)
 	if m.Type == "official" {
 		m.Nickname = "Società"
 	}
@@ -310,6 +349,7 @@ func (s MatchChatStore) loadReactions(ctx context.Context, tx *sql.Tx, messages 
 type ChatSend struct {
 	FanID           int
 	AdminID         int
+	ReplyToID       int64
 	RequestID       string
 	Text            string
 	Nickname        string
@@ -324,13 +364,25 @@ func (s MatchChatStore) Send(ctx context.Context, tx *sql.Tx, in ChatSend) (Chat
 		FROM event_chat_messages m LEFT JOIN fan_profiles p ON p.id=m.author_user_id
 		WHERE m.event_id=? AND m.request_id=?`, s.EventID, in.RequestID), in.FanID, false)
 	if err == nil {
-		if previous.Text != in.Text || (in.FanID > 0 && !previous.Mine) || (in.AdminID > 0 && in.AdminID != adminID) {
+		if previous.Text != in.Text || previous.ReplyToID != in.ReplyToID || (in.FanID > 0 && !previous.Mine) || (in.AdminID > 0 && in.AdminID != adminID) {
 			return ChatMessage{}, false, ErrChatRequestConflict
 		}
 		return previous, false, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return ChatMessage{}, false, err
+	}
+	if in.ReplyToID != 0 {
+		var eligible bool
+		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM event_chat_messages
+			WHERE event_id=? AND id=? AND moderation_status='visible' AND message_type='fan' AND author_user_id<>?)`,
+			s.EventID, in.ReplyToID, in.FanID).Scan(&eligible)
+		if err != nil {
+			return ChatMessage{}, false, err
+		}
+		if in.FanID <= 0 || !eligible {
+			return ChatMessage{}, false, ErrChatReplyUnavailable
+		}
 	}
 
 	kind := "official"
@@ -377,7 +429,15 @@ func (s MatchChatStore) Send(ctx context.Context, tx *sql.Tx, in ChatSend) (Chat
 		return ChatMessage{}, false, err
 	}
 	id, err := result.LastInsertId()
-	return ChatMessage{ID: id, Nickname: nickname, Text: in.Text, Type: kind, CreatedAt: in.Now, Status: "visible", Mine: in.FanID > 0}, true, err
+	if err != nil {
+		return ChatMessage{}, false, err
+	}
+	if in.ReplyToID != 0 {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO event_chat_replies(event_id,message_id,reply_to_id) VALUES (?,?,?)`, s.EventID, id, in.ReplyToID); err != nil {
+			return ChatMessage{}, false, err
+		}
+	}
+	return ChatMessage{ID: id, Nickname: nickname, Text: in.Text, Type: kind, CreatedAt: in.Now, Status: "visible", Mine: in.FanID > 0, ReplyToID: in.ReplyToID}, true, nil
 }
 
 func (s MatchChatStore) CheckMute(ctx context.Context, tx *sql.Tx, fanID int, now int64) error {

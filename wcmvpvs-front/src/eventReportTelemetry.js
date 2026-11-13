@@ -1,4 +1,5 @@
 import { FAN_ANALYTICS_EVENTS, FAN_ANALYTICS_SCHEMA_VERSION, sanitizeFanAnalyticsMetadata } from './fanAnalytics.js';
+import { matchdayAttribution } from './matchdayAttribution.js';
 
 // Dedicated measurement for /:slug/new, queued for the internal report endpoint.
 const SESSION_KEY = 'arenaboostx:report-session:v1';
@@ -40,6 +41,7 @@ export function createEventReportTelemetry({ eventId, send, identity = () => ({}
   function currentContext() { try { return context() || {}; } catch { return {}; } }
   const organization = String(currentContext().organization_slug || '');
   const sessionKey = `${SESSION_KEY}:${organization}:${eventId}`;
+  const entry = matchdayAttribution(win?.location?.href, doc?.referrer);
   const visitsKey = `arenaboostx:report-visits:v1:${organization}:${eventId}`;
   let sessionId = id();
   try {
@@ -92,6 +94,11 @@ export function createEventReportTelemetry({ eventId, send, identity = () => ({}
       // The external mirror must not receive credentials and must never run during retries.
       try { mirror(mirroredEvent, snapshot); } catch { /* Analytics must never interrupt the fan flow. */ }
     }
+    if (name === 'page_view') {
+      event.metadata.entry_channel = entry.channel;
+      event.metadata.entry_qr = entry.qr;
+      if (entry.arrival) event.qr_arrival = entry.arrival;
+    }
     // Capture credentials at observation time: login cannot reattribute a queued guest batch.
     let credentials = {};
     try { credentials = { ...identity() }; } catch { return event; }
@@ -137,6 +144,7 @@ export function createEventReportTelemetry({ eventId, send, identity = () => ({}
   function mirrorEvent(event) {
     if (!mirrorEnabled) return null;
     const metadata = { ...event.metadata };
+    delete metadata.feedback_response_id;
     const elapsed = Math.max(0, now() - mirrorStartedAt);
     if (event.name === 'active_time') {
       const end = Date.parse(metadata.ended_at);
@@ -227,6 +235,15 @@ export function createEventReportTelemetry({ eventId, send, identity = () => ({}
     resetMirrorClock(mirrorEnabled);
     recordVisit();
     record('page_view', metadata);
+    if (entry.arrival) {
+      try {
+        const url = new URL(win.location.href);
+        if (url.searchParams.get('abx_qr') === entry.arrival) {
+          url.searchParams.delete('abx_qr');
+          win.history.replaceState(win.history.state, '', url);
+        }
+      } catch { /* attribution remains valid if history is unavailable */ }
+    }
     for (const name of ['pointerdown', 'keydown', 'touchstart', 'scroll']) win?.addEventListener(name, activity, { passive: true, capture: name === 'scroll' });
     doc?.addEventListener('visibilitychange', visibility);
     win?.addEventListener('pagehide', onPageHide);
