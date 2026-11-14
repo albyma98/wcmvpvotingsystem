@@ -21,6 +21,7 @@ func TestMatchdayMarketingAttributedEntries(t *testing.T) {
 	old := &matchdayFacts{
 		Event: matchdayEvent{ID: 1}, Resolve: resolve,
 		Tracking: []matchdayTracking{{Name: "session.started", Session: "old", Device: "b", Metadata: map[string]interface{}{"url": "https://club.test/?utm_source=led&utm_medium=qr"}}},
+		Signals:  []reportSignal{{Name: "page_view", SessionID: "old-report", DeviceID: "b"}},
 	}
 	current := &matchdayFacts{
 		Event: matchdayEvent{ID: 2}, Resolve: resolve, Metrics: map[string]matchdayMetric{},
@@ -38,7 +39,7 @@ func TestMatchdayMarketingAttributedEntries(t *testing.T) {
 	checkMatchdayDomainMetric(t, current, "marketing_access", 3)
 	checkMatchdayDomainMetric(t, current, "marketing_new_users", 1)
 	checkMatchdayDomainMetric(t, current, "marketing_activation", 50)
-	checkMatchdayDomainMetric(t, current, "marketing_channel_change", 2)
+	checkMatchdayDomainMetric(t, current, "marketing_channel_change", 1)
 	if got := current.Metrics["marketing_qr_conversion"]; got.Value != nil || got.Status != "missing" {
 		t.Fatalf("QR without scans = %+v", got)
 	}
@@ -49,6 +50,19 @@ func TestMatchdayMarketingAttributedEntries(t *testing.T) {
 	checkMatchdayDomainMetric(t, current, "marketing_cpa", 40)
 	if got := current.Metrics["marketing_qr_conversion"]; got.Source != "mixed" {
 		t.Fatalf("QR provenance = %+v", got)
+	}
+	current.Tracking = append(current.Tracking, matchdayTracking{Name: "session.started", Session: "extra-qr", Device: "b", Metadata: map[string]interface{}{"url": "https://club.test/?utm_medium=qr"}})
+	for scans, status := range map[float64]string{0: "not_applicable", 1: "not_measurable"} {
+		current.Manual["qr_scans"] = matchdayManualField{matchdayManualRevision: matchdayManualRevision{Value: matchdayDomainValue(scans)}}
+		calculateMatchdayMarketing(current, old)
+		if got := current.Metrics["marketing_qr_conversion"]; got.Value != nil || got.Status != status || got.Denominator == nil || *got.Denominator != scans {
+			t.Fatalf("QR with %v declared scans = %+v", scans, got)
+		}
+	}
+	old.Signals = nil
+	calculateMatchdayMarketing(current, old)
+	if got := current.Metrics["marketing_channel_change"]; got.Value != nil || got.Status != "not_measurable" {
+		t.Fatalf("incompatible channel comparison = %+v", got)
 	}
 }
 
@@ -101,12 +115,15 @@ func TestMatchdaySponsorMeasurementAndFeedbackCoverage(t *testing.T) {
 	}
 	for code, want := range map[string]float64{
 		"sponsor_impressions": 3, "sponsor_reach": 1, "sponsor_viewable": 1, "sponsor_viewability": 50,
-		"sponsor_frequency": 3, "sponsor_ctr": 100.0 / 3, "sponsor_avg_visible_time": 600, "sponsor_placements": 3,
+		"sponsor_frequency": 3, "sponsor_ctr": 100, "sponsor_avg_visible_time": 600, "sponsor_placements": 3,
 		"feedback_responses": 2, "feedback_answers": 8, "feedback_completed": 1, "feedback_respondents": 1,
 		"feedback_response_rate": 100, "feedback_completion_rate": 100, "feedback_satisfaction": 100,
 	} {
 		checkMatchdayDomainMetric(t, facts, code, want)
 	}
+	ctr := facts.Metrics["sponsor_ctr"]
+	matchdayRequireValue(t, ctr.Numerator, 1)
+	matchdayRequireValue(t, ctr.Denominator, 1)
 	if rows := facts.Metrics["sponsor_impressions"].Rows; len(rows) != 2 {
 		t.Fatalf("per-sponsor rows = %+v", rows)
 	}

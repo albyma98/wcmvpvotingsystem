@@ -58,6 +58,7 @@ type matchdayFacts struct {
 	Actions                        []matchdayAction
 	Resolve                        func(matchdayIdentity) string
 	Reach                          map[string]bool
+	persistentReach                map[string]bool
 	FirstEvent                     map[string]int
 	BarRevenue                     *float64
 	MerchRevenue                   *float64
@@ -144,7 +145,7 @@ var matchdayDepartments = []matchdaySection{
 }
 
 var matchdayExecutive = []string{
-	"direction_reach", "direction_penetration", "direction_activation", "direction_retention",
+	"direction_reach", "direction_penetration", "mvp_multifunction", "direction_retention",
 	"mvp_voters", "games_players", "feedback_responses", "crm_new_profiles", "crm_new_consents",
 	"sponsor_reach", "sponsor_viewable", "shop_conversions", "direction_far",
 }
@@ -223,6 +224,10 @@ func matchdayRead(ctx context.Context, q matchdayQueryer, query string, args []i
 }
 
 func matchdaySeason(at time.Time) int {
+	if at.IsZero() {
+		return 0
+	}
+	at = at.In(matchdayRome)
 	year := at.Year()
 	if at.Month() < time.July {
 		year--
@@ -264,8 +269,14 @@ func loadMatchdayEvents(ctx context.Context, q matchdayQueryer, orgID, eventID, 
 		scope = "division"
 	}
 	prior := events[:0]
+	season := matchdaySeason(current.start)
 	for _, e := range events {
-		if e.start.IsZero() || current.start.IsZero() || !e.start.Before(current.start) || (scope == "division" && !strings.EqualFold(e.Division, current.Division)) {
+		if e.start.IsZero() || current.start.IsZero() || !e.start.Before(current.start) {
+			continue
+		}
+		// The team only stores its current championship. Older seasons cannot
+		// be assumed to have used the same division.
+		if scope == "division" && (matchdaySeason(e.start) != season || !strings.EqualFold(e.Division, current.Division)) {
 			continue
 		}
 		prior = append(prior, e)
@@ -313,7 +324,10 @@ func matchdayCompare(metric matchdayMetric, prior []*matchdayFacts, season int) 
 			return nil, nil
 		}
 		delta := reportMetricFloat(*metric.Value - *base)
-		return delta, reportMetricRatio(delta, base, true)
+		if delta == nil || *base == 0 {
+			return delta, nil
+		}
+		return delta, reportMetricFloat(*delta / *base * 100)
 	}
 	out.AbsoluteDelta, out.PercentDelta = compare(out.Previous)
 	out.AverageAbsoluteDelta, out.AveragePercentDelta = compare(out.Average)
@@ -384,6 +398,9 @@ func (rt *_router) matchdayKPIReport(ctx context.Context, q matchdayQueryer, org
 			}
 			m.Comparison = matchdayCompare(m, prior, season)
 			metrics = append(metrics, m)
+			if code == "direction_activation" {
+				continue // Legacy API alias for direction_far, omitted from the displayed KPI count.
+			}
 			result.Availability.Total++
 			switch m.Status {
 			case "available":

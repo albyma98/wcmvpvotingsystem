@@ -93,6 +93,9 @@ test('Matchday displays measured zero, missing data, and distinct shop conversio
   const metrics = [
     { code: 'qr_conversion', name: 'Conversione QR', status: 'available', source: 'mixed', value: 0, unit: 'percent' },
     { code: 'penetration', name: 'Penetrazione', status: 'missing', value: null, unit: 'percent' },
+    { code: 'tech_uptime', name: 'Disponibilità del servizio', status: 'not_measurable', value: null, unit: 'percent',
+      columns: [{ id: 'count', label: 'Sonde', unit: 'count' }],
+      rows: [{ label: 'Attese senza misura', values: { count: 4 } }] },
     { code: 'shop_conversions', name: 'Conversioni shop', status: 'available', source: 'db', value: null,
       columns: [{ id: 'count', label: 'Numero', unit: 'count' }],
       rows: [{ label: 'Acquisti confermati', values: { count: 2 } }, { label: 'Prenotazioni confermate', values: { count: 3 } }] },
@@ -101,6 +104,7 @@ test('Matchday displays measured zero, missing data, and distinct shop conversio
   const html = await renderToString(app);
   assert.match(html, /Conversione QR[\s\S]*?Misto[\s\S]*?>0%<\/strong>/);
   assert.match(html, /Penetrazione[\s\S]*?Dato mancante/);
+  assert.match(html, /Disponibilità del servizio[\s\S]*?Non misurabile[\s\S]*?Attese senza misura[\s\S]*?<td\b[^>]*>4<\/td>/);
   assert.match(html, /Acquisti confermati<\/dt><dd\b[^>]*>2<\/dd>[\s\S]*?Prenotazioni confermate<\/dt><dd\b[^>]*>3<\/dd>/);
 });
 

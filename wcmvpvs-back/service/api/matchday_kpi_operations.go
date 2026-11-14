@@ -23,11 +23,12 @@ type matchdayOperationsFacts struct {
 	virtualItems map[string]int
 	barOrders    int
 	barPaid      int
-	barClosed    int
+	barPayments  int
+	barExpired   int
 }
 
 func (f matchdayOperationsFacts) eachIdentity(use func(matchdayIdentity)) {
-	for _, group := range [][]matchdayIdentity{f.merch.visitIdentities, f.merch.buyerIdentities, f.chat.openIdentities} {
+	for _, group := range [][]matchdayIdentity{f.merch.visitIdentities, f.chat.openIdentities} {
 		for _, identity := range group {
 			use(identity)
 		}
@@ -196,16 +197,19 @@ func loadMatchdayBar(ctx context.Context, q matchdayQueryer, orgID int, data map
 		}
 		f := data[eventID]
 		f.Operations.barOrders++
-		paid := payment == "paid" && normalizeBarStatus(order) != "annullato"
-		if paid || payment == "expired" {
-			f.Operations.barClosed++
+		if f.BarRevenue == nil {
+			f.BarRevenue = new(float64)
 		}
-		if paid {
-			f.Operations.barPaid++
-			if f.BarRevenue == nil {
-				f.BarRevenue = new(float64)
-			}
+		if payment == "expired" {
+			f.Operations.barExpired++
+		}
+		if payment == "paid" {
+			// An operational cancellation does not reverse the Stripe payment.
+			f.Operations.barPayments++
 			*f.BarRevenue += float64(cents) / 100
+		}
+		if payment == "paid" && normalizeBarStatus(order) != "annullato" {
+			f.Operations.barPaid++
 			f.Actions = append(f.Actions, matchdayAction{Identity: matchdayIdentity{Device: devices[eventID][reference]}, Feature: "purchase", Count: 1})
 		}
 	}
@@ -257,17 +261,17 @@ func calculateMatchdayShop(f *matchdayFacts) {
 			unique.Reason = "Sono state osservate aperture senza identità associata."
 		}
 	}
-	const noMatch = "Lo shop merchandising registra dati per società, senza associazione alla partita."
-	const noMatchVisitor = "Le analytics merchandising non identificano i visitatori e non associano le aperture alla partita."
+	const noMatch = "Non risulta una raccolta dello shop merchandising attribuita a questa partita."
+	const noMatchVisitor = "Non risulta una raccolta di visite allo shop merchandising attribuita a questa partita."
 	matchdayPut(f, opens, unique,
 		matchdayUnavailable("shop_merch_opens", "Aperture shop merchandising", "Aperture dello shop commerciale attribuibili alla partita.", "Conteggio aperture commerciali", "count", "not_measurable", noMatchVisitor, merchViews),
-		matchdayUnavailable("shop_merch_visitors", "Visitatori unici shop merchandising", "Identità uniche che hanno aperto lo shop commerciale per la partita.", "Identità distinte con apertura dello shop", "count", "not_measurable", noMatchVisitor, merchViews),
-		matchdayUnavailable("shop_conversion_rate", "Conversione acquisti merchandising", "Acquirenti unici sullo stesso pubblico che ha visitato lo shop commerciale.", "Acquirenti unici / visitatori unici dello shop × 100", "percent", "not_measurable", noMatchVisitor, merchViews, merchOrders),
+		matchdayUnavailable("shop_merch_visitors", "Visitatori unici shop merchandising", "Identità uniche osservate nello shop commerciale per la partita.", "Identità distinte con apertura shop, visita prodotto o ordine associato alla partita", "count", "not_measurable", noMatchVisitor, merchViews),
+		matchdayUnavailable("shop_conversion_rate", "Conversione acquisti merchandising", "Identità osservate con un acquisto confermato sul totale dei visitatori identificabili dello shop.", "Acquirenti unici con ordine confermato / visitatori unici osservati × 100", "percent", "not_measurable", noMatchVisitor, merchViews, merchOrders),
 		matchdayUnavailable("shop_refunds", "Rimborsi merchandising", "Importi rimborsati attribuibili alla partita, distinti dal valore degli ordini.", "Somma dei rimborsi confermati", "eur", "not_measurable", noMatch, "merch_payment_records.organization_id, order_id, status, amount_cents"),
 		matchdayUnavailable("shop_unpaid_reservations", "Prenotazioni non pagate", "Prenotazioni confermate attribuibili alla partita che risultano ancora da pagare.", "Conteggio prenotazioni confermate e non pagate", "count", "not_measurable", noMatch, merchOrders))
-	paid := matchdayShopManual(f, "shop_paid_orders", "Acquisti confermati", "Ordini merchandising pagati e attribuiti alla partita, esclusi falliti, annullati e rimborsati.", "Conteggio ordini confermati distinti", "count", merchOrders)
-	gmv := matchdayShopManual(f, "shop_gmv", "Valore lordo degli ordini confermati (GMV)", "Valore degli acquisti merchandising confermati attribuibili alla partita.", "Somma degli importi lordi degli ordini confermati", "eur", merchOrders)
-	reservations := matchdayShopManual(f, "shop_reservations", "Prenotazioni confermate", "Prenotazioni merchandising attribuibili alla partita, incluse quelle non pagate già confermate.", "Conteggio prenotazioni confermate distinte", "count", merchOrders)
+	paid := matchdayShopManual(f, "shop_paid_orders", "Acquisti confermati", "Ordini merchandising pagati e attribuiti alla partita con evasione confermata, in preparazione, pronti al ritiro o completati. Sono esclusi i rimborsi integrali.", "Conteggio ordini confermati distinti", "count", merchOrders)
+	gmv := matchdayShopManual(f, "shop_gmv", "Valore lordo degli ordini confermati (GMV)", "Valore lordo degli acquisti merchandising confermati attribuibili alla partita, comprensivo di eventuali spese di spedizione. I rimborsi parziali sono mostrati separatamente.", "Somma degli importi lordi degli ordini confermati", "eur", merchOrders)
+	reservations := matchdayShopManual(f, "shop_reservations", "Prenotazioni confermate", "Prenotazioni merchandising attribuibili alla partita, incluse quelle ancora da pagare. Una prenotazione pagata può risultare anche tra gli acquisti confermati.", "Conteggio prenotazioni confermate distinte", "count", merchOrders)
 	aov := matchdayUnavailable("shop_aov", "Valore medio ordine", "Valore medio per acquisto merchandising confermato.", "GMV / acquisti confermati", "eur", "missing", "Servono GMV e acquisti confermati dello stesso perimetro.", merchOrders)
 	if gmv.Value == nil {
 		aov.Missing = append(aov.Missing, gmv.Code)
@@ -319,7 +323,7 @@ func calculateMatchdayShop(f *matchdayFacts) {
 		})
 	}
 	matchdayPut(f, paid, gmv, reservations, aov, executive, products)
-	bar := matchdayUnavailable("shop_bar_paid_orders", "Ordini pagati al bar", "Ordini del bar digitale collegati alla partita tramite osservazioni del checkout.", "Ordini pagati distinti per riferimento Stripe", "count", "not_measurable", "Non è stato possibile collegare gli ordini del bar alla partita.", "bar_orders.stripe_reference, payment_status, order_status, total_cents", "tracking_events.event_name, metadata_json.session_id")
+	bar := matchdayUnavailable("shop_bar_paid_orders", "Ordini pagati al bar", "Ordini confermati del bar digitale collegati alla partita tramite osservazioni del checkout.", "Ordini pagati e non annullati distinti per riferimento Stripe", "count", "not_measurable", "Non è stato possibile collegare gli ordini del bar alla partita.", "bar_orders.stripe_reference, payment_status, order_status, total_cents", "tracking_events.event_name, metadata_json.session_id")
 	if f.Operations.barOrders > 0 {
 		bar = matchdayCount(bar.Code, bar.Name, bar.Description, bar.Formula, float64(f.Operations.barPaid), bar.Sources...)
 		bar.Status, bar.Reason = "partial", "La copertura dipende dai riferimenti del checkout registrati dal browser."
@@ -329,7 +333,7 @@ func calculateMatchdayShop(f *matchdayFacts) {
 		bar.Rows = append(bar.Rows, matchdayRow{Label: "Aperture menu osservate", Values: map[string]*float64{"count": matchdayOperationsValue(barOpens)}})
 	}
 	if f.BarRevenue != nil {
-		bar.Rows = append(bar.Rows, matchdayRow{Label: "Valore lordo ordini pagati", Values: map[string]*float64{"amount": f.BarRevenue}})
+		bar.Rows = append(bar.Rows, matchdayRow{Label: "Incassi lordi registrati, inclusi ordini annullati già pagati", Values: map[string]*float64{"amount": f.BarRevenue}})
 	}
 	matchdayPut(f, bar)
 	applyMatchdayMerch(f)
@@ -444,7 +448,6 @@ func calculateMatchdayTechnology(f *matchdayFacts) {
 	const attribution = "tracking_events.event_id, event_name, metadata_json.session_id"
 	const requests = "Non esiste una serie storica delle richieste API associata alla partita."
 	matchdayPut(f,
-		matchdayUnavailable("tech_uptime", "Disponibilità del servizio", "Percentuale del tempo dell'evento in cui il servizio risultava disponibile.", "Tempo disponibile / durata osservata × 100", "percent", "not_measurable", "Le sonde esistenti non conservano osservazioni di disponibilità per partita."),
 		matchdayUnavailable("tech_api_p95", "Latenza API p95", "95º percentile della durata delle richieste API della partita.", "95º percentile delle latenze API", "milliseconds", "not_measurable", requests),
 		matchdayUnavailable("tech_request_error_rate", "Tasso di errore delle richieste", "Richieste API della partita con esito di errore.", "Richieste in errore / richieste totali × 100", "percent", "not_measurable", requests),
 		matchdayUnavailable("tech_anomalies", "Anomalie e tentativi sospetti", "Tentativi rilevati da controlli di sicurezza o antifrode.", "Conteggio degli eventi di sicurezza persistiti", "count", "not_measurable", "I limiti di frequenza non producono un registro di anomalie associato alla partita."))
@@ -484,17 +487,7 @@ func calculateMatchdayTechnology(f *matchdayFacts) {
 			{Label: "Voti respinti per limite di frequenza", Values: map[string]*float64{"count": matchdayOperationsValue(limited)}},
 		}
 	}
-	payment := matchdayUnavailable("tech_payment_success", "Pagamenti riusciti", "Esiti dei pagamenti digitali attribuiti alla partita.", "Pagamenti riusciti / pagamenti con esito definitivo × 100", "percent", "not_measurable", "Nessun esito definitivo di pagamento è attribuibile alla partita.")
-	if merch := f.Operations.merch; merch.paymentResolved > 0 {
-		const orders = "merch_match_orders.event_id, merch_orders.mode, payment_status"
-		payment = matchdayRatio(payment.Code, payment.Name, "Esiti definitivi degli ordini online dello shop attribuiti alla partita.",
-			"Ordini pagati (anche se poi rimborsati) / ordini con esito di pagamento definitivo × 100", payment.Unit,
-			float64(merch.paymentPaid), float64(merch.paymentResolved), orders)
-		payment.coverage = "merch-online"
-	} else if f.Operations.barClosed > 0 && !f.Operations.merch.observedPayment {
-		payment = matchdayRatio(payment.Code, payment.Name, "Esiti del checkout bar digitale attribuiti alla partita.", "Ordini bar pagati / checkout bar con esito definitivo × 100", payment.Unit, float64(f.Operations.barPaid), float64(f.Operations.barClosed), bar, attribution)
-		payment.Status, payment.Reason = "partial", "Il campione comprende solo checkout bar collegabili alla partita. I checkout ancora in corso sono esclusi."
-	}
+	payment := calculateMatchdayPayment(f.Operations, bar, attribution)
 	issues := matchdayUnavailable("tech_application_issues", "Errori e criticità osservati", "Segnali di errore provenienti dalla home tifosi.", "Conteggio diagnostiche client selezionate, per categoria e motivo", "count", "not_measurable", "La telemetria non contiene diagnostiche di errore per la partita.", signals)
 	if len(failures) > 0 {
 		var total int
@@ -516,6 +509,46 @@ func calculateMatchdayTechnology(f *matchdayFacts) {
 	}
 	matchdayPut(f, vote, payment, issues)
 	calculateMatchdayServerTechnology(f)
+}
+
+func calculateMatchdayPayment(f matchdayOperationsFacts, bar, attribution string) matchdayMetric {
+	const code, name = "tech_payment_success", "Ordini online pagati su esiti conclusi"
+	const formula = "Ordini pagati / (ordini pagati + falliti + scaduti) × 100"
+	const noOutcome = "Nessun ordine online attribuito alla partita ha un esito concluso."
+	merch := f.merch
+	paid, failed, expired, pending := merch.paymentPaid, merch.paymentFailed, merch.paymentExpired, merch.paymentPending
+	shopTotal := paid + failed + expired + pending
+	description := "Ordini online dello shop attribuiti alla partita. I pagamenti poi rimborsati contano come riusciti."
+	sources := []string{"merch_match_orders.event_id, merch_orders.mode, payment_status"}
+	if shopTotal == 0 && f.barOrders > 0 {
+		paid, expired = f.barPayments, f.barExpired
+		pending = f.barOrders - paid - expired
+		description = "Ordini del bar digitale collegati alla partita tramite riferimenti di checkout ricevuti dal browser."
+		sources = []string{bar, attribution}
+	}
+	m := matchdayUnavailable(code, name, description, formula, "percent", "not_measurable", noOutcome, sources...)
+	if settled := paid + failed + expired; settled > 0 {
+		m = matchdayRatio(code, name, description, formula, "percent", float64(paid), float64(settled), sources...)
+		if shopTotal > 0 {
+			m.coverage = "merch-online"
+		} else {
+			m.Status, m.Reason = "partial", "Il campione comprende solo gli ordini bar collegabili alla partita."
+		}
+	}
+	if paid+failed+expired+pending > 0 {
+		m.Columns = []matchdayColumn{{ID: "count", Label: "Ordini", Unit: "count"}}
+		m.Rows = []matchdayRow{
+			{Label: "Checkout registrati", Values: map[string]*float64{"count": matchdayOperationsValue(paid + failed + expired + pending)}},
+			{Label: "Pagati", Values: map[string]*float64{"count": matchdayOperationsValue(paid)}},
+		}
+		if shopTotal > 0 {
+			m.Rows = append(m.Rows, matchdayRow{Label: "Falliti", Values: map[string]*float64{"count": matchdayOperationsValue(failed)}})
+		}
+		m.Rows = append(m.Rows,
+			matchdayRow{Label: "Scaduti", Values: map[string]*float64{"count": matchdayOperationsValue(expired)}},
+			matchdayRow{Label: "In attesa", Values: map[string]*float64{"count": matchdayOperationsValue(pending)}})
+	}
+	return m
 }
 
 func matchdayFailureLabel(name string) string {

@@ -174,7 +174,7 @@ func (x *matchdaySponsorExtras) apply(f *matchdayFacts, report *database.Sponsor
 	const impressionsFormula = "Somma delle impression HTML e geometriche effettivamente registrate."
 	const reachFormula = "Dispositivi distinti con almeno un’impression misurata."
 	const frequencyFormula = "Impression registrate / dispositivi distinti raggiunti."
-	const ctrFormula = "Click misurati / impression registrate × 100."
+	const ctrFormula = "Click associati a impression cliccabili / impression cliccabili × 100."
 	impressions := matchdayUnavailable("sponsor_impressions", "Impression sponsor", "Impression misurate, con dettaglio per sponsor.", impressionsFormula, "count", "not_measurable", noMeasurement, matchdaySponsorImpressions)
 	viewable := matchdayUnavailable("sponsor_viewable", "Viewable impressions sponsor", "Impression che hanno superato la soglia di visibilità HTML o geometrica.", viewableFormula, "count", "not_measurable", "Nessuna impression con misurazione di viewability.", matchdaySponsorViewability)
 	viewability := matchdayUnavailable("sponsor_viewability", "Tasso di viewability", "Quota delle impression misurabili che supera la soglia di visibilità.", "Viewable impressions / impression misurate per viewability × 100.", "percent", "not_measurable", viewable.Reason, matchdaySponsorViewability)
@@ -183,7 +183,7 @@ func (x *matchdaySponsorExtras) apply(f *matchdayFacts, report *database.Sponsor
 	totalTime := matchdayUnavailable("sponsor_visible_time", "Tempo visibile totale", "Tempo misurato sopra la soglia di visibilità.", durationFormula, "milliseconds", "not_measurable", "Nessuna esposizione conclusa con campioni di durata.", matchdaySponsorTime)
 	avgTime := matchdayUnavailable("sponsor_avg_visible_time", "Tempo visibile medio", "Durata media delle esposizioni con campioni di visibilità.", "Tempo visibile totale / esposizioni con durata osservata.", "milliseconds", "not_measurable", totalTime.Reason, matchdaySponsorTime)
 	clicks := matchdayUnavailable("sponsor_clicks", "Click agli sponsor", "Click registrati su placement cliccabili.", "Somma dei click misurati.", "count", "not_measurable", "Nessuna copertura di tracciamento per placement cliccabili.", matchdaySponsorClicks)
-	ctr := matchdayUnavailable("sponsor_ctr", "CTR sponsor", "Click in relazione a tutte le impression misurate.", ctrFormula, "percent", "not_measurable", "Mancano click e impression da una popolazione comparabile.", matchdaySponsorClicks, matchdaySponsorImpressions)
+	ctr := matchdayUnavailable("sponsor_ctr", "CTR sponsor", "Click associati a impression misurate su placement con link. La stessa impression può ricevere più click.", ctrFormula, "percent", "not_measurable", "Nessuna impression misurata su un placement cliccabile.", matchdaySponsorClicks, matchdaySponsorImpressions)
 	conversions := matchdayUnavailable("sponsor_conversions", "Conversioni sponsor", "Riscatti di coupon attribuiti al match e al relativo sponsor.", "Conteggio dei coupon con riscatto registrato.", "count", "not_measurable", "Nessun coupon con attribuzione al match osservata.", matchdaySponsorCoupon)
 	placements := matchdayUnavailable("sponsor_placements", "Performance per posizione", "Dettaglio delle posizioni pubblicitarie effettivamente misurate.", "Aggregazione per posizione, gioco e metodo di misura.", "count", "not_measurable", noMeasurement, matchdaySponsorPlacement)
 
@@ -200,13 +200,18 @@ func (x *matchdaySponsorExtras) apply(f *matchdayFacts, report *database.Sponsor
 		if eligible > 0 {
 			viewable = count(viewable, qualified)
 			viewability = ratio(viewability, qualified, eligible)
-			if m.GeometrySampled > 0 {
-				viewable.coverage, viewability.coverage = "geometry-sampled", "geometry-sampled"
+			switch {
+			case m.GeometrySampled > 0 && m.HTMLImpressions > 0:
+				viewable.coverage, viewability.coverage = "html-and-sampled-geometry", "html-and-sampled-geometry"
+			case m.GeometrySampled > 0:
+				viewable.coverage, viewability.coverage = "sampled-geometry", "sampled-geometry"
 			}
 			if eligible < m.Impressions {
 				const incompleteGeometry = "Alcune impression geometriche precedono la misurazione di viewability per quel metodo."
 				viewable = matchdayDomainPartial(viewable, incompleteGeometry)
 				viewability = matchdayDomainPartial(viewability, incompleteGeometry)
+				viewable.coverage += "-incomplete-geometry"
+				viewability.coverage += "-incomplete-geometry"
 			}
 		}
 		if m.Reach != nil {
@@ -223,13 +228,14 @@ func (x *matchdaySponsorExtras) apply(f *matchdayFacts, report *database.Sponsor
 			if m.DurationSamples < m.Impressions {
 				totalTime = matchdayDomainPartial(totalTime, "Per le esposizioni interrotte la durata arriva all’ultimo campione ricevuto.")
 				avgTime = matchdayDomainPartial(avgTime, totalTime.Reason)
+				totalTime.coverage, avgTime.coverage = "incomplete-duration", "incomplete-duration"
 			}
 		}
 		if m.Clicks != nil {
 			clicks = count(clicks, *m.Clicks)
-			if m.Impressions > 0 {
-				ctr = ratio(ctr, *m.Clicks, m.Impressions)
-			}
+		}
+		if m.ClickableImpressions > 0 {
+			ctr = ratio(ctr, m.ClicksOnImpressions, m.ClickableImpressions)
 		}
 		if len(report.Sponsors) > 0 {
 			impressions.Columns = matchdaySponsorColumns()
@@ -285,7 +291,10 @@ func matchdaySponsorColumns() []matchdayColumn {
 		{ID: "impressions", Label: "Impression", Unit: "count"}, {ID: "viewable", Label: "Viewable", Unit: "count"},
 		{ID: "viewability", Label: "Viewability", Unit: "percent"}, {ID: "reach", Label: "Reach", Unit: "count"},
 		{ID: "total_time", Label: "Tempo visibile", Unit: "milliseconds"}, {ID: "avg_time", Label: "Tempo medio", Unit: "milliseconds"},
-		{ID: "clicks", Label: "Click", Unit: "count"}, {ID: "ctr", Label: "CTR", Unit: "percent"},
+		{ID: "clicks", Label: "Click totali", Unit: "count"},
+		{ID: "clickable_impressions", Label: "Imp. cliccabili", Unit: "count"},
+		{ID: "clicks_on_impressions", Label: "Click su imp.", Unit: "count"},
+		{ID: "ctr", Label: "CTR", Unit: "percent"},
 		{ID: "frequency", Label: "Frequency", Unit: "ratio"},
 	}
 }
@@ -306,7 +315,11 @@ func matchdaySponsorRow(label, group string, m database.SponsorAnalyticsMetrics)
 	}
 	if m.Clicks != nil {
 		values["clicks"] = matchdayDomainValue(float64(*m.Clicks))
-		values["ctr"] = matchdayDomainRatio(*m.Clicks, m.Impressions, 100)
+	}
+	if m.ClickableImpressions > 0 {
+		values["clickable_impressions"] = matchdayDomainValue(float64(m.ClickableImpressions))
+		values["clicks_on_impressions"] = matchdayDomainValue(float64(m.ClicksOnImpressions))
+		values["ctr"] = matchdayDomainRatio(m.ClicksOnImpressions, m.ClickableImpressions, 100)
 	}
 	return matchdayRow{Label: label, Group: group, Values: values}
 }

@@ -32,7 +32,10 @@ let request;
 const eventMeta = computed(() => snapshot.value?.event || {});
 const eventDate = computed(() => formatKpiDate(eventMeta.value.start_datetime || props.event?.startDatetime));
 const matchup = computed(() => [eventMeta.value.home_team, eventMeta.value.away_team].filter(Boolean).join(' – '));
-const sections = computed(() => snapshot.value?.sections || []);
+const sections = computed(() => (snapshot.value?.sections || []).map(section => ({
+  ...section,
+  metrics: section.metrics.filter(metric => metric.code !== 'direction_activation'),
+})));
 const tabs = computed(() => [{ id: 'executive', title: 'Executive' }, ...sections.value]);
 const currentMetrics = computed(() => {
   if (activeTab.value !== 'executive') return sections.value.find(section => section.id === activeTab.value)?.metrics || [];

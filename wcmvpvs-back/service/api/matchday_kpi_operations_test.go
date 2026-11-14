@@ -83,14 +83,14 @@ func TestMatchdayOperationsSeparatesChatAndBarActivity(t *testing.T) {
 	for code, want := range map[string]float64{
 		"chat_openers": 1, "chat_participants": 1, "chat_adoption": 50, "chat_total_messages": 3,
 		"chat_average_messages": 2, "chat_bot_messages": 1, "chat_fan_reactions": 1, "chat_reported": 1,
-		"chat_removed": 1, "chat_moderation_rate": 50, "shop_bar_paid_orders": 1, "tech_payment_success": 50,
+		"chat_removed": 1, "chat_moderation_rate": 50, "shop_bar_paid_orders": 1, "tech_payment_success": 200.0 / 3,
 	} {
 		matchdayOperationsAssertValue(t, facts.Metrics[code], want)
 	}
 	if got := disabled.Metrics["chat_total_messages"]; got.Value != nil || got.Status != "not_applicable" || got.Reason != "Funzione non attiva" {
 		t.Fatalf("disabled chat: %+v", got)
 	}
-	if facts.BarRevenue == nil || *facts.BarRevenue != 7.25 || len(facts.Actions) != 2 {
+	if facts.BarRevenue == nil || *facts.BarRevenue != 15.25 || len(facts.Actions) != 2 {
 		t.Fatalf("revenue %v, actions %+v", facts.BarRevenue, facts.Actions)
 	}
 	if facts.Actions[1].Feature != "purchase" || facts.Actions[1].Identity.Device != "device1" {

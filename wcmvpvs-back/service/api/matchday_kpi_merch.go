@@ -8,11 +8,11 @@ import (
 
 type matchdayMerchFacts struct {
 	observed, enabled                bool
-	opens, unidentifiedOpens         int
+	opens                            int
 	paid, reservations, unpaid       int
 	gmvCents, refundCents, netCents  int64
-	paymentPaid, paymentResolved     int
-	observedPayment                  bool
+	paymentPaid, paymentFailed       int
+	paymentExpired, paymentPending   int
 	visitIdentities, buyerIdentities []matchdayIdentity
 	products                         map[string]matchdayMerchProduct
 }
@@ -37,10 +37,10 @@ func loadMatchdayMerch(ctx context.Context, q matchdayQueryer, orgID int, data m
 	}); err != nil {
 		return err
 	}
-	if err := matchdayRead(ctx, q, `SELECT a.event_id,COALESCE(f.id,0),a.device_key,COUNT(*)
+	if err := matchdayRead(ctx, q, `SELECT a.event_id,COALESCE(f.id,0),a.device_key,SUM(e.type='merch_shop_opened')
 		FROM merch_match_activity a JOIN merch_analytics_events e ON e.organization_id=a.organization_id AND e.event_id=a.analytics_id
 		LEFT JOIN fan_profiles f ON f.id=a.fan_id AND f.organization_id=a.organization_id
-		WHERE a.event_id IN (`+ids+`) AND a.organization_id=? AND e.type='merch_shop_opened'
+		WHERE a.event_id IN (`+ids+`) AND a.organization_id=? AND e.type IN ('merch_shop_opened','merch_product_view')
 		GROUP BY a.event_id,f.id,a.device_key`, args, func(rows *sql.Rows) error {
 		var eventID, opens int
 		var identity matchdayIdentity
@@ -50,11 +50,7 @@ func loadMatchdayMerch(ctx context.Context, q matchdayQueryer, orgID int, data m
 		m := &data[eventID].Operations.merch
 		m.observed, m.enabled = true, true
 		m.opens += opens
-		if identity.FanID > 0 || identity.DeviceKey != "" {
-			m.visitIdentities = append(m.visitIdentities, identity)
-		} else {
-			m.unidentifiedOpens += opens
-		}
+		m.visitIdentities = append(m.visitIdentities, identity)
 		return nil
 	}); err != nil {
 		return err
@@ -79,11 +75,17 @@ func loadMatchdayMerch(ctx context.Context, q matchdayQueryer, orgID int, data m
 		f := data[eventID]
 		m := &f.Operations.merch
 		m.observed, m.enabled = true, true
+		// A recorded checkout is evidence of a visit regardless of its outcome.
+		m.visitIdentities = append(m.visitIdentities, identity)
 		m.refundCents += refunds
+		// Fulfillment review does not undo a captured payment. Fully refunded
+		// orders are settled at zero and already excluded by the payment status.
+		if status == "PAID" || status == "PAID_OFFLINE" {
+			m.netCents += total - refunds
+		}
 		if paid {
 			m.paid++
 			m.gmvCents += total
-			m.netCents += total - refunds
 			m.buyerIdentities = append(m.buyerIdentities, identity)
 		}
 		if reserved {
@@ -100,13 +102,15 @@ func loadMatchdayMerch(ctx context.Context, q matchdayQueryer, orgID int, data m
 			f.Actions = append(f.Actions, matchdayAction{Identity: identity, Feature: feature, Count: 1})
 		}
 		if mode == "online" {
-			m.observedPayment = true
 			switch status {
 			case "PAID", "REFUNDED":
 				m.paymentPaid++
-				m.paymentResolved++
 			case "FAILED":
-				m.paymentResolved++
+				m.paymentFailed++
+			case "EXPIRED":
+				m.paymentExpired++
+			case "PENDING_ONLINE":
+				m.paymentPending++
 			}
 		}
 		return nil
@@ -175,30 +179,36 @@ func applyMatchdayMerch(f *matchdayFacts) {
 	}
 	put("shop_merch_opens", float64(m.opens), activitySource)
 	visitors, buyers := map[string]bool{}, map[string]bool{}
+	unidentifiedVisits := false
 	if f.Resolve != nil {
 		for _, visit := range m.visitIdentities {
 			if identity := f.Resolve(visit); identity != "" {
 				visitors[identity] = true
+			} else {
+				unidentifiedVisits = true
 			}
 		}
 		for _, purchase := range m.buyerIdentities {
 			if identity := f.Resolve(purchase); identity != "" {
-				// Checkout is direct evidence of a shop visit if the opening signal was lost.
-				buyers[identity], visitors[identity] = true, true
+				buyers[identity] = true
 			}
 		}
+	} else {
+		unidentifiedVisits = len(m.visitIdentities) > 0
 	}
 	unique := put("shop_merch_visitors", float64(len(visitors)), activitySource, orderSource)
-	unique.Formula = "Identità distinte osservate all'apertura o all'acquisto nello shop"
-	if m.enabled && m.unidentifiedOpens > 0 {
-		unique.Status, unique.Reason = "partial", "Alcune aperture sono prive di un identificativo pseudonimo."
+	if m.enabled && unidentifiedVisits {
+		unique.Status, unique.Reason = "partial", "Alcune visite osservate sono prive di un'identità associabile."
 	}
 	matchdayPut(f, unique)
 	conversion := put("shop_conversion_rate", 0, activitySource, orderSource)
 	if m.enabled {
 		conversion = matchdayRatio(conversion.Code, conversion.Name, conversion.Description, conversion.Formula, "percent", float64(len(buyers)), float64(len(visitors)), conversion.Sources...)
-		if conversion.Value != nil && (m.unidentifiedOpens > 0 || hasUnidentifiedMerchBuyer(m.buyerIdentities)) {
-			conversion.Status, conversion.Reason = "partial", "Alcune aperture o alcuni acquisti non hanno un'identità associata."
+		if unidentifiedVisits {
+			conversion.Status, conversion.Reason = "partial", "Alcune visite osservate sono prive di un'identità associabile."
+			if conversion.Value == nil {
+				conversion.Status, conversion.Reason = "not_measurable", "Nessuna visita osservata è associabile a un'identità."
+			}
 		}
 		conversion.coverage = "merch-match"
 	}
@@ -216,6 +226,7 @@ func applyMatchdayMerch(f *matchdayFacts) {
 	matchdayPut(f, aov)
 	executive := put("shop_conversions", 0, orderSource)
 	executive.Value = nil
+	executive.Description = "Acquisti e prenotazioni attribuibili alla partita. Una prenotazione pagata può comparire in entrambe le voci."
 	executive.Rows = []matchdayRow{{Label: paid.Name, Values: map[string]*float64{"count": paid.Value}}, {Label: reservations.Name, Values: map[string]*float64{"count": reservations.Value}}}
 	matchdayPut(f, executive)
 	if !m.enabled {
@@ -249,13 +260,4 @@ func applyMatchdayMerch(f *matchdayFacts) {
 		products.Value = matchdayOperationsValue(0)
 	}
 	matchdayPut(f, products)
-}
-
-func hasUnidentifiedMerchBuyer(buyers []matchdayIdentity) bool {
-	for _, buyer := range buyers {
-		if buyer.FanID == 0 && buyer.DeviceKey == "" {
-			return true
-		}
-	}
-	return false
 }

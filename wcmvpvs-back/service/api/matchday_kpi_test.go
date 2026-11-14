@@ -68,7 +68,11 @@ func TestMatchdayArchiveRoundTrip(t *testing.T) {
 	signal(f.event, "viewer-b", "page_view", "device-b", "2026-10-21T19:31:00Z", `{}`, 41)
 	for i := 1; i <= 149; i++ {
 		device := fmt.Sprintf("guest-%d", i)
-		signal(f.event, fmt.Sprintf("guest-view-%d", i), "page_view", device, "2026-10-21T19:31:00Z", `{}`, 0)
+		metadata := `{"source":"remote"}`
+		if i <= 60 {
+			metadata = `{"source":"arena"}`
+		}
+		signal(f.event, fmt.Sprintf("guest-view-%d", i), "page_view", device, "2026-10-21T19:31:00Z", metadata, 0)
 		if i <= 94 {
 			meta := fmt.Sprintf(`{"game_id":"tap","round_id":"game-round-%d"}`, i)
 			signal(f.event, fmt.Sprintf("start-%d", i), "game_started", device, "2026-10-21T19:32:00Z", meta, 0)
@@ -77,6 +81,7 @@ func TestMatchdayArchiveRoundTrip(t *testing.T) {
 			}
 		}
 	}
+	signal(f.event, "duplicate-arena-view", "page_view", "guest-1", "2026-10-21T19:32:00Z", `{"source":"arena"}`, 0)
 	request := func(method, token, slug string, event int, suffix, payload string, status int) matchdayResponse {
 		t.Helper()
 		r := httptest.NewRequest(method, fmt.Sprintf("/admin/events/%d/matchday-kpis%s", event, suffix), bytes.NewBufferString(payload))
@@ -114,14 +119,24 @@ func TestMatchdayArchiveRoundTrip(t *testing.T) {
 	if len(r.Sections) != 10 || len(r.Executive) != 13 || r.Scope != "division" || r.Comparison.PreviousEvent == nil || r.Comparison.PreviousEvent.ID != previous || r.Comparison.Season != "2026/2027" {
 		t.Fatalf("unexpected dashboard structure or comparison: %+v", r.Comparison)
 	}
+	hasMultifunction := false
 	for _, code := range r.Executive {
+		if code == "direction_activation" {
+			t.Fatal("duplicate activation KPI in Executive")
+		}
+		hasMultifunction = hasMultifunction || code == "mvp_multifunction"
 		matchdayTestMetric(t, r, code)
+	}
+	if !hasMultifunction {
+		t.Fatalf("unexpected Executive activation KPIs: %v", r.Executive)
 	}
 	if club := get(f.event, "?scope=club&limit=1"); club.Comparison.PreviousEvent == nil || club.Comparison.PreviousEvent.ID != otherDivision || club.Comparison.EventsConsidered != 1 {
 		t.Fatalf("incorrect club history: %+v", club.Comparison)
 	}
 	matchdayRequireValue(t, matchdayTestMetric(t, r, "direction_reach").Value, 150)
 	matchdayRequireValue(t, matchdayTestMetric(t, r, "direction_far").Value, 95.0/150*100)
+	matchdayRequireValue(t, matchdayTestMetric(t, r, "direction_activation").Value, 95.0/150*100)
+	matchdayRequireValue(t, matchdayTestMetric(t, r, "mvp_multifunction").Value, 0)
 	matchdayRequireValue(t, matchdayTestMetric(t, r, "direction_retention").Value, 50)
 	matchdayRequireValue(t, matchdayTestMetric(t, r, "mvp_voters").Value, 1)
 	matchdayRequireValue(t, matchdayTestMetric(t, r, "mvp_conversion").Value, 100.0/150)
@@ -135,7 +150,16 @@ func TestMatchdayArchiveRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected penetration before input: %+v", metric)
 	}
 	r = put(`{"values":[{"code":"attendees","value":1200,"note":"Contapersone arena","revision":0},{"code":"offline_revenue","value":30.50,"note":"Chiusura cassa","revision":0}]}`, http.StatusOK)
-	matchdayRequireValue(t, matchdayTestMetric(t, r, "direction_penetration").Value, 12.5)
+	penetration := matchdayTestMetric(t, r, "direction_penetration")
+	matchdayRequireValue(t, penetration.Value, 5)
+	matchdayRequireValue(t, penetration.Numerator, 60)
+	if penetration.Status != "partial" {
+		t.Fatalf("channel attribution cannot verify physical presence: %+v", penetration)
+	}
+	withoutArena := request(http.MethodPut, "matchday-admin", f.org.Slug, previous, "", `{"values":[{"code":"attendees","value":1200,"note":"Contapersone arena","revision":0}]}`, http.StatusOK)
+	if metric := matchdayTestMetric(t, withoutArena, "direction_penetration"); metric.Value != nil || metric.Status != "not_measurable" {
+		t.Fatalf("unexpected estimate without arena sources: %+v", metric)
+	}
 	matchdayRequireValue(t, matchdayTestMetric(t, r, "direction_far").Value, 95.0/150*100)
 	matchdayRequireValue(t, matchdayTestMetric(t, r, "direction_revenue").Value, 30.5)
 	put(`{"values":[{"code":"offline_revenue","value":99,"note":"Chiusura cassa","revision":1},{"code":"attendees","value":1000,"note":"Contapersone arena","revision":0}]}`, http.StatusConflict)
@@ -155,6 +179,27 @@ func TestMatchdayArchiveRoundTrip(t *testing.T) {
 	shared, err := rt.loadReportManualSources(f.event, true)
 	if err != nil || len(shared) != 1 || shared[0].Value != 0 || shared[0].Revision != 2 {
 		t.Fatalf("engagement attendance source not shared: %v, %v", shared, err)
+	}
+}
+
+func TestMatchdayMVPWithUnattributedVotes(t *testing.T) {
+	f := &matchdayFacts{
+		Resolve: func(id matchdayIdentity) string { return id.Device },
+		Reach:   map[string]bool{"observed": true}, Metrics: map[string]matchdayMetric{}, coverage: "new_home_entries",
+		votes: []matchdayVote{{}},
+	}
+	calculateMatchdayMVP(f)
+	if m := f.Metrics["mvp_conversion"]; m.Value != nil || m.Status != "missing" {
+		t.Fatalf("conversion with unidentifiable votes: %+v", m)
+	}
+	f.votes = append(f.votes, matchdayVote{identity: matchdayIdentity{Device: "observed"}})
+	calculateMatchdayMVP(f)
+	for code, want := range map[string]float64{"mvp_voters": 1, "mvp_conversion": 100} {
+		m := f.Metrics[code]
+		matchdayRequireValue(t, m.Value, want)
+		if m.Status != "partial" {
+			t.Fatalf("%s with mixed identity coverage: %+v", code, m)
+		}
 	}
 }
 

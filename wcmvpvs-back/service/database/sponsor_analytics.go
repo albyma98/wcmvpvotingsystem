@@ -245,6 +245,8 @@ type SponsorAnalyticsMetrics struct {
 	ObservedDuration        *int64   `json:"-"`
 	ObservedDurationSamples int      `json:"-"`
 	Clicks                  *int     `json:"clicks"`
+	ClickableImpressions    int      `json:"-"`
+	ClicksOnImpressions     int      `json:"-"`
 	UniqueClicks            *int     `json:"unique_clickers"`
 	CTR                     *float64 `json:"ctr"`
 	FullViews               *int     `json:"full_views"`
@@ -355,7 +357,9 @@ const measuredSponsorStatsSQL = `, COALESCE(SUM(impression),0), COUNT(CASE WHEN 
 		COUNT(CASE WHEN impression AND geometry_sampled THEN 1 END),
 		COUNT(CASE WHEN impression AND geometry_viewable THEN 1 END),
 		SUM(CASE WHEN impression AND (ended OR visible_ms>0) THEN visible_ms END),
-		COUNT(CASE WHEN impression AND (ended OR visible_ms>0) THEN 1 END)`
+		COUNT(CASE WHEN impression AND (ended OR visible_ms>0) THEN 1 END),
+		COUNT(CASE WHEN impression AND clickable THEN 1 END),
+		COALESCE(SUM(CASE WHEN impression AND clickable THEN clicks END),0)`
 
 // ReadMeasuredSponsorMatches groups the same measured data as the commercial
 // report for several already scoped events in a single read.
@@ -420,7 +424,8 @@ func scanSponsorAnalyticsRow(rows *sql.Rows, prefix ...interface{}) (SponsorAnal
 	err := rows.Scan(append(prefix, &row.SponsorID, &row.SponsorName, &row.Creative, &row.Placement, &row.Game, &row.Method, &row.Day,
 		&m.Impressions, &m.HTMLImpressions, &viewable, &reach, &missingReach, &duration, &m.DurationSamples, &visibleSamples,
 		&clicks, &clickable, &uniqueClicks, &missingClicks, &full, &fullDenominator,
-		&m.GeometrySampled, &m.GeometryViewable, &observedDuration, &m.ObservedDurationSamples)...)
+		&m.GeometrySampled, &m.GeometryViewable, &observedDuration, &m.ObservedDurationSamples,
+		&m.ClickableImpressions, &m.ClicksOnImpressions)...)
 	if err != nil {
 		return row, err
 	}

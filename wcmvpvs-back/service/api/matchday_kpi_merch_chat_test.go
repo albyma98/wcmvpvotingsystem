@@ -94,6 +94,88 @@ func TestMatchdayMerchAttributesCheckoutAndAnalyticsToOneMatch(t *testing.T) {
 	}
 }
 
+func TestMatchdayMerchSeparatesVisitsPaymentAndNetReceipts(t *testing.T) {
+	f := newMerchTestFixture(t)
+	ctx := context.Background()
+	matchID, err := f.rt.db.CreateEvent(database.Event{
+		OrganizationID: f.org.ID, Team1ID: f.org.TeamID, Team2ID: f.other.TeamID, StartDateTime: "2026-10-21T19:30:00Z",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := f.product(t, 20)
+	recorder := &matchdayRequestRecorder{db: f.conn, logger: f.rt.baseLogger, secret: "test-signer", pending: make(map[matchdayRequestKey]int)}
+	f.rt.matchdayRequests = recorder
+	grant := recorder.grant(f.org.ID, matchID, time.Now())
+	path := "/v1/clubs/" + f.org.Slug + "/merch/events"
+	for _, device := range []string{"device-confirmed", "device-product-only", "device-product-only"} {
+		viewID, err := merchID()
+		if err != nil {
+			t.Fatal(err)
+		}
+		merchRequest(t, f.rt.router, http.MethodPost, path, merchAnalyticsInput{
+			EventID: viewID, MatchID: matchID, Type: "merch_product_view", ProductID: p.ID,
+		}, map[string]string{"X-Device-ID": device, matchdayGrantHeader: grant}, http.StatusNoContent)
+	}
+	for _, fixture := range []struct {
+		name, status string
+		refund       int64
+		late         bool
+	}{
+		{name: "confirmed", status: "PAID", refund: 500},
+		{name: "fully-refunded", status: "PAID", refund: 3200},
+		{name: "late-capture", status: "PAID", late: true},
+		{name: "declined", status: "FAILED"},
+		{name: "expired", status: "EXPIRED"},
+		{name: "waiting", status: "PENDING_ONLINE"},
+	} {
+		input := f.order(t, p, "online")
+		input.MatchID, input.matchDeviceKey = matchID, reportOperationalDeviceKey(f.org.ID, "device-"+fixture.name)
+		order, err := f.rt.createMerchOrder(ctx, f.org.ID, "acct_test", input, database.FanProfile{}, "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fixture.status == "PENDING_ONLINE" {
+			continue
+		}
+		event := merchStripeEvent{
+			EventID: "evt_" + fixture.name, OrderID: order.ID, AccountID: "acct_test", SessionID: "cs_" + fixture.name,
+			PaymentIntent: "pi_" + fixture.name, Status: fixture.status, Currency: "EUR", TotalCents: order.TotalCents,
+		}
+		if fixture.late {
+			event.OccurredAt = order.ExpiresAt + 1
+		}
+		if err := f.rt.applyMerchStripeEvent(ctx, event); err != nil {
+			t.Fatal(err)
+		}
+		if fixture.refund > 0 {
+			event.EventID, event.Status, event.RefundID, event.RefundedCents = "evt_ref_"+fixture.name, "REFUNDED", "re_"+fixture.name, fixture.refund
+			if err := f.rt.applyMerchStripeEvent(ctx, event); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	facts := &matchdayFacts{Metrics: map[string]matchdayMetric{}, Resolve: func(id matchdayIdentity) string { return id.DeviceKey }}
+	if err := loadMatchdayMerch(ctx, f.conn, f.org.ID, map[int]*matchdayFacts{matchID: facts}); err != nil {
+		t.Fatal(err)
+	}
+	calculateMatchdayOperations(facts)
+	calculateMatchdayRevenue(facts)
+	for code, expected := range map[string]float64{
+		"shop_merch_opens": 0, "shop_merch_visitors": 7, "shop_conversion_rate": 100.0 / 7,
+		"shop_paid_orders": 1, "shop_gmv": 32, "shop_refunds": 37, "tech_payment_success": 60, "direction_revenue": 59,
+	} {
+		matchdayOperationsAssertValue(t, facts.Metrics[code], expected)
+	}
+	var capturedMinusRefunded int64
+	if err := f.conn.QueryRow(`SELECT SUM(CASE WHEN p.status='REFUNDED' THEN -p.amount_cents ELSE p.amount_cents END)
+		FROM merch_payment_records p JOIN merch_match_orders a ON p.order_id=a.order_id AND p.organization_id=a.organization_id
+		WHERE a.event_id=? AND p.status IN ('PAID','PAID_OFFLINE','REFUNDED')`, matchID).Scan(&capturedMinusRefunded); err != nil {
+		t.Fatal(err)
+	}
+	matchdayRequireValue(t, facts.Metrics["direction_revenue"].Rows[0].Values["amount"], float64(capturedMinusRefunded)/100)
+}
+
 func TestMatchdayChatMeasuresOpenersRepliesAndBlockedAttemptsAfterDisable(t *testing.T) {
 	f := newMatchChatFixture(t)
 	f.enable(t, f.a, true)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata"
@@ -231,7 +230,6 @@ func calculateMatchdayPerformance(f, previous *matchdayFacts) {
 	const actionDefinition = "Voti validi, avvii di gioco, feedback, messaggi umani, click sponsor e acquisti o prenotazioni attribuibili."
 	const farFormula = "Identità con almeno un’azione significativa / identità raggiunte × 100"
 	const reachFormula = "Profili, dispositivi e sessioni anonime distinti, con deduplicazione delle associazioni affidabili"
-	const penetrationFormula = "Identità raggiunte / spettatori presenti × 100"
 	const interactionsFormula = "Azioni significative attribuibili / tifosi attivi"
 	metrics := []matchdayMetric{
 		matchdayPartial(matchdayCount("direction_reach", "Utenti unici", "Identità digitali osservate nella partita.", reachFormula, reach, audienceSources...), audienceReason),
@@ -256,27 +254,58 @@ func calculateMatchdayPerformance(f, previous *matchdayFacts) {
 		}
 		matchdayPut(f, m)
 	}
-	penetration := matchdayUnavailable("direction_penetration", "Penetrazione sul pubblico", "Rapporto tra pubblico digitale e spettatori in arena.", penetrationFormula, "percent", "missing", "Servono identità digitali osservate e presenze fisiche ufficiali.", append(append([]string(nil), audienceSources...), "engagement_report_manual_sources")...)
-	attendance := f.Manual["attendees"].Value
-	if attendance == nil {
-		penetration.Missing = []string{"attendees"}
-	}
-	if attendance != nil && reach > 0 {
-		penetration = matchdayRatio(penetration.Code, penetration.Name, penetration.Description, penetration.Formula, "percent", reach, *attendance, penetration.Sources...)
-		if penetration.Value != nil {
-			penetration.Reason = "Il pubblico digitale può includere utenti remoti. Le presenze provengono dalla fonte indicata dall’amministratore."
-			if f.coverage != "new_home_entries" {
-				penetration.Status = "partial"
-			}
-		}
-		penetration.Source = "mixed"
-		penetration.coverage = f.coverage
-	}
-	matchdayPut(f, penetration)
+	matchdayPut(f, matchdayArenaAdoption(f))
 	calculateMatchdayRetention(f, previous, audienceSources)
 	calculateMatchdayMVP(f)
 	calculateMatchdayDuration(f)
 	calculateMatchdayRevenue(f)
+}
+
+func matchdayArenaAdoption(f *matchdayFacts) matchdayMetric {
+	const code, name = "direction_penetration", "Adozione da canale arena"
+	const description = "Identità con ingresso esplicitamente attribuito al canale arena, rapportate alle presenze ufficiali."
+	const formula = "Identità uniche da canale arena / presenze ufficiali × 100"
+	sources := []string{"engagement_report_signals", "tracking_events", "engagement_report_manual_sources"}
+	attendance := f.Manual["attendees"].Value
+	if attendance == nil {
+		m := matchdayUnavailable(code, name, description, formula, "percent", "missing", "Mancano le presenze ufficiali.", sources...)
+		m.Missing = []string{"attendees"}
+		return m
+	}
+	arena := map[string]bool{}
+	modern, legacy := false, false
+	for _, signal := range f.Signals {
+		channel := reportMetricString(signal.Metadata, "entry_channel")
+		source := reportMetricString(signal.Metadata, "source")
+		if signal.Name != "page_view" || channel == "remote" || source == "remote" || (channel != "arena" && source != "arena") {
+			continue
+		}
+		if identity := f.Resolve(matchdaySignalIdentity(signal)); identity != "" {
+			arena[identity] = true
+			modern = modern || channel == "arena"
+			legacy = legacy || channel != "arena"
+		}
+	}
+	for _, row := range f.Tracking {
+		if row.Name != "session.started" {
+			continue
+		}
+		if channel, _ := matchdayEntryChannel(reportMetricString(row.Metadata, "url"), ""); channel == "Arena" {
+			if identity := f.Resolve(row.identity()); identity != "" {
+				arena[identity] = true
+				legacy = true
+			}
+		}
+	}
+	if *attendance > 0 && len(arena) == 0 {
+		m := matchdayUnavailable(code, name, description, formula, "percent", "not_measurable", "Nessuna identità con provenienza arena esplicita osservata.", sources...)
+		m.Source, m.Denominator = "mixed", attendance
+		return m
+	}
+	m := matchdayRatio(code, name, description, formula, "percent", float64(len(arena)), *attendance, sources...)
+	m.Source = "mixed"
+	m.coverage = fmt.Sprintf("arena_source:modern=%t,legacy=%t", modern, legacy)
+	return matchdayPartial(m, "La provenienza è ricavata dal canale di ingresso. La presenza fisica delle singole identità non è verificata.")
 }
 
 func matchdayHasObservedActions(f *matchdayFacts) bool {
@@ -291,29 +320,21 @@ func matchdayHasObservedActions(f *matchdayFacts) bool {
 
 func calculateMatchdayRetention(f, previous *matchdayFacts, sources []string) {
 	const formula = "Identità persistenti della partita precedente tornate / identità persistenti della precedente × 100"
-	m := matchdayUnavailable("direction_retention", "Retention interpartita", "Cohorte della partita precedente nel perimetro selezionato.", formula, "percent", "missing", "Storico insufficiente o pubblico non confrontabile.", sources...)
+	m := matchdayUnavailable("direction_retention", "Retention interpartita", "Coorte della partita precedente nella stessa stagione e nel perimetro selezionato.", formula, "percent", "missing", "Storico insufficiente o pubblico non confrontabile.", sources...)
 	r := matchdayUnavailable("crm_returning", "Tifosi ritornati", "Identità persistenti presenti in entrambe le partite.", "Intersezione delle identità persistenti osservate", "count", "missing", m.Reason, sources...)
-	if previous != nil && len(f.Reach) > 0 && len(previous.Reach) > 0 && f.coverage == previous.coverage {
-		var total, returned, current int
-		for actor := range previous.Reach {
-			if matchdayComparableIdentity(actor) {
-				total++
-				if f.Reach[actor] {
-					returned++
-				}
+	season := matchdaySeason(f.Event.start)
+	if previous != nil && season != 0 && matchdaySeason(previous.Event.start) == season &&
+		f.coverage == previous.coverage && f.coverage != "operational" && len(f.persistentReach) > 0 && len(previous.persistentReach) > 0 {
+		returned := 0
+		for actor := range previous.persistentReach {
+			if f.persistentReach[actor] {
+				returned++
 			}
 		}
-		for actor := range f.Reach {
-			if matchdayComparableIdentity(actor) {
-				current++
-			}
-		}
-		if total > 0 && current > 0 {
-			m = matchdayPartial(matchdayRatio(m.Code, m.Name, m.Description, m.Formula, "percent", float64(returned), float64(total), sources...), "Coorte osservata con profili e dispositivi persistenti. Le sessioni anonime sono escluse.")
-			r = matchdayPartial(matchdayCount(r.Code, r.Name, r.Description, r.Formula, float64(returned), sources...), m.Reason)
-			if f.coverage == "new_home_entries" && total == len(previous.Reach) && current == len(f.Reach) {
-				m.Status, r.Status = "available", "available"
-			}
+		m = matchdayPartial(matchdayRatio(m.Code, m.Name, m.Description, m.Formula, "percent", float64(returned), float64(len(previous.persistentReach)), sources...), "Coorte osservata con profili e dispositivi riconciliabili. Le sessioni anonime e i dispositivi condivisi senza attribuzione univoca sono esclusi.")
+		r = matchdayPartial(matchdayCount(r.Code, r.Name, r.Description, r.Formula, float64(returned), sources...), m.Reason)
+		if f.coverage == "new_home_entries" && len(previous.persistentReach) == len(previous.Reach) && len(f.persistentReach) == len(f.Reach) {
+			m.Status, r.Status = "available", "available"
 		}
 	}
 	m.coverage, r.coverage = f.coverage, f.coverage
@@ -325,9 +346,12 @@ func calculateMatchdayRetention(f, previous *matchdayFacts, sources []string) {
 func calculateMatchdayMVP(f *matchdayFacts) {
 	voters, distribution := map[string]bool{}, map[int]int{}
 	names := map[int]string{}
+	unattributed := 0
 	for _, v := range f.votes {
 		if actor := f.Resolve(v.identity); actor != "" {
 			voters[actor] = true
+		} else {
+			unattributed++
 		}
 		distribution[v.playerID]++
 		names[v.playerID] = v.playerName
@@ -355,6 +379,13 @@ func calculateMatchdayMVP(f *matchdayFacts) {
 	count := matchdayCount("mvp_voters", "Votanti unici MVP", "Identità distinte con un voto accettato dal sistema MVP evento.", "Identità distinte in votes", float64(len(voters)), "votes", "fan_profiles")
 	if len(voters) == 0 && len(f.votes) > 0 {
 		count.Value, count.Status, count.Reason = nil, "missing", "Voti presenti senza identità deduplicabile."
+		conversion.Value, conversion.Numerator, conversion.Status, conversion.Reason = nil, nil, "missing", count.Reason
+	} else if unattributed > 0 {
+		const reason = "Alcuni voti accettati sono privi di un’identità deduplicabile."
+		count = matchdayPartial(count, reason)
+		count.coverage = "voter_identity_partial"
+		conversion = matchdayPartial(conversion, reason)
+		conversion.coverage += ":voter_identity_partial"
 	}
 	matchdayPut(f, count, conversion,
 		matchdayMetric{Code: "mvp_distribution", Name: "Distribuzione dei voti MVP", Description: "Voti accettati per giocatore nell’evento archiviato.", Formula: "Voti per giocatore e quota sul totale", Unit: "count", Source: "db", Status: "available", Value: reportMetricFloat(float64(len(f.votes))), Sources: []string{"votes", "players"}, Rows: rows, Columns: []matchdayColumn{{"votes", "Voti", "count"}, {"share", "Quota", "percent"}}},
@@ -406,17 +437,12 @@ func calculateMatchdayDuration(f *matchdayFacts) {
 	matchdayPut(f, legacy)
 }
 
-func calculateMatchdayCRM(f *matchdayFacts, profiles map[int]matchdayProfile) {
-	identified, newProfiles, valid := 0, 0, 0
+func calculateMatchdayCRM(f *matchdayFacts, profiles map[int]matchdayProfile, identified map[int]bool) {
+	newProfiles := 0
 	local := matchdayRome
 	const dateOnly = "2006-01-02"
 	day := f.Event.start.In(local).Format(dateOnly)
-	for actor := range f.Reach {
-		if !strings.HasPrefix(actor, "fan:") {
-			continue
-		}
-		identified++
-		id, _ := strconv.Atoi(strings.TrimPrefix(actor, "fan:"))
+	for id := range identified {
 		p := profiles[id]
 		registered := p.accepted
 		if registered.IsZero() {
@@ -426,21 +452,19 @@ func calculateMatchdayCRM(f *matchdayFacts, profiles map[int]matchdayProfile) {
 			continue
 		}
 		newProfiles++
-		if p.verified && p.consent {
-			valid++
-		}
 	}
 	sources := []string{"fan_profiles", "fan_registration_acceptances", "engagement_report_signals", "tracking_events", "votes"}
-	const attribution = "Profili associati a un’attività della partita e registrati nel giorno locale dell’evento."
+	const attribution = "Profili osservati direttamente in un’attività della partita e registrati nel giorno locale dell’evento."
 	current := matchdayPartial(matchdayCount("crm_new_profiles", "Nuovi profili", attribution, "Profili osservati con prima registrazione in data evento", float64(newProfiles), sources...), attribution)
-	fanbase := matchdayPartial(matchdayCount("crm_fanbase", "Fanbase identificata", "Serie dei profili osservati per partita.", "Profili distinti osservati", float64(identified), sources...), "Copertura dei profili identificabili nelle attività dell’evento.")
+	fanbase := matchdayPartial(matchdayCount("crm_fanbase", "Fanbase identificata", "Serie dei profili osservati direttamente nelle attività di ciascuna partita.", "Profili distinti osservati direttamente nella partita", float64(len(identified)), sources...), "Copertura dei profili identificabili nelle attività dell’evento.")
 	profilesMetric := fanbase
 	profilesMetric.Code, profilesMetric.Name = "crm_identified", "Profili identificati"
-	identification := matchdayPartial(matchdayRatio("crm_identification_rate", "Identification rate", "Quota dei visitatori associata a un profilo.", "Profili identificati / utenti unici × 100", "percent", float64(identified), float64(len(f.Reach)), sources...), fanbase.Reason)
-	optIn := matchdayPartial(matchdayRatio("crm_opt_in", "Opt-in rate", "Stato attuale del consenso per i nuovi profili verificati.", "Nuovi profili con consenso e verifica / nuovi profili osservati × 100", "percent", float64(valid), float64(newProfiles), sources...), "Lo stato del profilo non conserva la data del consenso o le sue revisioni.")
-	consents := matchdayUnavailable("crm_new_consents", "Nuovi consensi marketing", "Nuovi consensi con data e prova attribuibile a un profilo della partita.", "Consensi acquisiti durante l’evento", "count", "not_measurable", "Il profilo conserva lo stato corrente del consenso. I consensi dei contatti legacy sono separati dai profili tifosi.", "fan_profiles.marketing_consent", "contacts")
+	identification := matchdayPartial(matchdayRatio("crm_identification_rate", "Identification rate", "Quota di identità raggiunte con un profilo osservato direttamente nella partita.", "Profili identificati / utenti unici × 100", "percent", float64(len(identified)), float64(len(f.Reach)), sources...), fanbase.Reason)
+	const consentReason = "Manca una prova del consenso marketing attribuibile al profilo e alla partita. I consensi dei contatti legacy sono separati dai profili tifosi."
+	optIn := matchdayUnavailable("crm_opt_in", "Opt-in rate", "Quota dei nuovi profili verificati con consenso marketing attribuibile alla partita.", "Nuovi profili verificati con consenso attribuibile / nuovi profili verificati × 100", "percent", "not_measurable", consentReason, "fan_profiles.marketing_consent", "contacts")
+	consents := matchdayUnavailable("crm_new_consents", "Nuovi consensi marketing", "Nuovi consensi con data e prova attribuibile a un profilo della partita.", "Consensi acquisiti durante l’evento", "count", "not_measurable", consentReason, "fan_profiles.marketing_consent", "contacts")
 	modern := f.hasModernCollection()
-	for _, m := range []matchdayMetric{current, fanbase, profilesMetric, identification, optIn} {
+	for _, m := range []matchdayMetric{current, fanbase, profilesMetric, identification} {
 		m.coverage = f.coverage
 		if m.Code == current.Code && (modern || len(f.registrations) > 0) {
 			m = matchdayCount(current.Code, current.Name, "Profili verificati completati durante il flusso di registrazione della partita.",
@@ -449,46 +473,47 @@ func calculateMatchdayCRM(f *matchdayFacts, profiles map[int]matchdayProfile) {
 			matchdayPut(f, m)
 			continue
 		}
-		if m.Code == optIn.Code && modern {
-			m = matchdayUnavailable(m.Code, m.Name, m.Description, m.Formula, m.Unit, "not_applicable", "Il profilo di /new non raccoglie consensi per SMS promozionali.")
-			matchdayPut(f, m)
-			continue
-		}
 		if m.Status == "partial" && f.coverage == "new_home_entries" && (m.Code == fanbase.Code || m.Code == profilesMetric.Code || m.Code == identification.Code) {
 			m.Status, m.Reason = "available", ""
 		}
 		if len(f.Reach) == 0 {
 			m.Value, m.Numerator, m.Denominator, m.Status, m.Reason = nil, nil, nil, "missing", "Nessuna identità osservata."
-		} else if f.Event.start.IsZero() && (m.Code == current.Code || m.Code == optIn.Code) {
+		} else if f.Event.start.IsZero() && m.Code == current.Code {
 			m.Value, m.Numerator, m.Denominator, m.Status, m.Reason = nil, nil, nil, "missing", "Data dell’evento non disponibile."
 		}
 		matchdayPut(f, m)
 	}
 	if modern {
 		consents.Status, consents.Reason = "not_applicable", "Il profilo di /new non raccoglie consensi per SMS promozionali."
+		optIn.Status, optIn.Reason = consents.Status, consents.Reason
 	}
-	matchdayPut(f, consents)
+	matchdayPut(f, consents, optIn)
 }
 
 var matchdayRome, _ = time.LoadLocation("Europe/Rome")
 
 func calculateMatchdayRevenue(f *matchdayFacts) {
-	m := matchdayUnavailable("direction_revenue", "Ricavi generati", "Ricavi confermati attribuibili alla partita.", "Ricavi confermati e attribuiti da fonti distinte", "eur", "missing", "Non sono disponibili incassi attribuiti all’evento.", "bar_orders", "tracking_events", "merch_orders", "matchday_kpi_manual_revisions")
-	shop, shopSource := f.MerchRevenue, "db"
+	m := matchdayUnavailable("direction_revenue", "Incassi attribuiti alla partita", "Valore degli incassi registrati e attribuiti alla partita. Il collegamento all’evento non misura l’incremento di vendite o i ricavi di ArenaBoostX.", "Incassi lordi bar + incassi netti merchandising (GMV lordo se da integrazione storica) + incassi esterni dichiarati", "eur", "missing", "Non sono disponibili incassi attribuiti all’evento.", "bar_orders", "tracking_events", "merch_match_orders", "merch_orders", "merch_payment_records", "matchday_kpi_manual_revisions")
+	shop, shopSource, shopLabel := f.MerchRevenue, "db", "Shop · al netto dei rimborsi registrati"
 	if shop == nil && f.allowsMatchdayManual("shop_gmv") {
-		shop, shopSource = f.Manual["shop_gmv"].Value, "manual"
+		shop, shopSource, shopLabel = f.Manual["shop_gmv"].Value, "manual", "Shop · GMV lordo da integrazione storica"
 	}
+	offline := f.Manual["offline_revenue"].Value
 	var total float64
 	for _, component := range []struct {
+		label  string
 		value  *float64
 		source string
 	}{
-		{f.BarRevenue, "db"}, {shop, shopSource}, {f.Manual["offline_revenue"].Value, "manual"},
+		{"Bar · incassi lordi registrati", f.BarRevenue, "db"},
+		{shopLabel, shop, shopSource},
+		{"Incassi esterni dichiarati", offline, "manual"},
 	} {
 		if component.value == nil {
 			continue
 		}
 		total += *component.value
+		m.Rows = append(m.Rows, matchdayRow{Label: component.label, Values: map[string]*float64{"amount": component.value}})
 		if m.Source == "" {
 			m.Source = component.source
 		} else if m.Source != component.source {
@@ -496,8 +521,9 @@ func calculateMatchdayRevenue(f *matchdayFacts) {
 		}
 	}
 	if m.Source != "" {
-		m.Value, m.Status, m.Reason = reportMetricFloat(math.Round(total*100)/100), "partial", "Somma degli incassi attribuiti disponibili. La copertura dipende dalla presenza di fonti bar, shop e offline."
-		m.coverage = fmt.Sprintf("%t:%t:%t:%t", f.BarRevenue != nil, f.MerchRevenue != nil, shop != nil, f.Manual["offline_revenue"].Value != nil)
+		m.Value, m.Status, m.Reason = reportMetricFloat(math.Round(total*100)/100), "partial", "Il totale aggrega le fonti disponibili. Gli eventuali rimborsi bar sono fuori dalla copertura. Gli incassi esterni devono escludere gli importi già inclusi da bar o shop."
+		m.Columns = []matchdayColumn{{ID: "amount", Label: "Importo", Unit: "eur"}}
+		m.coverage = fmt.Sprintf("%t:%t:%t:%t", f.BarRevenue != nil, f.MerchRevenue != nil, shop != nil, offline != nil)
 	} else {
 		m.Missing = []string{"offline_revenue"}
 		if f.allowsMatchdayManual("shop_gmv") {

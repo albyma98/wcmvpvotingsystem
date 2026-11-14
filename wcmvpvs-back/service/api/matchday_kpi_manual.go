@@ -48,9 +48,9 @@ var matchdayManualDefinitions = []matchdayManualField{
 	{Code: "attendees", Label: "Spettatori presenti", Unit: "count", Description: "Presenze fisiche ufficiali della partita. Dato condiviso con il report di engagement."},
 	{Code: "marketing_spend", Label: "Spesa promozionale", Unit: "eur", Description: "Spesa di acquisizione attribuita alla partita, in euro."},
 	{Code: "qr_scans", Label: "Scansioni QR tracciate", Unit: "count", Description: "Scansioni effettive attribuite all’evento da un contatore esterno, per la stessa campagna dei QR tracciati."},
-	{Code: "offline_revenue", Label: "Ricavi offline confermati", Unit: "eur", Description: "Incassi attribuiti all’evento da una fonte esterna, al netto dei rimborsi e distinti dagli incassi digitali."},
+	{Code: "offline_revenue", Label: "Incassi esterni confermati", Unit: "eur", Description: "Incassi attribuiti all’evento da una fonte esterna, al netto dei rimborsi. Escludi gli importi già registrati dal bar digitale o dallo shop, incluse le prenotazioni shop pagate in sede."},
 	{Code: "shop_paid_orders", Label: "Acquisti shop confermati", Unit: "count", Description: "Ordini pagati e attribuiti alla partita da una fonte esterna, esclusi rimborsi, annullamenti e duplicati."},
-	{Code: "shop_gmv", Label: "Valore lordo shop confermato", Unit: "eur", Description: "Valore in euro degli stessi ordini shop confermati. Esclude i rimborsi e le prenotazioni non pagate."},
+	{Code: "shop_gmv", Label: "Valore lordo shop confermato", Unit: "eur", Description: "Valore lordo in euro degli stessi acquisti confermati, prima dei rimborsi parziali. Escludi gli ordini rimborsati integralmente e le prenotazioni non pagate."},
 	{Code: "shop_reservations", Label: "Prenotazioni shop confermate", Unit: "count", Description: "Prenotazioni confermate e attribuite alla partita, conteggiate separatamente dagli acquisti."},
 }
 

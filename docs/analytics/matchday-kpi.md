@@ -4,7 +4,7 @@ Il pannello si apre da **Storico eventi → KPI Matchday** nelle due interfacce 
 
 **Disponibile** indica una misura prodotta dalla fonte indicata, anche quando vale zero. **Parziale** indica che la misura riguarda una coorte, un canale o un sottoinsieme osservato. **Dato mancante** indica un input o uno storico assente. **Non misurabile** indica che manca il tracciamento richiesto. **Non applicabile** include rapporti con denominatore zero e funzionalità disabilitate. La provenienza è indicata separatamente come DB, Manuale o Misto.
 
-Il confronto seleziona gli eventi conclusi della stessa società (`events.organization_id,is_concluded,start_datetime`), eventualmente filtrati per campionato (`organizations.team_id`, `teams.championship`, `events.team1_id,team2_id`). Il campionato è quello configurato oggi per la squadra, perché l'archivio Live non conserva il campionato storico né un identificativo stagione. La stagione è convenzionalmente da luglio a giugno. Il valore precedente usa la partita immediatamente precedente nel perimetro. La media usa le partite selezionate della stessa stagione con fonti e copertura compatibili, con la partita corrente esclusa. I delta assoluti tra percentuali si leggono in punti percentuali. La variazione relativa divide il delta per il riferimento e resta vuota se il riferimento vale zero.
+Il confronto seleziona gli eventi conclusi della stessa società (`events.organization_id,is_concluded,start_datetime`). Il filtro campionato usa quello configurato oggi per la squadra e limita il confronto alla stessa stagione. L'archivio Live non conserva il campionato storico, il tipo di gara o un identificativo stagione. La stagione convenzionale inizia il 1º luglio nel fuso `Europe/Rome`. Il riferimento precedente richiede un inizio strettamente anteriore. A parità di orario tra due candidati antecedenti, l'ID rende stabile l'ordinamento. Media e serie usano solo eventi della stessa stagione con fonti e copertura compatibili. In ambito società il riferimento precedente può appartenere alla stagione precedente. I delta assoluti tra percentuali si leggono in punti percentuali. La variazione relativa divide il delta per il riferimento e resta vuota se il riferimento vale zero.
 
 ## Identità e copertura
 
@@ -17,11 +17,11 @@ Il confronto seleziona gli eventi conclusi della stessa società (`events.organi
 | KPI | Tabelle e colonne | Formula, stato e integrazione |
 | --- | --- | --- |
 | Utenti unici raggiunti | `engagement_report_signals.event_id,device_key,session_id,fan_id`, `tracking_events.event_id,device_id,session_id`, `page_engagements.event_id,device_id,duration_seconds`, `votes.event_id,user_id,device_id` e identità dalle operazioni descritte nei reparti | Cardinalità dell'unione deduplicata. Parziale per copertura. Mancante quando l'evento è privo di identità osservate. |
-| Penetrazione sul pubblico | Fonti della reach, `engagement_report_manual_sources.field_key,value,source_description` | Utenti raggiunti / spettatori presenti × 100. Misto e parziale. Mancante senza presenze ufficiali integrabili come `attendees`. Il numeratore può includere pubblico remoto. |
-| Tasso di attivazione e FAR | Reach, `votes`, round con avvio, `event_feedback` e segnali feedback, `event_chat_messages.message_type,author_user_id`, click sponsor, `tracking_events.metadata_json` e `bar_orders.stripe_reference,payment_status` | Identità con almeno un'azione significativa / identità raggiunte × 100. Parziale. Le azioni senza identità e gli aggregati esterni sono esclusi dal numeratore deduplicato. |
+| Adozione da canale arena | `engagement_report_signals.metadata`, `tracking_events.metadata_json` e fonte manuale `attendees` | Identità deduplicate con ingresso esplicito `arena` / presenze ufficiali × 100. Parziale perché un link può essere condiviso anche fuori dall'arena. Gli ingressi remoti, LED, giornalino e QR generici non certificano questo canale. Mancante senza presenze, non misurabile senza ingressi arena identificabili, non applicabile con presenze pari a zero. |
+| Fan Activation Rate (FAR) | Reach, `votes`, round con avvio, `event_feedback` e segnali feedback, `event_chat_messages.message_type,author_user_id`, click sponsor, `bar_orders` e `merch_match_orders` | Identità con almeno un'azione significativa / identità raggiunte × 100. Il riepilogo Executive affianca al FAR l'engagement multifunzione. `direction_activation` resta un alias API di `direction_far` per compatibilità. Le azioni senza identità e gli aggregati esterni sono esclusi dal numeratore deduplicato. |
 | Engagement per tifoso | Stesse fonti del FAR | Azioni con identità / tifosi con almeno un'azione significativa. Parziale. |
-| Retention interpartita | Identità persistenti delle due partite, `events.start_datetime` | Intersezione / coorte della precedente × 100. Parziale con copertura comparabile. Storico insufficiente senza una coorte utilizzabile. |
-| Ricavi generati | `bar_orders`, `tracking_events`, `merch_match_orders`, `merch_orders`, `merch_payment_records`, `matchday_kpi_manual_revisions` | Incassi bar attribuiti, ricavi merchandising attribuiti al netto dei rimborsi e incassi offline dichiarati. Il dato shop può essere integrato per gli eventi precedenti privi di raccolta automatica. |
+| Retention interpartita | Identità persistenti delle due partite, `events.start_datetime` | Intersezione / coorte della precedente × 100. Richiede la stessa stagione e fonti di pubblico compatibili. Sono escluse le sessioni effimere, le identità di browser rimaste ambigue e le coppie con sola attività operativa. |
+| Incassi attribuiti alla partita | `bar_orders`, `tracking_events`, `merch_match_orders`, `merch_orders`, `merch_payment_records`, `matchday_kpi_manual_revisions` | Componenti esposte separatamente. Incassi bar lordi attribuiti, incassi merchandising al netto dei rimborsi registrati e incassi offline dichiarati. Per le partite legacy, il dato shop manuale è un valore lordo dichiarato. Il totale misura attività associate all'evento. Margine, commissioni ABX e incremento causale richiedono fonti distinte. |
 
 ## 2. Marketing e acquisizione
 
@@ -32,10 +32,10 @@ Le sessioni di ingresso provengono da `tracking_events.event_name='session.start
 | Accessi e utenti per canale | `tracking_events.session_id,device_id,occurred_at,metadata_json`, `engagement_report_signals.session_id,device_key,fan_id,occurred_at,metadata.entry_channel` | Sessioni d'ingresso distinte e identità distinte per canale. Disponibile per gli ingressi con la nuova raccolta, parziale se include ingressi legacy. |
 | Nuovi utenti per canale | Colonne degli ingressi sopra, identità persistenti e cronologia del club. | Prima partita osservata per identità, attribuita al primo ingresso tracciato. La nuova raccolta usa le identità confrontabili con lo storico disponibile. |
 | Attivazione per canale | Colonne degli ingressi sopra e fonti delle azioni significative (FAR). | Utenti del canale con almeno un'azione significativa / utenti del canale × 100. La copertura dipende dalla raccolta degli ingressi e delle azioni. |
-| Conversione QR | `matchday_qr_arrivals.event_id,organization_id,redirect_id,channel,opened_at,landed_at`. Integrazione `qr_scans` per campagne esterne. | Arrivi confermati / aperture misurate dei link QR gestiti × 100. Un token casuale lega ogni apertura a un solo arrivo. Se la campagna usa un contatore esterno resta disponibile il dato manuale. |
+| Conversione QR | `matchday_qr_arrivals.event_id,organization_id,redirect_id,channel,opened_at,landed_at`. Integrazione `qr_scans` per campagne esterne. | Arrivi confermati / aperture misurate dei link QR gestiti × 100. Un token lega ogni apertura a un solo arrivo. Il fallback manuale richiede contatori omogenei. Un denominatore a zero è non applicabile. Sessioni superiori alle scansioni dichiarate rendono il tasso non misurabile. |
 | Costo per acquisizione | Fonti dei nuovi utenti e integrazione `marketing_spend`. | Spesa promozionale / nuove identità osservate. Mancante senza spesa esterna. Parziale con entrambi i dati. |
 | Distribuzione del traffico | Colonne degli ingressi sopra. | Accessi del canale / accessi osservati × 100. Il valore in evidenza è la quota maggiore. Parziale. |
-| Variazione per canale | Colonne degli ingressi sopra per le due partite comparabili. | Accessi correnti − precedenti e differenza / accessi precedenti × 100. Il dettaglio include anche la variazione degli utenti unici. Parziale con due partite misurate, storico insufficiente negli altri casi. |
+| Variazione per canale | Colonne degli ingressi sopra per le due partite comparabili. | Accessi correnti − precedenti e differenza / accessi precedenti × 100. Il dettaglio include anche la variazione degli utenti unici. Richiede le stesse famiglie di segnali d'ingresso nelle due partite. |
 
 Per misurare una campagna QR, il redirect gestito deve puntare a `/<slug>/new` sullo stesso dominio durante una partita attiva. Per distinguere LED e giornalino si possono configurare `utm_source=led` e `utm_source=giornalino`. La misura riguarda l'apertura del link. Una lettura del codice senza apertura e le scansioni di QR diretti senza redirect richiedono un contatore esterno.
 
@@ -43,8 +43,8 @@ Per misurare una campagna QR, il redirect gestito deve puntare a `/<slug>/new` s
 
 | KPI | Tabelle e colonne | Formula e disponibilità |
 | --- | --- | --- |
-| Votanti unici MVP | `votes.event_id,user_id,device_id`, `fan_profiles.id,organization_id` | Identità distinte con voti accettati. Disponibile, oppure mancante quando ci sono voti senza identità deduplicabile. |
-| Conversione MVP | Fonti dei votanti e della reach | Votanti unici / identità raggiunte × 100. Parziale per copertura della reach. |
+| Votanti unici MVP | `votes.event_id,user_id,device_id`, `fan_profiles.id,organization_id` | Identità distinte con voti accettati. Parziale se alcuni voti non sono deduplicabili. Mancante se nessun voto accettato ha un'identità deduplicabile. |
+| Conversione MVP | Fonti dei votanti e della reach | Votanti unici / identità raggiunte × 100. Eredita i limiti di copertura del numeratore e del denominatore. |
 | Engagement multifunzione | Fonti del FAR | Identità con almeno due tipi di azione / reach × 100. Parziale. Acquisti e prenotazioni appartengono alla stessa funzione shop. |
 | Interazioni significative | Fonti del FAR | Azioni osservate, anche quando manca l'identità dell'autore. Parziale. |
 | Interazioni medie per tifoso attivo | Fonti del FAR | Azioni attribuibili / tifosi attivi. Parziale. |
@@ -111,7 +111,7 @@ Per il match si riusano il tracciamento commerciale e le aggregazioni di `sponso
 | Reach | `sponsor_measured_exposures.audience_key,impression`, fallback `sponsor_exposures.device_id,exposure_type`. | Dispositivi distinti con impression, deduplicati anche tra sponsor nel totale. Non misurabile se mancano chiavi necessarie. La copertura legacy `seen` o `watched` è parziale e distinta nello storico. |
 | Tempo visibile totale e medio | `sponsor_measured_exposures.impression,ended,visible_ms`. | Somma dei millisecondi sopra soglia / esposizioni con durata osservata per la media. Comprende gli zeri confermati dalla chiusura. Parziale se mancano chiusure. |
 | Click ricevuti | `sponsor_measured_exposures.clickable,clicks`, fallback `sponsor_clicks.sponsor_id,device_id`. | Somma dei click misurati quando il placement supporta il tracking. I click legacy sono parziali e distinti nello storico. |
-| CTR | `sponsor_measured_exposures.clicks,clickable,impression`. | Click / tutte le impression misurate × 100. Non misurabile quando manca il denominatore comune. |
+| CTR | `sponsor_measured_exposures.clicks,clickable,impression`. | Click associati a impression cliccabili / impression cliccabili × 100. Stesso perimetro nel totale, per sponsor e per posizione. Il conteggio click resta disponibile anche per click orfani di un'impression. Con zero impression cliccabili il CTR è non misurabile. |
 | Conversioni attribuibili | `user_coupons.match_id,coupon_id,used_at`, `coupons.sponsor_id,organization_id`, `sponsors.id,organization_id`. | Coupon riscattati associati a match e sponsor, senza inferire acquisti. Parziale quando esistono coupon osservati. |
 | Frequency | `sponsor_measured_exposures.impression,audience_key`. | Impression / dispositivi distinti raggiunti. Non misurabile senza reach. |
 | Performance per posizione | `sponsor_measured_exposures.placement_id,game_id,method` con le colonne dei KPI sopra. | Stesse aggregazioni per posizione, gioco e metodo. Comprende home tifosi, conferma MVP, tabelloni SVG e Sponsor Rush quando misurati. |
@@ -123,10 +123,10 @@ I nuovi click misurati conservano `report_device_key`, la chiave pseudonima del 
 | KPI | Tabelle e colonne | Formula e disponibilità |
 | --- | --- | --- |
 | Nuovi profili registrati | `fan_matchday_registrations.fan_id,event_id,organization_id,registered_at,device_key`; fallback da `fan_profiles` e `fan_registration_acceptances` | Prime registrazioni verificate salvate dal server con l'evento. Per gli eventi precedenti resta la stima parziale basata sulle attività del profilo e sul giorno locale. |
-| Profili identificati | `fan_profiles.id,organization_id,registration_pending`, identità osservate | Cardinalità delle identità riconciliate con un profilo. Parziale. |
+| Profili identificati | `fan_profiles.id,organization_id,registration_pending`, identità osservate | Profili distinti validi della società osservati direttamente in un'attività della partita. I legami dedotti da altre partite continuano a servire alla deduplicazione della reach. |
 | Identification rate | Fonti dei profili e della reach | Profili identificati / reach × 100. Parziale. |
-| Nuovi consensi marketing validi | Politica del profilo `/new`. | Non applicabile. Il profilo non raccoglie consensi per SMS promozionali. |
-| Opt-in rate | Politica del profilo `/new`; `fan_profiles.marketing_consent,phone_verified_at` per gli eventi legacy. | Non applicabile su `/new`. Per gli eventi legacy il valore parziale fotografa lo stato attuale dei nuovi profili osservati. |
+| Nuovi consensi marketing validi | Politica del profilo `/new`, `fan_profiles.marketing_consent` e contatti legacy. | Non applicabile su `/new`. Nello storico manca una prova con data, profilo e partita. Il registro dei contatti è distinto dal profilo tifoso. |
+| Opt-in rate | Stesse fonti dei nuovi consensi. | Non applicabile su `/new` e non misurabile nello storico. Il flag corrente e la verifica del telefono non documentano l'opt-in alla data dell'evento. |
 | Tifosi ritornati | Fonti della reach e partite precedenti | Intersezione delle identità persistenti per due partite comparabili. Parziale. |
 | Retention delle coorti | Stesse fonti della retention Direzione | Intersezione / coorte della partita precedente × 100, ricalcolata per ogni punto dello storico. Parziale. |
 | Evoluzione fanbase identificata | Fonti dei profili identificati | Serie di profili distinti osservati per evento. Parziale. |
@@ -140,3 +140,39 @@ Le tabelle, formule e coperture per ciascun indicatore operativo sono nel [detta
 ## Integrazioni e revisioni
 
 Le presenze ufficiali usano il dato già condiviso con il report di engagement (`engagement_report_manual_sources`, `engagement_report_source_history`). Spesa, scansioni, ricavi offline e aggregati shop sono versionati in `matchday_kpi_manual_revisions` con società, evento, codice, valore, unità, fonte, data e amministratore. Il salvataggio e il calcolo condividono una transazione. Una revisione obsoleta produce un conflitto e preserva l'intero gruppo di dati precedente. Le correzioni manuali sono limitate alle dipendenze elencate nell'audit.
+
+## Verifica SQLite e limiti dello storico
+
+L'audit del 13–14 novembre 2026 ha usato lo snapshot storico `mvpvs_11042026.db`, con `PRAGMA quick_check` riuscito, 20 eventi, 1.276 voti e 4.956 segnali legacy. L'altro database nel repository ha quattro eventi senza partite concluse. I file sorgente sono stati interrogati in sola lettura. Le migrazioni necessarie al backend sono state applicate solo a una copia locale. Le misure recenti di `/new` richiedono uno snapshot che contenga registrazioni partita, arrivi QR, esposizioni sponsor misurate, shop attribuito, sonde e richieste HTTP.
+
+Per ripetere il controllo, aprire il database sorgente in sola lettura, selezionare gli eventi conclusi della stessa società ed eseguire le aggregazioni senza passare dal backend. Confrontare valore, numeratore, denominatore e stato con la risposta autenticata `GET /admin/events/{id}/matchday-kpis`. Per il FAR, costruire l'unione delle identità da permanenze, ingressi, voti, round, feedback e azioni commerciali osservate. Usare il profilo valido e univoco quando esiste un'associazione, altrimenti il dispositivo o la sessione locale. Contare le identità con almeno una funzione e con almeno due funzioni. Per la retention, intersecare solo le identità persistenti di due eventi comparabili. Un conteggio grezzo di voti non deduplica gli utenti. Una permanenza mancante produce `NULL`.
+
+```sql
+SELECT e.id,
+  (SELECT COUNT(*) FROM votes v WHERE v.event_id = e.id) AS schede_mvp,
+  (SELECT COUNT(*) FROM page_engagements p
+     WHERE p.event_id = e.id AND p.duration_seconds > 0) AS osservazioni,
+  (SELECT SUM(p.duration_seconds) FROM page_engagements p
+     WHERE p.event_id = e.id AND p.duration_seconds > 0) AS secondi,
+  (SELECT COUNT(*) FROM sponsor_clicks c JOIN sponsors s ON s.id = c.sponsor_id
+     WHERE c.event_id = e.id AND s.organization_id = e.organization_id) AS click_legacy
+FROM events e WHERE e.is_concluded = 1 AND e.id IN (69, 98, 101, 102, 111, 122)
+ORDER BY e.id;
+```
+
+Il confronto fra le query indipendenti e l'endpoint usato dalla modale ha superato 266 asserzioni su sei eventi. Le frazioni mostrano numeratore e denominatore prima dell'arrotondamento.
+
+| Evento | Reach | FAR | Multifunzione | Votanti | Feedback (schede/risposte) | Click sponsor legacy | Retention |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 69 | 120 | 113/120 | 14/120 | 111 | 10/42 | 13 | 32/106 |
+| 98 | 7 | 0/7 | 0/7 | 0 | Non applicabile | Non misurabile | Mancante |
+| 101 | 7 | 3/7 | 1/7 | 3 | Non applicabile | Non misurabile | Mancante |
+| 102 | 198 | 185/198 | 13/198 | 185 | 8/32 | 1 | 72/155 |
+| 111 | 179 | 178/179 | 1/179 | 178 | 38/153 | 1 | 75/198 |
+| 122 | 150 | 121/150 | 11/150 | 121 | 10/41 | 1 | Mancante |
+
+Gli eventi 98 e 101 hanno lo stesso orario e non sono il precedente l'uno dell'altro. Per l'evento 122, la SQL trova 61 identità comuni su 179 ma la coppia usa famiglie di raccolta diverse e la retention resta mancante. Il controllo conferma anche i 77 profili direttamente osservati dell'evento 111 e i 29 dell'evento 122. In quest'ultimo evento, 67 identificativi di profilo distinti presenti nei segnali legacy filtrati sono dichiarati dal client o derivati dalla sessione senza una distinzione conservata. Per questo il campo legacy da solo non è prova di identificazione.
+
+Sono passati 73 test Go mirati nei pacchetti API, database e healthcheck e 139 test frontend delle suite Admin V2 e report. Le fixture coprono anche la raccolta recente assente nello snapshot, tra cui deduplicazione degli arrivi QR, placement cliccabili e non cliccabili, viewability HTML e geometrica, sonde mancanti, p95 pesato, checkout falliti e scaduti, rimborsi parziali e integrali.
+
+Restano aperti la certificazione della presenza fisica, il salvataggio di competizione, tipo gara e configurazione al momento dell'evento, e la disponibilità di una misura su dati contemporanei. Gli identificativi browser possono cambiare con il reset dello storage o essere effimeri quando lo storage è bloccato. Il consenso per la telemetria verso strumenti esterni, gli eventi interni del report e il consenso per SMS sono tre perimetri distinti. Qualsiasi nuova fonte o modifica strutturale va valutata prima dell'implementazione.

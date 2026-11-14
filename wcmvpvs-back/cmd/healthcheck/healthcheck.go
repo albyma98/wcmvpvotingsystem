@@ -45,7 +45,7 @@ func main() {
 		*target = fmt.Sprintf("http://localhost:%d/liveness", *port)
 	}
 	client := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout:       5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	if *dbFile != "" {
@@ -65,15 +65,17 @@ func checkHealth(client *http.Client, target string) error {
 		return err
 	}
 	defer res.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1024))
 	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("healthcheck returned %s", res.Status)
 	}
-	return nil
+	_, err = io.Copy(io.Discard, io.LimitReader(res.Body, 1024))
+	return err
 }
 
 func monitorMatchday(client *http.Client, target, dbFile string) {
 	interval := time.Duration(database.MatchdayProbeIntervalSeconds) * time.Second
+	// A process started mid-slot cannot observe readiness at that slot's boundary.
+	time.Sleep(time.Until(time.Now().Truncate(interval).Add(interval)))
 	for {
 		now := time.Now()
 		slot := now.Truncate(interval)

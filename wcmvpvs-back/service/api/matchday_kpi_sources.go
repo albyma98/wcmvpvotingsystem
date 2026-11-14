@@ -178,7 +178,6 @@ func loadMatchdayVotesAndGames(ctx context.Context, q matchdayQueryer, orgID int
 
 type matchdayProfile struct {
 	created, accepted time.Time
-	verified, consent bool
 }
 
 type matchdayIdentityLinks struct {
@@ -213,13 +212,13 @@ func loadMatchdayRegistrations(ctx context.Context, q matchdayQueryer, orgID int
 
 func calculateMatchdayAudience(ctx context.Context, q matchdayQueryer, orgID int, ordered []*matchdayFacts, loadAttributedActions func() error) error {
 	profiles := map[int]matchdayProfile{}
-	if err := matchdayRead(ctx, q, `SELECT p.id,p.created_at,COALESCE(MIN(a.accepted_at),''),COALESCE(p.phone_verified_at,'')<>'',p.marketing_consent
+	if err := matchdayRead(ctx, q, `SELECT p.id,p.created_at,COALESCE(MIN(a.accepted_at),'')
 		FROM fan_profiles p LEFT JOIN fan_registration_acceptances a ON a.fan_id=p.id AND a.organization_id=p.organization_id
 		WHERE p.organization_id=? AND p.registration_pending=0 GROUP BY p.id`, []interface{}{orgID}, func(rows *sql.Rows) error {
 		var id int
 		var created, accepted string
 		var p matchdayProfile
-		if err := rows.Scan(&id, &created, &accepted, &p.verified, &p.consent); err != nil {
+		if err := rows.Scan(&id, &created, &accepted); err != nil {
 			return err
 		}
 		p.created, _ = parseEventStart(created)
@@ -248,8 +247,10 @@ func calculateMatchdayAudience(ctx context.Context, q matchdayQueryer, orgID int
 		local[f.Event.ID] = links
 		f.eachIdentity(func(id matchdayIdentity) {
 			matchdayLink(links.devices, device(id), profile(id))
-			matchdayLink(allDevices, device(id), profile(id))
 		})
+	}
+	for key, owner := range local[ordered[0].Event.ID].devices {
+		allDevices[key] = owner
 	}
 	// Keep one observation per identity tuple and historical event for first observed
 	// acquisition. This pass is independent of the chart limit and division filter.
@@ -259,13 +260,14 @@ func calculateMatchdayAudience(ctx context.Context, q matchdayQueryer, orgID int
 		identity matchdayIdentity
 	}
 	var historical []sighting
+	historicalLinks := map[int]matchdayIdentityLinks{}
 	if current := ordered[0].Event.start; !current.IsZero() {
 		err := matchdayRead(ctx, q, `WITH past AS (SELECT id,start_datetime,organization_id FROM events WHERE organization_id=? AND julianday(start_datetime)<julianday(?))
 		SELECT e.id,e.start_datetime,s.device_key,COALESCE(s.fan_id,0),1 FROM past e JOIN engagement_report_signals s ON s.event_id=e.id
-		WHERE s.name IN ('page_view','registration_completed') GROUP BY e.id,s.device_key,s.fan_id
+		WHERE s.name IN ('page_view','registration_completed') OR s.fan_id>0 GROUP BY e.id,s.device_key,s.fan_id
 		UNION ALL SELECT e.id,e.start_datetime,t.device_id,0,0 FROM past e JOIN tracking_events t ON t.event_id=e.id
 		WHERE t.organization_id IN (0,e.organization_id) AND t.event_name IN ('session.started','page.view') GROUP BY e.id,t.device_id
-		UNION ALL SELECT e.id,e.start_datetime,v.device_id,COALESCE(v.user_id,0),0 FROM past e JOIN votes v ON v.event_id=e.id GROUP BY e.id,v.device_id,v.user_id
+		UNION ALL SELECT e.id,e.start_datetime,COALESCE(v.device_id,''),COALESCE(v.user_id,0),0 FROM past e JOIN votes v ON v.event_id=e.id GROUP BY e.id,v.device_id,v.user_id
 		UNION ALL SELECT e.id,e.start_datetime,p.device_id,0,0 FROM past e JOIN page_engagements p ON p.event_id=e.id WHERE p.duration_seconds>0 GROUP BY e.id,p.device_id
 		UNION ALL SELECT e.id,e.start_datetime,r.device_key,r.fan_id,1 FROM past e JOIN fan_matchday_registrations r ON r.event_id=e.id AND r.organization_id=e.organization_id`, []interface{}{orgID, current.Format(time.RFC3339)}, func(rows *sql.Rows) error {
 			var s sighting
@@ -279,7 +281,16 @@ func calculateMatchdayAudience(ctx context.Context, q matchdayQueryer, orgID int
 			if hashed {
 				s.identity.Device, s.identity.DeviceKey = "", key
 			}
-			matchdayLink(allDevices, device(s.identity), profile(s.identity))
+			key, owner := device(s.identity), profile(s.identity)
+			if key != "" && owner != "" {
+				links := historicalLinks[s.event]
+				if links.devices == nil {
+					links.devices = map[string]string{}
+					historicalLinks[s.event] = links
+				}
+				matchdayLink(links.devices, key, owner)
+				matchdayLink(allDevices, key, owner)
+			}
 			historical = append(historical, s)
 			return nil
 		})
@@ -305,8 +316,15 @@ func calculateMatchdayAudience(ctx context.Context, q matchdayQueryer, orgID int
 		return "device:" + key
 	}
 	firstSeen, firstEvent := map[string]time.Time{}, map[string]int{}
+	persistent := func(actor string) bool {
+		if strings.HasPrefix(actor, "device:") {
+			owner, linked := allDevices[strings.TrimPrefix(actor, "device:")]
+			return !linked || owner != ""
+		}
+		return strings.HasPrefix(actor, "fan:")
+	}
 	observe := func(actor string, event int, at time.Time) {
-		if !matchdayComparableIdentity(actor) || at.IsZero() {
+		if !persistent(actor) || at.IsZero() {
 			return
 		}
 		prior := firstSeen[actor]
@@ -315,7 +333,7 @@ func calculateMatchdayAudience(ctx context.Context, q matchdayQueryer, orgID int
 		}
 	}
 	for _, s := range historical {
-		observe(resolveDevice(s.identity, local[s.event]), s.event, s.at)
+		observe(resolveDevice(s.identity, historicalLinks[s.event]), s.event, s.at)
 	}
 	for _, f := range ordered {
 		eventID := f.Event.ID
@@ -341,13 +359,23 @@ func calculateMatchdayAudience(ctx context.Context, q matchdayQueryer, orgID int
 		f.coverage = matchdayAudienceCoverage(f)
 		calculateMatchdayGames(f)
 		f.Reach, f.FirstEvent = map[string]bool{}, firstEvent
+		f.persistentReach = map[string]bool{}
+		identified := map[int]bool{}
 		f.eachIdentity(func(id matchdayIdentity) {
 			if actor := f.Resolve(id); actor != "" {
 				f.Reach[actor] = true
-				observe(actor, f.Event.ID, f.Event.start)
+				if persistent(actor) {
+					f.persistentReach[actor] = true
+				}
+				if f == ordered[0] {
+					observe(actor, f.Event.ID, f.Event.start)
+				}
+			}
+			if profile(id) != "" {
+				identified[id.FanID] = true
 			}
 		})
-		calculateMatchdayCRM(f, profiles)
+		calculateMatchdayCRM(f, profiles, identified)
 	}
 	return nil
 }

@@ -56,7 +56,7 @@ function chartStyle(value) {
         <dt>{{ row.label }}</dt><dd>{{ formatKpi(row.values[shopColumn.id], shopColumn.unit) }}</dd>
       </div>
     </dl>
-    <p v-else-if="!hasRows" class="matchday-metric__status">
+    <p v-else class="matchday-metric__status">
       {{ metric.status === 'not_applicable' && metric.reason === 'Funzione non attiva' ? metric.reason :
         metric.status === 'available' ? 'Nessuna voce registrata' : statusLabels[metric.status] || 'Dato mancante' }}
     </p>
