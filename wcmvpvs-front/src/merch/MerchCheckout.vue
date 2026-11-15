@@ -24,21 +24,34 @@
         <p v-if="settings.payment_methods">{{ settings.payment_methods }}</p>
         <p v-if="settings.payment_instructions">{{ settings.payment_instructions }}</p>
       </div>
-      <fieldset v-if="mode === 'offline' || fulfillment === 'shipping'" :disabled="busy || uncertain">
+      <p v-if="loadingProfile" role="status">Verifica del profilo tifoso…</p>
+      <p v-else-if="profileError" class="error" role="alert">
+        {{ profileError }} <button class="text-button" type="button" @click="loadProfile">Riprova</button>
+      </p>
+      <p v-else-if="profileNickname" class="inset">Prenoti come <strong>{{ profileNickname }}</strong></p>
+      <fieldset v-if="collectContact || fulfillment === 'shipping'" :disabled="busy || uncertain">
         <legend>Dati per {{ fulfillment === 'shipping' ? 'la consegna' : 'la prenotazione' }}</legend>
-        <label class="field">Nome e cognome
+        <template v-if="collectContact && mode === 'offline'">
+          <label class="field">Nome
+            <input v-model.trim="contact.givenName" required autocomplete="given-name" maxlength="60" />
+          </label>
+          <label class="field">Cognome
+            <input v-model.trim="contact.familyName" required autocomplete="family-name" maxlength="60" />
+          </label>
+        </template>
+        <label v-else-if="collectContact" class="field">Nome e cognome
           <input v-model.trim="contact.name" required autocomplete="name" maxlength="120" />
         </label>
         <label v-if="fulfillment === 'shipping'" class="field">Indirizzo di spedizione
           <textarea v-model.trim="contact.address" required autocomplete="street-address" maxlength="500" rows="2" placeholder="Via, numero civico, CAP, città e paese"></textarea>
         </label>
-        <label v-if="contactField === 'email'" class="field">Email
+        <label v-if="collectContact && contactField === 'email'" class="field">Email
           <input v-model.trim="contact.email" type="email" autocomplete="email" maxlength="254" required />
         </label>
-        <label v-else class="field">Telefono
+        <label v-else-if="collectContact" class="field">Telefono
           <input v-model.trim="contact.phone" type="tel" autocomplete="tel" maxlength="32" placeholder="+39…" required />
         </label>
-        <button v-if="mode === 'offline' && settings.contact_requirement === 'either'" class="text-button" type="button" @click="preferredContact = contactField === 'email' ? 'phone' : 'email'">
+        <button v-if="collectContact && mode === 'offline' && settings.contact_requirement === 'either'" class="text-button" type="button" @click="preferredContact = contactField === 'email' ? 'phone' : 'email'">
           {{ contactField === 'email' ? 'Usa il telefono' : "Usa l’email" }}
         </button>
       </fieldset>
@@ -61,7 +74,7 @@
         <p v-if="settings.cancellation_policy"><strong>Condizioni di annullamento</strong> {{ settings.cancellation_policy }}</p>
       </div>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
-      <button class="primary" type="submit" :disabled="!quote || busy || loadingQuote">
+      <button class="primary" type="submit" :disabled="!quote || busy || loadingQuote || loadingProfile || Boolean(profileError)">
         {{ busy ? 'Attendi…' : uncertain ? 'Riprova la stessa richiesta' : mode === 'offline' ? 'Conferma prenotazione' : 'Vai al pagamento sicuro' }}
       </button>
     </form>
@@ -85,12 +98,18 @@ const props = defineProps({
 });
 const emit = defineEmits(['back', 'created', 'recoverable-order', 'busy-change']);
 const fulfillment = ref(props.deliveryOptions.pickup ? 'pickup' : 'shipping');
-const contact = reactive({ name: '', email: '', phone: '', address: '' });
+const contact = reactive({ name: '', givenName: '', familyName: '', email: '', phone: '', address: '' });
 const preferredContact = ref('email');
 const contactField = computed(() =>
   props.mode === 'online' ? 'email' :
     props.settings.contact_requirement === 'either' ? preferredContact.value : props.settings.contact_requirement,
 );
+const loadingProfile = ref(props.mode === 'offline');
+const profileError = ref('');
+const profileNickname = ref('');
+const collectContact = computed(() => props.mode === 'offline'
+  ? !loadingProfile.value && !profileError.value && !profileNickname.value
+  : fulfillment.value === 'shipping');
 const quote = ref(null);
 const quoteError = ref('');
 const loadingQuote = ref(false);
@@ -102,6 +121,20 @@ let submittedInput;
 let disposed = false;
 
 const quoteInput = () => ({ mode: props.mode, fulfillment: fulfillment.value, items: props.lines });
+
+async function loadProfile() {
+  loadingProfile.value = true;
+  profileError.value = '';
+  const profile = await fetchFanProfile().catch(() => null);
+  if (disposed) return;
+  loadingProfile.value = false;
+  if (!profile?.ok) {
+    profileError.value = 'Impossibile verificare il profilo tifoso.';
+    return;
+  }
+  const user = profile.data?.user;
+  profileNickname.value = profile.data?.registered && /^\+\d{7,15}$/.test(user?.phone?.trim()) ? user.nickname?.trim() || '' : '';
+}
 
 async function loadQuote() {
   quoteRequest?.abort();
@@ -121,7 +154,7 @@ async function loadQuote() {
 }
 
 async function submit() {
-  if (busy.value || !quote.value) return;
+  if (busy.value || !quote.value || loadingProfile.value || profileError.value) return;
   if (!globalThis.crypto?.randomUUID) {
     error.value = 'Per proseguire apri lo Shop tramite una connessione sicura.';
     return;
@@ -129,14 +162,14 @@ async function submit() {
   busy.value = true;
   emit('busy-change', true);
   error.value = '';
-  const collectContact = props.mode === 'offline' || fulfillment.value === 'shipping';
   submittedInput ||= {
     ...quoteInput(),
     expected_total_cents: quote.value.total_cents,
     request_id: globalThis.crypto.randomUUID(),
     ...(props.eventId > 0 ? { match_id: props.eventId } : {}),
-    ...(collectContact ? {
-      name: contact.name,
+    ...(profileNickname.value ? { use_fan_profile: true } : {}),
+    ...(collectContact.value ? {
+      name: props.mode === 'offline' ? `${contact.givenName} ${contact.familyName}` : contact.name,
       [contactField.value]: contactField.value === 'phone' ? contact.phone.replace(/[\s().-]/g, '') : contact.email,
     } : {}),
     ...(fulfillment.value === 'shipping' ? { address: contact.address } : {}),
@@ -152,10 +185,13 @@ async function submit() {
     if (!uncertain.value) submittedInput = undefined;
     if (status === 409) {
       error.value = merchRequestError(cause, 'Prezzo o disponibilità aggiornati. Controlla il riepilogo prima di confermare.');
-      await loadQuote();
     } else {
       error.value = merchRequestError(cause, 'La conferma è ancora in sospeso. Riprova la stessa richiesta da qui.');
     }
+    await Promise.all([
+      status === 409 ? loadQuote() : undefined,
+      profileNickname.value && (status === 401 || status === 409) ? loadProfile() : undefined,
+    ]);
   } finally {
     if (!disposed) {
       busy.value = false;
@@ -169,13 +205,9 @@ watch(fulfillment, () => {
   error.value = '';
   void loadQuote();
 });
-onMounted(async () => {
-  void loadQuote();
-  if (props.mode !== 'offline' || props.settings.contact_requirement === 'email') return;
-  const profile = await fetchFanProfile();
-  if (disposed || uncertain.value || busy.value || !profile.ok || !profile.data?.registered || !profile.data.user?.phone_verified_at) return;
-  if (!contact.phone) contact.phone = profile.data.user.phone || '';
-  if (!contact.email && contact.phone) preferredContact.value = 'phone';
+onMounted(() => {
+  const quoteLoad = loadQuote();
+  return props.mode === 'offline' ? Promise.all([quoteLoad, loadProfile()]) : quoteLoad;
 });
 onBeforeUnmount(() => {
   disposed = true;

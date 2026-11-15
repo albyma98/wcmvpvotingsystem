@@ -322,14 +322,11 @@ func TestMerchConcurrentLastUnitExpiryAndLatePayment(t *testing.T) {
 	}
 }
 
-func TestMerchExistingProfileOwnOrdersAndPrefilledPhone(t *testing.T) {
+func TestMerchExistingProfileReservesWithStoredContact(t *testing.T) {
 	f := newMerchTestFixture(t)
 	phone := "+393331234567"
 	fan, err := f.rt.db.CreateFanWithPhoneE164(f.org.ID, phone)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.rt.db.MarkFanPhoneVerified(f.org.ID, phone, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	// Complete an existing fan registration with its normal persisted state.
@@ -340,16 +337,34 @@ func TestMerchExistingProfileOwnOrdersAndPrefilledPhone(t *testing.T) {
 	if err := f.rt.db.UpsertFanSession(token, fan.ID, "device"); err != nil {
 		t.Fatal(err)
 	}
-	p := f.product(t, 2)
+	settings := defaultMerchSettings()
+	settings.Enabled, settings.ContactRequirement = true, "email"
+	f.settings(t, f.org.ID, settings)
+	matchID, err := f.rt.db.CreateEvent(database.Event{
+		OrganizationID: f.org.ID, Team1ID: f.org.TeamID, Team2ID: f.other.TeamID, StartDateTime: "2026-10-21T19:30:00Z",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := f.product(t, 3)
 	in := f.order(t, p, "offline")
-	in.Email = ""
+	in.Name, in.Email, in.UseFanProfile, in.MatchID = "", "", true, matchID
 	h := f.rt.router
 	public := "/v1/clubs/" + f.org.Slug + "/merch"
 	headers := map[string]string{"X-Fan-Session": token}
+	merchRequest(t, h, "POST", public+"/orders", in, nil, 401)
 	var created merchCheckoutResponse
 	merchDecode(t, merchRequest(t, h, "POST", public+"/orders", in, headers, 201), &created)
-	if created.Order.Phone != phone || created.AccessToken != "" {
+	if created.Order.Name != "Fan" || created.Order.Phone != phone || created.Order.Email != "" || created.AccessToken != "" {
 		t.Fatalf("checkout %+v", created)
+	}
+	var orderMatchID int
+	var deviceKey string
+	if err := f.conn.QueryRow(`SELECT event_id,device_key FROM merch_match_orders WHERE order_id=?`, created.Order.ID).Scan(&orderMatchID, &deviceKey); err != nil {
+		t.Fatal(err)
+	}
+	if orderMatchID != matchID || deviceKey != "" {
+		t.Fatalf("wrong match association without a measurement grant: %d, %q", orderMatchID, deviceKey)
 	}
 	merchRequest(t, h, "GET", public+"/orders/"+created.Order.ID, nil, headers, 200)
 	merchRequest(t, h, "GET", public+"/orders/"+created.Order.ID, nil, nil, 404)
@@ -361,4 +376,22 @@ func TestMerchExistingProfileOwnOrdersAndPrefilledPhone(t *testing.T) {
 		t.Fatal(list)
 	}
 	merchRequest(t, h, "GET", "/v1/clubs/"+f.other.Slug+"/merch/orders", nil, headers, 403)
+	guest := f.order(t, p, "offline")
+	guest.MatchID = matchID
+	guest.Name, guest.Email = "", ""
+	merchRequest(t, h, "POST", public+"/orders", guest, nil, 400)
+	guest.Name = "Mario Rossi"
+	merchRequest(t, h, "POST", public+"/orders", guest, nil, 400)
+	guest.Email = "mario@example.com"
+	var guestOrder merchCheckoutResponse
+	merchDecode(t, merchRequest(t, h, "POST", public+"/orders", guest, nil, 201), &guestOrder)
+	if guestOrder.Order.Name != guest.Name || guestOrder.Order.Email != guest.Email || guestOrder.AccessToken == "" {
+		t.Fatalf("guest checkout %+v", guestOrder)
+	}
+	if _, err := f.conn.Exec("UPDATE fan_profiles SET nickname='' WHERE id=?", fan.ID); err != nil {
+		t.Fatal(err)
+	}
+	incomplete := f.order(t, p, "offline")
+	incomplete.UseFanProfile = true
+	merchRequest(t, h, "POST", public+"/orders", incomplete, headers, 409)
 }

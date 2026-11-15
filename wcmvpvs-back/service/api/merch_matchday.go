@@ -45,3 +45,32 @@ func (rt *_router) markMerchMatchCoverage(ctx context.Context, orgID, matchID in
 		rt.baseLogger.WithError(err).WithField("event_id", matchID).Warn("merch match coverage")
 	}
 }
+
+type merchMatchReservation struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (rt *_router) listMerchMatchReservations(ctx context.Context, orgID, matchID int) ([]merchMatchReservation, error) {
+	rows, err := rt.db.SQLConn().QueryContext(ctx, `SELECT o.id, COALESCE(NULLIF(TRIM(f.nickname), ''), o.name)
+		FROM merch_match_orders m
+		JOIN merch_orders o ON o.organization_id=m.organization_id AND o.id=m.order_id
+		LEFT JOIN fan_profiles f ON f.organization_id=o.organization_id AND f.id=o.fan_id
+		WHERE m.organization_id=? AND m.event_id=? AND o.mode='offline'
+		AND o.fulfillment_status NOT IN ('CANCELLED','EXPIRED')
+		AND (o.payment_status='PAID_OFFLINE' OR (o.payment_status='UNPAID_OFFLINE' AND o.expires_at>?))
+		ORDER BY o.created_at,o.id`, orgID, matchID, time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	reservations := []merchMatchReservation{}
+	for rows.Next() {
+		var reservation merchMatchReservation
+		if err := rows.Scan(&reservation.ID, &reservation.Name); err != nil {
+			return nil, err
+		}
+		reservations = append(reservations, reservation)
+	}
+	return reservations, rows.Err()
+}

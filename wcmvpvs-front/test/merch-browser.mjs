@@ -13,6 +13,7 @@ const executable = process.env.MERCH_TEST_BROWSER;
 assert.ok(executable, 'Set MERCH_TEST_BROWSER to a local Chromium/Edge executable');
 const base = '/api/v1/clubs/merch-fixture/merch';
 const token = 'a'.repeat(64);
+const fanSession = 'fixture-fan-session';
 const receivedBodies = [];
 const settings = {
   enabled: true, visible: true, online_enabled: true, offline_enabled: true,
@@ -44,21 +45,24 @@ const fixture = {
   configureServer(server) {
     server.middlewares.use(async (request, response, next) => {
       const route = new URL(request.url, 'http://localhost').pathname;
+      const registered = request.headers['x-fan-session'] === fanSession;
       if (!route.startsWith('/api/')) return next();
       if (route === '/api/v1/club-domain') return reply(response, 204);
       if (route === '/api/organization-theme') return reply(response, 200, { name: 'Società di prova', primary_color: '#234eb0' });
-      if (route === '/api/fan/me') return reply(response, 200, { registered: false });
+      if (route === '/api/fan/me') return reply(response, 200, registered ? {
+        registered, user: { nickname: 'CurvaBlu', phone: '+39012345678' },
+      } : { registered });
       if (route === base) return reply(response, 200, { settings, products });
       if (route === base + '/events') return reply(response, 204);
       if (route === base + '/quote') return reply(response, 200, quote);
       if (route === base + '/orders') {
-        if (request.method === 'GET') return reply(response, 200, { orders: [] });
+        if (request.method === 'GET') return reply(response, 200, { orders: registered ? [order] : [] });
         const chunks = [];
         for await (const chunk of request) chunks.push(chunk);
         receivedBodies.push(JSON.parse(Buffer.concat(chunks).toString()));
-        return reply(response, 201, { order, access_token: token });
+        return reply(response, 201, registered ? { order } : { order, access_token: token });
       }
-      if (route === base + '/orders/' + order.id && request.headers['x-merch-access'] === token) {
+      if (route === base + '/orders/' + order.id && (registered || request.headers['x-merch-access'] === token)) {
         return reply(response, 200, { order });
       }
       return reply(response, 404, { message: 'Fixture non disponibile' });
@@ -140,9 +144,9 @@ try {
   assert.equal(await run('document.querySelector(".product-detail .primary").disabled'), true);
   await run('document.querySelector(".variant-list button:not(:disabled)").click()');
   await run('document.querySelector(".product-detail .primary").click()');
-  await waitFor(() => run('Boolean(document.querySelector(".quote .grand-total"))'), 'offline quote');
+  await waitFor(() => run('Boolean(document.querySelector(".quote .grand-total") && document.querySelector("[autocomplete=given-name]"))'), 'offline guest form and quote');
   await run(`
-    for (const [selector, value] of [['[autocomplete=name]', 'Tifoso di prova'], ['input[type=email]', 'tifoso@example.invalid']]) {
+    for (const [selector, value] of [['[autocomplete=given-name]', 'Anna'], ['[autocomplete=family-name]', 'Rossi'], ['input[type=email]', 'tifoso@example.invalid']]) {
       const input = document.querySelector(selector);
       input.value = value;
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -152,13 +156,27 @@ try {
   await waitFor(() => run('document.body.innerText.includes("Prenotazione ricevuta")'), 'unpaid receipt');
   assert.equal(await run('document.body.innerText.includes("Pagamento da effettuare al club")'), true);
   assert.equal(receivedBodies.length, 1);
+  assert.equal(receivedBodies[0].name, 'Anna Rossi');
+  assert.equal(receivedBodies[0].email, 'tifoso@example.invalid');
   assert.equal(receivedBodies[0].expected_total_cents, 3200);
   assert.equal(receivedBodies[0].items[0].variant_id, 'm');
+  await run(`localStorage.setItem('fan:merch-fixture:session_token', ${JSON.stringify(fanSession)})`);
   await send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 850, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: shop + '/fixture-shirt' });
   await waitFor(() => run('Boolean(document.querySelector("dialog[open]"))'), 'desktop product deep link');
   assert.equal(await run('document.querySelector("dialog").getBoundingClientRect().width < innerWidth'), true);
-  console.log('Browser merch QA passed: mobile guest reservation and desktop product dialog.');
+  await run('document.querySelector(".variant-list button:not(:disabled)").click()');
+  await run('document.querySelector(".product-detail .primary").click()');
+  await waitFor(() => run('document.querySelector(".checkout-form")?.innerText.includes("Prenoti come CurvaBlu") && Boolean(document.querySelector(".quote .grand-total"))'), 'authenticated reservation review');
+  assert.equal(await run('document.querySelectorAll(".checkout-form input, .checkout-form textarea").length'), 0);
+  await run('document.querySelector(".checkout-form button[type=submit]").click()');
+  await waitFor(() => run('document.body.innerText.includes("Prenotazione ricevuta")'), 'authenticated receipt');
+  assert.equal(receivedBodies.length, 2);
+  assert.equal(receivedBodies[1].use_fan_profile, true);
+  assert.equal(receivedBodies[1].name, undefined);
+  assert.equal(receivedBodies[1].phone, undefined);
+  assert.equal(receivedBodies[1].email, undefined);
+  console.log('Browser merch QA passed: mobile guest reservation and desktop profile reservation.');
 } finally {
   socket?.close();
   if (browser && browser.exitCode === null && !browser.killed) browser.kill();

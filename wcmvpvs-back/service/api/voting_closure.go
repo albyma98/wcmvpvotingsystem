@@ -82,14 +82,24 @@ func (rt *_router) getVotingClosure(w http.ResponseWriter, r *http.Request, ctx 
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	reservations, err := rt.listMerchMatchReservations(r.Context(), ctx.OrganizationID, id)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot load voting closure reservations")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	for i := range notifications {
 		notifications[i].Phone = maskPhone(notifications[i].Phone)
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	type closureSummary struct {
+		database.VotingClosure
+		MerchReservations []merchMatchReservation `json:"merch_reservations"`
+	}
 	_ = writeJSON(w, http.StatusOK, struct {
-		Summary       database.VotingClosure        `json:"summary"`
+		Summary       closureSummary                `json:"summary"`
 		Notifications []database.VotingNotification `json:"notifications"`
-	}{summary, notifications})
+	}{closureSummary{summary, reservations}, notifications})
 }
 
 func (rt *_router) retryVotingNotifications(w http.ResponseWriter, r *http.Request, ctx reqcontext.RequestContext) {

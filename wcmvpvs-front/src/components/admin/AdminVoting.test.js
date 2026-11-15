@@ -5,12 +5,13 @@ import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc';
 import * as Vue from 'vue';
 import * as VueSSR from 'vue/server-renderer';
 
-function compileComponent(filename) {
+function compileComponent(filename, components = {}) {
   const { descriptor } = parse(readFileSync(new URL(filename, import.meta.url), 'utf8'));
   const compiled = compileScript(descriptor, { id: filename });
   const script = compiled.content.replace(/^import .* from .*\r?\n/gm, '').replace('export default', 'return');
-  const create = new Function('Vue', 'apiClient', 'onUnmounted', 'setTimeout', 'clearTimeout',
+  const setup = new Function('Vue', 'apiClient', 'onUnmounted', 'setTimeout', 'clearTimeout', ...Object.keys(components),
     `const { computed, reactive, ref, watch } = Vue; ${script}`);
+  const create = (vue, api, onUnmounted, setTimeout, clearTimeout) => setup(vue, api, onUnmounted, setTimeout, clearTimeout, ...Object.values(components));
   const template = compileTemplate({ source: descriptor.template.content, id: filename, ssr: true, ssrCssVars: [], compilerOptions: { bindingMetadata: compiled.bindings } });
   assert.deepEqual(template.errors, []);
   const helpers = {};
@@ -25,7 +26,10 @@ function compileComponent(filename) {
 }
 
 const settingsComponent = compileComponent('./AdminVotingSettings.vue');
-const closureComponent = compileComponent('./AdminVotingClosure.vue');
+const merchComponent = compileComponent('./VotingMerchReservations.vue');
+const closureComponent = compileComponent('./AdminVotingClosure.vue', {
+  VotingMerchReservations: { ...merchComponent.create(Vue), ssrRender: merchComponent.render },
+});
 const settle = async () => { await new Promise(resolve => setImmediate(resolve)); await Vue.nextTick(); };
 
 function fixture(t, compiled, apiClient, initialProps) {
@@ -253,6 +257,26 @@ test('closing status polls queued organizer messages, displays real codes and st
   assert.match(rendered, /62,50%/);
   assert.match(rendered, /0007/);
   assert.match(rendered, /Accettato da Twilio/);
+});
+
+test('the closure summary shows the uniform reservations under the match results', async t => {
+  const data = closureData('submitted');
+  const { state, html } = fixture(t, closureComponent, { get: async () => ({ data }) }, { eventId: 9 });
+  await settle();
+  assert.doesNotMatch(await html(), /PRENOTAZIONI? DIVISE/);
+
+  data.summary.merch_reservations = [];
+  await state.load();
+  assert.match(await html(), /0007.*<h4[^>]*>NESSUNA PRENOTAZIONE DIVISE<\/h4>/);
+
+  data.summary.merch_reservations = [
+    { id: 'fan-reservation', name: 'TifosaRossa' },
+    { id: 'guest-reservation', name: 'Mario Verdi' },
+  ];
+  await state.load();
+  const rendered = await html();
+  assert.match(rendered, /0007.*<h4[^>]*>PRENOTAZIONI DIVISE EFFETTUATE<\/h4>.*<li>TifosaRossa<\/li><li>Mario Verdi<\/li>/);
+  assert.doesNotMatch(rendered, /NESSUNA PRENOTAZIONE DIVISE/);
 });
 
 test('retrying a failed message uses only the notification endpoint and never closes or redraws the event', async t => {

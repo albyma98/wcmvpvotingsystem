@@ -149,7 +149,7 @@ function sheetHistoryFixture() {
   };
 }
 
-function checkoutFixture(t, { mode = 'offline', api, profile = { ok: false } }) {
+function checkoutFixture(t, { mode = 'offline', api, profile = { ok: true, data: { registered: false } } }) {
   const mounted = [];
   const fixture = setupSfc(new URL('./MerchCheckout.vue', import.meta.url), {
     vue: { ...testVue, onMounted: callback => mounted.push(callback) },
@@ -164,7 +164,7 @@ function checkoutFixture(t, { mode = 'offline', api, profile = { ok: false } }) 
   return { ...fixture, mount: async () => { for (const callback of mounted) await callback(); await nextTick(); } };
 }
 
-test('offline uses a verified profile phone and retries exactly the submitted snapshot after a lost response', async t => {
+test('offline uses the fan profile without contact fields and retries the same request after a lost response', async t => {
   const requests = [];
   const fixture = checkoutFixture(t, {
     api: {
@@ -175,22 +175,52 @@ test('offline uses a verified profile phone and retries exactly the submitted sn
         return { order: { id: 'abc', mode: 'offline', payment_status: 'UNPAID_OFFLINE' } };
       },
     },
-    profile: { ok: true, data: { registered: true, user: { phone: '+39012345678', phone_verified_at: 'verified' } } },
+    profile: { ok: true, data: { registered: true, user: { nickname: 'CurvaBlu', phone: '+39012345678' } } },
   });
   const { state } = fixture;
   await fixture.mount();
-  assert.equal(state.contactField.value, 'phone');
-  assert.equal(state.contact.phone, '+39012345678');
-  state.contact.name = 'Tifoso Test';
+  assert.equal(state.profileNickname.value, 'CurvaBlu');
+  assert.equal(state.collectContact.value, false);
   await state.submit();
   assert.equal(state.uncertain.value, true);
-  state.contact.name = 'Changed after submission';
   await state.submit();
   assert.deepEqual(requests[0], requests[1]);
   assert.equal(requests[0].expected_total_cents, 3900);
-  assert.equal(requests[0].phone, '+39012345678');
+  assert.equal(requests[0].use_fan_profile, true);
+  assert.equal(requests[0].name, undefined);
+  assert.equal(requests[0].phone, undefined);
+  assert.equal(requests[0].email, undefined);
   assert.equal(requests[0].address, undefined);
   assert.equal(fixture.events.find(event => event[0] === 'created')[1].order.payment_status, 'UNPAID_OFFLINE');
+
+  state.fulfillment.value = 'shipping';
+  state.contact.address = 'Via Roma 10, 00100 Roma, Italia';
+  await nextTick();
+  await state.submit();
+  assert.equal(requests[2].use_fan_profile, true);
+  assert.equal(requests[2].name, undefined);
+  assert.equal(requests[2].address, 'Via Roma 10, 00100 Roma, Italia');
+});
+
+test('an offline guest sends first and last name together with the selected contact', async t => {
+  const requests = [];
+  const fixture = checkoutFixture(t, {
+    api: {
+      fetchMerchQuote: async () => ({ total_cents: 3900, items: [] }),
+      createMerchOrder: async (slug, payload) => { requests.push(payload); return { order: { id: 'guest-order' } }; },
+    },
+  });
+  await fixture.mount();
+  const { state } = fixture;
+  assert.equal(state.collectContact.value, true);
+  state.contact.givenName = 'Anna';
+  state.contact.familyName = 'Rossi';
+  state.contact.phone = '+39 0123 45678';
+  state.preferredContact.value = 'phone';
+  await state.submit();
+  assert.equal(requests[0].name, 'Anna Rossi');
+  assert.equal(requests[0].phone, '+39012345678');
+  assert.equal(requests[0].use_fan_profile, undefined);
 });
 
 test('online pickup sends a minimal guest request, requires reconfirmation after repricing and returns the hosted URL', async t => {

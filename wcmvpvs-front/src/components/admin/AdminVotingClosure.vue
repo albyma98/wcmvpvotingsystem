@@ -14,6 +14,7 @@
         </li>
       </ol>
       <p v-for="warning in summary.warnings" :key="warning" class="notice">{{ warning }}</p>
+      <VotingMerchReservations :reservations="summary.merch_reservations" heading="h4" />
       <h4>Riepilogo WhatsApp agli organizzatori</h4>
       <p v-if="!notifications.length" class="muted">Nessun destinatario abilitato al momento della chiusura. Puoi configurarli nella dashboard.</p>
       <ul v-else class="notifications" aria-live="polite">
@@ -34,6 +35,7 @@
 <script setup>
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { apiClient } from '../../api';
+import VotingMerchReservations from './VotingMerchReservations.vue';
 
 const props = defineProps({ eventId: { type: Number, required: true }, authHeaders: { type: Object, required: true } });
 const emit = defineEmits(['unauthorized']);

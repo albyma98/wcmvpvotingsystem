@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/api/reqcontext"
 	"github.com/albyma98/wcmvpvotingsystem/wcmvpvs-back/service/database"
@@ -81,6 +82,9 @@ func votingAPIFixture(t *testing.T) (*_router, reqcontext.RequestContext, int, i
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
 	rt := &_router{db: db, baseLogger: logger, twilioMessaging: newTwilioMessagingClient(twilioMessagingConfig{AccountSID: "ACtest", AuthToken: "test", WhatsAppMessagingServiceSID: "MGtest"})}
+	if err := rt.ensureMerchMigration(); err != nil {
+		t.Fatal(err)
+	}
 	return rt, reqcontext.RequestContext{OrganizationID: club.ID, OrganizationSlug: club.Slug, AdminRole: "superadmin", Logger: logger}, int(event), other.ID
 }
 
@@ -163,13 +167,80 @@ func TestVotingClosureAPIStaffClosesAndTwilioReceivesCompanyTemplate(t *testing.
 		t.Fatal("repeated close resent messages")
 	}
 	w = votingAPIRequest(rt, ctx, event, http.MethodGet, "", rt.getVotingClosure)
-	if w.Code != 200 || strings.Contains(w.Body.String(), "+393331234567") || !strings.Contains(w.Body.String(), `"status":"submitted"`) {
+	if w.Code != 200 || strings.Contains(w.Body.String(), "+393331234567") ||
+		!strings.Contains(w.Body.String(), `"status":"submitted"`) || !strings.Contains(w.Body.String(), `"merch_reservations":[]`) {
 		t.Fatalf("status/phone privacy: %d %s", w.Code, w.Body.String())
 	}
 	ctx.OrganizationID = other
 	w = votingAPIRequest(rt, ctx, event, http.MethodGet, "", rt.getVotingClosure)
 	if w.Code < 400 {
 		t.Fatalf("another society read results: %d", w.Code)
+	}
+}
+
+func TestVotingClosureShowsOnlyCurrentMatchMerchReservations(t *testing.T) {
+	rt, ctx, event, _ := votingAPIFixture(t)
+	conn := rt.db.SQLConn()
+	var fanID int
+	if err := conn.QueryRow("SELECT id FROM fan_profiles WHERE organization_id=? AND nickname='Fan 1'", ctx.OrganizationID).Scan(&fanID); err != nil {
+		t.Fatal(err)
+	}
+	result, err := conn.Exec(`INSERT INTO events(organization_id,team1_id,team2_id,start_datetime)
+		SELECT organization_id,team1_id,team2_id,'2026-11-25T18:00:00Z' FROM events WHERE id=?`, event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherEvent, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().Unix()
+	for i, order := range []struct {
+		id, name, mode, payment, fulfillment string
+		matchID                              int
+		fanID                                int
+		expiresAt                            int64
+	}{
+		{"fan", "Previous name", "offline", "PAID_OFFLINE", "COMPLETED", event, fanID, now - 3600},
+		{"guest", "Anna Bianchi", "offline", "UNPAID_OFFLINE", "PENDING", event, 0, now + 3600},
+		{"online", "Compra Online", "online", "PAID", "COMPLETED", event, 0, now + 3600},
+		{"expired", "Scaduta", "offline", "UNPAID_OFFLINE", "PENDING", event, 0, now - 3600},
+		{"cancelled", "Annullata", "offline", "UNPAID_OFFLINE", "CANCELLED", event, 0, now + 3600},
+		{"different-match", "Altra partita", "offline", "UNPAID_OFFLINE", "PENDING", int(otherEvent), 0, now + 3600},
+	} {
+		if _, err := conn.Exec(`INSERT INTO merch_orders(id,organization_id,request_id,request_hash,code,fan_id,name,email,phone,address,notes,mode,payment_status,
+			fulfillment_status,fulfillment,stock_status,subtotal_cents,shipping_cents,total_cents,currency,instructions,created_at,expires_at)
+			VALUES(?,?,?,?,?,NULLIF(?,0),?,'guest@example.test','+391234567890','','',?,?,?,'pickup','HELD',100,0,100,'EUR','{}',?,?)`,
+			order.id, ctx.OrganizationID, order.id, "", order.id, order.fanID, order.name, order.mode, order.payment, order.fulfillment,
+			now-60+int64(i), order.expiresAt); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := conn.Exec("INSERT INTO merch_match_orders(organization_id,event_id,order_id) VALUES(?,?,?)", ctx.OrganizationID, order.matchID, order.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if w := votingAPIRequest(rt, ctx, event, http.MethodPost, "", rt.closeEventVoting); w.Code != http.StatusOK {
+		t.Fatalf("close votes: %d %s", w.Code, w.Body.String())
+	}
+	w := votingAPIRequest(rt, ctx, event, http.MethodGet, "", rt.getVotingClosure)
+	if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "no-store" ||
+		strings.Contains(w.Body.String(), "guest@example.test") || strings.Contains(w.Body.String(), "+391234567890") {
+		t.Fatalf("voting closure: %d %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Summary struct {
+			MVPName           string                  `json:"mvp_name"`
+			MerchReservations []merchMatchReservation `json:"merch_reservations"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	reservations := body.Summary.MerchReservations
+	if body.Summary.MVPName != "Mario Rossi" || len(reservations) != 2 ||
+		reservations[0] != (merchMatchReservation{ID: "fan", Name: "Fan 1"}) ||
+		reservations[1] != (merchMatchReservation{ID: "guest", Name: "Anna Bianchi"}) {
+		t.Fatalf("voting closure summary: %+v", body.Summary)
 	}
 }
 

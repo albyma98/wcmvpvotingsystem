@@ -39,6 +39,7 @@ type merchCheckoutInput struct {
 	RequestID          string      `json:"request_id"`
 	ExpectedTotalCents *int64      `json:"expected_total_cents"`
 	MatchID            int         `json:"match_id,omitempty"`
+	UseFanProfile      bool        `json:"use_fan_profile,omitempty"`
 	matchDeviceKey     string
 }
 
@@ -234,6 +235,14 @@ func (rt *_router) merchFan(r *http.Request, org int) (database.FanProfile, erro
 }
 
 func validateMerchContact(in *merchCheckoutInput, settings merchSettings, fan database.FanProfile) error {
+	profilePhone, validProfilePhone := normalizeE164(fan.Phone)
+	profileReservation := in.Mode == "offline" && fan.ID > 0 && strings.TrimSpace(fan.Nickname) != "" && validProfilePhone
+	if in.UseFanProfile && !profileReservation {
+		return merchConflict("Il profilo tifoso deve avere un nickname e un numero di telefono valido")
+	}
+	if profileReservation {
+		in.Name, in.Phone, in.Email = fan.Nickname, profilePhone, ""
+	}
 	for _, field := range []struct {
 		text *string
 		max  int
@@ -251,7 +260,7 @@ func validateMerchContact(in *merchCheckoutInput, settings merchSettings, fan da
 	if in.Phone == "" && fan.PhoneVerifiedAt != "" {
 		in.Phone = fan.Phone
 	}
-	if in.Phone != "" {
+	if in.Phone != "" && !profileReservation {
 		phone, ok := normalizeE164(in.Phone)
 		if !ok {
 			return merchInvalid("Numero di telefono non valido. Indica il prefisso internazionale.")
@@ -264,7 +273,7 @@ func validateMerchContact(in *merchCheckoutInput, settings merchSettings, fan da
 	if in.Fulfillment == "shipping" && (in.Address == "" || in.Name == "" || (in.Mode == "online" && in.Email == "")) {
 		return merchInvalid("Inserisci i dati per la spedizione")
 	}
-	if in.Mode == "offline" {
+	if in.Mode == "offline" && !profileReservation {
 		if in.Name == "" {
 			return merchInvalid("Inserisci nome e cognome")
 		}
@@ -392,6 +401,14 @@ func (rt *_router) createMerchOrder(ctx context.Context, org int, account string
 	var order merchOrder
 	if !merchRequestID.MatchString(in.RequestID) || in.ExpectedTotalCents == nil {
 		return order, merchInvalid("Riepilogo o identificativo richiesta mancante")
+	}
+	if in.UseFanProfile {
+		if in.Mode != "offline" {
+			return order, merchInvalid("La conferma con il profilo tifoso è disponibile per le prenotazioni")
+		}
+		if fan.ID == 0 {
+			return order, merchError{http.StatusUnauthorized, "Accedi di nuovo al profilo tifoso per confermare la prenotazione"}
+		}
 	}
 	// Matchday attribution is independent of checkout idempotency. A request
 	// retried with an expired measurement grant still resumes the original order.

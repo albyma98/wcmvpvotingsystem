@@ -200,8 +200,9 @@ func (rt *_router) postMerchOrder(w http.ResponseWriter, r *http.Request, org da
 		validateMatchdayRequestEvent(r, in.MatchID)
 		if rt.merchMatchdayGrantMatches(r, org.ID, in.MatchID) {
 			in.matchDeviceKey = rt.matchdayRequestDeviceKey(r, org.ID)
-		} else {
-			// An expired measurement grant must not block a purchase.
+		} else if in.Mode != "offline" {
+			// Only reservations need the match in the closing summary. The
+			// order transaction verifies the match belongs to the club.
 			in.MatchID = 0
 		}
 	}
