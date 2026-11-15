@@ -225,10 +225,22 @@ func scanMerchProduct(row merchScanner) (p merchProduct, err error) {
 	return
 }
 
-func queryMerchProducts(ctx context.Context, q merchQuerier, org int, slug string, settings merchSettings, public bool) ([]merchProduct, error) {
+type merchCatalogScope int
+
+const (
+	merchAdminCatalog merchCatalogScope = iota
+	merchPublicCatalog
+	merchFeaturedCatalog
+)
+
+func queryMerchProducts(ctx context.Context, q merchQuerier, org int, slug string, settings merchSettings, scope merchCatalogScope) ([]merchProduct, error) {
+	public := scope != merchAdminCatalog
 	query := "SELECT " + merchProductColumns + " FROM merch_products WHERE organization_id=? AND archived=0"
 	if public {
 		query += " AND published=1"
+	}
+	if scope == merchFeaturedCatalog {
+		query += " AND featured=1"
 	}
 	rows, err := q.QueryContext(ctx, query+" ORDER BY featured DESC,position,name,id", org)
 	if err != nil {
@@ -244,6 +256,9 @@ func queryMerchProducts(ctx context.Context, q merchQuerier, org int, slug strin
 		p.OnlineEnabled, p.OfflineEnabled = merchModes(settings, p.SaleMode)
 		if !public || p.OnlineEnabled || p.OfflineEnabled {
 			products = append(products, p)
+			if scope == merchFeaturedCatalog {
+				break
+			}
 		}
 	}
 	err = rows.Err()

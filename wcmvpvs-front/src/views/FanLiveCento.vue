@@ -88,11 +88,13 @@
               <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z"/></svg></span>
               <span class="shortcut-copy"><b>Gioca</b><span>{{ highlightPlay && featuredMission ? 'Continua a guadagnare monete' : 'Sfide e quiz' }}</span></span>
             </button>
-            <FanMerchLink class="home-shortcut" :slug="organizationSlug" :event-id="eventId" :matchday-ready="initialDataReady" sheet @open="openMerchShop">
+            <FanMerchLink class="home-shortcut" :slug="organizationSlug" :event-id="eventId" :matchday-ready="initialDataReady" sheet include-featured
+              @open="openMerchShop" @featured="featuredMerch = $event">
               <span class="home-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l2 13H3L5 8Z"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
               <span class="shortcut-copy"><b>Shop</b><span>Merch ufficiale</span></span>
             </FanMerchLink>
           </div>
+          <FanMerchFeatured v-if="featuredMerch" :product="featuredMerch" @open="openMerchShop" />
 
           <Transition name="home-slot" mode="out-in" @after-enter="focusFeedbackThanks">
             <section v-if="hasFeedbackSurvey && !hasSubmittedFeedback" key="inline-feedback" :ref="observeFeedbackInvitation" class="feedback-cta feedback-inline" aria-labelledby="inline-feedback-title" :aria-busy="feedbackSaving">
@@ -737,6 +739,7 @@ import FanCollectionPanel from '../components/FanCollectionPanel.vue';
 import FanAvatar from '../components/FanAvatar.vue';
 import FanMatchCard from '../components/FanMatchCard.vue';
 import FanMerchLink from '../merch/FanMerchLink.vue';
+import FanMerchFeatured from '../merch/FanMerchFeatured.vue';
 const MatchChatEntry = defineAsyncComponent(() => import('../match-chat/MatchChatEntry.vue'));
 const FanMerchShop = defineAsyncComponent(() => import('../merch/FanMerchShop.vue'));
 const FanRegistrationPromptModal = defineAsyncComponent(() => import('../components/FanRegistrationPromptModal.vue'));
@@ -1241,9 +1244,10 @@ const homeName = computed(() =>
   String(organizationName.value || props.activeEvent?.organization_name || '').trim() || 'Società',
 );
 const merchRequest = ref(null);
-function openMerchShop(trigger) {
+const featuredMerch = ref(null);
+function openMerchShop(trigger, productId) {
   sheetRevision += 1;
-  merchRequest.value = { trigger };
+  merchRequest.value = { trigger, productId };
 }
 watch(() => [props.organizationSlug, props.eventId], () => { merchRequest.value = null; });
 const homeBadge = computed(() => initials(homeName.value));

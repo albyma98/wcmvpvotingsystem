@@ -197,6 +197,50 @@ func TestMerchAdminCatalogUploadAndTenantIsolation(t *testing.T) {
 	merchRequest(t, h, "GET", mediaPath, nil, nil, 404)
 }
 
+func TestMerchFeaturedSummaryUsesFirstPublicFeaturedProduct(t *testing.T) {
+	f := newMerchTestFixture(t)
+	settings := defaultMerchSettings()
+	settings.Enabled = true
+	settings.Visible = false
+	f.settings(t, f.org.ID, settings)
+	promo := int64(2400)
+	products := []merchProduct{
+		{Name: "Non in evidenza", Published: true},
+		{Name: "Bozza", Featured: true},
+		{Name: "Solo online", Published: true, Featured: true, SaleMode: "online"},
+		{Name: "Secondo", Published: true, Featured: true, Position: 2},
+		{Name: "Primo", Published: true, Featured: true, Position: 1, PromoPriceCents: &promo},
+	}
+	for i := range products {
+		p := &products[i]
+		p.PriceCents, p.Stock, p.MaxQuantity = 3200, 3, 2
+		if err := f.rt.saveMerchProduct(context.Background(), f.org.ID, f.org.Slug, "", p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := "/v1/clubs/" + f.org.Slug + "/merch?summary=1"
+	readSummary := func(path string) *merchProduct {
+		t.Helper()
+		var summary struct {
+			Featured *merchProduct `json:"featured_product"`
+		}
+		merchDecode(t, merchRequest(t, f.rt.router, http.MethodGet, path, nil, nil, http.StatusOK), &summary)
+		return summary.Featured
+	}
+	if product := readSummary(path + "&featured=1"); product == nil || product.ID != products[4].ID ||
+		product.PromoPriceCents == nil || *product.PromoPriceCents != promo || !product.OfflineEnabled {
+		t.Fatalf("unexpected featured product: %+v", product)
+	}
+	if product := readSummary(path); product != nil {
+		t.Fatalf("unexpected product in navigation summary: %+v", product)
+	}
+	settings.Enabled = false
+	f.settings(t, f.org.ID, settings)
+	if product := readSummary(path + "&featured=1"); product != nil {
+		t.Fatalf("disabled shop returned a featured product: %+v", product)
+	}
+}
+
 func TestMerchGuestQuoteOrderRecoveryOfflinePaymentAndAnalytics(t *testing.T) {
 	f := newMerchTestFixture(t)
 	p := f.product(t, 3)

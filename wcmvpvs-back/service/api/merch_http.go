@@ -107,17 +107,14 @@ func (rt *_router) getMerchCatalog(w http.ResponseWriter, r *http.Request, org d
 		return
 	}
 	settings.SMSNotifications = false
-	if r.URL.Query().Get("summary") == "1" {
-		if matchID, err := strconv.Atoi(r.URL.Query().Get("match_id")); err == nil && matchID > 0 {
-			if rt.merchMatchdayGrantMatches(r, org.ID, matchID) {
-				rt.markMerchMatchCoverage(r.Context(), org.ID, matchID, settings.Enabled && settings.Visible)
-			}
-		}
-		_ = writeJSON(w, http.StatusOK, map[string]interface{}{"settings": map[string]bool{"enabled": settings.Enabled, "visible": settings.Visible}})
-		return
+	params := r.URL.Query()
+	summaryOnly := params.Get("summary") == "1"
+	scope := merchPublicCatalog
+	if summaryOnly {
+		scope = merchFeaturedCatalog
 	}
 	products := []merchProduct{}
-	if settings.Enabled {
+	if settings.Enabled && (!summaryOnly || params.Get("featured") == "1") {
 		if settings.OnlineEnabled {
 			_, status := rt.merchStripeStatus(r.Context(), org.Slug)
 			settings.OnlineEnabled = status == "READY"
@@ -125,11 +122,22 @@ func (rt *_router) getMerchCatalog(w http.ResponseWriter, r *http.Request, org d
 				settings.DefaultMode = "offline"
 			}
 		}
-		products, err = queryMerchProducts(r.Context(), rt.db.SQLConn(), org.ID, org.Slug, settings, true)
+		products, err = queryMerchProducts(r.Context(), rt.db.SQLConn(), org.ID, org.Slug, settings, scope)
 		if err != nil {
 			rt.writeMerchError(w, err)
 			return
 		}
+	}
+	if summaryOnly {
+		summary := map[string]interface{}{"settings": map[string]bool{"enabled": settings.Enabled, "visible": settings.Visible}}
+		if len(products) > 0 {
+			summary["featured_product"] = products[0]
+		}
+		if matchID, err := strconv.Atoi(params.Get("match_id")); err == nil && matchID > 0 && rt.merchMatchdayGrantMatches(r, org.ID, matchID) {
+			rt.markMerchMatchCoverage(r.Context(), org.ID, matchID, (settings.Enabled && settings.Visible) || len(products) > 0)
+		}
+		_ = writeJSON(w, http.StatusOK, summary)
+		return
 	}
 	_ = writeJSON(w, http.StatusOK, map[string]interface{}{"settings": settings, "products": products})
 }
@@ -350,7 +358,7 @@ func (rt *_router) getAdminMerchProducts(w http.ResponseWriter, r *http.Request,
 		rt.writeMerchError(w, err)
 		return
 	}
-	products, err := queryMerchProducts(r.Context(), conn, ctx.OrganizationID, ctx.OrganizationSlug, settings, false)
+	products, err := queryMerchProducts(r.Context(), conn, ctx.OrganizationID, ctx.OrganizationSlug, settings, merchAdminCatalog)
 	if err != nil {
 		rt.writeMerchError(w, err)
 		return
@@ -715,7 +723,7 @@ func loadMerchAnalytics(ctx context.Context, q merchQuerier, org int, slug strin
 	if err != nil {
 		return a, err
 	}
-	products, err := queryMerchProducts(ctx, q, org, slug, merchSettings{}, false)
+	products, err := queryMerchProducts(ctx, q, org, slug, merchSettings{}, merchAdminCatalog)
 	if err != nil {
 		return a, err
 	}

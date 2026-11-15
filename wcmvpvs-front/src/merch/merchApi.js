@@ -17,13 +17,13 @@ const options = (slug, config = {}) => ({
 export const fetchMerchCatalog = async (slug, signal) =>
   (await apiClient.get(merchPath(slug), options(slug, { signal }))).data;
 
-export async function fetchMerchVisibility(slug, signal, eventId) {
+export async function fetchMerchSummary(slug, signal, eventId, includeFeatured) {
   const { data } = await apiClient.get(merchPath(slug), {
-    params: { summary: 1, ...(eventId > 0 ? { match_id: eventId } : {}) },
+    params: { summary: 1, ...(includeFeatured ? { featured: 1 } : {}), ...(eventId > 0 ? { match_id: eventId } : {}) },
     signal,
     timeout: 7000,
   });
-  return Boolean(data?.settings?.enabled && data.settings.visible);
+  return data;
 }
 
 export const fetchMerchQuote = async (slug, payload, signal) =>

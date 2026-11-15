@@ -25,20 +25,42 @@ test('the fan portal exposes only valid shop, product and personal-order routes'
 
 test('merch visibility is measured when the page obtains its match grant', async () => {
   const calls = [];
-  const { props, scope } = setupSfc(new URL('./FanMerchLink.vue', import.meta.url), {
+  let enabled = true;
+  const { props, scope, events } = setupSfc(new URL('./FanMerchLink.vue', import.meta.url), {
     vue: testVue,
-    './merchApi': { fetchMerchVisibility: async (slug, signal, matchId) => { calls.push({ slug, signal, matchId }); return true; } },
+    './merchApi': { fetchMerchSummary: async (slug, signal, matchId, includeFeatured) => {
+      calls.push({ slug, signal, matchId, includeFeatured });
+      return { settings: { enabled, visible: false }, featured_product: maglia };
+    } },
     './shopModel': shop,
-  }, { slug: 'home', eventId: 42, matchdayReady: false, sheet: true }, { window: {} });
+  }, { slug: 'home', eventId: 42, matchdayReady: false, sheet: true, includeFeatured: true }, { window: {} });
   try {
     props.matchdayReady = true;
     await nextTick();
     assert.deepEqual(calls.map(({ slug, matchId }) => [slug, matchId]), [['home', 0], ['home', 42]]);
     assert.equal(calls[0].signal.aborted, true);
     assert.equal(calls[1].signal.aborted, false);
+    assert.equal(calls[0].includeFeatured, false);
+    assert.equal(calls[1].includeFeatured, true);
+    await nextTick();
+    assert.deepEqual(events.at(-1), ['featured', maglia]);
+    enabled = false;
+    props.eventId = 43;
+    await nextTick();
+    await nextTick();
+    assert.deepEqual(events.at(-1), ['featured', null]);
   } finally {
     scope.stop();
   }
+});
+
+test('featured pricing shows the list price when the advertised price uses the promotion', () => {
+  assert.deepEqual(shop.merchPriceSummary(maglia), { label: shop.merchMoney(3900), originalCents: 4500 });
+  const variants = [...maglia.variants, { id: 's', price_cents: 3800 }];
+  assert.deepEqual(shop.merchPriceSummary({ ...maglia, variants }), {
+    label: `Da ${shop.merchMoney(3800)}`, originalCents: null,
+  });
+  assert.deepEqual(shop.merchPriceSummary(sciarpa), { label: shop.merchMoney(1800), originalCents: null });
 });
 
 test('filters, held stock, variant overrides and combined cart modes follow public catalog data', () => {

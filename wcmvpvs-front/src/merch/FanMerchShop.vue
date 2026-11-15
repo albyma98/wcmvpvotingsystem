@@ -81,7 +81,7 @@
                     <small v-if="!sheet && item.category">{{ item.category }}</small>
                     <component :is="sheet ? 'span' : 'h2'" class="card-name">{{ item.name }}</component>
                     <span v-if="!sheet && item.short_description" class="card-description">{{ item.short_description }}</span>
-                    <span class="card-price"><span>{{ cardPrice(item) }}</span><span v-if="!sheet && !isAvailable(item)" class="muted">Esaurito</span></span>
+                  <span class="card-price"><span>{{ merchPriceSummary(item).label }}</span><span v-if="!sheet && !isAvailable(item)" class="muted">Esaurito</span></span>
                   </span>
                 </component>
               </div>
@@ -150,7 +150,7 @@
                   <p v-if="!sheet && product.short_description">{{ product.short_description }}</p>
                 </div>
                 <div class="detail-price">
-                  <strong>{{ variant || !product.variants?.length ? merchMoney(merchUnitPrice(product, variant)) : cardPrice(product) }}</strong>
+                  <strong>{{ variant || !product.variants?.length ? merchMoney(merchUnitPrice(product, variant)) : merchPriceSummary(product).label }}</strong>
                   <del v-if="product.promo_price_cents != null && variant?.price_cents == null && !product.variants?.length">{{ merchMoney(product.price_cents) }}</del>
                   <span class="muted">{{ maxQuantity ? (variant?.on_demand || (!variant && product.on_demand) ? 'Su ordinazione' : 'Disponibile') : isAvailable(product) ? 'Scegli una variante' : 'Esaurito' }}</span>
                 </div>
@@ -178,7 +178,13 @@
                 </details>
               </div>
             </section>
-            <p v-else-if="sheet && !checkoutMode" class="empty" role="status">Questo prodotto non è disponibile.</p>
+            <template v-else-if="sheet && !checkoutMode">
+              <p v-if="loading" class="empty" role="status">Caricamento del prodotto…</p>
+              <div v-else-if="catalogError" class="empty" role="alert">
+                <p>{{ catalogError }}</p><button class="secondary" type="button" @click="loadCatalog">Riprova</button>
+              </div>
+              <p v-else class="empty" role="status">Questo prodotto non è disponibile.</p>
+            </template>
           </div>
         </component>
       </div>
@@ -196,8 +202,9 @@ import MerchOrders from './MerchOrders.vue';
 import { fetchMerchCatalog, merchMediaUrl as mediaUrl, merchRequestError, trackMerchEvent } from './merchApi';
 import { createSheetNavigation } from './sheetNavigation';
 import {
-  fanPortalPath, guestOrderFragmentFor, merchItemKey, merchMaxQuantity, merchMoney, merchOptions,
-  merchUnitPrice, merchVariantLabel, saveGuestOrder, selectedMerchProducts, stripeCheckoutUrl,
+  fanPortalPath, guestOrderFragmentFor, isMerchAvailable as isAvailable, merchItemKey, merchMaxQuantity,
+  merchMoney, merchOptions, merchPriceSummary, merchUnitPrice, merchVariantLabel, saveGuestOrder,
+  selectedMerchProducts, stripeCheckoutUrl,
 } from './shopModel';
 
 const props = defineProps({
@@ -353,6 +360,7 @@ function openSheet() {
   sheetTrigger = props.openRequest.trigger;
   sheetScroll.clear();
   sheetNavigation.show({ page: 'shop' });
+  if (props.openRequest.productId) sheetNavigation.show({ page: 'shop', productId: props.openRequest.productId });
   if (props.eventId > 0) recordShopEvent('merch_shop_opened');
   void loadCatalog();
 }
@@ -449,16 +457,6 @@ async function loadCatalog() {
   } finally {
     if (!signal.aborted) loading.value = false;
   }
-}
-
-function isAvailable(item) {
-  return item.variants?.length ? item.variants.some(option => merchMaxQuantity(item, option) > 0) : merchMaxQuantity(item) > 0;
-}
-
-function cardPrice(item) {
-  const prices = item.variants?.length ? item.variants.map(option => merchUnitPrice(item, option)) : [merchUnitPrice(item)];
-  const least = Math.min(...prices);
-  return `${prices.some(price => price !== least) ? 'Da ' : ''}${merchMoney(least)}`;
 }
 
 function observeProduct(element) {

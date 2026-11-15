@@ -46,6 +46,7 @@ function renderHome({ state, props }) {
   const app = Vue.createSSRApp({ setup: () => ({ ...Vue.proxyRefs(state), ...props }), ssrRender: homeRender });
   app.component('MatchChatEntry', { render: () => Vue.h('button', { 'data-test': 'match-chat' }, 'Chat Live') });
   app.component('FanMerchLink', { render: () => null });
+  app.component('FanMerchFeatured', { render: () => null });
   app.component('MvpPlayerCarousel', { render: () => Vue.h('div', { 'data-test': 'mvp-carousel' }) });
   app.component('FanPlayerCard', { render: () => Vue.h('span', { 'data-test': 'player-card' }) });
   return VueSSR.renderToString(app);

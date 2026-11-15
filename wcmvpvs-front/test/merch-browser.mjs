@@ -22,7 +22,8 @@ const settings = {
 };
 const products = [{
   id: 'fixture-shirt', name: 'Maglia ufficiale di prova', category: 'Abbigliamento', featured: true,
-  stock: 2, max_quantity: 2, price_cents: 3200, online_enabled: true, offline_enabled: true,
+  stock: 2, max_quantity: 2, price_cents: 4000, promo_price_cents: 3200, online_enabled: true, offline_enabled: true,
+  media: [{ url: '/src/assets/team-logo.svg' }],
   variants: [{ id: 'm', size: 'M', color: 'Blu', stock: 2 }, { id: 'l', size: 'L', color: 'Blu', stock: 0 }],
 }];
 const quote = {
@@ -44,7 +45,7 @@ const fixture = {
   name: 'merch-test-fixture',
   configureServer(server) {
     server.middlewares.use(async (request, response, next) => {
-      const route = new URL(request.url, 'http://localhost').pathname;
+      const { pathname: route, searchParams } = new URL(request.url, 'http://localhost');
       const registered = request.headers['x-fan-session'] === fanSession;
       if (!route.startsWith('/api/')) return next();
       if (route === '/api/v1/club-domain') return reply(response, 204);
@@ -52,7 +53,9 @@ const fixture = {
       if (route === '/api/fan/me') return reply(response, 200, registered ? {
         registered, user: { nickname: 'CurvaBlu', phone: '+39012345678' },
       } : { registered });
-      if (route === base) return reply(response, 200, { settings, products });
+      if (route === base) return reply(response, 200, searchParams.get('summary') === '1' ? {
+        settings, ...(searchParams.get('featured') === '1' ? { featured_product: products[0] } : {}),
+      } : { settings, products });
       if (route === base + '/events') return reply(response, 204);
       if (route === base + '/quote') return reply(response, 200, quote);
       if (route === base + '/orders') {
@@ -176,7 +179,22 @@ try {
   assert.equal(receivedBodies[1].name, undefined);
   assert.equal(receivedBodies[1].phone, undefined);
   assert.equal(receivedBodies[1].email, undefined);
-  console.log('Browser merch QA passed: mobile guest reservation and desktop profile reservation.');
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await send('Page.navigate', { url: origin + '/merch-fixture/new' });
+  await waitFor(() => run('Boolean(document.querySelector(".featured-merch img")?.naturalWidth && !document.querySelector(".featured-merch").closest("[inert]"))'), 'featured product on the home');
+  const featured = await run('document.querySelector(".featured-merch").innerText');
+  assert.match(featured, /Maglia ufficiale di prova/);
+  assert.match(featured, /32,00/);
+  assert.match(featured, /Prenota ora, non fartela scappare/);
+  assert.match(await run('document.querySelector(".featured-merch del").innerText'), /40,00/);
+  await run('document.querySelector(".featured-merch").click()');
+  await waitFor(() => run('Boolean(document.querySelector(".merch-sheet[open] .product-detail"))'), 'featured product detail in the home panel');
+  assert.equal(await run('location.pathname'), '/merch-fixture/new');
+  await run('document.querySelector(".merch-sheet button[aria-label=Indietro]").click()');
+  await waitFor(() => run('Boolean(document.querySelector(".merch-sheet[open] .product-card")?.getClientRects().length)'), 'shop catalog after going back');
+  await run(`document.querySelector('.merch-sheet button[aria-label="Chiudi Shop"]').click()`);
+  await waitFor(() => run('!document.querySelector(".merch-sheet[open]") && document.activeElement.matches(".featured-merch")'), 'focus restored to the featured card');
+  console.log('Browser merch QA passed: guest reservation, profile reservation and featured product on the home.');
 } finally {
   socket?.close();
   if (browser && browser.exitCode === null && !browser.killed) browser.kill();

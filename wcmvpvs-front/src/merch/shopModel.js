@@ -21,10 +21,28 @@ export function merchUnitPrice(product, variant) {
   return variant?.price_cents ?? product.promo_price_cents ?? product.price_cents;
 }
 
+export function merchPriceSummary(product) {
+  const options = product.variants?.length ? product.variants : [null];
+  const prices = options.map(variant => merchUnitPrice(product, variant));
+  const lowest = Math.min(...prices);
+  const hasPromotion = product.promo_price_cents === lowest && lowest < product.price_cents &&
+    options.some(variant => variant?.price_cents == null);
+  return {
+    label: `${prices.some(price => price !== lowest) ? 'Da ' : ''}${merchMoney(lowest)}`,
+    originalCents: hasPromotion ? product.price_cents : null,
+  };
+}
+
 export function merchMaxQuantity(product, variant) {
   if (!product || (product.variants?.length && !variant)) return 0;
   const stock = variant ?? product;
   return stock.on_demand ? product.max_quantity : Math.max(0, Math.min(product.max_quantity, stock.available ?? stock.stock));
+}
+
+export function isMerchAvailable(product) {
+  return product.variants?.length
+    ? product.variants.some(variant => merchMaxQuantity(product, variant) > 0)
+    : merchMaxQuantity(product) > 0;
 }
 
 export function merchOptions(products, settings, lines) {
@@ -42,9 +60,7 @@ export function selectedMerchProducts(products, filters) {
   const term = normalize(filters.search).trim();
   return products.filter(product =>
     (!filters.category || product.category === filters.category) &&
-    (!filters.inStock || (product.variants?.length
-      ? product.variants.some(variant => merchMaxQuantity(product, variant) > 0)
-      : merchMaxQuantity(product) > 0)) &&
+    (!filters.inStock || isMerchAvailable(product)) &&
     (!term || normalize([product.name, product.category, product.short_description].join(' ')).includes(term)),
   );
 }
