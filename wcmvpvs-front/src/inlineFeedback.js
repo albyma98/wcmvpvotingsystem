@@ -20,17 +20,14 @@ export function inlineFeedbackOptions(question) {
 }
 
 export function inlineFeedbackQuestions(survey) {
-  if (!Array.isArray(survey.questions)) return [];
-  const questions = survey.questions.filter((question) =>
+  const selected = Array.isArray(survey.selected_questions) ? survey.selected_questions : null;
+  const questions = (Array.isArray(survey.questions) ? survey.questions : []).filter((question) =>
     ['experience', 'team_spirit', 'perks_interest', 'mini_games_interest'].includes(question?.id)
+    && (!selected || selected.includes(question.id))
     && question.title && Array.isArray(question.answers) && question.answers.length,
   );
-  if (!questions.length) return [];
-  return [...questions, {
-    id: 'report_experience', title: 'Com’è stata la tua esperienza complessiva?',
-    answers: [
-      { value: 'awesome', label: 'Fantastica' }, { value: 'good', label: 'Bella' },
-      { value: 'ok', label: 'Discreta' }, { value: 'bad', label: 'Negativa' },
-    ],
-  }, { id: 'suggestion', title: survey.suggestionPrompt }];
+  if (selected?.includes('suggestion')) {
+    questions.push({ id: 'suggestion', title: survey.suggestionPrompt });
+  }
+  return questions;
 }

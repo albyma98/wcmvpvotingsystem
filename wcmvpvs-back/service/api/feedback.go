@@ -71,36 +71,44 @@ func (rt *_router) submitEventFeedback(w http.ResponseWriter, r *http.Request, c
 		return
 	}
 
-	experience := strings.TrimSpace(strings.ToLower(payload.Experience))
-	teamSpirit := strings.TrimSpace(strings.ToLower(payload.TeamSpirit))
-	perksInterest := strings.TrimSpace(strings.ToLower(payload.PerksInterest))
-	miniGamesInterest := strings.TrimSpace(strings.ToLower(payload.MiniGamesInterest))
-	suggestion := strings.TrimSpace(payload.Suggestion)
-
-	if _, ok := feedbackExperienceOptions[experience]; !ok {
-		w.WriteHeader(http.StatusBadRequest)
+	event, err := rt.db.GetEventByID(eventID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && ctx.OrganizationID > 0 && event.OrganizationID != ctx.OrganizationID) {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	if _, ok := feedbackTeamSpiritOptions[teamSpirit]; !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if _, ok := feedbackPerksOptions[perksInterest]; !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if _, ok := feedbackMiniGamesOptions[miniGamesInterest]; !ok {
-		w.WriteHeader(http.StatusBadRequest)
+	if err != nil {
+		ctx.Logger.WithError(err).Warn("cannot load event for feedback")
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
+	questions := []string{"experience", "team_spirit", "perks_interest", "mini_games_interest", "suggestion"}
+	if event.FeedbackSurvey != nil && event.FeedbackSurvey.SelectedQuestions != nil {
+		questions = event.FeedbackSurvey.SelectedQuestions
+	}
+	values := map[string]string{
+		"experience":          strings.TrimSpace(strings.ToLower(payload.Experience)),
+		"team_spirit":         strings.TrimSpace(strings.ToLower(payload.TeamSpirit)),
+		"perks_interest":      strings.TrimSpace(strings.ToLower(payload.PerksInterest)),
+		"mini_games_interest": strings.TrimSpace(strings.ToLower(payload.MiniGamesInterest)),
+		"suggestion":          strings.TrimSpace(payload.Suggestion),
+	}
+	answers := make(map[string]string, len(questions))
+	for _, question := range questions {
+		value := values[question]
+		if !validFeedbackAnswer(question, value) || (len(questions) == 1 && value == "") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		answers[question] = value
+	}
 	feedback := database.EventFeedback{
 		EventID:           eventID,
-		Experience:        experience,
-		TeamSpirit:        teamSpirit,
-		PerksInterest:     perksInterest,
-		MiniGamesInterest: miniGamesInterest,
-		Suggestion:        suggestion,
+		Experience:        answers["experience"],
+		TeamSpirit:        answers["team_spirit"],
+		PerksInterest:     answers["perks_interest"],
+		MiniGamesInterest: answers["mini_games_interest"],
+		Suggestion:        answers["suggestion"],
 	}
 
 	if err := rt.db.RecordEventFeedback(feedback); err != nil {
@@ -153,6 +161,19 @@ func (rt *_router) submitEventFeedbackAnswer(w http.ResponseWriter, r *http.Requ
 	if !event.ShowFeedbackSurvey {
 		w.WriteHeader(http.StatusForbidden)
 		return
+	}
+	if cfg := event.FeedbackSurvey; cfg != nil && cfg.SelectedQuestions != nil {
+		selected := false
+		for _, question := range cfg.SelectedQuestions {
+			if question == payload.Question {
+				selected = true
+				break
+			}
+		}
+		if !selected || (len(cfg.SelectedQuestions) == 1 && value == "") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 	}
 	key := hex.EncodeToString(responseID)
 	deviceID := strings.TrimSpace(r.Header.Get("X-Device-ID"))

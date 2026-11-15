@@ -50,6 +50,16 @@ func TestFeedbackAnswerValidationAndEventScope(t *testing.T) {
 	if strings.Join(db.saved, ",") != id+",experience,very_easy" {
 		t.Fatalf("unexpected answer: %v", db.saved)
 	}
+
+	db.event.FeedbackSurvey = &database.EventFeedbackSurveyConfig{SelectedQuestions: []string{"team_spirit"}}
+	post(42, http.StatusBadRequest)
+	payload["question"], payload["value"] = "report_experience", "good"
+	post(42, http.StatusBadRequest)
+	payload["question"], payload["value"] = "team_spirit", "high"
+	post(42, http.StatusNoContent)
+	if strings.Join(db.saved, ",") != id+",team_spirit,high" {
+		t.Fatalf("unexpected selected answer: %v", db.saved)
+	}
 }
 
 func TestFeedbackAnswersUpdateOneAnonymousResponse(t *testing.T) {

@@ -359,6 +359,10 @@ func (rt *_router) createEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	if e.FeedbackSurvey != nil && !e.FeedbackSurvey.ValidSelection() {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err == nil {
@@ -418,6 +422,10 @@ func (rt *_router) updateEvent(w http.ResponseWriter, r *http.Request, ctx reqco
 	e.FeedbackSurvey = nil
 	if err := json.Unmarshal(body, &e); err != nil {
 		ctx.Logger.WithError(err).Warn("invalid payload while updating event")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if e.FeedbackSurvey != nil && !e.FeedbackSurvey.ValidSelection() {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}

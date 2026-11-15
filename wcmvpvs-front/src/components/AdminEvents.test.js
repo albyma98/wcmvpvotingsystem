@@ -118,6 +118,7 @@ test('survey, prizes and settings save independently and keep drafts in other ta
   state.prizeDraftsFor(9)[0].name = 'Maglia in bozza';
   state.prizeDraftsFor(9)[0].winSmsText = 'SMS in bozza';
   state.feedbackDraftFor(9).questions[0].title = 'Sondaggio personalizzato';
+  state.feedbackDraftFor(9).selectedQuestions = ['experience', 'suggestion'];
   state.events.value[0].show_selfie = false;
   state.prizeDraftsFor(10)[0].name = 'Premio altro evento in bozza';
   state.feedbackDraftFor(10).suggestionPrompt = 'Suggerimenti altro evento';
@@ -125,6 +126,8 @@ test('survey, prizes and settings save independently and keep drafts in other ta
   await state.saveEventFeedbackSurvey(state.events.value[0]);
   assert.deepEqual(Object.keys(requests[0].payload), ['feedback_survey']);
   assert.equal(server[0].feedback_survey.questions[0].title, 'Sondaggio personalizzato');
+  assert.deepEqual(server[0].feedback_survey.selected_questions, ['experience', 'suggestion']);
+  assert.deepEqual(state.feedbackDraftFor(9).selectedQuestions, ['experience', 'suggestion']);
   assert.equal(server[0].prizes[0].name, 'Premio 9');
   assert.equal(server[0].show_selfie, true);
   assert.equal(state.prizeDraftsFor(9)[0].name, 'Maglia in bozza');
@@ -161,6 +164,7 @@ test('new event saves prizes and survey together, resets its form and survives l
   Object.assign(state.newEvent, { team1_id: 1, team2_id: 2, start_datetime: '2026-11-02T20:00', show_feedback_survey: false });
   state.newEventPrizes.value[0] = { name: '  Pallone  ', winSmsText: '  Hai vinto!  ' };
   state.newEventSurvey.questions[0].title = 'Domanda nuovo evento';
+  state.newEventSurvey.selectedQuestions = ['experience'];
   await state.createEvent();
   assert.equal(requests[0].method, 'POST');
   const created = server.at(-1);
@@ -168,6 +172,8 @@ test('new event saves prizes and survey together, resets its form and survives l
   assert.equal(created.prizes[0].name, 'Pallone');
   assert.equal(created.prizes[0].win_sms_text, 'Hai vinto!');
   assert.equal(created.feedback_survey.questions[0].title, 'Domanda nuovo evento');
+  assert.deepEqual(created.feedback_survey.selected_questions, ['experience']);
+  assert.equal(state.newEventSurvey.selectedQuestions.length, 4);
   assert.equal(state.newEventPrizes.value[0].name, '');
   assert.equal(state.newEvent.show_feedback_survey, true);
 

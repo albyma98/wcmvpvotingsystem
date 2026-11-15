@@ -39,6 +39,7 @@ func TestAdminEventCreationAndIndependentSaves(t *testing.T) {
 			survey := database.DefaultEventFeedbackSurveyConfig()
 			survey.Questions[0].Title = "Domanda della società"
 			survey.Questions[0].Answers[0].Label = "Risposta personalizzata"
+			survey.SelectedQuestions = []string{"experience"}
 			created := adminEventRequest(t, rt, ctx, http.MethodPost, "/events", map[string]interface{}{
 				"team1_id": existing.Team1ID, "team2_id": existing.Team2ID,
 				"start_datetime": "2026-11-01T19:00", "location": "Arena",
@@ -78,10 +79,17 @@ func TestAdminEventCreationAndIndependentSaves(t *testing.T) {
 			}
 
 			survey.Questions[0].Title = "Sondaggio aggiornato"
+			survey.SelectedQuestions = []string{"experience", "suggestion"}
 			update(map[string]interface{}{"feedback_survey": survey}, http.StatusNoContent)
 			afterSurvey := load()
 			if !reflect.DeepEqual(afterSurvey.Prizes, initial.Prizes) || !reflect.DeepEqual(*afterSurvey.FeedbackSurvey, survey) {
 				t.Fatal("saving the survey changed prizes or lost the new survey")
+			}
+			for _, selection := range [][]string{
+				{}, {"experience", "experience"}, {"report_experience"},
+				{"experience", "team_spirit", "perks_interest", "mini_games_interest", "suggestion"},
+			} {
+				update(map[string]interface{}{"feedback_survey": map[string]interface{}{"selected_questions": selection}}, http.StatusBadRequest)
 			}
 
 			prize := initial.Prizes[0]

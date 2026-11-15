@@ -57,7 +57,7 @@
           <footer class="feedback-modal__footer">
             <button v-if="step > 0" type="button" class="feedback-modal__back" :disabled="isSubmitting" @click="goBack">Indietro</button>
             <div class="feedback-modal__actions">
-              <button v-if="isOptionalStep" type="button" class="feedback-modal__skip" :disabled="isSubmitting" @click="skipOptional">Salta</button>
+              <button v-if="isOptionalStep && normalizedSurvey.questions.length" type="button" class="feedback-modal__skip" :disabled="isSubmitting" @click="skipOptional">Salta</button>
               <button type="button" class="feedback-modal__submit" :disabled="isSubmitting" @click="onContinue">
                 {{ isFinalStep ? (isSubmitting ? 'Invio...' : 'Invia') : 'Continua' }}
               </button>
@@ -149,6 +149,7 @@ const defaultSurvey = {
 };
 
 const normalizedSurvey = computed(() => {
+  const selection = props.feedbackSurvey?.selected_questions;
   const rawQuestions = Array.isArray(props.feedbackSurvey?.questions) && props.feedbackSurvey.questions.length
     ? props.feedbackSurvey.questions
     : defaultSurvey.questions;
@@ -173,7 +174,7 @@ const normalizedSurvey = computed(() => {
 
       return { id, title, options: answers, answerKey: id };
     })
-    .filter(Boolean);
+    .filter((question) => question && (!Array.isArray(selection) || selection.includes(question.id)));
 
   if (props.reportExperienceEnabled) {
     questions.push({
@@ -191,11 +192,11 @@ const normalizedSurvey = computed(() => {
 
   return {
     questions,
-    suggestionPrompt: String(props.feedbackSurvey?.suggestionPrompt || props.feedbackSurvey?.suggestion_prompt || defaultSurvey.suggestionPrompt || '').trim(),
+    suggestionPrompt: Array.isArray(selection) && !selection.includes('suggestion') ? ''
+      : String(props.feedbackSurvey?.suggestionPrompt || props.feedbackSurvey?.suggestion_prompt || defaultSurvey.suggestionPrompt || '').trim(),
   };
 });
 
-const mandatoryKeys = ['experience', 'team_spirit', 'perks_interest', 'mini_games_interest'];
 const answers = reactive({ experience: '', team_spirit: '', perks_interest: '', mini_games_interest: '', report_experience: '', suggestion: '' });
 const step = ref(0);
 const questionTitle = ref(null);
@@ -225,7 +226,7 @@ const isOptionalStep = computed(() => hasOptionalStep.value && step.value >= nor
 const isFinalStep = computed(() => isOptionalStep.value || step.value >= normalizedSurvey.value.questions.length - 1);
 const stepLabel = computed(() => {
   if (isOptionalStep.value) {
-    return 'Extra (opzionale)';
+    return normalizedSurvey.value.questions.length ? 'Extra (opzionale)' : 'Step 1 di 1';
   }
   return `Step ${Math.min(step.value + 1, normalizedSurvey.value.questions.length)} di ${normalizedSurvey.value.questions.length}`;
 });
@@ -305,13 +306,12 @@ async function submit() {
     feedbackFailure('unavailable');
     return;
   }
-  const requiredKeys = props.reportExperienceEnabled ? [...mandatoryKeys, 'report_experience'] : mandatoryKeys;
-  for (const key of requiredKeys) {
-    if (!answers[key]) {
-      errorMessage.value = 'Rispondi a tutte le domande prima di inviare.';
-      feedbackFailure('validation');
-      return;
-    }
+  const { questions } = normalizedSurvey.value;
+  const suggestion = answers.suggestion.trim();
+  if (questions.some(({ answerKey }) => !answers[answerKey]) || (!questions.length && !suggestion)) {
+    errorMessage.value = 'Rispondi a tutte le domande prima di inviare.';
+    feedbackFailure('validation');
+    return;
   }
 
   isSubmitting.value = true;
@@ -328,7 +328,7 @@ async function submit() {
       team_spirit: answers.team_spirit,
       perks_interest: answers.perks_interest,
       mini_games_interest: answers.mini_games_interest,
-      suggestion: answers.suggestion.trim(),
+      suggestion,
     });
     if (eventId !== props.eventId) return;
 

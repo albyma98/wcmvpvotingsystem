@@ -117,8 +117,31 @@ type BrandedGameLeaderboardEntry struct {
 }
 
 type EventFeedbackSurveyConfig struct {
-	Questions        []EventFeedbackQuestionConfig `json:"questions"`
-	SuggestionPrompt string                        `json:"suggestion_prompt,omitempty"`
+	Questions         []EventFeedbackQuestionConfig `json:"questions"`
+	SuggestionPrompt  string                        `json:"suggestion_prompt,omitempty"`
+	SelectedQuestions []string                      `json:"selected_questions,omitempty"`
+}
+
+func (cfg EventFeedbackSurveyConfig) ValidSelection() bool {
+	if cfg.SelectedQuestions == nil {
+		return true
+	}
+	if len(cfg.SelectedQuestions) < 1 || len(cfg.SelectedQuestions) > 4 {
+		return false
+	}
+	seen := make(map[string]bool, len(cfg.SelectedQuestions))
+	for _, id := range cfg.SelectedQuestions {
+		switch id {
+		case "experience", "team_spirit", "perks_interest", "mini_games_interest", "suggestion":
+		default:
+			return false
+		}
+		if seen[id] {
+			return false
+		}
+		seen[id] = true
+	}
+	return true
 }
 
 type EventFeedbackQuestionConfig struct {
@@ -527,6 +550,9 @@ func NormalizeEventFeedbackSurveyConfig(cfg *EventFeedbackSurveyConfig) EventFee
 	sanitized := EventFeedbackSurveyConfig{
 		Questions:        make([]EventFeedbackQuestionConfig, len(defaults.Questions)),
 		SuggestionPrompt: defaults.SuggestionPrompt,
+	}
+	if cfg.ValidSelection() {
+		sanitized.SelectedQuestions = cfg.SelectedQuestions
 	}
 
 	questionOverrides := make(map[string]EventFeedbackQuestionConfig, len(cfg.Questions))

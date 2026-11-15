@@ -170,6 +170,8 @@
                     </div>
                   </div>
 
+                  <FeedbackQuestionSelection v-if="newEvent.show_feedback_survey" :draft="newEventSurvey" :disabled="!hasEnoughTeams" />
+
                   <!-- Branded Mini-Game -->
                   <div class="ev-opts-block">
                     <div class="ev-opts-block__hd">
@@ -686,8 +688,9 @@
 
                   <!-- ── TAB: Sondaggio ── -->
                   <div v-else-if="getEventTab(event.id) === 'feedback'" class="ev-tab-feedback">
+                    <FeedbackQuestionSelection :draft="feedbackDraftFor(event.id)" :disabled="isSavingPrizesFor(event.id)" />
                     <div class="ev-feedback-questions">
-                      <div v-for="question in feedbackDraftFor(event.id).questions" :key="`ev-${event.id}-fbq-${question.id}`" class="ev-feedback-q">
+                      <div v-for="question in feedbackDraftFor(event.id).questions.filter(({ id }) => feedbackDraftFor(event.id).selectedQuestions.includes(id))" :key="`ev-${event.id}-fbq-${question.id}`" class="ev-feedback-q">
                         <div class="ev-feedback-q__hd">
                           <span class="ev-feedback-q__id">{{ question.id }}</span>
                           <input v-model="question.title" type="text" :placeholder="`Domanda: ${question.id}`" class="ev-input" :disabled="isSavingPrizesFor(event.id)" />
@@ -701,8 +704,8 @@
                         </div>
                       </div>
                     </div>
-                    <div class="ev-field" style="margin-top:0.85rem">
-                      <label class="ev-label">Domanda suggerimenti (opzionale)</label>
+                    <div v-if="feedbackDraftFor(event.id).selectedQuestions.includes('suggestion')" class="ev-field" style="margin-top:0.85rem">
+                      <label class="ev-label">Domanda aperta per i suggerimenti</label>
                       <textarea v-model="feedbackDraftFor(event.id).suggestionPrompt" rows="2" maxlength="120" class="ev-input" :disabled="isSavingPrizesFor(event.id)" placeholder="Testo domanda aperta…"></textarea>
                     </div>
                     <div class="ev-tab-save-row">
@@ -2069,6 +2072,7 @@ import AdminPlayersSection from "./admin/AdminPlayersSection.vue";
 import AdminCouponsSection from "./admin/AdminCouponsSection.vue";
 import AdminVotingSettings from "./admin/AdminVotingSettings.vue";
 import AdminVotingClosure from "./admin/AdminVotingClosure.vue";
+import FeedbackQuestionSelection from "./admin/FeedbackQuestionSelection.vue";
 import EngagementReportModal from "./EngagementReportModal.vue";
 import MatchdayKpiDialog from "../admin-v2/components/reports/MatchdayKpiDialog.vue";
 import V2Icon from "../admin-v2/components/shared/V2Icon.vue";
@@ -2170,11 +2174,17 @@ function normalizeFeedbackSurveyInput(raw) {
         icon: answer.icon || "",
       })),
     })),
+    selectedQuestions: DEFAULT_FEEDBACK_SURVEY.questions.map(({ id }) => id),
     suggestionPrompt: DEFAULT_FEEDBACK_SURVEY.suggestionPrompt,
   };
 
   if (!raw || typeof raw !== "object") {
     return normalized;
+  }
+
+  const selection = raw.selected_questions ?? raw.selectedQuestions;
+  if (Array.isArray(selection)) {
+    normalized.selectedQuestions = [...selection];
   }
 
   const questionOverrides = new Map();
@@ -2282,25 +2292,11 @@ function assignSurveyDraft(target, source) {
       answers: question.answers.map((answer) => ({ ...answer })),
     })),
   );
+  target.selectedQuestions = normalized.selectedQuestions;
   target.suggestionPrompt = normalized.suggestionPrompt;
 }
 
 function toApiSurveyPayload(survey) {
-  if (!survey || typeof survey !== "object") {
-    return {
-      questions: DEFAULT_FEEDBACK_SURVEY.questions.map((question) => ({
-        id: question.id,
-        title: question.title,
-        answers: question.answers.map((answer) => ({
-          value: answer.value,
-          label: answer.label,
-          icon: answer.icon || "",
-        })),
-      })),
-      suggestion_prompt: DEFAULT_FEEDBACK_SURVEY.suggestionPrompt,
-    };
-  }
-
   const normalized = normalizeFeedbackSurveyInput(survey);
   return {
     questions: normalized.questions.map((question) => ({
@@ -2312,6 +2308,7 @@ function toApiSurveyPayload(survey) {
         icon: answer.icon || "",
       })),
     })),
+    selected_questions: normalized.selectedQuestions,
     suggestion_prompt: normalized.suggestionPrompt,
   };
 }
@@ -4346,7 +4343,7 @@ function feedbackDraftFor(eventId) {
   const draftSource = event?.feedbackSurvey ?? event?.feedback_survey;
   const draft = normalizeFeedbackSurveyInput(draftSource);
   eventFeedbackDrafts[eventId] = draft;
-  return draft;
+  return eventFeedbackDrafts[eventId];
 }
 
 function addPrizeDraft(eventId) {

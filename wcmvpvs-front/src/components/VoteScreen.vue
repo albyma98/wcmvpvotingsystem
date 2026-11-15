@@ -1375,6 +1375,11 @@ function normalizeFeedbackSurvey(raw) {
     normalized.suggestionPrompt = rawSuggestion.trim();
   }
 
+  if (Array.isArray(raw.selected_questions)) {
+    normalized.questions = normalized.questions.filter(({ id }) => raw.selected_questions.includes(id));
+    if (!raw.selected_questions.includes("suggestion")) normalized.suggestionPrompt = "";
+  }
+
   return normalized;
 }
 
@@ -1424,12 +1429,6 @@ const hasCompletedFeedback = ref(false);
 const hasTrackedFeedbackOpen = ref(false);
 const optionalFeedbackMaxLength = 80;
 const feedbackStoragePrefix = "wcmvpvs-feedback";
-const mandatoryFeedbackKeys = [
-  "experience",
-  "team_spirit",
-  "perks_interest",
-  "mini_games_interest",
-];
 
 const activeFeedbackQuestion = computed(() =>
   feedbackStep.value < feedbackQuestions.value.length
@@ -1453,7 +1452,7 @@ const feedbackStepLabel = computed(() => {
   if (feedbackStep.value < feedbackQuestions.value.length) {
     return `Step ${feedbackStep.value + 1} di ${feedbackQuestions.value.length}`;
   }
-  return "Extra (opzionale)";
+  return feedbackQuestions.value.length ? "Extra (opzionale)" : "Step 1 di 1";
 });
 
 const feedbackProgress = computed(() => {
@@ -1691,16 +1690,15 @@ async function submitFeedback() {
     feedbackError.value = "Evento non disponibile in questo momento.";
     return;
   }
-  for (const key of mandatoryFeedbackKeys) {
-    if (!feedbackAnswers[key]) {
-      feedbackError.value = "Rispondi a tutte le domande per continuare.";
-      return;
-    }
+  const suggestion = feedbackAnswers.suggestion.trim();
+  if (feedbackQuestions.value.some(({ answerKey }) => !feedbackAnswers[answerKey])
+    || (!feedbackQuestions.value.length && !suggestion)) {
+    feedbackError.value = "Rispondi a tutte le domande per continuare.";
+    return;
   }
   isFeedbackSubmitting.value = true;
   feedbackError.value = "";
   try {
-    const suggestion = feedbackAnswers.suggestion.trim();
     const result = await submitEventFeedback(eventId, {
       experience: feedbackAnswers.experience,
       team_spirit: feedbackAnswers.team_spirit,
@@ -3942,7 +3940,7 @@ const submitContactBonus = async () => {
                   }}
                 </h2>
                 <p v-if="isOptionalFeedbackStep" class="feedback-modal__hint">
-                  Risposta facoltativa (max
+                  {{ feedbackQuestions.length ? "Risposta facoltativa" : "Scrivi una risposta" }} (max
                   {{ optionalFeedbackMaxLength }} caratteri)
                 </p>
                 <div
@@ -4009,7 +4007,7 @@ const submitContactBonus = async () => {
                   :class="{ 'is-hidden': !showFeedbackActions }"
                 >
                   <button
-                    v-if="isOptionalFeedbackStep"
+                    v-if="isOptionalFeedbackStep && feedbackQuestions.length"
                     type="button"
                     class="feedback-modal__skip"
                     @click="skipOptionalFeedback"

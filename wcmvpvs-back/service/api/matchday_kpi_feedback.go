@@ -91,18 +91,33 @@ func preloadMatchdayFeedback(ctx context.Context, q matchdayQueryer, orgID int, 
 
 func (d *matchdayFeedbackData) add(response matchdayFeedbackResponse, experience, spirit, perks, games, rating, suggestion string) {
 	answered := 0
-	for _, item := range []struct{ question, value string }{
-		{"experience", experience}, {"team_spirit", spirit},
-		{"perks_interest", perks}, {"mini_games_interest", games},
-	} {
-		if validFeedbackAnswer(item.question, item.value) {
-			d.answer(item.question, item.value)
+	answers := map[string]string{
+		"experience": experience, "team_spirit": spirit, "perks_interest": perks,
+		"mini_games_interest": games, "suggestion": strings.TrimSpace(suggestion),
+	}
+	for question, value := range answers {
+		if question != "suggestion" && validFeedbackAnswer(question, value) {
+			d.answer(question, value)
 			answered++
+		}
+	}
+	required := d.config.SelectedQuestions
+	if required == nil {
+		required = []string{"experience", "team_spirit", "perks_interest", "mini_games_interest"}
+	}
+	response.complete = true
+	for _, question := range required {
+		if question == "suggestion" && len(required) > 1 {
+			continue
+		}
+		value := answers[question]
+		if value == "" || !validFeedbackAnswer(question, value) {
+			response.complete = false
+			break
 		}
 	}
 	tracked := response.id != "" && response.identity.DeviceKey != ""
 	validRating := validFeedbackAnswer("report_experience", rating)
-	response.complete = answered == 4 && (!tracked || validRating)
 	if response.complete {
 		d.complete++
 	}
@@ -348,7 +363,7 @@ func (d *matchdayFeedbackData) apply(f *matchdayFacts) {
 			}})
 		}
 	}
-	completed := matchdayCount("feedback_completed", "Sondaggi completati", "Schede con tutte le risposte obbligatorie salvate.", "Quattro domande configurate e, per i questionari con il nuovo tracciamento, valutazione complessiva.", float64(d.complete), matchdayFeedbackDB)
+	completed := matchdayCount("feedback_completed", "Sondaggi completati", "Schede con tutte le risposte obbligatorie salvate.", "Numero di schede con risposta a tutte le domande obbligatorie selezionate per l’evento.", float64(d.complete), matchdayFeedbackDB, "events.feedback_survey_config")
 	themes := matchdayCount("feedback_themes", "Temi nei suggerimenti", "Suggerimenti testuali salvati. Il dettaglio mostra le categorie menzionate da almeno due schede.", "Conteggio schede con suggerimenti e aggregazione per parole chiave.", float64(d.suggestions), matchdayFeedbackDB)
 	themes.Columns = []matchdayColumn{{ID: "count", Label: "Menzioni", Unit: "count"}}
 	for label, count := range d.themes {

@@ -81,6 +81,7 @@
                 </template>
               </div>
             </Transition>
+            <button v-if="eventId && journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare il bonus voto' }}</button>
           </section>
 
           <div class="home-shortcuts">
@@ -96,7 +97,7 @@
           </div>
           <FanMerchFeatured v-if="featuredMerch" :product="featuredMerch" @open="openMerchShop" />
 
-          <Transition name="home-slot" mode="out-in" @after-enter="focusFeedbackThanks">
+          <Transition name="home-slot" mode="out-in" @after-enter="onFeedbackThanksEntered">
             <section v-if="hasFeedbackSurvey && !hasSubmittedFeedback" key="inline-feedback" :ref="observeFeedbackInvitation" class="feedback-cta feedback-inline" aria-labelledby="inline-feedback-title" :aria-busy="feedbackSaving">
               <h2 id="inline-feedback-title">La tua voce conta</h2>
               <h3 id="inline-feedback-question" ref="feedbackQuestionTitle" tabindex="-1">{{ activeFeedbackQuestion.title }}</h3>
@@ -119,62 +120,39 @@
               <div v-if="feedbackStep > 0 || activeFeedbackQuestion.id === 'suggestion'" class="feedback-inline-actions">
                 <button v-if="feedbackStep > 0" type="button" :disabled="feedbackSaving" @click="previousFeedbackQuestion">Indietro</button>
                 <template v-if="activeFeedbackQuestion.id === 'suggestion'">
-                  <button type="button" :disabled="feedbackSaving" @click="answerFeedbackInline('')">Salta</button>
-                  <button type="button" :disabled="feedbackSaving" @click="answerFeedbackInline(feedbackSuggestion)">{{ feedbackSaving ? 'Salvataggio…' : 'Invia' }}</button>
+                  <button v-if="feedbackQuestions.length > 1" type="button" :disabled="feedbackSaving" @click="answerFeedbackInline('')">Salta</button>
+                  <button type="button" :disabled="feedbackSaving || (feedbackQuestions.length === 1 && !feedbackSuggestion.trim())" @click="answerFeedbackInline(feedbackSuggestion)">{{ feedbackSaving ? 'Salvataggio…' : 'Invia' }}</button>
                 </template>
               </div>
             </section>
-            <div v-else-if="feedbackThanks || featuredMission" key="after-feedback" class="home-slot-followup">
-              <section v-if="feedbackThanks" class="feedback-celebration" aria-labelledby="feedback-thanks-title">
-                <div class="feedback-celebration__art" aria-hidden="true">
-                  <svg class="feedback-celebration__confetti" viewBox="0 0 100 88" fill="none">
-                    <g class="feedback-celebration__confetti-primary" fill="var(--red-text)">
-                      <rect x="11" y="18" width="7" height="4" rx="1.5" transform="rotate(35 11 18)"/>
-                      <rect x="74" y="11" width="8" height="4" rx="1.5" transform="rotate(-40 74 11)"/>
-                      <rect x="83" y="62" width="7" height="4" rx="1.5" transform="rotate(28 83 62)"/>
-                      <circle cx="6" cy="49" r="2"/><circle cx="46" cy="79" r="2.5"/>
-                    </g>
-                    <g class="feedback-celebration__confetti-gold" fill="var(--gold)">
-                      <path d="M47 2l1.5 4.5L53 8l-4.5 1.5L47 14l-1.5-4.5L41 8l4.5-1.5zM18 60l1.5 4.5L24 66l-4.5 1.5L18 72l-1.5-4.5L12 66l4.5-1.5z"/>
-                      <rect x="68" y="75" width="4" height="7" rx="1.5" transform="rotate(-28 68 75)"/>
-                      <circle cx="92" cy="33" r="3"/><circle cx="27" cy="9" r="2"/>
-                    </g>
+            <section v-else-if="feedbackThanks" key="after-feedback" class="feedback-celebration" aria-labelledby="feedback-thanks-title">
+              <div class="feedback-celebration__art" aria-hidden="true">
+                <svg class="feedback-celebration__confetti" viewBox="0 0 100 88" fill="none">
+                  <g class="feedback-celebration__confetti-primary" fill="var(--red-text)">
+                    <rect x="11" y="18" width="7" height="4" rx="1.5" transform="rotate(35 11 18)"/>
+                    <rect x="74" y="11" width="8" height="4" rx="1.5" transform="rotate(-40 74 11)"/>
+                    <rect x="83" y="62" width="7" height="4" rx="1.5" transform="rotate(28 83 62)"/>
+                    <circle cx="6" cy="49" r="2"/><circle cx="46" cy="79" r="2.5"/>
+                  </g>
+                  <g class="feedback-celebration__confetti-gold" fill="var(--gold)">
+                    <path d="M47 2l1.5 4.5L53 8l-4.5 1.5L47 14l-1.5-4.5L41 8l4.5-1.5zM18 60l1.5 4.5L24 66l-4.5 1.5L18 72l-1.5-4.5L12 66l4.5-1.5z"/>
+                    <rect x="68" y="75" width="4" height="7" rx="1.5" transform="rotate(-28 68 75)"/>
+                    <circle cx="92" cy="33" r="3"/><circle cx="27" cy="9" r="2"/>
+                  </g>
+                </svg>
+                <span class="feedback-celebration__seal">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <path pathLength="1" d="m5 12 5 5 9-10"/>
                   </svg>
-                  <span class="feedback-celebration__seal">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                      <path pathLength="1" d="m5 12 5 5 9-10"/>
-                    </svg>
-                  </span>
-                </div>
-                <div class="feedback-celebration__copy">
-                  <span>Feedback ricevuto</span>
-                  <h2 id="feedback-thanks-title" ref="feedbackThanksTitle" tabindex="-1" aria-describedby="feedback-thanks-copy">Grazie per il feedback!</h2>
-                  <p id="feedback-thanks-copy">Le tue risposte ci aiutano a migliorare l’esperienza in arena.</p>
-                </div>
-              </section>
-              <button v-if="featuredMission" class="moment-card" type="button" @click="onMission(featuredMission, 'home_featured')">
-                <span class="home-icon" aria-hidden="true">{{ featuredMission.emoji }}</span>
-                <span class="moment-copy"><span>Sfida del momento</span><b>{{ featuredMission.title }}</b><span>{{ featuredMission.repeatable ? featuredMission.subtitle : nextQuizLabel || 'Una breve sfida da giocare durante le pause' }}</span></span>
-                <span class="moment-action">
-                  <span v-if="featuredMission.pts && (featuredMission.repeatable || !doneKeys.includes(featuredMission.key))" class="row-pts">
-                    +{{ featuredMission.pts }}<span class="sr-only"> monete</span><span class="coin" aria-hidden="true"></span>
-                  </span>
-                  <b>Gioca <span aria-hidden="true">→</span></b>
                 </span>
-              </button>
-            </div>
+              </div>
+              <div class="feedback-celebration__copy">
+                <span>Feedback ricevuto</span>
+                <h2 id="feedback-thanks-title" ref="feedbackThanksTitle" tabindex="-1" aria-describedby="feedback-thanks-copy">Grazie per il feedback!</h2>
+                <p id="feedback-thanks-copy">Le tue risposte ci aiutano a migliorare l’esperienza in arena.</p>
+              </div>
+            </section>
           </Transition>
-
-          <section v-if="eventId" class="journey-card" aria-label="Progressione del badge">
-            <div class="journey-head">
-              <b>{{ FAN_BADGE_NAME }}<small v-if="progress.unlocked">Sbloccato</small></b>
-              <strong>{{ progress.current }}/{{ FIRST_FAN_GOAL }} <span class="coin" aria-hidden="true"></span></strong>
-            </div>
-            <div class="journey-bar" role="progressbar" :aria-label="`Monete guadagnate per il badge ${FAN_BADGE_NAME}`" :aria-valuenow="progress.current" :aria-valuemin="0" :aria-valuemax="FIRST_FAN_GOAL">
-              <span :style="{ width: `${progress.percent}%` }"></span>
-            </div>
-            <button v-if="journey.pendingVoteBonus" class="journey-next" type="button" :disabled="isSavingCoins" @click="retryVoteBonus">{{ isSavingCoins ? 'Salvataggio…' : 'Riprova a salvare il bonus voto' }}</button>
-          </section>
 
           <MatchChatEntry v-if="eventId && organizationSlug" :key="`${organizationSlug}:${eventId}`"
             :slug="organizationSlug" :event-id="eventId" :event-label="matchChatEventLabel"
@@ -963,6 +941,7 @@ const feedbackError = ref('');
 const feedbackQuestionTitle = ref(null);
 const feedbackThanks = ref(false);
 const feedbackThanksTitle = ref(null);
+let feedbackThanksTimer;
 const homePlayButton = ref(null);
 
 // Registry giochi reali (titolo + reward indicativa mostrata nella lista).
@@ -1062,11 +1041,6 @@ const featuredMission = computed(() => {
   const missions = earnMissions.value.filter((mission) => mission.game && (mission.key !== 'quiz' || quizAvailable.value));
   const unplayed = missions.filter((mission) => !doneKeys.value.includes(mission.key));
   return unplayed.find((mission) => mission.key === 'quiz') || unplayed[0] || missions[0] || null;
-});
-const nextQuizLabel = computed(() => {
-  const startsAt = Date.parse(liveEvent.value?.quiz?.starts_at || '');
-  if (!Number.isFinite(startsAt) || startsAt <= Date.now()) return '';
-  return `Prossimo quiz alle ${new Date(startsAt).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
 });
 const finalMvpLabel = computed(() => {
   const winners = liveEvent.value?.mvp || [];
@@ -1266,6 +1240,9 @@ const feedbackSurvey = computed(() => {
   };
 });
 const feedbackQuestions = computed(() => inlineFeedbackQuestions(feedbackSurvey.value));
+watch(() => feedbackQuestions.value.map(({ id }) => id).join(','), () => {
+  feedbackPosition.value = null;
+});
 const hasFeedbackSurvey = computed(() =>
   Boolean(props.eventId)
   && eventState.value?.show_feedback_survey !== false
@@ -1290,6 +1267,7 @@ watch([() => props.eventId, () => props.organizationSlug], ([eventId]) => {
   feedbackError.value = '';
   feedbackThanks.value = false;
   if (typeof window === 'undefined') return;
+  window.clearTimeout(feedbackThanksTimer);
   if (!eventId) return;
   try {
     const saved = window.localStorage.getItem(feedbackStorageKey(eventId));
@@ -1332,6 +1310,7 @@ async function answerFeedbackInline(value) {
   const optional = question.id === 'suggestion';
   if (!optional && !question.answers.some((answer) => answer.value === value)) return;
   const answer = value.trim();
+  if (optional && !answer && feedbackQuestions.value.length === 1) return;
   const draft = feedbackDraft.value;
   const step = feedbackStep.value;
   const scope = walletScope();
@@ -1359,13 +1338,15 @@ async function answerFeedbackInline(value) {
     return;
   }
   recordFanEvent('feedback_step', { trigger: 'feedback', feedback_response_id: draft.responseId, count: step + 1, outcome: optional && !answer ? 'skipped' : 'selected' });
-  if (optional) {
-    handleFeedbackSubmitted(draft.answers);
+  draft.answers[question.id] = answer;
+  const questions = feedbackQuestions.value;
+  if (questions.at(-1)?.id === question.id && questions.every(({ id }) => Object.hasOwn(draft.answers, id))) {
+    const perksInterest = questions.some(({ id }) => id === 'perks_interest') ? draft.answers.perks_interest : undefined;
+    handleFeedbackSubmitted({ perks_interest: perksInterest });
     return;
   }
-  draft.answers[question.id] = answer;
   persistFeedback(JSON.stringify(draft));
-  feedbackPosition.value = step + 1;
+  feedbackPosition.value = questions[step]?.id === question.id && step + 1 < questions.length ? step + 1 : null;
   nextTick(() => {
     if (!activeSheet.value && !isRegistrationOpen.value && !activeGameId.value && draft === feedbackDraft.value) {
       feedbackQuestionTitle.value?.focus({ preventScroll: true });
@@ -1373,13 +1354,22 @@ async function answerFeedbackInline(value) {
   });
 }
 function handleFeedbackSubmitted(answers = {}) {
-  reportTelemetry?.record('feedback_completed', { feedback_response_id: feedbackDraft.value.responseId, experience: answers.report_experience, perks_interest: answers.perks_interest });
+  reportTelemetry?.record('feedback_completed', { feedback_response_id: feedbackDraft.value.responseId, perks_interest: answers.perks_interest });
   hasSubmittedFeedback.value = true;
   feedbackThanks.value = true;
   persistFeedback('1');
 }
-function focusFeedbackThanks() {
-  if (!feedbackThanks.value || activeSheet.value || isRegistrationOpen.value || activeGameId.value) return;
+function onFeedbackThanksEntered() {
+  if (!feedbackThanks.value) return;
+  const { document } = window;
+  // Give the confetti animation (1.17 s including its delay) time to finish.
+  feedbackThanksTimer = window.setTimeout(() => {
+    if (document.activeElement === feedbackThanksTitle.value) {
+      homePlayButton.value?.focus({ preventScroll: true });
+    }
+    feedbackThanks.value = false;
+  }, 1200);
+  if (activeSheet.value || isRegistrationOpen.value || activeGameId.value) return;
   // Keep focus where the fan moved it if they used another control during the save.
   if (document.activeElement === document.body) feedbackThanksTitle.value?.focus();
 }
@@ -2596,6 +2586,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   window.removeEventListener('pagehide', recordGamePageExit);
   stopCoinsStream();
+  window.clearTimeout(feedbackThanksTimer);
   window.clearTimeout(coinAnimationTimer);
   window.clearInterval(liveStatusTimer);
 });
@@ -2815,7 +2806,7 @@ watch(
   padding: var(--home-gap) var(--home-pad) var(--home-pad);
   line-height: 1.35;
 }
-.mvp-card, .home-shortcut, .moment-card, .journey-card, .rank-link {
+.mvp-card, .home-shortcut, .rank-link {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--home-radius);
@@ -2958,7 +2949,7 @@ watch(
   animation: home-play-in .52s ease .22s both;
 }
 @keyframes home-play-in { 45% { box-shadow: 0 0 0 3px var(--red-line); } }
-.home-shortcut, .moment-card, .rank-link {
+.home-shortcut, .rank-link {
   display: flex;
   align-items: center;
   min-width: 0;
@@ -2972,7 +2963,7 @@ watch(
 }
 .home-shortcut { min-height: 72px; flex-wrap: wrap; }
 .shortcut-copy { flex: 1 1 4.5rem; }
-.home-shortcut:hover, .moment-card:hover, .rank-link:hover { border-color: var(--red-text); }
+.home-shortcut:hover, .rank-link:hover { border-color: var(--red-text); }
 .home-icon {
   display: grid;
   place-items: center;
@@ -2985,25 +2976,20 @@ watch(
   font-size: 1.125rem;
 }
 .home-icon svg { width: 19px; height: 19px; }
-.shortcut-copy, .moment-copy {
+.shortcut-copy {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.shortcut-copy b, .moment-copy b {
+.shortcut-copy b {
   display: block;
   font-size: .875rem;
   font-weight: 800;
 }
-.shortcut-copy > span, .moment-copy > span {
+.shortcut-copy > span {
   display: block;
   color: var(--muted);
   font-size: .75rem;
 }
-.moment-card { min-height: 76px; }
-.moment-copy { flex: 1; }
-.moment-action { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 5px; }
-.moment-action .row-pts { color: var(--ink); font-size: .8125rem; }
-.moment-action > b { color: var(--red-text); font-size: .8125rem; }
 .topbar button:focus-visible, .home-dashboard :is(button, a):focus-visible, .sponsor-chip:focus-visible {
   outline: 2px solid var(--red-text);
   outline-offset: 2px;
@@ -3112,19 +3098,11 @@ watch(
   font-size: 11px;
 }
 
-/* Traguardo e sfida in evidenza */
-.journey-card {
-  min-height: 62px;
-  padding: 10px 12px;
-}
-.journey-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.journey-head b { min-width: 0; font-size: .875rem; font-weight: 800; overflow-wrap: anywhere; }
-.journey-head small { margin-inline-start: 6px; color: var(--muted); font-size: .75rem; font-weight: 600; }
-.journey-head strong { display: flex; align-items: center; gap: 7px; flex: none; font-size: .875rem; font-variant-numeric: tabular-nums; }
+/* Progressione del badge */
 .journey-bar { width: 100%; height: 8px; border-radius: 99px; background: var(--red-soft); margin-top: 10px; overflow: hidden; }
 .journey-bar > span { display: block; height: 100%; background: var(--red); border-radius: inherit; transition: width 0.4s ease; }
 .journey-next { color: var(--red-text); background: transparent; border: 0; padding: 6px 0; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
-.journey-card .journey-next { min-height: 44px; margin-top: 4px; font-size: .8125rem; text-align: left; }
+.mvp-card > .journey-next { min-height: 44px; margin-top: 4px; font-size: .8125rem; text-align: left; }
 .journey-badge { border-color: var(--gold); }
 .journey-badge .row-copy span { white-space: normal; }
 .match-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -3302,7 +3280,6 @@ watch(
 }
 .feedback-suggestion small { display: block; text-align: right; }
 .feedback-error { font-size: .8125rem; font-weight: 700; }
-.home-slot-followup { display: grid; gap: var(--home-gap); }
 .feedback-celebration {
   display: grid;
   grid-template-columns: clamp(68px, 22vw, 100px) minmax(0, 1fr);

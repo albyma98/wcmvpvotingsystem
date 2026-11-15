@@ -2,7 +2,7 @@
 
 `tap-volley` è una voce separata nel catalogo minigiochi del master. È assegnata di default a **Pallavolo**; il master può modificarne gli sport o disabilitarla indipendentemente da Tap Challenge (`tap`). Le assegnazioni esistenti di Tap Challenge sono conservate.
 
-Nella pagina `/<società>/new`, il gioco compare in “Gioca e guadagna” e può comparire come “Sfida del momento” se consentito dalla configurazione dello sport. Usa un pallone giallo e blu, un campo con rete da pallavolo, testi dedicati e la copertina `wcmvpvs-front/src/assets/fan-games/tap-volley.webp`.
+Nella pagina `/<società>/new`, il gioco compare in “Gioca e guadagna” se consentito dalla configurazione dello sport. Usa un pallone giallo e blu, un campo con rete da pallavolo, testi dedicati e la copertina `wcmvpvs-front/src/assets/fan-games/tap-volley.webp`.
 
 Una partita singola dura 10 secondi. Il pallone cambia posizione e accelera a ogni tocco. Ogni partita completata dà 8 monete, con importo stabilito dal server e una ricevuta per impedire un doppio accredito dello stesso round. Saldo, punti e progressi sono ripristinati dal server.
 
